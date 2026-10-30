@@ -1,5 +1,14 @@
 # macOS implementation contracts
 
+### 2026-10-31 — mac-mvp-fixes — AI disclosure in share text
+
+- The export sheet's share text now follows voice-lab.md §11.3–11.4 for targets with AI-modified speech. This supersedes the 2026-10-27 share-text note that left the field prefill, the removal warning and the X tip to the redesign tracks. `EditorModel.shareDisclosureLine(_:)` reads `VoiceLabDisclosurePlan.postText` from `VoiceLabRenderContract.prepare` for the target's scope (`full` or the clip), the same plan its export renders; a target with no enabled AI segment has no line.
+- `ShareCaptionDraft.load` opens the field with `SharePostText.fieldText(saved or default caption, line:)`, so Copy caption, Open X and Open LinkedIn carry the line after a blank line. Open X passes the line to `composerText`, so a cut keeps it whole and last. If the share rules failed their launch check, the line is still appended, uncut.
+- If the line was removed or changed (`ShareDisclosure.isPresent`), Copy caption, Open X and Open LinkedIn first show "Your post no longer says the video contains AI-modified parts." with [Share anyway] and [Restore line] (the `ShareDisclosure` constants). Share anyway goes ahead with the text as it is. Restore line puts the line back with `fieldText` and then goes ahead. Editing the caption or changing the target withdraws the warning.
+- When the target needs disclosure, Open X also shows and announces "Turn on 'Made with AI' in the post's content disclosure before posting."
+- `ShareDisclosureSheetTests` (headless) cover the prefill for the full edit and an AI clip, removal and white-space-only edits, Restore line, targets without AI, and X truncation keeping the line. The prefill test failed before the change.
+- Windows has the same gap (`ExportDialog.cs` caption, `ShareHelpers.cs` `ComposerText(caption, X, null)`); it is not changed here.
+
 ### 2026-10-31 — mac-mvp-fixes — inline correction ends on focus loss
 
 - The inline correction field (design §4.2) used to close only on Return, Tab or Esc typed into it. A click elsewhere left it open with `correctionID` set, which silently disabled Delete-to-cut, Space, the viewer and timeline Play buttons and the selection bar. It now ends the way an inline rename ends (`WorkspaceShell.endRename`, macOS convention): focus leaving the field (`controlTextDidEndEditing`), a click in the transcript, a selection change (`selectedWordIDs.didSet`) and any transport action (`transport`, so Play) save the typed text when it is valid. Text that can't be saved (empty, a line break, too long) is dropped and the word keeps its text. Esc still cancels, and Return and Tab are unchanged.
