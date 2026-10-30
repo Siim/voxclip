@@ -54,6 +54,16 @@ public enum VoiceLabLoudness {
         return level
     }
 
+    /// The same level read from an excerpt of the source, which must hold the window and up to
+    /// `LOUDNESS_NEIGHBOURHOOD` on each side of it, clamped to the track.
+    public static func neighbourhoodVoicedRmsDb(_ source: VoiceLabSourceExcerpt, sampleRate: Int, window: Range<Int>) throws -> Double {
+        guard sampleRate > 0, window.lowerBound >= 0, window.upperBound <= source.totalFrames else { throw VoiceLabAudioMathError.invalidInput }
+        let reach = Int(min(EditingPrimitives.jsRound(loudnessNeighbourhoodSeconds * Double(sampleRate)), Double(source.totalFrames)))
+        let lower = max(0, window.lowerBound - reach), upper = min(source.totalFrames, window.upperBound + reach)
+        guard let samples = source.samples(lower..<upper) else { throw VoiceLabAudioMathError.invalidInput }
+        return try neighbourhoodVoicedRmsDb(Array(samples), sampleRate: sampleRate, window: (window.lowerBound - lower)..<(window.upperBound - lower))
+    }
+
     /// `audio.gainDb` for a candidate (§8.7 item 2): the voiced-RMS difference clamped to `GAIN_CLAMP`, then lowered
     /// until the candidate's true peak sits at −1 dBTP. A recipe stores one static gain, so this cap is the only form
     /// the limit can take; nothing limits dynamically and the voice itself is unaltered.

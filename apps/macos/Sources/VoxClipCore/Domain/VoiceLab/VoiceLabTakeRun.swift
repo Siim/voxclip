@@ -7,7 +7,10 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public let language: String
     public let seed: UInt32
     public let contentKey: String
-    public let source: [Float]
+    /// The source frames the run reads, at `sourceSampleRate`.
+    public let source: VoiceLabSourceExcerpt
+    /// The whole source's 10 ms RMS envelope (`VoiceLabTakeProcessing.envelope`), which the room-tone search reads.
+    public let sourceEnvelope: AudioEnvelope
     public let sourceSampleRate: Int
     public let items: [TimedWord]
     public let cutWordIDs: Set<String>
@@ -16,12 +19,23 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public let outgoingSilence: Double?
     public let cleanAudioOn: Bool
     public let providerConsent: Bool
+    /// A source held whole.
     public init(text: String, modelID: String, recordID: String, language: String, seed: UInt32, contentKey: String,
                 source: [Float], sourceSampleRate: Int, items: [TimedWord], cutWordIDs: Set<String> = [],
                 window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?,
                 cleanAudioOn: Bool = false, providerConsent: Bool) {
+        self.init(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
+                  source: VoiceLabSourceExcerpt(whole: source), sourceEnvelope: VoiceLabTakeProcessing.envelope(source, sampleRate: sourceSampleRate),
+                  sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs, window: window, incomingSilence: incomingSilence,
+                  outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn, providerConsent: providerConsent)
+    }
+    /// A source of any length, of which only `source`'s regions are held.
+    public init(text: String, modelID: String, recordID: String, language: String, seed: UInt32, contentKey: String,
+                source: VoiceLabSourceExcerpt, sourceEnvelope: AudioEnvelope, sourceSampleRate: Int, items: [TimedWord],
+                cutWordIDs: Set<String> = [], window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?,
+                cleanAudioOn: Bool = false, providerConsent: Bool) {
         self.text = text; self.modelID = modelID; self.recordID = recordID; self.language = language; self.seed = seed
-        self.contentKey = contentKey; self.source = source; self.sourceSampleRate = sourceSampleRate; self.items = items
+        self.contentKey = contentKey; self.source = source; self.sourceEnvelope = sourceEnvelope; self.sourceSampleRate = sourceSampleRate; self.items = items
         self.cutWordIDs = cutWordIDs; self.window = window; self.incomingSilence = incomingSilence; self.outgoingSilence = outgoingSilence
         self.cleanAudioOn = cleanAudioOn; self.providerConsent = providerConsent
     }

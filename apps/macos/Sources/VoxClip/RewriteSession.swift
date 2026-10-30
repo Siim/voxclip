@@ -304,6 +304,7 @@ struct RewriteConnector {
     }
     static func refusal(_ error: any Error) -> String {
         if let error = error as? VoiceConsentError { return error.localizedDescription }
+        if let error = error as? VoiceLabSourceAudioError, let reason = error.errorDescription { return reason + " Your edits are saved." }
         if let error = error as? VoiceLabError, error == .unauthorized { return "ElevenLabs rejected the key (401). Your edits are saved." }
         if let message = (error as? VoiceLabError)?.accessMessage { return message }
         if let geometry = error as? VoiceLabGeometryError, let isStart = geometry.takeEdgeIsStart {

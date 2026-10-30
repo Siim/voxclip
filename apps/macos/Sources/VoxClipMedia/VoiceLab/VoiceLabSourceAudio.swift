@@ -36,30 +36,118 @@ public enum VoiceLabSourceAudio {
     /// The voice changer converts at most 290 s per request (§7.2).
     static let maximumSeconds = 290
 
-    public static func rewriteSource(source: URL, frames: Int64, sampleRate: Int) async throws -> [Float] {
-        guard frames > 0, frames <= 30_000_000, (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.tooLarge }
-        var result: [Float] = []
-        result.reserveCapacity(Int(frames))
-        var start: Int64 = 0
+    /// The source a Rewrite take run reads (voice-lab.md §8.7–8.9) from a track of `frames` frames at its native
+    /// `sampleRate`: the whole track's 10 ms envelope (`VoiceLabTakeProcessing.envelope`), which the room-tone search
+    /// reads, and only the frames around the window and around the room-tone run that search picks. The envelope pass
+    /// decodes the track in 280 s chunks and keeps no samples, so memory stays bounded however long the recording is.
+    public static func rewriteSource(source: URL, frames: Int64, sampleRate: Int, window: VoiceLabWindow,
+                                     items: [TimedWord]) async throws -> (excerpt: VoiceLabSourceExcerpt, envelope: AudioEnvelope) {
+        guard (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.unsupportedRate }
+        guard frames > 0 else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
+        var levels = EnvelopeAccumulator(sampleRate: sampleRate)
+        try await decodeMono(source: source, range: 0..<frames, sampleRate: sampleRate) { levels.append($0) }
+        let envelope = levels.envelope, total = Int(frames)
+        var ranges = [nearWindow(window, total: total, rate: sampleRate)]
+        // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
+        if let tone = try? VoiceLabRoomToneSelection.select(items: items, envelope: envelope, sourceSampleRate: Double(sampleRate), totalSamples: frames) {
+            ranges.append(aligned(Int(tone.sourceStartSample) - sampleRate, Int(tone.sourceEndSample) + sampleRate, total: total, rate: sampleRate))
+        }
+        var regions: [VoiceLabSourceExcerpt.Region] = []
+        for range in merged(ranges) where !range.isEmpty {
+            var samples: [Float] = []
+            samples.reserveCapacity(range.count)
+            try await decodeMono(source: source, range: Int64(range.lowerBound)..<Int64(range.upperBound), sampleRate: sampleRate) { samples.append(contentsOf: $0) }
+            regions.append(.init(start: range.lowerBound, samples: samples))
+        }
+        return (VoiceLabSourceExcerpt(totalFrames: total, regions: regions), envelope)
+    }
+
+    /// The take run resamples the source to the generated audio's rate for staging (§8.9).
+    static let takeAssetRate = 24_000
+
+    /// The frames around a window that a take run reads: 6 s on each side holds the 3 s loudness neighbourhood, the
+    /// half-second staging lead and tail and the seam handles with room to spare for the resampler, and the range also
+    /// holds the 10 s speaker-check span, which starts 5 s before the window's centre.
+    static func nearWindow(_ window: VoiceLabWindow, total: Int, rate: Int) -> Range<Int> {
+        let start = Int(clamping: window.startSample), end = Int(clamping: window.endSample)
+        let speakerStart = max(0, (start + end) / 2 - 5 * rate), speakerEnd = min(total, speakerStart + 10 * rate)
+        return aligned(min(start - 6 * rate, speakerStart), max(end + 6 * rate, speakerEnd), total: total, rate: rate)
+    }
+
+    /// Clamped to the track, with the start moved back to a frame on the 24 kHz grid, so a region resampled on its own
+    /// lands on the whole track's 24 kHz frames.
+    static func aligned(_ lower: Int, _ upper: Int, total: Int, rate: Int) -> Range<Int> {
+        var a = rate, b = takeAssetRate
+        while b != 0 { (a, b) = (b, a % b) }
+        let step = rate / a
+        let start = min(max(0, lower), total) / step * step
+        return start..<max(start, min(max(0, upper), total))
+    }
+
+    /// Ranges sorted, with overlapping and touching ones joined.
+    static func merged(_ ranges: [Range<Int>]) -> [Range<Int>] {
+        var result: [Range<Int>] = []
+        for range in ranges.sorted(by: { $0.lowerBound < $1.lowerBound }) {
+            if let last = result.last, range.lowerBound <= last.upperBound {
+                result[result.count - 1] = last.lowerBound..<max(last.upperBound, range.upperBound)
+            } else { result.append(range) }
+        }
+        return result
+    }
+
+    /// Source frames `range` as mono Float32, decoded in 280 s chunks through `conversionInput` and handed to `body`
+    /// one chunk at a time. A remainder shorter than 20 ms joins the chunk before it.
+    private static func decodeMono(source: URL, range: Range<Int64>, sampleRate: Int, _ body: ([Float]) -> Void) async throws {
         let chunkSamples: Int = 280 * sampleRate
         let chunkFrames: Int64 = Int64(chunkSamples)
         let trailingSamples: Int = (sampleRate + 49) / 50
         let trailingFrames: Int64 = Int64(trailingSamples)
         let pcmScale: Float = 32_768
-        while start < frames {
+        var start = range.lowerBound
+        while start < range.upperBound {
             try Task.checkCancellation()
-            var end = min(frames, start + chunkFrames)
-            if frames - end < trailingFrames { end = frames }
+            var end = min(range.upperBound, start + chunkFrames)
+            if range.upperBound - end < trailingFrames { end = range.upperBound }
             let wav = try await conversionInput(source: source, startSample: start, endSample: end, sourceSampleRate: Double(sampleRate))
+            var chunk: [Float] = []
+            chunk.reserveCapacity(max(0, (wav.count - 44) / 2))
             for offset in stride(from: 44, to: wav.count, by: 2) {
                 let bits = UInt16(wav[offset]) | UInt16(wav[offset + 1]) << 8
                 let signed: Int16 = Int16(bitPattern: bits)
                 let sample: Float = Float(signed)
-                result.append(sample / pcmScale)
+                chunk.append(sample / pcmScale)
             }
+            body(chunk)
             start = end
         }
-        return result
+    }
+
+    /// `VoiceLabTakeProcessing.envelope` computed chunk by chunk: the same frames, summed in the same order.
+    struct EnvelopeAccumulator {
+        let sampleRate: Int
+        let frame: Int
+        private var power = 0.0
+        private var filled = 0
+        private var levels: [Float] = []
+        init(sampleRate: Int) {
+            self.sampleRate = sampleRate
+            let rate: Double = Double(sampleRate)
+            let rounded: Double = EditingPrimitives.jsRound(rate * 0.01)
+            frame = max(1, Int(rounded))
+        }
+        mutating func append(_ samples: [Float]) {
+            let size: Double = Double(frame)
+            for sample in samples {
+                let value: Double = Double(sample)
+                power += value * value
+                filled += 1
+                guard filled == frame else { continue }
+                let level: Double = sqrt(power / size)
+                levels.append(Float(level))
+                power = 0; filled = 0
+            }
+        }
+        var envelope: AudioEnvelope { AudioEnvelope(sampleRate: Double(sampleRate), levels: levels) }
     }
 
     /// The complete mono PCM16 WAV of source frames `[startSample, endSample)` that §7.3 uploads, at the source rate
@@ -223,6 +311,27 @@ public enum VoiceLabSourceAudio {
         // As in VoiceLabAssets.prepare, the decoded count may differ from the declared length by one native sample.
         guard abs(Int64(mono.count) - file.length) <= 1 else { throw VoiceLabSourceAudioError.unreadable }
         return mono
+    }
+
+    /// An excerpt resampled region by region. Each region must start on a frame of the target grid, as `rewriteSource`
+    /// aligns them. The track's target length is what the last region gives when it reaches the end of the track, as
+    /// resampling the whole track gives; otherwise it is the rounded ratio.
+    package static func resample(_ excerpt: VoiceLabSourceExcerpt, from rate: Double, to target: Double) throws -> VoiceLabSourceExcerpt {
+        if rate == target { return excerpt }
+        guard rate.isFinite, target.isFinite, rate.rounded() == rate, target.rounded() == target, rate >= 1, target >= 1 else {
+            throw VoiceLabSourceAudioError.unsupportedRate
+        }
+        let from = Int(rate), to = Int(target)
+        var total = Int((Double(excerpt.totalFrames) * target / rate).rounded())
+        var regions: [VoiceLabSourceExcerpt.Region] = []
+        for region in excerpt.regions {
+            guard (region.start * to).isMultiple(of: from) else { throw VoiceLabSourceAudioError.invalidAudio }
+            let start = region.start * to / from
+            let samples = try resample(region.samples, from: rate, to: target)
+            regions.append(.init(start: start, samples: samples))
+            if region.end == excerpt.totalFrames { total = start + samples.count }
+        }
+        return VoiceLabSourceExcerpt(totalFrames: total, regions: regions)
     }
 
     package static func resample(_ samples: [Float], from rate: Double, to target: Double) throws -> [Float] {
