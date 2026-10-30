@@ -1494,6 +1494,14 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Rewrite: local connector cost | the Rewrite button | **Rewrite · No charge** with a local connector. An installed CLI shows **Rewrite** with no amount, and its send line names the plan |
 | Rewrite: insertion not available | Rewrite panel | Insert Words… stays hidden while Core cannot place an insertion. Development builds that open it show "Inserting words isn't available yet. Your edits are saved." |
 | Voice Lab off, Rewrite chosen | sheet | voice-lab.md §5 one-time sheet |
+| Voice Lab: microphone access off | Create Your Voice, Warning | macOS: "Microphone access is off. Allow VoxClip in System Settings → Privacy & Security → Microphone to record your consent." Windows: "Microphone access is off. Turn on Microphone access and Let desktop apps access your microphone in Settings → Privacy & security → Microphone to record your consent." [Open Settings] |
+| Voice Lab: no microphone (Windows) | Create Your Voice, Warning | "No microphone found. Connect one and try again." |
+| Voice Lab: microphone unavailable | Create Your Voice, Warning | "The microphone isn't available. Check your input device and try again." |
+| Voice Lab: microphone lost | Create Your Voice, Warning | "The microphone stopped sending audio. This take was discarded. Check your input device and record again." |
+| Voice Lab: silent microphone | Create Your Voice, Warning | macOS: "The microphone sent only silence. Check that it isn't muted, and that System Settings → Privacy & Security → Microphone allows VoxClip." Windows: "The microphone sent only silence. Check that it isn't muted, and that Settings → Privacy & security → Microphone lets desktop apps use it." [Open Settings] |
+| Voice Lab: waiting for the microphone (Windows) | Create Your Voice | "Waiting for the microphone…" after 1 s, informational, with Cancel enabled and no timeout |
+| Voice Lab: recording the statement | Create Your Voice | Teleprompter "Read this aloud", with the caption "If you use a screen reader, wear headphones so it isn't recorded." Windows announces "Recording. Read the statement aloud." before capture starts, announces nothing during the take, and shows "Microphone: {device name}" (display only, never logged) |
+| Voice Lab: leaving while recording (Windows) | dialog | "Stop creating your voice? The recording is deleted from this PC." [Stop] [Keep going]; Keep going is the default and Esc keeps going |
 
 ---
 

@@ -452,6 +452,7 @@ A new statement is generated for each attempt:
 - The statement is recorded from the microphone in the app. Imported files are not accepted.
 - Recording uses the M2 capture stack: 48 kHz mono, at least 5 s, at most 30 s, with a level meter and a "Read this aloud" teleprompter.
 - The recording is kept in memory and in `<data>/VoiceLab/consent/<recordId>/statement.wav`.
+- **Windows capture.** Windows records the default Console-role WASAPI input in shared mode on its own thread and keeps device-rate mono samples in memory; the session converts them once to 48 kHz with the Core resampler. The statement is validated at 5–30 s; training capture stops at 90 s and is validated at 60–120 s. The temporary 16 kHz Scribe input is removed after verification. The endpoint is fixed for a take: device loss, a stalled input, unplugging, lock or sleep discards the take instead of switching devices. Silence is exact digital zero on every original channel for 2.0 s, or packets flagged silent; opposite-phase stereo is not silence. Closing Settings, turning Voice Lab off, an update restart (reported as busy) and quitting discard and abandon an active capture, and startup removes abandoned statements even with the beta gate off. macOS likewise stops a take after 2.0 s of digital zero on every input channel before the mono mix.
 
 ### 6.4 Verification
 

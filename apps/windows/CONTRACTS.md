@@ -1,5 +1,13 @@
 # Windows fixed contracts
 
+### 2026-10-30 — lead — Windows Voice Lab UI merged
+
+- Squash-merged track/sol-win-vl-ui-editor at 61de6b66, which contains both Windows Voice Lab UI tracks (R1-R12). Terra review findings through R11 were folded in. The R12 review's two P2s harden the Release checks and are owed in a follow-up before the first Windows release: inspect the shipped win-x64 and win-arm64 Release App assemblies in CI rather than the typecheck surrogate, and exclude fakes, harnesses and seams by inventory rather than by name markers.
+- Release builds show Voice Lab off by default; every Rewrite route, the panel and the Settings actions follow `enabled && betaNoticeAccepted` (DEBUG also allows internal builds). Closed means no provider call and no key read.
+- The speaker check (A8) stays closed: Create Your Voice is blocked with its pre-gate copy until native win-arm64 and win-x64 ONNX Runtime parity evidence exists, so 0.1.0 Windows can generate only with a voice that has a valid local consent record.
+- design.md §13 gains the Voice Lab microphone rows (both platforms) and the Windows leave-guard copy; voice-lab.md §6.3 gains the Windows capture paragraph.
+- Owed natively on Windows (VM unreachable): the U2-U11 gates, the R7-R12 layout, keyboard, Narrator and high-contrast sweeps, the muted real-render audition, x64 generate-to-accept, the Release ARM64 and x64 gating matrix, the ORT parity table and DLL-collision check, and the physical microphone and privacy checks.
+
 ### 2026-10-30 - Windows Voice Lab R12 Release opt-in
 
 - Settings always lists Voice Lab, including an off-by-default "Show Voice Lab (beta)" toggle. "Turn on Voice Lab?" uses the shipping optional-feature copy and Cancel as default. Declining persists neither flag. Pane actions and key inventory are hidden and guarded while the gate is closed.
