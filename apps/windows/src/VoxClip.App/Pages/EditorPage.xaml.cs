@@ -530,7 +530,7 @@ public sealed partial class EditorPage : Page
                 selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token),
             connectorIsCurrent: () => entry is not null && App.Services.Get("llm.connector", "") == entry.WireId &&
                 App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model);
-        var panel = new RewritePanel(rewrite);
+        var panel = new RewritePanel(rewrite, () => Transcript.CorrectionOpen);
         panel.Closed += (_, _) =>
         {
             var insidePanel = InputState.DescendsFrom(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, panel);

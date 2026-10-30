@@ -102,6 +102,23 @@ public sealed class RewritePanelTests
     }
 
     [Theory]
+    [InlineData("instruction", true, false, true, false)]
+    [InlineData("proposed words", true, false, true, false)]
+    [InlineData("correction", false, true, true, false)]
+    [InlineData("footer", false, false, true, true)]
+    [InlineData("elsewhere", false, false, false, false)]
+    public void ReturnDefaultRespectsFocusedEditorsAndTheEnabledButton(string focus, bool textFocus, bool correctionOpen, bool enabled, bool expected)
+    {
+        Assert.NotEmpty(focus);
+        Assert.Equal(expected, enabled && ShortcutPolicy.EditorMayHandle(textFocus, correctionOpen, false, false, true));
+        var panel = AppSource("Controls", "RewritePanel.cs");
+        Assert.Contains("apply.IsEnabled && ShortcutPolicy.EditorMayHandle", panel);
+        Assert.Contains("InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen()", panel);
+        Assert.Contains("apply.IsEnabled = session.LocalAction is not null && !session.Editor.Busy", panel);
+        Assert.Contains("new RewritePanel(rewrite, () => Transcript.CorrectionOpen)", AppSource("Pages", "EditorPage.xaml.cs"));
+    }
+
+    [Theory]
     [InlineData("word12", "Apply Cuts")]
     [InlineData("WORD10 word11 word12", "Apply Correction")]
     public void ReturnAppliesTheLabelledLocalDefaultWithoutAi(string text, string label)

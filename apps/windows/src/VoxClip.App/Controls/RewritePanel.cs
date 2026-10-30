@@ -11,6 +11,7 @@ namespace VoxClip.App.Controls;
 internal sealed class RewritePanel : Grid
 {
     private readonly RewriteSession session;
+    private readonly Func<bool> correctionOpen;
     private readonly TextBox instruction = new() { Header = "What should change?", AcceptsReturn = false, MaxLength = 1000 };
     private readonly TextBox words = new() { AcceptsReturn = false, TextWrapping = TextWrapping.Wrap };
     private readonly Button propose = new() { Content = "Rewrite", HorizontalAlignment = HorizontalAlignment.Right };
@@ -27,9 +28,10 @@ internal sealed class RewritePanel : Grid
     internal bool ReturnFocusOnClose { get; private set; }
     internal event EventHandler? Closed;
 
-    internal RewritePanel(RewriteSession session)
+    internal RewritePanel(RewriteSession session, Func<bool>? correctionOpen = null)
     {
         this.session = session;
+        this.correctionOpen = correctionOpen ?? (() => false);
         AutomationProperties.SetAutomationId(instruction, "Rewrite.Instruction");
         AutomationProperties.SetAutomationId(words, "Rewrite.Words");
         AutomationProperties.SetAutomationId(propose, "Rewrite.Propose");
@@ -178,6 +180,7 @@ internal sealed class RewritePanel : Grid
         busy.Visibility = busy.IsActive ? Visibility.Visible : Visibility.Collapsed;
         apply.Content = session.LocalAction ?? "";
         apply.Visibility = session.LocalAction is null ? Visibility.Collapsed : Visibility.Visible;
+        apply.IsEnabled = session.LocalAction is not null && !session.Editor.Busy && !session.Editor.IsReadOnly && !session.Editor.IsLeaving;
         SetName(apply, session.LocalAction ?? "Apply changes");
         estimate.Text = session.EstimateCopy;
         estimate.FontSize = 11;
@@ -201,7 +204,8 @@ internal sealed class RewritePanel : Grid
     private void Escape(object sender, KeyRoutedEventArgs args)
     {
         if (args.Key == VirtualKey.Enter && !InputState.Down(VirtualKey.Control) && !InputState.Down(VirtualKey.Menu) &&
-            !InputState.Down(VirtualKey.Shift) && session.LocalAction is not null && !session.Editor.Busy)
+            !InputState.Down(VirtualKey.Shift) && apply.IsEnabled && ShortcutPolicy.EditorMayHandle(
+                InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen(), false, false, true))
         {
             ReturnFocusOnClose = true;
             if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false;
