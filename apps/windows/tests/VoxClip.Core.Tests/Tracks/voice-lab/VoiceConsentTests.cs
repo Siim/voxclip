@@ -109,11 +109,23 @@ public sealed class VoiceConsentTests
         fail = true;
         Assert.Throws<IOException>(() => stop(operation.Id, Now.AddDays(2)));
         fail = false;
-        if (boundary.StartsWith("saveTombstone", StringComparison.Ordinal)) stop(operation.Id, Now.AddDays(2));
         using var remote = new Remote((_, _) => throw new InvalidOperationException("Local-only stop must not call provider."));
         using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), remote, ElevenLabsRegion.Default);
         store = new VoiceConsentStore(storage.Locations);
         await new VoiceOperationReconciler(store, _ => client).ReconcileAsync(force: true, ct: Token);
+        if (boundary.StartsWith("saveTombstone", StringComparison.Ordinal))
+        {
+            // The stop was never durable: the restart keeps manual review until the user stops again.
+            var pending = store.Operation(operation.Id);
+            Assert.False(pending.Finished);
+            Assert.True(pending.RecoveryNeedsReview);
+            Assert.False(pending.RemoteStateUnknown);
+            Assert.Equal(record.Statement.AudioSha256, pending.Audit!.StatementSha256);
+            Assert.False(pending.Audit.RemoteStateUnknown);
+            Assert.Equal(0, remote.Calls);
+            method.CreateDelegate<Action<Guid, DateTimeOffset>>(store)(operation.Id, Now.AddDays(2));
+            await new VoiceOperationReconciler(store, _ => client).ReconcileAsync(force: true, ct: Token);
+        }
         var tombstone = Assert.Single(store.Operations());
         Assert.Equal(VoiceOperationState.Abandoned, tombstone.State);
         Assert.True(tombstone.RemoteStateUnknown);
