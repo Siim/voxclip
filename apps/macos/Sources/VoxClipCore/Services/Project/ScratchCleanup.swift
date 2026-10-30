@@ -2,11 +2,21 @@ import Foundation
 import Darwin
 
 public enum ScratchCleanup {
+    private struct Identity: Codable, Equatable {
+        var device: Int32
+        var inode: UInt64
+        var birthSeconds: Int64
+        var birthNanoseconds: Int64
+    }
+    private struct Item: Codable {
+        var name: String
+        var identity: Identity
+    }
     private struct ExportRecord: Codable {
-        var schema = "voxclip-export-scratch/1"
+        var schema = "voxclip-export-scratch/2"
         var directory: URL
-        var workName: String
-        var partialNames: [String]
+        var work: Item
+        var partials: [Item]
     }
 
     public static let processStart: Date = {
@@ -25,11 +35,22 @@ public enum ScratchCleanup {
         }
         if manager.fileExists(atPath: registry.path), !isDirectory(registry) { throw CocoaError(.fileWriteNoPermission) }
         try manager.createDirectory(at: registry, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let record = ExportRecord(directory: directory, workName: workDirectory.lastPathComponent, partialNames: partials.map(\.lastPathComponent))
+        let record = ExportRecord(directory: directory, work: try item(workDirectory, type: S_IFDIR),
+                                  partials: try partials.map { try item($0, type: S_IFREG) })
         let file = registry.appendingPathComponent(UUID().uuidString + ".json")
         try JSONEncoder().encode(record).write(to: file, options: .atomic)
         try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         return file
+    }
+
+    public static func recordExportPartial(_ partial: URL, record file: URL) throws {
+        var record = try JSONDecoder().decode(ExportRecord.self, from: Data(contentsOf: file))
+        guard partial.deletingLastPathComponent().standardizedFileURL == record.directory,
+              validPartialName(partial.lastPathComponent) else { throw CocoaError(.fileWriteInvalidFileName) }
+        let owned = try item(partial, type: S_IFREG)
+        record.partials.removeAll { $0.name == owned.name }
+        record.partials.append(owned)
+        try JSONEncoder().encode(record).write(to: file, options: .atomic)
     }
 
     public static func finishExport(_ record: URL) { try? FileManager.default.removeItem(at: record) }
@@ -40,15 +61,16 @@ public enum ScratchCleanup {
         for file in children(registry) where ownedUUID(file.lastPathComponent, suffix: ".json") && old(file, type: .typeRegular, before: cutoff) {
             guard let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize, size <= 65536,
                   let data = try? Data(contentsOf: file), let record = try? JSONDecoder().decode(ExportRecord.self, from: data),
-                  record.schema == "voxclip-export-scratch/1", record.directory.isFileURL,
-                  isDirectory(record.directory), ownedUUID(record.workName, prefix: "voxclip-export-", suffix: ".partial"),
-                  record.partialNames.allSatisfy(validPartialName) else { continue }
-            for name in record.partialNames { remove(record.directory.appendingPathComponent(name), type: .typeRegular, before: cutoff, into: &removed) }
-            let work = record.directory.appendingPathComponent(record.workName)
-            remove(work, type: .typeDirectory, before: cutoff, into: &removed)
-            if !FileManager.default.fileExists(atPath: work.path), record.partialNames.allSatisfy({ !FileManager.default.fileExists(atPath: record.directory.appendingPathComponent($0).path) }) {
-                remove(file, type: .typeRegular, before: cutoff, into: &removed)
+                  record.schema == "voxclip-export-scratch/2", record.directory.isFileURL,
+                  isDirectory(record.directory), ownedUUID(record.work.name, prefix: "voxclip-export-", suffix: ".partial"),
+                  record.partials.allSatisfy({ validPartialName($0.name) }) else { continue }
+            for partial in record.partials {
+                let path = record.directory.appendingPathComponent(partial.name)
+                if identity(path, type: S_IFREG) == partial.identity { remove(path, type: .typeRegular, before: cutoff, into: &removed) }
             }
+            let work = record.directory.appendingPathComponent(record.work.name)
+            if identity(work, type: S_IFDIR) == record.work.identity { remove(work, type: .typeDirectory, before: cutoff, into: &removed) }
+            remove(file, type: .typeRegular, before: cutoff, into: &removed)
         }
         for entry in children(cache) where entry.lastPathComponent.count == 64 && entry.lastPathComponent.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) {
             for file in children(entry) where ownedUUID(file.lastPathComponent, prefix: "scribe-", suffix: ".multipart") {
@@ -71,6 +93,16 @@ public enum ScratchCleanup {
 
     private static func validPartialName(_ name: String) -> Bool {
         name.hasSuffix(".partial") && name.count > ".partial".count && !name.contains("/") && !name.contains("\0")
+    }
+    private static func item(_ url: URL, type: mode_t) throws -> Item {
+        guard let identity = identity(url, type: type) else { throw CocoaError(.fileReadInvalidFileName) }
+        return Item(name: url.lastPathComponent, identity: identity)
+    }
+    private static func identity(_ url: URL, type: mode_t) -> Identity? {
+        var info = stat()
+        guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == type else { return nil }
+        return Identity(device: info.st_dev, inode: info.st_ino,
+                        birthSeconds: Int64(info.st_birthtimespec.tv_sec), birthNanoseconds: Int64(info.st_birthtimespec.tv_nsec))
     }
     private static func ownedUUID(_ name: String, prefix: String = "", suffix: String = "") -> Bool {
         guard name.hasPrefix(prefix), name.hasSuffix(suffix), name.count == prefix.count + 36 + suffix.count else { return false }

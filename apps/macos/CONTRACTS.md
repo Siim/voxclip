@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish r2 — exact scratch file identities
+
+- Export journals snapshot each created item's device, inode and nanosecond birth time. Cleanup refuses a replacement at the same path and drops the stale record rather than claiming the replacement. Journaled MP4/SRT partials use unique VoxClip UUID names; writer creation and exclusive sidecar creation record their actual identities, never a guessed future file.
+- The replacement-user-file regression fails on round 1 and passes with this change; all four scratch tests and the real H.264/AAC export/journal-cleanup test pass. Cross-process abandonment protection is the separate follow-up below this round's scope.
+
 ### 2026-10-30 — sol-mac-polish — ElevenLabs first-use consent regression
 
 - Move the sheet's decision and pending action into TranscriptionConsentGate, used directly by Transcribe/Retry, Continue and Cancel. Consent is stored before the operation starts; cancelling or dismissing discards the pending operation without changing settings or the project. The paid adapter and key Test implementation are untouched.

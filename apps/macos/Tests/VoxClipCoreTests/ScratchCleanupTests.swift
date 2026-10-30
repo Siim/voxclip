@@ -3,6 +3,22 @@ import Testing
 @testable import VoxClipCore
 
 @Suite("Owned stale scratch") struct ScratchCleanupTests {
+    @Test func replacementUserFileSurvivesAStaleExportJournal() throws {
+        let root = try directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let exports = root.appendingPathComponent("Exports"), registry = root.appendingPathComponent("Scratch")
+        let work = exports.appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
+        _ = try file(work, "writer.tmp")
+        let partial = try file(exports, "voxclip-partial-\(UUID().uuidString).partial")
+        _ = try ScratchCleanup.registerExport(workDirectory: work, partials: [partial], registry: registry)
+        try FileManager.default.moveItem(at: partial, to: exports.appendingPathComponent("original-held.mp4"))
+        let replacement = Data("user replacement, never VoxClip scratch".utf8)
+        try replacement.write(to: partial)
+        _ = ScratchCleanup.sweep(registry: registry, cache: root.appendingPathComponent("Cache"), temporary: root,
+            before: Date().addingTimeInterval(100))
+        #expect(FileManager.default.fileExists(atPath: partial.path))
+        #expect((try? Data(contentsOf: partial)) == replacement)
+    }
     private func directory() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-scratch-test-\(UUID().uuidString)").resolvingSymlinksInPath()
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -60,11 +76,8 @@ import Testing
         try FileManager.default.setAttributes([.modificationDate: cutoff.addingTimeInterval(1)], ofItemAtPath: partial.path)
         _ = ScratchCleanup.sweep(registry: registry, cache: root.appendingPathComponent("Cache"), temporary: root, before: cutoff)
         #expect(FileManager.default.fileExists(atPath: partial.path))
-        #expect(FileManager.default.fileExists(atPath: record.path))
+        #expect(!FileManager.default.fileExists(atPath: record.path))
         #expect(!FileManager.default.fileExists(atPath: sidecar.path) && !FileManager.default.fileExists(atPath: work.path))
-        try FileManager.default.setAttributes([.modificationDate: cutoff.addingTimeInterval(-1)], ofItemAtPath: partial.path)
-        _ = ScratchCleanup.sweep(registry: registry, cache: root.appendingPathComponent("Cache"), temporary: root, before: cutoff)
-        #expect(!FileManager.default.fileExists(atPath: partial.path) && !FileManager.default.fileExists(atPath: record.path))
         #expect(FileManager.default.fileExists(atPath: complete.path))
     }
 

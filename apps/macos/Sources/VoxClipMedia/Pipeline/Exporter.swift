@@ -241,7 +241,8 @@ public actor AVExporter: Exporter {
         defer { withExtendedLifetime(graph.voiceLabLease) {} }
         try DiskCapacity.check(outputNeeds, provider: capacityProvider)
         try Task.checkCancellation()
-        let partial = try ExportSafety.preparePartial(for: destination)
+        let partial = cleanupRegistry == nil ? try ExportSafety.preparePartial(for: destination)
+            : destination.deletingLastPathComponent().appendingPathComponent("voxclip-partial-\(UUID().uuidString).partial")
         var scratchRecord: URL?
         defer { if let scratchRecord { ScratchCleanup.finishExport(scratchRecord) } }
         var srtPartial: URL?
@@ -252,11 +253,14 @@ public actor AVExporter: Exporter {
             if let srtPartial { try? FileManager.default.removeItem(at: srtPartial) }
             if ownsProvenancePartial, let provenancePartial { try? FileManager.default.removeItem(at: provenancePartial) }
         }
-        if let srtURL { srtPartial = try ExportSafety.preparePartial(for: srtURL) }
+        if let srtURL {
+            srtPartial = cleanupRegistry == nil ? try ExportSafety.preparePartial(for: srtURL)
+                : srtURL.deletingLastPathComponent().appendingPathComponent("voxclip-partial-\(UUID().uuidString).partial")
+        }
         let workDirectory = destination.deletingLastPathComponent().appendingPathComponent("voxclip-export-\(UUID().uuidString).partial")
         try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: workDirectory) }
-        scratchRecord = try cleanupRegistry.map { try ScratchCleanup.registerExport(workDirectory: workDirectory, partials: [partial] + [srtPartial].compactMap { $0 }, registry: $0) }
+        scratchRecord = try cleanupRegistry.map { try ScratchCleanup.registerExport(workDirectory: workDirectory, partials: [], registry: $0) }
         let output = job.render.output
         let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.timeline.outputSamples, timescale: Int32(job.render.timeline.sampleRate)))
         guard let videoComposition = graph.composition.copy() as? AVComposition,
@@ -285,6 +289,9 @@ public actor AVExporter: Exporter {
             audioReader = reader
         }
         let writer = try AVAssetWriter(outputURL: partial, fileType: .mp4)
+        if let scratchRecord, FileManager.default.fileExists(atPath: partial.path) {
+            try ScratchCleanup.recordExportPartial(partial, record: scratchRecord)
+        }
         writer.directoryForTemporaryFiles = workDirectory
         writer.shouldOptimizeForNetworkUse = true
         writer.movieTimeScale = 48000
@@ -317,6 +324,7 @@ public actor AVExporter: Exporter {
         do {
             try Task.checkCancellation()
             guard writer.startWriting() else { throw writer.error ?? VoxClipError.exportFailed("Cannot start export") }
+            if let scratchRecord { try ScratchCleanup.recordExportPartial(partial, record: scratchRecord) }
             writer.startSession(atSourceTime: .zero)
             let videoSource = ExportPumpSource(samples: videoSamples, receiver: videoReceiver)
             let audioSource: ExportPumpSource?
@@ -355,7 +363,13 @@ public actor AVExporter: Exporter {
             try Task.checkCancellation()
             guard writer.status == .completed else { throw writer.error ?? VoxClipError.exportFailed("Encoder did not finish") }
             if let srtPartial, let srtText {
-                try srtText.write(to: srtPartial, atomically: true, encoding: .utf8)
+                let descriptor = Darwin.open(srtPartial.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+                guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+                let sidecar = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+                defer { try? sidecar.close() }
+                if let scratchRecord { try ScratchCleanup.recordExportPartial(srtPartial, record: scratchRecord) }
+                try sidecar.write(contentsOf: Data(srtText.utf8))
+                try sidecar.synchronize()
             }
             try Task.checkCancellation()
             var outputs = [(partial: partial, destination: destination)]
