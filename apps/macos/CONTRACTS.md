@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W11 recovery accessibility
+
+Every per-voice and per-operation action reads `<action> <voice name>, created <d MMMM yyyy>` using the existing fixed English month table. Actions include Delete voice, Retry deletion, Remove from VoxClip only, Retry saving consent record, Retry, Remove unfinished voice and `I've checked my ElevenLabs account — stop looking`. Visible titles and Cancel-default confirmations are unchanged. When rows have the same name and formatted creation date, append `, voice ID ending <last six voice ID characters>`, or `, attempt <one-based pending-operation ordinal>` for operations without a voice ID. Missing/blank names read `Unnamed voice` with the same identity suffix. Pending entries are labelled accessibility containers with separate child actions, using this same name/date/identity context. Headless tests pin exact labels for two and three same-name/same-day saved voices and operations, including known remote IDs and an unnamed operation. The source guard proves every action actually uses the tested context and fails against the W10 Settings source.
+
 ### 2026-10-30 — sol-mac-voicelab — W11 first paid transport commit
 
 This supersedes W10's pre-transport `started` handshake as the retirement boundary. The handshake only validates preparation; it does not clear rows or retire scratch. The first successful, revision/consent-guarded transport resume commits replacement on the MainActor, synchronously with the live cap decision and cancellation. Only then are the old rows/selection/audition replaced and Core retires prior scratch/snapshot leases. No failed validation, declined sheet or cancellation before resume retires them. No progress row is published for a never-started run.

@@ -37,8 +37,8 @@ import VoxClipCore
                 Button("Turn on") { app.set("voiceLab.betaNoticeAccepted", .bool(true)); app.set("voiceLab.enabled", .bool(true)) }
                 Button("Cancel", role: .cancel) {}
             } message: { Text(VoiceLabSession.betaCopy) }
-            .sheet(isPresented: $session.showEnrollment) { CreateVoiceSheet(session: session) }
-            .sheet(item: Binding(get: { session.showEnrollment ? nil : session.confirmation }, set: { session.confirmation = $0 })) { VoiceLabRequestSheet(session: session, action: $0) }
+            .sheet(isPresented: $session.showEnrollment) { CreateVoiceSheet(session: session, shared: app.shared) }
+            .sheet(item: Binding(get: { session.showEnrollment ? nil : session.confirmation }, set: { session.confirmation = $0 })) { VoiceLabRequestSheet(session: session, action: $0, shared: app.shared) }
             .task(id: session.enabled) { await session.refreshEnabledState() }
     }
     private var keySection: some View {
@@ -52,36 +52,51 @@ import VoxClipCore
         }
     }
     private var voicesSection: some View {
-        Section("My voices") {
+        let records = session.visibleRecords + (session.unsavedRecord.map { [$0] } ?? [])
+        let operations = session.operations.filter { !$0.finished }
+        let contexts = Self.accessibilityContexts(records: records, operations: operations, shared: app.shared)
+        return Section("My voices") {
             if session.subscription?.isNonCommercial == true { Text("Free ElevenLabs plans allow non-commercial use only.").foregroundStyle(.secondary) }
             if let message = session.planMessage { Text(message).font(.caption) }
             if session.visibleRecords.isEmpty { Text("No voice yet").foregroundStyle(.secondary) }
             ForEach(session.visibleRecords) { record in
+                let context = contexts["record-\(record.id)", default: ""]
                 VStack(alignment: .leading, spacing: 5) {
                     Text(record.voiceName).fontWeight(.medium)
                     Text("Created \(Self.createdDate(record.createdAt, shared: app.shared)) · \(record.voiceId)").font(.caption).textSelection(.enabled)
                     if record.status == .verificationRequired { Text("ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.").font(.caption) }
                     if session.deleting.contains(record.id) { Text(session.busy ? "Deleting…" : "Couldn't finish deleting").font(.caption) }
                     Button(session.deleting.contains(record.id) ? "Retry deletion…" : "Delete voice", role: .destructive) { session.request(.delete(record.id)) }.disabled(session.busy)
+                        .accessibilityLabel(Self.actionAccessibilityLabel(session.deleting.contains(record.id) ? "Retry deletion" : "Delete voice", context: context))
                     Button("Remove from VoxClip only", role: .destructive) { session.request(.removeLocal(record.id)) }.disabled(session.busy)
+                        .accessibilityLabel(Self.actionAccessibilityLabel("Remove from VoxClip only", context: context))
                 }
             }
-            if session.unsavedRecord != nil {
+            if let record = session.unsavedRecord {
+                let context = contexts["record-\(record.id)", default: ""]
                 Button("Retry saving consent record") { Task { await session.retrySavingRecord() } }.disabled(session.busy)
+                    .accessibilityLabel(Self.actionAccessibilityLabel("Retry saving consent record", context: context))
                 Button("Remove This Voice", role: .destructive) { Task { await session.cancelEnrollment() } }.disabled(session.busy)
+                    .accessibilityLabel(Self.actionAccessibilityLabel("Remove unfinished voice", context: context))
             }
-            ForEach(session.operations.filter { !$0.finished }) { operation in
+            ForEach(operations) { operation in
+                let context = contexts["operation-\(operation.id)", default: ""]
                 VStack(alignment: .leading, spacing: 5) {
                     Text(operation.kind == .create ? "Voice creation" : "Voice removal").fontWeight(.medium)
                     Text(operation.displayState).font(.caption)
                     if operation.needsCreatorRecoveryReview, operation.recoveryNeedsReview == true {
-                        Button(VoiceLabSession.Request.stopLooking(operation.id).title) { session.request(.stopLooking(operation.id)) }.disabled(session.busy)
+                        Button(VoiceLabSession.Request.stopLooking(operation.id).title) { session.request(.stopLooking(operation.id)) }
+                            .accessibilityLabel(Self.actionAccessibilityLabel(VoiceLabSession.Request.stopLooking(operation.id).title, context: context)).disabled(session.busy)
                     }
                     Button("Retry") { Task { await session.load(force: true) } }.disabled(session.busy)
+                        .accessibilityLabel(Self.actionAccessibilityLabel("Retry", context: context))
                     if operation.kind == .create {
                         Button("Remove This Voice", role: .destructive) { Task { await session.withdrawOperation(operation) } }.disabled(session.busy)
+                            .accessibilityLabel(Self.actionAccessibilityLabel("Remove unfinished voice", context: context))
                     }
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(context)
             }
             Button("Create Your Voice…") { session.showEnrollment = true }.disabled(session.busy || session.planMessage != nil || session.unsavedRecord != nil || !session.pendingCreations.isEmpty)
             Text(session.speakerMessage).font(.caption).foregroundStyle(.secondary)
@@ -105,6 +120,44 @@ import VoxClipCore
         guard let date = ISO8601DateFormatter().date(from: value), let shared,
               let text = try? VoiceConsentText(shared: shared).displayDate(date) else { return "Date unavailable" }
         return text
+    }
+    static func accessibilityContexts(records: [VoiceConsentRecord], operations: [VoiceOperation], shared: SharedResources?) -> [String: String] {
+        let recordRows = records.map { record in
+            (key: "record-\(record.id)", name: record.voiceName, date: record.createdAt, voiceID: Optional(record.voiceId), ordinal: 0)
+        }
+        let operationRows = operations.enumerated().map { ordinal, operation in
+            (key: "operation-\(operation.id)", name: operation.expectedVoiceName ?? "", date: ISO8601DateFormatter().string(from: operation.startedAt), voiceID: operation.remoteVoiceID, ordinal: ordinal + 1)
+        }
+        let rows = recordRows + operationRows
+        let bases = rows.map { row in
+            let name = row.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "\(name.isEmpty ? "Unnamed voice" : name), created \(createdDate(row.date, shared: shared))"
+        }
+        var contexts: [String: String] = [:]
+        for (index, row) in rows.enumerated() {
+            let base = bases[index]
+            var context = base
+            if bases.filter({ $0 == base }).count > 1 || row.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if let voiceID = row.voiceID, !voiceID.isEmpty, voiceID != "pending" {
+                    context += ", voice ID ending \(voiceID.suffix(6))"
+                } else { context += ", attempt \(row.ordinal)" }
+            }
+            contexts[row.key] = context
+        }
+        return contexts
+    }
+    static func actionAccessibilityLabel(_ action: String, context: String) -> String {
+        "\(action) \(context)"
+    }
+    static func requestAccessibilityLabel(_ action: VoiceLabSession.Request, contexts: [String: String]) -> String {
+        let key: String
+        switch action {
+        case .delete(let id), .removeLocal(let id): key = "record-\(id)"
+        case .stopLooking(let id): key = "operation-\(id)"
+        default: return action.title
+        }
+        guard let context = contexts[key] else { return action.title }
+        return actionAccessibilityLabel(action.title, context: context)
     }
 }
 
@@ -156,8 +209,11 @@ import VoxClipCore
 @MainActor private struct VoiceLabRequestSheet: View {
     @Bindable var session: VoiceLabSession
     let action: VoiceLabSession.Request
+    let shared: SharedResources?
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let records = session.visibleRecords + (session.unsavedRecord.map { [$0] } ?? [])
+        let contexts = VoiceLabSettings.accessibilityContexts(records: records, operations: session.operations.filter { !$0.finished }, shared: shared)
+        return VStack(alignment: .leading, spacing: 16) {
             Text(action.title).font(.title2)
             Text(VoiceLabSession.providerCopy)
             switch action {
@@ -173,6 +229,7 @@ import VoxClipCore
                 if action.defaultIsCancel {
                     Button("Cancel", role: .cancel) { session.confirmation = nil }.keyboardShortcut(.defaultAction)
                     Button(action.title, role: .destructive) { Task { await session.approve(action) } }
+                        .accessibilityLabel(VoiceLabSettings.requestAccessibilityLabel(action, contexts: contexts))
                 } else {
                     Button("Cancel", role: .cancel) { session.confirmation = nil }.keyboardShortcut(.cancelAction)
                     Button(action == .subscription ? "Continue" : action.title) { Task { await session.approve(action) } }.keyboardShortcut(.defaultAction)
@@ -184,8 +241,12 @@ import VoxClipCore
 
 @MainActor private struct CreateVoiceSheet: View {
     @Bindable var session: VoiceLabSession
+    let shared: SharedResources?
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let records = session.visibleRecords + (session.unsavedRecord.map { [$0] } ?? [])
+        let contexts = VoiceLabSettings.accessibilityContexts(records: records, operations: session.operations.filter { !$0.finished }, shared: shared)
+        let context = session.unsavedRecord.flatMap { contexts["record-\($0.id)"] } ?? ""
+        return VStack(alignment: .leading, spacing: 16) {
             Text("Create Your Voice").font(.title2)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -208,15 +269,17 @@ import VoxClipCore
                     Button("Cancel", role: .cancel) { Task { await session.cancelEnrollment() } }.keyboardShortcut(.cancelAction).disabled(session.busy)
                 } else {
                     Button("Remove This Voice", role: .destructive) { Task { await session.cancelEnrollment() } }.disabled(session.busy)
+                        .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Remove unfinished voice", context: context))
                 }
                 if session.unsavedRecord != nil {
                     Button("Retry saving consent record") { Task { await session.retrySavingRecord() } }.disabled(session.busy)
+                        .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Retry saving consent record", context: context))
                 } else {
                     Button("Create voice…") { Task { await session.prepareCreation() } }.disabled(!session.canCreate || session.recorder.recording)
                 }
             }
         }.padding(24).frame(width: 600, height: 680).interactiveDismissDisabled()
-            .sheet(item: $session.confirmation) { VoiceLabRequestSheet(session: session, action: $0) }
+            .sheet(item: $session.confirmation) { VoiceLabRequestSheet(session: session, action: $0, shared: shared) }
             .onChange(of: session.recorder.recording) { wasRecording, recording in
                 if wasRecording && !recording { Task { await session.finishRecording() } }
             }

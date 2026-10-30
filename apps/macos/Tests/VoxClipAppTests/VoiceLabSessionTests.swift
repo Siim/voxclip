@@ -7,6 +7,62 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test(arguments: [2, 3]) func recoveryOperationAccessibilityIdentifiesEachVoiceAndAction(count: Int) throws {
+        let shared = try SharedResources.locate()
+        let date = try #require(ISO8601DateFormatter().date(from: "2026-10-30T12:00:00Z"))
+        let fixture = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))
+        let records = try (1...count).map { index in
+            var json = try #require(JSONSerialization.jsonObject(with: fixture) as? [String: Any])
+            json["recordId"] = UUID().uuidString.lowercased()
+            json["voiceName"] = "My voice (VoxClip)"
+            json["voiceId"] = "owned-voice-00000\(index)"
+            json["createdAt"] = "2026-10-30T12:00:00Z"
+            return try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
+        }
+        let voices = VoiceLabSettings.accessibilityContexts(records: records, operations: [], shared: shared)
+        for record in records {
+            let context = try #require(voices["record-\(record.id)"])
+            for request in [VoiceLabSession.Request.delete(record.id), .removeLocal(record.id)] {
+                #expect(VoiceLabSettings.requestAccessibilityLabel(request, contexts: voices) == "\(request.title) \(context)")
+            }
+        }
+        for action in ["Delete voice", "Retry deletion", "Remove from VoxClip only", "Retry saving consent record", "Remove unfinished voice"] {
+            let labels = try records.enumerated().map { index, record in
+                let context = try #require(voices["record-\(record.id)"])
+                let label = VoiceLabSettings.actionAccessibilityLabel(action, context: context)
+                #expect(label == "\(action) My voice (VoxClip), created 30 October 2026, voice ID ending 00000\(index + 1)")
+                return label
+            }
+            #expect(Set(labels).count == count)
+        }
+        var operations = (1...count).map { index in
+            var operation = VoiceOperation(id: UUID(), kind: .create, recordID: "attempt-\(index)", region: .default, at: date)
+            operation.expectedVoiceName = "My voice (VoxClip)"
+            if index == count { operation.remoteVoiceID = "remote-123456" }
+            return operation
+        }
+        operations.append(VoiceOperation(id: UUID(), kind: .create, recordID: "unnamed", region: .default, at: date))
+        let contexts = VoiceLabSettings.accessibilityContexts(records: [], operations: operations, shared: shared)
+        for operation in operations {
+            let context = try #require(contexts["operation-\(operation.id)"])
+            let request = VoiceLabSession.Request.stopLooking(operation.id)
+            #expect(VoiceLabSettings.requestAccessibilityLabel(request, contexts: contexts) == "\(request.title) \(context)")
+        }
+        let stop = VoiceLabSession.Request.stopLooking(operations[0].id).title
+        for action in ["Retry", "Remove unfinished voice", stop] {
+            let labels = try operations.enumerated().map { index, operation in
+                let context = try #require(contexts["operation-\(operation.id)"])
+                let label = VoiceLabSettings.actionAccessibilityLabel(action, context: context)
+                let name = index == count ? "Unnamed voice" : "My voice (VoxClip)"
+                let suffix = index == count - 1 ? "voice ID ending 123456" : "attempt \(index + 1)"
+                #expect(label == "\(action) \(name), created 30 October 2026, \(suffix)")
+                return label
+            }
+            #expect(Set(labels).count == operations.count)
+        }
+        let single = VoiceLabSettings.accessibilityContexts(records: [records[0]], operations: [], shared: shared)
+        #expect(single["record-\(records[0].id)"] == "My voice (VoxClip), created 30 October 2026")
+    }
     @Test func stoppingIdentitylessRecoveryIsExplicitLocalAndDefaultsToCancel() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
