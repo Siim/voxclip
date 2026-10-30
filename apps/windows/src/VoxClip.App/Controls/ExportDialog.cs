@@ -126,7 +126,7 @@ internal sealed class ExportDialog : ContentDialog
             try
             {
                 var scope = item is ExportTarget.Clip clip ? VoiceLabOutputScope.Clip(clip.Id) : VoiceLabOutputScope.Full;
-                contains |= VoiceLabRenderContract.Prepare(scoped, scope, VoiceLabLabelPosition.TopRight).OutputPlan.RequiresSyntheticRendering;
+                contains |= VoiceLabRenderContract.Prepare(scoped, scope, VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition"))).OutputPlan.RequiresSyntheticRendering;
             }
             catch (Exception exception) when (exception is not OutOfMemoryException) { }
         }
@@ -180,7 +180,8 @@ internal sealed class ExportDialog : ContentDialog
                     var job = await route.JobAsync(exportTarget, snapshot, lifetime.Token);
                     var result = await App.Services.Exporter.ExportAsync(job,
                         new Progress<ExportProgress>(value => { if (!running || !ReferenceEquals(currentTarget, exportTarget)) return; progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100; model.SetExportActivity(exportTarget, ClipExportState.Exporting, value.Fraction); Ui.Show(notice, ExportProgressText.Format(currentJob, jobs.Count, value.Fraction, clock.Elapsed.TotalSeconds)); }), lifetime.Token);
-                    await App.Services.ExportLedger.RecordAsync(exportedProject, exportTarget, result.Output, lifetime.Token);
+                    await App.Services.ExportLedger.RecordAsync(exportedProject, exportTarget, result.Output, lifetime.Token,
+                        job.Snapshot.VoiceLab?.Prepared.Disclosure.Position ?? VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
                     model.SetExportRecords(App.Services.ExportLedger.Records);
                     model.SetExportActivity(exportTarget, ClipExportState.None);
                     currentTarget = null;

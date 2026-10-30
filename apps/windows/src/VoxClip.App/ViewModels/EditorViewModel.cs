@@ -27,6 +27,14 @@ public sealed class EditorViewModel : ObservableObject
     private double sourceTime;
     private bool isLeaving;
     private IReadOnlyList<ExportRecord> exportRecords = [];
+    private VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition voiceLabLabelPosition = VoiceLabSettingsState.LabelPosition(null);
+    internal bool SetVoiceLabLabelPosition(VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition position)
+    {
+        if (voiceLabLabelPosition == position) return false;
+        voiceLabLabelPosition = position;
+        RefreshExportRows();
+        return true;
+    }
     private readonly Dictionary<string, ExportRowState> exportActivity = new(StringComparer.Ordinal);
     internal event EventHandler? ExportStatesChanged;
     internal void SetExportRecords(IReadOnlyList<ExportRecord> records)
@@ -47,7 +55,7 @@ public sealed class EditorViewModel : ObservableObject
         var record = exportRecords.FirstOrDefault(record => record.ProjectId == project.Id && record.TargetId == key);
         if (record is null) return new(ClipExportState.None);
         ExportTarget target = clipId is null ? new ExportTarget.FullEdit() : new ExportTarget.Clip(clipId);
-        return new(record.PlanFingerprint == ExportFingerprint.For(project, target) ? ClipExportState.Exported : ClipExportState.ChangedSinceExport);
+        return new(record.PlanFingerprint == ExportFingerprint.For(project, target, voiceLabLabelPosition) ? ClipExportState.Exported : ClipExportState.ChangedSinceExport);
     }
     private void RefreshExportRows()
     {

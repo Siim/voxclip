@@ -12,6 +12,7 @@
                 <NavigationViewItem Content="Local Models" Tag="Local Models" Icon="Download"/>
                 <NavigationViewItem Content="Export" Tag="Export" Icon="Save"/>
                 <NavigationViewItem Content="Accounts" Tag="Accounts" Icon="Contact"/>
+                <NavigationViewItem Content="Voice Lab" Tag="Voice Lab" x:Name="VoiceLabItem" Icon="Audio" Visibility="Collapsed"/>
                 <NavigationViewItem Content="About" Tag="About" Icon="Help"/>
             </NavigationView.MenuItems>
             <ScrollViewer HorizontalScrollBarVisibility="Disabled">

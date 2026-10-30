@@ -60,6 +60,12 @@ public partial class App : Application
                 }
             });
 #if DEBUG
+            var settingsScreenIndex = Array.IndexOf(Program.Arguments, "--screen");
+            if (settingsScreenIndex >= 0 && settingsScreenIndex + 1 < Program.Arguments.Length && Program.Arguments[settingsScreenIndex + 1] == "settings-voicelab")
+            {
+                OpenSettings("Voice Lab"); screen = "settings-voicelab";
+                return;
+            }
             var routeProbeIndex = Array.IndexOf(Program.Arguments, "--shell-route-probe");
             if (routeProbeIndex >= 0 && routeProbeIndex + 1 < Program.Arguments.Length)
             {
@@ -97,6 +103,7 @@ public partial class App : Application
                 {
                     if (Program.Arguments[screenIndex + 1] == "home") { window.ShowHome(ShellPath.SidebarHome); screen = "home"; }
                     else if (Program.Arguments[screenIndex + 1] == "settings") { OpenSettings(); screen = "settings"; }
+                    else if (Program.Arguments[screenIndex + 1] == "settings-voicelab") { OpenSettings("Voice Lab"); screen = "settings-voicelab"; }
                 }
                 return;
             }
@@ -116,7 +123,7 @@ public partial class App : Application
         }
         finally
         {
-            if (window is not null) await StartupDiagnostics.ProbeAsync(screen == "settings" && Settings is not null ? Settings : window, screen);
+            if (window is not null) await StartupDiagnostics.ProbeAsync(screen.StartsWith("settings", StringComparison.Ordinal) && Settings is not null ? Settings : window, screen);
         }
     }
 

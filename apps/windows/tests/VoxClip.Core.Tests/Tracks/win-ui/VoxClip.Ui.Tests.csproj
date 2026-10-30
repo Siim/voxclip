@@ -26,6 +26,7 @@
     <Compile Include="RoundFourTests.cs" />
     <Compile Include="RoundFiveTests.cs" />
     <Compile Include="RewritePanelTests.cs" />
+    <Compile Include="VoiceLabSettingsTests.cs" />
     <Compile Include="ConnectorPreflightTests.cs" />
     <Compile Include="ExportWorkflowTests.cs" />
     <Compile Include="ExportEquivalenceTests.cs" />

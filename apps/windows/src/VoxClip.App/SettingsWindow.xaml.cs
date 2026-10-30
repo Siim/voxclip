@@ -23,6 +23,7 @@ public sealed partial class SettingsWindow : Window
     private bool preparing;
     private int keyWrites;
     private int sensitiveActions;
+    private VoiceLabSettingsPane? voiceLabPane;
 #if DEBUG
     internal bool DebugNavigationEnabled => Navigation.IsEnabled;
     internal bool DebugSetLanguageText(string value)
@@ -44,6 +45,7 @@ public sealed partial class SettingsWindow : Window
         if (AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter) { presenter.PreferredMinimumWidth = (int)(560 * scale); presenter.PreferredMinimumHeight = (int)(480 * scale); }
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "VoxClip.ico"));
         App.Services.ApplyTheme(Root); App.Services.SettingsChanged += SettingsChanged;
+        UpdateVoiceLabVisibility();
         Navigation.SelectedItem = Navigation.MenuItems[0];
         AppWindow.Closing += (_, args) => { if (App.Restart.IsPreparing) args.Cancel = true; };
         Closed += (_, _) => { lifetime.Cancel(); download?.Cancel(); App.Services.SettingsChanged -= SettingsChanged; };
@@ -52,16 +54,29 @@ public sealed partial class SettingsWindow : Window
     private static extern uint GetDpiForWindow(IntPtr window);
     internal void ShowSection(string tag)
     {
-        if (Navigation.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(item => (string)item.Tag == tag) is { } item) Navigation.SelectedItem = item;
+        if (Navigation.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(item => (string)item.Tag == tag && item.Visibility == Visibility.Visible) is { } item) Navigation.SelectedItem = item;
     }
-    private void SettingsChanged(object? sender, EventArgs args) => App.Services.ApplyTheme(Root);
+    private void SettingsChanged(object? sender, EventArgs args)
+    {
+        App.Services.ApplyTheme(Root);
+        UpdateVoiceLabVisibility();
+        voiceLabPane?.Refresh();
+    }
+    private void UpdateVoiceLabVisibility()
+    {
+        VoiceLabItem.Visibility = VoiceLabSettingsState.PaneVisible(App.Services.Settings.GetBool("voiceLab.enabled") == true, RewriteEntryPolicy.BuildEnabled)
+            ? Visibility.Visible : Visibility.Collapsed;
+        if (VoiceLabItem.Visibility == Visibility.Collapsed && ReferenceEquals(Navigation.SelectedItem, VoiceLabItem)) ShowSection("General");
+    }
     private async void PaneChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is not NavigationViewItem item || Body is null) return;
         pageGeneration++;
         textCommits.Clear();
         Body.Children.Clear(); notice.IsOpen = false;
-        Body.Children.Add(Ui.Text((string)item.Tag, "TitleTextBlockStyle")); Body.Children.Add(notice);
+        voiceLabPane = null;
+        if ((string)item.Tag != "Voice Lab") Body.Children.Add(Ui.Text((string)item.Tag, "TitleTextBlockStyle"));
+        Body.Children.Add(notice);
         await Ui.RunAsync(notice, async () =>
         {
             switch ((string)item.Tag)
@@ -72,6 +87,7 @@ public sealed partial class SettingsWindow : Window
                 case "Local Models": await ModelsAsync(); break;
                 case "Export": Export(); break;
                 case "Accounts": Body.Children.Add(Ui.Text("VoxConvo sharing is coming later. No account is needed to cut, caption or export.")); break;
+                case "Voice Lab": voiceLabPane = new(this, lifetime.Token); Body.Children.Add(voiceLabPane); break;
                 case "About": await AboutAsync(); break;
             }
         }, "Settings");
@@ -81,7 +97,7 @@ public sealed partial class SettingsWindow : Window
         if (preparing) return;
         _ = Ui.RunAsync(notice, () => App.Services.SetAsync(key, value, lifetime.Token), "Save settings");
     }
-    private void RunSensitive(Func<Task> action, string feature)
+    internal void RunSensitive(Func<Task> action, string feature)
     {
         if (preparing) return;
         sensitiveActions++;
@@ -92,7 +108,13 @@ public sealed partial class SettingsWindow : Window
             finally { sensitiveActions--; }
         }
     }
-    private void TrackTextField(TextBox field, Func<bool> save)
+    internal async Task SaveKeyAsync(string account, string secret, CancellationToken ct)
+    {
+        keyWrites++;
+        try { await App.Services.Keys.SaveAsync(account, secret, ct); }
+        finally { keyWrites--; }
+    }
+    internal void TrackTextField(TextBox field, Func<bool> save)
     {
         var committed = field.Text;
         bool Commit()
@@ -167,7 +189,7 @@ public sealed partial class SettingsWindow : Window
         var region = Ui.Choice("ElevenLabs region", ["Default", "US", "EU", "India", "Singapore"], Math.Max(0, Array.IndexOf(regions, App.Services.Get("transcription.elevenlabs.region", "default"))));
         region.SelectionChanged += (_, _) => Save("transcription.elevenlabs.region", regions[region.SelectedIndex]); AddSetting(region);
         Body.Children.Add(Ui.Text("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.", "HelperText"));
-        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm the first upload before audio is sent.", "elevenlabs-api-key", null);
+        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm the first upload before audio is sent. " + VoiceLabCopy.SharedKeyFootnote, "elevenlabs-api-key", null);
         if (generation != pageGeneration) return;
         Body.Children.Add(Ui.Button("Manage local models…", () => Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == "Local Models")));
         Body.Children.Add(Ui.Text("Models download only after you confirm. Local transcription runs entirely on this PC.", "HelperText"));
@@ -183,7 +205,7 @@ public sealed partial class SettingsWindow : Window
         selected.SelectionChanged += (_, _) => Save("llm.connector", selected.SelectedIndex == 0 ? "" : entries[selected.SelectedIndex - 1].WireId); Body.Children.Add(selected);
         var snap = new ToggleSwitch { Header = "Snap clip edges to sentence boundaries", IsOn = App.Services.Get("llm.clips.snapToLines", true) };
         snap.Toggled += (_, _) => Save("llm.clips.snapToLines", snap.IsOn); Body.Children.Add(snap);
-        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs. No video is sent.", "elevenlabs-api-key", null);
+        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs. No video is sent. " + VoiceLabCopy.SharedKeyFootnote, "elevenlabs-api-key", null);
         foreach (var entry in entries)
         {
             if (generation != pageGeneration) return;

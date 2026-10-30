@@ -1,6 +1,9 @@
 param([string]$Configuration = 'Debug', [string]$Rid = 'win-arm64', [string]$Root = 'C:\voxclip-build\win-ui')
 $ErrorActionPreference = 'Stop'
 $root = $Root
+if ((Get-PSDrive -Name ([IO.Path]::GetPathRoot($root).TrimEnd('\').TrimEnd(':'))).Free -lt (6GB + 1536MB)) {
+    throw 'Native builds require 6 GiB reserve plus 1.5 GiB headroom.'
+}
 $platform = if ($Rid -eq 'win-arm64') { 'ARM64' } else { 'x64' }
 $log = Join-Path $root "build-$Configuration-$Rid.log"
 $errorLog = "$log.stderr"

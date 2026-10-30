@@ -18,7 +18,7 @@ internal readonly record struct ExportRowState(ClipExportState State, double? Pr
 internal static class ExportFingerprint
 {
     internal static string TargetId(ExportTarget target) => target is ExportTarget.Clip clip ? clip.Id : "full";
-    internal static string For(Project project, ExportTarget target)
+    internal static string For(Project project, ExportTarget target, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition? labelPosition = null)
     {
         var state = ExportSelection.Scope(EditingEngine.FromProject(project), target);
         var media = ExportRenderInput.Media(project);
@@ -28,7 +28,7 @@ internal static class ExportFingerprint
         if (project.SchemaVersion == 3)
         {
             var scope = target is ExportTarget.Clip clip ? VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Clip(clip.Id) : VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Full;
-            var prepared = VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract.Prepare(project, scope, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition.TopRight);
+            var prepared = VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract.Prepare(project, scope, labelPosition ?? VoiceLabSettingsState.LabelPosition(null));
             voice = new
             {
                 prepared.OutputPlan, prepared.Disclosure,

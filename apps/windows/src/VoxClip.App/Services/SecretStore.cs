@@ -11,7 +11,7 @@ internal sealed class SecretStore(string directory, ILog log) : IKeyProvider
 {
     private readonly SemaphoreSlim access = new(1, 1);
     private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("com.voxconvo.voxclip");
-    private static readonly HashSet<string> Accounts = ["elevenlabs-api-key", "llm-api-key-anthropic", "llm-api-key-openai", "llm-api-key-xai", "llm-api-key-gemini"];
+    private static readonly HashSet<string> Accounts = ["elevenlabs-api-key", "fal-api-key", "syncso-api-key", "llm-api-key-anthropic", "llm-api-key-openai", "llm-api-key-xai", "llm-api-key-gemini"];
 
     public async Task<string?> GetKeyAsync(string account, CancellationToken ct)
     {

@@ -92,6 +92,7 @@ public sealed partial class EditorPage : Page
 #endif
         ViewModel.SetMediaUnavailable(!demo && mediaPath is null);
         projectWrites = new(project);
+        ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
         ViewModel.SetExportRecords(App.Services.ExportLedger.Records);
         App.Services.ExportLedger.Changed += LedgerChanged;
         LocateMedia.Visibility = ViewModel.IsReadOnly ? Visibility.Visible : Visibility.Collapsed;
@@ -218,7 +219,7 @@ public sealed partial class EditorPage : Page
         VoiceLabRenderInput? voice = null;
         if (project.SchemaVersion == 3)
         {
-            var prepared = VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight);
+            var prepared = VoiceLabRenderContract.Prepare(project, scope, VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
             if (prepared.OutputPlan.RequiresSyntheticRendering)
                 voice = VoiceLabRenderInput.Capture(project, prepared, Path.Combine(App.Services.Data.Root, "VoiceLab"));
         }
@@ -351,6 +352,8 @@ public sealed partial class EditorPage : Page
     private void EditorSettingsChanged(object? sender, EventArgs args)
     {
         if (disposed || ViewModel.IsLeaving) return;
+        if (ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition"))))
+            _ = RunAsync(UpdatePreviewAsync, "Preview label position");
         rewriteOpenRevision++;
         rewrite?.SettingsChanged(App.Services.Get("voiceLab.enabled", false));
         Transcript.ApplySettings();
@@ -495,10 +498,7 @@ public sealed partial class EditorPage : Page
         {
             if (!App.Services.Get("voiceLab.enabled", false))
             {
-                var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Turn on Voice Lab",
-                    Content = Ui.Text(RewriteEntryPolicy.EnablementCopy), PrimaryButtonText = "Turn on", CloseButtonText = "Cancel" };
-                if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-                await App.Services.SetAsync("voiceLab.enabled", true, lifetime.Token);
+                if (!await VoiceLabDialogs.TurnOnAsync(XamlRoot, lifetime.Token)) return;
             }
             Transcript.RequestRewrite();
         }, "Rewrite");
@@ -775,7 +775,7 @@ public sealed partial class EditorPage : Page
         var project = ViewModel.ScopedProject(ViewModel.State);
         if (project.SchemaVersion != 3) return false;
         var scope = project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full;
-        try { return VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight).OutputPlan.RequiresSyntheticRendering; }
+        try { return VoiceLabRenderContract.Prepare(project, scope, VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition"))).OutputPlan.RequiresSyntheticRendering; }
         catch (Exception exception) when (exception is not OutOfMemoryException) { return false; }
     }
     private void ViewerClicked(object sender, RoutedEventArgs args)

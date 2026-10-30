@@ -24,14 +24,15 @@ internal sealed class ExportLedger(string file)
         }
         finally { gate.Release(); }
     }
-    internal async Task RecordAsync(Project project, ExportTarget target, string output, CancellationToken ct)
+    internal async Task RecordAsync(Project project, ExportTarget target, string output, CancellationToken ct,
+        VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition? labelPosition = null)
     {
         await LoadAsync(ct);
         await gate.WaitAsync(ct);
         var temporary = file + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            var entry = new ExportRecord(project.Id, ExportFingerprint.TargetId(target), DateTimeOffset.UtcNow, ExportFingerprint.For(project, target),
+            var entry = new ExportRecord(project.Id, ExportFingerprint.TargetId(target), DateTimeOffset.UtcNow, ExportFingerprint.For(project, target, labelPosition),
                 project.Captions.StyleId, project.Export.Aspect, output);
             var next = records.Where(record => record.ProjectId != entry.ProjectId || record.TargetId != entry.TargetId).Append(entry)
                 .OrderBy(record => record.ProjectId, StringComparer.Ordinal).ThenBy(record => record.TargetId, StringComparer.Ordinal).ToArray();
