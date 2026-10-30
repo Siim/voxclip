@@ -167,6 +167,11 @@ private struct GenerationTestKeys: KeyProvider {
         #expect(RewriteGenerationSession.pauseFitNote(0.4) == "pauses +0.4 s")
         #expect(RewriteGenerationSession.pauseFitNote(-0.4) == "pauses −0.4 s")
         #expect(RewriteGenerationSession.pauseFitNote(0) == "pauses +0.0 s")
+        #expect(RewriteGenerationSession.pauseFitNote(-0.0) == "pauses +0.0 s")
+        #expect(RewriteGenerationSession.pauseFitNote(-0.01) == "pauses −0.0 s")
+        #expect(RewriteGenerationSession.pauseFitNote(0.01) == "pauses +0.0 s")
+        #expect(RewriteGenerationSession.pauseFitNote(-12.36) == "pauses −12.4 s")
+        #expect(RewriteGenerationSession.pauseFitNote(12.36) == "pauses +12.4 s")
     }
     @Test func completionAnnouncementsCountOnlyActualTakes() {
         #expect(RewriteGenerationSession.completionAnnouncement(count: 3, fittedTake: nil) == "Three takes ready.")
