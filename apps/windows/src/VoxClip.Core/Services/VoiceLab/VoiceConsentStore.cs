@@ -44,6 +44,7 @@ public sealed record VoiceOperation(Guid Id, VoiceOperationKind Kind, string Rec
     public bool BlocksCreation(DateTimeOffset now) => Kind == VoiceOperationKind.Create && WasDispatched && !Finished &&
         now - StartedAt < TimeSpan.FromHours(24);
     [JsonIgnore] public string DisplayState => RecoveryNeedsCreatorKey && !Finished ? "Recovery needs the ElevenLabs key that started this voice."
+        : RecoveryNeedsReview && !Finished ? "Checking paused — review the unfinished voice in your ElevenLabs account."
         : Kind == VoiceOperationKind.Create && WasDispatched && RemoteVoiceId is null && !Finished
         ? "Checking your ElevenLabs account for an unfinished voice…" : Failed ? "Couldn't finish — Retry"
         : Kind == VoiceOperationKind.Delete || State == VoiceOperationState.Withdrawing ? "Removing…" : "Finishing…";

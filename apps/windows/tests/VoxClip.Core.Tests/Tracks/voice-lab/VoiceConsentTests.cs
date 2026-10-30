@@ -329,6 +329,51 @@ public sealed class VoiceConsentTests
         Assert.Null(store.AuditTombstone(record.RecordId));
         keys.Value = "synthetic-creator";
     }
+    [Theory]
+    [InlineData(false, -1)]
+    [InlineData(true, -1)]
+    [InlineData(false, 86401)]
+    [InlineData(true, 86401)]
+    public async Task RecoveryKeepsOutOfWindowSameNameCandidatesForDurableReview(bool nonceMatch, int offset)
+    {
+        using var storage = new Storage();
+        var clock = new Clock { Now = Now.AddHours(30) };
+        var store = new VoiceConsentStore(storage.Locations, clock);
+        var record = Draft(store);
+        var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
+        store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
+        store.Release(operation.Id);
+        var empty = false;
+        var uncertain = true;
+        var deletions = 0;
+        using var remote = new Remote((request, _) =>
+        {
+            if (request.Method == HttpMethod.Delete) { deletions++; return Task.FromResult(Json(404, "{}")); }
+            var rows = new List<object>();
+            if (!empty)
+            {
+                if (uncertain) rows.Add(new { voice_id = "uncertain", name = record.VoiceName, category = "cloned", is_owner = true,
+                    created_at_unix = Now.ToUnixTimeSeconds() + offset });
+                if (nonceMatch) rows.Add(new { voice_id = "matching", name = record.VoiceName, category = "cloned", is_owner = true,
+                    labels = new { voxclip_record_id = operation.ProviderNonce } });
+            }
+            return Task.FromResult(Json(200, JsonSerializer.Serialize(new { voices = rows, has_more = false })));
+        });
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), remote, ElevenLabsRegion.Default);
+        await new VoiceOperationReconciler(store, _ => client, clock).ReconcileAsync(force: true, ct: Token);
+        Assert.Equal(0, deletions);
+        var reopened = new VoiceConsentStore(storage.Locations, clock);
+        Assert.True(reopened.Operation(operation.Id).RecoveryNeedsReview);
+        empty = true;
+        await new VoiceOperationReconciler(reopened, _ => client, clock).ReconcileAsync(force: true, ct: Token);
+        Assert.False(reopened.Operation(operation.Id).Finished);
+        Assert.Null(reopened.AuditTombstone(record.RecordId));
+        empty = false; uncertain = false; nonceMatch = true;
+        await new VoiceOperationReconciler(reopened, _ => client, clock).ReconcileAsync(force: true, ct: Token);
+        Assert.False(reopened.Operation(operation.Id).Finished);
+        Assert.True(reopened.Operation(operation.Id).RecoveryNeedsReview);
+        Assert.Equal(0, deletions);
+    }
     private sealed class RecoveryKeys : VoxClip.Core.Services.LLM.IKeyProvider
     {
         internal string Value = "synthetic-creator";

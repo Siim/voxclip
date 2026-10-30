@@ -2,6 +2,7 @@
 
 ### 2026-10-30 — sol-win-voicelab round 6 — Review fixes
 
+- Every same-name discovery candidate outside either the matching nonce or the missing-label exact-name creation window makes recovery uncertain, even alongside a valid nonce match. Recovery persists manual review, deletes nothing, and cannot later abandon the obligation because a listing becomes empty. Probes cover either side of the window, with and without a simultaneous nonce match.
 - Recovery discovery checks the operation's creator region and key fingerprint on the exact key used for **every page**. A mismatch persists `RecoveryNeedsCreatorKey`, keeps the obligation pending, and shows “Recovery needs the ElevenLabs key that started this voice.” An empty page from another account cannot abandon or tombstone it. Legacy null fingerprints retain region-only matching. Offline regression probes cover an initially wrong key and a key changed between pages; local execution awaits the 15 GiB disk floor.
 
 ### 2026-10-30 — sol-win-voicelab round 5 — Settled Mac conformance
