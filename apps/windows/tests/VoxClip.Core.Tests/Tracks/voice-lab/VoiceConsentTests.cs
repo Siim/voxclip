@@ -60,6 +60,100 @@ public sealed class VoiceConsentTests
         internal DateTimeOffset Now = VoiceConsentTests.Now;
         public override DateTimeOffset GetUtcNow() => Now;
     }
+    [Fact]
+    public async Task IdentitylessCreationNeverDiscoversOrExpiresAcrossRestarts()
+    {
+        using var storage = new Storage();
+        var clock = new Clock();
+        var store = new VoiceConsentStore(storage.Locations, clock);
+        var record = Draft(store);
+        var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
+        store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
+        store.Release(operation.Id);
+        using var remote = new Remote((_, _) => Task.FromResult(Json(200, "{\"voices\":[],\"has_more\":false}")));
+        using var client = ElevenLabsVoiceLab.ForTesting(new RecoveryKeys { Value = "synthetic-other" }, remote, ElevenLabsRegion.Default);
+        foreach (var days in new[] { 0, 2, 30 })
+        {
+            clock.Now = Now.AddDays(days);
+            store = new VoiceConsentStore(storage.Locations, clock);
+            await new VoiceOperationReconciler(store, _ => client, clock).ReconcileAsync(force: true, ct: Token);
+            var current = store.Operation(operation.Id);
+            Assert.Equal(0, remote.Calls);
+            Assert.False(current.Finished);
+            Assert.True(current.RecoveryNeedsReview);
+            Assert.Equal("Recovery needs the ElevenLabs key that started this voice.", current.DisplayState);
+            Assert.False(current.RemoteStateUnknown);
+            Assert.Empty(store.ActiveVoices());
+        }
+    }
+    [Theory]
+    [InlineData("saveTombstone")]
+    [InlineData("saveTombstone:rename")]
+    [InlineData("removeStatement")]
+    [InlineData("removeDraft")]
+    [InlineData("Abandoned")]
+    [InlineData("Abandoned:rename")]
+    public async Task StopLookingResumesEachDurableBoundaryWithoutProviderCalls(string boundary)
+    {
+        using var storage = new Storage();
+        var fail = false;
+        var store = new VoiceConsentStore(storage.Locations, step => { if (fail && step == boundary) throw new IOException("injected"); });
+        var record = Draft(store);
+        var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
+        store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
+        store.Release(operation.Id);
+        store.RequireRecoveryReview(operation.Id);
+        var method = typeof(VoiceConsentStore).GetMethod("StopLookingForCreation", [typeof(Guid), typeof(DateTimeOffset)]);
+        Assert.NotNull(method);
+        var stop = method.CreateDelegate<Action<Guid, DateTimeOffset>>(store);
+        fail = true;
+        Assert.Throws<IOException>(() => stop(operation.Id, Now.AddDays(2)));
+        fail = false;
+        using var remote = new Remote((_, _) => throw new InvalidOperationException("Local-only stop must not call provider."));
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), remote, ElevenLabsRegion.Default);
+        store = new VoiceConsentStore(storage.Locations);
+        await new VoiceOperationReconciler(store, _ => client).ReconcileAsync(force: true, ct: Token);
+        if (boundary.StartsWith("saveTombstone", StringComparison.Ordinal))
+        {
+            // The stop was never durable: the restart keeps manual review until the user stops again.
+            var pending = store.Operation(operation.Id);
+            Assert.False(pending.Finished);
+            Assert.True(pending.RecoveryNeedsReview);
+            Assert.False(pending.RemoteStateUnknown);
+            Assert.Equal(record.Statement.AudioSha256, pending.Audit!.StatementSha256);
+            Assert.False(pending.Audit.RemoteStateUnknown);
+            Assert.Equal(0, remote.Calls);
+            method.CreateDelegate<Action<Guid, DateTimeOffset>>(store)(operation.Id, Now.AddDays(2));
+            await new VoiceOperationReconciler(store, _ => client).ReconcileAsync(force: true, ct: Token);
+        }
+        var tombstone = Assert.Single(store.Operations());
+        Assert.Equal(VoiceOperationState.Abandoned, tombstone.State);
+        Assert.True(tombstone.RemoteStateUnknown);
+        Assert.True(tombstone.Audit!.RemoteStateUnknown);
+        Assert.Equal(Now.AddDays(2), tombstone.Audit.DeletedAt);
+        Assert.Equal(record.Statement.AudioSha256, tombstone.Audit.StatementSha256);
+        Assert.Equal(record.Samples.Select(sample => sample.Sha256), tombstone.Audit.RecordingSha256s);
+        Assert.False(File.Exists(Path.Combine(store.Root, record.RecordId, "statement.wav")));
+        Assert.False(File.Exists(Path.Combine(store.Root, record.RecordId, "record.json")));
+        Assert.Empty(store.ActiveVoices());
+        Assert.Equal(0, remote.Calls);
+    }
+    [Fact]
+    public void StopLookingRejectsCreatorBoundOperations()
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store) with { Creator = new(ElevenLabsRegion.Default, VoiceConsentCreator.Fingerprint("synthetic-creator")) };
+        var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
+        store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
+        store.Release(operation.Id);
+        store.RequireRecoveryReview(operation.Id);
+        var method = typeof(VoiceConsentStore).GetMethod("StopLookingForCreation", [typeof(Guid), typeof(DateTimeOffset)]);
+        Assert.NotNull(method);
+        var stop = method.CreateDelegate<Action<Guid, DateTimeOffset>>(store);
+        Assert.Throws<VoiceConsentException>(() => stop(operation.Id, Now));
+        Assert.False(store.Operation(operation.Id).RemoteStateUnknown);
+    }
     private sealed class Storage : IDisposable
     {
         internal readonly string Root = Path.Combine(Path.GetTempPath(), "voxclip-consent-tests-" + Guid.NewGuid().ToString("N"));
@@ -257,6 +351,8 @@ public sealed class VoiceConsentTests
         await Assert.ThrowsAsync<VoiceConsentException>(() => new VoiceUseGuard(store).AuthorizeAsync("content", record.RecordId,
             new float[48000], Guid.NewGuid(), true, ct: Token));
     }
+    private static VoiceConsentRecord BoundDraft(VoiceConsentStore store) => Draft(store) with
+        { Creator = new(ElevenLabsRegion.Default, VoiceConsentCreator.Fingerprint("test-placeholder-value")) };
     private static VoiceConsentRecord Draft(VoiceConsentStore store, string? id = null, string voice = "pending")
     {
         var wav = VoiceLabTestCalls.SyntheticWav(16000, 16000 * 6, 2000);
@@ -298,7 +394,8 @@ public sealed class VoiceConsentTests
         await new VoiceOperationReconciler(store, _ => client, new Clock()).ReconcileAsync(ct: Token);
         Assert.False(File.Exists(Path.Combine(store.Root, record.RecordId, "statement.wav")));
         Assert.NotNull(store.Operation(id).Audit);
-        Assert.Equal(1, remote.Calls);
+        Assert.True(store.Operation(id).RecoveryNeedsReview);
+        Assert.Equal(0, remote.Calls);
     }
     [Theory]
     [InlineData(false)]
@@ -339,7 +436,7 @@ public sealed class VoiceConsentTests
         using var storage = new Storage();
         var clock = new Clock { Now = Now.AddHours(30) };
         var store = new VoiceConsentStore(storage.Locations, clock);
-        var record = Draft(store);
+        var record = BoundDraft(store);
         var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
         store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
         store.Release(operation.Id);
@@ -388,7 +485,7 @@ public sealed class VoiceConsentTests
         using var storage = new Storage();
         var clock = new Clock { Now = Now.AddHours(30) };
         var store = new VoiceConsentStore(storage.Locations, clock);
-        var record = Draft(store);
+        var record = BoundDraft(store);
         var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
         store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
         store.Release(operation.Id);
@@ -422,7 +519,7 @@ public sealed class VoiceConsentTests
         using var storage = new Storage();
         var clock = new Clock { Now = Now.AddHours(30) };
         var store = new VoiceConsentStore(storage.Locations, clock);
-        var record = Draft(store);
+        var record = BoundDraft(store);
         var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
         store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
         store.Release(operation.Id);
@@ -586,7 +683,7 @@ public sealed class VoiceConsentTests
         var start = DateTimeOffset.FromUnixTimeSeconds(Now.ToUnixTimeSeconds()).AddMilliseconds(750);
         var clock = new Clock { Now = start.AddHours(30) };
         var store = new VoiceConsentStore(storage.Locations, clock);
-        var record = Draft(store);
+        var record = BoundDraft(store);
         var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, start);
         store.Transition(operation.Id, VoiceOperationState.Dispatched, start);
         store.Release(operation.Id);
@@ -680,7 +777,7 @@ public sealed class VoiceConsentTests
         using var storage = new Storage();
         var clock = new Clock { Now = Now.AddHours(25) };
         var store = new VoiceConsentStore(storage.Locations, clock);
-        var record = Draft(store);
+        var record = BoundDraft(store);
         var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
         store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
         store.Release(operation.Id);
@@ -706,7 +803,7 @@ public sealed class VoiceConsentTests
         using var storage = new Storage();
         var clock = new Clock();
         var store = new VoiceConsentStore(storage.Locations, clock);
-        var operation = store.BeginClaimedCreation(Draft(store), Guid.NewGuid(), ElevenLabsRegion.Default, Now);
+        var operation = store.BeginClaimedCreation(BoundDraft(store), Guid.NewGuid(), ElevenLabsRegion.Default, Now);
         store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
         store.Release(operation.Id);
         using var remote = new Remote((_, _) => Task.FromResult(Json(200, "{\"voices\":[],\"has_more\":false}")));
@@ -725,7 +822,7 @@ public sealed class VoiceConsentTests
         using var storage = new Storage();
         var clock = new Clock { Now = Now.AddHours(30) };
         var store = new VoiceConsentStore(storage.Locations, clock);
-        var record = Draft(store);
+        var record = BoundDraft(store);
         var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
         store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
         store.Release(operation.Id);

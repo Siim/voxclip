@@ -55,6 +55,8 @@ public sealed record VoiceLabPreparedAction
 }
 public sealed record VoiceLabAuthorization
 {
+    internal VoiceLabRunDispatch? RunDispatch { get; init; }
+    internal bool IsRunAuthorization { get; init; }
     internal VoiceLabAuthorization(Guid token, string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review)
     { Token = token; Fingerprint = fingerprint; Estimate = estimate; Review = review; }
     internal Guid Token { get; }

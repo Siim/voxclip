@@ -45,6 +45,11 @@ public sealed class VoiceOperationReconciler
         {
             ct.ThrowIfCancellationRequested();
             var value = store.Operation(id);
+            if (value.Kind == VoiceOperationKind.Create && value.RemoteStateUnknown)
+            {
+                if (!value.Finished) store.FinishStoppedCreation(value);
+                return;
+            }
             switch (value.Kind, value.State)
             {
                 case (VoiceOperationKind.Create, VoiceOperationState.Intent):
@@ -116,6 +121,12 @@ public sealed class VoiceOperationReconciler
     }
     private async Task<VoiceLabVoice?> FindRemoteAsync(VoiceOperation value, bool force, CancellationToken ct)
     {
+        if (value.CreatorKeyFingerprint is null)
+        {
+            store.RequireRecoveryReview(value.Id);
+            store.RequireRecoveryCreatorKey(value.Id, true);
+            return null;
+        }
         if (!force && value.NextAttemptAt is { } next && clock.GetUtcNow() < next) return null;
         IReadOnlyList<VoiceLabVoice> voices;
         try

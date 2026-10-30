@@ -1,12 +1,106 @@
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Speech;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Core.Tests.Tracks.WinAi;
 using Xunit;
 
 namespace VoxClip.Core.Tests.Tracks.VoiceLab;
 
 public sealed class VoiceLabGenerationSessionTests
 {
+    [Fact]
+    public async Task CancellationDuringTheLiveCostReadCannotLaunchAndKeepsTheQuote()
+    {
+        var runner = new Runner();
+        var session = new VoiceLabGenerationSession(runner);
+        var quote = await session.UpdateInputsAsync(Input(), ct: Token);
+        var method = typeof(VoiceLabGenerationSession).GetMethod("CancelAsync", Type.EmptyTypes);
+        Assert.NotNull(method);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runner.Refresh = async (cap, _) => { entered.SetResult(); await resume.Task; return cap; };
+        var execution = session.ContinueAsync(Token);
+        await entered.Task.WaitAsync(Token);
+        var cleanup = method.CreateDelegate<Func<Task>>(session)();
+        Assert.False(cleanup.IsCompleted);
+        resume.SetResult();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => execution);
+        await cleanup;
+        Assert.Same(quote, session.PendingQuote); Assert.NotNull(session.Cost);
+        Assert.Equal(0, runner.Sends);
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClickRechecksRealLedgerAgainstTheExactWholeRunQuote(bool approveDirectly)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "voxclip-c7-cap-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var ledger = new VoiceLabSpendLedger(Path.Combine(directory, "spend.json"), TimeZoneInfo.Utc);
+            using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), new NoTransport(), ElevenLabsRegion.Default,
+                clock: new Clock(), spend: ledger);
+            var runner = new Runner { Price = 0.04m, Refresh = client.RefreshMonthlyCapAsync };
+            var session = new VoiceLabGenerationSession(runner);
+            await ledger.RecordAsync(new("elevenlabs", "fixture", 1, "call", 0.05m, null, "fixture"), DateTimeOffset.UnixEpoch, Token);
+            var quote = await session.UpdateInputsAsync(Input(), new(0.10m, 0), Token);
+            Assert.Equal(VoiceLabCostPresentationKind.Inline, session.Cost!.Kind);
+            await ledger.RecordAsync(new("elevenlabs", "fixture", 1, "call", 0.03m, null, "fixture"), DateTimeOffset.UnixEpoch, Token);
+            if (approveDirectly) Assert.Null(await session.ApproveAsync(quote, true, Token));
+            else Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await session.ContinueAsync(Token));
+            Assert.Equal(0, runner.Sends);
+            Assert.Same(quote, session.PendingQuote);
+            Assert.Contains("$0.10 limit", session.Cost!.Text);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+    [Fact]
+    public async Task ConfiguredCapRefusesAnUnreadableRealLedger()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "voxclip-c7-cap-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var ledger = new VoiceLabSpendLedger(Path.Combine(directory, "spend.json"), TimeZoneInfo.Utc);
+            using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), new NoTransport(), ElevenLabsRegion.Default,
+                clock: new Clock(), spend: ledger);
+            var runner = new Runner { Price = 0.04m, Refresh = client.RefreshMonthlyCapAsync };
+            var session = new VoiceLabGenerationSession(runner);
+            await session.UpdateInputsAsync(Input(), new(0.10m, 0), Token);
+            File.WriteAllText(ledger.FilePath, "not json");
+            await Assert.ThrowsAsync<VoiceLabException>(() => session.ContinueAsync(Token));
+            Assert.Equal(0, runner.Sends);
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+    private sealed class NoTransport : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            throw new InvalidOperationException("Cap-only regression must not dispatch.");
+    }
+    [Fact]
+    public async Task DecliningKeepsQuotePriceAndPriorTakesForTheNextConfirmation()
+    {
+        var runner = new Runner();
+        var session = new VoiceLabGenerationSession(runner);
+        await session.UpdateInputsAsync(Input(), ct: Token);
+        await session.ContinueAsync(Token);
+        var previous = session.Rows;
+        session.SelectTake(previous[0].Id); session.AuditionTake(previous[1].Id);
+        runner.Price = 0.60m;
+        var quote = await session.UpdateInputsAsync(Input(), ct: Token);
+        var cost = session.Cost;
+        Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await session.ContinueAsync(Token));
+        await session.ApproveAsync(quote, false, Token);
+        Assert.Same(quote, session.PendingQuote);
+        Assert.Equal(cost, session.Cost);
+        Assert.Same(previous, session.Rows);
+        Assert.Equal(previous[0].Id, session.SelectedTakeId);
+        Assert.Equal(previous[1].Id, session.AuditionedTakeId);
+        Assert.Equal(VoiceLabGenerationAction.ConfirmationRequired, await session.ContinueAsync(Token));
+        Assert.Equal(3, runner.Sends);
+    }
     private static CancellationToken Token => TestContext.Current.CancellationToken;
     private static VoiceLabTakeInput Input() => new("Hello", "eleven_v3", "record", "en", 1, "source", [0.1f], 24000, [], new HashSet<string>(),
         new("first", "last", [], [], 0, 1, 0, 24000, new(VoiceLabSeamKind.Hard, 0, 0, 0), new(VoiceLabSeamKind.Hard, 1, 24000, 0)), null, null, false, true);
@@ -21,6 +115,7 @@ public sealed class VoiceLabGenerationSessionTests
         internal bool FailPreparation;
         internal Action? Prepared;
         internal Action? Started;
+        internal Func<VoiceLabMonthlyCap?, CancellationToken, Task<VoiceLabMonthlyCap?>>? Refresh;
         internal TaskCompletionSource? Resume;
         internal TaskCompletionSource? ResumePreparation;
         internal TaskCompletionSource? PreparationEntered;
@@ -59,11 +154,18 @@ public sealed class VoiceLabGenerationSessionTests
             Sends += quote.Takes.Count;
             return new(quote.Takes.Select(take => new VoiceLabTakeRow(Guid.NewGuid(), take.Index, take.Seed)).ToArray(), VoiceLabTakeRunEnd.Completed);
         }
+        public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
+            Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
+        {
+            if (FailBeforeStart) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            await dispatch.AuthorizeAsync(ct);
+            return await dispatch.Start(() => ExecuteAsync(quote, true, progress, ct), ct);
+        }
         public Task DiscardPendingAsync() { Pending = null; return Task.CompletedTask; }
         public void InvalidatePreparation() => Pending = null;
         public bool IsQuoteFresh(VoiceLabTakeRunQuote quote) => ReferenceEquals(Pending, quote) && gate!.QuotesAreFresh(quote.Actions);
         public Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) =>
-            Task.FromResult(cap is null ? null : cap with { Spent = RefreshedSpent ?? cap.Spent });
+            Refresh is { } refresh ? refresh(cap, ct) : Task.FromResult(cap is null ? null : cap with { Spent = RefreshedSpent ?? cap.Spent });
     }
     private sealed class Clock : TimeProvider
     {
@@ -228,9 +330,9 @@ public sealed class VoiceLabGenerationSessionTests
         await session.GenerateAgainAsync(input, ct: Token);
         var kept = session.Rows;
         await session.ApproveAsync(session.PendingQuote!, false, Token);
-        Assert.Same(kept, session.Rows); Assert.Null(session.PendingQuote); Assert.Null(runner.Pending);
+        Assert.Same(kept, session.Rows); Assert.NotNull(session.PendingQuote); Assert.NotNull(runner.Pending);
         Assert.Equal(6, runner.Sends);
-        await Assert.ThrowsAsync<VoiceLabException>(() => session.ContinueAsync(Token));
+        Assert.NotNull(session.Cost);
     }
 
     [Theory]
@@ -278,7 +380,7 @@ public sealed class VoiceLabGenerationSessionTests
         await session.TryAnotherAsync(Input(), ct: Token);
         runner.FailBeforeStart = true;
         await Assert.ThrowsAsync<VoiceLabException>(() => session.ContinueAsync(Token));
-        Assert.Same(previous, session.Rows); Assert.Null(session.PendingQuote);
+        Assert.Same(previous, session.Rows); Assert.NotNull(session.PendingQuote); Assert.NotNull(session.Cost);
         Assert.Equal(3, runner.Sends);
     }
 
@@ -318,7 +420,8 @@ public sealed class VoiceLabGenerationSessionTests
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => session.ContinueAsync(cancellation.Token));
         }
         Assert.Same(previous, session.Rows);
-        Assert.Null(session.PendingQuote); Assert.Null(runner.Pending);
+        if (duringPreparation) { Assert.Null(session.PendingQuote); Assert.Null(runner.Pending); }
+        else { Assert.NotNull(session.PendingQuote); Assert.NotNull(runner.Pending); }
         Assert.Equal(3, runner.Sends);
     }
 }
