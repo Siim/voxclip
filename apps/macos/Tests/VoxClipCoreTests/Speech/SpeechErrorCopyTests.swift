@@ -75,6 +75,14 @@ struct SpeechErrorCopyTests {
         #expect(generic.errorDescription?.contains("IN residency") == true)
         let global = ElevenLabsTranscriber.providerError(status: 400, data: Data("{}".utf8), key: "synthetic-key", region: .us)
         #expect(global.errorDescription == "ElevenLabs answered 400: The request could not be completed.")
+        #expect(ElevenLabsTranscriber.providerError(status: 401, data: Data("{}".utf8), key: "synthetic-key").code == .keyRejected)
+        let unauthorized = ElevenLabsTranscriber.providerError(status: 401, data: Data("{}".utf8), key: "synthetic-key", region: .eu)
+        #expect(unauthorized.code == .providerError)
+        #expect(unauthorized.errorDescription?.contains("EU residency") == true)
+        let long = #"{"detail":{"message":"\#(String(repeating: "x", count: 300))"}}"#
+        guard case .providerError(let detail, _, _) = ElevenLabsTranscriber.providerError(status: 400, data: Data(long.utf8), key: "synthetic-key", region: .singapore) else { Issue.record("expected a provider error"); return }
+        #expect(detail.count == 200)
+        #expect(detail.hasSuffix("most accounts use Region: Default"))
     }
 
     @Test func malformedSuccessAndUploadSizeCarryExactCopy() async throws {

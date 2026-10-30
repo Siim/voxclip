@@ -92,18 +92,12 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
             using var response = await http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, deadline.Token).ConfigureAwait(false);
             log.Write(LogLevel.Info, "transcribe", $"elevenlabs key test HTTP {(int)response.StatusCode}");
             if (response.StatusCode == HttpStatusCode.OK) return new(true, "Works.");
-            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-            {
-                await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
-                if (ReportsMissingPermission(await ReadErrorBodyAsync(stream, deadline.Token).ConfigureAwait(false)))
-                    return new(false, "The key works. It can't read account details (user_read), and that is fine for transcription.");
-            }
-            if (response.StatusCode == HttpStatusCode.Unauthorized)
-                throw new VoxClipException(VoxClipErrorCode.KeyRejected, "ElevenLabs rejected the key (401). Your video is still here.");
-            if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                throw new VoxClipException(VoxClipErrorCode.RateLimited, "ElevenLabs is busy. Try again in a minute.");
-            throw new VoxClipException(VoxClipErrorCode.ProviderError,
-                $"ElevenLabs answered {(int)response.StatusCode}: The request could not be completed.");
+            await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
+            var body = await ReadErrorBodyAsync(stream, deadline.Token).ConfigureAwait(false);
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden && ReportsMissingPermission(body))
+                return new(false, "The key works. It can't read account details (user_read), and that is fine for transcription.");
+            // Same mapping as transcription: only a 401 or a key error is a rejected key.
+            throw MapError(response.StatusCode, body, key, region);
         }
         catch (Exception error) when ((error is HttpRequestException or IOException or OperationCanceledException) && !ct.IsCancellationRequested)
         {
@@ -338,10 +332,9 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
             return new(VoxClipErrorCode.QuotaExceeded, "Your ElevenLabs credits or key quota are used up.");
         if (status == HttpStatusCode.Forbidden || status == HttpStatusCode.Unauthorized && body.Contains("permission", StringComparison.OrdinalIgnoreCase))
             return new(VoxClipErrorCode.KeyPermissionMissing, "This ElevenLabs key can't use speech to text. Allow the speech_to_text permission for the key on elevenlabs.io.");
-        if (status == HttpStatusCode.Unauthorized) return new(VoxClipErrorCode.KeyRejected, "ElevenLabs rejected the key (401). Your video is still here.");
         if (status == HttpStatusCode.TooManyRequests) return new(VoxClipErrorCode.RateLimited, "ElevenLabs is busy. Try again in a minute.");
         var detail = "The request could not be completed.";
-        var authentication = false;
+        var authentication = status == HttpStatusCode.Unauthorized;
         try
         {
             using var json = JsonDocument.Parse(body);
@@ -354,7 +347,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                 {
                     if (value.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String) detail = text.GetString()!;
                     else if (value.TryGetProperty("status", out var code) && code.ValueKind == JsonValueKind.String) detail = code.GetString()!;
-                    authentication = value.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "authentication_error"
+                    authentication = authentication || value.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String && type.GetString() == "authentication_error"
                         || new[] { "code", "status" }.Any(name => value.TryGetProperty(name, out var field) && field.ValueKind == JsonValueKind.String && field.GetString() == "invalid_api_key");
                 }
             }
@@ -362,12 +355,14 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
         catch (Exception error) when (error is JsonException or InvalidOperationException) { }
         // A residency host only knows keys from its own Enterprise workspace; ordinary keys fail there.
         var residency = region is ElevenLabsRegion.Eu or ElevenLabsRegion.In or ElevenLabsRegion.Sg;
-        if (residency && (authentication || status is HttpStatusCode.BadRequest or HttpStatusCode.Unauthorized))
-            detail = $"{detail} ElevenLabs {region.ToString().ToUpperInvariant()} residency needs a key from a data-residency workspace; most accounts use Region: Default";
+        var hint = "";
+        if (residency && (authentication || status == HttpStatusCode.BadRequest))
+            hint = $" ElevenLabs {region.ToString().ToUpperInvariant()} residency needs a key from a data-residency workspace; most accounts use Region: Default";
         else if (authentication) return new(VoxClipErrorCode.KeyRejected, $"ElevenLabs rejected the key ({(int)status}). Your video is still here.");
         detail = new Redactor([key]).Redact(detail);
-        if (detail.Length > 200) detail = detail[..200];
-        return new(VoxClipErrorCode.ProviderError, $"ElevenLabs answered {(int)status}: {detail}");
+        // Error copy keeps 200 characters; shorten the reason so the hint stays whole.
+        if (detail.Length > 200 - hint.Length) detail = detail[..(200 - hint.Length)];
+        return new(VoxClipErrorCode.ProviderError, $"ElevenLabs answered {(int)status}: {detail}{hint}");
     }
 
     internal static bool ValidLanguage(string code) => Regex.IsMatch(code, "\\A[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*\\z", RegexOptions.CultureInvariant);
