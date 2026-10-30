@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — Codex curated retirement
+
+- Removed gpt-5.5 from the shared Codex curated list following its October 14, 2026 ChatGPT-sign-in retirement. Offline and failed-refresh picker tests exclude it, and pin its absence from fallbackOrder. A successful CLI model/list remains authoritative for that user's authentication mode.
+
 ### 2026-10-30 — Ollama advertised thinking controls
 
 - Both Cores select `think: false` only from an actual boolean false in cached /api/show thinking.values; otherwise use the lowest advertised low/medium/high string or omit think for unknown/absent controls. Capability alone never invents a control. Shared request goldens cover booleans, GPT-OSS levels in reverse order, medium minimum, unknown and absent metadata.

@@ -4,7 +4,7 @@
   "origin": "voxclip",
   "sources": {
     "shared/prompts/voice-rewrite.json": "f981955d21d7bbd739c90c5da3597997a315fb8bc503b9f1f83f486d85d4f4c0",
-    "shared/catalog/llm-providers.json": "c4e5c22c557e8c3e60534f994df8bd5ebfcf4db234f319ef86099a3bfd0db787"
+    "shared/catalog/llm-providers.json": "cb9ceac794b8252e14943c09b47383fb8eaa4032605178b7344a097b43b4a436"
   },
   "cases": [
     {
@@ -1871,8 +1871,7 @@
           "gpt-6-luna",
           "gpt-5.6-sol",
           "gpt-5.6-terra",
-          "gpt-5.6-luna",
-          "gpt-5.5"
+          "gpt-5.6-luna"
         ]
       }
     },

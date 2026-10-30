@@ -525,8 +525,7 @@
         { "id": "gpt-6-luna", "name": "GPT-6-Luna", "tier": "fast" },
         { "id": "gpt-5.6-sol", "name": "GPT-5.6-Sol", "tier": "best" },
         { "id": "gpt-5.6-terra", "name": "GPT-5.6-Terra", "tier": "balanced" },
-        { "id": "gpt-5.6-luna", "name": "GPT-5.6-Luna", "tier": "fast" },
-        { "id": "gpt-5.5", "name": "GPT-5.5", "tier": "balanced" }
+        { "id": "gpt-5.6-luna", "name": "GPT-5.6-Luna", "tier": "fast" }
       ]
     }
   ]
