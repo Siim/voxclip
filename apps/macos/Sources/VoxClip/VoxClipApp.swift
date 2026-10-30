@@ -37,6 +37,21 @@ import VoxClipCore
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
+        if let index = CommandLine.arguments.firstIndex(of: "-transcriptionConsentAudit"), index + 1 < CommandLine.arguments.count {
+            let directory = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+            Task {
+                do {
+                    await model.start()
+                    guard let shared = model.shared else { throw VoxClipError.sharedResourcesMissing }
+                    let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
+                    let results = try await DebugTranscriptionConsent.run(fixture: fixture)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("results.json"), options: .atomic)
+                    exit(results.allSatisfy(\.passed) ? 0 : 1)
+                } catch { fputs("Transcription consent audit failed: \(error)\n", stderr); exit(1) }
+            }
+            return
+        }
         if let index = CommandLine.arguments.firstIndex(where: { ["-layoutAudit", "-captionGalleryAudit"].contains($0) }), index + 1 < CommandLine.arguments.count {
             let directory = URL(fileURLWithPath: CommandLine.arguments[index + 1])
             Task {

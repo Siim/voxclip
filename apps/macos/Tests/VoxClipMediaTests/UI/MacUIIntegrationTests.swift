@@ -7,6 +7,13 @@ import Darwin
 
 extension HeavyMediaTests {
 @Suite("mac-ui", .serialized) struct MacUIIntegrationTests {
+    @Test("Real transcription actions enforce first-use consent without opening a window") func transcriptionConsent() throws {
+        let directory = try UIProcessHarness.run(mode: "-transcriptionConsentAudit", name: "transcription-consent")
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
+        #expect(report.count == 7)
+        for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
+    }
     @Test("Gallery selections reveal their complete paint without opening a window") func captionGalleryInteractions() throws {
         let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery")
         defer { UIProcessHarness.cleanTemporary(directory) }

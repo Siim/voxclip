@@ -197,7 +197,7 @@ extension AppModel {
                         if provider == "elevenlabs" { result = await testSpeechKey(app: app) }
                         else if let choice = app.providers.first(where: { $0.id == provider }) { result = await testProvider(choice, app: app) }
                     }
-                }.disabled(testing || !saved && value.isEmpty)
+                }.disabled(testing || !saved && value.isEmpty).accessibilityIdentifier("provider.\(provider).test").auditButtonAction("provider.\(provider).test")
                 if saved { Button("Forget key") { Task { do { try await app.saveProviderKey("", for: provider); saved = false; result = nil } catch { result = await app.safeError(error) } } } }
             }
             Text(provider == "elevenlabs" ? "The key stays in the macOS Keychain and is used only for transcription." : "The key stays in the macOS Keychain and is used only for AI features.").font(.caption).foregroundStyle(.secondary)

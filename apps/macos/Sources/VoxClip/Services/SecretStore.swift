@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import LocalAuthentication
+import Synchronization
 import VoxClipCore
 
 actor SecretStore: KeyProvider {
@@ -97,5 +98,14 @@ enum KeyedNetwork {
         configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         return configuration
     }
-    static let session = URLSession(configuration: configuration())
+    #if DEBUG
+    static let auditSession = Mutex<URLSession?>(nil)
+    #endif
+    private static let liveSession = URLSession(configuration: configuration())
+    static var session: URLSession {
+        #if DEBUG
+        if let session = auditSession.withLock({ $0 }) { return session }
+        #endif
+        return liveSession
+    }
 }

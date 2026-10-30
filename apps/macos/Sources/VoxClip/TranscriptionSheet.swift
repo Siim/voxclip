@@ -15,6 +15,17 @@ import VoxClipMedia
     @State private var running = false
     @State private var progress: TranscriptionProgress?
     @State private var hasCloudKey = false
+    private let scribeSession: URLSession?
+    #if DEBUG
+    var inlineConsentForAudit = false
+    #endif
+    init(model: EditorModel, scribeSession: URLSession? = nil) {
+        self.model = model
+        self.scribeSession = scribeSession
+        let selected = model.app.string("transcription.engineMode", fallback: "local")
+        _engine = State(initialValue: selected == "ask" ? "local" : selected)
+        _language = State(initialValue: model.project.transcript?.language ?? model.app.string("transcription.language", fallback: "auto"))
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Transcribe \(model.project.title ?? "video")").font(.title2)
@@ -36,15 +47,12 @@ import VoxClipMedia
             }.formStyle(.grouped).scrollContentBackground(.hidden).disabled(running)
             if running { ProgressView(model.progress ?? "Reading video…", value: progress?.fraction) }
             if let error { InlineNotice(text: error) }
-            HStack { Button("Models and keys…") { openVoxClipSettings(pane: "transcription") }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil ? "Transcribe" : "Retry") { consent.request(engine: engine, app: model.app) { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running) }
+            HStack { Button("Models and keys…") { openVoxClipSettings(pane: "transcription") }; Spacer(); Button(running ? "Cancel" : "Not now") { model.workTask?.cancel(); dismiss() }.keyboardShortcut(.cancelAction); Button(error == nil ? "Transcribe" : "Retry") { consent.request(engine: engine, app: model.app) { transcribe() } }.keyboardShortcut(.defaultAction).disabled(running).accessibilityIdentifier("transcription.start").auditButtonAction("transcription.start") }
+            #if DEBUG
+            if inlineConsentForAudit && consent.pending { consentSheet }
+            #endif
         }.padding(24).frame(width: 560)
-        .sheet(isPresented: Binding(get: { consent.pending }, set: { if !$0 { consent.cancel() } })) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Transcribe with ElevenLabs?").font(.title2)
-                Text("ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent.")
-                HStack { Spacer(); Button("Cancel") { consent.cancel() }.keyboardShortcut(.cancelAction); Button("Continue") { consent.approve(app: model.app) }.keyboardShortcut(.defaultAction) }
-            }.padding(24).frame(width: 480)
-        }
+        .sheet(isPresented: Binding(get: { presentsConsentSheet }, set: { if !$0 { consent.cancel() } })) { consentSheet }
         .onDisappear { consent.cancel() }
         .task {
             engine = model.app.string("transcription.engineMode", fallback: "local"); if engine == "ask" { engine = "local" }
@@ -52,6 +60,23 @@ import VoxClipMedia
             hasCloudKey = await model.app.secrets.hasKey(for: "elevenlabs")
             if engine == "elevenlabs" && !hasCloudKey { engine = "local" }
         }
+    }
+    private var presentsConsentSheet: Bool {
+        #if DEBUG
+        if inlineConsentForAudit { return false }
+        #endif
+        return consent.pending
+    }
+    private var consentSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Transcribe with ElevenLabs?").font(.title2)
+            Text("ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent.")
+            HStack {
+                Spacer()
+                Button("Cancel") { consent.cancel() }.keyboardShortcut(.cancelAction).accessibilityIdentifier("transcription.consent.cancel").auditButtonAction("transcription.consent.cancel")
+                Button("Continue") { consent.approve(app: model.app) }.keyboardShortcut(.defaultAction).accessibilityIdentifier("transcription.consent.continue").auditButtonAction("transcription.consent.continue")
+            }
+        }.padding(24).frame(width: 480)
     }
     private func transcribe() {
         model.findTask?.cancel()
@@ -62,7 +87,17 @@ import VoxClipMedia
                 let terms = keyterms.split(whereSeparator: { $0 == "," || $0.isNewline }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 guard terms.count <= 100, !terms.contains(where: { $0.count > 50 }) else { error = "Use at most 100 keyterms, each up to 50 characters."; return }
                 let adapter: any Transcriber
-                switch engine { case "apple": adapter = AppleSpeechTranscriber(); case "elevenlabs": adapter = await ElevenLabsTranscriber(keys: model.app.secrets, settings: model.app.settings, logger: model.app.log); default: adapter = WhisperCppTranscriber(logger: model.app.log) }
+                switch engine {
+                case "apple": adapter = AppleSpeechTranscriber()
+                case "elevenlabs":
+                    if let scribeSession {
+                        guard let shared = model.app.shared else { throw VoxClipError.sharedResourcesMissing }
+                        adapter = await ElevenLabsTranscriber(keys: model.app.secrets, settings: model.app.settings, session: scribeSession, catalog: BundledModelCatalog(shared: shared), logger: model.app.log)
+                    } else {
+                        adapter = await ElevenLabsTranscriber(keys: model.app.secrets, settings: model.app.settings, logger: model.app.log)
+                    }
+                default: adapter = WhisperCppTranscriber(logger: model.app.log)
+                }
                 let local = engine == "local" ? try await model.app.modelLibrary.localModel(language: language) : nil
                 let plan = TranscriptionPlan(engine: adapter.engine, model: local?.id, language: language == "auto" ? .auto : .forced(language), options: TranscriptionOptions(diarize: speakers != "off", numSpeakers: Int(speakers), keyterms: terms))
                 model.progress = "Reading video…"; model.progressStage = .readingVideo

@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish r2 — real transcription consent actions
+
+- The window-free integration audit mounts TranscriptionSheet and the real Settings key row. A DEBUG primitive-button style records SwiftUI's actual configuration.trigger for Transcribe, the shared consent sheet's Cancel/Continue, and Settings Test; it does not substitute gate callbacks. Consent content is mounted inline only in the audit, so no window is opened. Release buttons and normal sheet presentation are unchanged.
+- An injected URLProtocol transport drives the real Scribe adapter through readiness, audio extraction, upload, mapping and transcript import. It verifies zero requests before Continue/after Cancel, unchanged Not transcribed state, exactly one upload after Continue, persisted consent after restart, and the real Settings Test account request without consent. The adapter and testSpeechKey implementation are untouched.
+- Regression evidence: bypassing the gate in the actual Transcribe button makes the new App test fail its first-use assertion; restoring production wiring passes all seven checks. This replaces the earlier direct-gate fake-upload coverage. Windows App first-use consent integration remains owed to the Windows track; native Mac sheet/focus checks remain owed to the lead.
+
 ### 2026-10-30 — sol-mac-polish r2 — event-driven gallery convergence
 
 - Lazy-grid estimates can be revised after the previous three-command correction budget is spent. Reveal now responds to every changed measured geometry, including content extent changes that release an earlier clamped scroll, coalesces identical commands, and stops on complete paint or explicit user interruption, not an elapsed number of dispatch turns. Late viewport changes revalidate completed paint without publishing every scroll frame; requests must be current and completed checks do not churn observed state.
