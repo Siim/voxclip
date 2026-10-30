@@ -27,6 +27,9 @@ public sealed partial class EditorPage : Page
     private IPreviewEngine? preview;
     private PreviewPresenter? presenter;
     private CaptionsPanel? captions;
+    private Controls.RightColumn? rightContent;
+    private RewriteSession? rewrite;
+    private long rewriteOpenRevision;
     private MediaInfo? media;
     private EditorMediaState mediaState;
     private long standInGeneration;
@@ -59,6 +62,8 @@ public sealed partial class EditorPage : Page
         Aspect.Loaded += AspectLoaded;
         SearchText.GotFocus += (_, _) => Transcript.HideSelectionFlyout();
         PreviewStandIn.SizeChanged += (_, _) => PositionStageMessage();
+        FrameRow.SizeChanged += (_, _) => { if (ready) SizeStage(); };
+        TransportRow.SizeChanged += (_, _) => { if (ready) SizeStage(); };
     }
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
     private void AspectLoaded(object sender, RoutedEventArgs args)
@@ -101,6 +106,8 @@ public sealed partial class EditorPage : Page
         pauseBreath = App.Services.Get("editing.pauseBreath", "natural");
         App.Services.SettingsChanged += EditorSettingsChanged;
         Transcript.Attach(ViewModel);
+        Transcript.RewriteRequested += (_, _) => _ = RunAsync(() => OpenRewriteAsync(false), "Rewrite");
+        Transcript.InsertWordsRequested += (_, _) => _ = RunAsync(() => OpenRewriteAsync(true), "Rewrite");
         Timeline.Attach(ViewModel);
         CaptionDrag.Attach(ViewModel);
         Transcript.SeekRequested += (_, _) => _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview");
@@ -109,13 +116,20 @@ public sealed partial class EditorPage : Page
         Transcript.PreviewCutRequested += (_, _) => _ = RunAsync(PreviewCutAsync, "Preview");
         Timeline.SeekRequested += (_, time) => _ = RunAsync(() => SeekSourceAsync(time), "Preview");
         Timeline.PlayRequested += (_, _) => _ = RunAsync(TogglePlaybackAsync, "Preview");
-        ViewModel.PropertyChanged += (_, args) => { if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport(); };
+        ViewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport();
+            if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanFindClips)) UpdateFindClips();
+        };
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         UpdateFindClips();
         Bindings.Update();
         await EditorInitialSelection.ApplyAsync(project.Export.Aspect, aspectLoaded.Task, index => Aspect.SelectedIndex = index, ct);
         captions = new(ViewModel, () => MediaPath, lifetime.Token);
-        CaptionsHost.Children.Add(new Controls.RightColumn(captions));
+        captions.FitChanged += (_, _) => SizeStage();
+        rightContent = new(captions);
+        CaptionsHost.Children.Add(rightContent);
+        SelectionChanged(this, EventArgs.Empty);
         await captions.InitializeAsync();
         InstallAccelerators();
         if (demo) media = MediaFromProject(project);
@@ -277,9 +291,13 @@ public sealed partial class EditorPage : Page
     {
         MakeClipCommand.IsEnabled = ViewModel.HasSelection;
         PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
-        RewriteCommand.Visibility = App.Services.Get("voiceLab.enabled", false) ? Visibility.Visible : Visibility.Collapsed;
-        RewriteCommand.IsEnabled = Transcript.CanRewrite;
+        UpdateRewriteCommand();
         if (ready && ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
+    }
+    private void UpdateRewriteCommand()
+    {
+        RewriteCommand.Visibility = RewriteEntryPolicy.BuildEnabled ? Visibility.Visible : Visibility.Collapsed;
+        RewriteCommand.IsEnabled = !ViewModel.Busy && !ViewModel.IsLeaving && (!App.Services.Get("voiceLab.enabled", false) || Transcript.CanRewrite);
     }
     private async Task RenderUnavailableCaptionsAsync()
     {
@@ -333,6 +351,8 @@ public sealed partial class EditorPage : Page
     private void EditorSettingsChanged(object? sender, EventArgs args)
     {
         if (disposed || ViewModel.IsLeaving) return;
+        rewriteOpenRevision++;
+        rewrite?.SettingsChanged(App.Services.Get("voiceLab.enabled", false));
         Transcript.ApplySettings();
         SelectionChanged(this, EventArgs.Empty);
         captions?.RefreshSamples();
@@ -468,7 +488,57 @@ public sealed partial class EditorPage : Page
         if (ViewModel.MakeClip() is { } id) owner.RevealClip(id);
     }
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
-    private void RewriteClicked(object sender, RoutedEventArgs args) => Transcript.RequestRewrite();
+    private async void RewriteClicked(object sender, RoutedEventArgs args)
+    {
+        if (!RewriteEntryPolicy.BuildEnabled) return;
+        await RunAsync(async () =>
+        {
+            if (!App.Services.Get("voiceLab.enabled", false))
+            {
+                var dialog = new ContentDialog { XamlRoot = XamlRoot, Title = "Turn on Voice Lab",
+                    Content = Ui.Text(RewriteEntryPolicy.EnablementCopy), PrimaryButtonText = "Turn on", CloseButtonText = "Cancel" };
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+                await App.Services.SetAsync("voiceLab.enabled", true, lifetime.Token);
+            }
+            Transcript.RequestRewrite();
+        }, "Rewrite");
+    }
+    private async Task OpenRewriteAsync(bool insertion)
+    {
+        if (!RewriteEntryPolicy.BuildEnabled || !App.Services.Get("voiceLab.enabled", false) ||
+            ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
+            (insertion ? Transcript.InsertionAfterIndex < 0 : !ViewModel.HasSelection)) return;
+        rewrite?.Dispose();
+        var opening = ++rewriteOpenRevision;
+        ViewModel.CaptionDrag.Cancel();
+        var project = ViewModel.Project;
+        var after = insertion ? Transcript.InsertionAfterIndex : (int?)null;
+        var passage = new RewriteOpening(ViewModel, after);
+        var envelope = !demo && media is not null ? await App.Services.Waveform.GetEnvelopeAsync(media, project.Media.Source.ContentKey, lifetime.Token) : null;
+        var entry = (await ProviderCatalog.ReadAsync(lifetime.Token)).FirstOrDefault(item => item.WireId == App.Services.Get("llm.connector", ""));
+        var selectedConnector = entry is null ? null : App.Services.Connector(entry.Id);
+        if (entry is not null) await ProviderCatalog.ProbeAsync(entry, selectedConnector!, lifetime.Token);
+        var connector = entry is null ? null : new RewriteConnector(selectedConnector!,
+            App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
+            entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
+        if (opening != rewriteOpenRevision || !passage.IsCurrent || disposed || ViewModel.IsLeaving ||
+            ViewModel.IsReadOnly || ViewModel.Busy || !App.Services.Get("voiceLab.enabled", false)) return;
+        rewrite = new(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
+            consent: async token => entry is not null && await ProviderCatalog.ConsentAsync(entry, XamlRoot, ConnectorConsentAction.Rewrite,
+                ViewModel.Words.Skip(passage.First).Take(passage.Last - passage.First + 1).Count(word => word.Kind == WordKind.Word),
+                selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token),
+            connectorIsCurrent: () => entry is not null && App.Services.Get("llm.connector", "") == entry.WireId &&
+                App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model);
+        var panel = new RewritePanel(rewrite);
+        panel.Closed += (_, _) =>
+        {
+            rightContent.CloseRewrite();
+            if (panel.ReturnFocusOnClose && !disposed && !ViewModel.IsLeaving) FocusTranscript();
+        };
+        SetViewerVisible(true);
+        rightContent.ShowRewrite(panel);
+        await rewrite.SetInstructionAsync("");
+    }
     private void CutSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection();
     private void RestoreSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection(true);
     private void CorrectClicked(object sender, RoutedEventArgs args) => Transcript.BeginCorrection();
@@ -498,7 +568,7 @@ public sealed partial class EditorPage : Page
                 case EditorFocusRegion.CommandBar: yield return ([CommandRow], () => FocusManager.FindFirstFocusableElement(Commands) as Control ?? ExportButton); break;
                 case EditorFocusRegion.Transcript: yield return ([TranscriptPane], () => Transcript); break;
                 case EditorFocusRegion.Viewer: yield return ([ViewerSplitter, PreviewPane, FrameRow], () => PreviewPlay); break;
-                case EditorFocusRegion.Captions: if (captions is { } panel) yield return ([CaptionsHost], () => panel.FocusTarget); break;
+                case EditorFocusRegion.Captions: if (rightContent is { } column) yield return ([CaptionsHost], () => column.FocusTarget); break;
                 case EditorFocusRegion.Timeline: yield return ([Timeline], () => Timeline.FocusTarget); break;
             }
         }
@@ -509,7 +579,10 @@ public sealed partial class EditorPage : Page
     /// <summary>Find clips needs a transcript; the pane actions carry the same reason (design §7.1).</summary>
     private void UpdateFindClips()
     {
-        FindClipsCommand.IsEnabled = ViewModel.HasTranscript;
+        FindClipsCommand.IsEnabled = ViewModel.CanFindClips;
+        FindClipsBusy.IsActive = ViewModel.LlmRuns.IsBusy;
+        FindClipsBusyHost.Visibility = ViewModel.LlmRuns.IsBusy ? Visibility.Visible : Visibility.Collapsed;
+        UpdateRewriteCommand();
         ToolTipService.SetToolTip(FindClipsCommand, ViewModel.HasTranscript ? "Find clips (Ctrl+Shift+K)" : ShellViewModel.TranscribeFirst);
     }
     /// <summary>Home pauses playback and keeps this page alive; design §2.</summary>
@@ -639,16 +712,16 @@ public sealed partial class EditorPage : Page
         Add(VirtualKey.R, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.RestoreCuts()));
         Add(VirtualKey.E, VirtualKeyModifiers.Control, () => ExportClicked(this, new()));
         Add(VirtualKey.F, VirtualKeyModifiers.Control, () => FindClicked(this, new()));
-        Add(VirtualKey.A, VirtualKeyModifiers.Control, () => { ViewModel.Select(0); ViewModel.Select(ViewModel.Words.Count - 1, true); });
+        Add(VirtualKey.A, VirtualKeyModifiers.Control, () => { ViewModel.Select(0); ViewModel.Select(ViewModel.Words.Count - 1, true); Transcript.SelectionMovedByKeyboard(reveal: false); });
         Add(VirtualKey.C, VirtualKeyModifiers.Control, () => ShareHelpers.Copy(ViewModel.SelectionText));
         Add(VirtualKey.H, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { ShowCuts.IsChecked = ShowCuts.IsChecked != true; DisplayChanged(this, new()); });
         Add((VirtualKey)187, VirtualKeyModifiers.Control, () => Transcript.Zoom(1));
         Add((VirtualKey)189, VirtualKeyModifiers.Control, () => Transcript.Zoom(-1));
         Add(VirtualKey.Number0, VirtualKeyModifiers.Control, () => Transcript.Zoom(0, true));
-        Add(VirtualKey.Left, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(-1); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
-        Add(VirtualKey.Right, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(1); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
-        Add(VirtualKey.Home, VirtualKeyModifiers.Control, () => ViewModel.Select(0));
-        Add(VirtualKey.End, VirtualKeyModifiers.Control, () => ViewModel.Select(ViewModel.Words.Count - 1));
+        Add(VirtualKey.Left, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(-1); Transcript.SelectionMovedByKeyboard(); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
+        Add(VirtualKey.Right, VirtualKeyModifiers.Control, () => { ViewModel.MoveSentence(1); Transcript.SelectionMovedByKeyboard(); _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); });
+        Add(VirtualKey.Home, VirtualKeyModifiers.Control, () => { ViewModel.Select(0); Transcript.SelectionMovedByKeyboard(); });
+        Add(VirtualKey.End, VirtualKeyModifiers.Control, () => { ViewModel.Select(ViewModel.Words.Count - 1); Transcript.SelectionMovedByKeyboard(); });
         Add(VirtualKey.K, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ShowFindClips(null));
         Add(VirtualKey.I, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { Viewer.IsChecked = Viewer.IsChecked != true; ViewerClicked(this, new()); });
         Add(VirtualKey.F1, VirtualKeyModifiers.None, () => ShortcutsClicked(this, new()));
@@ -670,9 +743,9 @@ public sealed partial class EditorPage : Page
             case VirtualKey.J: await RunAsync(() => SeekSourceAsync(Math.Max(0, ViewModel.SourceTime - 3)), "Preview"); break;
             case VirtualKey.P: await RunAsync(PreviewCutAsync, "Preview"); break;
             case VirtualKey.Back: case VirtualKey.Delete: ViewModel.CutSelection(InputState.Down(VirtualKey.Shift)); break;
-            case VirtualKey.Left: case VirtualKey.Right: ViewModel.Select((ViewModel.HasSelection ? ViewModel.SelectionEnd : 0) + (args.Key == VirtualKey.Right ? 1 : -1), InputState.Down(VirtualKey.Shift)); await RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); break;
-            case VirtualKey.Home: ViewModel.Select(0); break;
-            case VirtualKey.End: ViewModel.Select(ViewModel.Words.Count - 1); break;
+            case VirtualKey.Left: case VirtualKey.Right: ViewModel.Step(args.Key == VirtualKey.Right ? 1 : -1, InputState.Down(VirtualKey.Shift)); Transcript.SelectionMovedByKeyboard(); await RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview"); break;
+            case VirtualKey.Home: ViewModel.Select(0); Transcript.SelectionMovedByKeyboard(); break;
+            case VirtualKey.End: ViewModel.Select(ViewModel.Words.Count - 1); Transcript.SelectionMovedByKeyboard(); break;
             case VirtualKey.Enter: case VirtualKey.C: Transcript.BeginCorrection(); break;
             case VirtualKey.Escape: if (InputState.DescendsFrom(focused as DependencyObject, Transcript) && ViewModel.State?.ActiveClipId is not null) owner.ShowScope(null, keepSelection: true); else handled = false; break;
             case VirtualKey.I: ViewModel.SetClipEdgeAtCaret(true); break;
@@ -706,8 +779,9 @@ public sealed partial class EditorPage : Page
         catch (Exception exception) when (exception is not OutOfMemoryException) { return false; }
     }
     private void ViewerClicked(object sender, RoutedEventArgs args)
+        => SetViewerVisible(Viewer.IsChecked == true);
+    private void SetViewerVisible(bool visible)
     {
-        var visible = Viewer.IsChecked == true;
         viewerSqueezed = false;
         viewerForced = visible && !TranscriptFits(ActualWidth);
         ShowViewer(visible);
@@ -762,6 +836,17 @@ public sealed partial class EditorPage : Page
     {
         var oriented = media?.OrientedSize ?? MediaFromProject(ViewModel.Project).OrientedSize;
         (PreviewStage.Width, PreviewStage.Height) = EditorLayout.Stage(RightPane.ActualWidth - RightPane.BorderThickness.Left - 32, ViewModel.Project.Export.Aspect, oriented);
+        var chrome = PreviewPane.Padding.Top + PreviewPane.Padding.Bottom + PreviewPane.RowSpacing +
+            FrameRow.Margin.Top + FrameRow.Margin.Bottom + CaptionsHost.BorderThickness.Top + CaptionsHost.BorderThickness.Bottom;
+        // Prefer the full header with an 80-high stage; short columns scroll it in the existing details viewport.
+        captions?.ConstrainHeight(RightPane.ActualHeight - FrameRow.ActualHeight - TransportRow.ActualHeight - chrome - 80);
+        var maximum = EditorLayout.StageHeightBudget(RightPane.ActualHeight, FrameRow.ActualHeight,
+            TransportRow.ActualHeight, chrome, captions?.MinimumContentHeight ?? 160);
+        if (PreviewStage.Height > maximum)
+        {
+            PreviewStage.Width *= maximum / PreviewStage.Height;
+            PreviewStage.Height = maximum;
+        }
         var clip = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
         var name = EditorMediaPresentation.Accessible(mediaState, clip?.Number, ScopeHasAiSpeech());
         AutomationProperties.SetName(PreviewStage, name); AutomationProperties.SetName(PreviewImage, name);
@@ -771,7 +856,8 @@ public sealed partial class EditorPage : Page
         PreviewStateGlyphHost.Visibility = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? Visibility.Visible : Visibility.Collapsed;
         PreviewMissingStrike.Visibility = mediaState == EditorMediaState.Missing ? Visibility.Visible : Visibility.Collapsed;
         PreviewStandIn.Visibility = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var button in ((Grid)PreviewPlay.Parent).Children.OfType<Button>()) button.IsEnabled = !ViewModel.IsReadOnly;
+        if (PreviewPlay.Parent is Grid playback)
+            foreach (var button in playback.Children.OfType<Button>()) button.IsEnabled = !ViewModel.IsReadOnly;
         PositionStageMessage();
     }
     private void PositionStageMessage()
@@ -839,6 +925,7 @@ public sealed partial class EditorPage : Page
         Transcript.Detach(); Timeline.Detach(); captions?.Detach();
         FindClips.Close();
         CaptionDrag.Cancel();
+        rewrite?.Dispose();
         App.Services.SettingsChanged -= EditorSettingsChanged;
         App.Services.ExportLedger.Changed -= LedgerChanged;
         await previewChanges.WaitAsync();

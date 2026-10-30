@@ -156,8 +156,8 @@
             <SolidColorBrush x:Key="VcAccentSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
-            <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcWordCutBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="VcWordFillerBrush" Color="{ThemeResource SystemColorHotlightColor}" />
             <SolidColorBrush x:Key="VcWordLowConfidenceBrush" Color="{ThemeResource SystemColorWindowTextColor}" />

@@ -40,6 +40,13 @@ public static class ElevenLabsRegions
         return ElevenLabsRegion.Default;
     }
 
+    /// <summary>Data-residency hosts serve separate Enterprise workspaces with their own keys.</summary>
+    public static bool IsResidency(this ElevenLabsRegion region) => region is ElevenLabsRegion.Eu or ElevenLabsRegion.In or ElevenLabsRegion.Sg;
+
+    /// <summary>Appended to a 400, 401 or key error from a residency host; empty elsewhere.</summary>
+    public static string ResidencyHint(this ElevenLabsRegion region) =>
+        region.IsResidency() ? $"ElevenLabs {region.ToString().ToUpperInvariant()} residency needs a key from a data-residency workspace; most accounts use Region: Default" : "";
+
     /// <summary>The fixed HTTPS origin for display and all ElevenLabs calls; transcription §8.1.</summary>
     public static Uri BaseUri(this ElevenLabsRegion region) => new(region switch
     {

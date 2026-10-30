@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using VoxClip.App.Controls;
 using VoxClip.App.Services;
+using VoxClip.App.ViewModels;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Models;
 
@@ -18,6 +19,7 @@ public sealed partial class SettingsWindow : Window
     private readonly InfoBar notice = Ui.Notice();
     private readonly List<Func<bool>> textCommits = [];
     private CancellationTokenSource? download;
+    private int pageGeneration;
     private bool preparing;
     private int keyWrites;
     private int sensitiveActions;
@@ -56,6 +58,7 @@ public sealed partial class SettingsWindow : Window
     private async void PaneChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is not NavigationViewItem item || Body is null) return;
+        pageGeneration++;
         textCommits.Clear();
         Body.Children.Clear(); notice.IsOpen = false;
         Body.Children.Add(Ui.Text((string)item.Tag, "TitleTextBlockStyle")); Body.Children.Add(notice);
@@ -147,6 +150,7 @@ public sealed partial class SettingsWindow : Window
     }
     private async Task TranscriptionAsync()
     {
+        var generation = pageGeneration;
         var modes = new[] { "local", "elevenlabs", "ask" };
         var current = App.Services.Get("transcription.engineMode", "local");
         var engine = Ui.Choice("Engine for new imports", ["On this PC", "ElevenLabs Scribe", "Ask each time"], Math.Max(0, Array.IndexOf(modes, current)));
@@ -162,22 +166,33 @@ public sealed partial class SettingsWindow : Window
         var regions = new[] { "default", "us", "eu", "in", "sg" };
         var region = Ui.Choice("ElevenLabs region", ["Default", "US", "EU", "India", "Singapore"], Math.Max(0, Array.IndexOf(regions, App.Services.Get("transcription.elevenlabs.region", "default"))));
         region.SelectionChanged += (_, _) => Save("transcription.elevenlabs.region", regions[region.SelectedIndex]); AddSetting(region);
-        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm each take before upload.", "elevenlabs-api-key", null);
+        Body.Children.Add(Ui.Text("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.", "HelperText"));
+        await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm the first upload before audio is sent.", "elevenlabs-api-key", null);
+        if (generation != pageGeneration) return;
         Body.Children.Add(Ui.Button("Manage local models…", () => Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == "Local Models")));
         Body.Children.Add(Ui.Text("Models download only after you confirm. Local transcription runs entirely on this PC.", "HelperText"));
     }
     private async Task ProvidersAsync()
     {
+        var generation = pageGeneration;
         Body.Children.Add(Ui.Text("Keys are encrypted for your Windows account using DPAPI. Saved keys are never shown and never stored in settings or logs.", "HelperText"));
         var entries = await ProviderCatalog.ReadAsync(lifetime.Token);
+        if (generation != pageGeneration) return;
         var selected = Ui.Choice("Default connector for AI clips", ["None · manual clips still work", .. entries.Select(entry => entry.Label)]);
         selected.SelectedIndex = Math.Max(0, entries.ToList().FindIndex(entry => entry.WireId == App.Services.Get("llm.connector", "")) + 1);
         selected.SelectionChanged += (_, _) => Save("llm.connector", selected.SelectedIndex == 0 ? "" : entries[selected.SelectedIndex - 1].WireId); Body.Children.Add(selected);
+        var snap = new ToggleSwitch { Header = "Snap clip edges to sentence boundaries", IsOn = App.Services.Get("llm.clips.snapToLines", true) };
+        snap.Toggled += (_, _) => Save("llm.clips.snapToLines", snap.IsOn); Body.Children.Add(snap);
         await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs. No video is sent.", "elevenlabs-api-key", null);
-        foreach (var entry in entries) await ProviderRowAsync(entry.Label, entry.DataFlow, entry.Account, entry);
+        foreach (var entry in entries)
+        {
+            if (generation != pageGeneration) return;
+            await ProviderRowAsync(entry.Label, entry.DataFlow, entry.Account, entry);
+        }
     }
     private async Task ProviderRowAsync(string label, string dataFlow, string? account, ProviderEntry? entry)
     {
+        var generation = pageGeneration;
         var panel = Ui.Stack(12); panel.Children.Add(Ui.Text(dataFlow, "HelperText"));
         var hasKey = false;
         var keyUnreadable = false;
@@ -186,6 +201,7 @@ public sealed partial class SettingsWindow : Window
             try { hasKey = await App.Services.Keys.GetKeyAsync(account, lifetime.Token) is not null; }
             catch (Exception exception) when (exception is not OperationCanceledException) { keyUnreadable = true; hasKey = true; }
         }
+        if (generation != pageGeneration) return;
         var status = Ui.Text(keyUnreadable ? "This saved key can't be read. Forget it, then save a new key. Your media and edits are still here." : hasKey ? "Key saved securely." : account is null ? "Check detects availability; Test sends only a connection test." : "No key saved.", "HelperText");
         panel.Children.Add(status);
         var model = new TextBox { Header = "Model ID", Text = App.Services.Get("llm.model." + entry?.WireId, entry?.DefaultModel ?? "") };
@@ -231,14 +247,41 @@ public sealed partial class SettingsWindow : Window
         }
         if (entry is not null)
         {
-            panel.Children.Add(Ui.Button("Check status", () => _ = Ui.RunAsync(notice, async () => status.Text = ProviderCatalog.Status(await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token)), "Connector status")));
+            _ = RefreshStatusAsync();
+            async Task RefreshStatusAsync()
+            {
+                try
+                {
+                    var detected = await ProviderCatalog.ProbeAsync(entry, App.Services.Connector(entry.Id), lifetime.Token);
+                    if (generation == pageGeneration && !lifetime.IsCancellationRequested) status.Text = ProviderCatalog.Status(detected);
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception error) when (error is not OutOfMemoryException)
+                {
+                    if (generation == pageGeneration) status.Text = UiError.Message(error, "Connector status");
+                }
+            }
+            panel.Children.Add(Ui.Button("Check status", () => _ = Ui.RunAsync(notice, async () => status.Text = ProviderCatalog.Status(await ProviderCatalog.ProbeAsync(entry, App.Services.Connector(entry.Id), lifetime.Token)), "Connector status")));
             panel.Children.Add(Ui.Button("Test", () => RunSensitive(async () =>
             {
-                var connectorStatus = await App.Services.Connector(entry.Id).GetStatusAsync(lifetime.Token);
+                var selectedConnector = App.Services.Connector(entry.Id);
+                var connectorStatus = await ProviderCatalog.ProbeAsync(entry, selectedConnector, lifetime.Token);
                 status.Text = ProviderCatalog.Status(connectorStatus);
                 if (connectorStatus is not ConnectorStatus.Ready) return;
-                if (!await ProviderCatalog.ConsentAsync(entry, Root.XamlRoot, lifetime.Token)) return;
-                await ProviderCatalog.TestAsync(entry, model.Text.Trim(), lifetime.Token); status.Text = "Works.";
+                try
+                {
+                    var result = await ProviderCatalog.TestAsync(entry, model.Text.Trim(),
+                        token => ProviderCatalog.ConsentAsync(entry, Root.XamlRoot, ConnectorConsentAction.Test, 0, selectedConnector, connectorStatus, token), lifetime.Token);
+                    if (result is null) return;
+                    status.Text = ConnectorTestPresentation.Text(result);
+                    status.Foreground = Ui.ThemeBrush(status, result.Passed ? "VcStatusSuccessBrush" : "VcStatusWarningBrush");
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception error) when (error is not OutOfMemoryException)
+                {
+                    status.Text = ConnectorTestPresentation.Failure(error);
+                    status.Foreground = Ui.ThemeBrush(status, "VcStatusWarningBrush");
+                }
             }, "Connection test")));
         }
         else panel.Children.Add(Ui.Button("Test", () => _ = Ui.RunAsync(notice, async () =>
@@ -262,20 +305,21 @@ public sealed partial class SettingsWindow : Window
             panel.Children.Add(Ui.Text($"{model.Engine} · {model.TotalBytes / 1_000_000d:0} MB · {model.License}", "HelperText"));
             panel.Children.Add(Ui.Text(available ? "Installed and verified." : "Not installed.", "HelperText"));
             var bar = new ProgressBar { Visibility = Visibility.Collapsed }; panel.Children.Add(bar);
+            AutomationProperties.SetName(bar, (available ? "Removing " : "Downloading ") + model.Id);
             panel.Children.Add(Ui.Button(available ? "Remove" : "Download", () => RunSensitive(async () =>
             {
                 if (preparing) return;
                 if (download is not null) { Ui.Show(notice, "A model download is already running."); return; }
-                var host = model.Files.FirstOrDefault()?.Url.Host ?? model.LicenseUrl.Host;
-                if (!await Ui.ConfirmAsync(Root.XamlRoot, available ? "Remove model?" : "Download model?", available ? $"Remove {model.Id}? Your projects and source videos stay here." : $"{model.Id}\nPublisher: {host}\nDownload: {model.TotalBytes / 1_000_000d:0} MB\nLicence: {model.License}\n{model.Attribution}\n{model.LicenseUrl}", available ? "Remove" : "Download and accept licence")) return;
+                if (available && !await Ui.ConfirmAsync(Root.XamlRoot, "Remove model?", $"Remove {model.Id}? Your projects and source videos stay here.", "Remove")) return;
                 if (preparing) return;
-                download = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); bar.Visibility = Visibility.Visible;
+                download = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); bar.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
                 try
                 {
                     if (available) await App.Services.Downloads.RemoveAsync(model.Id, download.Token);
-                    else await App.Services.Downloads.InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => { bar.IsIndeterminate = value.TotalBytes is null; bar.Value = value.TotalBytes > 0 ? value.BytesReceived * 100d / value.TotalBytes.Value : 0; Ui.Show(notice, value.Stage); }), download.Token);
+                    else await App.Services.Installer(ConfirmDownloadAsync).InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => { bar.Visibility = Visibility.Visible; bar.IsIndeterminate = value.TotalBytes is null; bar.Value = value.TotalBytes > 0 ? value.BytesReceived * 100d / value.TotalBytes.Value : 0; Ui.Show(notice, ModelDownloadCopy.Progress(model, value)); }), download.Token);
                     Ui.Show(notice, available ? "Model removed." : "Model installed and verified. Reopen Local Models to refresh.");
                 }
+                catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { notice.IsOpen = false; throw; }
                 finally { download.Dispose(); download = null; bar.Visibility = Visibility.Collapsed; }
             }, "Local models")));
             panel.Children.Add(Ui.Button("Cancel download", () => download?.Cancel()));
@@ -283,6 +327,8 @@ public sealed partial class SettingsWindow : Window
             group.Items.Add(new SettingsCard { Content = panel, HorizontalContentAlignment = HorizontalAlignment.Stretch }); Body.Children.Add(group);
         }
     }
+    private Task<bool> ConfirmDownloadAsync(TranscriptionModel model, IReadOnlyList<TranscriptionModel> dependencies, CancellationToken ct) =>
+        Ui.OnUiThreadAsync(DispatcherQueue, async () => !preparing && await Ui.ConfirmDownloadAsync(Root.XamlRoot, model, dependencies, ct) && !preparing);
     private void Export()
     {
         var aspects = new[] { "source", "16:9", "9:16", "1:1" };
@@ -304,8 +350,8 @@ public sealed partial class SettingsWindow : Window
     {
         Body.Children.Add(Ui.Text("VoxClip " + AppServices.Version, "SubtitleTextBlockStyle"));
         Body.Children.Add(Ui.Text("A fast way to cut, because we already know where every word sits.\nOpen source · MIT · No telemetry."));
-        Body.Children.Add(Ui.Button("Check for updates", () => RunSensitive(async () => { if (App.Windows.FirstOrDefault() is { } window) { await window.CheckUpdatesAsync(true); Ui.Show(notice, "Update check finished. Available updates appear in the main window. Development builds do not self-update."); } }, "Updates")));
-        Body.Children.Add(Ui.Text("What leaves this device: local transcription and editing stay here. ElevenLabs receives audio only after consent. AI connectors receive transcript text only, never video or audio.", "HelperText"));
+        Body.Children.Add(Ui.Button("Check for updates", () => RunSensitive(async () => { if (App.Windows.FirstOrDefault() is { } window) { await window.CheckUpdatesAsync(true);  } }, "Updates")));
+        Body.Children.Add(Ui.Text("What leaves this device: local transcription and editing stay here. ElevenLabs receives audio only after consent. AI connectors receive transcript text only, never video or audio. Automatic update checks contact GitHub and download available updates in the background; restarting to apply an update is your choice. Model downloads contact their publishers only when you choose Download. Posting happens only when you choose to share.", "HelperText"));
         Body.Children.Add(Ui.Button("Welcome tour", () => RunSensitive(async () => { if (App.Windows.FirstOrDefault() is { } window) await window.ShowOnboardingAsync(); }, "Welcome tour")));
         Body.Children.Add(Ui.Button("Reveal logs", () => ShareHelpers.Reveal(Path.Combine(App.Services.Data.Logs, "voxclip.log"))));
         Body.Children.Add(Ui.Button("Copy diagnostics", () => _ = Ui.RunAsync(notice, async () => { var lines = await App.Services.Log.ReadRecentAsync(200, lifetime.Token); ShareHelpers.Copy($"VoxClip {AppServices.Version}\n{System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}\n" + string.Join('\n', lines)); Ui.Show(notice, "Redacted diagnostics copied. No transcript text or keys are included."); }, "Diagnostics")));

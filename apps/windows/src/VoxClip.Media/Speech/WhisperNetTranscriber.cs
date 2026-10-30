@@ -92,12 +92,14 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
         ct.ThrowIfCancellationRequested();
         SpeechCopy.ValidateIdentifiers(request.Plan);
         if (request.Plan.Engine != Engine) throw new ArgumentException("Wrong transcription engine.", nameof(request));
+        await TraceAsync("queued").ConfigureAwait(false);
         await operation.WaitAsync(ct).ConfigureAwait(false);
         var handedOff = false;
         try
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             idle.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            await TraceAsync("readiness").ConfigureAwait(false);
             var readiness = await ReadinessAsync(request.Plan, ct).ConfigureAwait(false);
             if (readiness is Readiness.UnsupportedLanguage)
                 throw request.Plan.Language is LanguageChoice.Forced chosen ? SpeechCopy.Unsupported(Engine, chosen.Code) : SpeechCopy.ChooseLanguage();
@@ -121,7 +123,11 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
 
     private async Task<RawTranscript> RunOwnedAsync(TranscriptionRequest request, IProgress<TranscriptionProgress> progress, CancellationToken ct)
     {
-        try { return await RunAsync(request, progress, ct).ConfigureAwait(false); }
+        try
+        {
+            await TraceAsync("native-slot").ConfigureAwait(false);
+            return await RunAsync(request, progress, ct).ConfigureAwait(false);
+        }
         catch (OperationCanceledException)
         {
             factory?.Dispose(); factory = null; factoryKey = null;
@@ -131,6 +137,7 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
         catch (VoxClipException) { throw; }
         catch (Exception error) when (error is not OutOfMemoryException)
         {
+            log.Write(LogLevel.Error, "transcribe", $"whispercpp failure type={error.GetType().FullName} hresult=0x{error.HResult:X8}");
             factory?.Dispose(); factory = null; factoryKey = null;
             throw new VoxClipException(VoxClipErrorCode.TranscriptionFailed, "Transcription stopped: the local speech runtime failed. Your video is still here.");
         }
@@ -151,9 +158,11 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
         var modelPath = Path.Combine(installed[model.Id].Directory, modelFile.Name);
         var reporting = new SpeechProgress<TranscriptionProgress>(progress);
         reporting.Report(new(TranscriptionStage.Preparing, 0));
+        await TraceAsync("read-audio").ConfigureAwait(false);
         var samples = await WhisperAudio.ReadAsync(request.Audio, ct).ConfigureAwait(false);
         if (samples.Length == 0) throw new VoxClipException(VoxClipErrorCode.NoSpeech, "We didn't hear any words. Check the audio track or choose the language.");
         await Task.Run(() => WhisperAudio.Normalize(samples, ct), ct).ConfigureAwait(false);
+        await TraceAsync("audio-normalized").ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         ConfigureRuntime();
         ct.ThrowIfCancellationRequested();
@@ -165,26 +174,31 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
         });
         var vadTime = Stopwatch.StartNew();
         log.Write(LogLevel.Info, "transcribe", "whispercpp stage vad");
+        await TraceAsync("vad-factory").ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         IReadOnlyList<VadSegmentData> regions;
         using (var vadFactory = WhisperVadFactory.FromPath(vadPath))
         {
+            await TraceAsync("vad-build").ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             await using var vad = vadFactory.CreateBuilder().WithUseGpu(false).WithThreads(Threads)
                 .WithThreshold(0.30f).WithMinSpeechDuration(TimeSpan.FromMilliseconds(250))
                 .WithMinSilenceDuration(TimeSpan.FromMilliseconds(2000)).WithSpeechPadding(TimeSpan.FromMilliseconds(400))
                 .WithSamplesOverlap(TimeSpan.FromMilliseconds(100)).Build();
+            await TraceAsync("vad-detect").ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             regions = await vad.DetectSpeechAsync(samples, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
         }
         vadTime.Stop();
+        await TraceAsync("vad-complete").ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         var units = WhisperAudio.MergeRegions(regions, samples.Length);
         if (units.Count == 0) throw new VoxClipException(VoxClipErrorCode.NoSpeech, "We didn't hear any words. Check the audio track or choose the language.");
         var dtw = request.Plan.Options.Dtw;
         var loadTime = Stopwatch.StartNew();
         log.Write(LogLevel.Info, "transcribe", "whispercpp stage model-load");
+        await TraceAsync("model-load").ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         var contextKey = modelPath + ":" + modelFile.Sha256 + ":" + dtw;
         if (factoryKey != contextKey)
@@ -199,6 +213,7 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
         }
         ct.ThrowIfCancellationRequested();
         loadTime.Stop();
+        await TraceAsync("model-ready").ConfigureAwait(false);
         log.Write(LogLevel.Info, "transcribe", $"whispercpp model {model.Id}; runtime {RuntimeOptions.LoadedLibrary}; samples {samples.Length}");
         var detectionTime = new Stopwatch();
         return await WithRoutedLanguageAsync(request.Plan, model.ForcedLanguage, async () =>
@@ -240,6 +255,7 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
                 builder.WithPrompt(prompt.GetString()!).WithCarryInitialPrompt();
             ct.ThrowIfCancellationRequested();
             loadTime.Start();
+            await TraceAsync("processor-build").ConfigureAwait(false);
             await using var processor = builder.Build();
             loadTime.Stop();
             ct.ThrowIfCancellationRequested();
@@ -254,8 +270,11 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
                 ct.ThrowIfCancellationRequested();
                 currentLength = unit.End - unit.Start;
                 await foreach (var segment in processor.ProcessAsync(samples.AsMemory(unit.Start, currentLength), ct).ConfigureAwait(false))
+                {
+                    if (group == 0) await TraceAsync("first-segment").ConfigureAwait(false);
                     tokens.AddRange(WhisperTokens.Map(segment, unit.Start / 16000.0, unit.End / 16000.0, group++,
                         dtw, metadata.GetProperty("multilingual").GetBoolean(), log, () => dtwTokens++));
+                }
                 finished += currentLength;
             }
             ct.ThrowIfCancellationRequested();
@@ -296,6 +315,11 @@ public sealed class WhisperNetTranscriber : ITranscriber, IAsyncDisposable
     }
 
     private static int Threads => Math.Min(8, Math.Max(2, Environment.ProcessorCount / 2));
+    private async Task TraceAsync(string stage)
+    {
+        log.Write(LogLevel.Info, "transcribe", $"whispercpp stage={stage}");
+        await log.FlushAsync(CancellationToken.None).ConfigureAwait(false);
+    }
     internal static string RequireDetectedLanguage(string? language, double probability) =>
         !string.IsNullOrWhiteSpace(language) && probability >= 0.5 ? language : throw SpeechCopy.ChooseLanguage();
     private static bool IsDetectionModel(TranscriptionModel model) => model.Id.StartsWith("whisper-large-v3-turbo-", StringComparison.Ordinal) &&

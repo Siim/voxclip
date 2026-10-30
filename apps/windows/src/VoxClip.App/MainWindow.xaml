@@ -62,7 +62,7 @@
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                             <!-- Meta (design §3.4): only the duration is Cascadia Mono; the status is UI text. -->
-                            <StackPanel Orientation="Horizontal" Spacing="4"><ProgressRing Width="12" Height="12" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsExporting, Mode=OneWay}" Visibility="{x:Bind IsExporting, Mode=OneWay}"/><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcTextSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}"/><Run Text="{x:Bind MetaStatus, Mode=OneWay}"/></TextBlock></StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="4"><ProgressRing Width="12" Height="12" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsExporting, Mode=OneWay}" Visibility="{x:Bind IsExporting, Mode=OneWay}" AutomationProperties.Name="Exporting"/><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcTextSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}"/><Run Text="{x:Bind MetaStatus, Mode=OneWay}"/></TextBlock></StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind HasExportDetail, Mode=OneWay}"><TextBlock Text="{x:Bind ExportDetail, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource VcStatusWarningBrush}"/><HyperlinkButton Content="Retry" Tag="{x:Bind ClipId}" FontSize="11" Padding="0" Click="RetryExportClicked" Tapped="RowButtonTapped" Visibility="{x:Bind ShowsRetry, Mode=OneWay}"/></StackPanel>
                         </StackPanel>
                         <HyperlinkButton Grid.Column="2" Content="Cancel" Height="32" Padding="6,0" VerticalAlignment="Center" Click="CancelTakeTranscriptionClicked" Tapped="RowButtonTapped"
@@ -101,7 +101,7 @@
                         </Grid>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-                            <StackPanel Orientation="Horizontal" Spacing="4"><ProgressRing Width="12" Height="12" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsExporting, Mode=OneWay}" Visibility="{x:Bind IsExporting, Mode=OneWay}"/><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcTextSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}"/><Run Text="{x:Bind MetaStatus, Mode=OneWay}"/></TextBlock></StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="4"><ProgressRing Width="12" Height="12" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsExporting, Mode=OneWay}" Visibility="{x:Bind IsExporting, Mode=OneWay}" AutomationProperties.Name="Exporting"/><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcTextSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}"/><Run Text="{x:Bind MetaStatus, Mode=OneWay}"/></TextBlock></StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind HasExportDetail, Mode=OneWay}"><TextBlock Text="{x:Bind ExportDetail, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource VcStatusWarningBrush}"/><HyperlinkButton Content="Retry" Tag="{x:Bind ClipId}" FontSize="11" Padding="0" Click="RetryExportClicked" Tapped="RowButtonTapped" Visibility="{x:Bind ShowsRetry, Mode=OneWay}"/></StackPanel>
                         </StackPanel>
                     </Grid>
@@ -164,7 +164,7 @@
                 <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <ProgressRing Width="16" Height="16" IsActive="True" VerticalAlignment="Center"/>
+                        <ProgressRing Width="16" Height="16" IsActive="True" VerticalAlignment="Center" AutomationProperties.Name="Finding clips"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Title, Mode=OneWay}" Foreground="{ThemeResource TextFillColorPrimaryBrush}" FontWeight="Normal"/>
                             <TextBlock Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="Normal" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
@@ -186,7 +186,7 @@
             <DataTemplate x:Key="CalloutRow" x:DataType="vm:SidebarRow">
                 <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <InfoBar IsOpen="True" Severity="Informational" Title="{x:Bind Title, Mode=OneWay}" Message="{x:Bind Detail, Mode=OneWay}" CloseButtonClick="CalloutClosed">
-                        <InfoBar.ActionButton><Button Content="{x:Bind Action, Mode=OneWay}" Click="CalloutActionClicked" Visibility="{x:Bind HasAction, Mode=OneWay}"/></InfoBar.ActionButton>
+                        <InfoBar.ActionButton><Button Content="{x:Bind Action, Mode=OneWay}" Click="CalloutActionClicked" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" Visibility="{x:Bind HasAction, Mode=OneWay}"/></InfoBar.ActionButton>
                     </InfoBar>
                 </NavigationViewItemHeader>
             </DataTemplate>
@@ -194,10 +194,11 @@
             <DataTemplate x:Key="ActionRow" x:DataType="vm:SidebarRow">
                 <NavigationViewItem SelectsOnInvoked="False" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" AutomationProperties.AcceleratorKey="{x:Bind Detail, Mode=OneWay}"
                     AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}">
-                    <Grid ColumnSpacing="8">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-                        <TextBlock Grid.Column="1" Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <ProgressRing Width="16" Height="16" Margin="0,0,8,0" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsLlmBusy, Mode=OneWay}" Visibility="{x:Bind IsLlmBusy, Mode=OneWay}" AutomationProperties.Name="Finish the current task first."/>
+                        <TextBlock Grid.Column="1" Margin="0,0,8,0" Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                        <TextBlock Grid.Column="2" Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
                     </Grid>
                     <NavigationViewItem.Icon><FontIcon Glyph="{x:Bind controls:SidebarItems.ActionGlyph(Key)}"/></NavigationViewItem.Icon>
                 </NavigationViewItem>

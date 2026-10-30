@@ -155,7 +155,7 @@ public sealed partial class HomePage : Page
     }
     /// <summary>The AI callout (delta §7): shown only when it gives a next step, hidden when the connector is ready. One
     /// check runs at a time: a newer one cancels it, hiding Home cancels it, and only the newest result is shown.</summary>
-    private async Task RefreshAiAsync()
+    private async Task RefreshAiAsync(bool detect = false)
     {
         aiCheck?.Cancel();
         using var check = CancellationTokenSource.CreateLinkedTokenSource(loads.Token);
@@ -166,7 +166,7 @@ public sealed partial class HomePage : Page
         aiCheckedAt = DateTime.UtcNow;
         try
         {
-            var next = await CheckAiAsync(selected, check.Token);
+            var next = await CheckAiAsync(selected, detect, check.Token);
             if (aiCheck != check) return;
             callout = next;
             AiBar.IsOpen = next is not null;
@@ -180,7 +180,7 @@ public sealed partial class HomePage : Page
     }
     private static string ConnectorSettings(string selected) =>
         HomeViewModel.ConnectorSettings(selected, key => App.Services.Settings.Values.TryGetValue(key, out var value) ? value.GetRawText() : null);
-    private static async Task<AiCallout?> CheckAiAsync(string selected, CancellationToken ct)
+    private static async Task<AiCallout?> CheckAiAsync(string selected, bool detect, CancellationToken ct)
     {
         try
         {
@@ -188,7 +188,7 @@ public sealed partial class HomePage : Page
             ConnectorStatus? status = null;
             if (entry is not null)
             {
-                try { status = await App.Services.Connector(entry.Id).GetStatusAsync(ct); }
+                try { status = detect ? await ProviderCatalog.ProbeAsync(entry, App.Services.Connector(entry.Id), ct) : ProviderCatalog.LastStatus(entry); }
                 catch (Exception exception) when (exception is not OperationCanceledException) { status = new ConnectorStatus.Unavailable(exception.GetType().Name); }
             }
             return HomeViewModel.Callout(entry?.ShortName, entry?.Group, status);
@@ -201,7 +201,7 @@ public sealed partial class HomePage : Page
     }
     private async void AiActionClicked(object sender, RoutedEventArgs args)
     {
-        if (callout?.Action == "Check again") await RefreshAiAsync();
+        if (callout?.Action == "Check again") await RefreshAiAsync(true);
         else App.OpenSettings("Providers & Keys");
     }
     private void GridSizeChanged(object sender, SizeChangedEventArgs args)
@@ -244,9 +244,13 @@ public sealed partial class HomePage : Page
     {
         if (window is not null && sender is FrameworkElement { Tag: string path }) await window.LocateProjectAsync(path);
     }
+    /// <summary>Cancel hides itself once the transcription stops, so focus that is on it moves to its tile first.</summary>
     private void CancelTranscriptionClicked(object sender, RoutedEventArgs args)
     {
-        if (sender is FrameworkElement { Tag: string path }) TranscriptionActivity.Cancel(path);
+        if (sender is not FrameworkElement { Tag: string path } link) return;
+        if (link is Control focused && focused.FocusState != FocusState.Unfocused && link.DataContext is { } item && RecentGrid.ContainerFromItem(item) is Control tile)
+            tile.Focus(focused.FocusState == FocusState.Keyboard ? FocusState.Keyboard : FocusState.Programmatic);
+        TranscriptionActivity.Cancel(path);
     }
     private async void ImportClicked(object sender, RoutedEventArgs args) { if (window is not null) await window.ChooseAsync(false); }
     private async void OpenClicked(object sender, RoutedEventArgs args) { if (window is not null) await window.ChooseAsync(true); }

@@ -56,6 +56,24 @@ internal static class CaptionFineTune
         return project.Captions with { PositionByAspect = positions };
     }
     internal static bool Edited(Project project) => Patch(project.Captions).Count > 0 || StoredPosition(project) is not null;
+    /// <summary>What Fine tune's controls show for a project: the Size, Case, Words on screen and Position choices, Keep
+    /// punctuation, and the size scale and stored position its tooltip gives.</summary>
+    internal sealed record FineTuneValues(double Scale, int Size, int Case, int Words, bool Punctuation, CaptionPosition? Stored)
+    {
+        internal int Position => Stored is { Y: < 0.35 } ? 0 : Stored is { Y: < 0.65 } ? 1 : 2;
+    }
+    internal static FineTuneValues Values(CaptionStyle style, Project project)
+    {
+        var patch = Patch(project.Captions);
+        var scale = patch["font"]?["sizeScale"]?.GetValue<double>() ?? 1;
+        var upper = patch["text"]?["transform"]?.GetValue<string>() is { } transform ? transform == "uppercase" : style.Text.Transform == CaptionTextTransformValue.Uppercase;
+        var words = patch["layout"]?["maxWords"]?.GetValue<int>();
+        var punctuation = patch["text"]?["punctuation"]?.GetValue<string>() is { } keep ? keep == "keep" : style.Text.Punctuation == CaptionTextPunctuationValue.Keep;
+        return new(scale, scale < 0.9 ? 0 : scale < 1.1 ? 1 : scale < 1.3 ? 2 : 3, upper ? 1 : 0, words == 1 ? 0 : words >= 16 ? 2 : 1, punctuation, StoredPosition(project));
+    }
+    /// <summary>What Fine tune's controls are built from. Only another style or a read-only change builds them again; any
+    /// other change updates them in place, so the control with keyboard focus survives the change it made.</summary>
+    internal static string Shape(Project project, bool readOnly) => project.Captions.StyleId + "|" + readOnly;
     internal static string Summary(CaptionStyle style, Project project)
     {
         var patch = Patch(project.Captions);

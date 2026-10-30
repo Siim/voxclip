@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
@@ -17,11 +18,13 @@ public sealed class TimelineView : UserControl
 {
     private const double TrackTop = TimelineLayout.TrackTop;
     private const double TrackHeight = 30;
-    private readonly Canvas canvas = new() { Height = 60, IsHitTestVisible = false };
+    private readonly Canvas canvas = new() { Height = 60, IsHitTestVisible = false, HighContrastAdjustment = ElementHighContrastAdjustment.None };
     private readonly Canvas geometryBand = new() { Height = 60, IsHitTestVisible = false };
     private readonly Rectangle trackBed = new() { Height = TrackHeight, RadiusX = 6, RadiusY = 6 };
     private readonly CompositeTransform viewportTransform = new();
     private readonly CompositeTransform bracketTransform = new();
+    private readonly TranslateTransform playheadTransform = new();
+    private readonly TranslateTransform headTransform = new();
     private readonly Rectangle leftDim = new() { Height = TrackHeight };
     private readonly Rectangle rightDim = new() { Height = TrackHeight };
     private readonly TimelineScene scene = new();
@@ -61,7 +64,11 @@ public sealed class TimelineView : UserControl
     private string? hoverWord;
     public event EventHandler<double>? SeekRequested;
     public event EventHandler? PlayRequested;
-    private bool Edited => mode.SelectedIndex == 0;
+    private bool edited;
+    private bool Edited => edited;
+    private double frameWidth;
+    private string transportLength = "";
+    private bool? transportPlaying;
 
     public TimelineView()
     {
@@ -77,6 +84,10 @@ public sealed class TimelineView : UserControl
         canvas.Children.Add(leftDim); canvas.Children.Add(rightDim);
         Canvas.SetTop(leftDim, TrackTop); Canvas.SetTop(rightDim, TrackTop);
         canvas.Children.Add(playhead); canvas.Children.Add(head);
+        playhead.RenderTransform = playheadTransform;
+        head.RenderTransform = headTransform;
+        Canvas.SetTop(playhead, TrackTop - 1);
+        Canvas.SetTop(head, TrackTop - 7);
         IsTabStop = false;
         var layout = new Grid { Height = 72, ColumnSpacing = 16, Padding = new Thickness(16, 0, 16, 0) };
         layout.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
@@ -86,7 +97,7 @@ public sealed class TimelineView : UserControl
         mode.Items.Add(new CommunityToolkit.WinUI.Controls.SegmentedItem { Content = "Source" });
         mode.SelectedIndex = 1;
         AutomationProperties.SetName(mode, "Timeline time");
-        mode.SelectionChanged += (_, _) => Rebuild(true);
+        mode.SelectionChanged += (_, _) => { edited = mode.SelectedIndex == 0; Rebuild(true); };
         play = new Button { Width = 32, Height = 32, Padding = new Thickness(0), CornerRadius = new(16), Content = playGlyph };
         AutomationProperties.SetName(play, "Play");
         AutomationProperties.SetAcceleratorKey(play, "Space");
@@ -135,10 +146,29 @@ public sealed class TimelineView : UserControl
     internal int DebugBuildVersion => scene.BuildVersion;
     internal int DebugDrawingElementCount => 1 + canvas.Children.Count + geometryBand.Children.Count + TimelineRetainedPool<object>.Badges * 2;
     internal void DebugMoveViewport(TimelineWindow window) { view = window; UpdateViewport(); }
+    internal void DebugFrame(TimelineWindow window, double pointer, double source, bool trim)
+    {
+        view = window;
+        trimming = trim;
+        trimId = viewport.ActiveClip?.Id;
+        trimStart = true;
+        UpdateViewport(pointer, source);
+        trimming = false;
+    }
+    internal void DebugCreateRangePeers()
+    {
+        AutomationProperties.SetAutomationId(slider, "NativeProbe.Playhead");
+        _ = FrameworkElementAutomationPeer.CreatePeerForElement(slider);
+        _ = FrameworkElementAutomationPeer.CreatePeerForElement(startHandle);
+        _ = FrameworkElementAutomationPeer.CreatePeerForElement(endHandle);
+    }
 #endif
     internal void SetTransport(string elapsedTime, string length, bool playing)
     {
-        elapsed.Text = elapsedTime; total.Text = " / " + length;
+        if (elapsed.Text != elapsedTime) elapsed.Text = elapsedTime;
+        if (transportLength != length) { transportLength = length; total.Text = " / " + length; }
+        if (transportPlaying == playing) return;
+        transportPlaying = playing;
         playGlyph.Symbol = playing ? Symbol.Pause : Symbol.Play;
         AutomationProperties.SetName(play, PlaybackPresentation.Name(playing));
         ToolTipService.SetToolTip(play, PlaybackPresentation.Hint(playing));
@@ -209,7 +239,9 @@ public sealed class TimelineView : UserControl
     }
     public void Position(double source)
     {
-        UpdateViewport(source: source);
+        if (model is null || plan is null) return;
+        frame.ComputePlayhead(viewport, plan, view, frameWidth, source, Edited);
+        MovePlayhead();
     }
 
     private TimelineRange ReadPlayhead()
@@ -365,7 +397,8 @@ public sealed class TimelineView : UserControl
     private void UpdateViewport(double? pointer = null, double? source = null)
     {
         if (model is null || plan is null) return;
-        frame.Compute(viewport, scene, plan, rendered, view, track.ActualWidth, source ?? model.SourceTime, Edited,
+        frameWidth = track.ActualWidth;
+        frame.Compute(viewport, scene, plan, rendered, view, frameWidth, source ?? model.SourceTime, Edited,
             trimming, trimStart, trimId, trimFirst, trimLast, !model.IsReadOnly && !model.Busy, pointer);
         trimFirst = frame.First; trimLast = frame.Last;
         retained.Move(view);
@@ -387,8 +420,12 @@ public sealed class TimelineView : UserControl
             Canvas.SetTop(startHandle, TrackTop - 3); Canvas.SetTop(endHandle, TrackTop - 3);
             startHandle.Refresh(); endHandle.Refresh();
         }
-        Canvas.SetLeft(playhead, frame.PlayheadLeft); Canvas.SetTop(playhead, TrackTop - 1);
-        Canvas.SetLeft(head, frame.HeadLeft); Canvas.SetTop(head, TrackTop - 7);
+        MovePlayhead();
+    }
+    private void MovePlayhead()
+    {
+        playheadTransform.X = frame.PlayheadLeft;
+        headTransform.X = frame.HeadLeft;
         slider.Refresh();
     }
     private static PathGeometry Geometry(IEnumerable<TimelineMark> marks, bool lines, bool rounded = false)

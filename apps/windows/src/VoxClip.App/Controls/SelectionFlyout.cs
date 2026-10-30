@@ -20,11 +20,14 @@ internal sealed class SelectionFlyout
     private readonly AppBarSeparator separator = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(150) };
     private Action? pending;
+    private bool restoreFocus;
+    private readonly KeyEventHandler escape;
     internal bool IsOpen => flyout.IsOpen;
 
     internal SelectionFlyout(FrameworkElement owner, Action makeClip, Action cutWords, Action restoreWords, Action rewriteWords)
     {
         this.owner = owner;
+        escape = Escape;
         make = Button("Make clip", Symbol.Add, makeClip, true);
         cut = Button("Cut", Symbol.Cut, cutWords);
         restore = Button("Restore", Symbol.Undo, restoreWords);
@@ -43,8 +46,31 @@ internal sealed class SelectionFlyout
             ApplyEffects();
             if (flyout.ShowMode == FlyoutShowMode.Standard) make.Focus(FocusState.Keyboard);
         };
+        flyout.Closing += (_, _) =>
+        {
+            timer.Stop(); pending = null;
+            restoreFocus |= InputState.Down(VirtualKey.Escape);
+        };
+        flyout.Closed += (_, _) =>
+        {
+            if (!restoreFocus) return;
+            restoreFocus = false;
+            RestoreTranscriptFocus();
+            owner.DispatcherQueue.TryEnqueue(() =>
+            {
+                RestoreTranscriptFocus();
+            });
+        };
         owner.Loaded += (_, _) => Ui.EffectsChanged += EffectsChanged;
         owner.Unloaded += (_, _) => Ui.EffectsChanged -= EffectsChanged;
+    }
+
+    private void RestoreTranscriptFocus()
+    {
+        if (!owner.IsLoaded || owner.XamlRoot is null || flyout.IsOpen) return;
+        var focused = FocusManager.GetFocusedElement(owner.XamlRoot);
+        if (focused is null || ReferenceEquals(focused, owner) || ReferenceEquals(focused, make) || ReferenceEquals(focused, cut) ||
+            ReferenceEquals(focused, restore) || ReferenceEquals(focused, rewrite)) owner.Focus(FocusState.Keyboard);
     }
 
     private void EffectsChanged(object? sender, EventArgs args) => owner.DispatcherQueue.TryEnqueue(ApplyEffects);
@@ -61,7 +87,8 @@ internal sealed class SelectionFlyout
                 bar.Background = opaque ? surface : new AcrylicBrush { TintColor = surface.Color, TintOpacity = 0.85, FallbackColor = surface.Color };
                 bar.BorderBrush = Ui.ThemeBrush(owner, "VcLineStrongBrush");
                 bar.BorderThickness = new(opaque ? 1 : 0);
-                bar.KeyDown -= Escape; bar.KeyDown += Escape;
+                bar.RemoveHandler(UIElement.KeyDownEvent, escape);
+                bar.AddHandler(UIElement.KeyDownEvent, escape, true);
             }
     }
 
@@ -85,12 +112,14 @@ internal sealed class SelectionFlyout
     internal void Hide(bool focus = false)
     {
         timer.Stop(); pending = null;
+        restoreFocus |= focus;
         flyout.Hide();
-        if (focus) owner.Focus(FocusState.Keyboard);
+        if (focus && owner.IsLoaded) owner.Focus(FocusState.Keyboard);
     }
 
     internal void Show(Rect selection, bool below, bool keyboard, bool editable, bool canRestore, bool voiceLab, bool rewriteAvailable, string? existingClip)
     {
+        restoreFocus = false;
         flyout.AreOpenCloseAnimationsEnabled = Ui.EffectPolicy.Animations;
         ToolTipService.SetToolTip(make, existingClip ?? "Make clip (Ctrl+K)");
         cut.IsEnabled = make.IsEnabled = editable;

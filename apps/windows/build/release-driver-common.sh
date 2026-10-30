@@ -21,7 +21,7 @@ try:
     metadata_patterns = {
         "AZURE_SIGNING_ACCOUNT": r"[A-Za-z0-9][A-Za-z0-9-]{1,63}",
         "AZURE_SIGNING_PROFILE": r"[A-Za-z0-9][A-Za-z0-9-]{1,63}",
-        "AZURE_SIGNING_ENDPOINT": r"https://[a-z]{2,8}\.codesigning\.azure\.net",
+        "AZURE_SIGNING_ENDPOINT": r"https://[a-z]{2,8}[0-9]?\.codesigning\.azure\.net",
     }
     def unquote(value):
         if len(value) >= 2 and value[0] in "\x27\x22" and value[-1] == value[0]:

@@ -29,9 +29,9 @@ internal sealed class TimelineRangeControl : ContentControl
     {
         var range = Read();
         if (previous == range) return;
-        if (previous?.Text != range.Text) AutomationProperties.SetHelpText(this, range.Text);
-        if (FrameworkElementAutomationPeer.FromElement(this) is { } peer)
+        if (AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) && FrameworkElementAutomationPeer.FromElement(this) is { } peer)
         {
+            if (previous?.Text != range.Text) peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.HelpTextProperty, previous?.Text ?? "", range.Text);
             if (range.Value != reported) peer.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.ValueProperty, double.IsNaN(reported) ? range.Value : reported, range.Value);
             if (previous is { } old)
             {
@@ -48,6 +48,7 @@ internal sealed class TimelineRangeControl : ContentControl
     {
         protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Slider;
         protected override string GetClassNameCore() => "VoxClipTimelineRange";
+        protected override string GetHelpTextCore() => owner.Read().Text;
         protected override object GetPatternCore(PatternInterface pattern) => pattern is PatternInterface.RangeValue or PatternInterface.Value ? this : base.GetPatternCore(pattern);
         public bool IsReadOnly => !owner.IsEnabled;
         public double LargeChange => Math.Max(SmallChange, (Maximum - Minimum) / 10);

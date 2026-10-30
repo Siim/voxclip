@@ -357,7 +357,7 @@ internal static class CliOperations
             case "list":
                 return new() { ["models"] = Node((await catalog.GetModelsAsync(ct).ConfigureAwait(false)).ToArray(), CliDataJson.Default.TranscriptionModelArray),
                     ["installed"] = Node((await store.ListInstalledAsync(ct).ConfigureAwait(false)).ToArray(), CliDataJson.Default.InstalledModelArray) };
-            case "install": return new() { ["model"] = Node(await store.InstallAsync(id!, Progress<ModelDownloadProgress>(arguments,
+            case "install": return new() { ["model"] = Node(await ServicesMergeAdapter.ModelInstaller(arguments.GetValue<bool>("--quiet") ? null : Console.Error).InstallAsync(id!, Progress<ModelDownloadProgress>(arguments,
                 value => (value.Stage, value.TotalBytes is > 0 ? value.BytesReceived / (double)value.TotalBytes : null)), ct).ConfigureAwait(false), CliDataJson.Default.InstalledModel) };
             case "verify":
                 if (!await store.VerifyAsync(id!, null, ct).ConfigureAwait(false)) throw new VoxClipException(VoxClipErrorCode.ModelChecksumMismatch, "The model did not match its checksum. Install it again.");

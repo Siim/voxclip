@@ -1142,9 +1142,12 @@ A catalogue update that changes a hash marks the old install "Update available".
 2. **Free space.** The volume needs `remaining bytes × 1.1 + 1 GiB` free. Check with `volumeAvailableCapacityForImportantUsageKey` on macOS and `DriveInfo.AvailableFreeSpace` on Windows. If there is not enough, fail with `diskFull`. macOS model-store unit tests inject capacity independently of the host's free space; production initializers keep the real volume lookup.
 3. **Confirm.** Before the first byte of each model, show a confirmation, once per model: a sheet on the window on macOS, a `ContentDialog` on Windows.
    - Title: "Download {displayName} from huggingface.co?"
-   - Body: "This model is published by {publisher}, not by VoxClip. It downloads from Hugging Face ({size}) and runs on this {Mac/PC}. License: {license}. By downloading you accept the publisher's terms." Then a blank line and `{attribution}`.
+   - Body: "This model is published by {publisher}, not by VoxClip. It downloads from the publisher ({size}) and runs on this {Mac/PC}. Licence: {license}. By downloading you accept the publisher's terms." Then a blank line and `{attribution}`.
    - Buttons: [Download] (default), [Cancel], [Open source page] (opens `sourcePage`).
    - Required files such as Silero VAD are counted in the same sheet and size. They are never confirmed separately.
+   - The Windows welcome tour is itself a `ContentDialog`, and a second one cannot open over it. There the title and body appear inline, and the tour's licence checkbox is the confirmation. It covers only the model and size it showed.
+   - `voxclip-cli models install <id>` names the model, so running the command is the confirmation. The CLI writes the title and body to stderr first (nothing with `--quiet`).
+   - A model store built without a confirmation fails with an error before any request. It never reports a missing confirmation as a silent cancel.
 4. **Fetch each file.**
    - If the final file already exists with the right size and sha256, skip it.
    - If a `.partial` exists for the same URL and sha256, resume it with `Range: bytes=<partialSize>-`. A 206 appends; a 200 truncates the partial and restarts.
@@ -1277,7 +1280,7 @@ Additions in the architecture's CLI table (§9.2), used by section 16:
 
 - `--raw-out <file>` writes the cache entry (14.2).
 - `--no-dtw` and `--diarize` set the matching options.
-- `voxclip-cli models list|install <id>|verify <id>|remove <id>` manages models headlessly, under `VOXCLIP_DATA_DIR`.
+- `voxclip-cli models list|install <id>|verify <id>|remove <id>` manages models headlessly, under `VOXCLIP_DATA_DIR`. `install` is its own download confirmation (12.3).
 
 ---
 

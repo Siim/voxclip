@@ -448,7 +448,7 @@ Word states (each shown by more than colour):
 | State | Treatment |
 |---|---|
 | Normal | `text.primary` |
-| Playing | `word.playingBackground` with `word.playingForeground` on both platforms: ink #2C2E35 with paper #FAF9F6 text (light), soft paper #D2D1CC with ink #141517 text (dark). Neither platform uses `AccentFillColorDefaultBrush` for it. Radius 4, 2 inline padding. Playing wins when a word is also selected |
+| Playing | `word.playingBackground` with `word.playingForeground` on both platforms: ink #2C2E35 with paper #FAF9F6 text (light), soft paper #D2D1CC with ink #141517 text (dark). Neither platform uses `AccentFillColorDefaultBrush` for it. Radius 4, 2 inline padding. Playing wins when a word is also selected. Windows High Contrast inverts body text: WindowText with Window text |
 | Selected | macOS: `NSColor.selectedTextBackgroundColor`, Ink-derived #C0C1C3 light, #5F6061 dark with the Multicolor accent. Windows: `selection.transcript` (the same values) with `text.primary`; High Contrast uses Highlight with HighlightText. A selection never looks like the playing word |
 | Cut | `word.cut` text with a 1.5 strike in `cut.stroke` on both platforms. The word stays readable and restorable. With "Hide cut words" (⇧⌘H / Ctrl+Shift+H) a run of cut words still collapses to an SF Mono or Cascadia Mono token `⋯ 5 cut` on `pause.background`, radius 6 |
 | Pause (detected gap), uncut | inline token `‖ 1.8s` in SF Mono 13 or Cascadia Mono 12, `text.muted`, **no fill** (8.04:1 dark, 6.77:1 light). Shown for gaps ≥ the project's `pauseThresholdSeconds` (editing spec: 0.8 s with decoded audio, else 1.0 s, set at import; not a setting in 0.1.0) |
@@ -828,6 +828,7 @@ These overlays are the one exception to §5.1's rule of no overlay on the stage.
 
 - the stage and cards stay black: they are media, and media is never recoloured (§14);
 - chips use `SystemColorWindowColor` with `SystemColorWindowTextColor` text, glyph and 1 px border;
+- the stage message cluster (§5.4.6) sits on the same plate, radius 4 and padded 12 by 8 on Windows, and its file name drops the 66% opacity;
 - the progress line uses `SystemColorWindowTextColor` on `SystemColorWindowColor` (a 4 px track).
 
 **Contrast.**
@@ -913,11 +914,11 @@ On macOS each segmented control's label leads it on one line; when they don't fi
 
 There is no separate Fine Tune row and no "Off" tile.
 
-The gallery scrolls inside the column and clips at its own viewport, which always ends above the column's bottom padding, so every style can be scrolled into view at any window height. The Captions header and caption errors stay fixed; Fine Tune scrolls with the gallery. Neither automatic reveal nor manual scrolling may hide a caption error.
+The gallery scrolls inside the column and clips at its own viewport, which always ends above the column's bottom padding, so every style can be scrolled into view at any window height. The Captions header and caption errors stay fixed; Fine Tune scrolls with the gallery. Neither automatic reveal nor manual scrolling may hide a caption error. On macOS the small, fixed catalogue uses eager two-column rows, so every row is laid out before a selection is revealed.
 
 **Gallery.**
 
-- **Control:** macOS `LazyVGrid` of `Button`s with `.accessibilityRepresentation` as a `Picker` named "Caption style". Windows `GridView` with `SelectionMode="Single"` over a grouped `CollectionViewSource`.
+- **Control:** macOS eager two-tile `HStack` rows in a `VStack`, with `Button`s and `.accessibilityRepresentation` as a `Picker` named "Caption style". Windows `GridView` with `SelectionMode="Single"` over a grouped `CollectionViewSource`.
 - **Layout:** two columns with an 8 gap. Tile width is (inner width − 8) / 2; tile height is round(width × 0.45). That gives 160×72 at a 360 column, 140×63 at 320 and 173×78 at 388. Radius 10. The name sits under the tile with a 4 gap, and rows are 10 apart.
 - **Groups**, each with a section header (11/600 `text.secondary`), from the style's tags. A style goes to the first group it matches; within a group, styles sort by `order`:
 

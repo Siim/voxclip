@@ -62,9 +62,9 @@ extension AppModel {
                 LanguagePicker(app: app)
                 ProviderKeyRow(provider: "elevenlabs", label: "ElevenLabs Scribe", app: app)
             } footer: { Text("Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm before the first upload.") }
-            Section("Advanced") {
+            Section {
                 Picker("Region", selection: app.stringBinding("transcription.elevenlabs.region", fallback: "default")) { Text("Default").tag("default"); Text("EU residency").tag("eu"); Text("US").tag("us"); Text("India").tag("in"); Text("Singapore").tag("sg") }
-            }
+            } header: { Text("Advanced") } footer: { Text("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.") }
             LocalModelRows(app: app)
             AppleSpeechAssetRows(app: app)
             Section {
@@ -271,16 +271,24 @@ extension AppModel {
 @MainActor func testSpeechKey(app: AppModel) async -> String {
     do {
         guard let key = try await app.secrets.key(for: "elevenlabs") else { return "Add your ElevenLabs key in Settings to use it." }
-        let hosts = ["default": "api.elevenlabs.io", "us": "api.us.elevenlabs.io", "eu": "api.eu.residency.elevenlabs.io", "in": "api.in.residency.elevenlabs.io", "sg": "api.sg.residency.elevenlabs.io"]
-        let host = hosts[app.string("transcription.elevenlabs.region", fallback: "default")] ?? "api.elevenlabs.io"
-        var request = URLRequest(url: URL(string: "https://\(host)/v1/user/subscription")!, timeoutInterval: 30)
+        let region = ElevenLabsRegion(rawValue: app.string("transcription.elevenlabs.region", fallback: "default")) ?? .default
+        var request = URLRequest(url: region.baseURL.appendingPathComponent("v1/user/subscription"), timeoutInterval: 30)
         request.setValue(key, forHTTPHeaderField: "xi-api-key")
         request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         let (data, response) = try await KeyedNetwork.session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 200 { return "Works." }
         if [401, 403].contains(status), String(decoding: data.prefix(10_000), as: UTF8.self).contains("user_read") { return "The key works. It can't read account details (user_read), and that is fine for transcription." }
-        return "ElevenLabs rejected the key (\(status)). Your video is still here."
+        // Like Windows TestKeyAsync (transcription §8.5): name the status, never echo the provider's body.
+        let hint = [400, 401].contains(status) ? region.residencyHint : ""
+        let error: VoxClipError = switch status {
+        case _ where !hint.isEmpty: .providerError("The request could not be completed. \(hint)", provider: "ElevenLabs", status: status)
+        case 401: .keyRejected("ElevenLabs", status: 401)
+        case 429: .rateLimited("elevenlabs")
+        default: .providerError("The request could not be completed.", provider: "ElevenLabs", status: status)
+        }
+        return UserMessages.message(error)
+    } catch let error as URLError where error.code != .cancelled { return UserMessages.message(VoxClipError.offline)
     } catch { return "Failed: " + (await app.safeError(error)) }
 }
 

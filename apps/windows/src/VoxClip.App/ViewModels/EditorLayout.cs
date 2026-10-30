@@ -6,6 +6,9 @@ namespace VoxClip.App.ViewModels;
 /// Sizes come in from the page's tokens.</summary>
 public static class EditorLayout
 {
+    public static bool StackMeasuredRow(double availableWidth, double leadingWidth, double trailingWidth, double gap) =>
+        leadingWidth > 0 && leadingWidth + trailingWidth + gap > availableWidth;
+
     /// <summary>The Frame row's order, 9:16 · 1:1 · 16:9 · Original; export.aspect keeps its persisted values.</summary>
     public static IReadOnlyList<ExportAspect> Frames { get; } = [ExportAspect.Portrait, ExportAspect.Square, ExportAspect.Landscape, ExportAspect.Source];
 
@@ -41,6 +44,12 @@ public static class EditorLayout
         var width = Math.Max(0, ratio < 1 ? inner : Math.Min(inner, 320 / ratio));
         return (width, width * ratio);
     }
+
+    public static double StageHeightBudget(double columnHeight, double frameHeight, double transportHeight,
+        double chromeHeight, double captionsHeight) => Math.Max(1, columnHeight - frameHeight - transportHeight - chromeHeight - captionsHeight);
+
+    public static double CaptionHeaderViewport(double availableForCaptions, double fixedContentHeight, double measuredHeaderHeight) =>
+        Math.Clamp(availableForCaptions - fixedContentHeight, 56, Math.Max(56, measuredHeaderHeight));
 
     /// <summary>Why Export is unavailable for the scope, or null when it can run. The text is the button's tooltip and
     /// accessible description (delta §3.5, placeholder spec §5.4.4), and what Ctrl+E says. While transcription, clip search

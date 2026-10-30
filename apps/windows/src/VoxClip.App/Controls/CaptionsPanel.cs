@@ -33,11 +33,14 @@ internal sealed class CaptionsPanel : UserControl
     private readonly GridView gallery = new() { SelectionMode = ListViewSelectionMode.Single, IsItemClickEnabled = false };
     private readonly ToggleSwitch enabled = new() { OnContent = "", OffContent = "", HorizontalAlignment = HorizontalAlignment.Right };
     private readonly Expander fineTune = new() { HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
-    private readonly TextBlock styleName = new();
-    private readonly TextBlock summary = new() { FontSize = 12 };
+    private readonly ScrollViewer fineTuneViewport = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private readonly TextBlock styleName = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock summary = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly Image chip = new() { Width = 64, Height = 36, Stretch = Stretch.Fill };
     private readonly TextBlock off = new() { Text = "Off", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     private string fineTuneKey = "";
+    private string fineTuneShape = "";
+    private Action? syncFineTune;
     private readonly HashSet<Tile> visible = [];
     private string? rememberedStyle;
     private string? scope = "<initial>";
@@ -48,8 +51,34 @@ internal sealed class CaptionsPanel : UserControl
     private bool loading;
     private bool syncing;
     private double playhead;
+    private FrameworkElement? measuredHeader;
+    private double headerHeight = 64;
+    private double headerViewport = 56;
     internal IReadOnlyList<CaptionStyle> Styles { get; private set; } = [];
-    internal Control FocusTarget => gallery.IsEnabled ? gallery : Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(fineTune) as Control ?? fineTune;
+    private double FixedContentHeight => body.RowDefinitions[2].MinHeight + 36 +
+        body.Padding.Top + body.Padding.Bottom + body.RowSpacing * (body.RowDefinitions.Count - 1);
+    internal double MinimumContentHeight => FixedContentHeight + headerViewport;
+    internal void ConstrainHeight(double availableForCaptions)
+    {
+        headerViewport = EditorLayout.CaptionHeaderViewport(availableForCaptions, FixedContentHeight, headerHeight);
+        UpdateViewportBounds();
+    }
+    internal event EventHandler? FitChanged;
+    internal Control FocusTarget
+    {
+        get
+        {
+            if (gallery.IsEnabled && gallery.ActualHeight > 0 && gallery.SelectedItem is { } selected)
+            {
+                gallery.ScrollIntoView(selected, ScrollIntoViewAlignment.Leading);
+                gallery.UpdateLayout();
+                if (gallery.ContainerFromItem(selected) is Control target &&
+                    !Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(target).IsOffscreen()) return target;
+            }
+            if (enabled.IsEnabled) return enabled;
+            return Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(fineTuneViewport) as Control ?? fineTune;
+        }
+    }
     private sealed class Tile(CaptionStyle style) : INotifyPropertyChanged
     {
         internal CaptionStyle Style { get; } = style;
@@ -64,7 +93,10 @@ internal sealed class CaptionsPanel : UserControl
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 
-    private sealed record Group(string Name, IReadOnlyList<Tile> Items);
+    private sealed record Group(string Name, IReadOnlyList<Tile> Items)
+    {
+        public string AutomationId => "CaptionGroup." + Name;
+    }
 
     internal CaptionsPanel(EditorViewModel model, Func<string?> mediaPath, CancellationToken ct)
     {
@@ -72,12 +104,24 @@ internal sealed class CaptionsPanel : UserControl
         this.mediaPath = mediaPath;
         this.ct = ct;
         IsTabStop = false;
+        AutomationProperties.SetAutomationId(enabled, "Captions.Toggle");
+        AutomationProperties.SetAutomationId(styleName, "Captions.StyleName");
+        AutomationProperties.SetAutomationId(summary, "Captions.Summary");
+        AutomationProperties.SetAutomationId(gallery, "Captions.Gallery");
         gallery.UseSystemFocusVisuals = true;
         Content = body;
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        body.RowDefinitions.Add(new() { Height = GridLength.Auto });
         body.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
+        var details = Ui.Stack(8);
+        details.Children.Add(notice); details.Children.Add(fineTune);
+        fineTuneViewport.Content = details;
+        fineTuneViewport.MinHeight = headerViewport;
+        fineTune.Loaded += (_, _) => MeasureFineTuneHeader();
+        AutomationProperties.SetAutomationId(fineTuneViewport, "FineTune.ScrollViewer");
+        fineTune.RegisterPropertyChangedCallback(Expander.IsExpandedProperty, (_, _) => UpdateFineTuneSpace());
+        notice.RegisterPropertyChangedCallback(InfoBar.IsOpenProperty, (_, _) => UpdateFineTuneSpace());
+        UpdateFineTuneSpace();
         ActualThemeChanged += (_, _) => { summary.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush"); RenderVisible(true); };
         Loaded += (_, _) => Ui.EffectsChanged += EffectsChanged;
         Unloaded += (_, _) => Ui.EffectsChanged -= EffectsChanged;
@@ -158,10 +202,11 @@ internal sealed class CaptionsPanel : UserControl
         foreach (var tile in tiles.Values) tile.Request.Dispose();
         tiles.Clear();
         body.Children.Clear();
-        body.Children.Add(notice);
         var header = new Grid { Height = 36 };
+        header.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        header.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         header.Children.Add(new TextBlock { Text = "Captions", VerticalAlignment = VerticalAlignment.Center, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        header.Children.Add(enabled);
+        Grid.SetColumn(enabled, 1); header.Children.Add(enabled);
         AutomationProperties.SetName(enabled, "Show captions");
         enabled.Toggled += (_, _) =>
         {
@@ -169,22 +214,20 @@ internal sealed class CaptionsPanel : UserControl
             if (!enabled.IsOn) { rememberedStyle = model.Project.Captions.StyleId; model.SetCaptionStyle("off"); }
             else model.SetCaptionStyle(CaptionFineTune.TurnOn(rememberedStyle, App.Services.Get("captions.defaultStyleId", "vox-highlight")));
         };
-        Grid.SetRow(header, 1); body.Children.Add(header);
+        Grid.SetRow(header, 0); body.Children.Add(header);
         var styleRow = new Grid { ColumnSpacing = 8 };
         styleRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         styleRow.ColumnDefinitions.Add(new());
-        styleRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        var chipContent = new Grid(); chipContent.Children.Add(chip); chipContent.Children.Add(off);
+        var chipContent = new Grid { Width = 64, Height = 36 }; chipContent.Children.Add(chip); chipContent.Children.Add(off);
         styleRow.Children.Add(new Border { CornerRadius = new(6), Background = Ui.ThemeBrush(this, "VcBgMutedBrush"), Child = chipContent });
         var labels = Ui.Stack(2); labels.Children.Add(styleName); labels.Children.Add(summary);
+        labels.Children.Add(new TextBlock { Text = "Fine tune", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         Grid.SetColumn(labels, 1); styleRow.Children.Add(labels);
-        var disclosure = new TextBlock { Text = "Fine tune", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(disclosure, 2); styleRow.Children.Add(disclosure);
         fineTune.Header = styleRow;
-        Grid.SetRow(fineTune, 2); body.Children.Add(fineTune);
+        Grid.SetRow(fineTuneViewport, 1); body.Children.Add(fineTuneViewport);
         gallery.ItemsPanel = (ItemsPanelTemplate)XamlReader.Load("<ItemsPanelTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><ItemsWrapGrid Orientation='Horizontal' MaximumRowsOrColumns='2'/></ItemsPanelTemplate>");
-        gallery.ItemTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><StackPanel Spacing='4' AutomationProperties.Name='{Binding Description}'><Grid><Border CornerRadius='10' Background='{ThemeResource VcStageBrush}'><Image Source='{Binding Bitmap}' Stretch='Fill'/></Border><Border Visibility='{Binding Selected}' Margin='-2' BorderBrush='{ThemeResource VcAccentTextBrush}' BorderThickness='2' CornerRadius='12'/><Border Visibility='{Binding Selected}' Width='18' Height='18' CornerRadius='9' Background='{ThemeResource VcChipMediaBackgroundBrush}' HorizontalAlignment='Right' VerticalAlignment='Top' Margin='6'><FontIcon Glyph='&#xE73E;' FontSize='10' Foreground='{ThemeResource VcChipMediaForegroundBrush}'/></Border></Grid><TextBlock Text='{Binding Name}' FontSize='12' Foreground='{ThemeResource VcTextSecondaryBrush}' TextTrimming='CharacterEllipsis'/></StackPanel></DataTemplate>");
-        gallery.GroupStyle.Add(new GroupStyle { HeaderTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><TextBlock Text='{Binding Name}' FontSize='11' FontWeight='SemiBold' Foreground='{ThemeResource VcTextSecondaryBrush}' Margin='4,12,0,4'/></DataTemplate>") });
+        gallery.ItemTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><StackPanel Spacing='4' AutomationProperties.Name='{Binding Description}'><Grid><Border CornerRadius='10' Background='{ThemeResource VcStageBrush}'><Image Source='{Binding Bitmap}' Stretch='Fill'/></Border><Border Visibility='{Binding Selected}' Margin='-2' BorderBrush='{ThemeResource VcAccentTextBrush}' BorderThickness='2' CornerRadius='12'/><Border Visibility='{Binding Selected}' Width='18' Height='18' CornerRadius='9' Background='{ThemeResource VcChipMediaBackgroundBrush}' HorizontalAlignment='Right' VerticalAlignment='Top' Margin='6'><TextBlock Text='&#xE73E;' FontFamily='{ThemeResource SymbolThemeFontFamily}' FontSize='10' HorizontalAlignment='Center' VerticalAlignment='Center' AutomationProperties.AccessibilityView='Raw' Foreground='{ThemeResource VcChipMediaForegroundBrush}'/></Border></Grid><TextBlock Text='{Binding Name}' FontSize='12' Foreground='{ThemeResource VcTextSecondaryBrush}' TextTrimming='CharacterEllipsis'/></StackPanel></DataTemplate>");
+        gallery.GroupStyle.Add(new GroupStyle { HeaderTemplate = (DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><TextBlock Text='{Binding Name}' AutomationProperties.AutomationId='{Binding AutomationId}' FontSize='11' FontWeight='SemiBold' Foreground='{ThemeResource VcTextSecondaryBrush}' Margin='4,12,0,4'/></DataTemplate>") });
         var itemStyle = new Style(typeof(GridViewItem));
         gallery.Padding = new Thickness(0);
         itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0)));
@@ -209,14 +252,22 @@ internal sealed class CaptionsPanel : UserControl
         gallery.ContainerContentChanging += (sender, args) =>
         {
             if (args.Item is not Tile tile) return;
-            if (args.InRecycleQueue) { visible.Remove(tile); tile.Request.Dispose(); return; }
+            if (args.InRecycleQueue)
+            {
+                visible.Remove(tile); tile.Request.Dispose();
+                args.ItemContainer.Visibility = Visibility.Collapsed;
+                AutomationProperties.SetAutomationId(args.ItemContainer, ""); AutomationProperties.SetName(args.ItemContainer, "");
+                return;
+            }
+            args.ItemContainer.Visibility = Visibility.Visible;
             visible.Add(tile);
+            AutomationProperties.SetAutomationId(args.ItemContainer, "CaptionStyle." + tile.Style.Id);
             AutomationProperties.SetName(args.ItemContainer, tile.Description);
             SizeTile(args.ItemContainer);
             _ = RenderTileAsync(tile, true);
         };
         gallery.SizeChanged += (_, _) => SizeTiles();
-        Grid.SetRow(gallery, 3); body.Children.Add(gallery);
+        Grid.SetRow(gallery, 2); body.Children.Add(gallery);
         ModelChanged(this, EventArgs.Empty);
     }
 
@@ -239,10 +290,59 @@ internal sealed class CaptionsPanel : UserControl
     private void SizeTiles()
     {
         tileWidth = CaptionFineTune.TileWidth(gallery.ActualWidth);
+        var minimum = Math.Round(tileWidth * 0.45) + 28;
+        if (Math.Abs(body.RowDefinitions[2].MinHeight - minimum) > 0.1)
+        {
+            body.RowDefinitions[2].MinHeight = minimum;
+            UpdateFineTuneSpace();
+        }
         if (gallery.ItemsPanelRoot is ItemsWrapGrid panel) panel.ItemWidth = (gallery.ActualWidth > 8 ? gallery.ActualWidth : 8) / 2;
         foreach (var tile in visible)
             if (gallery.ContainerFromItem(tile) is SelectorItem container) SizeTile(container);
         RenderVisible(true);
+    }
+
+    private void UpdateFineTuneSpace()
+    {
+        if (fineTune.Content is UIElement content) content.Visibility = fineTune.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+        notice.Visibility = notice.IsOpen ? Visibility.Visible : Visibility.Collapsed;
+        body.RowDefinitions[1].Height = fineTune.IsExpanded || notice.IsOpen ? new(1, GridUnitType.Star) : GridLength.Auto;
+        body.RowDefinitions[2].Height = fineTune.IsExpanded || notice.IsOpen ? new(body.RowDefinitions[2].MinHeight) : new(1, GridUnitType.Star);
+        UpdateViewportBounds();
+        FitChanged?.Invoke(this, EventArgs.Empty);
+    }
+    private void UpdateViewportBounds()
+    {
+        var maximum = fineTune.IsExpanded || notice.IsOpen ? double.PositiveInfinity : headerViewport;
+        if (fineTuneViewport.MaxHeight < headerViewport) fineTuneViewport.MaxHeight = maximum;
+        fineTuneViewport.MinHeight = headerViewport;
+        fineTuneViewport.MaxHeight = maximum;
+    }
+
+    private void MeasureFineTuneHeader()
+    {
+        FrameworkElement? Find(DependencyObject parent)
+        {
+            for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, index);
+                if (child is ToggleButton toggle && (toggle.Name == "ExpanderHeader" || Equals(toggle.Content, fineTune.Header))) return toggle;
+                if (Find(child) is { } found) return found;
+            }
+            return null;
+        }
+        var header = Find(fineTune);
+        if (header == measuredHeader) return;
+        if (measuredHeader is not null) measuredHeader.SizeChanged -= HeaderSizeChanged;
+        measuredHeader = header;
+        if (header is not null) { header.SizeChanged += HeaderSizeChanged; UpdateHeaderHeight(header.ActualHeight); }
+    }
+    private void HeaderSizeChanged(object sender, SizeChangedEventArgs args) => UpdateHeaderHeight(args.NewSize.Height);
+    private void UpdateHeaderHeight(double height)
+    {
+        if (height <= 0 || Math.Abs(headerHeight - height) <= 0.1) return;
+        headerHeight = height;
+        FitChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void RenderVisible(bool force)
@@ -277,7 +377,7 @@ internal sealed class CaptionsPanel : UserControl
                 using (var stream = image.PixelBuffer.AsStream()) stream.Write(pixels.Pixels);
                 image.Invalidate();
                 tile.Bitmap = image;
-                if (tile.Style.Id == model.Project.Captions.StyleId) chip.Source = image;
+                if (tile.Style.Id == model.Project.Captions.StyleId) { chip.Source = image; chip.Visibility = Visibility.Visible; }
             }, ct);
         }
         catch (OperationCanceledException) { }
@@ -309,13 +409,26 @@ internal sealed class CaptionsPanel : UserControl
                 if (gallery.ContainerFromItem(tile) is SelectorItem container) SizeTile(container);
             off.Visibility = enabled.IsOn ? Visibility.Collapsed : Visibility.Visible;
             chip.Source = selected?.Bitmap;
+            chip.Visibility = chip.Source is null ? Visibility.Collapsed : Visibility.Visible;
             styleName.Text = selected is null ? "Off" : selected.Style.Name + (CaptionFineTune.Edited(project) ? " · Edited" : "");
             summary.Text = selected is null ? "Just the video" : CaptionFineTune.Summary(selected.Style, project);
             summary.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush");
             styleName.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
             fineTune.IsEnabled = selected is not null && !model.Busy;
-            var key = project.Captions.StyleId + "|" + CaptionFineTune.Preset(project) + "|" + System.Text.Json.JsonSerializer.Serialize(project.Captions) + "|" + model.IsReadOnly + "|" + model.Busy;
-            if (key != fineTuneKey && selected is not null) { fineTuneKey = key; BuildFineTune(selected.Style); }
+            if (selected is null)
+            {
+                fineTune.IsExpanded = false;
+                fineTune.Content = null;
+                fineTuneKey = ""; fineTuneShape = ""; syncFineTune = null;
+            }
+            var shape = CaptionFineTune.Shape(project, model.IsReadOnly);
+            var key = shape + "|" + CaptionFineTune.Preset(project) + "|" + System.Text.Json.JsonSerializer.Serialize(project.Captions) + "|" + model.Busy;
+            if (key != fineTuneKey && selected is not null)
+            {
+                fineTuneKey = key;
+                if (shape != fineTuneShape) { fineTuneShape = shape; BuildFineTune(selected.Style); }
+                else syncFineTune?.Invoke();
+            }
             if (scope != project.Edits.ActiveClipId)
             {
                 scope = project.Edits.ActiveClipId;
@@ -330,60 +443,180 @@ internal sealed class CaptionsPanel : UserControl
     {
         var controls = Ui.Stack(12);
         controls.Margin = new Thickness(0, 8, 0, 0);
-        var project = model.Project;
-        var patch = CaptionFineTune.Patch(project.Captions);
-        void Options(string label, string[] choices, int selected, Action<int> choose, bool available = true)
+        var initial = CaptionFineTune.Values(style, model.Project);
+        var syncs = new List<Action<CaptionFineTune.FineTuneValues>>();
+        void Options(string label, string[] choices, Func<CaptionFineTune.FineTuneValues, int> selected, Action<int> choose, bool available = true)
         {
             var section = Ui.Stack(4); section.Children.Add(Ui.Text(label));
-            var segment = new CommunityToolkit.WinUI.Controls.Segmented { SelectedIndex = selected, IsEnabled = available && (!model.IsReadOnly || label == "Position"), HorizontalAlignment = HorizontalAlignment.Stretch };
-            foreach (var choice in choices) segment.Items.Add(new CommunityToolkit.WinUI.Controls.SegmentedItem { Content = choice });
-            segment.SelectedIndex = selected;
+            var segment = new CommunityToolkit.WinUI.Controls.Segmented { SelectedIndex = selected(initial), IsEnabled = available && (!model.IsReadOnly || label == "Position"), HorizontalAlignment = HorizontalAlignment.Stretch };
+            foreach (var choice in choices) segment.Items.Add(new CommunityToolkit.WinUI.Controls.SegmentedItem { Content = choice, MinWidth = 0, Padding = new(8, 4, 8, 4) });
+            segment.SelectedIndex = selected(initial);
             AutomationProperties.SetName(segment, label);
+            AutomationProperties.SetAutomationId(segment, "FineTune." + label);
             segment.SelectionChanged += (_, _) => { if (!syncing && segment.SelectedIndex >= 0) choose(segment.SelectedIndex); };
+            syncs.Add(now => segment.SelectedIndex = selected(now));
             section.Children.Add(segment); controls.Children.Add(section);
         }
         void Change(string section, params (string Key, JsonNode? Value)[] values) => model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, section, values));
-        var scale = patch["font"]?["sizeScale"]?.GetValue<double>() ?? 1;
-        Options("Size", ["S", "M", "L", "XL"], scale < 0.9 ? 0 : scale < 1.1 ? 1 : scale < 1.3 ? 2 : 3,
+        Options("Size", ["S", "M", "L", "XL"], now => now.Size,
             index => Change("font", ("sizeScale", index == 1 ? null : JsonValue.Create(new[] { 0.8, 1, 1.2, 1.45 }[index]))));
-        var upper = patch["text"]?["transform"]?.GetValue<string>() is { } transform ? transform == "uppercase" : style.Text.Transform == CaptionTextTransformValue.Uppercase;
-        Options("Case", ["As said", "ALL CAPS"], upper ? 1 : 0, index => Change("text", ("transform", JsonValue.Create(index == 0 ? "none" : "uppercase"))), style.Text.UserOverridable);
-        var words = patch["layout"]?["maxWords"]?.GetValue<int>();
-        Options("Words on screen", ["1", "Phrase", "Line"], words == 1 ? 0 : words >= 16 ? 2 : 1,
+        Options("Case", ["As said", "ALL CAPS"], now => now.Case, index => Change("text", ("transform", JsonValue.Create(index == 0 ? "none" : "uppercase"))), style.Text.UserOverridable);
+        Options("Words on screen", ["1", "Phrase", "Line"], now => now.Words,
             index => Change("layout", ("maxWords", index == 1 ? null : JsonValue.Create(index == 0 ? 1 : 16)), ("maxLines", index == 1 ? null : JsonValue.Create(1))));
-        var punctuation = new ToggleSwitch { Header = "Keep punctuation", IsEnabled = style.Text.UserOverridable && !model.IsReadOnly,
-            IsOn = patch["text"]?["punctuation"]?.GetValue<string>() is { } keep ? keep == "keep" : style.Text.Punctuation == CaptionTextPunctuationValue.Keep };
+        var punctuation = new ToggleSwitch { OnContent = "", OffContent = "", MinWidth = 0, IsEnabled = style.Text.UserOverridable && !model.IsReadOnly, IsOn = initial.Punctuation, HorizontalAlignment = HorizontalAlignment.Right };
+        AutomationProperties.SetAutomationId(punctuation, "FineTune.Punctuation");
+        AutomationProperties.SetName(punctuation, "Keep punctuation");
         punctuation.Toggled += (_, _) => { if (!syncing) Change("text", ("punctuation", JsonValue.Create(punctuation.IsOn ? "keep" : "strip-keep-numeric"))); };
-        controls.Children.Add(punctuation);
+        syncs.Add(now => punctuation.IsOn = now.Punctuation);
+        var punctuationRow = new Grid();
+        punctuationRow.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+        punctuationRow.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        punctuationRow.Children.Add(new TextBlock { Text = "Keep punctuation", VerticalAlignment = VerticalAlignment.Center });
+        Grid.SetColumn(punctuation, 1); punctuationRow.Children.Add(punctuation);
+        controls.Children.Add(punctuationRow);
         if (style.Accent is not null)
         {
             controls.Children.Add(Ui.Text("Colour"));
-            var swatches = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var swatches = new MeasuredRow { Gap = 6 };
+            var firstColors = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var lastColors = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            swatches.Children.Add(firstColors); swatches.Children.Add(lastColors);
             foreach (var color in CaptionFineTune.Colors)
             {
                 var rgb = Convert.ToUInt32(color.Value[1..], 16);
                 var brush = new SolidColorBrush(Windows.UI.Color.FromArgb(byte.MaxValue, (byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
                 var button = new Button { IsEnabled = !model.IsReadOnly, Width = 32, Height = 32, Padding = new Thickness(3), Content = new Border { Background = brush, Width = 18, Height = 18, CornerRadius = new(9) } };
                 AutomationProperties.SetName(button, color.Name); ToolTipService.SetToolTip(button, color.Name);
+                AutomationProperties.SetAutomationId(button, "FineTune.Colour." + color.Name);
                 button.Click += (_, _) => Change("", ("accent", JsonValue.Create(color.Value)));
-                swatches.Children.Add(button);
+                (firstColors.Children.Count < 3 ? firstColors : lastColors).Children.Add(button);
             }
             controls.Children.Add(swatches);
         }
-        var position = CaptionFineTune.StoredPosition(project);
-        Options("Position", ["Top", "Middle", "Bottom"], position is { Y: < 0.35 } ? 0 : position is { Y: < 0.65 } ? 1 : 2, model.MoveCaptionPosition, style.Position.UserDraggable);
+        Options("Position", ["Top", "Middle", "Bottom"], now => now.Position, model.MoveCaptionPosition, style.Position.UserDraggable);
         controls.Children.Add(Ui.Text("Drag captions on the video to move them.", "HelperText"));
         var reset = new HyperlinkButton { IsEnabled = !model.IsReadOnly, Content = "Reset to Style", HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(0) };
-        reset.Click += (_, _) => { model.SetCaptions(CaptionFineTune.Reset(model.Project.Captions)); BuildFineTune(style); };
+        AutomationProperties.SetAutomationId(reset, "FineTune.Reset");
+        reset.Click += (_, _) => model.SetCaptions(CaptionFineTune.Reset(model.Project.Captions));
         controls.Children.Add(reset);
-        ToolTipService.SetToolTip(fineTune, $"Size {scale:0.##}× · {CaptionFineTune.Summary(style, project)} · Position {(position is { } stored ? $"{stored.X:0.##}, {stored.Y:0.##}" : "Bottom")}");
-        fineTune.Content = new ScrollViewer { Content = controls, MaxHeight = 300, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        void Describe(CaptionFineTune.FineTuneValues now) => ToolTipService.SetToolTip(fineTune,
+            $"Size {now.Scale:0.##}× · {CaptionFineTune.Summary(style, model.Project)} · Position {(now.Stored is { } stored ? $"{stored.X:0.##}, {stored.Y:0.##}" : "Bottom")}");
+        Describe(initial); syncs.Add(Describe);
+        syncFineTune = () => { var now = CaptionFineTune.Values(style, model.Project); foreach (var sync in syncs) sync(now); };
+        controls.Visibility = fineTune.IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+        fineTune.Content = controls;
+        UpdateFineTuneSpace();
     }
 
     internal void RefreshSamples() => samples?.Refresh();
 
+#if DEBUG
+    internal IReadOnlyList<string> DebugFitAllGalleryIds() => tiles.Values.Select(tile => "CaptionStyle." + tile.Style.Id)
+        .Concat(tiles.Values.Select(tile => "CaptionGroup." + CaptionFineTune.Group(tile.Style)).Distinct()).ToArray();
+
+    internal (string Id, FrameworkElement Container)? DebugFitGalleryIdentity(FrameworkElement element)
+    {
+        for (DependencyObject? ancestor = element; ancestor is not null && ancestor != gallery; ancestor = VisualTreeHelper.GetParent(ancestor))
+        {
+            if (ancestor is GridViewItem { Content: Tile tile } container) return ("CaptionStyle." + tile.Style.Id, container);
+            if (ancestor is GridViewHeaderItem { Content: Group group } header) return (group.AutomationId, header);
+        }
+        return null;
+    }
+    internal bool DebugFitRequiresAccent => tiles.Values.FirstOrDefault(tile => tile.Style.Id == model.Project.Captions.StyleId)?.Style.Accent is not null;
+    internal IReadOnlyList<string> DebugFitGalleryIds()
+    {
+        var choices = new List<string>();
+        if (gallery.ItemsPanelRoot is not ItemsWrapGrid panel || panel.FirstVisibleIndex < 0) return choices;
+        for (var index = panel.FirstVisibleIndex; index <= panel.LastVisibleIndex; index++)
+        {
+            if (index >= gallery.Items.Count || gallery.Items[index] is not Tile tile) return [];
+            choices.Add("CaptionStyle." + tile.Style.Id);
+        }
+        return choices;
+    }
+
+    internal void DebugFitRealizeGallery()
+    {
+        if (DebugFitGalleryIds().Count == 0 && tiles.Values.FirstOrDefault() is { } first)
+        {
+            gallery.ScrollIntoView(first, ScrollIntoViewAlignment.Leading);
+            gallery.UpdateLayout();
+        }
+    }
+
+    internal bool DebugFitRealizeChoice(string id)
+    {
+        var group = id.StartsWith("CaptionGroup.", StringComparison.Ordinal);
+        var tile = tiles.Values.FirstOrDefault(item => group ? "CaptionGroup." + CaptionFineTune.Group(item.Style) == id : "CaptionStyle." + item.Style.Id == id);
+        if (tile is null) return false;
+        gallery.ScrollIntoView(tile, ScrollIntoViewAlignment.Leading);
+        gallery.UpdateLayout();
+        if (group && NativeScroll(gallery) is { } viewer) viewer.ChangeView(null, Math.Max(0, viewer.VerticalOffset - 48), null, true);
+        return true;
+    }
+
+    private static ScrollViewer? NativeScroll(DependencyObject element)
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
+        {
+            var child = VisualTreeHelper.GetChild(element, index);
+            if (child is ScrollViewer viewer) return viewer;
+            if (NativeScroll(child) is { } nested) return nested;
+        }
+        return null;
+    }
+
+    internal async Task DebugFitStatesAsync(Func<string, Task> inspect)
+    {
+        var original = model.Project.Captions;
+        var expanded = fineTune.IsExpanded;
+        var message = notice.Message;
+        var failures = new List<Exception>();
+        async Task Inspect(string name)
+        {
+            try { await inspect(name); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { failures.Add(exception); }
+        }
+        try
+        {
+            await Inspect("captions");
+            var readOnly = model.IsReadOnly;
+            try
+            {
+                model.SetMediaUnavailable(true);
+                UpdateLayout();
+                var target = FocusTarget;
+                if (!target.IsEnabled || !target.Focus(FocusState.Programmatic) ||
+                    Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(target).IsOffscreen())
+                    throw new InvalidOperationException("Read-only Captions has no enabled, visible F6 focus target.");
+            }
+            finally { model.SetMediaUnavailable(readOnly); }
+            model.SetCaptionStyle("karaoke");
+            fineTune.IsExpanded = true;
+            await Inspect("fine-tune");
+            fineTune.IsExpanded = false;
+            model.SetCaptionStyle("box-highlight");
+            model.SetCaptionOverrides(CaptionFineTune.Change(model.Project.Captions, "font", ("sizeScale", System.Text.Json.Nodes.JsonValue.Create(1.2))));
+            await Inspect("long-header");
+            model.SetCaptionStyle("off");
+            await Inspect("captions-off");
+            notice.Message = "Couldn't load caption styles. Try again.";
+            notice.IsOpen = true;
+            await Inspect("caption-error");
+        }
+        finally
+        {
+            notice.IsOpen = false; notice.Message = message;
+            model.SetCaptions(original); fineTune.IsExpanded = expanded;
+        }
+        if (failures.Count > 0) throw new AggregateException("Caption state bounds failed.", failures);
+    }
+#endif
+
     internal void Detach()
     {
+        if (measuredHeader is not null) measuredHeader.SizeChanged -= HeaderSizeChanged;
         model.PropertyChanged -= ModelPropertyChanged;
         model.Changed -= ModelChanged;
         samples?.Dispose();

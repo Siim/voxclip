@@ -23,7 +23,8 @@ internal static class Program
     }
     private static void Start()
     {
-        VelopackApp.Build().Run();
+        // Applying is the explicit Restart now action, after the project/settings save boundary.
+        VelopackApp.Build().SetAutoApplyOnStartup(false).Run();
         XamlCheckProcessRequirements();
         WinRT.ComWrappersSupport.InitializeComWrappers();
         Instance = AppInstance.FindOrRegisterForKey("VoxClip");

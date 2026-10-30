@@ -35,6 +35,12 @@ internal static class StartupDiagnostics
             var detail = current is Microsoft.UI.Xaml.Markup.XamlParseException or System.Resources.MissingManifestResourceException
                 ? current.Message : "";
             Log.Write(LogLevel.Error, "startup", $"stage={stage} type={current.GetType().FullName} hresult=0x{current.HResult:X8} {detail}");
+#if DEBUG
+            var frames = new System.Diagnostics.StackTrace(current).GetFrames().Select(frame => frame.GetMethod())
+                .Where(method => method?.DeclaringType?.Namespace?.StartsWith("VoxClip", StringComparison.Ordinal) == true)
+                .Select(method => $"{method!.DeclaringType!.Name}.{method.Name}");
+            Log.Write(LogLevel.Debug, "startup", $"frames={string.Join(",", frames)}");
+#endif
         }
         Write(new("failed", screen, rootLoaded, false, 0, 0));
         try { Log.FlushAsync(CancellationToken.None).Wait(TimeSpan.FromSeconds(2)); }

@@ -33,6 +33,7 @@ internal sealed class AppServices : IAsyncDisposable
     internal IModelCatalog Models { get; } = new ModelCatalog();
     internal IModelDownloader Downloads { get; }
     internal ITranscriptionService Transcription { get; private set; } = null!;
+    internal LocalRuntimeGuard LocalRuntime { get; } = new(LocalRuntimeFiles.ReadVersion);
     internal IClipFinder ClipFinder { get; private set; } = null!;
     internal IEncoderProbe Encoders { get; } = new EncoderProbe();
     internal IUpdateChecker Updates { get; }
@@ -95,6 +96,9 @@ internal sealed class AppServices : IAsyncDisposable
         return new(id, Keys, new LlmCatalog(), new Redactor(),
             Get("llm.baseUrl." + wireId, ""), Get("llm.cliPath." + wireId, ""));
     }
+
+    internal IModelDownloader Installer(Func<TranscriptionModel, IReadOnlyList<TranscriptionModel>, CancellationToken, Task<bool>> confirm) =>
+        new ModelStore(Models, Data.Root, confirmDownload: confirm);
 
     internal T Get<T>(string key, T fallback)
     {

@@ -41,7 +41,6 @@ private extension VerticalAlignment {
     @State private var galleryScrollState = CaptionGalleryScrollState()
     @State private var galleryTiles: [String: CGRect] = [:]
     @State private var galleryHeaders: [CaptionStyleGroup: CGRect] = [:]
-    @State private var galleryPosition = ScrollPosition()
     #if DEBUG
     @State private var galleryID = UUID().uuidString
     #endif
@@ -181,7 +180,6 @@ private extension VerticalAlignment {
     }
     private func galleryScroll(reader: ScrollViewProxy) -> some View {
         ScrollView { galleryContents }
-            .scrollPosition($galleryPosition)
             .onScrollGeometryChange(for: CaptionGalleryViewport.self) { geometry in
                 CaptionGalleryViewport(visible: geometry.visibleRect, size: geometry.containerSize, contentSize: geometry.contentSize)
             } action: { _, viewport in
@@ -209,14 +207,20 @@ private extension VerticalAlignment {
             .coordinateSpace(name: CaptionGallerySpace.content)
     }
     private var galleryGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 7) {
             ForEach(CaptionStyleGroup.allCases, id: \.self) { group in
                 let styles = model.app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
                 if !styles.isEmpty {
-                    Section { ForEach(styles, id: \.id) { style in styleTile(style).modifier(CaptionGalleryTargetModifier(target: .tile(style.id))) } } header: {
-                        Text(group.rawValue).font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary")).padding(.top, 2)
-                            .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .named(CaptionGallerySpace.content)) } action: { galleryHeaders[group] = $0 }
-                            .modifier(CaptionGalleryTargetModifier(target: .header(group))).columnLayoutEvidence("caption.group.\(group.rawValue)")
+                    Text(group.rawValue).font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary")).padding(.top, 2)
+                        .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .named(CaptionGallerySpace.content)) } action: { galleryHeaders[group] = $0 }
+                        .modifier(CaptionGalleryTargetModifier(target: .header(group))).columnLayoutEvidence("caption.group.\(group.rawValue)")
+                    ForEach(Array(stride(from: 0, to: styles.count, by: 2)), id: \.self) { index in
+                        HStack(alignment: .top, spacing: 8) {
+                            styleTile(styles[index]).frame(maxWidth: .infinity).modifier(CaptionGalleryTargetModifier(target: .tile(styles[index].id)))
+                            if index + 1 < styles.count {
+                                styleTile(styles[index + 1]).frame(maxWidth: .infinity).modifier(CaptionGalleryTargetModifier(target: .tile(styles[index + 1].id)))
+                            } else { Color.clear.frame(maxWidth: .infinity).accessibilityHidden(true) }
+                        }
                     }
                 }
             }
@@ -267,15 +271,8 @@ private extension VerticalAlignment {
         let geometry = [galleryViewport.visible.minY, galleryViewport.size.width, galleryViewport.size.height,
                         galleryTile?.frame.minY ?? -1, galleryTile?.frame.width ?? -1,
                         galleryTile?.frame.height ?? -1, galleryLayout.header?.minY ?? -1, galleryViewport.contentSize.height]
-        if reveal.shouldScroll(to: target, anchor: .top, geometry: geometry) {
-            // A lazy grid scrolls to a row it hasn't laid out by estimate, and repeats the same wrong
-            // estimate. The measured content frame is exact, so scroll to it whenever it is known.
-            let measured: CGFloat? = switch target {
-            case .header: galleryLayout.header?.minY
-            case .tile(let id): galleryTile.flatMap { $0.styleID == id ? $0.frame.minY : nil }
-            case .end: nil
-            }
-            if let measured { galleryPosition.scrollTo(y: max(0, measured)) } else { reader.scrollTo(target, anchor: .top) }
+        if reveal.shouldScroll(to: target, geometry: geometry) {
+            reader.scrollTo(target, anchor: .top)
         }
     }
     private var style: CaptionStyle? { model.app.styles.first { $0.id == model.project.captions.styleId } }
@@ -332,7 +329,6 @@ struct CaptionGalleryReveal: Equatable {
     private(set) var interrupted = false
     private(set) var commands = 0
     private var lastTarget: CaptionGalleryTarget?
-    private var lastAnchor = UnitPoint.top
     private var lastGeometry: [CGFloat] = []
     private var visibleTileSelection: String?
     private var revealWhileExpanded = false
@@ -365,12 +361,12 @@ struct CaptionGalleryReveal: Equatable {
     mutating func resumeForLayout() { if !interrupted { pending = request.map { !$0.fineTune || revealWhileExpanded } ?? false } }
     mutating func restart() { pending = request.map { !$0.fineTune || revealWhileExpanded } ?? false; interrupted = false; lastTarget = nil }
     mutating func cancelForUserScroll() { pending = false; interrupted = true }
-    mutating func shouldScroll(to target: CaptionGalleryTarget, anchor: UnitPoint, geometry: [CGFloat] = []) -> Bool {
+    mutating func shouldScroll(to target: CaptionGalleryTarget, geometry: [CGFloat] = []) -> Bool {
         guard pending else { return false }
-        if lastTarget == target, abs(lastAnchor.x - anchor.x) < 0.000001, abs(lastAnchor.y - anchor.y) < 0.000001 {
+        if lastTarget == target {
             guard geometry != lastGeometry else { return false }
         }
-        lastTarget = target; lastAnchor = anchor; lastGeometry = geometry; commands += 1
+        lastTarget = target; lastGeometry = geometry; commands += 1
         return true
     }
 }

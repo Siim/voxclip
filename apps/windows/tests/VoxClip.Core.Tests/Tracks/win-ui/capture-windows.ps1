@@ -112,15 +112,38 @@ function Save-Window([string]$Name, [IntPtr]$Window) {
         $bitmap.Save((Join-Path $shots "$Name-window.jpg"), [System.Drawing.Imaging.ImageFormat]::Jpeg)
     } finally { $graphics.Dispose(); $bitmap.Dispose() }
 }
-function Find-Control([IntPtr]$Window, [string]$Name) {
-    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $Name)
+$script:ControlLocators = @{}
+function Test-TransientPeerFailure($Failure) {
+    $exception = $Failure.Exception
+    while ($exception) {
+        if ($exception -is [System.Windows.Automation.ElementNotAvailableException]) { return $true }
+        if ($exception -is [System.Runtime.InteropServices.COMException] -and
+            $exception.HResult -in @(-2147220991, -2147418111, -2147417848, -2147467259)) { return $true }
+        $exception = $exception.InnerException
+    }
+    return $false
+}
+function Find-Visible([IntPtr]$Window, [string]$Name, [bool]$Prefix) {
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
-        $element = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
-        if ($null -ne $element -and -not $element.Current.IsOffscreen) { return $element }
+        try {
+            $items = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+            foreach ($element in $items) {
+                $accessibleName = [string]$element.Current.Name
+                $matches = if ($Prefix) { $accessibleName.StartsWith($Name) } else { $accessibleName -eq $Name }
+                if (-not $matches) { continue }
+                if (-not $element.Current.IsOffscreen -and $element.Current.BoundingRectangle.Width -gt 0 -and $element.Current.BoundingRectangle.Height -gt 0) {
+                    $script:ControlLocators[$element] = @{ Window=$Window; Name=$Name; Prefix=$Prefix }
+                    return $element
+                }
+                $scroll = $null
+                if ($element.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scroll)) { $scroll.ScrollIntoView() }
+            }
+        } catch { if (-not (Test-TransientPeerFailure $_)) { throw } }
         Start-Sleep -Milliseconds 250
     }
     throw "The expected accessible control '$Name' did not appear."
 }
+function Find-Control([IntPtr]$Window, [string]$Name) { return Find-Visible $Window $Name $false }
 function Find-SelectedRow([IntPtr]$Window, [string]$Pattern) {
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
         $rows = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -match $Pattern }
@@ -133,17 +156,30 @@ function Find-SelectedRow([IntPtr]$Window, [string]$Pattern) {
     throw "No selected row matching '$Pattern' appeared."
 }
 function Find-Prefix([IntPtr]$Window, [string]$Prefix) {
-    $items = [System.Windows.Automation.AutomationElement]::FromHandle($Window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-    $item = $items | Where-Object { -not $_.Current.IsOffscreen -and $_.Current.Name.StartsWith($Prefix) } | Select-Object -First 1
-    if (-not $item) { throw "Missing visible accessible name starting with '$Prefix'." }
-    return $item
+    return Find-Visible $Window $Prefix $true
 }
 function Use-Control($Control) {
-    $pattern = $null
-    if ($Control.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) { $pattern.Select() }
-    elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke() }
-    elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) { $pattern.Toggle() }
-    else { throw "The control '$($Control.Current.Name)' has no selection or invoke pattern." }
+    $locator = $script:ControlLocators[$Control]
+    if (-not $locator) { throw 'Use-Control requires a scoped re-resolvable locator.' }
+    $toggleTarget = $null
+    for ($attempt = 0; $attempt -lt 4; $attempt++) {
+        try {
+            $Control = Find-Visible $locator.Window $locator.Name $locator.Prefix
+            if (-not $Control.Current.IsEnabled) { throw "The control '$($locator.Name)' is disabled." }
+            $pattern = $null
+            if ($Control.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern, [ref]$pattern)) {
+                if (-not $pattern.Current.IsSelected) { $pattern.Select() }
+            } elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern, [ref]$pattern)) {
+                if ($null -eq $toggleTarget) { $toggleTarget = if ($pattern.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) { [System.Windows.Automation.ToggleState]::Off } else { [System.Windows.Automation.ToggleState]::On } }
+                if ($pattern.Current.ToggleState -ne $toggleTarget) { $pattern.Toggle() }
+            } elseif ($Control.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) { $pattern.Invoke() }
+            else { throw "The control '$($Control.Current.Name)' has no selection or invoke pattern." }
+            break
+        } catch {
+            if ($attempt -eq 3 -or -not (Test-TransientPeerFailure $_)) { throw }
+            Start-Sleep -Milliseconds 250
+        }
+    }
     Start-Sleep -Milliseconds 500
 }
 try {
@@ -213,14 +249,16 @@ try {
             [void](Find-Control $window 'Make clip')
             Save-Window 'editor-light' $window
             [VoxClipScreen]::DismissShell()
+            Start-Sleep -Milliseconds 200
+            $transcript.SetFocus()
             [VoxClipScreen]::MakeClipShortcut()
             $clip = Find-SelectedRow $window '^Clip \d+, '
             Save-Window 'editor-manual-clip' $window
             $checks.Add('Keyboard-selected transcript words made a clip whose pane row is selected, so it is the preview range')
             Use-Control (Find-Control $window 'Play')
             Start-Sleep -Seconds 4
-            $clock = [System.Windows.Automation.AutomationElement]::FromHandle($window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -match '^Clip ([0-9:.]+) / ([0-9:.]+)$' } | Select-Object -First 1
-            if (-not $clock -or $clock.Current.Name -notmatch '^Clip ([0-9:.]+) / \1$') { throw 'Clip preview did not stop at its scoped duration.' }
+            $clock = [System.Windows.Automation.AutomationElement]::FromHandle($window).FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition) | Where-Object { $_.Current.Name -match '^([0-9:.]+) / ([0-9:.]+)$' } | Select-Object -First 1
+            if (-not $clock -or $clock.Current.Name -notmatch '^([0-9:.]+) / \1$') { throw 'Clip preview did not stop at its scoped duration.' }
             Save-Window 'editor-preview-end' $window
             $checks.Add('Clip preview stops at its local duration')
             $clip.SetFocus()
@@ -233,12 +271,21 @@ try {
             Save-Window 'export-this-clip' $window
             $checks.Add('The clip row menu opens This clip; All clips and Full video remain explicit choices')
             Use-Control (Find-Control $window 'Cancel')
-            $off = Find-Control $window 'Off, just the video'
-            if ($off.Current.ControlType -ne [System.Windows.Automation.ControlType]::RadioButton) { throw 'Caption styles do not expose radio-button semantics.' }
+            $captions = Find-Control $window 'Show captions'
+            $captionToggle = $captions.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+            if ($captionToggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On) { throw 'The fixture captions are not on.' }
             $selected = Find-Prefix $window 'Bold: '
+            if ($selected.Current.ControlType -ne [System.Windows.Automation.ControlType]::ListItem) { throw 'Caption styles do not expose GridView item semantics.' }
             if (-not $selected.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'The fixture caption style is not selected in the gallery.' }
+            $captionToggle.Toggle()
+            Start-Sleep -Milliseconds 250
+            if ($captionToggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) { throw 'Show captions did not turn captions off.' }
+            [void](Find-Control $window 'Caption style')
+            $captionToggle.Toggle()
+            Start-Sleep -Milliseconds 250
+            if ($captionToggle.Current.ToggleState -ne [System.Windows.Automation.ToggleState]::On -or -not $selected.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Current.IsSelected) { throw 'Show captions did not restore the selected style.' }
             Save-Window 'editor-captions' $window
-            $checks.Add('Caption styles expose named radio buttons and the fixture selection')
+            $checks.Add('Show captions toggles off and restores the selected GridView style; the gallery stays visible')
             Use-Control (Find-Control $window ('Export clip' + [char]0x2026))
             [void](Find-Control $window 'Cancel')
             Save-Window 'export' $window
@@ -250,7 +297,8 @@ try {
             [void](Find-Control $window 'Play')
             Save-Window 'editor-compact-resize-probe' $window
             Use-Control (Find-Control $window 'Viewer')
-            [void](Find-Control $window 'Off, just the video')
+            [void](Find-Control $window 'Show captions')
+            [void](Find-Control $window 'Caption style')
             Save-Window 'editor-compact-viewer' $window
             $checks.Add('The compact editor collapses the viewer to a timeline transport, and Viewer brings captions back')
         }
@@ -301,6 +349,7 @@ try {
     }
 } catch {
     [System.IO.File]::WriteAllText((Join-Path $shots 'error.txt'), $_.Exception.Message)
+    [System.IO.File]::WriteAllText((Join-Path $shots 'error-detail.txt'), ($_ | Out-String) + $_.ScriptStackTrace)
     throw
 } finally {
     if (-not $ManualState -and $app -and -not $app.HasExited) { $app | Stop-Process -Force -ErrorAction SilentlyContinue }

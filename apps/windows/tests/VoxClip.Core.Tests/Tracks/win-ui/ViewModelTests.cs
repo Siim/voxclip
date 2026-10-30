@@ -22,6 +22,24 @@ public sealed class ViewModelTests
     }
     private static EditorViewModel Demo() => new(Fixture(), DemoProject.Reduce, DemoProject.Summarize);
 
+    [Theory]
+    [InlineData("Provider failed.", "Provider failed. Your edits are saved.")]
+    [InlineData("Provider failed. Your edits are saved.", "Provider failed. Your edits are saved.")]
+    [InlineData("", "Transcription stopped. Your edits are saved.")]
+    public void ProviderErrorsReassureWithoutDuplicatingTheSavedSentence(string error, string expected) =>
+        Assert.Equal(expected, UiError.Message(new VoxClipException(VoxClipErrorCode.ProviderError, error), "Transcription"));
+
+    [Fact]
+    public void PrivacyCopyNamesEveryAutomaticAndUserTriggeredNetworkFlow()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/SettingsWindow.xaml.cs"));
+        Assert.Contains("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.", source);
+        Assert.Contains("Automatic update checks contact GitHub", source);
+        Assert.Contains("Model downloads contact their publishers", source);
+        Assert.Contains("Posting happens only when you choose to share", source);
+    }
+
     [Fact]
     public void SnapshotCapabilityHonorsFullAndClipScopeWithoutDroppingSynth()
     {
@@ -414,6 +432,30 @@ public sealed class ViewModelTests
     }
 
     [Fact]
+    public void EmptyPrelayoutBoundsAreRetriedAndValidGeometryIsRetained()
+    {
+        var cache = new TranscriptGeometryCache<string, int>();
+        var calls = 0;
+        IReadOnlyList<int> Measure(string inline) => ++calls == 1 ? [] : [12, 34];
+        cache.BeginDraw();
+        Assert.Empty(cache.Get("word", true, Measure));
+        Assert.True(cache.NeedsLayout);
+        cache.BeginDraw();
+        Assert.Equal([12, 34], cache.Get("word", true, Measure));
+        Assert.False(cache.NeedsLayout);
+        Assert.Equal([12, 34], cache.Get("word", true, Measure));
+        Assert.Equal(2, calls);
+        cache.Invalidate();
+        Assert.True(cache.NeedsLayout);
+        cache.BeginDraw();
+        cache.Get("word", true, Measure);
+        Assert.Equal(3, calls);
+        cache.BeginDraw();
+        Assert.Empty(cache.Get("hidden", false, _ => []));
+        Assert.False(cache.NeedsLayout);
+    }
+
+    [Fact]
     public void HighlightOffsetsFollowRenderedUtf16TextIncludingPausesAndCollapsedCuts()
     {
         var words = new[] { "Tere! ", "asukoht ", "⋯ 2 cut ", "", "👩🏽‍💻 " };
@@ -428,14 +470,13 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    public void HighlightOffsetsIncludeBadgesAiChipsEndMarkersAndCutPauses()
+    public void HighlightOffsetsIgnoreEmbeddedBadgesAndChipsButIncludeTextMarkers()
     {
         string[] words = ["Tere! ", "👩🏽‍💻 ", "é ", "שלום "];
         string?[] pauses = [null, " ‖ pause 1.2s ", null, null];
-        int[] before = [1, 2, 0, 0];
-        int[] after = [0, 1, 1, 1];
-        var starts = TranscriptTextRanges.Starts(words, pauses, before, after);
-        var rendered = string.Concat(words.Select((word, index) => new string('◆', before[index]) + word + pauses[index] + new string('◆', after[index])));
+        int[] after = [0, 1, 1, 0];
+        var starts = TranscriptTextRanges.Starts(words, pauses, after);
+        var rendered = string.Concat(words.Select((word, index) => word + pauses[index] + new string(']', after[index])));
         for (var index = 0; index < words.Length; index++)
             Assert.Equal(words[index], rendered.Substring(starts[index], words[index].Length));
         Assert.Throws<ArgumentException>(() => TranscriptTextRanges.Starts(words, pauses, [1]));

@@ -27,6 +27,7 @@ internal sealed class FindClipsFlyout
     private readonly TextBlock footnote = Ui.Text("", "HelperText");
     private readonly TextBlock problem = Ui.Text("", "HelperText");
     private readonly Button find = new() { Content = "Find clips", HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly ProgressRing busy = new() { Width = 16, Height = 16, Visibility = Visibility.Collapsed };
     private ProviderEntry? entry;
     private CancellationTokenSource? search;
     /// <summary>A Find is past its first check: set before the awaited preflight, so a second click or Enter can't start
@@ -37,6 +38,7 @@ internal sealed class FindClipsFlyout
     internal FindClipsFlyout(EditorViewModel model, CancellationToken ct)
     {
         this.model = model; this.ct = ct;
+        model.PropertyChanged += BusyChanged;
         find.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
         var title = Ui.Text("Find clips in this take", "BodyStrongTextBlockStyle");
         var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
@@ -44,6 +46,7 @@ internal sealed class FindClipsFlyout
         line.Children.Add(connector);
         line.Children.Add(change);
         AutomationProperties.SetName(change, "Change connector");
+        AutomationProperties.SetName(busy, "AI request in progress");
         change.Click += (_, _) => { flyout.Hide(); App.OpenSettings("Providers & Keys"); };
         preset.SelectionChanged += (_, _) => instructions.Header = preset.SelectedIndex == 4 ? "Describe the clips you want" : "Anything specific? (optional)";
         instructions.KeyDown += (_, args) =>
@@ -57,7 +60,7 @@ internal sealed class FindClipsFlyout
         find.Click += (_, _) => _ = FindAsync();
         var body = Ui.Stack(12);
         body.Width = 340;
-        foreach (var child in new UIElement[] { title, line, preset, instructions, footnote, problem, find }) body.Children.Add(child);
+        foreach (var child in new UIElement[] { title, line, preset, instructions, footnote, problem, busy, find }) body.Children.Add(child);
         flyout.Content = body;
         flyout.Opened += (_, _) => { Ui.EffectsChanged += EffectsChanged; instructions.Focus(FocusState.Programmatic); };
         flyout.Closed += (_, _) => { Ui.EffectsChanged -= EffectsChanged; anchor?.Focus(FocusState.Programmatic); };
@@ -94,7 +97,11 @@ internal sealed class FindClipsFlyout
         problem.Visibility = Visibility.Collapsed;
         Ui.ApplyFlyoutEffects(flyout, target);
         flyout.ShowAt(target);
-        try { connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(await App.Services.Connector(chosen.Id).GetStatusAsync(ct))}"; }
+        try
+        {
+            var status = await ProviderCatalog.ProbeAsync(chosen, App.Services.Connector(chosen.Id), ct);
+            connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(status)}";
+        }
         catch (OperationCanceledException) { }
         catch (Exception exception) when (exception is not OutOfMemoryException) { connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(new ConnectorStatus.Unavailable(exception.GetType().Name))}"; }
     }
@@ -102,7 +109,13 @@ internal sealed class FindClipsFlyout
     /// <summary>Run the last search again from the callout's Retry.</summary>
     internal Task RetryAsync() => FindAsync();
     internal void Cancel() => search?.Cancel();
-    internal void Close() { Ui.EffectsChanged -= EffectsChanged; flyout.Hide(); Cancel(); }
+    internal void Close() { model.PropertyChanged -= BusyChanged; Ui.EffectsChanged -= EffectsChanged; flyout.Hide(); Cancel(); }
+    private void BusyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
+    {
+        find.IsEnabled = !model.Busy && !model.IsLeaving;
+        busy.IsActive = model.LlmRuns.IsBusy;
+        busy.Visibility = busy.IsActive ? Visibility.Visible : Visibility.Collapsed;
+    }
     private void EffectsChanged(object? sender, EventArgs args) => anchor?.DispatcherQueue.TryEnqueue(() => { if (anchor is not null) Ui.ApplyFlyoutEffects(flyout, anchor); });
     internal void Dismiss() => Set(null);
 #if DEBUG
@@ -119,6 +132,8 @@ internal sealed class FindClipsFlyout
             instructions.Focus(FocusState.Programmatic);
             return;
         }
+        using var run = model.LlmRuns.TryAcquire();
+        if (run is null) return;
         starting = true;
         try
         {
@@ -152,10 +167,12 @@ internal sealed class FindClipsFlyout
 
     private async Task FindWithAsync(ProviderEntry chosen)
     {
+        Func<CancellationToken, Task<bool>> authorize;
         try
         {
             // The connector's preflight (AI spec §4): a connector that isn't ready explains itself under the actions.
-            var status = await App.Services.Connector(chosen.Id).GetStatusAsync(ct);
+            var selectedConnector = App.Services.Connector(chosen.Id);
+            var status = await ProviderCatalog.ProbeAsync(chosen, selectedConnector, ct);
             if (model.IsLeaving) return;
             if (status is not ConnectorStatus.Ready)
             {
@@ -163,7 +180,9 @@ internal sealed class FindClipsFlyout
                 Show(ClipCallouts.NotReady(chosen.Id, chosen.Label, status, CliHint(chosen, "installHint"), CliHint(chosen, "signInHint")));
                 return;
             }
-            if (!await ProviderCatalog.ConsentAsync(chosen, anchor?.XamlRoot ?? flyout.XamlRoot, ct) || model.IsLeaving) return;
+            var root = anchor?.XamlRoot ?? flyout.XamlRoot;
+            authorize = token => ProviderCatalog.ConsentAsync(chosen, root, ConnectorConsentAction.FindClips,
+                model.Words.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word), selectedConnector, status, token);
         }
         catch (OperationCanceledException) { return; }
         catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -176,7 +195,7 @@ internal sealed class FindClipsFlyout
         if (model.State is not { } state) return;
         search?.Dispose();
         search = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        model.Busy = true; App.Services.BusyOperations++;
+        App.Services.BusyOperations++;
         Running = $"{chosen.ShortName} · reading {EditorViewModel.Duration(model.Project.Media.Source.DurationSeconds)} of transcript";
         NoneFound = null;
         Set(null);
@@ -184,9 +203,10 @@ internal sealed class FindClipsFlyout
         try
         {
             var request = new ClipFinderRequest(state.Transcript.Words, state.Corrections, state.CutWordIds, (ClipPreset)Math.Max(0, preset.SelectedIndex),
-                instructions.Text, state.Transcript.Language, chosen.Id, App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel));
-            var result = await App.Services.ClipFinder.FindClipsAsync(request, null, search.Token);
-            if (model.IsLeaving) return;
+                instructions.Text, state.Transcript.Language, chosen.Id, App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel),
+                Snap: App.Services.Get("llm.clips.snapToLines", true));
+            var result = await ConnectorPreflight.FindAsync(App.Services.ClipFinder, request, authorize, search.Token);
+            if (result is null || model.IsLeaving) return;
             var added = model.AddAiResult(result);
             // None found reads the prompt file's message (design §13), under Suggested.
             if (result.Clips.Count == 0) NoneFound = await ProviderCatalog.ClipMessageAsync("noResults", ct) ?? ClipAnnouncements.NoResults;
@@ -197,7 +217,7 @@ internal sealed class FindClipsFlyout
         catch (Exception exception) when (exception is not OutOfMemoryException) { Fail(exception); }
         finally
         {
-            model.Busy = false; App.Services.BusyOperations--;
+            App.Services.BusyOperations--;
             Running = null;
             Changed?.Invoke(this, EventArgs.Empty);
         }

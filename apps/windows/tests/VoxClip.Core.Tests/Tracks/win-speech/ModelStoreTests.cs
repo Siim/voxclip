@@ -140,13 +140,14 @@ public sealed class ModelStoreTests
     }
 
     [Fact]
-    public async Task MissingOrDeclinedLicenceConsentNeverDownloads()
+    public async Task MissingConfirmationFailsVisiblyAndDeclinedConsentCancelsWithoutDownloading()
     {
         using var files = new SpeechFiles();
         var catalog = await files.CatalogueAsync(Contents);
         using var handler = new StubHttp((_, _) => throw new InvalidOperationException("Consent was not given."));
         using var http = new HttpClient(handler);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new ModelStore(catalog, files.Root, http).InstallAsync(ModelId, null, TestContext.Current.CancellationToken));
+        var missing = await Assert.ThrowsAsync<InvalidOperationException>(() => new ModelStore(catalog, files.Root, http).InstallAsync(ModelId, null, TestContext.Current.CancellationToken));
+        Assert.Equal("This model store has no download confirmation.", missing.Message);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new ModelStore(catalog, files.Root, http, (_, _, _) => Task.FromResult(false))
             .InstallAsync(ModelId, null, TestContext.Current.CancellationToken));
         Assert.Equal(0, handler.Calls);

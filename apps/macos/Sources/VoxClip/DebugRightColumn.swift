@@ -222,20 +222,20 @@ import VoxClipMedia
         for viewport: CGFloat in [399.5, 272, 264] {
             var reveal = CaptionGalleryReveal()
             reveal.begin(CaptionGalleryRequest(selection: "ring-probe", size: CGSize(width: 320, height: viewport), fineTune: false))
-            let first = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: .top)
-            let duplicate = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: .top)
+            let first = reveal.shouldScroll(to: .tile("vox-highlight"))
+            let duplicate = reveal.shouldScroll(to: .tile("vox-highlight"))
             results.append(.init(name: "gallery at \(viewport) coalesces repeated top-alignment commands", passed: first && !duplicate))
-            let renewed = reveal.shouldScroll(to: .tile("outline"), anchor: .top)
+            let renewed = reveal.shouldScroll(to: .tile("outline"))
             reveal.complete()
             results.append(.init(name: "gallery at \(viewport) accepts a new target and issues nothing once complete",
-                passed: renewed && !reveal.shouldScroll(to: .tile("outline"), anchor: .top, geometry: [999])))
+                passed: renewed && !reveal.shouldScroll(to: .tile("outline"), geometry: [999])))
             var landing = CaptionGalleryReveal()
-            landing.begin(CaptionGalleryRequest(selection: "lazy-landing", size: CGSize(width: 320, height: viewport), fineTune: false))
-            let issued = landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [0])
-            let unmoved = landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [0])
-            let reissued = (1...3).map { landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [CGFloat($0) * 100]) }
-            let delayed = landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [400])
-            results.append(.init(name: "gallery at \(viewport) corrects each changed measured landing without repeating unchanged commands",
+            landing.begin(CaptionGalleryRequest(selection: "resized-layout", size: CGSize(width: 320, height: viewport), fineTune: false))
+            let issued = landing.shouldScroll(to: .tile("editorial"), geometry: [0])
+            let unmoved = landing.shouldScroll(to: .tile("editorial"), geometry: [0])
+            let reissued = (1...3).map { landing.shouldScroll(to: .tile("editorial"), geometry: [CGFloat($0) * 100]) }
+            let delayed = landing.shouldScroll(to: .tile("editorial"), geometry: [400])
+            results.append(.init(name: "gallery at \(viewport) revalidates changed layout without repeating unchanged commands",
                 passed: issued && !unmoved && reissued == [true, true, true] && delayed))
         }
         return results

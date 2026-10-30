@@ -65,6 +65,7 @@ public sealed class ElevenLabsTests
     [InlineData(403, "{}", VoxClipErrorCode.KeyPermissionMissing)]
     [InlineData(422, "{\"detail\":[{\"msg\":\"bad input\"}]}", VoxClipErrorCode.ProviderError)]
     [InlineData(400, "{\"detail\":\"credits used up\"}", VoxClipErrorCode.QuotaExceeded)]
+    [InlineData(400, "{\"detail\":{\"status\":\"invalid_parameter\",\"message\":\"bad input\"}}", VoxClipErrorCode.ProviderError)]
     public async Task MapsErrorsWithoutRetryingClientFailures(int status, string body, VoxClipErrorCode expected)
     {
         using var files = new SpeechFiles();
@@ -73,7 +74,7 @@ public sealed class ElevenLabsTests
             .TranscribeAsync(files.Request(), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Equal(expected, error.Code);
         Assert.Equal(1, handler.Calls);
-        if (status == 422) Assert.Contains("bad input", error.Message);
+        if (expected == VoxClipErrorCode.ProviderError) Assert.Contains("bad input", error.Message);
     }
 
     [Theory]
@@ -188,6 +189,40 @@ public sealed class ElevenLabsTests
         var invalidTerm = await Assert.ThrowsAsync<VoxClipException>(() => engine.TranscribeAsync(files.Request(new(Keyterms: ["bad[term]"])), new CaptureProgress<TranscriptionProgress>(), TestContext.Current.CancellationToken));
         Assert.Contains("bad[term]", invalidTerm.Message);
         Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public void KeyErrorsAtAnyStatusReadAsKeyProblemsAndResidencyExplainsItself()
+    {
+        const string invalid = "{\"detail\":{\"type\":\"authentication_error\",\"code\":\"invalid_api_key\",\"message\":\"Invalid API key\"}}";
+        Assert.Equal(VoxClipErrorCode.KeyRejected, ElevenLabsTranscriber.MapError(HttpStatusCode.BadRequest, invalid, "synthetic-key").Code);
+        var residency = ElevenLabsTranscriber.MapError(HttpStatusCode.BadRequest, invalid, "synthetic-key", ElevenLabsRegion.Eu);
+        Assert.Equal(VoxClipErrorCode.ProviderError, residency.Code);
+        Assert.Contains("most accounts use Region: Default", residency.Message);
+        Assert.Contains("IN residency", ElevenLabsTranscriber.MapError(HttpStatusCode.BadRequest, "{}", "synthetic-key", ElevenLabsRegion.In).Message);
+        Assert.Equal("ElevenLabs answered 400: The request could not be completed.", ElevenLabsTranscriber.MapError(HttpStatusCode.BadRequest, "{}", "synthetic-key", ElevenLabsRegion.Us).Message);
+        Assert.Equal(VoxClipErrorCode.KeyRejected, ElevenLabsTranscriber.MapError(HttpStatusCode.Unauthorized, "{}", "synthetic-key").Code);
+        var unauthorized = ElevenLabsTranscriber.MapError(HttpStatusCode.Unauthorized, "{}", "synthetic-key", ElevenLabsRegion.Eu);
+        Assert.Equal(VoxClipErrorCode.ProviderError, unauthorized.Code);
+        Assert.Contains("EU residency", unauthorized.Message);
+        var longReason = "{\"detail\":{\"message\":\"" + new string('x', 300) + "\"}}";
+        var cut = ElevenLabsTranscriber.MapError(HttpStatusCode.BadRequest, longReason, "synthetic-key", ElevenLabsRegion.Sg).Message;
+        Assert.EndsWith("most accounts use Region: Default", cut);
+        Assert.Equal("ElevenLabs answered 400: ".Length + 200, cut.Length);
+    }
+
+    [Fact]
+    public async Task KeyTestExplainsResidencyWithoutEchoingTheBody()
+    {
+        using var handler = new StubHttp((_, _) => Task.FromResult(StubHttp.Json("{\"detail\":{\"status\":\"invalid_api_key\"}}", HttpStatusCode.Unauthorized)));
+        var error = await Assert.ThrowsAsync<VoxClipException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), handler, region: ElevenLabsRegion.Eu)
+            .TestKeyAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(VoxClipErrorCode.ProviderError, error.Code);
+        Assert.Equal("ElevenLabs answered 401: The request could not be completed. ElevenLabs EU residency needs a key from a data-residency workspace; most accounts use Region: Default", error.Message);
+        using var busy = new StubHttp((_, _) => Task.FromResult(StubHttp.Json("{}", HttpStatusCode.ServiceUnavailable)));
+        var outage = await Assert.ThrowsAsync<VoxClipException>(() => ElevenLabsTranscriber.ForTesting(new TestKeys(), busy, region: ElevenLabsRegion.Default)
+            .TestKeyAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("ElevenLabs answered 503: The request could not be completed.", outage.Message);
     }
 
     [Fact]

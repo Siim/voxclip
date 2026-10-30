@@ -40,6 +40,13 @@ public partial class App : Application
         window = NewWindow();
         termsHost?.Close();
         termsHost = null;
+        var frameProbeIndex = Array.IndexOf(Program.Arguments, "--transcript-frame-probe");
+        if (frameProbeIndex >= 0 && frameProbeIndex + 1 < Program.Arguments.Length)
+        {
+            await TranscriptFrameProbe.RunAsync(window, Program.Arguments[frameProbeIndex + 1]);
+            Exit();
+            return;
+        }
         if (Program.Instance is { } instance)
             instance.Activated += (_, activation) => window.DispatcherQueue.TryEnqueue(async () =>
             {
@@ -53,6 +60,13 @@ public partial class App : Application
                 }
             });
 #if DEBUG
+            var routeProbeIndex = Array.IndexOf(Program.Arguments, "--shell-route-probe");
+            if (routeProbeIndex >= 0 && routeProbeIndex + 1 < Program.Arguments.Length)
+            {
+                await ShellRouteProbe.RunAsync(window, Program.Arguments[routeProbeIndex + 1]);
+                Exit();
+                return;
+            }
             var restartProbeIndex = Array.IndexOf(Program.Arguments, "--restart-probe");
             if (restartProbeIndex >= 0 && restartProbeIndex + 1 < Program.Arguments.Length)
             {

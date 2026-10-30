@@ -22,6 +22,18 @@ internal static class ShellNativeProbe
     {
         Directory.CreateDirectory(output);
         var checks = new List<string>();
+        var failures = new List<string>();
+        async Task Gate(string name, Func<Task> run)
+        {
+            await File.AppendAllTextAsync(Path.Combine(output, "native-phases.txt"), "begin " + name + Environment.NewLine);
+            try { await run(); }
+            catch (Exception exception)
+            {
+                failures.Add(name + ": " + exception); checks.Add("FAILED native gate: " + name);
+                await File.WriteAllTextAsync(Path.Combine(output, name + "-error.txt"), exception.ToString());
+            }
+            await File.AppendAllTextAsync(Path.Combine(output, "native-phases.txt"), "end " + name + Environment.NewLine);
+        }
         var report = Path.Combine(output, "shell-native-result.json");
         try
         {
@@ -45,8 +57,24 @@ internal static class ShellNativeProbe
             Require(editor!.ViewModel.IsReadOnly && !editor.ViewModel.CanExport, "missing fixture media was not read-only");
             checks.Add("missing media is read-only; remaining navigation checks use a synthetic resolved-media state");
             editor.ViewModel.SetMediaUnavailable(false);
-            await TimelineNativeProbe.RunAsync(window, editor.ViewModel.Project, checks);
-            await TranscriptNativeProbe.RunAsync(window, editor.ViewModel.Project, checks);
+            var diagnostic = Environment.GetEnvironmentVariable("VOXCLIP_NATIVE_DIAGNOSTIC");
+            if (diagnostic is "bounds" or "bounds-critical" or "caption")
+            {
+                if (diagnostic is "bounds" or "bounds-critical") await Gate("layout", () => editor.DebugLayoutGateAsync(window, output, checks));
+                else
+                    for (var attempt = 1; attempt <= 5; attempt++)
+                        await Gate("caption-" + attempt, () => window.DebugEditor!.DebugCaptionGateAsync(window, output, checks));
+                Require(failures.Count == 0, string.Join("\n\n", failures));
+                await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "diagnostic", diagnostic, checks }));
+                return;
+            }
+            await Gate("timeline", () => TimelineNativeProbe.RunAsync(window, editor.ViewModel.Project, checks));
+            await Gate("transcript", () => TranscriptNativeProbe.RunAsync(window, editor.ViewModel.Project, checks));
+            await Gate("layout", () => editor.DebugLayoutGateAsync(window, output, checks));
+            await Gate("caption", () => editor.DebugCaptionGateAsync(window, output, checks));
+            editor = window.DebugEditor!;
+            await Gate("rewrite", () => editor.DebugRewriteGateAsync(window, output, checks));
+            await Gate("busy-consent", () => editor.DebugBusyGateAsync(window, output, checks));
             editor!.ViewModel.Select(0); editor.ViewModel.Select(1, true);
             Require(editor.ViewModel.MakeClip() is not null, "manual clip was refused");
             await Task.Delay(1200); // let the 500 ms autosave settle before injecting failures
@@ -100,7 +128,7 @@ internal static class ShellNativeProbe
 
             window.DebugSelect(window.Shell.Home);
             await window.DebugInvokeAsync(recent!);
-            Require(window.ProjectPath == second && window.DebugEditor is { } secondEditor && !ReferenceEquals(secondEditor, editor), "Recent did not open the second project");
+            Require(window.ProjectPath == second && window.DebugEditor is { } secondEditor && !ReferenceEquals(secondEditor, editor), "Recent did not open the second project. " + window.DebugOpenError);
             Require(window.DebugSelectedRow?.Kind == SidebarKind.FullTake && window.CurrentScreen == "editor", "Recent did not show the editor with Full take");
             var saved = ProjectSerialization.Deserialize(await File.ReadAllTextAsync(first));
             Require(saved.Edits.Clips.Count == 1, "the first project was not saved before Recent replaced it");
@@ -108,10 +136,11 @@ internal static class ShellNativeProbe
 
             var replaced = window.DebugEditor!;
             replaced.ViewModel.SetMediaUnavailable(false);
-            replaced.ViewModel.Select(2); replaced.ViewModel.Correct("probe-drop");
-            await Task.Delay(1200);
             await using (new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                replaced.ViewModel.Select(2); replaced.ViewModel.Correct("probe-drop");
                 await window.OpenDroppedAsync(third);
+            }
             Require(ReferenceEquals(window.DebugEditor, replaced) && window.ProjectPath == second, "a failed save let the drop replace the project");
             await window.OpenDroppedAsync(Path.Combine(output, "clip.avi"));
             Require(window.DebugNotice.StartsWith("VoxClip can't open AVI files on PC yet.", StringComparison.Ordinal) && ReferenceEquals(window.DebugEditor, replaced),
@@ -124,9 +153,11 @@ internal static class ShellNativeProbe
 
             // The sidebar's header rows host real controls (design §3.4, §13): each is enabled, named for Narrator and acts.
             var last = window.DebugEditor!;
+            last.ViewModel.SetMediaUnavailable(false);
             var words = last.ViewModel.Words;
             last.ViewModel.AddAiResult(new AiResult("probe-run", DateTimeOffset.UtcNow, "anthropic", "probe-model", ClipPreset.Best, null, "en", new string('0', 64),
                 [new AiClip("Probe idea one", "Probe reason", 8, words[2].Id, words[4].Id), new AiClip("Probe idea two", "Probe reason", 7, words[6].Id, words[8].Id)]));
+            await Until(() => window.Shell.Rows.Any(row => row.Kind == SidebarKind.SuggestedHeader), "the sidebar did not realize suggestions");
             var header = window.Shell.Rows.Single(row => row.Kind == SidebarKind.SuggestedHeader);
             Require(header.Title == "Suggested (2)" && header.ShowsKeepAll, "two suggestions did not show Suggested (2) with Keep all");
             Invoke(await ControlIn<HyperlinkButton>(window, header, "Keep all suggested clips"));
@@ -154,11 +185,12 @@ internal static class ShellNativeProbe
             Require(other.CurrentScreen == "home" && other.DebugEditor is null && other.DebugSelectedRow?.Kind == SidebarKind.Home, "Ctrl+N did not open a window on Home");
             other.Close();
             checks.Add("a new window opens on Home");
+            Require(failures.Count == 0, string.Join("\n\n", failures));
             await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "passed", checks }, new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (Exception exception)
         {
-            await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "failed", checks, error = exception.ToString() },
+            await File.WriteAllTextAsync(report, JsonSerializer.Serialize(new { status = "failed", checks, error = exception + (window.DebugOpenError is { } openError ? "\nProject open: " + openError : "") },
                 new JsonSerializerOptions { WriteIndented = true }));
             throw;
         }
@@ -182,8 +214,16 @@ internal static class ShellNativeProbe
         await Until(() => window.DebugContainer(row) is { ActualHeight: > 0 }, $"the {row.Kind} row was not realized");
         var container = (Control)window.DebugContainer(row)!;
         Require(container.IsEnabled && AutomationProperties.GetAccessibilityView(container) == AccessibilityView.Content, $"the {row.Kind} row is disabled or hidden from Narrator");
-        var control = Descendants(container).OfType<T>().FirstOrDefault(item => FrameworkElementAutomationPeer.CreatePeerForElement(item).GetName() == name);
-        Require(control is not null, $"the {row.Kind} row has no control named \"{name}\"");
+        T? control = null;
+        await Until(() =>
+        {
+            window.Content.UpdateLayout();
+            if (window.DebugContainer(row) is not Control current) return false;
+            container = current;
+            control = Descendants(container).OfType<T>().FirstOrDefault(item => FrameworkElementAutomationPeer.CreatePeerForElement(item).GetName() == name);
+            return control is { ActualWidth: > 0, Visibility: Visibility.Visible };
+        }, $"the {row.Kind} row has no control named \"{name}\"");
+        Require(container.IsEnabled && AutomationProperties.GetAccessibilityView(container) == AccessibilityView.Content, $"the {row.Kind} row is disabled or hidden from Narrator");
         var peer = FrameworkElementAutomationPeer.CreatePeerForElement(control!);
         Require(control!.IsEnabled && peer.IsEnabled() && peer.IsControlElement() && control.Visibility == Visibility.Visible && control.ActualWidth > 0,
             $"\"{name}\" is not a visible, enabled control element");

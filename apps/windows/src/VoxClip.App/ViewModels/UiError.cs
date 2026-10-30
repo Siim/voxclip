@@ -47,6 +47,9 @@ public static class UiError
                 VoxClipErrorCode.EverythingCut => "Keep at least one word before exporting.",
                 VoxClipErrorCode.NoAudioTrack => "This video has no audio track, so there is nothing to transcribe.",
                 VoxClipErrorCode.NoSpeech => "We didn't hear any words. Check the audio track or choose the language.",
+                VoxClipErrorCode.ProviderError => string.IsNullOrWhiteSpace(known.Message)
+                    ? $"{action} stopped. Your edits are saved."
+                    : known.Message.EndsWith("Your edits are saved.", StringComparison.Ordinal) ? known.Message : known.Message + " Your edits are saved.",
                 VoxClipErrorCode.Offline => "You're offline. On-device transcription and editing still work.",
                 VoxClipErrorCode.EncoderUnavailable => "No H.264 encoder is available on this PC. Install the Media Feature Pack or update your graphics driver.",
                 VoxClipErrorCode.ProjectTooNew => "This project was saved by a newer VoxClip. Update VoxClip to open it. Your video and edits are still here.",

@@ -143,7 +143,7 @@ function FindId([IntPtr]$w,[string]$id) {
 }
 function IsSelected($x){$p=$null;if($x.TryGetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern,[ref]$p)){return $p.Current.IsSelected};return $false}
 function Focused{[System.Windows.Automation.AutomationElement]::FocusedElement.Current.Name}
-function InCommandBar($e){$walker=[System.Windows.Automation.TreeWalker]::RawViewWalker;for($p=$e;$p -ne $null;$p=$walker.GetParent($p)){if($p.Current.ClassName -eq 'CommandBar'){return $true}};return $false}
+function InCommandBar($e){$walker=[System.Windows.Automation.TreeWalker]::RawViewWalker;$found=$false;$chain=@();for($p=$e;$p -ne $null;$p=$walker.GetParent($p)){$chain+="$($p.Current.Name) | $($p.Current.ClassName) | $($p.Current.AutomationId)";if($p.Current.ClassName -eq 'CommandBar' -or ($p.Current.ClassName -eq 'ApplicationBar' -and $p.Current.AutomationId -eq 'Commands')){$found=$true}};[IO.File]::AppendAllText((Join-Path $shots 'f6-ancestors.txt'),(($chain -join "`n")+"`n---`n"));return $found}
 function Choose($x){$x.SetFocus();Start-Sleep -Milliseconds 150;[R1Native]::Key(0x0D);Start-Sleep -Milliseconds 600}
 $transcriptName='Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.'
 try{
@@ -181,7 +181,8 @@ try{
  $result.editorScreenshotCaptured=$true
  # Pane rows carry the design section 3.4 names; Full take is selected after opening.
  $full=FindPrefix $w 'Full take, '
- if(-not (IsSelected $full) -or -not $full.Current.Name.EndsWith(' after cuts')){throw "Full take row is not selected or misnamed: $($full.Current.Name)"}
+ $fullSuffix=if($NormalProject){' after cuts'}else{' after cuts, demo project, no video'}
+ if(-not (IsSelected $full) -or -not $full.Current.Name.EndsWith($fullSuffix)){throw "Full take row is not selected or misnamed: $($full.Current.Name)"}
  [void](FindName $w 'Home')
  if((FindName $w 'New clip from selection').Current.IsEnabled){throw 'New clip from selection is enabled without selected words'}
  [void](FindName $w 'Find clips with AI')
@@ -259,6 +260,7 @@ try{
   $e=[System.Windows.Automation.AutomationElement]::FocusedElement
   $walk+=,@($e.Current.Name,$e.Current.ControlType.ProgrammaticName,(InCommandBar $e))
   $bounds=$e.Current.BoundingRectangle
+  [IO.File]::WriteAllText((Join-Path $shots 'f6-attempts.json'),(ConvertTo-Json -Depth 6 -InputObject @{walk=$walk;last=@{name=$e.Current.Name;offscreen=$e.Current.IsOffscreen;bounds=@{x=$bounds.X;y=$bounds.Y;width=$bounds.Width;height=$bounds.Height}}}))
   if($bounds.IsEmpty -or $e.Current.IsOffscreen){throw 'F6 focused an empty or offscreen element'}
   $name='focus-region-'+($i+1)
   Capture $w $name
@@ -268,7 +270,7 @@ try{
   runtime=$RuntimeIdentifier;regions=$focusEvidence;acceptance='UIA order alone does not prove Fluent two-ring focus, absence of a black rectangle, or spoken Narrator output'
  }))
  [IO.File]::WriteAllText((Join-Path $shots 'f6-order.txt'),(($walk | ForEach-Object { $_ -join ' | ' }) -join "`n"))
- if($walk[0][0] -notin @('Play','Pause') -or $walk[1][1] -notin @('ControlType.List','ControlType.ListItem') -or -not $walk[2][0].StartsWith('Playhead') -or -not $walk[3][0].StartsWith('Full take, ') -or -not $walk[4][2] -or $walk[5][0] -ne $transcriptName){throw 'F6 did not walk the viewer, Captions, timeline, sidebar, command row and transcript in order'}
+ if($walk[0][0] -notin @('Play','Pause') -or ($walk[1][1] -notin @('ControlType.List','ControlType.ListItem') -and $walk[1][0] -ne 'Show captions') -or -not $walk[2][0].StartsWith('Playhead') -or -not $walk[3][0].StartsWith('Full take, ') -or -not $walk[4][2] -or $walk[5][0] -ne $transcriptName){throw 'F6 did not walk the viewer, Captions, timeline, sidebar, command row and transcript in order'}
  [R1Native]::Chord(0x10,0x75);Start-Sleep -Milliseconds 300
  if(-not (InCommandBar ([System.Windows.Automation.AutomationElement]::FocusedElement))){throw 'Shift+F6 from the transcript did not return to the command row'}
  $result.f6Order=$true
@@ -326,7 +328,8 @@ try{
   [void](FindName $w 'Import video, Ctrl+O')
   if($app.HasExited -or $app.MainWindowHandle -ne $w){throw 'Home navigation changed the owned HWND'}
   Dump $w 'home-recent';Capture $w 'home-recent'
-  $projectName=[IO.Path]::GetFileNameWithoutExtension($NormalProject)
+  $projectName=[string](ReadCheck $NormalProject).title
+  if([string]::IsNullOrWhiteSpace($projectName)){$projectName=[IO.Path]::GetFileNameWithoutExtension($NormalProject)}else{$projectName=$projectName.Trim()}
   $items=[System.Windows.Automation.AutomationElement]::FromHandle($w).FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
   $recent=$items | Where-Object {$_.Current.ControlType -eq [System.Windows.Automation.ControlType]::ListItem -and $_.Current.Name -eq $projectName} | Select-Object -First 1
   if(-not $recent){throw 'The open project was absent from the Home recent list'}

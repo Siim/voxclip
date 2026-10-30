@@ -70,6 +70,9 @@ $dataBefore = @{}
 $cliVersion = $null
 $signingCredentialsAbsent = $true
 $firstError = $null
+$runtimeBefore = $null
+$runtimeAfter = $null
+$setupExitCode = $null
 $cleanupErrors = New-Object 'Collections.Generic.List[Exception]'
 try {
     foreach ($name in @('AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_CLIENT_SECRET')) {
@@ -83,9 +86,13 @@ try {
     }
     New-Item -ItemType Directory -Force -Path $ReportDirectory | Out-Null
     [IO.File]::WriteAllText($marker, (@{ installRoot = $installRoot } | ConvertTo-Json), [Text.Encoding]::UTF8)
+    $runtimeBefore = Get-ReleaseVcRuntime -RuntimeIdentifier $RuntimeIdentifier
     $process = Invoke-ReleaseProcess -Executable $Setup -Arguments ('--silent --installto "' + $installRoot + '"') -TimeoutSeconds 300
+    $setupExitCode = $process.ExitCode
+    $runtimeAfter = Get-ReleaseVcRuntime -RuntimeIdentifier $RuntimeIdentifier
     $installed = Test-Path -LiteralPath $installRoot
     if ($process.ExitCode -ne 0 -or -not $installed) { throw "Silent install failed ($($process.ExitCode)); expected $installRoot." }
+    Assert-ReleaseVcRuntime -Runtime $runtimeAfter
     $current = Join-Path $installRoot 'current'
     foreach ($relative in @('Update.exe', 'VoxClip.exe', 'current\VoxClip.exe', 'current\voxclip-cli.exe', 'current\LICENSE', 'current\THIRD_PARTY_NOTICES.md', 'current\licenses\FFmpeg-LICENSE.txt', 'current\licenses\FFmpeg-BUILD.txt')) {
         if (-not (Test-Path -LiteralPath (Join-Path $installRoot $relative))) { throw "Installed file missing: $relative" }
@@ -126,6 +133,7 @@ try {
         New-Item -ItemType Directory -Force -Path $ReportDirectory | Out-Null
         [IO.File]::WriteAllText((Join-Path $ReportDirectory 'install-test.json'), (@{
             installRoot = $installRoot; dataRoot = $dataRoot; cliVersion = $cliVersion; runtimeIdentifier = $RuntimeIdentifier; setup = $Setup
+            vcRuntimeBefore = $runtimeBefore; vcRuntimeAfter = $runtimeAfter; setupExitCode = $setupExitCode
             uninstalled = $cleanup.uninstalled; temporaryDirectoryRemoved = $cleanup.directoryRemoved; signingCredentialsAbsent = $signingCredentialsAbsent
             error = if ($firstError) { $firstError.Exception.Message } else { $null }; cleanup = $cleanup
             success = -not $firstError -and $cleanupErrors.Count -eq 0

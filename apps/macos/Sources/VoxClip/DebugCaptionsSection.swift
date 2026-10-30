@@ -21,7 +21,7 @@ import VoxClipCore
         let size = CGSize(width: 294, height: 272)
         let firstRequest = CaptionGalleryRequest(selection: "full/vox-highlight", size: size, fineTune: false)
         reveal.begin(firstRequest); reveal.complete(); reveal.begin(firstRequest)
-        check("recreating a selected lazy tile does not steal the user's scroll position", !reveal.pending)
+        check("recreating a selected tile does not steal the user's scroll position", !reveal.pending)
         check("gallery geometry markers never intercept a tile click", ColumnLayoutMarker().hitTest(.zero) == nil)
         reveal.begin(CaptionGalleryRequest(selection: "clip/vox-highlight", size: size, fineTune: false))
         check("a scope change requests selected-tile visibility again", reveal.pending)
@@ -178,11 +178,11 @@ import VoxClipCore
         var delayed = CaptionGalleryReveal()
         delayed.begin(CaptionGalleryRequest(selection: "full/editorial", size: size, fineTune: false))
         let corrections = (0..<16).map { offset in
-            delayed.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [CGFloat(offset)])
+            delayed.shouldScroll(to: .tile("editorial"), geometry: [CGFloat(offset)])
         }
-        let duplicate = delayed.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [15])
+        let duplicate = delayed.shouldScroll(to: .tile("editorial"), geometry: [15])
         return [
-            .init(name: "delayed measured layout keeps correcting without a retry budget or duplicate commands", passed: corrections.allSatisfy { $0 } && !duplicate),
+            .init(name: "changed viewport geometry can reveal again without duplicate commands", passed: corrections.allSatisfy { $0 } && !duplicate),
             .init(name: "scope changes reveal the selected tile with Fine Tune expanded", passed: expandedScope && nextScope),
             .init(name: "viewport resizing cannot resume a user-interrupted reveal", passed: resized),
             .init(name: "clicking a visible tile does not request a reveal", passed: clicked),

@@ -53,7 +53,10 @@ internal sealed class ExportDialog : ContentDialog
         if (onlyClip is not null)
         {
             var clip = model.KeptClips.Single(clip => clip.Id == onlyClip);
-            target.Items.Add(new RadioButton { Content = $"This clip\nClip {clip.Number} · {clip.Title} · {clip.Duration}" });
+            var currentClip = new RadioButton { Content = $"This clip\nClip {clip.Number} · {clip.Title} · {clip.Duration}" };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(currentClip, $"This clip, Clip {clip.Number} · {clip.Title} · {clip.Duration}");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(currentClip, "Export.ThisClip");
+            target.Items.Add(currentClip);
         }
         target.Items.Add(new RadioButton { Content = $"All {model.KeptClips.Count} clips", IsEnabled = model.KeptClips.Count > 0 });
         target.Items.Add(new RadioButton { Content = $"Full video · {EditorViewModel.Duration(model.FullTakeDuration)}" });
@@ -74,6 +77,7 @@ internal sealed class ExportDialog : ContentDialog
         form.Children.Add(disclosure); body.Children.Add(form);
         target.SelectionChanged += (_, _) => UpdateDisclosure();
         UpdateDisclosure();
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(progress, "Export progress");
         body.Children.Add(progress); body.Children.Add(notice);
         // share.captions holds 3,000 Unicode scalars (voice-lab §11.3), but MaxLength counts UTF-16 units, so it is only a loose
         // bound: TextChanging cuts typed, pasted and loaded text with SharePostText.CapCaption, as the Mac field does, and keeps
