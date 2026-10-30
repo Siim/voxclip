@@ -305,7 +305,8 @@ internal sealed class VoiceLabSettingsPane : UserControl
         AutomationProperties.SetHelpText(create, session.CreateBlockedReason);
         AutomationProperties.SetAutomationId(create, "voice-create-open");
         AddCard(voices, create); AddCard(voices, Ui.Text(session.SpeakerMessage, "HelperText"));
-        if (session.Message is { } text) Ui.Show(message, text, InfoBarSeverity.Informational);
+        if (session.Message is { } text) Ui.Show(message, text,
+            text == VoiceLabCopy.RecoveryFailed || text == VoiceLabCopy.ReadFailed || text == "Couldn't finish — Retry" ? InfoBarSeverity.Warning : InfoBarSeverity.Informational);
     }
     private void AddExports()
     {

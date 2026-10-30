@@ -22,6 +22,7 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private readonly VoiceConsentStore store = new(data, timeProvider);
+    internal static void ReconcileLocalStatements(DataLocations data) => new VoiceConsentStore(data).ReconcileAbandonedEnrollments();
     public bool Enabled => enabled();
     private void RequireEnabled(CancellationToken ct)
     {

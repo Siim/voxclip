@@ -26,13 +26,14 @@ internal interface IVoiceStatementCapture : IAsyncDisposable
     void Discard();
 }
 
-internal enum VoiceCreationLeaveTrigger { Navigation, Back, Escape, Closing }
+internal enum VoiceCreationLeaveTrigger { Navigation, Back, Escape, Closing, AppExit }
 
 internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceStatementCapture capture,
     Func<Action, Task> dispatch, TimeProvider? timeProvider = null) : IAsyncDisposable
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private readonly SemaphoreSlim cleanup = new(1, 1);
+    private readonly SemaphoreSlim disposal = new(1, 1);
     private CancellationTokenSource? operation;
     private Task work = Task.CompletedTask;
     private bool leaving;
@@ -238,7 +239,7 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
         try
         {
             var needsConfirmation = Busy || Recording || Activating || HasStatementRecording || cleanupPending;
-            if (needsConfirmation && !await confirm(trigger)) return false;
+            if (needsConfirmation && trigger != VoiceCreationLeaveTrigger.AppExit && !await confirm(trigger)) return false;
             return await AbandonAsync();
         }
         finally { leaving = false; Notify(); }
@@ -259,11 +260,22 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
         if (!backend.Enabled) await AbandonAsync();
         Notify();
     }
+    internal async Task<bool> InterruptForRestartAsync()
+    {
+        var busy = IsBusyForRestart;
+        if (Recording || Activating || RecordingTraining) await AbandonAsync();
+        return busy;
+    }
     public async ValueTask DisposeAsync()
     {
-        if (disposed) return;
-        if (!await AbandonAsync()) throw new IOException("The statement recording could not be removed.");
-        disposed = true; operation?.Dispose();
-        await capture.DisposeAsync(); backend.Dispose(); cleanup.Dispose();
+        await disposal.WaitAsync();
+        try
+        {
+            if (disposed) return;
+            if (!await AbandonAsync()) throw new IOException("The statement recording could not be removed.");
+            disposed = true; operation?.Dispose();
+            await capture.DisposeAsync(); backend.Dispose();
+        }
+        finally { disposal.Release(); }
     }
 }

@@ -6,6 +6,7 @@ param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][st
     [ValidatePattern('^[^"\r\n]*$')][string]$ConsentScenario='tone;rate=44100;channels=2', [ValidateRange(1,35)][int]$StopSeconds=12,
     [ValidateRange(1,95)][int]$TrainingSeconds=65,
     [ValidateSet('ready','verification','save-failure','uncertain','expired','speaker-mismatch','speaker-unavailable')][string]$CreationScenario='ready',
+    [ValidateSet('Night sky','High Contrast Black','High Contrast White')][string]$ContrastTheme='Night sky',
     [switch]$SessionFixtures, [switch]$Schedule)
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force $EvidenceDir | Out-Null
@@ -19,6 +20,7 @@ if ($Schedule) {
     if($SessionFixtures){$arguments+=' -SessionFixtures'}
     $arguments+=' -ConsentScenario "'+$ConsentScenario+'" -StopSeconds '+$StopSeconds
     $arguments+=' -TrainingSeconds '+$TrainingSeconds+' -CreationScenario '+$CreationScenario
+    $arguments+=' -ContrastTheme "'+$ContrastTheme+'"'
     $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
     $principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
     try {
@@ -346,13 +348,13 @@ function Set-NightSky {
         if(-not $display){continue}
         $display=$display.Substring(12)
         if($display.StartsWith('@')){$buffer=New-Object System.Text.StringBuilder 256;[void][VoiceLabNative]::SHLoadIndirectString($display,$buffer,256,[IntPtr]::Zero);$display=$buffer.ToString()}
-        if($display -eq 'Night sky'){$theme=$file.FullName;break}
+        if($display -eq $ContrastTheme){$theme=$file.FullName;break}
     }
-    if(-not $theme){throw 'The Night sky system theme was not found; do not substitute another contrast theme.'}
+    if(-not $theme){throw ('The '+$ContrastTheme+' system theme was not found; do not substitute another contrast theme.')}
     $script:themeChanged=$true;$script:themeRestored=$false
     Start-Process -FilePath $theme
     Start-Sleep -Seconds 5
-    if(-not [VoiceLabNative]::HighContrast()){throw 'Night sky did not enable High Contrast.'}
+    if(-not [VoiceLabNative]::HighContrast()){throw ($ContrastTheme+' did not enable High Contrast.')}
 }
 try {
     Assert-Space

@@ -13,6 +13,7 @@ using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.Speech;
 using VoxClip.Core.Services.VoiceLab;
 using VoxClip.Media.Audio;
+using VoxClip.Media.VoiceLab;
 using Xunit;
 
 namespace VoxClip.Core.Tests.Tracks.WinUi;
@@ -191,6 +192,82 @@ public sealed class CreateVoiceTests
         setup.AssertNoStatement(); setup.AssertNoTemporaryAudio(); Assert.False(setup.Session.Verified);
     }
 
+    [Theory]
+    [InlineData("close")]
+    [InlineData("toggle")]
+    [InlineData("restart")]
+    [InlineData("exit")]
+    public async Task RecordingLifecycleDiscardsAndAbandonsWithoutAnotherCapture(string path)
+    {
+        await using var setup = new ConsentSetup();
+        setup.Inputs();
+        var delay = setup.Clock.NextDelay(TimeSpan.FromMilliseconds(600));
+        var recording = setup.WhenRecording(); var work = setup.Session.RecordAsync();
+        await delay.WaitAsync(Token); setup.Clock.Advance(TimeSpan.FromMilliseconds(600)); await recording.WaitAsync(Token);
+        switch (path)
+        {
+            case "close": Assert.True(await setup.Session.TryLeaveAsync(VoiceCreationLeaveTrigger.Closing, _ => Task.FromResult(true))); break;
+            case "toggle": setup.Enabled = false; await setup.Session.GateChangedAsync(); break;
+            case "restart": Assert.True(await setup.Session.InterruptForRestartAsync()); break;
+            case "exit":
+                Assert.True(await setup.Session.TryLeaveAsync(VoiceCreationLeaveTrigger.AppExit, _ => throw new InvalidOperationException("Exit must not open a second dialog")));
+                await Task.WhenAll(setup.Session.DisposeAsync().AsTask(), setup.Session.DisposeAsync().AsTask());
+                Assert.Equal(1, setup.Capture.Disposals); break;
+        }
+        await work; Assert.False(setup.Session.Recording); Assert.False(setup.Session.IsBusyForRestart);
+        Assert.Equal(1, setup.Capture.Starts); Assert.True(setup.Capture.Discards > 0);
+        Assert.Null(setup.Session.Statement); setup.AssertNoStatement(); setup.AssertNoTemporaryAudio();
+    }
+
+    [Fact]
+    public void StartupRemovesAbandonedStatementsWithoutProviderAccess()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "voxclip-abandoned-" + Guid.NewGuid().ToString("N"));
+        var data = new DataLocations(root, root + "/settings.json", root + "/models", root + "/cache", root + "/autosave", root + "/keys", root + "/logs");
+        try
+        {
+            var store = new VoiceConsentStore(data); var id = Guid.NewGuid().ToString("D");
+            var samples = Enumerable.Range(0, 48000 * 5).Select(index => (float)(.1 * Math.Sin(index * .03))).ToArray();
+            var abandoned = Path.Combine(store.Root, id); Directory.CreateDirectory(abandoned);
+            File.WriteAllBytes(Path.Combine(abandoned, "statement.wav"), VoiceTrainingAudio.Wav(samples));
+            Assert.NotEmpty(Directory.GetFiles(root, "statement.wav", SearchOption.AllDirectories));
+            VoiceLabBackend.ReconcileLocalStatements(data);
+            Assert.Empty(Directory.GetFiles(root, "statement.wav", SearchOption.AllDirectories));
+            Assert.Empty(new VoiceConsentStore(data).Operations());
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void VoiceLabPrivacyRowsMatchTheSixNormativeSpecRows()
+    {
+        var spec = File.ReadAllText(Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "doc/spec/voice-lab.md"));
+        Assert.Equal(6, VoiceLabPrivacy.Rows.Count);
+        foreach (var row in VoiceLabPrivacy.Rows)
+            Assert.Contains("| " + row.Data + " | " + row.LeavesDevice + " | " + row.Storage + " |", spec.Replace("`", "", StringComparison.Ordinal));
+        Assert.Contains("each provider action requires your approval", VoiceLabPrivacy.Heading);
+        Assert.Contains("foreach (var row in VoiceLabPrivacy.Rows)", AppFile("SettingsWindow.xaml.cs"));
+    }
+
+    [Fact]
+    public void ConsentHighContrastAndLifecycleWiringUseNativeAccessiblePolicies()
+    {
+        var page = AppFile("Controls/CreateVoicePage.cs");
+        Assert.Contains("Ui.EffectsChanged += EffectsChanged", page); Assert.Contains("Ui.EffectsChanged -= EffectsChanged", page);
+        Assert.Contains("ActualThemeChanged += ThemeChanged", page); Assert.Contains("Ui.ThemeBrush(this", page);
+        Assert.Contains("Ui.EffectPolicy.Animations ?", page); Assert.Contains(": new TransitionCollection()", page);
+        Assert.Contains("TextDecorations.Underline", page); Assert.Contains("InfoBarSeverity.Warning", page);
+        Assert.DoesNotContain("Colors.Red", page); Assert.DoesNotContain("Danger", page);
+        Assert.DoesNotContain("accent: true", page.Split("removeUnsaved =")[1].Split(';')[0]);
+        var pane = AppFile("Controls/VoiceLabSettingsPane.cs");
+        Assert.Contains("InfoBarSeverity.Warning", pane); Assert.Contains("Ui.EffectsChanged += EffectsChanged", pane);
+        var settings = AppFile("SettingsWindow.xaml.cs");
+        Assert.Contains("App.Windows.Count == 0 ? VoiceCreationLeaveTrigger.AppExit", settings);
+        Assert.Contains("await page.PrepareForRestartAsync()", settings);
+        Assert.Contains("await voiceEnrollment.DisposeAsync()", AppFile("Services/AppServices.cs"));
+        Assert.Contains("await Task.Run(() => VoiceLabBackend.ReconcileLocalStatements(Data), ct)", AppFile("Services/AppServices.cs"));
+    }
+
     [Fact]
     public async Task ActivationWaitAnnouncesAfterOneSecondAndCanBeCancelled()
     {
@@ -301,7 +378,7 @@ public sealed class CreateVoiceTests
         Assert.Contains("AutomationHeadingLevel.Level1", page); Assert.Contains("Cascadia Mono", page);
         var window = AppFile("SettingsWindow.xaml.cs");
         foreach (var trigger in new[] { "Navigation", "Back", "Escape", "Closing" }) Assert.Contains("VoiceCreationLeaveTrigger." + trigger, page + window);
-        Assert.Contains("createVoicePage?.IsBusyForRestart == true", window);
+        Assert.Contains("await page.PrepareForRestartAsync()", window);
         var dialog = AppFile("Controls/VoiceLabDialogs.cs");
         Assert.Contains("spec.PrimaryDefault ? ContentDialogButton.Primary : ContentDialogButton.Close", dialog);
         Assert.True(VoiceCreationDialog.Verify("< $0.01").PrimaryDefault);
@@ -475,6 +552,7 @@ public sealed class CreateVoiceTests
         private MicrophoneTake? take;
         internal int Starts, MaximumSeconds;
         internal int Seconds = 5;
+        internal int Discards, Disposals;
         internal bool HoldActivation;
         internal MicrophoneError? Failure;
         public MicrophoneSnapshot Snapshot => new(recording, false, recording ? Seconds : 0, .5, Failure, "Synthetic microphone");
@@ -491,8 +569,8 @@ public sealed class CreateVoiceTests
             take ??= new(Enumerable.Range(0, Seconds * 44100).Select(index => (float)(.15 * Math.Sin(2 * Math.PI * 220 * index / 44100))).ToArray(), 44100);
             done.TrySetResult(); return take;
         }
-        public void Discard() { recording = false; if (take is not null) Array.Clear(take.Mono); done.TrySetResult(); }
-        public ValueTask DisposeAsync() { Discard(); return ValueTask.CompletedTask; }
+        public void Discard() { Discards++; recording = false; if (take is not null) Array.Clear(take.Mono); done.TrySetResult(); }
+        public ValueTask DisposeAsync() { Disposals++; Discard(); return ValueTask.CompletedTask; }
     }
     private sealed class NoKeys : IKeyProvider { public Task<string?> GetKeyAsync(string account, CancellationToken ct) => throw new InvalidOperationException("No provider keys may be read by consent tests."); }
     private sealed class QuietLog : ILog

@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using VoxClip.App.ViewModels;
 using VoxClip.Media.Audio;
 
@@ -99,6 +100,8 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         AutomationProperties.SetAutomationId(openSettings, "voice-open-microphone-settings"); body.Children.Add(openSettings);
         session.Changed += SessionChanged;
         session.Announcement += Announce;
+        Ui.EffectsChanged += EffectsChanged;
+        ActualThemeChanged += ThemeChanged;
         timer.Tick += (_, _) => UpdateMeter();
         Loaded += (_, _) => { timer.Start(); back.Focus(FocusState.Programmatic); };
         Unloaded += (_, _) => timer.Stop();
@@ -112,12 +115,16 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
     }
     private void InputsChanged() => session.SetInputs(name.Text, language, ownVoice.IsChecked == true, adult.IsChecked == true, ownVideos.IsChecked == true);
     private void SessionChanged(object? sender, EventArgs args) => Refresh();
+    private void EffectsChanged(object? sender, EventArgs args) => Refresh();
+    private void ThemeChanged(FrameworkElement sender, object args) => Refresh();
     private void Announce(string text)
     {
         if (!session.Recording) Ui.Announce(message, text, "voice-statement");
     }
     private void Refresh()
     {
+        body.Transitions = Ui.EffectPolicy.Animations ? new TransitionCollection { new EntranceThemeTransition() } : new TransitionCollection();
+        foreach (var helper in new[] { gate, seconds, device }) helper.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush");
         gate.Text = string.Join("\n", session.GateMessages);
         gate.Visibility = session.BlockedReason is null ? Visibility.Collapsed : Visibility.Visible;
         foreach (var input in new Control[] { name, ownVoice, adult, ownVideos }) input.IsEnabled = session.InputsEditable && session.BlockedReason is null;
@@ -200,6 +207,7 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         }
         Refresh();
     }
+    internal Task<bool> PrepareForRestartAsync() => DialogOpen ? Task.FromResult(true) : session.InterruptForRestartAsync();
     private static async Task OpenMicrophoneSettingsAsync()
     {
 #if DEBUG
@@ -217,6 +225,8 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
     {
         timer.Stop(); lifetime.Cancel();
         session.Changed -= SessionChanged; session.Announcement -= Announce;
+        Ui.EffectsChanged -= EffectsChanged;
+        ActualThemeChanged -= ThemeChanged;
         await session.DisposeAsync(); lifetime.Dispose();
     }
 }

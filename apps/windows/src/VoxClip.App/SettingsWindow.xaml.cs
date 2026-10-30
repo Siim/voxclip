@@ -60,7 +60,7 @@ public sealed partial class SettingsWindow : Window
             args.Cancel = true;
             await Ui.RunAsync(notice, async () =>
             {
-                if (!await LeaveCreateVoiceAsync(VoiceCreationLeaveTrigger.Closing)) return;
+                if (!await LeaveCreateVoiceAsync(App.Windows.Count == 0 ? VoiceCreationLeaveTrigger.AppExit : VoiceCreationLeaveTrigger.Closing)) return;
                 closingAfterConsent = true; Close();
             }, "Stop creating your voice");
         };
@@ -208,7 +208,8 @@ public sealed partial class SettingsWindow : Window
     }
     internal async Task<RestartPreparation> PrepareForRestartAsync()
     {
-        if (download is not null || keyWrites != 0 || sensitiveActions != 0 || navigating || createVoicePage?.IsBusyForRestart == true) return RestartPreparation.Busy;
+        if (createVoicePage is { } page && await page.PrepareForRestartAsync()) return RestartPreparation.Busy;
+        if (download is not null || keyWrites != 0 || sensitiveActions != 0 || navigating) return RestartPreparation.Busy;
         if (preparing) return RestartPreparation.TransitionActive;
         return await restartPreparation.PrepareAsync(textCommits) ? RestartPreparation.Ready : RestartPreparation.SaveFailed;
     }
@@ -448,6 +449,15 @@ public sealed partial class SettingsWindow : Window
         Body.Children.Add(Ui.Text("A fast way to cut, because we already know where every word sits.\nOpen source · MIT · No telemetry."));
         Body.Children.Add(Ui.Button("Check for updates", () => RunSensitive(async () => { if (App.Windows.FirstOrDefault() is { } window) { await window.CheckUpdatesAsync(true);  } }, "Updates")));
         Body.Children.Add(Ui.Text("What leaves this device: local transcription and editing stay here. ElevenLabs receives audio only after consent. AI connectors receive transcript text only, never video or audio. Automatic update checks contact GitHub and download available updates in the background; restarting to apply an update is your choice. Model downloads contact their publishers only when you choose Download. Posting happens only when you choose to share.", "HelperText"));
+        Body.Children.Add(Ui.Text(VoiceLabPrivacy.Heading, "SubtitleTextBlockStyle"));
+        foreach (var row in VoiceLabPrivacy.Rows)
+        {
+            var content = Ui.Stack(4);
+            content.Children.Add(Ui.Text(row.Data));
+            content.Children.Add(Ui.Text(row.LeavesDevice, "HelperText"));
+            content.Children.Add(Ui.Text(row.Storage, "HelperText"));
+            Body.Children.Add(content);
+        }
         Body.Children.Add(Ui.Button("Welcome tour", () => RunSensitive(async () => { if (App.Windows.FirstOrDefault() is { } window) await window.ShowOnboardingAsync(); }, "Welcome tour")));
         Body.Children.Add(Ui.Button("Reveal logs", () => ShareHelpers.Reveal(Path.Combine(App.Services.Data.Logs, "voxclip.log"))));
         Body.Children.Add(Ui.Button("Copy diagnostics", () => _ = Ui.RunAsync(notice, async () => { var lines = await App.Services.Log.ReadRecentAsync(200, lifetime.Token); ShareHelpers.Copy($"VoxClip {AppServices.Version}\n{System.Runtime.InteropServices.RuntimeInformation.OSArchitecture}\n" + string.Join('\n', lines)); Ui.Show(notice, "Redacted diagnostics copied. No transcript text or keys are included."); }, "Diagnostics")));
