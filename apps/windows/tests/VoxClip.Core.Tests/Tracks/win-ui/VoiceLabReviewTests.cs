@@ -16,6 +16,15 @@ public sealed class VoiceLabReviewTests
     private static string Pane => File.ReadAllText(Path.Combine(Root, "apps/windows/src/VoxClip.App/Controls/VoiceLabSettingsPane.cs"));
 
     [Fact]
+    public void R3ContractKeepsMachineLocalCommandsOutsideRepository()
+    {
+        var contracts = File.ReadAllText(Path.Combine(Root, "apps/windows/CONTRACTS.md"));
+        var entry = contracts.Split("### 2026-10-30 — sol-win-voicelab-ui round 3", StringSplitOptions.None)[1].Split("\n### ", StringSplitOptions.None)[0];
+        Assert.DoesNotContain("/tmp/", entry);
+        Assert.Contains("native UIA/Narrator", entry);
+    }
+
+    [Fact]
     public void VoiceActionsUseDisambiguatedNamesAndDistinctAutomationIds()
     {
         Assert.Contains("VoiceLabActionNames.ForRecord", Pane);
