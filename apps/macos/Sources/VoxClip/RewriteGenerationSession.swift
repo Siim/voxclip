@@ -118,7 +118,18 @@ import VoxClipMedia
     }
     func reject(_ row: VoiceLabTakeRow) async {
         audition.stop(); rows.removeAll { $0.id == row.id }
-        if selectedID == row.id { selectedID = nil; videoChoice = nil; phase = .nonePassed }
+        let next = VoiceLabTakeRunResult(rows: rows, end: .completed).best
+        bestID = next?.id
+        if selectedID == row.id {
+            selectedID = next?.id; videoChoice = nil
+            if let next {
+                phase = next.fits ? .readyToAccept : .lengthChanged
+                announcement = "Rejected Take \(row.index + 1). Take \(next.index + 1) selected."
+            } else {
+                phase = .nonePassed
+                announcement = "These takes didn't sound right. Try different wording or re-record."
+            }
+        }
         await run.reject(row.id)
     }
     @discardableResult func accept(into editor: EditorModel, localCommands: [EditCommand] = [], at date: Date = Date()) async -> Bool {

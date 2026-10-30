@@ -134,6 +134,24 @@ private struct GenerationTestKeys: KeyProvider {
         session.cancel()
         #expect(!session.readyToAccept && !session.select(take.id))
     }
+    @Test(arguments: [false, true]) func rejectionSelectsNextEligibleTakeByRank(changedLength: Bool) async {
+        let session = session()
+        let first = row(index: 0, score: 1)
+        let next = row(index: 2, residual: changedLength ? 0.5 : 0, score: 0.9)
+        let lower = row(index: 1, score: 0.1)
+        let failed = row(index: 3, failure: true, score: 2)
+        session.review(.init(rows: [first, lower, next, failed], end: .completed))
+        await session.reject(first)
+        #expect(session.selectedID == next.id && session.bestID == next.id)
+        #expect(session.phase == (changedLength ? .lengthChanged : .readyToAccept))
+        #expect(session.announcement == "Rejected Take 1. Take 3 selected.")
+        await session.reject(lower)
+        #expect(session.selectedID == next.id && session.phase != .nonePassed)
+        await session.reject(next)
+        #expect(session.selectedID == nil && session.bestID == nil && session.phase == .nonePassed)
+        #expect(session.announcement == "These takes didn't sound right. Try different wording or re-record.")
+        session.invalidate()
+    }
     @Test func nonePassedFatalAndStaleStatesCannotBeAccepted() {
         let session = session()
         session.review(VoiceLabTakeRunResult(rows: [row(index: 0, failure: true)], end: .completed))
