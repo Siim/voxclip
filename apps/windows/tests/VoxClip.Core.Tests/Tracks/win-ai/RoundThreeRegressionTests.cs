@@ -102,7 +102,7 @@ public sealed class RoundThreeRegressionTests
     [InlineData(ConnectorId.LmStudio, "LM Studio")]
     public async Task InvalidLocalAddressesAreSettingsProblems(ConnectorId id, string label)
     {
-        foreach (var address in new[] { "127.0.0.1:1234", "localhost:1234", "http://", "ftp://localhost", "http://user:password@localhost", "http://localhost?query=1", "http://localhost#fragment" })
+        foreach (var address in new[] { "127.0.0.1:1234", "localhost:1234", "http://", "ftp://localhost", "http://user:password@localhost", "http://localhost?query=1", "http://localhost#fragment", "https://remote.example.test", "http://192.0.2.8:11434", "http://[2001:db8::1]:1234" })
         {
             using var handler = new StubHttp((_, _, _) => throw new InvalidOperationException("Invalid settings must not send HTTP."));
             using var client = new HttpClient(handler);
