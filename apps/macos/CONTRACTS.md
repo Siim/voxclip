@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — LM Studio working context
+
+- Both Cores trust positive v0 context fields only for `state: loaded`, preferring `loaded_context_length`. Unloaded/unknown contexts use the conservative 4,096-token fallback from ai.md §§6.6/11.5, never a JIT model's advertised maximum. Stub tests cover states and positive loaded lengths; the Mac retains its assumed-context note.
+
 ### 2026-10-30 — lead — ElevenLabs error detail and residency keys
 
 - A live Scribe upload failed with only "ElevenLabs answered 400: the request could not finish". `ElevenLabsTranscriber.providerError(status:data:key:region:)` now also reads the object form of `detail` (`{type, code, message, status}`), not only a string or a list. `UserMessages` shows the redacted reason unless it is the generic text, and the import logs `engine=elevenlabs status=… detail=…` at warn level.

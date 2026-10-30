@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — LM Studio working context
+
+- Both Cores trust positive v0 context fields only for `state: loaded`, preferring `loaded_context_length`. Unloaded/unknown contexts use the conservative 4,096-token fallback from ai.md §§6.6/11.5, never a JIT model's advertised maximum. Stub tests cover states and positive loaded lengths.
+
 ### 2026-10-30 — lead — Windows redesign merged
 
 - Squash-merged track/sol-win-redesign at c4e47a49: rounds 2-17, the clips-first WinUI window matching doc/design.md, plus every fix from the pre-merge release sweep (entries 1-11, 15 and 20-29). These include Codex API-key sign-in, Claude Code `oauth_token`, the vcredist145 prerequisite (minimum 14.50) above the 14.40 App floor and the 14.44 release gate, Rewrite forced-show, High Contrast repaint, F6 in read-only Captions, and first-use ElevenLabs consent.

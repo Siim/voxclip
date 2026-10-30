@@ -181,8 +181,8 @@ extension HTTPConnectorTests {
     @Test(arguments: [0, 1, 2, 3])
     func lmstudioContextPrefersLoadedThenMaximumThenAssumes4096(_ scenario: Int) async throws {
         let replies: [HTTPReply] = [
-            .json(#"{"loaded_context_length":8192,"max_context_length":32768}"#),
-            .json(#"{"max_context_length":32768}"#),
+            .json(#"{"state":"loaded","loaded_context_length":8192,"max_context_length":32768}"#),
+            .json(#"{"state":"loaded","max_context_length":32768}"#),
             .json("{}"), .json("{}", status: 404)
         ]
         let harness = try HTTPHarness(.lmstudio, replies: [replies[scenario]])

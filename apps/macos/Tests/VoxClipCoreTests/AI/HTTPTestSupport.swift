@@ -298,7 +298,7 @@ enum HTTPFixtures {
         case .ollama:
             return [.json(try encode(["model_info": ["gemma4.context_length": context], "capabilities": thinking ? ["completion", "thinking"] : ["completion"]]))]
         case .lmstudio:
-            return [.json(try encode(["loaded_context_length": context, "max_context_length": 65536]))]
+            return [.json(try encode(["state": "loaded", "loaded_context_length": context, "max_context_length": 65536]))]
         default: return []
         }
     }

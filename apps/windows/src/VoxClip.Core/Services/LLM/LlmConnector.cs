@@ -113,8 +113,11 @@ public sealed partial class LlmConnector
             try
             {
                 var details = await GetAsync("/api/v0/models/" + Uri.EscapeDataString(model), catalog.Timeout("modelList"), ct).ConfigureAwait(false);
-                if (details?["loaded_context_length"] is { } loaded) return loaded.GetValue<int>();
-                if (details?["max_context_length"] is { } maximum) return maximum.GetValue<int>();
+                if (details?["state"]?.GetValue<string>() == "loaded")
+                {
+                    if (details["loaded_context_length"] is JsonValue loaded && loaded.TryGetValue<int>(out var context) && context > 0) return context;
+                    if (details["max_context_length"] is JsonValue maximum && maximum.TryGetValue<int>(out context) && context > 0) return context;
+                }
             }
             catch (LlmException exception) when (exception.Error.Kind != LlmErrorKind.Cancelled) { }
             return 4096;
