@@ -101,6 +101,8 @@ public sealed class VoiceConsentStore
         State = Roots.GetOrAdd(Root, _ => new());
         this.fault = fault;
         this.clock = clock ?? TimeProvider.System;
+        CheckDirectory(Root, false);
+        CheckDirectory(OperationsRoot, false);
     }
     internal static VoiceConsentException Invalid() => new(VoiceConsentError.InvalidRecord);
     private string DirectoryFor(string id, bool create = false)
@@ -118,11 +120,11 @@ public sealed class VoiceConsentStore
         {
             var attributes = File.GetAttributes(path);
             if ((attributes & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != FileAttributes.Directory) throw Invalid();
+            VoiceConsentPrivacy.Validate(path, true);
         }
         else if (create)
         {
-            if (OperatingSystem.IsWindows()) Directory.CreateDirectory(path);
-            else Directory.CreateDirectory(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            VoiceConsentPrivacy.CreateDirectory(path);
             SyncDirectory(Path.GetDirectoryName(path)!);
         }
     }
@@ -131,6 +133,7 @@ public sealed class VoiceConsentStore
         var path = Path.Combine(directory, name);
         var info = new FileInfo(path);
         if (info.LinkTarget is not null || info.Exists && (info.Attributes & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0) throw Invalid();
+        if (info.Exists) VoiceConsentPrivacy.Validate(path, false);
         return path;
     }
     public void SaveStatement(byte[] wav, string recordId)
@@ -563,7 +566,13 @@ public sealed class VoiceConsentStore
         {
             var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None, Options = FileOptions.WriteThrough };
             if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
-            using (var stream = new FileStream(temporary, options)) { stream.Write(bytes); stream.Flush(true); }
+            using (var stream = new FileStream(temporary, options))
+            {
+                VoiceConsentPrivacy.ProtectNewFile(temporary);
+                VoiceConsentPrivacy.Validate(temporary, false);
+                stream.Write(bytes);
+                stream.Flush(true);
+            }
             fault?.Invoke(checkpoint + ":rename");
             FileIn(Path.GetDirectoryName(path)!, Path.GetFileName(path));
             if (OperatingSystem.IsWindows())

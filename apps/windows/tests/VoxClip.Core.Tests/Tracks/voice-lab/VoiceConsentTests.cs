@@ -2,6 +2,9 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Runtime.Versioning;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
@@ -16,6 +19,40 @@ namespace VoxClip.Core.Tests.Tracks.VoiceLab;
 
 public sealed class VoiceConsentTests
 {
+    public static bool IsWindows => OperatingSystem.IsWindows();
+    [Fact(Skip = "Native Windows DACL verification requires Windows; owed to the VM.", SkipUnless = nameof(IsWindows))]
+    [Trait("Category", "RequiresWindows")]
+    public void ReviewProbe_ConsentAndOperationsHaveProtectedPrivateDacls()
+    {
+        if (OperatingSystem.IsWindows()) VerifyWindowsPrivacy();
+    }
+    [SupportedOSPlatform("windows")]
+    private static void VerifyWindowsPrivacy()
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store);
+        using var claim = store.ClaimCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
+        foreach (var directory in new[] { store.Root, Path.Combine(store.Root, record.RecordId), store.OperationsRoot })
+        {
+            var security = new DirectoryInfo(directory).GetAccessControl();
+            Assert.True(security.AreAccessRulesProtected);
+            var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
+            Assert.Equal(2, rules.Length);
+            Assert.All(rules, rule => Assert.False(rule.IsInherited));
+        }
+        var folder = new DirectoryInfo(store.Root);
+        var original = folder.GetAccessControl();
+        var insecure = folder.GetAccessControl();
+        insecure.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.WorldSid, null), FileSystemRights.Read, AccessControlType.Allow));
+        try
+        {
+            folder.SetAccessControl(insecure);
+            Assert.Throws<VoiceConsentException>(() => new VoiceConsentStore(storage.Locations));
+            Assert.Throws<VoiceConsentException>(() => store.Statement(record.RecordId));
+        }
+        finally { folder.SetAccessControl(original); }
+    }
     private static CancellationToken Token => TestContext.Current.CancellationToken;
     private static readonly DateTimeOffset Now = new(2026, 10, 29, 12, 0, 0, TimeSpan.Zero);
     private sealed class Clock : TimeProvider
