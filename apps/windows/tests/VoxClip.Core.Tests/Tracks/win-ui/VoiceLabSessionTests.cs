@@ -293,7 +293,7 @@ public sealed class VoiceLabSessionTests
         var app = Path.Combine(Directory.GetParent(SharedResources.ResolveRoot())!.FullName, "apps", "windows", "src", "VoxClip.App");
         var pane = File.ReadAllText(Path.Combine(app, "Controls", "VoiceLabSettingsPane.cs"));
         Assert.Contains("SetHeadingLevel", pane); Assert.DoesNotContain("Colors.Red", pane);
-        Assert.Contains("\"Delete voice \" + record.VoiceName", pane);
+        Assert.Contains("VoiceLabActionNames.ForRecord(\"Delete voice\"", pane);
         Assert.Contains("\"Retry voice creation\"", pane); Assert.Contains("\"Remove unfinished voice\"", pane);
         Assert.Equal(1, pane.Split("SetLiveSetting").Length - 1);
         Assert.Contains("SetLiveSetting(state, AutomationLiveSetting.Polite)", pane);

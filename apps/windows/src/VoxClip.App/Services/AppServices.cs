@@ -94,6 +94,41 @@ internal sealed class AppServices : IAsyncDisposable
             return voiceLab;
         }
     }
+    internal async Task<CreateVoiceSession> CreateVoiceEnrollmentAsync(CancellationToken ct)
+    {
+        async Task Consent(CancellationToken cancellation)
+        {
+            Task? save = null;
+            await OnUiAsync(() => save = SetAsync("voiceLab.providerConsent.elevenlabs", true, cancellation));
+            await save!;
+        }
+        var selectedRegion = ElevenLabsRegions.FromSettings(Settings, Log);
+        Func<bool>? speaker = null;
+        Func<VoiceConsentStatement, VoxClip.Core.Domain.Transcript.TranscriptionRequest, CancellationToken, Task<VoxClip.Core.Domain.Transcript.RawTranscript>>? scribe = null;
+#if DEBUG
+        var fixtures = Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_VOICELAB");
+        if (fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true)
+        {
+            speaker = () => DebugAvailableSpeakerCheck.Available;
+            var fake = new DebugConsentScribe(fixtures[9..]);
+            scribe = async (statement, request, cancellation) =>
+            {
+                var result = await fake.TranscribeAsync(statement, request, cancellation);
+                Directory.CreateDirectory(Data.Cache);
+                await File.WriteAllTextAsync(Path.Combine(Data.Cache, "consent-scribe-result.json"),
+                    System.Text.Json.JsonSerializer.Serialize(new { fixture = "consent-scribe.json", calls = fake.Calls, httpCalls = 0 }), cancellation);
+                return result;
+            };
+        }
+#endif
+        var backend = await Task.Run(() => new VoiceStatementBackend(Data, Keys, Log, selectedRegion,
+            () => VoiceLabEnabled, () => VoiceLab.PlanMessage, Consent, speakerAvailable: speaker, transcribe: scribe), ct);
+        if (ct.IsCancellationRequested) { backend.Dispose(); ct.ThrowIfCancellationRequested(); }
+        return new(backend, new VoiceStatementCapture(new VoxClip.Media.Audio.VoiceMicrophoneRecorder(Log)), OnUiAsync);
+    }
+#if DEBUG
+    internal string? DebugMicrophoneSettingsUri { get; set; }
+#endif
     private Task OnUiAsync(Action action)
     {
         if (dispatcher.HasThreadAccess) { action(); return Task.CompletedTask; }

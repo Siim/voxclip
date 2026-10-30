@@ -25,6 +25,8 @@ public sealed partial class SettingsWindow : Window
     private int keyWrites;
     private int sensitiveActions;
     private VoiceLabSettingsPane? voiceLabPane;
+    private CreateVoicePage? createVoicePage;
+    private bool closingAfterConsent;
     private NavigationViewItem? currentSection;
     private bool navigating;
 #if DEBUG
@@ -51,7 +53,22 @@ public sealed partial class SettingsWindow : Window
         App.Services.ApplyTheme(Root); App.Services.SettingsChanged += SettingsChanged;
         UpdateVoiceLabVisibility();
         Navigation.SelectedItem = Navigation.MenuItems[0];
-        AppWindow.Closing += (_, args) => { if (App.Restart.IsPreparing) args.Cancel = true; };
+        AppWindow.Closing += async (_, args) =>
+        {
+            if (App.Restart.IsPreparing) { args.Cancel = true; return; }
+            if (closingAfterConsent || createVoicePage is null) return;
+            args.Cancel = true;
+            await Ui.RunAsync(notice, async () =>
+            {
+                if (!await LeaveCreateVoiceAsync(VoiceCreationLeaveTrigger.Closing)) return;
+                closingAfterConsent = true; Close();
+            }, "Stop creating your voice");
+        };
+        Root.KeyDown += (_, args) =>
+        {
+            if (args.Key != Windows.System.VirtualKey.Escape || createVoicePage is null || createVoicePage.DialogOpen) return;
+            args.Handled = true; ReturnFromCreateVoice(VoiceCreationLeaveTrigger.Escape);
+        };
         Closed += (_, _) => { lifetime.Cancel(); download?.Cancel(); App.Services.SettingsChanged -= SettingsChanged; };
     }
     [DllImport("user32.dll")]
@@ -60,9 +77,10 @@ public sealed partial class SettingsWindow : Window
     {
         if (Navigation.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(item => (string)item.Tag == tag && item.Visibility == Visibility.Visible) is { } item) Navigation.SelectedItem = item;
     }
-    private void SettingsChanged(object? sender, EventArgs args)
+    private async void SettingsChanged(object? sender, EventArgs args)
     {
         App.Services.ApplyTheme(Root);
+        if (createVoicePage is { } page) await Ui.RunAsync(notice, page.GateChangedAsync, "Voice Lab");
         UpdateVoiceLabVisibility();
         voiceLabPane?.Refresh();
     }
@@ -80,6 +98,7 @@ public sealed partial class SettingsWindow : Window
         Navigation.IsEnabled = false;
         try
         {
+        if (!await LeaveCreateVoiceAsync(VoiceCreationLeaveTrigger.Navigation)) { Navigation.SelectedItem = currentSection; return; }
         foreach (var commit in textCommits)
             if (!await commit.CommitAsync()) { Navigation.SelectedItem = currentSection; return; }
         currentSection = item;
@@ -106,6 +125,39 @@ public sealed partial class SettingsWindow : Window
         }
         finally { navigating = false; Navigation.IsEnabled = !preparing; }
     }
+    internal void ShowCreateVoice() => RunSensitive(async () =>
+    {
+        if (preparing || navigating || createVoicePage is not null || !App.Services.VoiceLabEnabled) return;
+        navigating = true; Navigation.IsEnabled = false;
+        try
+        {
+            foreach (var commit in textCommits) if (!await commit.CommitAsync()) return;
+            var session = await App.Services.CreateVoiceEnrollmentAsync(lifetime.Token);
+            textCommits.Clear(); voiceLabPane = null; Body.Children.Clear(); Body.Children.Add(notice);
+            createVoicePage = new(this, session); Body.Children.Add(createVoicePage);
+        }
+        finally { navigating = false; Navigation.IsEnabled = !preparing; }
+    }, "Create Your Voice");
+    private async Task<bool> LeaveCreateVoiceAsync(VoiceCreationLeaveTrigger trigger)
+    {
+        if (createVoicePage is not { } page) return true;
+        if (!await page.TryLeaveAsync(trigger)) return false;
+        await page.DisposeAsync();
+        createVoicePage = null;
+        return true;
+    }
+    internal void ReturnFromCreateVoice(VoiceCreationLeaveTrigger trigger) => RunSensitive(async () =>
+    {
+        if (preparing || navigating || createVoicePage is null) return;
+        navigating = true; Navigation.IsEnabled = false;
+        try
+        {
+            if (!await LeaveCreateVoiceAsync(trigger)) return;
+            Body.Children.Clear(); Body.Children.Add(notice);
+            voiceLabPane = new(this, lifetime.Token); Body.Children.Add(voiceLabPane);
+        }
+        finally { navigating = false; Navigation.IsEnabled = !preparing; }
+    }, "Stop creating your voice");
     private void Save(string key, object value)
     {
         if (preparing) return;
@@ -142,7 +194,7 @@ public sealed partial class SettingsWindow : Window
     }
     internal async Task<RestartPreparation> PrepareForRestartAsync()
     {
-        if (download is not null || keyWrites != 0 || sensitiveActions != 0 || navigating) return RestartPreparation.Busy;
+        if (download is not null || keyWrites != 0 || sensitiveActions != 0 || navigating || createVoicePage?.IsBusyForRestart == true) return RestartPreparation.Busy;
         if (preparing) return RestartPreparation.TransitionActive;
         return await restartPreparation.PrepareAsync(textCommits) ? RestartPreparation.Ready : RestartPreparation.SaveFailed;
     }
