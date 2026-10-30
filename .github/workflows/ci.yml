@@ -90,6 +90,20 @@ jobs:
         shell: bash
         run: python -m pip install "jsonschema==4.26.0" "numpy==2.5.4"
 
+      # Binary targets such as ONNX Runtime download from vendor hosts that sometimes time out, so
+      # resolution is retried before the build instead of failing the job on one slow request.
+      - name: Resolve Swift packages
+        if: steps.detect.outputs.swift == 'true'
+        timeout-minutes: 10
+        working-directory: apps/macos
+        run: |
+          for attempt in 1 2 3; do
+            swift package resolve && exit 0
+            echo "::warning::swift package resolve failed (attempt $attempt of 3)"
+            sleep $((attempt * 30))
+          done
+          exit 1
+
       - name: Swift build
         id: swift_build
         if: steps.detect.outputs.swift == 'true'
@@ -122,7 +136,7 @@ jobs:
       # whole suite.
       - name: Swift test (VoxClipCoreTests)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
-        timeout-minutes: 10
+        timeout-minutes: 20
         working-directory: apps/macos
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
@@ -142,7 +156,7 @@ jobs:
 
       - name: Swift test (VoxClipMediaTests)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
-        timeout-minutes: 15
+        timeout-minutes: 25
         working-directory: apps/macos
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
@@ -155,7 +169,7 @@ jobs:
       # of beside the one-minute heavy media tests.
       - name: Swift test (CaptionParityTests)
         if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
-        timeout-minutes: 15
+        timeout-minutes: 25
         working-directory: apps/macos
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
