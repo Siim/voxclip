@@ -8,6 +8,62 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 
 public sealed class AppSettingsTests
 {
+    [Theory]
+    [InlineData("voiceLab.labelPosition", "\"top-right\"")]
+    [InlineData("voiceLab.labelPosition", "\"top-left\"")]
+    [InlineData("voiceLab.labelPosition", "\"bottom-right\"")]
+    [InlineData("voiceLab.labelPosition", "\"bottom-left\"")]
+    [InlineData("voiceLab.c2pa", "true")]
+    [InlineData("voiceLab.c2pa", "false")]
+    [InlineData("voiceLab.betaNoticeAccepted", "true")]
+    [InlineData("voiceLab.betaNoticeAccepted", "false")]
+    public async Task VoiceLabPreferencesRoundTrip(string key, string json)
+    {
+        using var storage = new TestStorage();
+        var path = storage.PathFor("settings.json"); var store = new SettingsStore(path);
+        var settings = await store.LoadAsync(TestContext.Current.CancellationToken);
+        settings.Set(key, Element(json));
+        await store.SaveAsync(settings, TestContext.Current.CancellationToken);
+        await store.FlushAsync(TestContext.Current.CancellationToken);
+        var saved = await new SettingsStore(path).LoadAsync(TestContext.Current.CancellationToken);
+        Assert.True(JsonElement.DeepEquals(Element(json), saved.Values[key]));
+    }
+
+    [Theory]
+    [InlineData("voiceLab.labelPosition", "\"unknown\"")]
+    [InlineData("voiceLab.labelPosition", "null")]
+    [InlineData("voiceLab.labelPosition", "true")]
+    [InlineData("voiceLab.c2pa", "\"true\"")]
+    [InlineData("voiceLab.c2pa", "null")]
+    [InlineData("voiceLab.c2pa", "1")]
+    [InlineData("voiceLab.betaNoticeAccepted", "\"false\"")]
+    [InlineData("voiceLab.betaNoticeAccepted", "null")]
+    [InlineData("voiceLab.betaNoticeAccepted", "0")]
+    public async Task InvalidVoiceLabPreferencesAreRefused(string key, string json)
+    {
+        using var storage = new TestStorage(); var store = new SettingsStore(storage.PathFor("settings.json"));
+        var settings = new AppSettings("voxclip-settings/1"); settings.Set(key, Element(json));
+        await Assert.ThrowsAsync<JsonException>(() => store.SaveAsync(settings, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("20", true, "20")]
+    [InlineData("12.50", true, "12.5")]
+    [InlineData("0", true, "0")]
+    [InlineData("999999999.99", true, "999999999.99")]
+    [InlineData("", false, null)]
+    [InlineData("-1", false, null)]
+    [InlineData("1.234", false, null)]
+    [InlineData("1000000000", false, null)]
+    [InlineData("abc", false, null)]
+    public void PublicVoiceLabCapParserUsesTheCanonicalCoreFormat(string text, bool valid, string? canonical)
+    {
+        Assert.Equal(valid, AppSettings.TryParseVoiceLabMonthlyCap(text, out var amount));
+        if (!valid) { Assert.Equal(0m, amount); return; }
+        var settings = new AppSettings("voxclip-settings/1"); settings.SetVoiceLabMonthlyCap("elevenlabs", amount);
+        Assert.Equal(canonical, settings.GetString("voiceLab.monthlyCapUsd.elevenlabs"));
+    }
+
     [Fact]
     public void HandCodedDefaultsExactlyMatchEverySchemaDefault()
     {
