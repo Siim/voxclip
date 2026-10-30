@@ -174,7 +174,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
                 var settings = new AppSettings("voxclip-settings/1");
                 settings.SetVoiceLabMonthlyCap(provider.Item1, parsed.Amount);
                 await App.Services.SetAsync("voiceLab.monthlyCapUsd." + provider.Item1,
-                    settings.GetString("voiceLab.monthlyCapUsd." + provider.Item1), token);
+                    settings.GetString("voiceLab.monthlyCapUsd." + provider.Item1));
                 return true;
             });
             AddCard(section, field);

@@ -14,6 +14,31 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class VoiceLabSettingsTests
 {
     [Fact]
+    public async Task FailedNavigationSaveRemainsUncommittedAndRetryable()
+    {
+        var text = "20";
+        var attempts = 0;
+        var errors = 0;
+        var commit = new SettingsTextCommit(() => text, () =>
+        {
+            attempts++;
+            return attempts == 1 ? Task.FromException<bool>(new IOException("Save failed")) : Task.FromResult(true);
+        }, _ => errors++);
+        text = "12.50";
+        Assert.False(await commit.CommitAsync());
+        Assert.True(await commit.CommitAsync());
+        Assert.True(await commit.CommitAsync());
+        Assert.Equal(2, attempts);
+        Assert.Equal(1, errors);
+        var pane = AppSource("Controls/VoiceLabSettingsPane.cs");
+        Assert.Contains("settings.GetString(\"voiceLab.monthlyCapUsd.\" + provider.Item1));", pane);
+        var window = AppSource("SettingsWindow.xaml.cs");
+        Assert.Contains("Navigation.SelectedItem = currentSection; return;", window);
+        Assert.True(window.IndexOf("await commit.CommitAsync()", StringComparison.Ordinal)
+            < window.IndexOf("textCommits.Clear()", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task RestartAwaitsTextCommitBeforeFreezingAndInvalidEditsVetoIt()
     {
         var text = "20";

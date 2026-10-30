@@ -24,6 +24,8 @@ public sealed partial class SettingsWindow : Window
     private int keyWrites;
     private int sensitiveActions;
     private VoiceLabSettingsPane? voiceLabPane;
+    private NavigationViewItem? currentSection;
+    private bool navigating;
 #if DEBUG
     internal bool DebugNavigationEnabled => Navigation.IsEnabled;
     internal bool DebugSetLanguageText(string value)
@@ -71,6 +73,14 @@ public sealed partial class SettingsWindow : Window
     private async void PaneChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItem is not NavigationViewItem item || Body is null) return;
+        if (navigating || preparing) return;
+        navigating = true;
+        Navigation.IsEnabled = false;
+        try
+        {
+        foreach (var commit in textCommits)
+            if (!await commit.CommitAsync()) { Navigation.SelectedItem = currentSection; return; }
+        currentSection = item;
         pageGeneration++;
         textCommits.Clear();
         Body.Children.Clear(); notice.IsOpen = false;
@@ -91,6 +101,8 @@ public sealed partial class SettingsWindow : Window
                 case "About": await AboutAsync(); break;
             }
         }, "Settings");
+        }
+        finally { navigating = false; Navigation.IsEnabled = !preparing; }
     }
     private void Save(string key, object value)
     {
@@ -125,7 +137,7 @@ public sealed partial class SettingsWindow : Window
     }
     internal async Task<RestartPreparation> PrepareForRestartAsync()
     {
-        if (download is not null || keyWrites != 0 || sensitiveActions != 0) return RestartPreparation.Busy;
+        if (download is not null || keyWrites != 0 || sensitiveActions != 0 || navigating) return RestartPreparation.Busy;
         if (preparing) return RestartPreparation.TransitionActive;
         foreach (var commit in textCommits)
             if (!await commit.CommitAsync()) return RestartPreparation.SaveFailed;
