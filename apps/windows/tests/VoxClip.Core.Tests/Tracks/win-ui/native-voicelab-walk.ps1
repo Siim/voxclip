@@ -2,8 +2,11 @@ param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][st
     [Parameter(Mandatory=$true)][string]$EvidenceDir, [string]$NormalProject,
     [ValidateSet('win-arm64','win-x64')][string]$RuntimeIdentifier='win-arm64',
     [ValidateSet('Debug','Release')][string]$Configuration='Debug',
-    [ValidateSet('pane','cancel','turn-on','cap','label','light','dark','night-sky','release-off','release-on','release-smoke','session','account-cancel','delete-cancel','zero-http','consent-gate','consent','consent-cap','consent-error')][string]$Step='pane',
+    [ValidateSet('pane','cancel','turn-on','cap','label','light','dark','night-sky','release-off','release-on','release-smoke','session','account-cancel','delete-cancel','zero-http','consent-gate','consent','consent-cap','consent-error','training','training-cap','creation-cancel','creation-ready','creation-savefail','creation-uncertain','creation-expired')][string]$Step='pane',
     [ValidatePattern('^[^"\r\n]*$')][string]$ConsentScenario='tone;rate=44100;channels=2', [ValidateRange(1,35)][int]$StopSeconds=12,
+    [ValidateRange(1,95)][int]$TrainingSeconds=65,
+    [ValidateSet('ready','verification','save-failure','uncertain','expired','speaker-mismatch','speaker-unavailable')][string]$CreationScenario='ready',
+    [ValidateSet('Night sky','High Contrast Black','High Contrast White')][string]$ContrastTheme='Night sky',
     [switch]$SessionFixtures, [switch]$Schedule)
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force $EvidenceDir | Out-Null
@@ -16,6 +19,8 @@ if ($Schedule) {
     $arguments='-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Root "'+$Root+'" -AcceptedDataRoot "'+$AcceptedDataRoot+'" -EvidenceDir "'+$EvidenceDir+'" -RuntimeIdentifier '+$RuntimeIdentifier+' -Configuration '+$Configuration+' -Step '+$Step+$projectArgument
     if($SessionFixtures){$arguments+=' -SessionFixtures'}
     $arguments+=' -ConsentScenario "'+$ConsentScenario+'" -StopSeconds '+$StopSeconds
+    $arguments+=' -TrainingSeconds '+$TrainingSeconds+' -CreationScenario '+$CreationScenario
+    $arguments+=' -ContrastTheme "'+$ContrastTheme+'"'
     $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
     $principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
     try {
@@ -194,6 +199,7 @@ function Consent-Step {
     $scribe=Get-Content -LiteralPath (Join-Path $data 'Cache\consent-scribe-result.json') -Raw | ConvertFrom-Json
     if($scribe.fixture -ne 'consent-scribe.json' -or $scribe.calls -ne 1 -or $scribe.httpCalls -ne 0){throw 'Fake Scribe zero-HTTP evidence missing.'}
     Capture 'consent-verified'
+    if($Step -match '^(training|creation)') {Training-Creation-Step;return}
     Invoke-Control 'Back to Voice Lab';[void](Find-Control 'Keep going');[VoiceLabNative]::Key(0x0D)
     [void](Find-Id 'voice-consent-teleprompter')
     Invoke-Control 'Back to Voice Lab';[void](Find-Control 'Keep going');[VoiceLabNative]::Key(0x1B)
@@ -201,6 +207,71 @@ function Consent-Step {
     Invoke-Control 'Back to Voice Lab';Invoke-Control 'Stop'
     [void](Find-Control 'Show Voice Lab (beta)')
     Assert-NoStatement
+}
+function Training-Creation-Step {
+    Invoke-Control 'Record training read-aloud'
+    $timer=[Diagnostics.Stopwatch]::StartNew()
+    $deadline=[DateTime]::UtcNow.AddSeconds(115)
+    $stopped=$false
+    while([DateTime]::UtcNow -lt $deadline) {
+        if(Find-Control 'Training recording is ready.' -Optional){break}
+        if($TrainingSeconds -lt 60 -and (Find-Control ('Record 5'+[char]0x2013+'30 seconds for consent, or 60'+[char]0x2013+'90 seconds for the training read-aloud, with clear speech.') -Optional)){break}
+        $seconds=Find-Id 'voice-microphone-seconds' -Optional
+        if($TrainingSeconds -lt 90 -and -not $stopped -and $seconds -and $seconds.Current.Name -match '^([0-9]+\.[0-9]+) seconds$' -and [double]::Parse($Matches[1],[Globalization.CultureInfo]::InvariantCulture) -ge $TrainingSeconds) {
+            Invoke-Control 'Stop recording';$stopped=$true
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    if($TrainingSeconds -lt 60) {
+        if((Find-Id 'voice-create-submit').Current.IsEnabled){throw 'Short training enabled Create.'}
+        [void](Find-Control ('Record 5'+[char]0x2013+'30 seconds for consent, or 60'+[char]0x2013+'90 seconds for the training read-aloud, with clear speech.'))
+        return
+    }
+    [void](Find-Control 'Training recording is ready.')
+    $training=Get-Content -LiteralPath (Join-Path $data 'Cache\training-result.json') -Raw | ConvertFrom-Json
+    if($training.seconds -lt 60 -or $training.seconds -gt 90 -or $training.maximumSeconds -ne 90 -or $training.httpCalls -ne 0){throw 'Training duration or zero-HTTP invariant failed.'}
+    if($TrainingSeconds -ge 90) {
+        while($timer.Elapsed.TotalSeconds -lt $TrainingSeconds){Start-Sleep -Milliseconds 100}
+        if($stopped -or [Math]::Abs($training.seconds-90) -gt .05){throw 'The 95-second attempt did not stop automatically at 90 seconds.'}
+    }
+    if([System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId -ne 'voice-create-submit'){throw 'Training did not focus Create voice.'}
+    Capture 'training-ready'
+    if($Step -match '^training'){return}
+    Invoke-Control ('Create voice'+[char]0x2026)
+    [void](Find-Id 'voice-create-confirmation')
+    if($Step -eq 'creation-cancel') {
+        [VoiceLabNative]::Key(0x1B)
+        $receipt=Get-Content -LiteralPath (Join-Path $data 'Cache\creation-result.json') -Raw | ConvertFrom-Json
+        if($receipt.createCalls -ne 0 -or $receipt.planChecks -ne 0 -or $receipt.httpCalls -ne 0){throw 'Cancel sent a request.'}
+        return
+    }
+    [VoiceLabNative]::Key(0x0D)
+    if($Step -eq 'creation-expired') {
+        [void](Find-Control ('This request expired. Choose Create voice'+[char]0x2026+' again. Nothing was sent.'))
+    } elseif($Step -eq 'creation-savefail') {
+        [void](Find-Id 'voice-create-retry-save')
+        (Find-Id 'voice-create-retry-save').GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        [void](Find-Control 'Consent record saved. No create request was repeated.')
+    } elseif($Step -eq 'creation-uncertain') {
+        [void](Find-Control 'Voice creation may have completed. Reconcile the pending voice in Settings. Do not create it again.')
+    } elseif($CreationScenario -eq 'verification') {
+        [void](Find-Control 'ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.')
+    } else {[void](Find-Control 'Your voice is ready.')}
+    $receipt=Get-Content -LiteralPath (Join-Path $data 'Cache\creation-result.json') -Raw | ConvertFrom-Json
+    $expected=if($Step -eq 'creation-expired'){0}else{1}
+    if($receipt.createCalls -ne $expected -or $receipt.planChecks -ne $expected -or $receipt.httpCalls -ne 0){throw 'Creation count, refresh count or zero-HTTP invariant failed.'}
+    if($expected -eq 1) {
+        $card=Find-Id ('voice-card-'+$receipt.recordId)
+        if([System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId -ne $card.Current.AutomationId){throw 'Creation did not focus its saved or recovery card.'}
+        if($Step -eq 'creation-uncertain') {
+            $buttons=$card.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+            foreach($button in $buttons){if($button.Current.AutomationId -like 'retry-voice-*'){$button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke();break}}
+            Start-Sleep -Milliseconds 500
+            $again=Get-Content -LiteralPath (Join-Path $data 'Cache\creation-result.json') -Raw | ConvertFrom-Json
+            if($again.createCalls -ne 1 -or $again.httpCalls -ne 0){throw 'Recovery repeated creation.'}
+        }
+    }
+    Capture $Step
 }
 function Toggle-VoiceLab {
     $element=Find-Control 'Show Voice Lab (beta)'
@@ -240,6 +311,14 @@ function Start-App([string]$arguments) {
         if($Configuration -ne 'Debug'){throw 'Session fixtures require a DEBUG build; refusing real provider access.'}
         $start.EnvironmentVariables['VOXCLIP_DEBUG_VOICELAB']='fixtures:'+(Join-Path $root 'shared\fixtures\voice-lab')
     }
+    if($Step -match '^(training|creation)') {
+        if($Configuration -ne 'Debug'){throw 'R5 probes require DEBUG fixtures.'}
+        $fixtures=Join-Path $EvidenceDir 'fixtures'
+        Copy-Item -LiteralPath (Join-Path $root 'shared\fixtures\voice-lab') -Destination $fixtures -Recurse
+        @{scenario=$CreationScenario}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $fixtures 'creation-scenario.json') -Encoding ASCII
+        $start.EnvironmentVariables['VOXCLIP_DEBUG_VOICELAB']='fixtures:'+$fixtures
+        $start.EnvironmentVariables['VOXCLIP_DEBUG_MIC']=$ConsentScenario
+    }
     if($Step -in @('consent','consent-cap','consent-error')){$start.EnvironmentVariables['VOXCLIP_DEBUG_MIC']=$ConsentScenario}
     $script:app=[System.Diagnostics.Process]::Start($start)
     $script:ownedStart=$app.StartTime.ToUniversalTime().Ticks
@@ -269,13 +348,13 @@ function Set-NightSky {
         if(-not $display){continue}
         $display=$display.Substring(12)
         if($display.StartsWith('@')){$buffer=New-Object System.Text.StringBuilder 256;[void][VoiceLabNative]::SHLoadIndirectString($display,$buffer,256,[IntPtr]::Zero);$display=$buffer.ToString()}
-        if($display -eq 'Night sky'){$theme=$file.FullName;break}
+        if($display -eq $ContrastTheme){$theme=$file.FullName;break}
     }
-    if(-not $theme){throw 'The Night sky system theme was not found; do not substitute another contrast theme.'}
+    if(-not $theme){throw ('The '+$ContrastTheme+' system theme was not found; do not substitute another contrast theme.')}
     $script:themeChanged=$true;$script:themeRestored=$false
     Start-Process -FilePath $theme
     Start-Sleep -Seconds 5
-    if(-not [VoiceLabNative]::HighContrast()){throw 'Night sky did not enable High Contrast.'}
+    if(-not [VoiceLabNative]::HighContrast()){throw ($ContrastTheme+' did not enable High Contrast.')}
 }
 try {
     Assert-Space
@@ -319,7 +398,7 @@ try {
         if($Configuration -eq 'Release'){Invoke-Control 'Voice Lab'}
         [void](Find-Control 'Show Voice Lab (beta)')
         switch($Step) {
-            {$_ -in @('consent-gate','consent','consent-cap','consent-error')} {Consent-Step}
+            {$_ -in @('consent-gate','consent','consent-cap','consent-error') -or $_ -match '^(training|creation)'} {Consent-Step}
             'session' {
                 [void](Find-Control 'Check ElevenLabs account')
                 [void](Find-Control ('Own-voice check '+[char]0xB7+' on this PC'))

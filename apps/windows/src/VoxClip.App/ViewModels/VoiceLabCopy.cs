@@ -2,6 +2,9 @@ namespace VoxClip.App.ViewModels;
 
 internal static class VoiceLabCopy
 {
+    internal const string StopLooking = "I've checked my ElevenLabs account — stop looking";
+    internal const string StopLookingExplanation = "Stops recovery without deleting any voice from ElevenLabs. Records that the remote state is unknown; the voice may stay in your ElevenLabs account. This action is free.";
+    internal const string StoppedLooking = "Stopped looking. The remote state is unknown; the voice may stay in your ElevenLabs account.";
     internal const string SpeakerUnavailable = "The speaker check is not ready on Windows yet. Creating a voice is unavailable.";
     internal const string ProviderConsent = "Voice Lab sends audio of your voice and the words to speak to ElevenLabs with your key. Under ElevenLabs' terms, ElevenLabs may use uploaded content, including your voice, to improve its services unless you opt out in your ElevenLabs account. Generated audio can be traced to your account.";
     internal const string AccountCheck = "Reads your subscription, plan, available voice slots and pending voice verification status. No audio, video or transcript is sent. This check is free.";

@@ -28,6 +28,7 @@ internal static class VoiceLabActionNames
     {
         string Label(VoiceOperation value)
         {
+            if (value.Kind == VoiceOperationKind.Create && value.ExpectedVoiceName is { } name) return Created(name, value.StartedAt);
             var record = records.FirstOrDefault(record => record.RecordId == value.RecordId);
             return Created(record?.VoiceName ?? (value.Kind == VoiceOperationKind.Create ? "Voice creation" : "Voice removal"), record?.CreatedAt ?? value.StartedAt);
         }

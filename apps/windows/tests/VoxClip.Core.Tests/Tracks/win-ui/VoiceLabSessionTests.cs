@@ -45,18 +45,20 @@ public sealed class VoiceLabSessionTests
         var clock = new VoiceSessionClock();
         var removing = Operation(clock, VoiceOperationKind.Delete);
         var review = Operation(clock) with { RecoveryNeedsReview = true };
+        var boundReview = Operation(clock) with { RecoveryNeedsReview = true, CreatorKeyFingerprint = new string('a', 16) };
         var mismatch = Operation(clock) with { RecoveryNeedsCreatorKey = true };
-        var backend = new FakeBackend { Snapshot = new([], [removing, review, mismatch]) };
+        var backend = new FakeBackend { Snapshot = new([], [removing, review, mismatch, boundReview]) };
         using (var first = new VoiceLabSession(backend, Dispatch, clock))
         {
             await first.ReconcileStartupAsync();
             Assert.Equal("Removing…", first.Operations[0].DisplayState);
-            Assert.Contains("Checking paused", first.Operations[1].DisplayState);
+            Assert.Equal("Recovery needs the ElevenLabs key that started this voice.", first.Operations[1].DisplayState);
+            Assert.Equal("Checking paused — review the unfinished voice in your ElevenLabs account.", first.Operations[3].DisplayState);
         }
         clock.Advance(TimeSpan.FromDays(3));
         using var restarted = new VoiceLabSession(backend, Dispatch, clock);
         await restarted.ReconcileStartupAsync();
-        Assert.Equal(3, restarted.Operations.Count);
+        Assert.Equal(4, restarted.Operations.Count);
         Assert.False(restarted.Operations[2].Finished);
         Assert.Equal("Recovery needs the ElevenLabs key that started this voice.", restarted.Operations[2].DisplayState);
     }
@@ -253,6 +255,51 @@ public sealed class VoiceLabSessionTests
         }
     }
     [Fact]
+    public async Task StopLookingRequiresManualIdentitylessReviewAndCancelDoesNothing()
+    {
+        var clock = new VoiceSessionClock();
+        var allowed = Operation(clock) with { RecoveryNeedsReview = true, ExpectedVoiceName = "Example (VoxClip)" };
+        var peers = new[] { allowed, allowed with { Id = Guid.NewGuid() } };
+        foreach (var denied in new[] { allowed with { RecoveryNeedsReview = false }, allowed with { CreatorKeyFingerprint = new string('a', 16) }, allowed with { RemoteVoiceId = "known" }, allowed with { State = VoiceOperationState.Abandoned }, allowed with { WasDispatched = false } })
+            Assert.False(VoiceLabSession.CanStopLooking(denied));
+        Assert.True(VoiceLabSession.CanStopLooking(allowed));
+        var labels = peers.Select(operation => VoiceLabActionNames.ForOperation(VoiceLabCopy.StopLooking, operation, peers, [])).ToArray();
+        Assert.Equal(2, labels.Distinct().Count());
+        Assert.Contains("Example (VoxClip), created 30 October 2026, attempt 1", labels[0]);
+        var backend = new FakeBackend { Snapshot = new([], peers) };
+        using var session = new VoiceLabSession(backend, Dispatch, clock);
+        await session.LoadAsync(recover: false); backend.Calls.Clear();
+        session.Request(new(VoiceLabRequestKind.StopLooking, OperationId: allowed.Id));
+        await session.ApproveAsync(false); Assert.Empty(backend.Calls);
+        session.Request(new(VoiceLabRequestKind.StopLooking, OperationId: allowed.Id));
+        await session.ApproveAsync(true);
+        Assert.Equal(new[] { "stop-looking", "read" }, backend.Calls);
+        Assert.Equal(VoiceLabCopy.StoppedLooking, session.Message);
+        Assert.True(session.Operations[0].RemoteStateUnknown);
+        await session.ApproveAsync(true);
+        Assert.Equal(1, backend.Calls.Count(call => call == "stop-looking"));
+    }
+
+    [Fact]
+    public async Task StopLookingUsesCoreOnceWithoutKeysOrProviderAndPersistsUnknownState()
+    {
+        using var folder = new TestFolder(); var clock = new VoiceSessionClock();
+        var store = new VoiceConsentStore(folder.Locations, clock); var wav = Wave();
+        var record = Record() with { VoiceId = "pending", Creator = null, Statement = Record().Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+        store.SaveStatement(wav, record.RecordId);
+        VoiceOperation operation;
+        using (var claim = store.ClaimCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, clock.GetUtcNow()))
+            operation = claim.Operation with { State = VoiceOperationState.Dispatched, WasDispatched = true, RecoveryNeedsReview = true };
+        File.WriteAllText(Path.Combine(store.OperationsRoot, operation.Id.ToString("D") + ".json"), JsonSerializer.Serialize(operation, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var backend = Backend(folder, () => true, _ => throw new InvalidOperationException("No provider allowed"));
+        await backend.StopLookingAsync(operation.Id, TestContext.Current.CancellationToken);
+        var finished = Assert.Single(new VoiceConsentStore(folder.Locations, clock).Operations());
+        Assert.True(finished.RemoteStateUnknown); Assert.Equal(VoiceOperationState.Abandoned, finished.State);
+        await Assert.ThrowsAsync<VoiceConsentException>(() => backend.StopLookingAsync(operation.Id, TestContext.Current.CancellationToken));
+        Assert.NotNull(finished.Audit);
+    }
+
+    [Fact]
     public void DatesUseFixedEnglishMonthsRegardlessOfCurrentCulture()
     {
         var previous = CultureInfo.CurrentCulture;
@@ -295,6 +342,11 @@ public sealed class VoiceLabSessionTests
         Assert.Contains("SetHeadingLevel", pane); Assert.DoesNotContain("Colors.Red", pane);
         Assert.Contains("VoiceLabActionNames.ForRecord(\"Delete voice\"", pane);
         Assert.Contains("\"Retry voice creation\"", pane); Assert.Contains("\"Remove unfinished voice\"", pane);
+        Assert.Contains("VoiceLabSession.CanStopLooking(operation)", pane);
+        Assert.Contains("VoiceLabCopy.StopLookingExplanation", pane);
+        Assert.Contains("Ui.ConfirmAsync", pane);
+        Assert.Contains("DefaultButton = ContentDialogButton.Close", File.ReadAllText(Path.Combine(app, "Controls", "Ui.cs")));
+        Assert.Contains("CloseButtonText = \"Cancel\"", File.ReadAllText(Path.Combine(app, "Controls", "Ui.cs")));
         Assert.Equal(1, pane.Split("SetLiveSetting").Length - 1);
         Assert.Contains("SetLiveSetting(state, AutomationLiveSetting.Polite)", pane);
         Assert.Contains("SetHelpText(create, session.CreateBlockedReason)", pane);
@@ -357,6 +409,7 @@ public sealed class VoiceLabSessionTests
         public Task WithdrawAsync(string recordId, CancellationToken ct) { Calls.Add("withdraw"); return Task.CompletedTask; }
         public Task SaveAsync(VoiceConsentRecord record, CancellationToken ct) { Calls.Add("save"); return Task.CompletedTask; }
         public Task RemoveSpeakerAsync(CancellationToken ct) { Calls.Add("remove-speaker"); return Task.CompletedTask; }
+        public Task StopLookingAsync(Guid operationId, CancellationToken ct) { Calls.Add("stop-looking"); Snapshot = Snapshot with { Operations = Snapshot.Operations.Select(operation => operation.Id == operationId ? operation with { State = VoiceOperationState.Abandoned, RemoteStateUnknown = true } : operation).ToArray() }; return Task.CompletedTask; }
     }
     private sealed class FakeAccount(List<string> calls) : IVoiceLabAccount
     {

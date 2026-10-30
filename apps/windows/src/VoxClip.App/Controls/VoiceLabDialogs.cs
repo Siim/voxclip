@@ -13,7 +13,7 @@ internal static class VoiceLabDialogs
         var dialog = new ContentDialog { XamlRoot = root, Title = spec.Title, Content = Ui.Text(spec.Message),
             PrimaryButtonText = spec.Primary, CloseButtonText = spec.Close,
             DefaultButton = spec.PrimaryDefault ? ContentDialogButton.Primary : ContentDialogButton.Close };
-        AutomationProperties.SetAutomationId(dialog, spec.PrimaryDefault ? "voice-verify-confirmation" : "voice-leave-confirmation");
+        AutomationProperties.SetAutomationId(dialog, spec.Title == "Create voice" ? "voice-create-confirmation" : spec.PrimaryDefault ? "voice-verify-confirmation" : "voice-leave-confirmation");
         var showing = dialog.ShowAsync();
         try { return await showing.AsTask().WaitAsync(ct) == ContentDialogResult.Primary; }
         finally { if (ct.IsCancellationRequested) dialog.Hide(); }

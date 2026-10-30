@@ -22,6 +22,7 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
     private readonly VoiceConsentStore store = new(data, timeProvider);
+    internal static void ReconcileLocalStatements(DataLocations data) => new VoiceConsentStore(data).ReconcileAbandonedEnrollments();
     public bool Enabled => enabled();
     private void RequireEnabled(CancellationToken ct)
     {
@@ -83,6 +84,12 @@ internal sealed class VoiceLabBackend(DataLocations data, IKeyProvider keys, ILo
         RequireEnabled(ct);
         store.WithdrawCreation(recordId, clock.GetUtcNow());
         await ReconcileAsync(true, ct).ConfigureAwait(false);
+    }
+    public Task StopLookingAsync(Guid operationId, CancellationToken ct)
+    {
+        RequireEnabled(ct);
+        store.StopLookingForCreation(operationId, clock.GetUtcNow());
+        return Task.CompletedTask;
     }
     public async Task SaveAsync(VoiceConsentRecord record, CancellationToken ct)
     {

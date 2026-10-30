@@ -6,8 +6,8 @@ namespace VoxClip.App.ViewModels;
 
 internal sealed record VoiceLabSnapshot(IReadOnlyList<VoiceConsentRecord> Records,
     IReadOnlyList<VoiceOperation> Operations, bool SpeakerInstalled = false);
-internal enum VoiceLabRequestKind { Subscription, Delete, RemoveLocal }
-internal sealed record VoiceLabRequest(VoiceLabRequestKind Kind, string? RecordId = null);
+internal enum VoiceLabRequestKind { Subscription, Delete, RemoveLocal, StopLooking }
+internal sealed record VoiceLabRequest(VoiceLabRequestKind Kind, string? RecordId = null, Guid? OperationId = null);
 
 internal interface IVoiceLabBackend
 {
@@ -21,6 +21,7 @@ internal interface IVoiceLabBackend
     Task WithdrawAsync(string recordId, CancellationToken ct);
     Task SaveAsync(VoiceConsentRecord record, CancellationToken ct);
     Task RemoveSpeakerAsync(CancellationToken ct);
+    Task StopLookingAsync(Guid operationId, CancellationToken ct);
 }
 
 internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Task> dispatch,
@@ -31,6 +32,7 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
     private CancellationTokenSource? recovery;
     private bool disposed;
     private bool loading;
+    private bool forceRecoveryPending;
     private int generation;
     internal event EventHandler? Changed;
     internal bool Enabled => !disposed && backend.Enabled;
@@ -42,6 +44,7 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
     internal VoiceConsentRecord? UnsavedRecord { get; private set; }
     internal string? Message { get; private set; }
     internal bool Busy { get; private set; }
+    internal Task CreationRecovery { get; private set; } = Task.CompletedTask;
     internal bool SpeakerInstalled { get; private set; }
     internal IReadOnlyList<VoiceConsentRecord> VisibleRecords => Records.Where(record => record.VoiceId != "pending" &&
         !Operations.Any(operation => operation.RecordId == record.RecordId && operation.Kind == VoiceOperationKind.Create && !operation.Finished) &&
@@ -60,8 +63,10 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
     internal void Request(VoiceLabRequest request)
     {
         if (!Enabled || Busy || loading) return;
+        if (request.Kind == VoiceLabRequestKind.StopLooking && !Operations.Any(operation => operation.Id == request.OperationId && CanStopLooking(operation))) return;
         Confirmation = request;
     }
+    internal static bool CanStopLooking(VoiceOperation operation) => operation.NeedsCreatorRecoveryReview && operation.RecoveryNeedsReview;
     internal async Task RefreshEnabledStateAsync()
     {
         var enabled = false;
@@ -89,6 +94,7 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
         await dispatch(() =>
         {
             if (!Enabled || Busy || loading) return;
+            if (forceRecoveryPending) { recover = true; force = true; forceRecoveryPending = false; }
             loading = true; start = true; version = generation; token = lifetime.Token;
         });
         if (!start) return;
@@ -96,7 +102,7 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
         finally
         {
             var reload = false;
-            await dispatch(() => { loading = false; reload = version != generation && Enabled; Notify(); });
+            await dispatch(() => { loading = false; reload = (version != generation || forceRecoveryPending) && Enabled; Notify(); });
             if (reload) await LoadAsync();
         }
     }
@@ -118,6 +124,8 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
             {
                 if (!Current(version)) return;
                 Records = snapshot.Records; Operations = snapshot.Operations; SpeakerInstalled = snapshot.SpeakerInstalled;
+                if (recover && !Operations.Any(operation => !operation.Finished && (operation.State == VoiceOperationState.Withdrawing || operation.Failed)) &&
+                    (Message == "Removing…" || Message == VoiceLabCopy.RecoveryFailed)) Message = null;
                 Deleting = Operations.Where(operation => !operation.Finished &&
                     (operation.Kind == VoiceOperationKind.Delete || operation.State == VoiceOperationState.Withdrawing))
                     .Select(operation => operation.RecordId).ToHashSet(StringComparer.Ordinal);
@@ -158,6 +166,11 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
                     await backend.RemoveLocalAsync(request.RecordId!, ct);
                     await SetMessageAsync(VoiceLabCopy.RemovedLocal, ct);
                     break;
+                case VoiceLabRequestKind.StopLooking:
+                    if (!Operations.Any(operation => operation.Id == request.OperationId && CanStopLooking(operation))) return;
+                    await backend.StopLookingAsync(request.OperationId!.Value, ct);
+                    await SetMessageAsync(VoiceLabCopy.StoppedLooking, ct);
+                    break;
             }
         });
     }
@@ -175,6 +188,13 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
         await SetMessageAsync("Consent record saved. No create request was repeated.", ct);
     });
     internal void StageUnsaved(VoiceConsentRecord record) { UnsavedRecord = record; Notify(); }
+    internal void ClearUnsaved(string recordId) { if (UnsavedRecord?.RecordId == recordId) UnsavedRecord = null; }
+    internal async Task CreationReturnedAsync(string text)
+    {
+        await LoadAsync(recover: false);
+        await dispatch(() => { if (Enabled) { Message = text; forceRecoveryPending = true; Notify(); } });
+        CreationRecovery = LoadAsync(force: true);
+    }
     private Task SetMessageAsync(string text, CancellationToken ct) => dispatch(() => { if (Enabled && !ct.IsCancellationRequested) Message = text; });
     private async Task PerformAsync(Func<CancellationToken, Task> action)
     {
@@ -196,7 +216,7 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
         {
             await ReloadAsync(false, false, version, token);
             var reload = false;
-            await dispatch(() => { Busy = false; reload = version != generation && Enabled; Notify(); });
+            await dispatch(() => { Busy = false; reload = (version != generation || forceRecoveryPending) && Enabled; Notify(); });
             if (reload) await LoadAsync();
         }
     }

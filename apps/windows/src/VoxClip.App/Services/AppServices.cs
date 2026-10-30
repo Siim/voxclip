@@ -59,6 +59,7 @@ internal sealed class AppServices : IAsyncDisposable
     private WhisperNetTranscriber? localSpeech;
     private readonly List<ElevenLabsTranscriber> cloudSpeechInstances = [];
     private VoiceLabSession? voiceLab;
+    private CreateVoiceSession? voiceEnrollment;
 #if DEBUG
     private DebugVoiceLabBackend? debugVoiceLab;
     internal int? DebugVoiceLabHttpCalls => debugVoiceLab?.HttpCalls;
@@ -124,7 +125,12 @@ internal sealed class AppServices : IAsyncDisposable
         var backend = await Task.Run(() => new VoiceStatementBackend(Data, Keys, Log, selectedRegion,
             () => VoiceLabEnabled, () => VoiceLab.PlanMessage, Consent, speakerAvailable: speaker, transcribe: scribe), ct);
         if (ct.IsCancellationRequested) { backend.Dispose(); ct.ThrowIfCancellationRequested(); }
-        return new(backend, new VoiceStatementCapture(new VoxClip.Media.Audio.VoiceMicrophoneRecorder(Log)), OnUiAsync);
+        IVoiceStatementBackend selected = backend;
+#if DEBUG
+        if (fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true && debugVoiceLab is not null)
+            selected = new DebugVoiceCreationBackend(backend, debugVoiceLab, Data, fixtures[9..]);
+#endif
+        return voiceEnrollment = new(selected, new VoiceStatementCapture(new VoxClip.Media.Audio.VoiceMicrophoneRecorder(Log)), OnUiAsync);
     }
 #if DEBUG
     internal string? DebugMicrophoneSettingsUri { get; set; }
@@ -174,6 +180,7 @@ internal sealed class AppServices : IAsyncDisposable
         localSpeech = new WhisperNetTranscriber(Models, Downloads, Data.Root, Log);
         ConfigureCloudSpeech();
         ClipFinder = new ClipFinder(new LlmCatalog(), Keys, new Redactor(), id => Connector(id));
+        await Task.Run(() => VoiceLabBackend.ReconcileLocalStatements(Data), ct);
         await VoiceLab.ReconcileStartupAsync();
     }
 
@@ -232,6 +239,7 @@ internal sealed class AppServices : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (voiceEnrollment is not null) await voiceEnrollment.DisposeAsync();
         voiceLab?.Dispose();
         try { await SettingsStore.FlushAsync(CancellationToken.None); }
         catch (Exception) { Log.Write(LogLevel.Warn, "settings", "flush failed"); }
