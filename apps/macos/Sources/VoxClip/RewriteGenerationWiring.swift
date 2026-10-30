@@ -46,12 +46,16 @@ extension RewriteSession {
                 items: transcript, cutWordIDs: editor.cutWordIDs, window: window,
                 incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
                 providerConsent: editor.app.bool("voiceLab.providerConsent.elevenlabs"))
-            let total = await VoiceLabSpendLedger(locations: editor.app.locations).total(provider: "elevenlabs", at: Date())
+            let cap = try await currentGenerationCap()
             guard generation.preparationIsCurrent(reservation) else { return }
-            let limit = Decimal(string: editor.app.string("voiceLab.monthlyCapUsd.elevenlabs"), locale: Locale(identifier: "en_US_POSIX"))
-            let cap = limit.map { VoiceLabMonthlyCap(limit: $0, spent: total?.usd ?? 0) }
             await generation.prepare(input, cap: cap, reservation: reservation)
         } catch { if generation.preparationIsCurrent(reservation) { generationProblem(error) } }
+    }
+    func currentGenerationCap() async throws -> VoiceLabMonthlyCap? {
+        let total = await VoiceLabSpendLedger(locations: editor.app.locations).total(provider: "elevenlabs", at: Date())
+        guard let limit = Decimal(string: editor.app.string("voiceLab.monthlyCapUsd.elevenlabs"), locale: Locale(identifier: "en_US_POSIX")) else { return nil }
+        guard let total else { throw VoiceLabError.consentRequired }
+        return VoiceLabMonthlyCap(limit: limit, spent: total.usd)
     }
     private func generationProblem(_ error: any Error) {
         if let generation { generation.fail(Self.refusal(error)) } else { reportGenerationProblem(error) }

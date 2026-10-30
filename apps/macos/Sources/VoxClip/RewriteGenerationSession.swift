@@ -29,6 +29,11 @@ import VoxClipMedia
     @ObservationIgnored private var cleanup: Task<Void, Never>?
     @ObservationIgnored private var quotePreparation: Task<Void, Never>?
     @ObservationIgnored var prepareQuote: (@MainActor () async -> Void)?
+    @ObservationIgnored var readMonthlyCap: (@MainActor () async throws -> VoiceLabMonthlyCap?)?
+    @ObservationIgnored private var preparedCap: VoiceLabMonthlyCap?
+    @ObservationIgnored private var activeQuote: VoiceLabTakeRunQuote?
+    @ObservationIgnored private var approvedCost: VoiceLabCostPresentation.Kind?
+    @ObservationIgnored private var confirmCost: (@MainActor (String) async -> Bool)?
     @ObservationIgnored private var revision = 0
     @ObservationIgnored private var executionRevision: Int?
     @ObservationIgnored private var launchStarted = false
@@ -262,6 +267,7 @@ import VoxClipMedia
             #endif
             guard version == revision else { return }
             self.quote = quote; quotedInput = input
+            preparedCap = cap
             cost = VoiceLabCostPresentation.kind(quote.estimate, isLipSync: false, providerName: "ElevenLabs", cap: cap)
             if rows.isEmpty { self.input = input; phase = .awaitingApproval }
         } catch {
@@ -269,8 +275,9 @@ import VoxClipMedia
             fail(RewriteSession.refusal(error))
         }
     }
-    func approve(_ approved: Bool) {
+    func approve(_ approved: Bool, confirmation: (@MainActor (String) async -> Bool)? = nil) {
         guard approved, canGenerate, let quote else { return }
+        activeQuote = quote; approvedCost = confirmation == nil ? cost : nil; confirmCost = confirmation
         phaseBeforeLaunch = phase; launchStarted = false
         self.quote = nil; cost = nil; phase = .generating
         executionRevision = revision
@@ -278,6 +285,7 @@ import VoxClipMedia
         sending = Task { [weak self] in
             guard let self else { return }
             do {
+                try await self.dispatchWithCurrentCost({})
                 let progress: @Sendable ([VoiceLabTakeRow]) async -> Void = { rows in
                     await self.updateRows(rows, version: version)
                 }
@@ -295,13 +303,36 @@ import VoxClipMedia
                 self.requestQuote()
             } catch {
                 guard self.revision == version else { return }
+                if error is CancellationError { self.cancel(); return }
                 self.executionRevision = nil
                 self.phase = Task.isCancelled ? .cancelled : .failed
                 self.problem = Task.isCancelled ? "" : RewriteSession.refusal(error)
             }
         }
     }
-    private func beginLaunch(version: Int) throws {
+    func dispatchWithCurrentCost(_ start: @escaping @Sendable () throws -> Void) async throws {
+        guard let quote = activeQuote, let version = executionRevision else { throw VoiceLabError.consentRequired }
+        while true {
+            try Task.checkCancellation()
+            let cap: VoiceLabMonthlyCap?
+            if let readMonthlyCap { cap = try await readMonthlyCap() }
+            else { cap = preparedCap }
+            try Task.checkCancellation()
+            guard revision == version, activeQuote == quote, inputsAreCurrent() else { throw CancellationError() }
+            let decision = VoiceLabCostPresentation.kind(quote.estimate, isLipSync: false, providerName: "ElevenLabs", cap: cap)
+            if case .confirm(let copy) = decision, decision != approvedCost {
+                guard let confirmCost, await confirmCost(copy) else { throw CancellationError() }
+                try Task.checkCancellation()
+                guard revision == version, activeQuote == quote, inputsAreCurrent() else { throw CancellationError() }
+                approvedCost = decision
+                continue
+            }
+            try start()
+            return
+        }
+    }
+    private func beginLaunch(version: Int) async throws {
+        try await dispatchWithCurrentCost({})
         try Task.checkCancellation()
         guard revision == version, executionRevision == version, inputsAreCurrent() else { throw CancellationError() }
         launchStarted = true
@@ -361,6 +392,7 @@ import VoxClipMedia
         if launchStarted { audition.stop() }
         quotePreparation?.cancel(); quotePreparation = nil
         execution?.cancel(); revision += 1; quote = nil; cost = nil; quotedInput = nil; preparingQuote = false
+        activeQuote = nil; approvedCost = nil; confirmCost = nil
         if launchStarted { selectedID = nil; phase = .cancelled }
         else if phase == .generating { phase = phaseBeforeLaunch }
         let previous = cleanup; let run = run; let executionRevision = executionRevision
@@ -378,6 +410,7 @@ import VoxClipMedia
         sending?.cancel(); sending = nil; revision += 1
         quote = nil; cost = nil; rows = []; bestID = nil; selectedID = nil; videoChoice = nil; problem = ""; phase = .idle
         input = nil; quotedInput = nil; preparingQuote = false
+        activeQuote = nil; approvedCost = nil; confirmCost = nil
         enqueueCleanup()
     }
     private func enqueueCleanup() {

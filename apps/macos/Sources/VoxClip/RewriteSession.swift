@@ -105,16 +105,17 @@ struct RewriteConnector {
             paidRoot: editor.app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true),
             scratchRoot: editor.app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true))
         let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { [weak self] start in
-            try await MainActor.run {
-                guard self?.generationIsCurrent(region: region) == true,
-                      self?.generation?.dispatchIsCurrent == true else { throw VoiceLabError.consentRequired }
-                try start()
-            }
+            guard let generation = await self?.generation else { throw VoiceLabError.consentRequired }
+            try await generation.dispatchWithCurrentCost(start)
         }) { [weak self] in
             await self?.generationIsCurrent(region: region) ?? false
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
         generation?.prepareQuote = { [weak self] in await self?.prepareTakes() }
+        generation?.readMonthlyCap = { [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await self.currentGenerationCap()
+        }
     }
     func reportGenerationProblem(_ error: any Error) { problem = Self.refusal(error) }
     func generationIsCurrent(region: ElevenLabsRegion) -> Bool {

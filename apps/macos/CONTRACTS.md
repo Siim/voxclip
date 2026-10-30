@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W10 live cap decisions
+
+The immutable whole-run quote is not a snapshot of the user's monthly cap or other actions' spending. Generation rereads the ledger and then the current cap setting before launch and at every TTS/Scribe transport boundary. After any confirmation suspension it recomputes the decision again: a newly crossed cap, unknown price or S14 confirmation cannot be silently approved by an older decision. The approved copy is bound to this run; changed confirmation copy asks again, while identical already-approved copy does not. Unreadable spend with a configured cap fails closed. Quote/revision/consent and task cancellation are rechecked after the cap read and after the sheet; the final transport start is synchronous with that validation on the MainActor and retains Core's voice-use/revision permit. Headless regressions mutate an actual ledger between preparation/click, during a suspended sheet and immediately before transport; another declines the real approval callback and proves previous takes/selection and automatic requoting survive.
+
 ### 2026-10-30 — sol-mac-voicelab — W10 replacement cancellation
 
 Replacement cancellation retains previous rows, selection, scratch/snapshot leases and audition until the approved launch commits on the MainActor. The run's throwing `started` handshake rejects a stale/cancelled launch before retiring leases. Cancellation and that handshake are serialized on the MainActor; cleanup cancels the old execution with `keepingTakes`, waits for it to finish, then automatic quote preparation makes Generate Again/Try Another usable (or exposes Retry on failure). Deterministic App tests cancel before approval, during approval cancellation and at a suspended launch; a real Core take-run test rejects launch and proves the scratch and playing audition survive until session invalidation. No sleeps or live requests.

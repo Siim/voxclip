@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import AppKit
+import Synchronization
 import Testing
 @testable import VoxClipCore
 @testable import VoxClipMedia
@@ -31,8 +32,87 @@ private struct GenerationTestKeys: KeyProvider {
     func resume() { release?.resume(); release = nil }
 }
 
+private final class GenerationDispatchCount: Sendable {
+    let value = Mutex(0)
+    func start() { value.withLock { $0 += 1 } }
+}
+
 @Suite("Headless Rewrite generation", .serialized)
 @MainActor struct RewriteGenerationTests {
+    @Test(arguments: ["before-click", "during-confirmation", "before-launch", "transport"])
+    func monthlyCapIsRecheckedAfterQuoteSheetAndTransportSuspensions(point: String) async throws {
+        let (session, state) = try await replacementSession()
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel()
+        let ledger = VoiceLabSpendLedger(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        app.settings.values["voiceLab.monthlyCapUsd.elevenlabs"] = .string("1")
+        session.readMonthlyCap = {
+            let total = await ledger.total(provider: "elevenlabs", at: Date())
+            let limit = try #require(Decimal(string: app.string("voiceLab.monthlyCapUsd.elevenlabs")))
+            return VoiceLabMonthlyCap(limit: limit, spent: try #require(total).usd)
+        }
+        func addSpend(_ amount: Decimal) async {
+            let estimate = CostEstimate(provider: "elevenlabs", operation: "test", units: 1, unit: "action", usd: amount, basis: "test")
+            #expect(await ledger.record(estimate, at: Date()) == nil)
+        }
+        if point == "during-confirmation" {
+            state.usdPerCall = Decimal(string: "0.10")!
+            session.requestQuote(); await session.finishQuotePreparationForTests()
+        }
+        let previous = session.rows, selection = session.selectedID
+        if point == "before-click" { await addSpend(Decimal(string: "0.97")!) }
+        let suspension = GenerationSuspension(), dispatched = GenerationDispatchCount()
+        var copies: [String] = []
+        session.executeForTests = { _, _, started in
+            if point == "before-launch" { await addSpend(Decimal(string: "0.97")!) }
+            try await started()
+            if point == "transport" { await addSpend(Decimal(string: "0.97")!) }
+            try await session.dispatchWithCurrentCost { dispatched.start() }
+            return .init(rows: [row(index: 0)], end: .completed)
+        }
+        session.approve(true, confirmation: { copy in
+            copies.append(copy)
+            #expect(dispatched.value.withLock { $0 } == 0)
+            if point != "transport" { #expect(session.rows == previous && session.selectedID == selection) }
+            if point == "during-confirmation", copies.count == 1 { await suspension.pause() }
+            return true
+        })
+        if point == "during-confirmation" {
+            await suspension.wait()
+            await addSpend(Decimal(string: "0.50")!)
+            suspension.resume()
+        }
+        await session.finishGenerationForTests()
+        #expect(copies.count == (point == "during-confirmation" ? 2 : 1))
+        #expect(copies.last?.contains("past your $1 limit") == true)
+        #expect(dispatched.value.withLock { $0 } == 1)
+        session.invalidate()
+    }
+    @Test(arguments: [false, true])
+    func cancellingTheActualCostConfirmationKeepsPriorTakesAndRequotes(atLaunch: Bool) async throws {
+        let (session, state) = try await replacementSession()
+        state.unknown = !atLaunch
+        var spent = Decimal.zero
+        session.readMonthlyCap = { VoiceLabMonthlyCap(limit: 1, spent: spent) }
+        session.requestQuote(); await session.finishQuotePreparationForTests()
+        let previous = session.rows, selection = session.selectedID
+        let suspension = GenerationSuspension()
+        session.executeForTests = { _, _, started in
+            if atLaunch { spent = Decimal(string: "0.97")!; try await started() }
+            Issue.record("A declined confirmation must not launch")
+            return .init(rows: [], end: .completed)
+        }
+        session.approve(true, confirmation: { _ in await suspension.pause(); return false })
+        await suspension.wait()
+        #expect(session.rows == previous && session.selectedID == selection)
+        suspension.resume()
+        await session.finishGenerationForTests()
+        #expect(session.rows == previous && session.selectedID == selection && session.readyToAccept)
+        #expect(session.canExecute && state.preparations == 3)
+        session.invalidate()
+    }
     private func replacementSession() async throws -> (RewriteGenerationSession, GenerationQuoteTestState) {
         let session = session(), state = GenerationQuoteTestState()
         let shared = try SharedResources.locate()
@@ -332,6 +412,8 @@ private struct GenerationTestKeys: KeyProvider {
         #expect(!session.chooseVideo(.retimed) && !session.readyToAccept)
         #expect(!session.chooseVideo(.lipsync) && session.videoChoice == nil)
         session.cancel()
+        #expect(!session.readyToAccept && session.select(take.id) && session.videoChoice == nil)
+        session.invalidate()
         #expect(!session.readyToAccept && !session.select(take.id))
     }
     @Test(arguments: [false, true]) func rejectionSelectsNextEligibleTakeByRank(changedLength: Bool) async {
