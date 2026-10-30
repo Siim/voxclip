@@ -487,11 +487,32 @@ jobs:
         working-directory: apps/windows
         run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-x64 -p:Platform=x64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false
 
+      - name: Inspect shipping Release assemblies (win-x64)
+        if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
+        shell: pwsh
+        working-directory: apps/windows
+        run: build/Test-ReleaseBoundary.ps1 -RuntimeIdentifier win-x64
+
       - name: Build WinUI app (win-arm64)
         if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
         shell: bash
         working-directory: apps/windows
         run: dotnet build src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 -p:Platform=ARM64 -m:1 -nodeReuse:false -p:UseSharedCompilation=false
+
+      - name: Inspect shipping Release assemblies (win-arm64)
+        if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
+        shell: pwsh
+        working-directory: apps/windows
+        run: build/Test-ReleaseBoundary.ps1 -RuntimeIdentifier win-arm64
+
+      - name: Upload shipping Release inspection inventories
+        if: always() && steps.detect.outputs.app == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-boundary-inventories
+          path: ${{ runner.temp }}/voxclip-release-boundary
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Launch the DEBUG Editor on the hosted desktop
         if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
