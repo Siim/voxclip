@@ -20,6 +20,27 @@ private final class TakeRunClock: Sendable {
     func play() -> Bool { true }
     func stop() { stopped = true }
 }
+@MainActor private final class TakeRunApproval {
+    var scratch: VoiceLabTakeScratch?
+    var audition: VoiceLabAudition?
+    var ledger: VoiceLabSpendLedger?
+    var estimate: Decimal?
+    var approved = true
+    var confirmations = 0
+    private var confirmed = false
+    func dispatch(_ start: @escaping @Sendable () throws -> Void) async throws {
+        if let ledger, let total = await ledger.total(provider: "elevenlabs", at: Date()),
+           total.usd + (estimate ?? 0) > 1, !confirmed {
+            confirmations += 1
+            if confirmations == 1 || !approved {
+                #expect(scratch?.isValid == true && audition?.isPlaying == true)
+            }
+            guard approved else { throw CancellationError() }
+            confirmed = true
+        }
+        try start()
+    }
+}
 private final class TakeRunDispatchSignal: Sendable {
     private struct State {
         var fired = false
@@ -118,7 +139,8 @@ struct VoiceLabTakeRunTests {
         let input: VoiceLabTakeInput
     }
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
-                         sourceAudible: Bool = true, roomToneAvailable: Bool = true) async throws -> Fixture {
+                         sourceAudible: Bool = true, roomToneAvailable: Bool = true,
+                         boundary: VoiceLabDispatchBoundary? = nil) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
         let store = VoiceConsentStore(locations: locations)
@@ -183,6 +205,7 @@ struct VoiceLabTakeRunTests {
         let clock = TakeRunClock(); await client.useClock({ clock.now() }, monotonic: { clock.elapsed() })
         let run = VoiceLabTakeRun(client: client, store: store, speaker: .init(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45),
             storage: VoiceLabTakeStorage(projectId: UUID().uuidString.lowercased(), paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch")), dispatchIfCurrent: { start in
+            if let boundary { try await boundary(start); return }
             try http.value.withLock { state in
                 guard state.current else { throw VoiceLabError.consentRequired }
                 try start()
@@ -353,6 +376,73 @@ struct VoiceLabTakeRunTests {
         #expect(next.id != replacement.id)
         await fixture.run.invalidate()
         #expect(backend.stopped && !audition.isPlaying && !scratch.isValid)
+    }
+    @Test(arguments: [false, true]) @MainActor
+    func firstTransportApprovalRetainsPlayingScratchUntilRequestStarts(approved: Bool) async throws {
+        let suspension = TakeRunSuspension()
+        let approvals = TakeRunApproval()
+        let fixture = try await fixture(boundary: { start in try await approvals.dispatch(start) })
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let initial = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(initial, approved: true)
+        let row = try #require(result.best)
+        let scratch = try #require(await fixture.run.scratch(for: row.id))
+        let backend = TakeRunPlayback(), audition = VoiceLabAudition(makeBackend: { _, _ in backend })
+        try audition.play(scratch, takeId: row.id, selectionId: "prior")
+        let replacement = try await fixture.run.prepare(fixture.input)
+        approvals.scratch = scratch; approvals.audition = audition
+        approvals.ledger = fixture.ledger; approvals.estimate = replacement.estimate.usd
+        approvals.approved = approved
+        await fixture.client.useDispatchHook {
+            await suspension.pause(on: 1)
+        }
+        let execution = Task { try await fixture.run.execute(replacement, approved: true) }
+        try await suspension.reached.wait()
+        let spending = CostEstimate(provider: "elevenlabs", operation: "other action", units: 1, unit: "action", usd: 1, basis: "test")
+        #expect(await fixture.ledger.record(spending, at: Date()) == nil)
+        #expect(scratch.isValid && audition.isPlaying && !backend.stopped)
+        await suspension.release()
+        let next = try await execution.value
+        #expect(approvals.confirmations == 1)
+        if approved {
+            #expect(!scratch.isValid && backend.stopped && next.rows.first?.index == 0)
+            #expect(fixture.http.value.withLock { $0.seeds.count == 2 })
+        } else {
+            #expect(next.rows.isEmpty && scratch.isValid && audition.isPlaying && !backend.stopped)
+            #expect(FileManager.default.fileExists(atPath: scratch.mixedAudioURL.path))
+            #expect(fixture.http.value.withLock { $0.seeds.count == 1 })
+            let declinedAgain = try await fixture.run.execute(replacement, approved: true)
+            #expect(declinedAgain.rows.isEmpty && approvals.confirmations == 2)
+            #expect(scratch.isValid && audition.isPlaying)
+            approvals.approved = true
+            let retried = try await fixture.run.execute(replacement, approved: true)
+            #expect(retried.rows.first?.index == 0 && !scratch.isValid)
+            #expect(fixture.http.value.withLock { $0.seeds.count == 2 })
+        }
+        await fixture.run.invalidate()
+    }
+    @Test @MainActor func cancellationAtFirstTransportKeepsPlayingScratch() async throws {
+        let suspension = TakeRunSuspension()
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let initial = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(initial, approved: true)
+        let row = try #require(result.best)
+        let scratch = try #require(await fixture.run.scratch(for: row.id))
+        let backend = TakeRunPlayback(), audition = VoiceLabAudition(makeBackend: { _, _ in backend })
+        try audition.play(scratch, takeId: row.id, selectionId: "prior")
+        let replacement = try await fixture.run.prepare(fixture.input)
+        await fixture.client.useDispatchHook { await suspension.pause(on: 1) }
+        let execution = Task { try await fixture.run.execute(replacement, approved: true) }
+        try await suspension.reached.wait()
+        #expect(scratch.isValid && audition.isPlaying)
+        await fixture.run.cancel(keepingTakes: true)
+        await suspension.release()
+        _ = try await execution.value
+        #expect(scratch.isValid && audition.isPlaying && !backend.stopped)
+        #expect(FileManager.default.fileExists(atPath: scratch.mixedAudioURL.path))
+        #expect(fixture.http.value.withLock { $0.seeds.count == 1 })
+        await fixture.run.invalidate()
     }
     @Test func qaMeasuresScratchReadbackAndRejectionRemovesOnlyScratch() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }

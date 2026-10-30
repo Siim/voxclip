@@ -75,7 +75,7 @@ private final class GenerationDispatchCount: Sendable {
         session.approve(true, confirmation: { copy in
             copies.append(copy)
             #expect(dispatched.value.withLock { $0 } == 0)
-            if point != "transport" { #expect(session.rows == previous && session.selectedID == selection) }
+            #expect(session.rows == previous && session.selectedID == selection)
             if point == "during-confirmation", copies.count == 1 { await suspension.pause() }
             return true
         })
@@ -91,13 +91,13 @@ private final class GenerationDispatchCount: Sendable {
         session.invalidate()
     }
     @Test(arguments: [false, true])
-    func cancellingTheActualCostConfirmationKeepsPriorTakesAndRequotes(atLaunch: Bool) async throws {
+    func cancellingTheActualCostConfirmationKeepsPriorTakesAndQuote(atLaunch: Bool) async throws {
         let (session, state) = try await replacementSession()
         state.unknown = !atLaunch
         var spent = Decimal.zero
         session.readMonthlyCap = { VoiceLabMonthlyCap(limit: 1, spent: spent) }
         session.requestQuote(); await session.finishQuotePreparationForTests()
-        let previous = session.rows, selection = session.selectedID
+        let previous = session.rows, selection = session.selectedID, quote = session.quote, price = session.buttonTitle
         let suspension = GenerationSuspension()
         session.executeForTests = { _, _, started in
             if atLaunch { spent = Decimal(string: "0.97")!; try await started() }
@@ -110,7 +110,77 @@ private final class GenerationDispatchCount: Sendable {
         suspension.resume()
         await session.finishGenerationForTests()
         #expect(session.rows == previous && session.selectedID == selection && session.readyToAccept)
-        #expect(session.canExecute && state.preparations == 3)
+        #expect(session.canExecute && state.preparations == 2)
+        #expect(session.quote == quote && session.buttonTitle == price)
+        var confirmations = 0
+        session.approve(true, confirmation: { _ in confirmations += 1; return false })
+        await session.finishGenerationForTests()
+        #expect(confirmations == 1 && session.quote == quote)
+        session.invalidate()
+    }
+    @Test(arguments: [false, true])
+    func firstTransportCapDecisionKeepsRowsUntilStart(approved: Bool) async throws {
+        let (session, state) = try await replacementSession()
+        let previous = session.rows, selection = session.selectedID, quote = session.quote, title = session.buttonTitle
+        var spent = Decimal.zero
+        session.readMonthlyCap = { VoiceLabMonthlyCap(limit: 1, spent: spent) }
+        let count = GenerationDispatchCount()
+        let confirmation = GenerationSuspension()
+        session.executeForTests = { _, _, started in
+            try await started()
+            spent = Decimal(string: "0.97")!
+            try await session.dispatchWithCurrentCost { count.start() }
+            #expect(session.rows.isEmpty && session.selectedID == nil)
+            return .init(rows: [row(index: 0)], end: .completed)
+        }
+        var confirmations = 0
+        session.approve(true, confirmation: { _ in
+            confirmations += 1
+            #expect(session.rows == previous && session.selectedID == selection)
+            await confirmation.pause()
+            return approved
+        })
+        await confirmation.wait()
+        #expect(session.rows == previous && session.selectedID == selection)
+        #expect(count.value.withLock { $0 } == 0)
+        confirmation.resume()
+        await session.finishGenerationForTests()
+        if approved {
+            #expect(count.value.withLock { $0 } == 1)
+            #expect(session.rows.count == 1 && session.rows.first?.index == 0)
+        } else {
+            #expect(session.rows == previous && session.selectedID == selection)
+            #expect(session.quote == quote && session.buttonTitle == title && session.canExecute)
+            #expect(state.preparations == 1)
+            session.approve(true, confirmation: { _ in confirmations += 1; return false })
+            await session.finishGenerationForTests()
+            #expect(confirmations == 2 && count.value.withLock { $0 } == 0)
+        }
+        session.invalidate()
+    }
+    @Test func cancellationRacingFirstTransportKeepsRowsAndSelection() async throws {
+        let (session, _) = try await replacementSession()
+        let previous = session.rows, selection = session.selectedID
+        let suspension = GenerationSuspension(), count = GenerationDispatchCount()
+        var reads = 0
+        session.readMonthlyCap = {
+            reads += 1
+            if reads == 3 { await suspension.pause() }
+            return nil
+        }
+        session.executeForTests = { _, _, started in
+            try await started()
+            try await session.dispatchWithCurrentCost { count.start() }
+            return .init(rows: [], end: .completed)
+        }
+        session.approve(true)
+        await suspension.wait()
+        session.cancel()
+        #expect(session.rows == previous && session.selectedID == selection)
+        suspension.resume()
+        await session.finishGenerationForTests()
+        #expect(count.value.withLock { $0 } == 0)
+        #expect(session.rows == previous && session.selectedID == selection && session.canExecute)
         session.invalidate()
     }
     private func replacementSession() async throws -> (RewriteGenerationSession, GenerationQuoteTestState) {
@@ -270,6 +340,7 @@ private final class GenerationDispatchCount: Sendable {
         session.executeForTests = { approved, _, started in
             #expect(approved == quote && session.rows == originalRows && session.selectedID == chosen.id)
             try await started()
+            try await session.dispatchWithCurrentCost({})
             #expect(session.rows.isEmpty && session.selectedID == nil)
             return .init(rows: [replacement], end: .completed)
         }
@@ -314,6 +385,7 @@ private final class GenerationDispatchCount: Sendable {
         session.executeForTests = { _, _, started in
             state.executions += 1
             try await started()
+            try await session.dispatchWithCurrentCost({})
             return .init(rows: [row(index: 0), row(index: 1, failure: true)], end: .completed)
         }
         session.requestQuote()

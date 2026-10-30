@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W11 first paid transport commit
+
+This supersedes W10's pre-transport `started` handshake as the retirement boundary. The handshake only validates preparation; it does not clear rows or retire scratch. The first successful, revision/consent-guarded transport resume commits replacement on the MainActor, synchronously with the live cap decision and cancellation. Only then are the old rows/selection/audition replaced and Core retires prior scratch/snapshot leases. No failed validation, declined sheet or cancellation before resume retires them. No progress row is published for a never-started run.
+
+A declined pre-dispatch confirmation retains the exact immutable whole-run quote, displayed price, previous selection and playing audition. The next click rechecks current spending and asks again. Core unapproves the unstarted run but keeps its pending preparation; TTS restores a claimed quote only when transport provably never resumed, the original monotonic deadline is retained, and that run still owns approval. A started or ambiguous transport can never restore its claim. Explicit cancellation instead invalidates the reservation and automatically prepares a fresh quote (or shows Retry). Deterministic App tests exercise a cap crossed after the preparation handshake, decline/retry, approved first dispatch, and cancellation racing its cap read. Core tests exercise the same first-transport race with a real fitted scratch/snapshot, a playing fake-backend audition, an actual ledger mutation and stub HTTP; declined runs send nothing and the same quote can subsequently be approved, numbered from Take 1.
+
 ### 2026-10-30 — sol-mac-voicelab — W10 accepted pre-open directory retention
 
 An open failure immediately after exclusive mkdir has no pinned fd/identity and intentionally leaves its empty operation directory and intent while the owner lives. The next sweep after owner death reclaims it using **empty-only rmdir**, never emptying an identity-less directory. A deterministic post-mkdir/pre-open failure checkpoint verifies retention while live and reclamation after death. This is accepted for 0.1.0, not a cleanup gate left owed.

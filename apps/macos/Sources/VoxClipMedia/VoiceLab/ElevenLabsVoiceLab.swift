@@ -1,5 +1,12 @@
 import Foundation
+import Synchronization
 import VoxClipCore
+
+private final class VoiceLabTransportStart: Sendable {
+    private let value = Mutex(false)
+    var started: Bool { value.withLock { $0 } }
+    func mark() { value.withLock { $0 = true } }
+}
 
 /// Explicit, region-bound Voice Lab transport. Mutations are sent once, including on 429/5xx.
 public actor ElevenLabsVoiceLab {
@@ -402,6 +409,7 @@ public actor ElevenLabsVoiceLab {
         preparedOrder.removeAll { ids.contains($0) }
         approvedRuns.removeValue(forKey: id)
     }
+    func unapproveRun(_ id: UUID) { approvedRuns.removeValue(forKey: id) }
     func prepareQA(language: String, requestID: UUID) throws -> VoiceLabQuote {
         guard language.range(of: #"\A[a-z]{2,3}\z"#, options: .regularExpression) != nil else { throw VoiceLabError.invalidInput }
         return try quote(.speechToText, requestID: requestID, endpoint: "v1/speech-to-text",
@@ -516,9 +524,23 @@ public actor ElevenLabsVoiceLab {
             if let next = Self.speechContext(options.nextText, previous: false) { payload["next_text"] = next }
         }
         let body = try JSONSerialization.data(withJSONObject: payload)
+        let deadline = deadlines[authorization.quote.id]
         try claim(authorization, operation: .textToSpeech, requestID: requestID, endpoint: path,
                   fields: speechFields(text, modelID, voice, language, options))
-        let reply = try await send(components.url!, method: "POST", body: body, contentType: "application/json", limit: maxResponse, billing: authorization, capability: capability)
+        let transportStart = VoiceLabTransportStart()
+        let reply: Reply
+        do {
+            reply = try await send(components.url!, method: "POST", body: body, contentType: "application/json", limit: maxResponse,
+                billing: authorization, capability: capability, transportStart: transportStart)
+        } catch {
+            if !transportStart.started, let deadline,
+               approvedRuns.values.contains(where: { $0.contains(authorization.quote.id) }) {
+                prepared[authorization.quote.id] = authorization.quote
+                deadlines[authorization.quote.id] = deadline
+                preparedOrder.append(authorization.quote.id)
+            }
+            throw error
+        }
         guard let row = try? JSONSerialization.jsonObject(with: reply.bytes) as? [String: Any],
               let base64 = row["audio_base64"] as? String, let pcm = Data(base64Encoded: base64) else { throw VoiceLabError.invalidAudio }
         try Self.validatePCM(pcm, maxBytes: maxResponse)
@@ -604,7 +626,8 @@ public actor ElevenLabsVoiceLab {
     /// `billing` is the approved action the request runs. Its 2xx status line is the provider's acceptance, so the estimate is
     /// recorded once from then on however the body ends, and the record finishes before `send` returns or throws (§3.1).
     private func send(_ url: URL, method: String, body: Data? = nil, contentType: String? = nil, limit: Int,
-                      billing: VoiceLabAuthorization? = nil, capability: VoiceOperationCapability? = nil, discoveryCreator: String? = nil) async throws -> Reply {
+                      billing: VoiceLabAuthorization? = nil, capability: VoiceOperationCapability? = nil, discoveryCreator: String? = nil,
+                      transportStart: VoiceLabTransportStart? = nil) async throws -> Reply {
         try Task.checkCancellation()
         guard url.scheme == "https", url.host == region.baseURL.host, body?.count ?? 0 <= maxRequest else { throw VoiceLabError.invalidInput }
         guard let key = try await keys.key(for: "elevenlabs"), !key.isEmpty else { throw VoiceLabError.missingKey }
@@ -636,10 +659,12 @@ public actor ElevenLabsVoiceLab {
         transport.delegate = relay
         let start = Date()
         var recording: Task<VoiceLabSpendWarning?, Never>?
+        defer { transport.cancel() }
         do {
             try Task.checkCancellation()
-            if let permit { try await permit.start { transport.resume() } } else { transport.resume() }
-            defer { transport.cancel() }
+            if let permit {
+                try await permit.start { transport.resume(); transportStart?.mark() }
+            } else { transport.resume(); transportStart?.mark() }
             var response: HTTPURLResponse?
             var bytes = Data()
             try await withTaskCancellationHandler {
