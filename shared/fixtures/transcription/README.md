@@ -6,10 +6,13 @@ live provider calls. No generator, API key or model download is required.
 
 ## Layout
 
-- Word-assembly cases use `{name, rule, timelineStart, tokens, expect}`.
-- Pipeline cases use `{name, derivation, audio, timing, verbatim, expectWords}`;
-  existing audio-generator cases also live in `../editing/pipeline`,
-  `../editing/tighten` and `../editing/gaps`.
+- `word-assembly/<name>.json` uses `{schema, name, derivation, rule,
+  timelineStart, tokens, expect}` with schema `voxclip-word-assembly-fixture/1`.
+  `tokens` are RawTokens and `expect` RawWords (section 3.2), every field
+  explicit. Both suites run `WordAssembler` on the tokens and compare text,
+  speaker and kind exactly and times and `conf` within 1e-9.
+- The pipeline cases are `../editing/pipeline`, `../editing/tighten` and
+  `../editing/gaps`; there are no transcription pipeline files.
 - Every case has a `derivation` explaining the expected result from the spec.
 - `elevenlabs/<name>.json` is the unwrapped recorded/synthetic HTTP 200 response
   body. Do not add test metadata to the provider body.
@@ -25,6 +28,18 @@ live provider calls. No generator, API key or model download is required.
 | Response | Expected outcome | Derivation |
 | --- | --- | --- |
 | `elevenlabs/events-only.json` | `elevenlabs/events-only.expected.json`: one event, language `en`, import error `noSpeech`, one upload | Sections 3.2, 3.4 and 8.2: keep `(music)` as an event, normalize `eng` to `en`, but do not count events as words. Section 14.3 retains the paid response for reuse. |
+
+| Word-assembly case | Section 16.1 case |
+| --- | --- |
+| `word-assembly/punctuation-attaches.json` | 3 |
+| `word-assembly/next-word-start.json` | 4 |
+| `word-assembly/bracket-events.json` | 7 |
+| `word-assembly/timeline-start.json` | 9 |
+| `word-assembly/hard-boundaries.json` | section 6 group and event boundaries |
+
+Cases 1, 2, 5, 6, 8 and 10 to 12 start from provider responses, language codes,
+cache keys or the model catalogue rather than RawTokens, so each suite still
+covers them with its own inline tests.
 
 ## Updating a fixture
 

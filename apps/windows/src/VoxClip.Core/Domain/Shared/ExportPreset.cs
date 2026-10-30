@@ -96,6 +96,9 @@ public static class ExportPresets
     /// <summary>Centre-crop rectangle in oriented source pixels.</summary>
     public static RectD CenterCrop(PixelSize source, PixelSize output)
     {
+        var scale = Math.Max((double)output.Width / source.Width, (double)output.Height / source.Height);
+        if (Math.Abs(source.Width * scale - output.Width) <= 1 && Math.Abs(source.Height * scale - output.Height) <= 1)
+            return new(0, 0, source.Width, source.Height);
         var aspect = (double)output.Width / output.Height;
         var height = Math.Min(source.Height, source.Width / aspect);
         var width = height * aspect;

@@ -129,6 +129,34 @@ public sealed class WindowsPipelineTests : IAsyncLifetime
         finally { Directory.Delete(directory, true); }
     }
 
+    [Fact]
+    public async Task SharedPocket4FixtureExportsTheFirstAudioTrack()
+    {
+        var info = await new FfmpegMediaProbe().ProbeAsync(NativePipelineTests.Pocket4Fixture, TestContext.Current.CancellationToken);
+        var rate = info.Audio!.SampleRate;
+        var snapshot = new ComposeSnapshot(info, TestPlan.FromKept(rate, (long)Math.Floor(info.DurationSeconds * rate), [new(0, rate * 2)]),
+            null, new(new(1280, 720), 30, 3_555_556));
+        var directory = RunDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "pocket4.mp4");
+            var result = await new Exporter().ExportAsync(new(snapshot, new ExportTarget.FullEdit(), ExportAspect.Source, ExportQuality.Standard, path, null), null, TestContext.Current.CancellationToken);
+            Assert.Equal((1280, 720), (result.Width, result.Height));
+            Assert.Equal(rate * 2, result.AudioSamples);
+            Assert.Equal("h264", (await new FfmpegMediaProbe().ProbeAsync(path, TestContext.Current.CancellationToken)).VideoCodec);
+            var (first, second) = await MediaThread.Run("vc-test-pocket4-export", () =>
+            {
+                using var exported = new AudioDecoder(path, 2);
+                var samples = new float[rate * 2 * 2];
+                exported.Read(samples, rate * 2, TestContext.Current.CancellationToken);
+                var window = samples.AsSpan(rate, rate * 2);
+                return (NativePipelineTests.TonePower(window, 2, rate, 1000), NativePipelineTests.TonePower(window, 2, rate, 300));
+            }, TestContext.Current.CancellationToken);
+            Assert.True(first > 100 * second, $"1 kHz power {first}, 300 Hz power {second}");
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
     [Theory]
     [InlineData(ExportAspect.Source, 640, 360)]
     [InlineData(ExportAspect.Portrait, 1080, 1920)]

@@ -6,6 +6,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Media.Pipeline;
+using VoxClip.Tests.Support;
 using Xunit;
 
 namespace VoxClip.Media.Tests;
@@ -13,6 +14,29 @@ namespace VoxClip.Media.Tests;
 [Collection("CLI console")]
 public sealed class OutputSafetyTests
 {
+    [Fact]
+    public void SrtBytesFollowSharedFixture()
+    {
+        using var document = FixtureLoader.ReadJson("fixtures/captions/srt.json");
+        var fixture = document.RootElement;
+        Assert.Equal("voxclip-srt-fixture/1", fixture.GetProperty("schema").GetString());
+        Assert.False(string.IsNullOrEmpty(fixture.GetProperty("derivation").GetString()));
+        var words = fixture.GetProperty("words").EnumerateArray()
+            .Select(word => Word(word.GetProperty("text").GetString()!, word.GetProperty("text").GetString()!.ToUpperInvariant())).ToArray();
+        var pages = fixture.GetProperty("pages").EnumerateArray().Select((page, index) =>
+        {
+            var lines = page.GetProperty("lines").EnumerateArray()
+                .Select(line => line.EnumerateArray().Select(word => word.GetInt32()).ToArray()).ToArray();
+            return new CaptionPage(index, lines.SelectMany(line => line).ToArray(), page.GetProperty("start").GetDouble(),
+                page.GetProperty("end").GetDouble(), 64, 1, false,
+                lines.Select(line => new CaptionLine(line, 0, 0, 0, 0, 0)).ToArray(), [], new(0, 0, 0, 0), new(0, 0, 0, 0), [], [], null, new(0, 0));
+        }).ToArray();
+        var track = new CaptionTrack(CaptionRendering.LoadStyle("vox-bold"), new(640, 360), words, pages, 2);
+        Assert.Equal(System.Text.Encoding.UTF8.GetBytes(fixture.GetProperty("expected").GetString()!),
+            System.Text.Encoding.UTF8.GetBytes(Exporter.Subtitles(track)));
+        Assert.Equal(string.Empty, Exporter.Subtitles(track with { Pages = [] }));
+    }
+
     [Fact]
     public void GuardsSourcesProjectsOutputsAndPartialNames()
     {

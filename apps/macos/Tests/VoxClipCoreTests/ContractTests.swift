@@ -53,6 +53,18 @@ func portableProjectRoundTrip(name: String) throws {
     #expect(compareVersions("v1.2.0-beta", "1.2") == .orderedAscending)
 }
 
+@Test func versionsFollowSharedFixture() throws {
+    let document = try #require(JSONSerialization.jsonObject(with: FixtureLoader.data("fixtures/version/compare.json")) as? [String: Any])
+    #expect(document["schema"] as? String == "voxclip-version-fixture/1")
+    let cases = try #require(document["cases"] as? [[Any]])
+    #expect(cases.count == 9)
+    for row in cases {
+        let left = try #require(row.first as? String), right = try #require(row.dropFirst().first as? String)
+        let expected = try #require(row.last as? Int)
+        #expect(compareVersions(left, right) == ComparisonResult(rawValue: expected), "\(left) vs \(right)")
+    }
+}
+
 @Test func redactorSanitizesWithoutMutatingSafeDiagnostics() {
     var redactor = Redactor(homeDirectory: "/Users/example")
     let known = String(repeating: "session", count: 3)

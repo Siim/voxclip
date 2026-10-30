@@ -1,5 +1,12 @@
 # Windows fixed contracts
 
+### 2026-10-30 — sol-mac-polish — shared fixture parity gaps
+
+- Replay the new hand-derived SRT fixture against the existing portable Windows writer without changing Windows Media production code. Both Mac writers now match its final blank LF line; empty tracks stay empty.
+- Core replays all nine shared version cases, 15 export presets and five word-assembly fixtures. Source-aspect even rounding now preserves the whole source when scaling leaves both output dimensions within one pixel, matching Mac OutputSizing.centerCrop. Exact-output and portrait crop regressions remain covered; no Windows App implementation changes are included.
+- Native Media tests consume the committed Pocket-4-like two-track HEVC fixture: probe, nonempty decoded frame, first-track extraction and tone discrimination, then Windows preview/export with first-track audio. Existing RequiresFFmpeg/RequiresWindows gates skip these off-platform; the Windows native checks are owed, and no VM was used.
+- Shared word fixtures carry hand derivations; comparisons are semantic with 1e-9 time/confidence tolerance, not byte-identical JSON. Existing provider-specific inline tests remain. CI adds strict Swift schema prerequisites, project generator drift and comparator tests. Windows release-script draft 5 remains owed to the Windows track.
+
 ### 2026-10-28 — sol-followups-9 round 2 — Final caption box paints
 
 - Supersedes round 1's style-level adjustment above. Captions §2.3 now runs once in the Core timeline after §10.2 precedence, including palette and emphasis paints. Swift chooses in `CaptionTimeline.fill`; C# in `CaptionTimeline.Paint`. Style resolution preserves the original paints. Preview, gallery, sidebar cards, export and CLI all reach the timeline; the sidebar's pre-layout plate removal is unchanged, and no surface bypass or renderer special case was found.

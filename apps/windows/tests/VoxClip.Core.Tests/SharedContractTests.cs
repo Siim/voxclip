@@ -31,6 +31,20 @@ public sealed class SharedContractTests
     public void VersionOrdering(string left, string right, int expected)
         => Assert.Equal(expected, Math.Sign(VersionComparison.CompareVersions(left, right)));
 
+    [Fact]
+    public void VersionOrderingFollowsSharedFixture()
+    {
+        var root = JsonNode.Parse(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "version", "compare.json")))!;
+        Assert.Equal("voxclip-version-fixture/1", root["schema"]!.GetValue<string>());
+        var cases = root["cases"]!.AsArray();
+        Assert.Equal(9, cases.Count);
+        foreach (var row in cases)
+        {
+            var (left, right) = (row![0]!.GetValue<string>(), row[1]!.GetValue<string>());
+            Assert.Equal((left, right, row[2]!.GetValue<int>()), (left, right, Math.Sign(VersionComparison.CompareVersions(left, right))));
+        }
+    }
+
     [Theory]
     [InlineData("Authorization: Bearer eyJhbGciOi.J9.abc", "Authorization: Bearer [REDACTED]")]
     [InlineData("{\"client_secret\":\"s3cr3t-value-123\"}", "{\"client_secret\":\"[REDACTED]\"}")]
@@ -116,6 +130,47 @@ public sealed class SharedContractTests
         Assert.Equal(new PixelSize(1080, 1920), ExportPresets.OutputSize(new(1920, 1080), ExportAspect.Portrait));
         Assert.Equal(8_000_000, ExportPresets.VideoBitrate(new(1920, 1080), ExportAspect.Landscape, ExportQuality.Standard, 30));
         Assert.Equal(18_000_000, ExportPresets.VideoBitrate(new(1920, 1080), ExportAspect.Landscape, ExportQuality.High, 60));
+    }
+
+    [Fact]
+    public void ExportPresetsFollowSharedFixture()
+    {
+        var root = JsonNode.Parse(File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "export", "presets.json")))!;
+        Assert.Equal("voxclip-export-fixture/1", root["schema"]!.GetValue<string>());
+        var cases = root["cases"]!.AsArray();
+        Assert.Equal(15, cases.Count);
+        foreach (var entry in cases)
+        {
+            var source = new PixelSize(entry!["source"]![0]!.GetValue<int>(), entry["source"]![1]!.GetValue<int>());
+            var aspect = entry["aspect"]!.GetValue<string>() switch
+            {
+                "source" => ExportAspect.Source, "16:9" => ExportAspect.Landscape, "9:16" => ExportAspect.Portrait, "1:1" => ExportAspect.Square,
+                var other => throw new InvalidDataException("Unknown export fixture aspect: " + other)
+            };
+            var quality = entry["quality"]!.GetValue<string>() switch
+            {
+                "standard" => ExportQuality.Standard, "high" => ExportQuality.High,
+                var other => throw new InvalidDataException("Unknown export fixture quality: " + other)
+            };
+            var expected = entry["expected"]!;
+            var output = ExportPresets.Output(source, entry["sourceFps"]!.GetValue<double>(), aspect, quality);
+            Assert.Equal(new PixelSize(expected["size"]![0]!.GetValue<int>(), expected["size"]![1]!.GetValue<int>()), output.Size);
+            Assert.Equal(expected["fps"]!.GetValue<double>(), output.FrameRate);
+            Assert.Equal(expected["videoBitrate"]!.GetValue<long>(), output.VideoBitrate);
+            var crop = ExportPresets.CenterCrop(source, output.Size);
+            var actual = new[] { crop.X, crop.Y, crop.Width, crop.Height };
+            for (var index = 0; index < actual.Length; index++)
+                Assert.True(Math.Abs(actual[index] - expected["crop"]![index]!.GetValue<double>()) < 1e-9,
+                    $"{source} {aspect}: crop {string.Join(", ", actual)}");
+        }
+    }
+
+    [Fact]
+    public void CenterCropKeepsAWholeSourceThatRoundsToTheOutputAspect()
+    {
+        Assert.Equal(new RectD(0, 0, 853, 480), ExportPresets.CenterCrop(new(853, 480), ExportPresets.OutputSize(new(853, 480), ExportAspect.Source)));
+        Assert.Equal(new RectD(0, 0, 2560, 1441), ExportPresets.CenterCrop(new(2560, 1441), new(1920, 1080)));
+        Assert.Equal(new RectD(656.25, 0, 607.5, 1080), ExportPresets.CenterCrop(new(1920, 1080), new(1080, 1920)));
     }
 }
 

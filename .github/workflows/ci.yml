@@ -123,6 +123,8 @@ jobs:
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         run: swift test --jobs 2 --filter VoxClipCoreTests
 
       - name: Swift test (VoxClipMediaTests)
@@ -132,6 +134,8 @@ jobs:
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         run: swift test --jobs 2 --filter VoxClipMediaTests --skip CaptionParityTests
 
       # The caption golden renders keep all three runner cores busy for minutes, so they run alone instead
@@ -143,6 +147,8 @@ jobs:
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         run: swift test --jobs 2 --filter CaptionParityTests
 
       # Runs after a Swift test failure too, with the Release CLI built above.
@@ -671,6 +677,27 @@ jobs:
           fi
           exit "$status"
 
+      - name: Regenerate project fixtures and check for drift
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          for generator in five_questions normalization relink timestamps; do
+            python "tools/fixtures/projects/generate_$generator.py"
+          done
+          status=0
+          git diff --exit-code || status=1
+          untracked=$(git status --porcelain --untracked-files=all)
+          if [ -n "$untracked" ]; then
+            echo "::error::A project fixture generator produced files that are not committed:"
+            echo "$untracked"
+            status=1
+          fi
+          if [ "$status" -ne 0 ]; then
+            git checkout -- .
+            git clean -fdq
+          fi
+          exit "$status"
+
       - name: Regenerate caption fixtures and check for drift
         if: ${{ !cancelled() }}
         shell: bash
@@ -712,6 +739,10 @@ jobs:
         run: |
           bash tools/release/check-version.sh
           python3 -m unittest discover -s tools/release -p 'test_*.py'
+
+      - name: CLI E2E report comparator unit tests
+        if: ${{ !cancelled() }}
+        run: python3 -m unittest discover -s tools/parity -p 'test_*.py'
 
       - name: Validate JSON in shared/
         if: ${{ !cancelled() }}

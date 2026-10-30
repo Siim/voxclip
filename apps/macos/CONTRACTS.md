@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish — shared fixture parity gaps
+
+- Confirm the sweep's SRT terminator divergence and align both Mac writers with the Windows blank-line terminator. A new hand-derived shared fixture pins exact UTF-8 bytes, multiline/multipage text, half-up milliseconds and skipped non-positive pages; existing exact Mac assertions are updated to the specified bytes, not relaxed.
+- Both Cores replay the nine version comparisons and five shared, hand-derived word-assembly cases with explicit rules, token groups and expected timings. Inline adapter/provider coverage remains; fixtures compare values at 1e-9, not serialized bytes.
+- The existing Pocket-4-like two-audio HEVC fixture now runs through probe, poster decode, first-track extraction, preview composition and export in serialized HeavyMediaTests. Tone checks distinguish the first track's 1 kHz signal from the second track's 300 Hz signal. Matching native Windows decode/extraction/export tests are written but remain owed to Windows CI/the Windows track; no VM is used here.
+- CI requires schema Python for Swift test steps and checks project-fixture generator drift plus parity comparator unit tests. Windows Core also replays all 15 shared export presets and matches the Mac whole-frame rule within one scaled output pixel.
+
 ### 2026-10-30 — sol-mac-polish — release tool safety gates
 
 - Setting the same version preserves CFBundleVersion; a different version increments it once. Regression tests cover reruns, stable and beta versions. Release prerequisites now match the SDK roll-forward, private pinned vpk tool store and signing-tool selection implemented by the Windows scripts.

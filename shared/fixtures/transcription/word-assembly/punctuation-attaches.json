@@ -1,0 +1,71 @@
+{
+  "schema": "voxclip-word-assembly-fixture/1",
+  "name": "punctuation-attaches",
+  "derivation": "Section 16.1 case 3 and section 6. The adapter marks the comma and the word after an opening parenthesis joinsPrevious; the assembler concatenates them without a space. The comma is timed at the word's end, so lastToken keeps the end at 0.25. conf min: min(0.75, 1) = 0.75 and min(0.5, 1) = 0.5.",
+  "rule": {
+    "end": "lastToken",
+    "conf": "min",
+    "bracketEvents": false
+  },
+  "timelineStart": 0,
+  "tokens": [
+    {
+      "text": "Tere",
+      "joinsPrevious": false,
+      "start": 0,
+      "end": 0.25,
+      "conf": 0.75,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": ",",
+      "joinsPrevious": true,
+      "start": 0.25,
+      "end": 0.25,
+      "conf": 1,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "(",
+      "joinsPrevious": false,
+      "start": 0.5,
+      "end": 0.5,
+      "conf": 0.5,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "maailm",
+      "joinsPrevious": true,
+      "start": 0.5,
+      "end": 1,
+      "conf": 1,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    }
+  ],
+  "expect": [
+    {
+      "text": "Tere,",
+      "start": 0,
+      "end": 0.25,
+      "conf": 0.75,
+      "speaker": null,
+      "kind": "word"
+    },
+    {
+      "text": "(maailm",
+      "start": 0.5,
+      "end": 1,
+      "conf": 0.5,
+      "speaker": null,
+      "kind": "word"
+    }
+  ]
+}

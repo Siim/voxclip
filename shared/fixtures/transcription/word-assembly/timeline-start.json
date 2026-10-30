@@ -1,0 +1,51 @@
+{
+  "schema": "voxclip-word-assembly-fixture/1",
+  "name": "timeline-start",
+  "derivation": "Section 16.1 case 9. timelineStart 0.5 shifts every start and end by 0.5; text, conf and speaker are unchanged.",
+  "rule": {
+    "end": "lastToken",
+    "conf": "single",
+    "bracketEvents": false
+  },
+  "timelineStart": 0.5,
+  "tokens": [
+    {
+      "text": "a",
+      "joinsPrevious": false,
+      "start": 0,
+      "end": 0.25,
+      "conf": 1,
+      "speaker": "speaker_0",
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "b",
+      "joinsPrevious": false,
+      "start": 0.5,
+      "end": 0.75,
+      "conf": null,
+      "speaker": "speaker_1",
+      "kind": null,
+      "group": 0
+    }
+  ],
+  "expect": [
+    {
+      "text": "a",
+      "start": 0.5,
+      "end": 0.75,
+      "conf": 1,
+      "speaker": "speaker_0",
+      "kind": "word"
+    },
+    {
+      "text": "b",
+      "start": 1,
+      "end": 1.25,
+      "conf": null,
+      "speaker": "speaker_1",
+      "kind": "word"
+    }
+  ]
+}

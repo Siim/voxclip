@@ -537,8 +537,8 @@ public actor AVExporter: Exporter {
             let text = !validLines ? page.words.map(\.text).joined(separator: " ") : page.lines.map { line in
                 line.words.map { track.words[$0].text }.joined(separator: " ")
             }.joined(separator: "\n")
-            return "\(index + 1)\n\(timestamp(page.start)) --> \(timestamp(page.end))\n\(text)\n"
-        }.joined(separator: "\n")
+            return "\(index + 1)\n\(timestamp(page.start)) --> \(timestamp(page.end))\n\(text)\n\n"
+        }.joined()
     }
 
     public func writeEditedAudio(_ request: RenderRequest, to destination: URL) async throws {

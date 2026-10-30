@@ -281,6 +281,6 @@ private actor FailingCaptionRasterizer: CaptionRasterizer {
         output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 2_000_000))
     let result = try await AVExporter().export(ExportJob(render: request, outputURL: directory.appendingPathComponent("sidecar.mp4"), writeSRT: true)) { _ in }
     let srt = try #require(result.srtURL)
-    #expect(try Data(contentsOf: srt) == Data("1\n00:00:00,125 --> 00:00:01,625\nTere, maailm!\n".utf8))
+    #expect(try Data(contentsOf: srt) == Data("1\n00:00:00,125 --> 00:00:01,625\nTere, maailm!\n\n".utf8))
 }
 }
