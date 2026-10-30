@@ -20,8 +20,70 @@ private struct GenerationTestKeys: KeyProvider {
     var usdPerCall = Decimal(string: "0.01")!
 }
 
+@MainActor private final class GenerationSuspension {
+    private var reached = false
+    private var arrival: CheckedContinuation<Void, Never>?
+    private var release: CheckedContinuation<Void, Never>?
+    func pause() async {
+        await withCheckedContinuation { release = $0; reached = true; arrival?.resume(); arrival = nil }
+    }
+    func wait() async { if !reached { await withCheckedContinuation { arrival = $0 } } }
+    func resume() { release?.resume(); release = nil }
+}
+
 @Suite("Headless Rewrite generation", .serialized)
 @MainActor struct RewriteGenerationTests {
+    private func replacementSession() async throws -> (RewriteGenerationSession, GenerationQuoteTestState) {
+        let session = session(), state = GenerationQuoteTestState()
+        let shared = try SharedResources.locate()
+        let voice = try JSONDecoder().decode(VoiceConsentRecord.self,
+            from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))
+        session.showFixture("ready", voice: voice)
+        let window = VoiceLabWindow(firstWordId: "word", lastWordId: "word", leftBridgeWordIds: [], rightBridgeWordIds: [],
+            start: 1, end: 2, startSample: 24_000, endSample: 48_000,
+            leftSeam: .init(kind: .hard, time: 1, sample: 24_000, fadeSamples: 288),
+            rightSeam: .init(kind: .hard, time: 2, sample: 48_000, fadeSamples: 288))
+        let input = VoiceLabTakeInput(text: "Hello", modelID: "eleven_multilingual_v2", recordID: voice.id, language: "en",
+            seed: 7, contentKey: "test", source: [], sourceSampleRate: 24_000, items: [], window: window,
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+        session.prepareForTests = { _ in
+            state.preparations += 1
+            let takes = (0..<3).map { index in
+                let estimate = CostEstimate(provider: "elevenlabs", operation: "test", units: 1, unit: "take",
+                    usd: state.unknown ? nil : state.usdPerCall, basis: "test")
+                let quote = VoiceLabQuote(id: UUID(), operation: .textToSpeech, requestID: UUID(), estimate: estimate,
+                    region: .default, endpoint: "test", languageMode: nil, fingerprint: "test")
+                return VoiceLabTakeQuote(index: index, seed: UInt32(index), synthesis: quote, qa: quote)
+            }
+            return VoiceLabTakeRunQuote(id: UUID(), takes: takes, preparedAt: Date())
+        }
+        session.prepareQuote = { await session.prepare(input) }
+        session.requestQuote()
+        await session.finishQuotePreparationForTests()
+        return (session, state)
+    }
+    @Test(arguments: ["before-approval", "confirmation", "launch"])
+    func cancellingReplacementPreservesSelectionAndAutomaticallyRequotes(point: String) async throws {
+        let (session, state) = try await replacementSession()
+        let previous = session.rows, selected = session.selectedID, quote = session.quote
+        let suspension = GenerationSuspension()
+        session.executeForTests = { _, _, started in
+            await suspension.pause()
+            try await started()
+            state.executions += 1
+            return .init(rows: [], end: .completed)
+        }
+        if point == "confirmation" { session.approve(false) }
+        if point == "launch" { session.approve(true); await suspension.wait() }
+        session.cancel()
+        #expect(session.rows == previous && session.selectedID == selected && session.readyToAccept)
+        if point == "launch" { suspension.resume() }
+        await session.finishGenerationForTests()
+        #expect(state.executions == 0 && state.preparations == 2)
+        #expect(session.rows == previous && session.selectedID == selected && session.readyToAccept)
+        #expect(session.canExecute && session.quote?.id != quote?.id && session.buttonTitle.contains("0.06"))
+        session.invalidate()
+    }
     @Test func proposalErrorsNameTheConnectorAndRewrite() {
         #expect(RewriteSession.proposalError(.unauthorized, provider: "Example", model: "test").hasPrefix("Example rejected"))
         #expect(RewriteSession.proposalError(.refused(category: nil), provider: "Example", model: "test").contains("declined to rewrite"))
@@ -125,9 +187,9 @@ private struct GenerationTestKeys: KeyProvider {
         #expect(session.rows == originalRows && session.selectedID == chosen.id && session.readyToAccept)
         #expect(session.quote == quote)
         let replacement = row(index: 0)
-        session.executeForTests = { approved, progress in
+        session.executeForTests = { approved, _, started in
             #expect(approved == quote && session.rows == originalRows && session.selectedID == chosen.id)
-            await progress([])
+            try await started()
             #expect(session.rows.isEmpty && session.selectedID == nil)
             return .init(rows: [replacement], end: .completed)
         }
@@ -169,9 +231,9 @@ private struct GenerationTestKeys: KeyProvider {
             return VoiceLabTakeRunQuote(id: UUID(), takes: takes, preparedAt: Date())
         }
         session.prepareQuote = { await session.prepare(input) }
-        session.executeForTests = { _, progress in
+        session.executeForTests = { _, _, started in
             state.executions += 1
-            await progress([])
+            try await started()
             return .init(rows: [row(index: 0), row(index: 1, failure: true)], end: .completed)
         }
         session.requestQuote()
@@ -220,7 +282,7 @@ private struct GenerationTestKeys: KeyProvider {
         session.chooseModel(nil); session.chooseModel(input.modelID)
         await session.finishQuotePreparationForTests()
         #expect(session.canExecute && session.rows == retained && !session.readyToAccept)
-        session.executeForTests = { _, _ in
+        session.executeForTests = { _, _, _ in
             await withCheckedContinuation { state.resume = $0; state.suspended?.resume() }
             #expect(!session.dispatchIsCurrent)
             return .init(rows: [], end: .cancelled)

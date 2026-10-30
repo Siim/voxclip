@@ -31,6 +31,8 @@ import VoxClipMedia
     @ObservationIgnored var prepareQuote: (@MainActor () async -> Void)?
     @ObservationIgnored private var revision = 0
     @ObservationIgnored private var executionRevision: Int?
+    @ObservationIgnored private var launchStarted = false
+    @ObservationIgnored private var phaseBeforeLaunch: Phase = .idle
     @ObservationIgnored private var accepting = false
     @ObservationIgnored private var reviewedInputsCurrent = true
     private(set) var preparingQuote = false
@@ -40,7 +42,7 @@ import VoxClipMedia
     private var fixture = false
     @ObservationIgnored var publishForTests: (@MainActor (VoiceLabTakeRow, VoiceLabTakeInput, Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord))?
     @ObservationIgnored var prepareForTests: (@MainActor (VoiceLabTakeInput) async throws -> VoiceLabTakeRunQuote)?
-    @ObservationIgnored var executeForTests: (@MainActor (VoiceLabTakeRunQuote, @Sendable ([VoiceLabTakeRow]) async -> Void) async throws -> VoiceLabTakeRunResult)?
+    @ObservationIgnored var executeForTests: (@MainActor (VoiceLabTakeRunQuote, @Sendable ([VoiceLabTakeRow]) async -> Void, @Sendable () async throws -> Void) async throws -> VoiceLabTakeRunResult)?
     func finishGenerationForTests() async { await sending?.value; await quotePreparation?.value }
     func finishQuotePreparationForTests() async { await quotePreparation?.value }
     func showFixture(_ state: String, voice: VoiceConsentRecord) {
@@ -269,6 +271,7 @@ import VoxClipMedia
     }
     func approve(_ approved: Bool) {
         guard approved, canGenerate, let quote else { return }
+        phaseBeforeLaunch = phase; launchStarted = false
         self.quote = nil; cost = nil; phase = .generating
         executionRevision = revision
         let version = revision; let run = run
@@ -278,10 +281,10 @@ import VoxClipMedia
                 let progress: @Sendable ([VoiceLabTakeRow]) async -> Void = { rows in
                     await self.updateRows(rows, version: version)
                 }
-                let started: @Sendable () async -> Void = { await self.updateRows([], version: version) }
+                let started: @Sendable () async throws -> Void = { try await self.beginLaunch(version: version) }
                 let result: VoiceLabTakeRunResult
                 #if DEBUG
-                if let executeForTests { result = try await executeForTests(quote, progress) }
+                if let executeForTests { result = try await executeForTests(quote, progress, started) }
                 else { result = try await run.execute(quote, approved: true, progress: progress, started: started) }
                 #else
                 result = try await run.execute(quote, approved: true, progress: progress, started: started)
@@ -298,6 +301,12 @@ import VoxClipMedia
             }
         }
     }
+    private func beginLaunch(version: Int) throws {
+        try Task.checkCancellation()
+        guard revision == version, executionRevision == version, inputsAreCurrent() else { throw CancellationError() }
+        launchStarted = true
+        updateRows([], version: version)
+    }
     private func updateRows(_ rows: [VoiceLabTakeRow], version: Int) {
         guard revision == version else { return }
         if rows.isEmpty {
@@ -310,6 +319,7 @@ import VoxClipMedia
         self.rows = rows
     }
     func review(_ result: VoiceLabTakeRunResult, input: VoiceLabTakeInput? = nil) {
+        launchStarted = false
         if let input { self.input = input }
         reviewedInputsCurrent = true
         rows = result.rows; bestID = result.best?.id; selectedID = nil; videoChoice = nil
@@ -346,10 +356,21 @@ import VoxClipMedia
         return true
     }
     func cancel() {
-        audition.stop()
+        let execution = sending
+        sending = nil
+        if launchStarted { audition.stop() }
         quotePreparation?.cancel(); quotePreparation = nil
-        sending?.cancel(); revision += 1; quote = nil; cost = nil; quotedInput = nil; preparingQuote = false; selectedID = nil; phase = .cancelled
-        enqueueCleanup(cancelled: true)
+        execution?.cancel(); revision += 1; quote = nil; cost = nil; quotedInput = nil; preparingQuote = false
+        if launchStarted { selectedID = nil; phase = .cancelled }
+        else if phase == .generating { phase = phaseBeforeLaunch }
+        let previous = cleanup; let run = run; let executionRevision = executionRevision
+        cleanup = Task { [weak self] in
+            await previous?.value
+            await run.cancel(keepingTakes: true)
+            await execution?.value
+            if self?.executionRevision == executionRevision { self?.executionRevision = nil }
+        }
+        requestQuote()
     }
     func invalidate() {
         audition.stop()
@@ -357,13 +378,13 @@ import VoxClipMedia
         sending?.cancel(); sending = nil; revision += 1
         quote = nil; cost = nil; rows = []; bestID = nil; selectedID = nil; videoChoice = nil; problem = ""; phase = .idle
         input = nil; quotedInput = nil; preparingQuote = false
-        enqueueCleanup(cancelled: false)
+        enqueueCleanup()
     }
-    private func enqueueCleanup(cancelled: Bool) {
+    private func enqueueCleanup() {
         let previous = cleanup; let run = run
         cleanup = Task {
             await previous?.value
-            if cancelled { await run.cancel() } else { await run.invalidate() }
+            await run.invalidate()
         }
     }
 }

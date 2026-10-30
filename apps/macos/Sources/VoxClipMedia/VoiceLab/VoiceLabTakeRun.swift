@@ -117,7 +117,7 @@ public actor VoiceLabTakeRun {
     }
     public func execute(_ quote: VoiceLabTakeRunQuote, approved: Bool,
                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in },
-                        started: @escaping @Sendable () async -> Void = {}) async throws -> VoiceLabTakeRunResult {
+                        started: @escaping @Sendable () async throws -> Void = {}) async throws -> VoiceLabTakeRunResult {
         guard approved, task == nil, runningID == nil, executionOwner == nil, let value = pending, value.quote == quote else { throw VoiceLabError.consentRequired }
         let owner = UUID()
         executionOwner = owner
@@ -135,7 +135,7 @@ public actor VoiceLabTakeRun {
             try await client.approveRun(quote.id, quotes: quotes)
             try await checkpoint("approval", revision: currentRevision)
             try await checkpoint("launch", revision: currentRevision)
-            await started()
+            try await started()
             try reservation(currentRevision)
             let retired = Array(scratches.values)
             scratches.removeAll(); paidAssets.removeAll()

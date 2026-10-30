@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W10 replacement cancellation
+
+Replacement cancellation retains previous rows, selection, scratch/snapshot leases and audition until the approved launch commits on the MainActor. The run's throwing `started` handshake rejects a stale/cancelled launch before retiring leases. Cancellation and that handshake are serialized on the MainActor; cleanup cancels the old execution with `keepingTakes`, waits for it to finish, then automatic quote preparation makes Generate Again/Try Another usable (or exposes Retry on failure). Deterministic App tests cancel before approval, during approval cancellation and at a suspended launch; a real Core take-run test rejects launch and proves the scratch and playing audition survive until session invalidation. No sleeps or live requests.
+
 ### 2026-10-30 — sol-mac-voicelab — W9 native Rewrite menu self-test
 
 The old native menu check expected the retired pre-W6 opt-in sheet while Voice Lab was off. The central beta gate intentionally hides Rewrite and blocks both its action and hidden shortcut while off; in DEBUG it permits enabled internal builds without a beta notice, and Release still requires the notice. The native check refreshes Edit-menu visibility, invokes the actual action and proves no sheet, Rewrite session or opening task appears while off, then checks the enabled selected-passage route. Failures print labelled expected/actual state. Headless App checks cover the actual menu mutation gate in all enabled/notice combinations, plus busy-run and missing-media refusals. No production menu policy changes.

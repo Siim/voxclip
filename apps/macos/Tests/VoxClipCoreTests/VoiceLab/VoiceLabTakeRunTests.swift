@@ -13,6 +13,13 @@ private final class TakeRunClock: Sendable {
     func advance(_ seconds: Double) { date.withLock { $0.addTimeInterval(seconds) }; time.withLock { $0 += .seconds(seconds) } }
     func rewindWall() { date.withLock { $0.addTimeInterval(-3_600) } }
 }
+
+@MainActor private final class TakeRunPlayback: VoiceLabAuditionBackend {
+    var position = 0.0
+    var stopped = false
+    func play() -> Bool { true }
+    func stop() { stopped = true }
+}
 private final class TakeRunDispatchSignal: Sendable {
     private struct State {
         var fired = false
@@ -325,6 +332,27 @@ struct VoiceLabTakeRunTests {
         let next = try await fixture.run.execute(quote, approved: true)
         #expect(!scratch.isValid && next.rows.first?.index == 0)
         await fixture.run.invalidate()
+    }
+    @Test @MainActor func refusedReplacementLaunchRetainsScratchSnapshotAndAudition() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let initial = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(initial, approved: true)
+        let row = try #require(result.best)
+        let scratch = try #require(await fixture.run.scratch(for: row.id))
+        let backend = TakeRunPlayback()
+        let audition = VoiceLabAudition(makeBackend: { _, _ in backend })
+        try audition.play(scratch, takeId: row.id, selectionId: "previous")
+        let replacement = try await fixture.run.prepare(fixture.input)
+        await #expect(throws: CancellationError.self) {
+            try await fixture.run.execute(replacement, approved: true, started: { throw CancellationError() })
+        }
+        #expect(scratch.isValid && FileManager.default.fileExists(atPath: scratch.mixedAudioURL.path))
+        #expect(audition.isPlaying && audition.takeId == row.id && !backend.stopped)
+        #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 1 })
+        let next = try await fixture.run.prepare(fixture.input)
+        #expect(next.id != replacement.id)
+        await fixture.run.invalidate()
+        #expect(backend.stopped && !audition.isPlaying && !scratch.isValid)
     }
     @Test func qaMeasuresScratchReadbackAndRejectionRemovesOnlyScratch() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
