@@ -36,10 +36,33 @@ function Get-ReleaseVcRuntime {
     return $best
 }
 
+function ConvertTo-ReleaseNativeArgument {
+    param([AllowEmptyString()][string] $Value)
+    # Windows argv quoting: double backslashes before a quote or the closing
+    # delimiter. ProcessStartInfo bypasses PowerShell 5.1's legacy re-quoting.
+    $escaped = [regex]::Replace($Value, '(\\*)"', '$1$1\"')
+    $escaped = [regex]::Replace($escaped, '(\\+)$', '$1$1')
+    return '"' + $escaped + '"'
+}
+
 function Invoke-ReleaseTool {
     param([string] $Executable, [string[]] $Arguments)
-    & $Executable @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "Native command failed ($LASTEXITCODE): $Executable" }
+    $start = New-Object Diagnostics.ProcessStartInfo
+    $start.FileName = $Executable
+    $start.UseShellExecute = $false
+    $start.WorkingDirectory = (Get-Location).Path
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $start.Arguments = ($Arguments | ForEach-Object { ConvertTo-ReleaseNativeArgument $_ }) -join ' '
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $nativeErrorRead = $process.StandardError.ReadToEndAsync()
+        while ($null -ne ($nativeLine = $process.StandardOutput.ReadLine())) { Write-Output $nativeLine }
+        $process.WaitForExit()
+        $nativeErrorText = $nativeErrorRead.GetAwaiter().GetResult()
+        if ($nativeErrorText.Length) { Write-Output $nativeErrorText.TrimEnd("`r", "`n") }
+        if ($process.ExitCode -ne 0) { throw "Native command failed ($($process.ExitCode)): $Executable" }
+    } finally { $process.Dispose() }
 }
 
 function Get-ReleaseDeltaBase {

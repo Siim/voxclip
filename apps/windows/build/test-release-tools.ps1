@@ -105,6 +105,41 @@ function Invoke-FakeSignTool {
 }
 
 try {
+    Invoke-Test 'native signing arguments survive Windows PowerShell legacy quoting' {
+        $argumentDirectory = Join-Path $temporary 'native argument fixture'
+        New-Item -ItemType Directory -Path $argumentDirectory | Out-Null
+        $argumentOutput = Join-Path $argumentDirectory 'captured arguments.txt'
+        $argvFixture = @('--signTemplate', 'powershell.exe -File "C:\release tools\Sign-Artifacts.ps1" -SignTool "C:\Program Files\Windows Kits\signtool.exe" -Dlib "D:\signing path\sign.dll" -Metadata "D:\signing path\metadata.json" -Paths {{file}}', 'C:\path with space\', 'ab"cd', '', '{{file}}')
+        if ($PSVersionTable.PSEdition -eq 'Desktop') {
+            $argumentTool = Join-Path $argumentDirectory 'argument reader.exe'
+            Add-Type -TypeDefinition @'
+using System;using System.IO;using System.Text;
+public static class ReleaseArgumentReader {
+ public static void Main(string[] values) {
+  var result=new string[values.Length-1];
+  for(int i=1;i<values.Length;i++) result[i-1]=Convert.ToBase64String(Encoding.UTF8.GetBytes(values[i]));
+  File.WriteAllLines(values[0],result);
+  Console.WriteLine("S");Console.Error.WriteLine("E");
+ }
+}
+'@ -OutputAssembly $argumentTool -OutputType ConsoleApplication
+            $nativeArguments = @($argumentOutput) + $argvFixture
+        } else {
+            $argumentTool = (Get-Command python3 -ErrorAction Stop).Source
+            $nativeArguments = @('-c', 'import base64,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(chr(10).join(base64.b64encode(v.encode()).decode() for v in sys.argv[2:])); print(chr(83)); print(chr(69), file=sys.stderr)', $argumentOutput) + $argvFixture
+        }
+        $oldNativePassing = Get-Variable -Name PSNativeCommandArgumentPassing -Scope Global -ErrorAction SilentlyContinue
+        try {
+            Set-Variable -Name PSNativeCommandArgumentPassing -Value Legacy -Scope Global
+            $nativeOutput = @(Invoke-ReleaseTool -Executable $argumentTool -Arguments $nativeArguments)
+            Assert-Equal ($nativeOutput -join ',') 'S,E'
+            $roundTrip = @([IO.File]::ReadAllLines($argumentOutput) | ForEach-Object { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($_)) })
+            Assert-Equal ($roundTrip -join "`n") ($argvFixture -join "`n")
+        } finally {
+            if ($null -ne $oldNativePassing) { Set-Variable -Name PSNativeCommandArgumentPassing -Value $oldNativePassing.Value -Scope Global }
+            else { Remove-Variable -Name PSNativeCommandArgumentPassing -Scope Global -ErrorAction SilentlyContinue }
+        }
+    }
     Invoke-Test 'VC++ prerequisite matches each package architecture' {
         Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-x64) 'vcredist145-x64'
         Assert-Equal (Get-ReleasePrerequisite -RuntimeIdentifier win-arm64) 'vcredist145-arm64'
