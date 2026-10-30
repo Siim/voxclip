@@ -23,6 +23,16 @@ public sealed class ViewModelTests
     private static EditorViewModel Demo() => new(Fixture(), DemoProject.Reduce, DemoProject.Summarize);
 
     [Fact]
+    public void PrivacyCopyNamesEveryAutomaticAndUserTriggeredNetworkFlow()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/SettingsWindow.xaml.cs"));
+        Assert.Contains("Automatic update checks contact GitHub", source);
+        Assert.Contains("Model downloads contact their publishers", source);
+        Assert.Contains("Posting happens only when you choose to share", source);
+    }
+
+    [Fact]
     public void SnapshotCapabilityHonorsFullAndClipScopeWithoutDroppingSynth()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
