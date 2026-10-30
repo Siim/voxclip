@@ -22,6 +22,13 @@ public sealed class ViewModelTests
     }
     private static EditorViewModel Demo() => new(Fixture(), DemoProject.Reduce, DemoProject.Summarize);
 
+    [Theory]
+    [InlineData("Provider failed.", "Provider failed. Your edits are saved.")]
+    [InlineData("Provider failed. Your edits are saved.", "Provider failed. Your edits are saved.")]
+    [InlineData("", "Transcription stopped. Your edits are saved.")]
+    public void ProviderErrorsReassureWithoutDuplicatingTheSavedSentence(string error, string expected) =>
+        Assert.Equal(expected, UiError.Message(new VoxClipException(VoxClipErrorCode.ProviderError, error), "Transcription"));
+
     [Fact]
     public void PrivacyCopyNamesEveryAutomaticAndUserTriggeredNetworkFlow()
     {
