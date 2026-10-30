@@ -41,14 +41,21 @@ public enum VoiceLabSourceAudio {
         var result: [Float] = []
         result.reserveCapacity(Int(frames))
         var start: Int64 = 0
+        let chunkSamples: Int = 280 * sampleRate
+        let chunkFrames: Int64 = Int64(chunkSamples)
+        let trailingSamples: Int = (sampleRate + 49) / 50
+        let trailingFrames: Int64 = Int64(trailingSamples)
+        let pcmScale: Float = 32_768
         while start < frames {
             try Task.checkCancellation()
-            var end = min(frames, start + Int64(280 * sampleRate))
-            if frames - end < Int64((sampleRate + 49) / 50) { end = frames }
+            var end = min(frames, start + chunkFrames)
+            if frames - end < trailingFrames { end = frames }
             let wav = try await conversionInput(source: source, startSample: start, endSample: end, sourceSampleRate: Double(sampleRate))
             for offset in stride(from: 44, to: wav.count, by: 2) {
                 let bits = UInt16(wav[offset]) | UInt16(wav[offset + 1]) << 8
-                result.append(Float(Int16(bitPattern: bits)) / 32768)
+                let signed: Int16 = Int16(bitPattern: bits)
+                let sample: Float = Float(signed)
+                result.append(sample / pcmScale)
             }
             start = end
         }

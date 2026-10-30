@@ -14,7 +14,13 @@ import VoxClipCore
         let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: 4_800, sampleRate: 48_000)
         let wav = try await VoiceLabSourceAudio.conversionInput(source: url, startSample: 0, endSample: 4_800, sourceSampleRate: 48_000)
         let expected = stride(from: 44, to: wav.count, by: 2).map { offset in
-            Float(Int16(bitPattern: UInt16(wav[offset]) | UInt16(wav[offset + 1]) << 8)) / 32768
+            let lower: UInt16 = UInt16(wav[offset])
+            let upper: UInt16 = UInt16(wav[offset + 1])
+            let bits: UInt16 = lower | upper << 8
+            let signed: Int16 = Int16(bitPattern: bits)
+            let sample: Float = Float(signed)
+            let scale: Float = 32_768
+            return sample / scale
         }
         #expect(result == expected && result.count == 4_800)
     }

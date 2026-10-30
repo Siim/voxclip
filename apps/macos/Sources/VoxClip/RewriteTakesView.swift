@@ -38,7 +38,7 @@ import VoxClipCore
                         takeRow(row).tag(row.id).frame(height: 36).listRowSeparator(.hidden)
                             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                     }
-                }.listStyle(.plain).environment(\.defaultMinListRowHeight, 36).frame(height: CGFloat(generation.rows.count) * 36 + 8)
+                }.listStyle(.plain).environment(\.defaultMinListRowHeight, 36).frame(height: takeListHeight)
                     .accessibilityLabel("Takes, choose one")
             }
             if generation.phase == .preparing { ProgressView("Preparing takes…").controlSize(.small) }
@@ -69,6 +69,12 @@ import VoxClipCore
                 userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
         }
         .task(id: generation.bestID) { await generation.autoplayBest() }
+    }
+    private var takeListHeight: CGFloat {
+        let count: CGFloat = CGFloat(generation.rows.count)
+        let rowHeight: CGFloat = 36
+        let inset: CGFloat = 8
+        return count * rowHeight + inset
     }
     @ViewBuilder private func takeRow(_ row: VoiceLabTakeRow) -> some View {
         if row.selectable {

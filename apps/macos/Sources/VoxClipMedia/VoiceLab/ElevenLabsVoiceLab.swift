@@ -408,7 +408,11 @@ public actor ElevenLabsVoiceLab {
     public func prepareConsentVerification(wav: Data, language: String, requestID: UUID) throws -> VoiceLabQuote {
         _ = try VoiceConsentAudio.pcm16k(wav)
         guard ["en", "et"].contains(language) else { throw VoiceLabError.invalidInput }
-        let seconds = Double((wav.count - 44) / 2) / 16_000
+        let payloadBytes: Int = wav.count - 44
+        let sampleCount: Int = payloadBytes / 2
+        let samples: Double = Double(sampleCount)
+        let sampleRate: Double = 16_000
+        let seconds: Double = samples / sampleRate
         return try quote(.speechToText, requestID: requestID, endpoint: "v1/speech-to-text",
             fields: [region.rawValue, "scribe_v2", language, VoiceLabFingerprint.bytes(wav)],
             model: "scribe_v2", units: seconds, languageMode: .explicit(language))

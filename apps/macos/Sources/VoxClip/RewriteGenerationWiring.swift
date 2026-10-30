@@ -33,7 +33,9 @@ extension RewriteSession {
         guard let reservation = generation.reservePreparation() else { return }
         let revision = self.revision
         do {
-            let frames = Int64(EditingPrimitives.jsRound(project.media.source.durationSeconds * Double(audio.sampleRate)))
+            let sampleRate: Double = Double(audio.sampleRate)
+            let sampleCount: Double = project.media.source.durationSeconds * sampleRate
+            let frames: Int64 = Int64(EditingPrimitives.jsRound(sampleCount))
             let source = try await VoiceLabSourceAudio.rewriteSource(source: editor.sourceURL, frames: frames, sampleRate: audio.sampleRate)
             guard current, self.revision == revision, generation.preparationIsCurrent(reservation), generation.selectedVoiceID == recordID,
                   generation.selectedModelID == modelID, !Task.isCancelled else { return }
