@@ -38,7 +38,7 @@ public static class ClipCallouts
             ConnectorStatus.CliSignedOut => Problem($"{cli} isn't signed in. {signInHint}", SignInHelp),
             ConnectorStatus.NotRunning local => Problem(ollama ? $"Ollama isn't running at {local.Url}. Start Ollama and try again."
                 : $"LM Studio's server isn't running at {local.Url}. Start it from LM Studio's Developer tab.", ""),
-            ConnectorStatus.NeedsKey => Problem($"Add your {label} API key in Settings › AI.", Retry),
+            ConnectorStatus.NeedsKey => Problem($"Add your {label} API key in Settings › {SettingsSections.ProvidersAndKeys}.", Retry),
             ConnectorStatus.NoModels => Problem(ollama ? "Ollama has no chat models. Run `ollama pull <model>`, then refresh." : "Load or download a model in LM Studio, then refresh.", Retry),
             ConnectorStatus.CliTooOld old => Problem(string.IsNullOrWhiteSpace(old.Version) || old.Version == "unknown"
                 ? $"Your {cli} is too old for VoxClip. Update it, then try again." : $"Your {cli} {old.Version} is too old for VoxClip. Update it, then try again.", Retry),

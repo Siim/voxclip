@@ -71,6 +71,7 @@
     <Compile Include="TranscriptionRoutingTests.cs" />
     <Compile Include="ShareDisclosureTests.cs" />
     <Compile Include="CaptionUndoTests.cs" />
+    <Compile Include="WindowsSettingsCopyTests.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/StartupCheck.cs" Link="Services/StartupCheck.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/RedirectedLaunchSelection.cs" Link="Services/RedirectedLaunchSelection.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/UpdateRestartCoordinator.cs" Link="Services/UpdateRestartCoordinator.cs" />

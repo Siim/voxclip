@@ -56,7 +56,7 @@ internal sealed class RewriteSession : IDisposable
         "apiKey" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your key.",
         "cli" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your sign-in. Counts toward your {Connector.Plan}.",
         "local" => "Runs on this PC. Nothing leaves it.",
-        _ => "Choose a connector in Settings → AI."
+        _ => $"Choose a connector in Settings → {SettingsSections.ProvidersAndKeys}."
     };
     internal event EventHandler? Changed;
     internal RewriteGeneration? Generation { get; private set; }

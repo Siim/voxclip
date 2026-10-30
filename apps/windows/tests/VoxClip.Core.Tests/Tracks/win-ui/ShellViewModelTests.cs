@@ -257,7 +257,7 @@ public sealed class ShellViewModelTests
             Read(ClipCallouts.NotReady(ConnectorId.Ollama, "Ollama", new ConnectorStatus.NotRunning("http://127.0.0.1:11434"), null, null)));
         Assert.Equal(("LM Studio's server isn't running at http://127.0.0.1:1234. Start it from LM Studio's Developer tab. Your edits are saved.", ""),
             Read(ClipCallouts.NotReady(ConnectorId.LmStudio, "LM Studio", new ConnectorStatus.NotRunning("http://127.0.0.1:1234"), null, null)));
-        Assert.Equal(("Add your Anthropic API key in Settings › AI. Your edits are saved.", "Retry"),
+        Assert.Equal(("Add your Anthropic API key in Settings › Providers & Keys. Your edits are saved.", "Retry"),
             Read(ClipCallouts.NotReady(ConnectorId.Anthropic, "Anthropic", new ConnectorStatus.NeedsKey(), null, null)));
         Assert.Equal(("Ollama has no chat models. Run `ollama pull <model>`, then refresh. Your edits are saved.", "Retry"),
             Read(ClipCallouts.NotReady(ConnectorId.Ollama, "Ollama", new ConnectorStatus.NoModels(), null, null)));

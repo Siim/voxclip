@@ -436,7 +436,8 @@ public sealed partial class SettingsWindow : Window
     private void Export()
     {
         var aspects = new[] { "source", "16:9", "9:16", "1:1" };
-        var aspect = Ui.Choice("Default aspect", ["Source", "16:9", "9:16", "1:1"], Array.IndexOf(aspects, App.Services.Get("export.defaultAspect", "source")));
+        // "Original" is the editor's and the Export dialog's word for the source's own frame; the stored value stays "source".
+        var aspect = Ui.Choice("Default aspect", ["Original", "16:9", "9:16", "1:1"], Array.IndexOf(aspects, App.Services.Get("export.defaultAspect", "source")));
         aspect.SelectionChanged += (_, _) => Save("export.defaultAspect", aspects[aspect.SelectedIndex]); Body.Children.Add(aspect);
         var quality = Ui.Choice("Quality", ["Standard", "High"], App.Services.Get("export.quality", "standard") == "high" ? 1 : 0);
         quality.SelectionChanged += (_, _) => Save("export.quality", quality.SelectedIndex == 1 ? "high" : "standard"); Body.Children.Add(quality);

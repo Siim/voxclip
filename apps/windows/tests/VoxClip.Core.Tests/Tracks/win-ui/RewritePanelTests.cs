@@ -807,7 +807,7 @@ public sealed class RewritePanelTests
     public async Task ApprovedFallbackCopyAndConnectorTitlesMatchDesign()
     {
         using var missing = new RewriteSession(Editor(), 10, 12, null, null);
-        Assert.Equal("Choose a connector in Settings → AI.", missing.SendLine);
+        Assert.Equal("Choose a connector in Settings → Providers & Keys.", missing.SendLine);
         Assert.Equal("This change can't be placed in this take. Your edits are saved.",
             RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InvalidInput)));
         Assert.Equal("Inserting words isn't available yet. Your edits are saved.",

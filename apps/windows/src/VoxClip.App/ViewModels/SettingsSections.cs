@@ -5,6 +5,13 @@ namespace VoxClip.App.ViewModels;
 internal static class SettingsSections
 {
     internal const string LocalModels = "Local Models";
+    /// <summary>Where AI connectors and their keys live on Windows; the Mac calls its pane "AI".</summary>
+    internal const string ProvidersAndKeys = "Providers & Keys";
+
+    /// <summary>Core's shared AI copy names the Mac pane ("Settings › AI"); on Windows it points at Providers &amp; Keys.</summary>
+    internal static string WindowsCopy(string message) => message
+        .Replace("Settings › AI", "Settings › " + ProvidersAndKeys, StringComparison.Ordinal)
+        .Replace("Settings → AI", "Settings → " + ProvidersAndKeys, StringComparison.Ordinal);
 }
 
 /// <summary>One Settings → Local Models row. A finished download or removal updates the row in place, so it never reads "Not
