@@ -5,6 +5,14 @@ from release_source import initializer_violations, release_condition, scan
 
 
 class ReleaseSourceTests(unittest.TestCase):
+    def test_nonprivate_factory_in_any_extension_fails(self):
+        for signature in ['static func bypass() -> Self', 'func copy() -> VoiceSpeakerCheck', 'static var bypass: Self']:
+            with tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                (root / 'Extension.swift').write_text('extension VoiceSpeakerCheck { ' + signature + ' { fatalError() } }')
+                with self.assertRaisesRegex(RuntimeError, 'factory'):
+                    scan(root)
+        self.assertFalse(initializer_violations('extension VoiceSpeakerCheck { private func copy() -> Self { fatalError() } }', factories=True))
     def test_every_nonprivate_access_and_signature_is_rejected(self):
         for access in ['', 'internal', 'package', 'public', 'fileprivate']:
             for signature in ['init(anything: Int)', 'convenience init?(different: String)', 'required init<T>(value: T)']:

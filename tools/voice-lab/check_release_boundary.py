@@ -8,12 +8,12 @@ import re
 
 
 def check_staged_actions(root):
-    pattern = re.compile(r'\b(?:enum\s+VoiceLabEditCommand|class\s+RewriteGenerationSession|func\s+(?:applyVoiceLab|publishForAcceptance|toggleVoiceLab|deleteVoiceLab|chooseVoiceLab)\s*\()')
+    pattern = re.compile(r'\b(?:publishForTests|voiceRecoveryForTests|DebugRewrite|DebugRewriteGeneration|showFixture|DebugVoiceLab)\b')
     for source in sorted(root.rglob('*.swift')):
         if '.build' in source.parts:
             continue
         if pattern.search(without_literals(release_source(source.read_text()))):
-            raise RuntimeError('Release exposes a staged Voice Lab action: ' + str(source))
+            raise RuntimeError('Release exposes a DEBUG Voice Lab hook: ' + str(source))
 
 
 def same_module_source():
@@ -21,7 +21,8 @@ def same_module_source():
     declaration = source.read_text().split("public actor VoiceUseGuard", 1)[0]
     if "public final class VoiceSpeakerCheck" not in declaration:
         raise RuntimeError("Cannot locate production speaker-check declaration")
-    return declaration + """
+    capability = source.with_name('VoiceOperationCapability.swift').read_text()
+    return capability + declaration + """
 public actor ONNXSpeakerEmbedder: SpeakerEmbedder {
     public nonisolated let modelID = "verified-model-control"
     public nonisolated let dimension = 256
@@ -35,6 +36,23 @@ def check(bin_path, build_path):
     root = pathlib.Path(__file__).resolve().parents[2]
     scan(root)
     check_staged_actions(root / 'apps/macos/Sources')
+    gate_source = (root / 'apps/macos/Sources/VoxClipCore/Domain/VoiceLab/VoiceConsent.swift').read_text()
+    gate = re.search(r'public static func rewriteEnabled\([^}]+}', gate_source).group()
+    with tempfile.TemporaryDirectory(prefix='voxclip-release-beta-') as directory:
+        source = pathlib.Path(directory) / 'Gate.swift'
+        binary = pathlib.Path(directory) / 'gate'
+        source.write_text('enum Gate {' + gate + '}\n' + '''
+for enabled in [false, true] {
+ for notice in [false, true] {
+  for debug in [false, true] {
+   precondition(Gate.rewriteEnabled(enabled: enabled, noticeAccepted: notice, internalBuild: debug) == (enabled && (notice || debug)))
+  }
+ }
+}
+''')
+        subprocess.run(['xcrun', 'swiftc', str(source), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+    print('Production beta gate passed all eight enabled/notice/build combinations.')
     with tempfile.TemporaryDirectory(prefix="voxclip-release-source-control-") as directory:
         fixture = pathlib.Path(directory) / "AnotherModule.swift"
         fixture.write_text("final class VoiceSpeakerCheck {\nprivate init() {}\npackage init(control: Int) {}\n}\n")
@@ -68,16 +86,16 @@ struct Fake: SpeakerEmbedder {
 }
 """
     probes = {
-        "voice-lab-edit-command": 'let action = VoiceLabEditCommand.delete(segmentID: "test")',
         "debug-injection": "let check = VoiceSpeakerCheck(embedder: Fake(), calibratedThreshold: 0)",
-        "package-injection": 'let check = VoiceSpeakerCheck(verifiedEmbedder: Fake(), calibratedThreshold: 0, language: "en")',
-        "arbitrary-threshold": 'func bypass(_ model: ONNXSpeakerEmbedder) { _ = VoiceSpeakerCheck(verifiedEmbedder: model, calibratedThreshold: 0, language: "en") }',
+        "package-injection": 'let check = VoiceSpeakerCheck(verifiedModel: nil, trustedEntry: nil, language: nil)',
+        "arbitrary-threshold": 'func bypass(_ model: ONNXSpeakerEmbedder, _ entry: SpeakerModel) { _ = VoiceSpeakerCheck(verifiedModel: model, trustedEntry: entry, language: "en") }',
         "capability-construction": "func bypass(_ quote: VoiceLabQuote) { _ = VoiceOperationCapability(quote: quote, validate: {}) }",
         "policy-capability": "func bypass(_ policy: OwnVoicePolicy, _ quote: VoiceLabQuote) { _ = policy.authorized(for: quote, validate: {}) }",
+        "speaker-proof": 'let proof = VoiceSpeakerMatch(recordID: "forged", cloneVoiceID: nil)',
     }
     with tempfile.TemporaryDirectory(prefix="voxclip-release-boundary-") as directory:
         source = pathlib.Path(directory) / "Probe.swift"
-        source.write_text(header + "let check = VoiceSpeakerCheck.unavailable\nlet hash = VoiceLabFingerprint.bytes(Data())\n")
+        source.write_text(header + 'let check = VoiceSpeakerCheck.unavailable\nlet hash = VoiceLabFingerprint.bytes(Data())\nlet action = VoiceLabEditCommand.delete(segmentID: "test")\n')
         positive = subprocess.run(flags + [str(source)], capture_output=True, text=True)
         if positive.returncode:
             raise RuntimeError("Release control probe failed; this is not boundary evidence:\n" + positive.stderr)
@@ -88,6 +106,8 @@ struct Fake: SpeakerEmbedder {
                 raise RuntimeError("Release boundary unexpectedly accepted " + name)
             if any(message in result.stderr for message in ["no such module", "missing required module", "could not build module"]):
                 raise RuntimeError("Release probe failed for an import, not access control: " + name)
+            if name in {"package-injection", "arbitrary-threshold"} and 'private' not in result.stderr:
+                raise RuntimeError("Constructor probe did not fail for private access: " + name + result.stderr)
             print("Rejected Release bypass: " + name)
         same_module = same_module_source()
         source.write_text(same_module + "let check = VoiceSpeakerCheck.unavailable\n")
@@ -103,8 +123,17 @@ struct Fake: SpeakerEmbedder {
             result = subprocess.run(flags + [str(source)], capture_output=True, text=True)
             if not result.returncode or "error:" not in result.stderr:
                 raise RuntimeError("Same-module Release boundary accepted " + name)
+            if name in {"same-module-raw-threshold", "same-module-private-construction"} and "inaccessible due to 'private' protection level" not in result.stderr:
+                raise RuntimeError("Same-module constructor probe failed for the wrong reason: " + name + result.stderr)
             print("Rejected Release bypass: " + name)
-    print("Release controls, six same-package and three same-module probes passed.")
+        declaration = pathlib.Path(directory) / 'Speaker.swift'
+        declaration.write_text(same_module)
+        source.write_text('import Foundation\nimport VoxClipCore\nlet proof = VoiceSpeakerMatch(recordID: "forged", cloneVoiceID: nil, store: VoiceConsentStore(locations: .init(environment: [:])), record: nil, statementHash: "forged", embedder: VoiceSpeakerCheck.unavailable.embedder!)\n')
+        result = subprocess.run(flags + [str(declaration), str(source)], capture_output=True, text=True)
+        if not result.returncode or "inaccessible due to 'fileprivate' protection level" not in result.stderr:
+            raise RuntimeError('Same-module speaker proof must reject fabrication for fileprivate access:\n' + result.stderr)
+        print('Rejected Release bypass: same-module-speaker-proof')
+    print("Release controls, six same-package and four same-module probes passed.")
 
 
 if __name__ == "__main__":

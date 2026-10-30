@@ -83,6 +83,34 @@ printf '%s\n' '{"issues":[{"message":"test failure detail"}]}'
         self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertIn(expected, result.stderr)
 
+    def test_linked_ort_requires_its_unique_pinned_notice(self):
+        bundle = self.root / 'VoxClip.app'
+        (bundle / 'Contents/MacOS').mkdir(parents=True)
+        resources = bundle / 'Contents/Resources'; resources.mkdir()
+        (bundle / 'Contents/MacOS/VoxClip').write_text('synthetic executable')
+        self.environment['APP_BUNDLE'] = str(bundle)
+        self.write_command('nm', '#!/bin/bash\nprintf "000000000 T _OrtGetApiBase\\n"\n')
+        notices = resources / 'THIRD_PARTY_NOTICES.md'
+        main_notices = subprocess.check_output(['git', 'show', 'origin/main:THIRD_PARTY_NOTICES.md'], cwd=PACKAGE, text=True)
+        notices.write_text(main_notices)
+        self.assert_failed(self.run_function('linked_ort_notice_gate'), 'Missing pinned ONNX Runtime')
+        notices.write_text(main_notices + '\n#### ONNX Runtime SwiftPM 1.19.2\n28787ee2f966a2c47eb293322c733c5dc4b5e3327cec321c1fe31a7c698edf68\n')
+        self.assertEqual(self.run_function('linked_ort_notice_gate').returncode, 0)
+        self.write_command('nm', '#!/bin/bash\nexit 1\n')
+        self.assert_failed(self.run_function('linked_ort_notice_gate'), 'Cannot inspect linked runtime symbols')
+
+    def test_static_ort_is_not_copied_or_permitted_in_bundle(self):
+        bundle = self.root / 'VoxClip.app'; frameworks = bundle / 'Contents/Frameworks'
+        frameworks.mkdir(parents=True)
+        binaries = self.root / 'binaries'; binaries.mkdir()
+        archive = binaries / 'onnxruntime.framework'; archive.mkdir()
+        (archive / 'onnxruntime').write_bytes(b'!<arch>\n')
+        self.environment.update(APP_BUNDLE=str(bundle), BIN_DIR=str(binaries))
+        self.assertEqual(self.run_function('copy_dynamic_frameworks').returncode, 0)
+        self.assertFalse((frameworks / archive.name).exists())
+        (frameworks / 'orphan.a').write_bytes(b'!<arch>\n')
+        self.assert_failed(self.run_function('reject_embedded_archives'), 'Static archive must not be bundled')
+
     def test_notary_acceptance_requires_status_and_id(self):
         result = self.run_function('notarize "$DIST/input.zip" app')
         self.assertEqual(result.returncode, 0, result.stderr)
