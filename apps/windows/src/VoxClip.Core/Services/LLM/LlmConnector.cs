@@ -194,6 +194,7 @@ public sealed partial class LlmConnector
             var parts = new JsonArray();
             if (request.CachedBlock is not null) parts.Add((JsonNode)new JsonObject { ["text"] = request.CachedBlock });
             parts.Add((JsonNode)new JsonObject { ["text"] = request.Instruction });
+            // 2026-10-30: https://ai.google.dev/api/generate-content does not confirm responseFormat GA for every curated model; retain responseJsonSchema.
             var generation = new JsonObject { ["maxOutputTokens"] = maxOut, ["responseMimeType"] = "application/json", ["responseJsonSchema"] = schema };
             var stripped = model.StartsWith("models/", StringComparison.Ordinal) ? model[7..] : model;
             if (effort is not null && Regex.IsMatch(stripped, "^gemini-([3-9]|[1-9][0-9]+)([.-]|$)", RegexOptions.CultureInvariant))

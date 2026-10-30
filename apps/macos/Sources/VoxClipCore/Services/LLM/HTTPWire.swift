@@ -51,6 +51,7 @@ extension HTTPConnector {
             var parts: [[String: Any]] = []
             if let cached = canonical.cachedBlock { parts.append(["text": cached]) }
             parts.append(["text": canonical.instruction])
+            // 2026-10-30: https://ai.google.dev/api/generate-content does not confirm responseFormat GA for every curated model; retain responseJsonSchema.
             var generation: [String: Any] = ["maxOutputTokens": maximum, "responseMimeType": "application/json", "responseJsonSchema": schema]
             if stripped.range(of: #"^gemini-([3-9]|[1-9][0-9]+)([.-]|$)"#, options: .regularExpression) != nil, let effort = canonical.effort {
                 generation["thinkingConfig"] = ["thinkingLevel": effort.rawValue.uppercased()]

@@ -8,6 +8,24 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 
 public sealed class HttpConformanceTests
 {
+    [Theory]
+    [InlineData("gemini-3.5-flash-lite")]
+    [InlineData("gemini-3.8-flash")]
+    [InlineData("gemini-3.1-pro-preview")]
+    public async Task GeminiCuratedModelsRetainCompatibleSchemaField(string model)
+    {
+        using var handler = new StubHttp((_, _, _) => Task.FromResult(Response(200, Completion(ConnectorId.Gemini))));
+        using var client = new HttpClient(handler);
+        var connector = new LlmConnector(ConnectorId.Gemini, Catalog(), client, new MemoryKeys(), new Redactor());
+        var request = Catalog().TestRequest(ConnectorId.Gemini);
+        await connector.SendAsync(request, model, TestContext.Current.CancellationToken);
+        var generation = handler.Requests.Single().Body!["generationConfig"]!;
+        EqualJson(request.Schema, generation["responseJsonSchema"]);
+        Assert.Equal("application/json", generation["responseMimeType"]!.GetValue<string>());
+        Assert.Null(generation["responseFormat"]);
+        Assert.Null(generation["responseSchema"]);
+    }
+
     [Fact]
     public async Task GeminiUsageIncludesBilledThinkingTokens()
     {

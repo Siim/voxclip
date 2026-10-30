@@ -3,6 +3,19 @@ import Testing
 @testable import VoxClipCore
 
 extension HTTPConnectorTests {
+    @Test(arguments: ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.1-pro-preview"])
+    func geminiCuratedModelsRetainCompatibleSchemaField(_ model: String) async throws {
+        let harness = try HTTPHarness(.gemini, replies: [HTTPFixtures.success(.gemini)])
+        defer { harness.finish() }
+        let request = try harness.catalog.connectionTest(for: .gemini)
+        _ = try await harness.connector.send(request, model: model)
+        let generation = try #require(HTTPStubProtocol.requests.last).json()[ai: "generationConfig"]
+        #expect(generation[ai: "responseJsonSchema"] == request.schema)
+        #expect(generation[ai: "responseMimeType"].aiString == "application/json")
+        #expect(generation[ai: "responseFormat"] == .null)
+        #expect(generation[ai: "responseSchema"] == .null)
+    }
+
     @Test
     func geminiUsageIncludesBilledThinkingTokens() async throws {
         let harness = try HTTPHarness(.gemini, replies: [.json(#"{"candidates":[{"finishReason":"STOP","content":{"parts":[{"text":"{}"}]}}],"usageMetadata":{"candidatesTokenCount":12,"thoughtsTokenCount":80}}"#)])
