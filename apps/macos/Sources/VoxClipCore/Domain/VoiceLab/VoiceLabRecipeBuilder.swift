@@ -29,7 +29,7 @@ public enum VoiceLabRecipeBuilder {
         if row.fits { mode = .source }
         else {
             guard videoChoice == .retimed else { throw VoiceLabProjectError.videoModeUnsupported }
-            mode = .retimed
+            mode = .zoomCover
         }
         let rate = Double(input.sourceSampleRate)
         let roundedSamples = EditingPrimitives.jsRound(published.outDuration * rate)
@@ -38,7 +38,7 @@ public enum VoiceLabRecipeBuilder {
               plan.windowStartSample >= 0, plan.windowEndSample > plan.windowStartSample else { throw VoiceLabProjectError.invalidRange }
         let outputSamples = Int64(roundedSamples)
         let factor = Double(plan.windowEndSample - plan.windowStartSample) / Double(outputSamples)
-        guard mode != .retimed || (0.80...1.25).contains(factor) else { throw VoiceLabProjectError.videoModeUnsupported }
+        guard mode != .zoomCover || (0.80...1.25).contains(factor) else { throw VoiceLabProjectError.videoModeUnsupported }
         func seam(_ edge: VoiceLabSeamPlacement, incoming: Bool) throws -> VoiceLabSeam {
             guard edge.fadeSamples >= 0 else { throw VoiceLabProjectError.invalidFadeHandles }
             let inner = incoming ? edge.fadeSamples / 2 : edge.fadeSamples - edge.fadeSamples / 2
@@ -59,8 +59,8 @@ public enum VoiceLabRecipeBuilder {
             seed: row.seed, createdAt: createdAt)
         provenance.region = receipt.region.rawValue
         let video = VoiceLabVideoRecipe(mode: mode, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
-            outputSamples: outputSamples, retimeFactor: mode == .retimed ? factor : nil,
-            zoom: nil, faceX: nil, faceY: nil, assetId: nil, provider: nil, model: nil, requestId: nil,
+            outputSamples: outputSamples, retimeFactor: mode == .zoomCover ? factor : nil,
+            zoom: mode == .zoomCover ? 1.12 : nil, faceX: mode == .zoomCover ? 0.5 : nil, faceY: mode == .zoomCover ? 0.5 : nil, assetId: nil, provider: nil, model: nil, requestId: nil,
             windowStartSample: nil, windowEndSample: nil, syncMode: nil)
         let usd: Double?
         if let synthesis = quote.synthesis.estimate.usd, let qa = quote.qa.estimate.usd { usd = NSDecimalNumber(decimal: synthesis + qa).doubleValue }

@@ -75,7 +75,10 @@ import Testing
         let retimed = try VoiceLabRecipeBuilder.candidate(row: longerRow, input: input, published: longerPublished, record: record,
             createdAt: Date(timeIntervalSince1970: 1_800_000_000), videoChoice: .retimed)
         let retimedSegment = try VoiceLabRecipeBuilder.segment(id: "retimed", candidates: [retimed], selected: 0, input: input, plan: longerPlan)
-        try VoiceLabProject.validate(VoiceLabProject.accept(retimedSegment, assets: assets, into: project))
+        let retimedProject = try VoiceLabProject.accept(retimedSegment, assets: assets, into: project)
+        try VoiceLabProject.validate(retimedProject)
+        #expect(retimed.recipe?.video.mode == .zoomCover && retimed.recipe?.video.zoom == 1.12)
+        _ = try VoiceLabRenderContract.prepare(retimedProject, scope: .full, labelPosition: .topRight)
         var failed = row
         failed = VoiceLabTakeRow(id: row.id, index: 0, seed: 7, receipt: receipt, audio: take,
             qa: VoiceLabTakeQAResult(values: stored.qa, failures: [.speaker]), quote: row.quote)
