@@ -609,9 +609,14 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (policy is not null) RequirePermit(policy);
             if (policy?.DispatchPermit is { } bound && bound.RequestId != billing?.Review.RequestId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (policy is not null && billing?.Review.ConsentRecordId is { } consent && consent != policy.RecordId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            var sending = policy?.DispatchPermit is { } permit
-                ? permit.Start(() => http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token), deadline.Token)
-                : http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            Task<HttpResponseMessage> sending;
+            lock (discoveredGate)
+            {
+                if (policy?.ModelRevision is { } expected && expected != modelRevision) throw new VoiceLabRunInvalidatedException();
+                sending = policy?.DispatchPermit is { } permit
+                    ? permit.Start(() => http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token), deadline.Token)
+                    : http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            }
             using var response = await sending.ConfigureAwait(false);
             if (response.RequestMessage?.RequestUri is { } final && (final.Scheme != url.Scheme || final.Host != url.Host || final.Port != url.Port || final.AbsolutePath != url.AbsolutePath))
                 throw new VoiceLabException(VoiceLabErrorKind.ProviderFailure);

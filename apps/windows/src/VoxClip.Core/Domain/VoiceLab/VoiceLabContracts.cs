@@ -70,6 +70,7 @@ public sealed record OwnVoicePolicy(string RecordId, string? CloneVoiceId, bool 
     internal VoiceDispatchPermit? DispatchPermit { get; init; }
     internal Func<CancellationToken, Task>? ValidateDispatch { get; init; }
     internal VoiceConsentCreator? Creator { get; init; }
+    internal long? ModelRevision { get; init; }
     public void Validate(string? selectedVoiceId = null)
     {
         if (string.IsNullOrWhiteSpace(RecordId) || !RecordActive || !ProviderConsentGranted || !StatementVerified || !OwnerConfirmed ||
