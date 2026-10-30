@@ -20,6 +20,8 @@ These cases implement §15 test 12 for the clone (§6.7), voice changer (§7.3) 
 
 Each `cases` row has `case`, `operation` (`createClone`, `textToSpeech` or `voiceChange`), `input` and the expected `request`.
 
+The two `clone_recovery_nonce_*` rows replay production enrollment: pass `input.recoveryNonce` through the clone request, pin both labels (`language`, `voxclip_record_id`) and the exact description suffix. V3 context is omitted and does not bind its quote; the v2 context rows retain the Unicode trimming vectors.
+
 A consumer works through these steps:
 1. Fix the multipart boundary to `multipartBoundary`, using the Core's test-only hook. Production boundaries are random, in the same `voxclip-` plus 32 lowercase hex form on both Cores.
 2. Discover models, voices and the subscription.

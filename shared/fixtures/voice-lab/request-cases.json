@@ -79,6 +79,142 @@
   "multipartBoundary": "voxclip-0123456789abcdef0123456789abcdef",
   "cases": [
     {
+      "case": "clone_recovery_nonce_english",
+      "operation": "createClone",
+      "input": {
+        "displayName": "Alex Example",
+        "language": "en",
+        "createdAt": "2026-10-26T09:15:42Z",
+        "recoveryNonce": "01234567-89ab-cdef-0123-456789abcdef",
+        "removeBackgroundNoise": false,
+        "samples": [
+          {
+            "role": "consentStatement",
+            "rate": 8000,
+            "frames": 40000
+          },
+          {
+            "role": "training",
+            "rate": 8000,
+            "frames": 40000
+          }
+        ]
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/voices/add",
+        "query": {},
+        "headers": {
+          "xi-api-key": "[REDACTED]",
+          "content-type": "multipart/form-data; boundary=\"voxclip-0123456789abcdef0123456789abcdef\""
+        },
+        "multipart": [
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"name\""
+            ],
+            "value": "Alex Example (VoxClip)"
+          },
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"files\"; filename=\"consent-statement.wav\"",
+              "Content-Type: audio/wav"
+            ],
+            "sha256": "5ccc6ea77499fc2640a45e65b4901737952304f875acb037a0b2427685085d23"
+          },
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"files\"; filename=\"sample-02.wav\"",
+              "Content-Type: audio/wav"
+            ],
+            "sha256": "5ccc6ea77499fc2640a45e65b4901737952304f875acb037a0b2427685085d23"
+          },
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"remove_background_noise\""
+            ],
+            "value": "false"
+          },
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"description\""
+            ],
+            "value": "VoxClip own-voice clone. Consent sha256:5ccc6ea77499fc2640a45e65b4901737952304f875acb037a0b2427685085d23. Created 2026-10-26T09:15:42Z. VoxClip request 01234567-89ab-cdef-0123-456789abcdef."
+          },
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"labels\""
+            ],
+            "value": "{\"language\":\"en\",\"voxclip_record_id\":\"01234567-89ab-cdef-0123-456789abcdef\"}"
+          }
+        ],
+        "bodyLength": 161124,
+        "bodySha256": "6e0ebdaaa3e6dd5e836b43a252c62df965d72aec669de4e87ccf247235413193"
+      }
+    },
+    {
+      "case": "clone_recovery_nonce_estonian",
+      "operation": "createClone",
+      "input": {
+        "displayName": "Mari",
+        "language": "et",
+        "createdAt": "2026-10-26T09:15:42Z",
+        "recoveryNonce": "fedcba98-7654-3210-fedc-ba9876543210",
+        "removeBackgroundNoise": true,
+        "samples": [
+          {
+            "role": "consentStatement",
+            "rate": 8000,
+            "frames": 80000
+          }
+        ]
+      },
+      "request": {
+        "method": "POST",
+        "path": "/v1/voices/add",
+        "query": {},
+        "headers": {
+          "xi-api-key": "[REDACTED]",
+          "content-type": "multipart/form-data; boundary=\"voxclip-0123456789abcdef0123456789abcdef\""
+        },
+        "multipart": [
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"name\""
+            ],
+            "value": "Mari (VoxClip)"
+          },
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"files\"; filename=\"consent-statement.wav\"",
+              "Content-Type: audio/wav"
+            ],
+            "sha256": "c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e"
+          },
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"remove_background_noise\""
+            ],
+            "value": "true"
+          },
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"description\""
+            ],
+            "value": "VoxClip own-voice clone. Consent sha256:c46ca7050a32b0bb5133651542091622b93b94b819c066ada3829abaee4b269e. Created 2026-10-26T09:15:42Z. VoxClip request fedcba98-7654-3210-fedc-ba9876543210."
+          },
+          {
+            "headers": [
+              "Content-Disposition: form-data; name=\"labels\""
+            ],
+            "value": "{\"language\":\"et\",\"voxclip_record_id\":\"fedcba98-7654-3210-fedc-ba9876543210\"}"
+          }
+        ],
+        "bodyLength": 160926,
+        "bodySha256": "168b2fae526584e9e8fffb6db7d2490d69f794575ddec5d8a08011100dd02e35"
+      }
+    },
+    {
       "case": "tts_v3_context_omitted",
       "operation": "textToSpeech",
       "input": {

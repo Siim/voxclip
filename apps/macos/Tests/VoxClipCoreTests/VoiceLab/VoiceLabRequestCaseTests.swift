@@ -51,7 +51,8 @@ enum VoiceLabRequestFixtures {
             samples += Array(repeating: VoiceLabCloneSample(role: role, wav: try wav(spec)), count: spec["count"] as? Int ?? 1)
         }
         return VoiceLabCloneRequest(displayName: try value("displayName"), language: try value("language"), samples: samples,
-                                    createdAt: try date(try value("createdAt")), removeBackgroundNoise: try value("removeBackgroundNoise"))
+                                    createdAt: try date(try value("createdAt")), removeBackgroundNoise: try value("removeBackgroundNoise"),
+                                    recoveryNonce: input["recoveryNonce"] as? String)
     }
     /// URLProtocol may present an upload as a stream rather than `httpBody`.
     static func body(_ request: URLRequest) throws -> Data {

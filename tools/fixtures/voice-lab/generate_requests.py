@@ -228,10 +228,13 @@ def clone_request(source):
              file_part('files', 'consent-statement.wav', consent_sample)]
     parts += [file_part('files', f'sample-{index + 2:02d}.wav', item)
               for index, item in enumerate(item for item in source['samples'] if item['role'] == 'training')]
+    description = f'VoxClip own-voice clone. Consent sha256:{sha256(consent_sample)}. Created {created(source["createdAt"])}.'
+    labels = {'language': source['language']}
+    if nonce := source.get('recoveryNonce'):
+        labels['voxclip_record_id'] = nonce
+        description += f' VoxClip request {nonce}.'
     parts += [text_part('remove_background_noise', 'true' if source['removeBackgroundNoise'] else 'false'),
-              text_part('description', f'VoxClip own-voice clone. Consent sha256:{sha256(consent_sample)}. '
-                                       f'Created {created(source["createdAt"])}.'),
-              text_part('labels', json.dumps({'language': source['language']}, separators=(',', ':')))]
+              text_part('description', description), text_part('labels', json.dumps(labels, separators=(',', ':')))]
     return multipart_request('/v1/voices/add', {}, parts)
 
 
@@ -323,6 +326,14 @@ ORPHAN_PREVIOUS = 'x' * 10 + ' ' + COMBINING_DIAERESIS + ('sona ' * 60)[:299]
 JOINER_NEXT = 'w ' + 'w' * 297 + ZERO_WIDTH_JOINER + ' tail'
 
 CASES = [
+    case('clone_recovery_nonce_english', 'createClone', {
+        'displayName': 'Alex Example', 'language': 'en', 'createdAt': '2026-10-26T09:15:42Z',
+        'recoveryNonce': '01234567-89ab-cdef-0123-456789abcdef', 'removeBackgroundNoise': False,
+        'samples': [consent(), training()]}),
+    case('clone_recovery_nonce_estonian', 'createClone', {
+        'displayName': 'Mari', 'language': 'et', 'createdAt': '2026-10-26T09:15:42Z',
+        'recoveryNonce': 'fedcba98-7654-3210-fedc-ba9876543210', 'removeBackgroundNoise': True,
+        'samples': [consent(80_000)]}),
     case('tts_v3_context_omitted', 'textToSpeech', speech('Hello.', 'eleven_v3', 'en', 42, previousText='Before', nextText='After')),
     case('clone_estonian_caller_order', 'createClone', {
         'displayName': '  Mari ' + O_TILDE_CAPITAL + 'unapuu ', 'language': 'et',

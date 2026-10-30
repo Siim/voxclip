@@ -4,6 +4,17 @@ import unittest
 
 
 class WireConformanceTests(unittest.TestCase):
+    def test_recovery_nonce_is_pinned_in_labels_and_description(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        cases = json.loads((root / 'shared/fixtures/voice-lab/request-cases.json').read_text())['cases']
+        rows = [case for case in cases if case['input'].get('recoveryNonce')]
+        self.assertEqual(len(rows), 2)
+        for case in rows:
+            fields = {part['headers'][0]: part.get('value') for part in case['request']['multipart']}
+            labels = json.loads(fields['Content-Disposition: form-data; name="labels"'])
+            self.assertEqual(labels, {'language': case['input']['language'], 'voxclip_record_id': case['input']['recoveryNonce']})
+            self.assertTrue(fields['Content-Disposition: form-data; name="description"'].endswith(' VoxClip request ' + case['input']['recoveryNonce'] + '.'))
+
     def test_v3_has_no_stitching_and_context_does_not_bind_its_quote(self):
         root = pathlib.Path(__file__).resolve().parents[2]
         document = json.loads((root / 'shared/fixtures/voice-lab/request-cases.json').read_text())
