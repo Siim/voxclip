@@ -116,7 +116,7 @@ The effective style for an output frame `W×H` is built in this order:
 3. Apply `overrides` as an RFC 7396 merge patch to `S1`, giving `S2`. Rules:
    - The patch must not contain `$schema`, `schemaVersion`, `id`, `name`, `description`, `order`, `tags`, `aspects` or `preview`; such a patch is invalid.
    - If `S0.text.userOverridable` is false, `text.transform` and `text.punctuation` in the patch are ignored.
-   - `S2` must pass strict typed decoding against the CaptionStyle model (the runtime form of `schema.json`: unknown keys, wrong types, out-of-range values and bad enum values are errors; architecture.md section 2.1 rule 8) and the rules of 2.5. If it does not, the app shows the style unpatched and reports "These caption settings could not be applied." in the inspector; it never crashes. The built-in styles themselves are validated with a real JSON Schema validator by `tools/captions/check_styles.py` in CI.
+   - `S2` must pass strict typed decoding against the CaptionStyle model (the runtime form of `schema.json`: unknown keys, wrong types, out-of-range values and bad enum values are errors; architecture.md section 2.1 rule 8) and the rules of 2.5. If it does not, the app shows the style unpatched and reports "These caption settings could not be applied." in the Captions section of the right column (design.md §6.1) and in the Export sheet; it never crashes. Windows detects the rejection but does not show the note yet. The built-in styles themselves are validated with a real JSON Schema validator by `tools/captions/check_styles.py` in CI.
 4. Apply defaults (2.2) to `S2`, giving `S3`.
 5. Position: `preset` is `"9:16"` if `16·W = 9·H`, `"16:9"` if `9·W = 16·H`, `"1:1"` if `W = H`, otherwise none (a source-aspect export). If `preset` exists and `positionByAspect[preset]` exists, use it; otherwise use `position` if it is not null; otherwise keep `S3.position.x/y`. A stored position is ignored when `S3.position.userDraggable` is false.
 
@@ -278,7 +278,7 @@ Split the display text into extended grapheme clusters (UAX #29: Swift `Characte
 - Choose the first cascade font whose `coverage` contains every remaining scalar; if none does, the first that contains the first remaining scalar; if none does, drop the cluster.
 - Remove from the cluster any non-ignorable scalar the chosen font does not cover.
 
-Consecutive clusters with the same chosen font form a run. Each run is shaped separately; there is no kerning across run boundaries. If every cluster of a word is dropped, the word is not captioned. The app shows the inspector note "Some characters can't be shown in this caption style." when any cluster was dropped in the current output.
+Consecutive clusters with the same chosen font form a run. Each run is shaped separately; there is no kerning across run boundaries. If every cluster of a word is dropped, the word is not captioned. The app shows the note "Some characters can't be shown in this caption style." in the Captions section (design.md §6.1) when any cluster was dropped in the current output. Not built yet: both Cores report the dropped clusters, but neither app shows the note.
 
 ### 4.5 Word width
 
@@ -829,7 +829,7 @@ Windows (`VoxClip.Media`): the compose function draws into an `SKSurface` that w
 
 `CaptionLine.words` holds indices into the track's full list of captioned words, not offsets within the page. SRT output uses that same list across pages. A compatibility track without a usable full list falls back to the page's own words instead of indexing outside the list.
 
-- Off: `styleId == "off"` (the first gallery tile, "Just the video"). No caption pass; cuts and every other export setting still apply.
+- Off: `styleId == "off"`, set by the Captions switch (design.md §6.1) or by "Off" in the Export sheet's Captions picker; the gallery has no Off tile. No caption pass; cuts and every other export setting still apply.
 - Captions are drawn while paused and while scrubbing, at the playhead's output time.
 - Dragging: the handle is the visual rectangle of the page visible at the playhead; when no page is visible, the next page's (or the previous page's, at the end) layout is used and drawn as an outline only. The dragged anchor point is written as in 2.4. Snapping to `x = 0.5` and `y ∈ {1/3, 2/3}` is a UI aid (design.md); the stored value is the snapped value. Rendering always clamps to the safe area (7.3), so a stored position outside it renders inside it.
 - Size, case, words, punctuation, colour and position controls: 2.4.
@@ -841,7 +841,7 @@ Windows (`VoxClip.Media`): the compose function draws into an `SKSurface` that w
 
 ### 15.1 Contents
 
-The gallery shows Off first, then every style in `shared/caption-styles/styles/` sorted by `order`, ties by id. The tile label is `name`; the accessibility label is `"<name>: <description>"`.
+The gallery shows every style in `shared/caption-styles/styles/`, grouped by tag as in design.md §6.1 (Word by word, Phrase, Sentence, then Other) and sorted by `order` within a group, ties by id. There is no Off tile. The tile label is `name`; the accessibility label is `"<name>: <description>"`.
 
 ### 15.2 Tile rendering
 

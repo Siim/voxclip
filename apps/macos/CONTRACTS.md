@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish — factual documentation reconciliation
+
+- Correct the menu inventory, kept/suggested selection semantics, export ledger keys and render fingerprint, connector onboarding, token generation and integrated app/CLI READMEs against the current code. Caption word timings affect export fingerprints; project bookkeeping timestamps do not.
+- Drop superseded draft claims that Voice Lab generation is DEBUG-only or absent from 0.1.0. The Voice Lab track owns its beta-opt-in generation changes and specification. Retain the native accessibility acceptance gates without the draft's contradictory enabled-but-hidden check.
+
 ### 2026-10-30 — sol-mac-polish — right-column review follow-ups
 
 - Stage expectations now come from the requested variant and source orientation, not the measured stage. Rewrite uses its 124-point cap; literal 320×675 stage sizes are asserted by the window-free test. The probe records the background's actual logical proposal so an unattached, 1× AppKit marker's integral rounding cannot masquerade as aspect distortion; native descendant overflow checks and the original half-point size tolerance remain intact.

@@ -25,7 +25,7 @@ Provenance: vox-api and vox-web as read on 2026-10-25 (working trees including u
 
 ## 2. Share helpers (M1)
 
-They appear in the Export sheet after a successful export (design.md section 8) and in each exported clip's ⋯ menu in the Clips tab.
+They appear in the Export sheet after a successful export (design.md section 8).
 
 ### 2.1 Caption text
 

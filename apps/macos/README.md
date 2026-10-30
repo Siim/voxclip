@@ -1,6 +1,6 @@
 # VoxClip for macOS
 
-SwiftPM skeleton for the native macOS app and headless CLI. Requires Apple silicon, macOS 26+, and Xcode with Swift 6.2+ and the macOS 26 SDK or newer. All targets use Swift 6 language mode.
+SwiftPM package for the native macOS app and the headless `voxclip-cli`. Requires Apple silicon, macOS 26+, and Xcode with Swift 6.2+ and the macOS 26 SDK or newer. All targets use Swift 6 language mode.
 
 ## Build, run and test
 
@@ -21,9 +21,9 @@ swift run voxclip-cli version
 
 The first resolve downloads the pinned argument parser and official whisper xcframework; no transcription model is downloaded. Package.resolved is part of this package. No Xcode project or SwiftPM resource bundle is needed.
 
-The app has a Welcome window, document-based .voxclip editor windows, Settings and labelled empty transcript/preview/inspector/timeline regions. Opening/saving JSON documents works; importing media, editing algorithms, transcription, captions, clips and export await their owning implementation tracks. An untitled document has no imported media (an empty source reference); it does not read the root directory.
+The app is one main window (ADR-R29): a sidebar with Home, the open project's Full take, kept clips and suggestions; the transcript page with its selection bar; the viewer with Captions; and the timeline. Each project stays a `.voxclip` `NSDocument` attached to that window (architecture §2.6). Import, transcription, word editing, clips, Find Clips, captions, export and the share helpers are integrated; doc/design.md describes the interface. Voice Lab generation is planned for 0.1.0 behind an explicit beta opt-in; its implementation is owned by the Voice Lab track.
 
-The CLI declares the complete architecture §9 command tree. Help/version are usable. The primary `--open ... --export ...` form routes to the default `export` command; the explicit `export` alias has the same options. Other commands fail safely with a redacted notImplemented error and exit 1 until their services are filled in. --json writes exactly one final object on stdout; diagnostics go to stderr. Bad argument values exit 2. No skeleton command starts a paid provider, downloads a model, launches a subscription CLI or writes export output.
+The CLI implements the architecture §9 command tree: `export` (also the primary `--open ... --export ...` form), `probe`, `transcribe`, `models list/install/verify/remove`, `plan`, `render-caption`, `find-clips`, `llm-test`, `encoders` and `version`. --json writes exactly one final object on stdout; diagnostics go to stderr. Exit codes follow architecture §9.3; bad argument values exit 2.
 
 ## Shared resources and isolated data
 
@@ -34,11 +34,11 @@ VOXCLIP_SHARED_DIR="$PWD/../../shared" swift test
 VOXCLIP_DATA_DIR=/tmp/voxclip-dev swift run voxclip-cli models list --json
 ```
 
-Without VOXCLIP_DATA_DIR, locations follow architecture §2.5 (Application Support/VoxClip, Library/Logs/VoxClip, Movies/VoxClip). Location resolution alone creates no files. CLI keys, when real connectors are implemented, come only from the documented API-key environment variables, never Keychain. Never put a key in a command argument or project.
+Without VOXCLIP_DATA_DIR, locations follow architecture §2.5 (Application Support/VoxClip, Library/Logs/VoxClip, Movies/VoxClip). Location resolution alone creates no files. CLI keys come only from the documented API-key environment variables (architecture §9), never the Keychain. Never put a key in a command argument or project.
 
 ## Parallel implementation
 
-Read [CONTRACTS.md](CONTRACTS.md) for the complete public type/protocol index, ownership and dated conflicts. Replace your existing stubs in place and work only in your track's folders. The shared value contracts are frozen; propose changes in CONTRACTS.md before modifying them. Tests include fixture-backed schema round-trips, caption schema/default decoding, redaction, versions and non-destructive stub checks; six track placeholders are explicitly disabled.
+Read [CONTRACTS.md](CONTRACTS.md) for the complete public type/protocol index, ownership, dated changes and the latest native gate results. Work only in your track's folders. The shared value contracts are frozen; propose changes in CONTRACTS.md before modifying them. `swift test` runs the Core and Media suites, which check the shared fixtures. The App target has no test target: its UI checks are DEBUG self-tests and audits started with launch arguments (for example `-uiSelfTest <folder>`), run with the console unlocked and idle.
 
 Release packaging is supplied by `bundle.sh`; see the release section below. No sandbox, signing credential or extra entitlement is introduced here.
 

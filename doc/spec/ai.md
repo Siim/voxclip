@@ -1123,7 +1123,7 @@ Status lines update on pane open and after **Test**. The catalog `label` is plai
 
 ### 10.3 Clip and tighten UI hooks (owned by the editor spec)
 
-The clip panel and the tighten review panel are specified with the editor. This spec fixes only their AI-specific behaviour, in §11.8 and §12.6.
+Find Clips (its popover or flyout and the sidebar's Suggested rows) and the tighten review are specified in design.md §6.2 and §6.4. This spec fixes only their AI-specific behaviour, in §11.8 and §12.6.
 
 ### 10.4 Headless `voxclip-cli`
 
@@ -1172,7 +1172,7 @@ Inputs:
 
 Gates, checked in order:
 
-1. No words: "There are no words to clip." The clip panel is hidden while the take has fewer than `minWordsForPanel` (20) words.
+1. No words: "There are no words to clip." The apps disable Find Clips until the take has words (Windows: a transcript); a take with any words can run it. Neither app reads `limits.minWordsForPanel` (20) from the prompt file.
 2. Preset `custom` with empty instructions: "Describe the clips you want."
 3. Instructions are trimmed (§11.9 `jsTrim`) and cut to `maxInstructionsLength` (500) UTF-16 code units.
 4. A connector must be chosen (`noConnector` otherwise), and its status must be `ready`, otherwise show its message (§5).
@@ -1359,17 +1359,17 @@ The schema requires a non-empty `title`. If `title` is empty after §11.7 step 2
 - **Source range for preview and export.** These are the editing spec's `clipTimes`, repeated here for completeness:
   - `start = max(0, first.start − min(0.12, prev ? max(0, first.start − prev.end) / 2 : 0.12))`
   - `end = last.end + min(0.25, next ? max(0, next.start − last.end) / 2 : 0.25)`
-- **Clip lifecycle.** On a successful run, VoxClip appends the `aiResult`, then, as one undo step named "Find clips", appends a `ClipRange { origin: ai, aiResultId, aiClipIndex, title, selected: true }` for each result clip in §11.7 order, skipping a clip whose `(startWordId, endWordId)` equals an existing `ClipRange` (editing spec §6.3 `addAIClips`, §10.6). There is no separate "accept" step: a suggestion is a clip from the start, and the user unchecks or removes what they don't want.
-  - The Clips list shows every `ClipRange`, manual and AI, sorted by start word, then creation order. Score and reason come from the linked `aiResult`.
-  - The checkbox is `ClipRange.selected`; "Export N clips" exports the selected clips. Remove deletes only the `ClipRange`.
+- **Clip lifecycle.** On a successful run, VoxClip appends the `aiResult`, then, as one undo step named "Find clips", appends a `ClipRange { origin: ai, aiResultId, aiClipIndex, title, selected: true }` for each result clip in §11.7 order, skipping a clip whose `(startWordId, endWordId)` equals an existing `ClipRange` (editing spec §6.3 `addAIClips`, §10.6), and then applies `setClipSelected(id, false)` to each clip it added. The new clips are suggestions (design.md §2): **Keep** sets `selected` to true, **Keep All** keeps every suggestion in one undo step, and **Dismiss** removes the `ClipRange`.
+  - The sidebar lists every `ClipRange`: kept clips (manual, or AI with `selected == true`), then suggestions, each sorted by start word, then creation order. Score and reason come from the linked `aiResult`.
+  - "All {n} clips" in the Export sheet exports the kept clips. Remove and Dismiss delete only the `ClipRange`.
   - A new run never removes existing clips. `ai.results` keeps the newest 10 runs; older results that no `ClipRange` references are dropped on save.
   - It never rewrites cut flags. Cuts and corrections inside the clip keep the user's edits.
-- **Panel behaviour** (VoxConvo parity):
-  - Every returned clip starts checked.
-  - A card shows the title, `M:SS · {score}/10`, the reason and the clip text.
-  - Each card has Start/End one word earlier/later nudges that always keep at least one word.
-  - With no results: "No clips matched. Try another style or describe what you want."
-  - The footer shows "Answered by {model}" and the fallback note (§4.3).
+- **Sidebar behaviour** (design.md §6.2):
+  - Every returned clip arrives as a suggestion under **Suggested**.
+  - A suggestion row shows its number, title and duration. Its tooltip and accessible description are `{score}/10 · {reason}`.
+  - Clip edges change with the timeline's trim handles and with I / O (`updateClip`), which always keep at least one word.
+  - With no results: "No clips matched. Try another style or describe what you want." under Suggested, with **Find Clips…**.
+  - After a run answered by the fallback model, macOS shows the fallback note (§4.3) under Suggested; Windows does not show it yet. A run without a fallback shows no model line.
   - When `droppedItems > 0` or candidates were filtered, nothing extra is shown. Filtering is normal.
 
 ### 11.9 String helpers (both platforms)

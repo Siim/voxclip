@@ -137,7 +137,7 @@ Main window (macOS: exactly one. Windows: one per process window; Ctrl+N opens a
       Voice Lab (M3 beta) · About
 ```
 
-**Sidebar selection model.** Selection is one value: `SidebarItem = home | fullTake | clip(ClipRange.id)`.
+**Sidebar selection model.** Selection is one value: `SidebarItem = home | fullTake | clip(ClipRange.id)`. On macOS a Recent row is a fourth case, `recent(URL)`: the arrow keys and Return can select it, and it shows Home like the Home row.
 
 - **Full take** sets `edits.activeClipId = null`. **A clip or suggestion row** sets `activeClipId` to that clip. Both use the existing `setActiveClip` command, so a row change is one undo step that pauses playback (editing §6.3, unchanged). The transcript highlight, the viewer, the timeline, the toolbar summary, Cut Fillers, Tighten Pauses, Restore Cuts and Export all follow `activeClipId`, as they already do.
 - **Home** does not change `activeClipId`. It pauses playback and shows Home in the detail area. Leaving Home goes back to the project's current scope.
@@ -985,10 +985,11 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 
 **Export ledger** (app-local, not in the project).
 
-- **Location:** `<app data>/exports.json`, keyed by project id and target ("full" or a clip id).
+- **Location:** `<app data>/exports.json`, keyed by project id and target ("full" or a clip id). macOS also keys it by aspect, so a row shows the status for the project's current Frame. Windows keeps one record per target.
 - **Record:** `{exportedAt, planFingerprint, styleId, aspect, outputPath}`, written after each successful export.
+- **Fingerprint:** `planFingerprint` is a SHA-256 over the render inputs both platforms share (`apps/windows/CONTRACTS.md`): the source's content key, duration, oriented size, rotation, frame rate, sample rate and channels; the scoped edit plan; quality and the resolved output encoding; the effective caption style and, when captions are on, the scoped caption words (including their timings), language, overrides and position for the aspect; and the Voice Lab output plan, disclosure and selected assets. SRT intent, titles, share text, the folder, word confidence, speakers, project bookkeeping timestamps and recipe provenance are left out.
 - **Statuses:**
-  - **Exported:** a record exists and `planFingerprint` (a SHA-256 of the scoped edit state, caption settings and aspect) matches the current one.
+  - **Exported:** a record exists and its `planFingerprint` matches the current one.
   - **Edited since export:** a record exists and the fingerprints differ.
   - **Exporting / Export failed:** taken from the live export queue.
 - Clearing app data removes the statuses, never the project.
@@ -1280,7 +1281,7 @@ Step 3 of 3   Five keys to know
               [ Open a video… ]                                                     [ Done ]
 ```
 
-- Step 2 preselects **nothing** (AI spec section 7.1 rule 8, `llm.connector` starts empty). **Not now** is the default button; **Continue** is disabled until an option is chosen. Choosing Installed CLI also requires picking Claude Code or Codex explicitly, and then shows the AI spec section 4.8 consent text inline (for example "…counts toward your Claude plan's usage"); Continue stores `llm.cloudConsent.<id>`.
+- Step 2 preselects **nothing** (AI spec section 7.1 rule 8, `llm.connector` starts empty). **Not now** is the default button; **Continue** is disabled until an option is chosen. Choosing Installed CLI also requires picking Claude Code or Codex explicitly. Continue stores only `llm.connector`; onboarding grants no consent. The AI spec section 4.8 sheet appears before the connector's first request (Find Clips, Rewrite or Settings → Test), once detection reports the connector ready, so a CLI sheet words its billing sentence from the detected sign-in. Windows, until its redesign merges: cloud and CLI connectors also show the checkbox "I understand what this connector sends and want to use it.", and Continue stores `llm.cloudConsent.<id>`. The redesign keeps the checkbox but stores only `llm.connector`.
 - Keys go straight to the Keychain / DPAPI (architecture.md section 11.4). Once saved, a key is never shown again; the field shows "Saved in the Keychain; paste to replace".
 - **Test** makes one minimal call through the normal path and shows the result in `status.success` or `status.warning`: AI connectors as AI spec section 10.2 ("Works · {model} · {seconds} s" / "Failed: {message}"), ElevenLabs as the transcription spec's key test. CLI rows show the local detection and sign-in status first (AI spec section 6.10).
 - If the user skips step 1, the first import asks inline: "Transcribe on this {Mac/PC} (download {model}, {size})" or "Use ElevenLabs (add key)".
@@ -1386,7 +1387,7 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 
 - **VoxClip:** About VoxClip, Check for Updates…, Settings…, Hide, Quit.
 - **File:** New Project from Video… (⌘N), New Recording (M2, ⌥⌘N), Open… (⌘O; projects and movies, opening in the main window), Open Recent, Close Project (⌘W), Save (⌘S), Save As… (⇧⌘S), Duplicate, Rename…, Move To…, Revert to Saved…, Export… (⌘E), Reveal Media in Finder.
-- **Edit:** Undo, Redo, Cut Selection, Restore Selection, Correct Word, Rewrite… (⇧⌘R), Insert Words…, Select All, Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again…; M2: Tighten with AI…, Clean Audio…; M3: Change Voice….
+- **Edit:** Undo, Redo, Cut, Copy, Paste, Select All, Cut Selection, Restore Selection, Correct Word, Rewrite… (⇧⌘R, subject to the Voice Lab beta entry policy in §6.3), Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again…; later: Insert Words… (hidden until Core can place an insertion, §6.3); M2: Tighten with AI…, Clean Audio…; M3: Change Voice….
 - **View:** Show/Hide Sidebar (⌃⌘S), Show/Hide Viewer (⌥⌘I), Home (⌘1), Full Take (⌘2), Show/Hide Cut Words (⇧⌘H), Show/Hide Pauses, Source/Edited Timeline, Bigger/Smaller/Actual Size, Enter Full Screen. Each Show/Hide title describes the current action.
 - **Playback:** Play/Pause, Play from Selection, Preview Cut, Back 3 Seconds (J), Forward 3 Seconds, Shuttle Back/Stop/Forward, Go to Start/End.
 - **Clip:** Make Clip from Selection (⌘K), Find Clips… (⇧⌘K), Cancel Finding Clips (⌘., only while finding), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Export Clip….
@@ -1547,7 +1548,7 @@ Contrast is a test, not a note: `npm --prefix tools/design test` computes WCAG 2
 
 The palette is the Document direction from the October 2026 design study: paper and ink neutrals and one accent, Ink, the icon tile's ink. Each colour token's `source` extension names the study token its value comes from (for example `bg.elevated` is the study's raised), or the ADR-R29 mockup token. `line.subtle` was removed because the study has two separators. `text.disabled`, `record.*`, `overlay.scrim` and `overlay.transportOpaque` keep values the study does not define. `stage` stays `#000000` rather than the study's `#0B0B0C`, because letterboxed video wants true black (§14). It is also the caption card's backdrop (§5.4.3). Three values step away from their sources so every pair passes: `text.muted` sits between `text.secondary` and `text.tertiary` (the study's pause label was brighter than `text.secondary`), `word.cut` is one step past the study's cutText so cut words pass on `pause.background`, and the dark `clip.badgeBackground` is 10% rather than the ADR-R29 delta's 13% so badge numerals pass on the sidebar glass.
 
-ADR-R29 adds `clip.badgeBackground`, `timeline.keptBackground`, `timeline.scopeDim` and `selection.transcript`, and retunes `timeline.waveform`. `timeline.clipBracket` marks the selected clip only; unselected brackets use `line.strong`. `timeline.clipBand`, `size.inspector`, `size.welcomeWindow`, `size.transportPillHeight`, `size.footerStatusHeightWindows` and `size.breakpointThreeColumn` are deprecated and removed with the old layout.
+ADR-R29 adds `clip.badgeBackground`, `timeline.keptBackground`, `timeline.scopeDim` and `selection.transcript`, and retunes `timeline.waveform`. `timeline.clipBracket` marks the selected clip only; unselected brackets use `line.strong`. `timeline.clipBand`, `size.inspector`, `size.welcomeWindow`, `size.transportPillHeight`, `size.footerStatusHeightWindows` and `size.breakpointThreeColumn` are deprecated and removed with the old layout. The generator already leaves them out of `Tokens.swift`; tokens.json and `Tokens.xaml` still carry them.
 
 The media stand-ins (§5.4) add `chip.mediaBackground`, `chip.mediaStroke`, `chip.mediaBackgroundOpaque`, `chip.mediaForeground` and `chip.warningGlyph` (§5.4.8). They have one value in both themes because they sit on media. They join tokens.json, with their pairs in `tools/design/contrast.mjs`, when the first chip is built.
 

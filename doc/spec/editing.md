@@ -142,7 +142,7 @@ EditState {
 ClipRange { id, startWordId, endWordId, title?, origin: manual | ai, aiResultId?, aiClipIndex?, selected: Bool }
 ```
 
-`selected` is the checkbox in the Clips list. "Export N clips" exports the selected clips in list order. It never affects planning. New clips, manual and AI, start selected.
+`selected` means kept (design.md §2). A manual clip is always a kept clip; an AI clip is kept when `selected` is true and a suggestion when it is false. "All {n} clips" in the Export sheet exports the kept clips in transcript order. It never affects planning. `addClip` and `addAIClips` create clips with `selected = true`; the apps' Find Clips then clears `selected` on the clips it added, in the same undo step.
 
 `textOf(item) = corrections[item.id] ?? item.text`.
 
@@ -581,9 +581,9 @@ For AI-linked clip additions, the macOS history entry point is `EditHistory.appl
 | `setActiveClip(clipId?)` | Set `activeClipId`. Nothing else changes. Fixtures call it `previewClip` with an index pair or null. |
 | `addClip(startIndex, endIndex, origin, …)` | Append a `ClipRange` with a new id and `selected = true`. Manual clips come from a word selection and need no AI key. |
 | `addAIClips(resultId, clips)` | One undo step named "Find clips": for each result clip in order, append a `ClipRange { origin: ai, aiResultId: resultId, aiClipIndex: k, title, selected: true }`, skipping a clip whose `(startWordId, endWordId)` equals an existing clip's. Never removes or changes existing clips (ai.md 11.8). |
-| `updateClip(id, startIndex, endIndex)` | Nudge or reselect the edges, keeping `0 <= start <= end < count`. The "‹ ›" buttons move one item. If it is the active clip, the range layer follows. Edits are untouched. |
+| `updateClip(id, startIndex, endIndex)` | Nudge or reselect the edges, keeping `0 <= start <= end < count`. The timeline's trim handles and I / O call it (design.md §5.2, §6.2). If it is the active clip, the range layer follows. Edits are untouched. |
 | `renameClip(id, title?)` | Set the title (JS-trimmed; empty means null). |
-| `setClipSelected(id, selected)` | Set the checkbox. Nothing else changes. |
+| `setClipSelected(id, selected)` | Set `selected` (design.md §2): kept (`true`) or, for an AI clip, a suggestion (`false`). Nothing else changes. |
 | `removeClip(id)` | Remove the clip and its `share.captions` entry. If it was active, `activeClipId = null`. The AI result it came from stays. |
 | `setPauseKeep(seconds)` | `pauseKeepSeconds`, 0 to 1. The UI offers named levels (design spec). The default is 0.15. |
 | `setPauseThreshold(seconds)` | Re-derive `pauses` (5.7) and drop missing ids from `cutPauseIds`. |
@@ -886,15 +886,15 @@ Re-transcribing ("Transcribe Again…", design 11.3) replaces `transcript` and a
 
 `ai.results` caches clip-finding runs: provider (connector id from `shared/catalog/llm-providers.json`), model, preset (`best`, `hooks`, `topics`, `quotes`, `custom`), instructions, language, `inputSha256` (SHA-256 of the exact transcript block sent) and the validated clips with indices resolved to word ids.
 
-- A successful run appends its `aiResult` and then applies `addAIClips` (6.3): one `ClipRange` per result clip, `origin: ai`, with `aiResultId`, `aiClipIndex` and `selected: true`, skipping clips that duplicate an existing range. A new run never removes existing clips.
-- The Clips list shows every `ClipRange`, manual and AI, sorted by start word index, then by position in `clips`. Score and reason come from the linked result clip. Removing a clip deletes only the `ClipRange`.
+- A successful run appends its `aiResult` and then applies `addAIClips` (6.3): one `ClipRange` per result clip, `origin: ai`, with `aiResultId`, `aiClipIndex` and `selected: true`, skipping clips that duplicate an existing range. The app then applies `setClipSelected(id, false)` to each added clip in the same undo step, so they arrive as suggestions (design.md §2). A new run never removes existing clips.
+- The sidebar lists every `ClipRange`: kept clips first, then suggestions, each sorted by start word index, then by position in `clips`. Score and reason come from the linked result clip. Removing or dismissing a clip deletes only the `ClipRange`.
 - Nudging or renaming an AI clip changes only the `ClipRange`. Results remain valid after cuts. If the current transcript block hashes differently (because of corrections), the UI marks the result as made from an older transcript.
 - On save, results beyond the newest 10 that no `ClipRange` references are dropped.
 
 ### 10.7 Caches and other sections
 
 - Levels, waveforms, thumbnails, decoded or proxy audio, and transcription uploads live in the app support directory, keyed by `contentKey`. They never live in the project file. Deleting them never loses work.
-- `captions` stores `styleId`, a merge-patch `overrides` object (validated by the captions engine), and an optional dragged `position` with per-aspect overrides. The Export sheet's Captions picker and the inspector gallery read and write the same `styleId`; `"off"` burns no captions.
+- `captions` stores `styleId`, a merge-patch `overrides` object (validated by the captions engine), and an optional dragged `position` with per-aspect overrides. The Export sheet's Captions picker and the Captions section in the right column (design.md §6.1) read and write the same `styleId`; `"off"` burns no captions.
 - `export` stores the Export sheet's choices: `aspect` (`source`, `16:9`, `9:16`, `1:1`), `quality` (`standard`, `high`), `srt` and the last `folder` (null for the settings default). Output size, bitrate and frame rate are never stored; they are derived at export time (architecture 4.1). New projects copy the settings defaults (`export.defaultAspect`, `export.quality`, `export.srt`). Framing is the M1 centre crop; face-tracked reframe (M2) adds fields in a new schemaVersion.
 - `share.captions` maps an export target (`full` or a clip id) to the caption text the user edited in the share row (publishing 2.1). Entries for removed clips are dropped by `removeClip` and on load (10.4).
 - `voiceLab.segments` is reserved for M3 and MUST be empty in schemaVersion 1. `extensions` holds reverse-DNS-keyed data from forks, which VoxClip preserves when saving.
