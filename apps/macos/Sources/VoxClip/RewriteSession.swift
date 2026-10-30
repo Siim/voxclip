@@ -236,7 +236,11 @@ struct RewriteConnector {
                 refreshReview()
                 return true
             } catch is CancellationError { return false } catch {
-                if current && revision == expected { problem = await editor.app.safeError(error, context: "ai:Rewrite") }
+                if current && revision == expected {
+                    if let error = error as? LLMError {
+                        problem = await editor.app.log.redact(Self.proposalError(error, provider: connector.name, model: connector.model))
+                    } else { problem = await editor.app.safeError(error, context: "ai:\(connector.name)") }
+                }
                 return false
             }
         }
@@ -294,5 +298,8 @@ struct RewriteConnector {
         case is VoiceLabLengthBudgetError: return "There isn't enough timed speech to estimate this change. Your edits are saved."
         default: return UserMessages.message(error)
         }
+    }
+    static func proposalError(_ error: LLMError, provider: String, model: String) -> String {
+        error.userMessage(label: provider, model: model, feature: .voiceRewrite) ?? ""
     }
 }

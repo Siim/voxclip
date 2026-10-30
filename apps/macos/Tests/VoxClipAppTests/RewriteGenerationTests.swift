@@ -11,6 +11,11 @@ private struct GenerationTestKeys: KeyProvider {
 
 @Suite("Headless Rewrite generation", .serialized)
 @MainActor struct RewriteGenerationTests {
+    @Test func proposalErrorsNameTheConnectorAndRewrite() {
+        #expect(RewriteSession.proposalError(.unauthorized, provider: "Example", model: "test").hasPrefix("Example rejected"))
+        #expect(RewriteSession.proposalError(.refused, provider: "Example", model: "test").contains("declined to rewrite"))
+        #expect(RewriteSession.proposalError(.truncated, provider: "Example", model: "test").contains("rewrite was incomplete"))
+    }
     private func session(current: @escaping @MainActor () -> Bool = { true }) -> RewriteGenerationSession {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let store = VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
