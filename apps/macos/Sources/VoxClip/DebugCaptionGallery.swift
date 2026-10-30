@@ -14,6 +14,7 @@ import VoxClipCore
         let elapsed: Double
         let settled: Bool
         let passes: Int
+        let transitions: [CaptionGalleryAudit.Snapshot]
     }
     static func run(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
@@ -301,12 +302,17 @@ import VoxClipCore
         var settled = false
         var passes = 0
         var stablePasses = 0
+        var previousPaint: CGRect?
+        var transitions: [CaptionGalleryAudit.Snapshot] = []
         repeat {
+            host.needsLayout = true
             host.layoutSubtreeIfNeeded()
-            host.displayIfNeeded()
             current = snapshot(identifier)
+            if let current, transitions.last != current { transitions.append(current) }
             passes += 1
             var ready = false
+            let markers = DebugRightColumn.markers(in: host)
+            let actualPaint = markers["caption.target.\(style)"]?.insetBy(dx: -3, dy: 0)
             // Cached frames and the model's style are right the moment a change is made, before SwiftUI
             // has delivered it; only a consumed request shows the gallery has acted on the change.
             if let current, let paint = current.paint, current.consumed, current.selectedStyle == style, current.paintStyle == style, !current.pending,
@@ -322,16 +328,26 @@ import VoxClipCore
                 }
                 // An unattached host has no display cycle: its measured viewport must match the gallery's real frame.
                 if ready, host.window == nil {
-                    ready = DebugRightColumn.markers(in: host)["caption.gallery.\(identifier)"].map { abs($0.height - current.size.height) <= 0.5 } ?? false
+                    ready = markers["caption.gallery.\(identifier)"].map { abs($0.height - current.size.height) <= 0.5 } ?? false
+                }
+                if ready, let viewport = markers["caption.gallery.\(identifier)"]?.insetBy(dx: -3, dy: 0), let actualPaint {
+                    if short {
+                        ready = abs(actualPaint.minY - viewport.minY) <= 0.5
+                    } else {
+                        ready = viewport.insetBy(dx: -0.5, dy: -0.5).contains(actualPaint)
+                    }
+                } else {
+                    ready = false
                 }
             }
-            stablePasses = ready && previous == current ? stablePasses + 1 : 0
+            stablePasses = ready && previous == current && previousPaint == actualPaint ? stablePasses + 1 : (ready ? 1 : 0)
             if stablePasses >= 3 { settled = true; break }
             previous = ready ? current : nil
-            await Task.yield()
+            previousPaint = ready ? actualPaint : nil
+            if !ready { await Task.yield() }
         } while ProcessInfo.processInfo.systemUptime - started < 2
         return Measurement(name: name, width: width, height: height, style: style, snapshot: current,
-            elapsed: ProcessInfo.processInfo.systemUptime - started, settled: settled, passes: passes)
+            elapsed: ProcessInfo.processInfo.systemUptime - started, settled: settled, passes: passes, transitions: transitions)
     }
 }
 #endif

@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish r2 — gallery layout receipt, not render queue timing
+
+- Loaded diagnostic traces reproduced a different failure after removing reveal budgets: last-selection paint was already contained, the request consumed and pending false, with zero scroll commands, but only two/three samples ran before the unchanged two-second deadline. Yielding between valid geometry samples lets unrelated caption rendering consume the deadline; the 4096-point window-free hosts do not need to scroll in these cases. Round-one reveal triggers and scroll-state suppression did not fix this harness scheduling dependency.
+- Settlement now forces three actual host layout passes and compares the selected native marker frame as well as the consumed SwiftUI geometry. Valid passes complete together, without yielding to unrelated rendering; incomplete geometry still yields and retains the two-second failure bound. No timeout increase or retry is added. Diagnostic measurement files retain geometry transitions so a future failure has exact evidence. Native short-viewport paint alignment and every existing containment assertion remain.
+- The focused test passes, followed by ten consecutive actual captionGalleryInteractions tests under nice while a real Release build remains running from the start through the end of every run. All ten pass in 3.3–3.9 seconds each; each selected tile has three stable measured layout passes. Earlier 9/10 and 8/10 diagnostic batches are retained as failures, not acceptance evidence.
+
 ### 2026-10-30 — sol-mac-polish r2 — hosted compiler guard
 
 - Rebuilt all tests with warn-long-expression-type-checking=300; no expression in the round-one/round-two touched files exceeds 300 ms. Reviewed added conversion arithmetic as well, and split export-progress quarters and Pocket-4 sample-duration/tone intermediates into typed operations for Xcode 26. The eight ownership/identity regressions pass in that build.
