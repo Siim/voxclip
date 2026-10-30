@@ -481,9 +481,7 @@ public sealed class EditorViewModel : ObservableObject
     public void SetCaptionStyle(string id)
     {
         if (isLeaving || IsReadOnly || Busy) return;
-        CaptionDrag.Cancel();
-        project = project with { Captions = project.Captions with { StyleId = id }, ModifiedAt = DateTimeOffset.UtcNow };
-        Changed?.Invoke(this, EventArgs.Empty);
+        RecordCaptions(project.Captions with { StyleId = id });
     }
 
     public void SetExport(ProjectExport value)
@@ -497,18 +495,34 @@ public sealed class EditorViewModel : ObservableObject
     public void SetCaptionOverrides(System.Text.Json.JsonElement value)
     {
         if (isLeaving || IsReadOnly || Busy) return;
-        CaptionDrag.Cancel();
-        project = project with { Captions = project.Captions with { Overrides = value.Clone() }, ModifiedAt = DateTimeOffset.UtcNow };
-        Changed?.Invoke(this, EventArgs.Empty);
+        RecordCaptions(project.Captions with { Overrides = value.Clone() });
     }
 
     public void SetCaptions(ProjectCaptions value)
     {
         if (isLeaving || IsReadOnly || Busy) return;
+        RecordCaptions(value);
+    }
+
+    /// <summary>A caption style, Fine tune or reset change is its own undo step, as on the Mac ("Change caption style", "Fine tune
+    /// captions"). Undo then restores only what each step changed: undoing an earlier cut can no longer bring back the captions
+    /// that step saw. Choosing what is already set records nothing.</summary>
+    private void RecordCaptions(ProjectCaptions captions)
+    {
         CaptionDrag.Cancel();
-        project = project with { Captions = value, ModifiedAt = DateTimeOffset.UtcNow };
+        if (SameCaptions(project.Captions, captions)) return;
+        undo.Push(CaptureHistory()); redo.Clear();
+        project = project with { Captions = captions, ModifiedAt = DateTimeOffset.UtcNow };
+        foreach (var name in new[] { nameof(IsDirty), nameof(CanUndo), nameof(CanRedo) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    private static bool SameCaptions(ProjectCaptions a, ProjectCaptions b) =>
+        a.StyleId == b.StyleId && a.Position == b.Position &&
+        (a.Overrides.ValueKind == System.Text.Json.JsonValueKind.Undefined || b.Overrides.ValueKind == System.Text.Json.JsonValueKind.Undefined
+            ? a.Overrides.ValueKind == b.Overrides.ValueKind : System.Text.Json.JsonElement.DeepEquals(a.Overrides, b.Overrides)) &&
+        a.PositionByAspect.Count == b.PositionByAspect.Count &&
+        a.PositionByAspect.All(pair => b.PositionByAspect.TryGetValue(pair.Key, out var other) && other == pair.Value);
 
     internal void MoveCaptionAnchor(CaptionPosition anchor)
         => MoveCaptionSettings(CaptionFineTune.Anchor(project, anchor));
