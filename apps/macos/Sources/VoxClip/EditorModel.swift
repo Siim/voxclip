@@ -17,7 +17,14 @@ struct EditorRenderSnapshot {
     var findClipsAnchor = FindClipsAnchor.toolbar
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
-    var selectedWordIDs: Set<String> = [] { didSet { if selectedWordIDs != oldValue { rewriteOpenTask?.cancel() } } }
+    var selectedWordIDs: Set<String> = [] {
+        didSet {
+            guard selectedWordIDs != oldValue else { return }
+            rewriteOpenTask?.cancel()
+            // Selecting other words ends an open inline correction, as a click elsewhere ends an inline rename.
+            if let id = correctionID, !selectedWordIDs.contains(id) { endCorrection() }
+        }
+    }
     var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel() } } }
     var previewStop: Double?
     var playhead: Double = 0
@@ -413,7 +420,7 @@ struct EditorRenderSnapshot {
         history = nil
         renderedTranscript = nil; renderedEdits = nil; renderedMedia = nil; renderedVoiceLab = nil
         planningSegments = nil; planningWordIndex = [:]; summaryCache.removeAll()
-        selectedWordIDs = []; selectedPauseIDs = []; correctionID = nil
+        correctionID = nil; selectedWordIDs = []; selectedPauseIDs = []
         fallbackNote = nil; focusedSuggestion = nil; clipError = nil; error = nil; previewError = nil
         mediaResolved = document.demo
         refresh()
@@ -870,6 +877,13 @@ struct EditorRenderSnapshot {
         correctionID = nil
         if advance, let position = index(id), position + 1 < words.count { selectedWordIDs = [words[position + 1].id]; beginCorrection() }
     }
+    /// Ends the inline correction (design §4.2) the way an inline rename ends: focus leaving the field, a selection
+    /// change and Play keep the typed text when it can be saved; Esc, or text that can't be saved, keeps the word.
+    func endCorrection(keep: Bool = true) {
+        guard correctionID != nil else { return }
+        if keep { saveCorrection() }
+        correctionID = nil
+    }
     func select(_ id: String, extend: Bool = false) {
         selectedPauseIDs = []
         if extend, let anchor = selectedIDs.first, let lower = index(anchor), let upper = index(id) { selectedWordIDs = Set(words[min(lower, upper)...max(lower, upper)].map(\.id)) }
@@ -893,7 +907,7 @@ struct EditorRenderSnapshot {
         }
     }
     func transport(_ key: String, shift: Bool = false) {
-        guard correctionID == nil else { return }
+        endCorrection()
         switch key.lowercased() {
         case " ":
             if shift, let word = words.first(where: { selectedWordIDs.contains($0.id) }) { seek(source: word.start) }
