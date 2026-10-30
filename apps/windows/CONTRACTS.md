@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-30 — Original-channel microphone silence (R2b)
+
+- A frame qualifies as exact digital zero only when every original interleaved channel is zero. SILENT packet flags qualify independently of sample bytes. The two-second silent-frame run and wholly silent short-take guard use those input facts, not the mono average. Nonzero opposing channels may produce zero mono output and a zero meter, but do not discard the take as Silent.
+- Portable regressions cover opposing stereo channels in float32 and PCM16/24/32, short Stop and two-second capture, resetting all-zero/SILENT runs, and the existing all-zero/SILENT rejection cases. Native acceptance stays owed.
+
 ### 2026-10-30 — Settings restart edit boundary (R2b)
 
 - Restart preparation disables Settings navigation and content before checking any text fields. All registered text fields use awaited settings-queue writes, including legacy language, provider and export fields; these authorized commits remain allowed while ordinary editing and actions are gated. Invalid or failed commits restore interactivity immediately and remain retryable. Successful preparation keeps Settings disabled until the restart coordinator resumes it, including after a later veto or dispatch failure.

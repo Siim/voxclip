@@ -191,6 +191,46 @@ public sealed class MicrophoneCaptureTests
         Assert.Equal(MicrophoneError.Silent, recorder.Snapshot().Failure); Assert.Empty(recorder.Stop().Mono);
     }
 
+    [Theory]
+    [InlineData(0, false)] [InlineData(0, true)]
+    [InlineData(1, false)] [InlineData(1, true)]
+    [InlineData(2, false)] [InlineData(2, true)]
+    [InlineData(3, false)] [InlineData(3, true)]
+    public async Task OpposingChannelsAreNotDigitalSilence(int kind, bool twoSeconds)
+    {
+        var endpoint = new FakeMicrophoneEndpoint { Kind = (MicrophoneSampleKind)kind, Channels = 2 };
+        await using var recorder = New(endpoint, new());
+        await recorder.StartAsync(30, TestContext.Current.CancellationToken);
+        var frames = twoSeconds ? endpoint.Rate * 2 : 1;
+        var samples = new float[frames * 2];
+        for (var frame = 0; frame < frames; frame++) { samples[frame * 2] = 0.5f; samples[frame * 2 + 1] = -0.5f; }
+        endpoint.Emit(samples);
+        Assert.True(recorder.Snapshot().Recording);
+        Assert.Equal(0, recorder.Snapshot().Level);
+        var take = recorder.Stop(); await recorder.Completion;
+        Assert.Null(recorder.Snapshot().Failure);
+        Assert.Equal(frames, take.Mono.Length);
+        Assert.All(take.Mono, sample => Assert.Equal(0, sample));
+        Assert.Equal(1, endpoint.StopCount); Assert.Equal(1, endpoint.DisposeCount);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task OpposingChannelsResetOriginalZeroOrSilentFlagRun(bool silentFlags)
+    {
+        var endpoint = new FakeMicrophoneEndpoint { Channels = 2 };
+        await using var recorder = New(endpoint, new());
+        await recorder.StartAsync(30, TestContext.Current.CancellationToken);
+        var samples = Enumerable.Repeat(silentFlags ? 0.5f : 0, endpoint.Rate * 2).ToArray();
+        endpoint.Emit(samples, silentFlags);
+        endpoint.Emit([0.5f, -0.5f]);
+        endpoint.Emit(samples, silentFlags);
+        Assert.True(recorder.Snapshot().Recording);
+        var take = recorder.Stop(); await recorder.Completion;
+        Assert.Null(recorder.Snapshot().Failure);
+        Assert.Equal(endpoint.Rate * 2 + 1, take.Mono.Length);
+    }
+
     [Fact]
     public async Task SilentRunResetsOnNonzeroSamplesAndShortSilentTakesAreRejected()
     {

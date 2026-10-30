@@ -249,14 +249,19 @@ public sealed class VoiceMicrophoneRecorder : IAsyncDisposable
             for (var frame = 0; frame < frames; frame++)
             {
                 double sum = 0;
+                var digitalZero = true;
                 if (!silent)
                     for (var channel = 0; channel < current.Channels; channel++)
-                        sum += Sample(data.Slice(frame * stride + channel * width, width), current.Kind);
+                    {
+                        var sample = Sample(data.Slice(frame * stride + channel * width, width), current.Kind);
+                        sum += sample;
+                        digitalZero &= sample == 0;
+                    }
                 var mono = (float)(sum / current.Channels);
                 if (!float.IsFinite(mono)) { current.Failure = MicrophoneError.Unavailable; Finish(current, true); return; }
                 current.Buffer[current.Count++] = mono;
-                current.ZeroFrames = mono == 0 ? current.ZeroFrames + 1 : 0;
-                if (mono != 0) current.Nonzero = true;
+                current.ZeroFrames = silent || digitalZero ? current.ZeroFrames + 1 : 0;
+                if (!silent && !digitalZero) current.Nonzero = true;
                 if (current.ZeroFrames >= 2 * current.Rate)
                 { current.Failure = MicrophoneError.Silent; Finish(current, true); return; }
             }
