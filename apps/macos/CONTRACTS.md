@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-vl-followups — pause-fit printf parity
+
+- `RewriteGenerationSession.pauseFitNote(_:)` replays every shared pause-fit vector byte for byte. It chooses `+` for values >= 0 (including -0), otherwise U+2212, before rounding; the magnitude uses C `vsnprintf_l` with a nil (C) locale and `%.1f`, with a dynamically sized buffer, then ` s`. Foundation's explicit-locale decimal rounding is not this contract.
+- The 18-vector headless replay failed on six vectors before the formatter change; the shared fixture is unchanged. Other explicit-locale Voice Lab copy (`lengthCopy` and take duration) remains outside this pause-note contract and is unchanged.
+
 ### 2026-10-30 — lead — Voice Lab merged on both platforms
 
 - Squash-merged track/sol-mac-voicelab at 03e43989 (W1-W11) and track/sol-win-voicelab at 3f5c3ea6 (c1-c7) together, so the shared request goldens, quote mutations and pause-fit vectors match on both Cores.
