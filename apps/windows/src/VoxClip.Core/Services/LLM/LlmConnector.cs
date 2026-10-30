@@ -113,8 +113,11 @@ public sealed partial class LlmConnector
             try
             {
                 var details = await GetAsync("/api/v0/models/" + Uri.EscapeDataString(model), catalog.Timeout("modelList"), ct).ConfigureAwait(false);
-                if (details?["loaded_context_length"] is { } loaded) return loaded.GetValue<int>();
-                if (details?["max_context_length"] is { } maximum) return maximum.GetValue<int>();
+                if (details?["state"]?.GetValue<string>() == "loaded")
+                {
+                    if (details["loaded_context_length"] is JsonValue loaded && loaded.TryGetValue<int>(out var context) && context > 0) return context;
+                    if (details["max_context_length"] is JsonValue maximum && maximum.TryGetValue<int>(out context) && context > 0) return context;
+                }
             }
             catch (LlmException exception) when (exception.Error.Kind != LlmErrorKind.Cancelled) { }
             return 4096;
@@ -191,9 +194,14 @@ public sealed partial class LlmConnector
             var parts = new JsonArray();
             if (request.CachedBlock is not null) parts.Add((JsonNode)new JsonObject { ["text"] = request.CachedBlock });
             parts.Add((JsonNode)new JsonObject { ["text"] = request.Instruction });
+            // 2026-10-30: https://ai.google.dev/api/generate-content does not confirm responseFormat GA for every curated model; retain responseJsonSchema.
+            var generation = new JsonObject { ["maxOutputTokens"] = maxOut, ["responseMimeType"] = "application/json", ["responseJsonSchema"] = schema };
+            var stripped = model.StartsWith("models/", StringComparison.Ordinal) ? model[7..] : model;
+            if (effort is not null && Regex.IsMatch(stripped, "^gemini-([3-9]|[1-9][0-9]+)([.-]|$)", RegexOptions.CultureInvariant))
+                generation["thinkingConfig"] = new JsonObject { ["thinkingLevel"] = effort.ToUpperInvariant() };
             return new JsonObject { ["systemInstruction"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["text"] = request.System }) },
                 ["contents"] = new JsonArray(new JsonObject { ["role"] = "user", ["parts"] = parts }),
-                ["generationConfig"] = new JsonObject { ["maxOutputTokens"] = maxOut, ["responseMimeType"] = "application/json", ["responseJsonSchema"] = schema } };
+                ["generationConfig"] = generation };
         }
         var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = request.System }, new JsonObject { ["role"] = "user", ["content"] = UserContent(request) });
         if (Id == ConnectorId.Ollama)
@@ -205,7 +213,11 @@ public sealed partial class LlmConnector
             var numContext = Math.Min(context, Math.Max(8192, (int)(Math.Ceiling(needed / 1024.0) * 1024)));
             var body = new JsonObject { ["model"] = model, ["stream"] = false, ["messages"] = messages, ["format"] = schema,
                 ["options"] = new JsonObject { ["num_ctx"] = numContext, ["num_predict"] = maxOut, ["temperature"] = 0 }, ["keep_alive"] = "10m" };
-            if (details["capabilities"] is JsonArray capabilities && capabilities.Any(capability => capability?.GetValue<string>() == "thinking")) body["think"] = false;
+            if (details["thinking"]?["values"] is JsonArray thinkingValues)
+            {
+                if (thinkingValues.Any(value => value is JsonValue item && item.TryGetValue<bool>(out var enabled) && !enabled)) body["think"] = false;
+                else if (new[] { "low", "medium", "high" }.FirstOrDefault(level => thinkingValues.Any(value => value is JsonValue item && item.TryGetValue<string>(out var name) && name == level)) is { } lowest) body["think"] = lowest;
+            }
             return body;
         }
         var compatible = new JsonObject { ["model"] = model, ["messages"] = messages,
@@ -272,7 +284,7 @@ public sealed partial class LlmConnector
                 var requestId = requestIdHeader is not null && response.Headers.TryGetValues(requestIdHeader, out var values) ? values.FirstOrDefault() : null;
                 WriteAttempt(model, canonical, attempt, status, stopwatch.Elapsed, parsed, requestId, key);
                 recorded = true;
-                if (response.IsSuccessStatusCode && !(Id == ConnectorId.OpenAI && parsed["status"]?.GetValue<string>() == "failed")) return (parsed, requestId);
+                if (response.IsSuccessStatusCode) return (parsed, requestId);
                 var message = parsed["error"] is JsonValue value ? value.GetValue<string>() : parsed["error"]?["message"]?.GetValue<string>() ?? "The provider rejected the request.";
                 if (feature != LlmFeature.VoiceRewrite && Id == ConnectorId.Anthropic && status == 400 && body?.ContainsKey("fallbacks") == true && message.Contains("anthropic-beta", StringComparison.OrdinalIgnoreCase) && message.Contains("unexpected", StringComparison.OrdinalIgnoreCase))
                 { betaUnsupported = true; body.Remove("fallbacks"); attempt--; continue; }
@@ -408,10 +420,22 @@ public sealed partial class LlmConnector
         if (Id == ConnectorId.Anthropic)
         {
             text = string.Concat((body["content"] as JsonArray ?? []).Where(block => block?["type"]?.GetValue<string>() == "text").Select(block => block!["text"]?.GetValue<string>()));
-            stop = body["stop_reason"]?.GetValue<string>() switch { "max_tokens" => new StopKind.Truncated(), "refusal" => new StopKind.Refused(body["stop_details"]?["category"]?.GetValue<string>()), _ => stop };
+            stop = body["stop_reason"]?.GetValue<string>() switch { "max_tokens" or "model_context_window_exceeded" => new StopKind.Truncated(), "refusal" => new StopKind.Refused(body["stop_details"]?["category"]?.GetValue<string>()), _ => stop };
         }
         else if (Id == ConnectorId.OpenAI)
         {
+            if (body["status"]?.GetValue<string>() == "failed")
+            {
+                var code = body["error"]?["code"]?.GetValue<string>();
+                throw code switch
+                {
+                    "rate_limit_exceeded" => Error(LlmErrorKind.RateLimited, model, request.Feature),
+                    "invalid_prompt" or "bio_policy" or "misalignment_policy_violation" or "image_content_policy_violation" => Error(LlmErrorKind.Refused, model, request.Feature, detail: code),
+                    "data_residency_mismatch" => Error(LlmErrorKind.Unavailable, model, request.Feature, detail: "OpenAI can't serve this request in the configured data region."),
+                    "invalid_image" or "invalid_image_format" or "invalid_base64_image" or "invalid_image_url" or "image_too_large" or "image_too_small" or "image_parse_error" or "invalid_image_mode" or "image_file_too_large" or "unsupported_image_media_type" or "empty_image_file" or "failed_to_download_image" or "image_file_not_found" => Error(LlmErrorKind.BadRequest, model, request.Feature, status: 400, detail: "OpenAI couldn't process an image in the request."),
+                    _ => Error(LlmErrorKind.Server, model, request.Feature, status: 500)
+                };
+            }
             if (body["status"]?.GetValue<string>() == "incomplete") stop = body["incomplete_details"]?["reason"]?.GetValue<string>() == "content_filter" ? new StopKind.Refused("content_filter") : new StopKind.Truncated();
             foreach (var item in body["output"] as JsonArray ?? [])
             {
@@ -428,8 +452,14 @@ public sealed partial class LlmConnector
             var finish = candidate?["finishReason"]?.GetValue<string>();
             var blocked = body["promptFeedback"]?["blockReason"]?.GetValue<string>();
             if (!string.IsNullOrEmpty(blocked)) stop = new StopKind.Refused(blocked);
-            else if (finish is "MAX_TOKENS" or "CONTINUATION") stop = new StopKind.Truncated();
-            else if (finish is "SAFETY" or "RECITATION" or "LANGUAGE" or "BLOCKLIST" or "PROHIBITED_CONTENT" or "SPII" or "OTHER") stop = new StopKind.Refused(finish);
+            else stop = finish switch
+            {
+                "STOP" => new StopKind.Complete(),
+                "MAX_TOKENS" or "CONTINUATION" => new StopKind.Truncated(),
+                "SAFETY" or "RECITATION" or "LANGUAGE" or "BLOCKLIST" or "PROHIBITED_CONTENT" or "SPII" or "OTHER" or "IMAGE_SAFETY" or "IMAGE_PROHIBITED_CONTENT" or "IMAGE_OTHER" or "IMAGE_RECITATION" or "ESCALATION" => new StopKind.Refused(finish),
+                "PUP_LIMITED_DISABLED" => throw Error(LlmErrorKind.Unavailable, model, request.Feature, detail: "Google Gemini has limited or disabled this account for prohibited use."),
+                _ => throw Error(LlmErrorKind.Server, model, request.Feature, status: 500)
+            };
         }
         else if (Id == ConnectorId.Ollama)
         {
@@ -455,9 +485,19 @@ public sealed partial class LlmConnector
         {
             ConnectorId.Anthropic => new(Count(usage?["input_tokens"]), Count(usage?["output_tokens"]), Count(usage?["cache_read_input_tokens"]), Count(usage?["cache_creation_input_tokens"])),
             ConnectorId.OpenAI => new(Count(usage?["input_tokens"]), Count(usage?["output_tokens"]), Count(usage?["input_tokens_details"]?["cached_tokens"]), null),
-            ConnectorId.Gemini => new(Count(body["usageMetadata"]?["promptTokenCount"]), Count(body["usageMetadata"]?["candidatesTokenCount"]), Count(body["usageMetadata"]?["cachedContentTokenCount"]), null),
+            ConnectorId.Gemini => new(Count(body["usageMetadata"]?["promptTokenCount"]), GeminiOutput(body["usageMetadata"]), Count(body["usageMetadata"]?["cachedContentTokenCount"]), null),
             ConnectorId.Ollama => new(Count(body["prompt_eval_count"]), Count(body["eval_count"]), null, null),
             _ => new(Count(usage?["prompt_tokens"]), Count(usage?["completion_tokens"]), Count(usage?["prompt_tokens_details"]?["cached_tokens"]), null)
         };
+    }
+
+    private static long? GeminiOutput(JsonNode? usage)
+    {
+        static long? Count(JsonNode? node) => node is JsonValue value && value.TryGetValue<long>(out var count) ? count : null;
+        var visible = Count(usage?["candidatesTokenCount"]);
+        var thoughts = Count(usage?["thoughtsTokenCount"]);
+        if (visible is null && thoughts is null) return null;
+        try { return checked((visible ?? 0) + (thoughts ?? 0)); }
+        catch (OverflowException) { return null; }
     }
 }

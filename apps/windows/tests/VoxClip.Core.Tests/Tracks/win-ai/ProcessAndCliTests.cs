@@ -10,6 +10,19 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 [Trait("Track", "win-ai")]
 public sealed class ProcessAndCliTests
 {
+    [Fact]
+    public async Task CodexOfflineAndFailedRefreshNeverOfferRetiredCuratedModel()
+    {
+        var catalog = Catalog();
+        using var processes = new FixtureProcessRunner(ConnectorId.Codex, catalog, new());
+        processes.Override = request => request.Arguments.Contains("app-server") ? new(1, "", "offline", TimeSpan.Zero, false) : null;
+        using var http = new HttpClient(new StubHttp((_, _, _) => throw new InvalidOperationException()));
+        var connector = new LlmConnector(ConnectorId.Codex, catalog, http, new MemoryKeys(null), new Redactor(), processes: processes, binaryOverride: processes.BinaryPath);
+        Assert.DoesNotContain(await connector.GetModelsAsync(false, TestContext.Current.CancellationToken), model => model.Id == "gpt-5.5");
+        Assert.DoesNotContain(await connector.GetModelsAsync(true, TestContext.Current.CancellationToken), model => model.Id == "gpt-5.5");
+        Assert.DoesNotContain(catalog.Provider(ConnectorId.Codex)["fallbackOrder"]!.AsArray(), model => model!.GetValue<string>() == "gpt-5.5");
+    }
+
     [Theory]
     [InlineData("", 0, null)]
     [InlineData("Ready", 0, null)]

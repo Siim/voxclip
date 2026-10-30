@@ -97,7 +97,9 @@ public actor HTTPConnector: LLMConnector {
             let escaped = escapedModel(model)
             do {
                 let info = try await fetch(path: "/api/v0/models/\(escaped)", timeout: 15)
-                if let context = info[ai: "loaded_context_length"].aiInt ?? info[ai: "max_context_length"].aiInt, context > 0 {
+                let loaded = info[ai: "loaded_context_length"].aiInt.flatMap { $0 > 0 ? $0 : nil }
+                if info[ai: "state"].aiString == "loaded",
+                   let context = loaded ?? info[ai: "max_context_length"].aiInt, context > 0 {
                     contexts[model] = context
                     return context
                 }

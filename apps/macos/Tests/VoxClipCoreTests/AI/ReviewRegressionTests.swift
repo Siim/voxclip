@@ -81,7 +81,7 @@ extension HTTPConnectorTests {
 
     @Test(arguments: [URLError.Code.cannotConnectToHost, .timedOut, .networkConnectionLost, .cancelled])
     func lmStudioDoesNotCacheTransportAssumptions(_ failure: URLError.Code) async throws {
-        let harness = try HTTPHarness(.lmstudio, replies: [.transport(failure), .json(#"{"loaded_context_length":32768}"#)])
+        let harness = try HTTPHarness(.lmstudio, replies: [.transport(failure), .json(#"{"state":"loaded","loaded_context_length":32768}"#)])
         defer { harness.finish() }
         #expect(await harness.connector.contextTokens(model: "local") == nil)
         #expect(await harness.connector.assumedContextModels.isEmpty)

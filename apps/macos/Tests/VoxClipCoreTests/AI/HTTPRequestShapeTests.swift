@@ -59,7 +59,7 @@ extension HTTPConnectorTests {
         defer { harness.finish() }
         _ = try await harness.connector.send(HTTPFixtures.f1(), model: harness.model)
         let body = try #require(HTTPStubProtocol.requests.last).json()
-        let forbidden = ["temperature", "top_p", "top_k", "thinking", "tool_choice", "reasoning_effort", "responseSchema", "topP", "topK", "thinkingConfig"]
+        let forbidden = ["temperature", "top_p", "top_k", "thinking", "tool_choice", "reasoning_effort", "responseSchema", "topP", "topK", "thinkingBudget"] + (id == .gemini ? [] : ["thinkingConfig"])
         func HTTPCheck(_ value: JSONValue) {
             if let object = value.aiObject {
                 for (key, child) in object where key != "schema" && key != "responseJsonSchema" {

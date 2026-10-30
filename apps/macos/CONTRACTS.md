@@ -1,5 +1,54 @@
 # macOS implementation contracts
 
+### 2026-10-30 — Gemini runner incomplete-output regression
+
+- The real LLM runner is tested through stub HTTP for MAX_TOKENS, CONTINUATION and MALFORMED_RESPONSE with empty text, truncated JSON and schema-valid-looking JSON. Exact caller errors and user copy remain truncated/incomplete for token stops and server 500 for malformed responses; each case sends exactly one request and never sleeps or corrects the reply. Both Cores mirror the nine-case matrix. No production behavior changed.
+
+### 2026-10-30 — Portable Windows release runtime checks
+
+- The Windows release-scripts-5 draft is reapplied by intent: Windows RID publishes prune foreign Whisper.net natives and the Metal shader, and the release VM rejects payload drift. Portable PowerShell tests exercise both architectures and the actual MSBuild target, including no-RID/non-Windows preservation and a missing-target failure. Mac development payloads remain unchanged.
+
+### 2026-10-30 — GitHub version pin and Apple Speech reservations
+
+- UpdateChecker and Windows release tooling each hold one named 2022-11-28 API constant with GitHub's March 10, 2028 support end date. Injected-session and portable release-tool tests require the actual header.
+- Apple reserve false means already reserved, not a limit error; both true and false continue installation through the tested reservation seam. Thrown reservation-limit errors retain stale-locale release and one retry, and the existing exact message when all reserved speech locales are in use. No App UI changed.
+
+### 2026-10-30 — Text-only cloud model pickers
+
+- OpenAI and xAI discovered-model filters reject live, voice, audio, realtime and transcription-only ids in addition to existing non-text exclusions. Both stub suites include the audit examples gpt-live-1 and grok-voice-2.0/3.0, plus text controls; the shared catalog records the same filter rules.
+
+### 2026-10-30 — Codex curated retirement
+
+- Removed gpt-5.5 from the shared Codex curated list following its October 14, 2026 ChatGPT-sign-in retirement. Offline and failed-refresh picker tests exclude it, and pin its absence from fallbackOrder. A successful CLI model/list remains authoritative for that user's authentication mode.
+
+### 2026-10-30 — Ollama advertised thinking controls
+
+- Both Cores select `think: false` only from an actual boolean false in cached /api/show thinking.values; otherwise use the lowest advertised low/medium/high string or omit think for unknown/absent controls. Capability alone never invents a control. Shared request goldens cover booleans, GPT-OSS levels in reverse order, medium minimum, unknown and absent metadata.
+
+### 2026-10-30 — Gemini schema compatibility retained
+
+- Keep responseMimeType/responseJsonSchema: the current generateContent reference deprecates the older field and describes responseFormat, but does not explicitly establish its general availability for all three curated models. Dated source comments link the reference; tests pin the existing schema field on each curated model without mixing the two formats. No speculative wire migration.
+
+### 2026-10-30 — Gemini effort and total output budget
+
+- Gemini 3+ maps canonical low/medium/high to LOW/MEDIUM/HIGH thinking levels; older/custom nonmatching ids omit the unsupported field. Shared request goldens cover all efforts, absent effort, legacy ids, connection tests and clip/tighten requests. The canonical cap is a combined thinking-plus-visible cap, never silently enlarged, and usage includes thoughts. Google documents relative thinking allowances, not a guaranteed visible-token reserve, and forbids combining thinkingLevel with thinkingBudget; no such guarantee is claimed.
+
+### 2026-10-30 — Gemini terminal reasons
+
+- Mirrored tables accept only `STOP` as complete. Token limits truncate; policy/image blocks and escalation refuse; PUP-limited accounts are unavailable; malformed, tool, missing, unspecified and future reasons fail closed as server errors without a corrective retry. Prompt blocking takes precedence. Both Core suites cover every documented FinishReason plus empty/unknown values.
+
+### 2026-10-30 — OpenAI failed Responses
+
+- Both Cores use the same documented `Response.error.code` table for HTTP-200 failed envelopes: rate limits, policy refusals, region unavailability, invalid-image requests and server failures. HTTP-only error codes are not reinterpreted here. Tests cover all 21 documented codes, unknown codes and HTTP-only codes; failed envelopes never trigger a transport or corrective retry.
+
+### 2026-10-30 — Anthropic context exhaustion
+
+- `model_context_window_exceeded` maps to the same truncated stop as `max_tokens` (ai.md §4.6; Anthropic stop-reasons reference). Both Cores reject partial JSON without a paid corrective retry; stub runner tests assert one request.
+
+### 2026-10-30 — LM Studio working context
+
+- Both Cores trust positive v0 context fields only for `state: loaded`, preferring `loaded_context_length`. Unloaded/unknown contexts use the conservative 4,096-token fallback from ai.md §§6.6/11.5, never a JIT model's advertised maximum. Stub tests cover states and positive loaded lengths; the Mac retains its assumed-context note.
+
 ### 2026-10-30 — lead — ElevenLabs error detail and residency keys
 
 - A live Scribe upload failed with only "ElevenLabs answered 400: the request could not finish". `ElevenLabsTranscriber.providerError(status:data:key:region:)` now also reads the object form of `detail` (`{type, code, message, status}`), not only a string or a list. `UserMessages` shows the redacted reason unless it is the generic text, and the import logs `engine=elevenlabs status=… detail=…` at warn level.

@@ -3,6 +3,10 @@ import Speech
 import VoxClipCore
 
 enum AppleSpeechAssets {
+    static func reserve(operation: @Sendable () async throws -> Bool) async throws {
+        _ = try await operation()
+    }
+
     static func map(_ error: any Error, locale: String) -> VoxClipError {
         if let error = error as? VoxClipError { return error }
         if error is CancellationError || Task.isCancelled { return .cancelled }

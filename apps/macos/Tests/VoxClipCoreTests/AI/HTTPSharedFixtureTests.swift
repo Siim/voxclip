@@ -64,7 +64,7 @@ private enum HTTPSharedFixtures {
 
     static func render(_ canonical: JSONValue, connector id: ConnectorID, options: JSONValue, expected: JSONValue, label: String) async throws {
         #expect(expected[ai: "kind"].aiString == "http", "\(label): expected HTTP rendering")
-        let allowedOptions: Set<String> = ["model", "baseUrl", "modelContext", "capabilities", "serverSideFallback", "structuredOutputsSupported", "effortSupported"]
+        let allowedOptions: Set<String> = ["model", "baseUrl", "modelContext", "capabilities", "thinkingValues", "serverSideFallback", "structuredOutputsSupported", "effortSupported"]
         let unknownOptions = Set(options.aiObject?.keys.map { $0 } ?? []).subtracting(allowedOptions)
         #expect(unknownOptions.isEmpty, "\(label): unhandled connector options \(unknownOptions)")
         let catalog = try HTTPFixtures.catalog()
@@ -85,6 +85,7 @@ private enum HTTPSharedFixtures {
         if id == .ollama {
             var details: [String: JSONValue] = ["model_info": .object(["fixture.context_length": options[ai: "modelContext"] == .null ? .number(32768) : options[ai: "modelContext"]])]
             if options[ai: "capabilities"] != .null { details["capabilities"] = options[ai: "capabilities"] }
+            if options[ai: "thinkingValues"] != .null { details["thinking"] = .object(["values": options[ai: "thinkingValues"]]) }
             replies.append(.json(try JSONValue.object(details).aiCompact()))
         } else if id == .lmstudio {
             replies += try HTTPFixtures.localDetails(id)

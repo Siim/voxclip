@@ -150,7 +150,7 @@
         "path": "/v1/models",
         "items": "data",
         "id": "id",
-        "include": "id starts with gpt- or matches ^o[0-9]; id contains none of: audio, realtime, transcribe, tts, image, search, embedding, moderation, instruct",
+        "include": "id starts with gpt- or matches ^o[0-9]; id contains none of: audio, realtime, live, voice, transcribe, tts, image, search, embedding, moderation, instruct",
         "sort": "created descending"
       },
       "requestIdHeader": "x-request-id",
@@ -194,7 +194,7 @@
         "path": "/v1/models",
         "items": "data",
         "id": "id",
-        "include": "id starts with grok-; id contains none of: image, imagine, video, vision, tts, stt"
+        "include": "id starts with grok-; id contains none of: image, imagine, video, vision, tts, stt, voice, audio, realtime, live, transcribe"
       },
       "requestIdHeader": "x-request-id",
       "defaultModel": "grok-4.5",
@@ -231,8 +231,8 @@
         "mechanism": "generationConfig.responseMimeType = application/json and generationConfig.responseJsonSchema = schema (never together with responseSchema)"
       },
       "promptCaching": { "mechanism": "implicit caching", "minPrefixTokens": null },
-      "effort": null,
-      "neverSend": ["temperature", "topP", "topK", "responseSchema", "thinkingConfig"],
+      "effort": { "field": "generationConfig.thinkingConfig.thinkingLevel", "values": ["LOW", "MEDIUM", "HIGH"], "models": "Gemini 3 and later", "budget": "maxOutputTokens includes thinking and visible output; never increased beyond the canonical cap" },
+      "neverSend": ["temperature", "topP", "topK", "responseSchema", "thinkingBudget"],
       "modelList": {
         "method": "GET",
         "path": "/v1beta/models",
@@ -525,8 +525,7 @@
         { "id": "gpt-6-luna", "name": "GPT-6-Luna", "tier": "fast" },
         { "id": "gpt-5.6-sol", "name": "GPT-5.6-Sol", "tier": "best" },
         { "id": "gpt-5.6-terra", "name": "GPT-5.6-Terra", "tier": "balanced" },
-        { "id": "gpt-5.6-luna", "name": "GPT-5.6-Luna", "tier": "fast" },
-        { "id": "gpt-5.5", "name": "GPT-5.5", "tier": "balanced" }
+        { "id": "gpt-5.6-luna", "name": "GPT-5.6-Luna", "tier": "fast" }
       ]
     }
   ]

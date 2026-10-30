@@ -8,6 +8,32 @@ import Testing
 
 @Suite("Apple speech asset safety")
 struct AppleSpeechSafetyTests {
+    @Test(arguments: [false, true])
+    func existingOrNewReservationBothContinueAssetPreparation(_ newlyReserved: Bool) async throws {
+        let prepared = Mutex(0)
+        try await AppleSpeechAssets.prepare(locale: "en-US", operation: {
+            try await AppleSpeechAssets.reserve { newlyReserved }
+            prepared.withLock { $0 += 1 }
+        }, reserve: { Issue.record("A successful reservation must not retry") }, release: { Issue.record("An existing reservation must not release a locale") })
+        #expect(prepared.withLock { $0 } == 1)
+    }
+
+    @Test
+    func reservationLimitStillReleasesAStaleLocaleAndRetries() async throws {
+        let calls = Mutex(0), releases = Mutex(0), reserves = Mutex(0)
+        let limit = NSError(domain: SFSpeechError.errorDomain, code: SFSpeechError.Code.tooManyAssetLocalesAllocated.rawValue)
+        try await AppleSpeechAssets.prepare(locale: "en-US", operation: {
+            try await AppleSpeechAssets.reserve {
+                let attempt = calls.withLock { $0 += 1; return $0 }
+                if attempt == 1 { throw limit }
+                return false
+            }
+        }, reserve: { reserves.withLock { $0 += 1 } }, release: { releases.withLock { $0 += 1 } })
+        #expect(calls.withLock { $0 } == 2)
+        #expect(releases.withLock { $0 } == 1)
+        #expect(reserves.withLock { $0 } == 1)
+    }
+
     @Test(arguments: [VoxClipError.transcriptionLanguageUnsupported("en"), .speechAssetsUnavailable("en")])
     func voxClipCaseIndexCollisionsDoNotRecover(_ failure: VoxClipError) async throws {
         let code = (failure as NSError).code

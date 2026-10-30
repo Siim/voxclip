@@ -1,5 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# GitHub supports 2022-11-28 until March 10, 2028: https://docs.github.com/en/rest/about-the-rest-api/api-versions.
+$script:ReleaseGitHubApiVersion = '2022-11-28'
 
 function Get-ReleasePrerequisite {
     param([Parameter(Mandatory = $true)][ValidateSet('win-x64', 'win-arm64')][string] $RuntimeIdentifier)
@@ -74,7 +76,7 @@ function Get-ReleaseDeltaBase {
     & $Vpk download github --repoUrl https://github.com/Siim/voxclip --channel $RuntimeIdentifier -o $OutputDirectory
     if ($LASTEXITCODE -eq 0) { return }
     $downloadExitCode = $LASTEXITCODE
-    $headers = @{ Accept = 'application/vnd.github+json'; 'User-Agent' = 'VoxClip-release'; 'X-GitHub-Api-Version' = '2022-11-28' }
+    $headers = @{ Accept = 'application/vnd.github+json'; 'User-Agent' = 'VoxClip-release'; 'X-GitHub-Api-Version' = $script:ReleaseGitHubApiVersion }
     try {
         $null = Invoke-RestMethod -Uri 'https://api.github.com/repos/Siim/voxclip/releases/latest' -Headers $headers -TimeoutSec 30
     } catch {
@@ -423,6 +425,24 @@ function Assert-ReleaseResources {
     foreach ($notice in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
         Copy-Item -LiteralPath (Join-Path $Repository $notice) -Destination $AppDirectory -Force
     }
+}
+
+function Assert-ReleaseWhisperRuntimes {
+    param([string] $AppDirectory, [ValidateSet('win-x64', 'win-arm64')][string] $RuntimeIdentifier)
+    $runtimes = Join-Path $AppDirectory 'runtimes'
+    if (-not (Test-Path -LiteralPath (Join-Path (Join-Path $runtimes $RuntimeIdentifier) 'whisper.dll') -PathType Leaf)) {
+        throw "Whisper.net native runtime is missing for $RuntimeIdentifier."
+    }
+    $foreign = @()
+    if (Test-Path -LiteralPath (Join-Path $AppDirectory 'ggml-metal.metal')) { $foreign += 'ggml-metal.metal' }
+    foreach ($file in Get-ChildItem -LiteralPath $runtimes -Recurse -File) {
+        $relative = $file.FullName.Substring($runtimes.Length).TrimStart('\', '/').Replace('\', '/')
+        if (-not ($relative.StartsWith("$RuntimeIdentifier/", [StringComparison]::OrdinalIgnoreCase) -or
+                $relative.StartsWith("noavx/$RuntimeIdentifier/", [StringComparison]::OrdinalIgnoreCase))) {
+            $foreign += "runtimes/$relative"
+        }
+    }
+    if ($foreign.Count) { throw "Foreign Whisper.net natives in the $RuntimeIdentifier payload: $($foreign -join ', ')" }
 }
 
 function Assert-ReleaseFileMatches {

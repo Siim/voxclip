@@ -57,10 +57,10 @@ extension HTTPConnector {
                 exclusions = []
             case .openai:
                 guard modelID.hasPrefix("gpt-") || modelID.range(of: #"^o[0-9]"#, options: .regularExpression) != nil else { continue }
-                exclusions = ["audio", "realtime", "transcribe", "tts", "image", "search", "embedding", "moderation", "instruct"]
+                exclusions = ["audio", "realtime", "live", "voice", "transcribe", "tts", "image", "search", "embedding", "moderation", "instruct"]
             case .xai:
                 guard modelID.hasPrefix("grok-") else { continue }
-                exclusions = ["image", "imagine", "video", "vision", "tts", "stt"]
+                exclusions = ["image", "imagine", "video", "vision", "tts", "stt", "voice", "audio", "realtime", "live", "transcribe"]
             case .gemini:
                 guard modelID.hasPrefix("gemini-"), item[ai: "supportedGenerationMethods"].aiArray.contains(.string("generateContent")) else { continue }
                 exclusions = ["embedding", "image", "tts", "audio", "live", "aqa"]

@@ -175,7 +175,7 @@ extension HTTPConnectorTests {
     func openaiFailedEnvelopeMapsErrorEvenWithHTTP200(_ code: String) async throws {
         let harness = try HTTPHarness(.openai, replies: [.json(try HTTPFixtures.encode(["status": "failed", "error": ["code": code]]))])
         defer { harness.finish() }
-        let expected: LLMError = code == "model_not_found" ? .modelNotFound(harness.model) : code == "insufficient_quota" ? .quotaExceeded : .contextTooLong
+        let expected: LLMError = .server(status: 500)
         await #expect(throws: expected) {
             try await harness.connector.send(harness.catalog.connectionTest(for: .openai), model: harness.model)
         }

@@ -51,8 +51,13 @@ extension HTTPConnector {
             var parts: [[String: Any]] = []
             if let cached = canonical.cachedBlock { parts.append(["text": cached]) }
             parts.append(["text": canonical.instruction])
+            // 2026-10-30: https://ai.google.dev/api/generate-content does not confirm responseFormat GA for every curated model; retain responseJsonSchema.
+            var generation: [String: Any] = ["maxOutputTokens": maximum, "responseMimeType": "application/json", "responseJsonSchema": schema]
+            if stripped.range(of: #"^gemini-([3-9]|[1-9][0-9]+)([.-]|$)"#, options: .regularExpression) != nil, let effort = canonical.effort {
+                generation["thinkingConfig"] = ["thinkingLevel": effort.rawValue.uppercased()]
+            }
             body = ["systemInstruction": ["parts": [["text": canonical.system]]], "contents": [["role": "user", "parts": parts]],
-                    "generationConfig": ["maxOutputTokens": maximum, "responseMimeType": "application/json", "responseJsonSchema": schema]]
+                    "generationConfig": generation]
         case .ollama:
             let context = contexts[model] ?? 4096
             let policy = AITokenPolicy(catalog.document[ai: "policy"])
@@ -63,7 +68,9 @@ extension HTTPConnector {
                     "options": ["num_ctx": computed, "num_predict": maximum, "temperature": 0], "keep_alive": "10m"]
             let capabilities = discovered[ai: "capabilities"].aiArray.compactMap(\.aiString)
             if discovered[ai: "capabilities"] != .null && !capabilities.contains("completion") { throw LLMError.noModels }
-            if capabilities.contains("thinking") { body["think"] = false }
+            let thinkingValues = discovered[ai: "thinking"][ai: "values"].aiArray
+            if thinkingValues.contains(.bool(false)) { body["think"] = false }
+            else if let lowest = ["low", "medium", "high"].first(where: { thinkingValues.contains(.string($0)) }) { body["think"] = lowest }
         case .lmstudio:
             body = ["model": model, "max_tokens": maximum, "temperature": 0, "messages": messages, "response_format": schemaFormat]
         default: throw LLMError.noConnector
@@ -85,7 +92,7 @@ extension HTTPConnector {
         switch id {
         case .anthropic:
             switch value[ai: "stop_reason"].aiString {
-            case "max_tokens": stop = .truncated
+            case "max_tokens", "model_context_window_exceeded": stop = .truncated
             case "refusal": stop = .refused(category: value[ai: "stop_details"][ai: "category"].aiString)
             default: break
             }
@@ -97,11 +104,16 @@ extension HTTPConnector {
             }
             if value[ai: "status"].aiString == "failed" {
                 let code = value[ai: "error"][ai: "code"].aiString ?? ""
-                if code == "model_not_found" { throw LLMError.modelNotFound(requestedModel) }
-                if code == "context_length_exceeded" { throw LLMError.contextTooLong }
-                if code == "insufficient_quota" { throw LLMError.quotaExceeded }
-                if code == "rate_limit_exceeded" { throw LLMError.rateLimited(retryAfter: nil) }
-                throw LLMError.server(status: 500)
+                switch code {
+                case "rate_limit_exceeded": throw LLMError.rateLimited(retryAfter: nil)
+                case "invalid_prompt", "bio_policy", "misalignment_policy_violation", "image_content_policy_violation":
+                    throw LLMError.refused(category: code)
+                case "data_residency_mismatch":
+                    throw LLMError.unavailable(reason: "OpenAI can't serve this request in the configured data region.")
+                case "invalid_image", "invalid_image_format", "invalid_base64_image", "invalid_image_url", "image_too_large", "image_too_small", "image_parse_error", "invalid_image_mode", "image_file_too_large", "unsupported_image_media_type", "empty_image_file", "failed_to_download_image", "image_file_not_found":
+                    throw LLMError.badRequest(status: 400, message: "OpenAI couldn't process an image in the request.")
+                default: throw LLMError.server(status: 500)
+                }
             }
             for item in value[ai: "output"].aiArray where item[ai: "type"].aiString == "message" {
                 for content in item[ai: "content"].aiArray {
@@ -118,12 +130,24 @@ extension HTTPConnector {
             usage = LLMUsage(input: value[ai: "usage"][ai: "prompt_tokens"].aiInt, output: value[ai: "usage"][ai: "completion_tokens"].aiInt, cacheRead: value[ai: "usage"][ai: "prompt_tokens_details"][ai: "cached_tokens"].aiInt)
         case .gemini:
             let candidate = value[ai: "candidates"].aiArray.first ?? .null
-            if let reason = value[ai: "promptFeedback"][ai: "blockReason"].aiString { stop = .refused(category: reason) }
-            let reason = candidate[ai: "finishReason"].aiString ?? ""
-            if ["MAX_TOKENS", "CONTINUATION"].contains(reason) { stop = .truncated }
-            if ["SAFETY", "RECITATION", "LANGUAGE", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "OTHER"].contains(reason) { stop = .refused(category: reason) }
+            if let reason = value[ai: "promptFeedback"][ai: "blockReason"].aiString, !reason.isEmpty {
+                stop = .refused(category: reason)
+            } else {
+                let reason = candidate[ai: "finishReason"].aiString ?? ""
+                switch reason {
+                case "STOP": break
+                case "MAX_TOKENS", "CONTINUATION": stop = .truncated
+                case "SAFETY", "RECITATION", "LANGUAGE", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "OTHER", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "IMAGE_RECITATION", "ESCALATION": stop = .refused(category: reason)
+                case "PUP_LIMITED_DISABLED": throw LLMError.unavailable(reason: "Google Gemini has limited or disabled this account for prohibited use.")
+                default: throw LLMError.server(status: 500)
+                }
+            }
             text = candidate[ai: "content"][ai: "parts"].aiArray.filter { $0[ai: "thought"].aiBool != true }.compactMap { $0[ai: "text"].aiString }.joined()
-            usage = LLMUsage(input: value[ai: "usageMetadata"][ai: "promptTokenCount"].aiInt, output: value[ai: "usageMetadata"][ai: "candidatesTokenCount"].aiInt, cacheRead: value[ai: "usageMetadata"][ai: "cachedContentTokenCount"].aiInt)
+            let visible = value[ai: "usageMetadata"][ai: "candidatesTokenCount"].aiInt
+            let thoughts = value[ai: "usageMetadata"][ai: "thoughtsTokenCount"].aiInt
+            let total = (visible ?? 0).addingReportingOverflow(thoughts ?? 0)
+            let output = visible == nil && thoughts == nil || total.overflow ? nil : total.partialValue
+            usage = LLMUsage(input: value[ai: "usageMetadata"][ai: "promptTokenCount"].aiInt, output: output, cacheRead: value[ai: "usageMetadata"][ai: "cachedContentTokenCount"].aiInt)
         case .ollama:
             text = value[ai: "message"][ai: "content"].aiString ?? ""
             if value[ai: "done_reason"].aiString == "length" { stop = .truncated }

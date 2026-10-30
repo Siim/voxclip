@@ -190,11 +190,16 @@ export function renderConnector(request, connector, catalog, options = {}) {
         systemInstruction: { parts: [{ text: request.system }] }, contents: [{ role: 'user', parts: chunks.map(text => ({ text })) }],
         generationConfig: { maxOutputTokens: maxOut, responseMimeType: 'application/json', responseJsonSchema: schema }
       }
+      if (request.effort && /^gemini-([3-9]|[1-9][0-9]+)([.-]|$)/.test(model.replace(/^models\//, ''))) body.generationConfig.thinkingConfig = { thinkingLevel: request.effort.toUpperCase() }
       break
     case 'ollama': {
       const needed = estimateTokens(request.system) + estimateTokens(request.cachedBlock) + estimateTokens(request.instruction) + estimateTokens(compactSchema) + maxOut + 256
       body = { model, stream: false, messages, format: schema, options: { num_ctx: Math.min(options.modelContext ?? 32768, Math.max(8192, Math.ceil(needed / 1024) * 1024)), num_predict: maxOut, temperature: 0 } }
-      if ((options.capabilities ?? ['completion', 'thinking']).includes('thinking')) body.think = false
+      if (options.thinkingValues?.includes(false)) body.think = false
+      else {
+        const lowest = ['low', 'medium', 'high'].find(level => options.thinkingValues?.includes(level))
+        if (lowest) body.think = lowest
+      }
       body.keep_alive = '10m'
       break
     }
