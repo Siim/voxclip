@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-30 — sol-win-voicelab round 6 — Review fixes
+
+- Recovery discovery checks the operation's creator region and key fingerprint on the exact key used for **every page**. A mismatch persists `RecoveryNeedsCreatorKey`, keeps the obligation pending, and shows “Recovery needs the ElevenLabs key that started this voice.” An empty page from another account cannot abandon or tombstone it. Legacy null fingerprints retain region-only matching. Offline regression probes cover an initially wrong key and a key changed between pages; local execution awaits the 15 GiB disk floor.
+
 ### 2026-10-30 — sol-win-voicelab round 5 — Settled Mac conformance
 
 - **Pinned integration and wire replay:** merge Mac W6 at exactly `1bd6aad8e792cf03c3e66cef1edea6aa9d6437b1`, without authored Mac, App or spec edits. Windows replays all **24 requests, 20 quote mutations and 42 clone-input cases**. The clone builder reads each `recoveryNonce`; multipart bodies, lengths, SHA-256 and part headers compare directly, with neither the old `files[]` adaptation nor the v3 expected-JSON/context allowance. Existing production multipart uses repeated `files`, exactly `language` plus optional `voxclip_record_id` labels, and the literal ` VoxClip request {nonce}.` description suffix.

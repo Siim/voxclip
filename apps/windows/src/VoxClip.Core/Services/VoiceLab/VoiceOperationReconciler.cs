@@ -117,7 +117,20 @@ public sealed class VoiceOperationReconciler
     private async Task<VoiceLabVoice?> FindRemoteAsync(VoiceOperation value, bool force, CancellationToken ct)
     {
         if (!force && value.NextAttemptAt is { } next && clock.GetUtcNow() < next) return null;
-        var voices = await Client(value.Region).ListOwnClonesAsync(ct).ConfigureAwait(false);
+        IReadOnlyList<VoiceLabVoice> voices;
+        try
+        {
+            var client = clients(value.Region);
+            if (client.Region != value.Region) throw new VoiceCreatorMismatchException();
+            voices = await client.ListOwnClonesAsync(new(value.Region, value.CreatorKeyFingerprint), ct).ConfigureAwait(false);
+        }
+        catch (VoiceCreatorMismatchException)
+        {
+            store.RequireRecoveryCreatorKey(value.Id, true);
+            store.ScheduleRetry(value.Id, clock.GetUtcNow());
+            return null;
+        }
+        store.RequireRecoveryCreatorKey(value.Id, false);
         ct.ThrowIfCancellationRequested();
         var candidates = voices.Where(voice => voice.IsOwner && voice.Category == "cloned").ToArray();
         bool SameName(VoiceLabVoice voice) => value.RemoteNameSha256 is { } hash && VoiceConsentStore.Hash(System.Text.Encoding.UTF8.GetBytes(voice.Name)) == hash;

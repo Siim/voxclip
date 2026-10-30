@@ -137,7 +137,9 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         return result;
     }
 
-    public async Task<IReadOnlyList<VoiceLabVoice>> DiscoverVoicesAsync(CancellationToken ct)
+    public Task<IReadOnlyList<VoiceLabVoice>> DiscoverVoicesAsync(CancellationToken ct) => DiscoverVoicesAsync(null, ct);
+
+    private async Task<IReadOnlyList<VoiceLabVoice>> DiscoverVoicesAsync(VoiceConsentCreator? creator, CancellationToken ct)
     {
         var found = new Dictionary<string, VoiceLabVoice>(StringComparer.Ordinal);
         var cursors = new HashSet<string>(StringComparer.Ordinal);
@@ -146,7 +148,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         {
             ct.ThrowIfCancellationRequested();
             var path = "/v2/voices" + (cursor is null ? "?page_size=100" : "?page_size=100&next_page_token=" + Uri.EscapeDataString(cursor));
-            using var reply = await SendAsync(HttpMethod.Get, path, null, 4 * 1024 * 1024, ct).ConfigureAwait(false);
+            using var reply = await SendAsync(HttpMethod.Get, path, null, 4 * 1024 * 1024, ct, creator: creator).ConfigureAwait(false);
             using var json = Parse(reply.Bytes);
             var row = json.RootElement;
             if (row.ValueKind != JsonValueKind.Object || !row.TryGetProperty("voices", out var items) || items.ValueKind != JsonValueKind.Array) throw Malformed();
@@ -188,6 +190,9 @@ public sealed class ElevenLabsVoiceLab : IDisposable
 
     public async Task<IReadOnlyList<VoiceLabVoice>> ListOwnClonesAsync(CancellationToken ct = default) =>
         (await DiscoverVoicesAsync(ct).ConfigureAwait(false)).Where(voice => voice.IsOwner && voice.Category == "cloned").ToArray();
+
+    internal async Task<IReadOnlyList<VoiceLabVoice>> ListOwnClonesAsync(VoiceConsentCreator creator, CancellationToken ct) =>
+        (await DiscoverVoicesAsync(creator, ct).ConfigureAwait(false)).Where(voice => voice.IsOwner && voice.Category == "cloned").ToArray();
 
     public VoiceLabAuthorization Approve(VoiceLabPreparedAction action, bool affirmative) => actions.Approve(action, affirmative);
     public bool QuotesAreFresh(IReadOnlyList<VoiceLabPreparedAction> quotes) => actions.QuotesAreFresh(quotes);

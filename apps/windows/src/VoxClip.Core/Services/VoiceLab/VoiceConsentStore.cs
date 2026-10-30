@@ -37,12 +37,14 @@ public sealed record VoiceConsentAudit(string RecordId, string StatementSha256, 
 public sealed record VoiceOperation(Guid Id, VoiceOperationKind Kind, string RecordId, string ProviderNonce, ElevenLabsRegion Region,
     DateTimeOffset StartedAt, DateTimeOffset UpdatedAt, VoiceOperationState State, string? RemoteVoiceId, bool WasDispatched,
     bool? RequiresVerification, int Attempts, DateTimeOffset? NextAttemptAt, bool Failed, VoiceConsentAudit? Audit, Guid[]? AmbiguousDispatchIds,
-    string? RemoteNameSha256 = null, bool RecoveryNeedsReview = false, string? CreatorKeyFingerprint = null, bool RemoteStateUnknown = false)
+    string? RemoteNameSha256 = null, bool RecoveryNeedsReview = false, string? CreatorKeyFingerprint = null, bool RemoteStateUnknown = false,
+    bool RecoveryNeedsCreatorKey = false)
 {
     [JsonIgnore] public bool Finished => State is VoiceOperationState.Saved or VoiceOperationState.Withdrawn or VoiceOperationState.Tombstoned or VoiceOperationState.Abandoned;
     public bool BlocksCreation(DateTimeOffset now) => Kind == VoiceOperationKind.Create && WasDispatched && !Finished &&
         now - StartedAt < TimeSpan.FromHours(24);
-    [JsonIgnore] public string DisplayState => Kind == VoiceOperationKind.Create && WasDispatched && RemoteVoiceId is null && !Finished
+    [JsonIgnore] public string DisplayState => RecoveryNeedsCreatorKey && !Finished ? "Recovery needs the ElevenLabs key that started this voice."
+        : Kind == VoiceOperationKind.Create && WasDispatched && RemoteVoiceId is null && !Finished
         ? "Checking your ElevenLabs account for an unfinished voice…" : Failed ? "Couldn't finish — Retry"
         : Kind == VoiceOperationKind.Delete || State == VoiceOperationState.Withdrawing ? "Removing…" : "Finishing…";
 }
@@ -390,6 +392,14 @@ public sealed class VoiceConsentStore
     internal void RequireRecoveryReview(Guid id)
     {
         lock (State.Sync) WriteOperation(Operation(id) with { RecoveryNeedsReview = true }, "recoveryReview");
+    }
+    internal void RequireRecoveryCreatorKey(Guid id, bool required)
+    {
+        lock (State.Sync)
+        {
+            var value = Operation(id);
+            if (value.RecoveryNeedsCreatorKey != required) WriteOperation(value with { RecoveryNeedsCreatorKey = required }, "recoveryCreatorKey");
+        }
     }
     internal void Release(Guid id) { lock (State.Sync) State.Claimed.Remove(id); }
     internal void RollbackUndispatched(Guid id)

@@ -301,6 +301,40 @@ public sealed class VoiceConsentTests
         Assert.Equal(1, remote.Calls);
     }
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RecoveryRejectsEmptyDiscoveryFromAnotherCreatorKey(bool changeBetweenPages)
+    {
+        using var storage = new Storage();
+        var clock = new Clock { Now = Now.AddHours(30) };
+        var store = new VoiceConsentStore(storage.Locations, clock);
+        var keys = new RecoveryKeys { Value = changeBetweenPages ? "synthetic-creator" : "synthetic-other" };
+        var record = Draft(store) with { Creator = new(ElevenLabsRegion.Default, VoiceConsentCreator.Fingerprint("synthetic-creator")) };
+        var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, Now);
+        store.Transition(operation.Id, VoiceOperationState.Dispatched, Now);
+        store.Release(operation.Id);
+        using var remote = new Remote((_, _) =>
+        {
+            keys.Value = "synthetic-other";
+            return Task.FromResult(Json(200, changeBetweenPages
+                ? "{\"voices\":[],\"has_more\":true,\"next_page_token\":\"second\"}"
+                : "{\"voices\":[],\"has_more\":false}"));
+        });
+        using var client = ElevenLabsVoiceLab.ForTesting(keys, remote, ElevenLabsRegion.Default);
+        await new VoiceOperationReconciler(store, _ => client, clock).ReconcileAsync(force: true, ct: Token);
+        var reopened = new VoiceConsentStore(storage.Locations, clock).Operation(operation.Id);
+        Assert.False(reopened.Finished);
+        Assert.Equal("Recovery needs the ElevenLabs key that started this voice.", reopened.DisplayState);
+        Assert.Equal(changeBetweenPages ? 1 : 0, remote.Calls);
+        Assert.Null(store.AuditTombstone(record.RecordId));
+        keys.Value = "synthetic-creator";
+    }
+    private sealed class RecoveryKeys : VoxClip.Core.Services.LLM.IKeyProvider
+    {
+        internal string Value = "synthetic-creator";
+        public Task<string?> GetKeyAsync(string account, CancellationToken ct) => Task.FromResult<string?>(Value);
+    }
+    [Theory]
     [InlineData(1, true, true)]
     [InlineData(2, true, false)]
     [InlineData(1, false, false)]
