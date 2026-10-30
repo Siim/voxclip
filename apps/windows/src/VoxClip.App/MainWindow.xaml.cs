@@ -812,7 +812,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         {
             if (!manual) await Task.Delay(TimeSpan.FromSeconds(10), lifetime.Token);
             var update = await App.Services.Updates.CheckAsync(manual, lifetime.Token);
-            if (update is null) { if (manual) { WindowNotice.ActionButton = null; WindowNotice.Severity = InfoBarSeverity.Informational; WindowNotice.Message = App.Services.Updates.IsInstalled ? $"VoxClip {AppServices.Version} is the latest version." : "Development builds do not self-update."; WindowNotice.IsOpen = true; } return; }
+            if (update is null) { if (manual) { WindowNotice.ActionButton = null; WindowNotice.Severity = InfoBarSeverity.Informational; WindowNotice.Message = App.Services.Updates is VelopackUpdates { IsInstalled: false } ? "Development builds do not self-update." : $"VoxClip {AppServices.Version} is the latest version."; WindowNotice.IsOpen = true; } return; }
             await App.Services.Updates.DownloadAsync(update, null, lifetime.Token);
             WindowNotice.Message = $"VoxClip {update.Version} is ready. Restart to update.";
             var restart = new Button { Content = "Restart now", IsEnabled = !App.Services.IsBusy };

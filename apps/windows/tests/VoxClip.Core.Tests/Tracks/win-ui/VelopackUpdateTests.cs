@@ -13,7 +13,8 @@ public sealed class VelopackUpdateTests
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
         var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/MainWindow.xaml.cs"));
-        Assert.Contains("Updates.IsInstalled ? $\"VoxClip {AppServices.Version} is the latest version.\"", source);
+        Assert.Contains("Updates is VelopackUpdates { IsInstalled: false }", source);
+        Assert.Contains("VoxClip {AppServices.Version} is the latest version.", source);
         Assert.Contains("Couldn't check for updates. You're offline.", source);
         var settings = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/SettingsWindow.xaml.cs"));
         Assert.DoesNotContain("Update check finished.", settings);
