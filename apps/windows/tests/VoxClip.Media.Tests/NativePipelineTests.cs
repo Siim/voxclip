@@ -147,6 +147,36 @@ public sealed class NativePipelineTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SharedPocket4FixtureDecodesAndExtractsTheFirstAudioTrack()
+    {
+        var info = await new FfmpegMediaProbe().ProbeAsync(Pocket4Fixture, TestContext.Current.CancellationToken);
+        Assert.Equal("hevc", info.VideoCodec); Assert.Equal(1, info.AudioTrackIndex);
+        Assert.Equal(48_000, info.Audio!.SampleRate); Assert.InRange(info.DurationSeconds, 5.99, 6.07);
+        Assert.Equal(new(1280, 720), info.OrientedSize);
+        Assert.True(await MediaThread.Run("vc-test-pocket4", () =>
+        {
+            using var decoder = new VideoDecoder(Pocket4Fixture);
+            var frame = decoder.ReadAt(3, true, TestContext.Current.CancellationToken);
+            Assert.Equal(1280, frame.Width); Assert.Equal(720, frame.Height);
+            Assert.Contains(frame.Pixels.ToArray(), value => value != 0);
+            return true;
+        }, TestContext.Current.CancellationToken));
+        var directory = RunDirectory();
+        try
+        {
+            var result = await new FfmpegAudioExtractor().ExtractAsync(new(info, "pocket4", directory), null, TestContext.Current.CancellationToken);
+            var bytes = File.ReadAllBytes(result.Audio.Wav16kPath);
+            var samples = new float[(bytes.Length - 44) / 2];
+            for (var index = 0; index < samples.Length; index++) samples[index] = BitConverter.ToInt16(bytes, 44 + index * 2) / 32768f;
+            Assert.True(samples.Length > 32_000, "The 16 kHz extract is shorter than two seconds.");
+            var window = samples.AsSpan(8_000, samples.Length - 16_000);
+            var (first, second) = (TonePower(window, 1, 16_000, 1000), TonePower(window, 1, 16_000, 300));
+            Assert.True(first > 100 * second, $"1 kHz power {first}, 300 Hz power {second}");
+        }
+        finally { Directory.Delete(directory, true); }
+    }
+
+    [Fact]
     public async Task MonoAudioIsDuplicatedWithoutAttenuation()
     {
         await FfmpegLoader.InitializeAsync(TestContext.Current.CancellationToken);
@@ -346,6 +376,20 @@ public sealed class NativePipelineTests : IAsyncLifetime
         var rate = info.Audio!.SampleRate;
         var plan = TestPlan.FromKept(rate, rate * 4, [new(0, rate / 2), new(rate, rate * 3 / 2), new(rate * 2, rate * 7 / 2)]);
         return new(info, plan, null, new(new(640, 360), 30, 2_000_000));
+    }
+
+    internal static string Pocket4Fixture => Path.Combine(FixtureLoader.SharedRoot, "fixtures", "ingest", "media", "pocket4-like-2tracks.mov");
+
+    internal static double TonePower(ReadOnlySpan<float> samples, int stride, double rate, double frequency)
+    {
+        var coefficient = 2 * Math.Cos(2 * Math.PI * frequency / rate);
+        double previous = 0, older = 0;
+        for (var index = 0; index < samples.Length; index += stride)
+        {
+            var current = samples[index] + coefficient * previous - older;
+            older = previous; previous = current;
+        }
+        return previous * previous + older * older - coefficient * previous * older;
     }
 
     internal static int BestLag(float[] source, float[] decoded, int maximum, int start, int count)

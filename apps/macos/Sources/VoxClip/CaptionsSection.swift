@@ -14,6 +14,17 @@ enum CaptionStyleGroup: String, CaseIterable {
 }
 
 enum CaptionGalleryTarget: Hashable { case tile(String), header(CaptionStyleGroup), end }
+private struct CaptionGalleryTargetModifier: ViewModifier {
+    let target: CaptionGalleryTarget
+    func body(content: Content) -> some View {
+        content.id(target)
+            .background {
+                #if DEBUG
+                ColumnLayoutProbe(name: "caption.scrollTarget.\(target)", scrollTarget: target)
+                #endif
+            }
+    }
+}
 private extension VerticalAlignment {
     /// Centres the Captions switch on the heading in both header forms.
     enum CaptionsHeading: AlignmentID { static func defaultValue(in context: ViewDimensions) -> CGFloat { context[VerticalAlignment.center] } }
@@ -26,11 +37,10 @@ private extension VerticalAlignment {
     @State private var fineTune = false
     @State private var width: CGFloat = 360
     @State private var galleryReveal = CaptionGalleryReveal()
-    @State private var galleryViewport = CaptionGalleryViewport()
+    @State private var galleryViewportSize = CGSize.zero
+    @State private var galleryScrollState = CaptionGalleryScrollState()
     @State private var galleryTiles: [String: CGRect] = [:]
     @State private var galleryHeaders: [CaptionStyleGroup: CGRect] = [:]
-    @State private var galleryRecheck = 0
-    @State private var galleryPosition = ScrollPosition()
     #if DEBUG
     @State private var galleryID = UUID().uuidString
     #endif
@@ -43,6 +53,9 @@ private extension VerticalAlignment {
         let _ = document.project
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader
+            if let error = model.captionError {
+                InlineNotice(text: error).fixedSize(horizontal: false, vertical: true).columnLayoutEvidence("caption.error")
+            }
             gallery
         }
         .padding(16)
@@ -145,13 +158,15 @@ private extension VerticalAlignment {
                             selectedStyle: model.project.captions.styleId, paintStyle: galleryTile?.styleID, interrupted: galleryReveal.interrupted,
                             commands: galleryReveal.commands, consumed: galleryReveal.request == galleryRequest,
                             requestStyle: galleryReveal.request.map { String($0.selection.split(separator: "/").last ?? "") },
-                            requestHeight: galleryReveal.request?.size.height)
+                            requestHeight: galleryReveal.request?.size.height, fineTune: fineTune, contentSize: galleryViewport.contentSize)
                         return
                     }
                     if let selected = notification.userInfo?["selectStyle"] as? String {
                         styleSelection.wrappedValue = selected
                         return
                     }
+                    if let selected = notification.userInfo?["clickStyle"] as? String { selectTile(selected); return }
+                    if let expanded = notification.userInfo?["fineTune"] as? Bool { fineTune = expanded; return }
                     if notification.userInfo?["beginReveal"] as? Bool == true { galleryReveal.restart(); return }
                     if notification.userInfo?["userScroll"] as? Bool == true { galleryScrollPhaseChanged(.interacting); return }
                     if notification.userInfo?["end"] as? Bool == true {
@@ -165,13 +180,14 @@ private extension VerticalAlignment {
     }
     private func galleryScroll(reader: ScrollViewProxy) -> some View {
         ScrollView { galleryContents }
-            .scrollPosition($galleryPosition)
             .onScrollGeometryChange(for: CaptionGalleryViewport.self) { geometry in
-                CaptionGalleryViewport(visible: geometry.visibleRect, size: geometry.containerSize)
-            } action: { _, viewport in galleryViewport = viewport }
+                CaptionGalleryViewport(visible: geometry.visibleRect, size: geometry.containerSize, contentSize: geometry.contentSize)
+            } action: { _, viewport in
+                if galleryScrollState.record(viewport) { galleryViewportSize = viewport.size }
+                if !galleryReveal.interrupted { revealSelection(reader: reader) }
+            }
             .onChange(of: galleryRequest, initial: true) { _, request in galleryReveal.begin(request); revealSelection(reader: reader) }
             .onChange(of: galleryLayout) { _, _ in revealSelection(reader: reader) }
-            .onChange(of: galleryRecheck) { _, _ in revealSelection(reader: reader) }
             .onScrollPhaseChange { _, phase in galleryScrollPhaseChanged(phase) }
             .onChange(of: fineTune) { _, expanded in
                 if expanded { reader.scrollTo("captions.fineTune", anchor: .top) }
@@ -184,7 +200,6 @@ private extension VerticalAlignment {
     private var galleryContents: some View {
         VStack(alignment: .leading, spacing: 12) {
             fineTuneControls.id("captions.fineTune")
-            if let error = model.captionError { InlineNotice(text: error).fixedSize(horizontal: false, vertical: true) }
             galleryGrid
             if model.app.styles.isEmpty { Text("Caption styles are unavailable. Reinstall VoxClip.").foregroundStyle(.secondary) }
         }.padding(.horizontal, 3).padding(.bottom, 24)
@@ -192,18 +207,18 @@ private extension VerticalAlignment {
             .coordinateSpace(name: CaptionGallerySpace.content)
     }
     private var galleryGrid: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 7) {
             ForEach(CaptionStyleGroup.allCases, id: \.self) { group in
                 let styles = model.app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
                 if !styles.isEmpty {
                     Text(group.rawValue).font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary")).padding(.top, 2)
                         .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .named(CaptionGallerySpace.content)) } action: { galleryHeaders[group] = $0 }
-                        .id(CaptionGalleryTarget.header(group)).columnLayoutEvidence("caption.group.\(group.rawValue)")
+                        .modifier(CaptionGalleryTargetModifier(target: .header(group))).columnLayoutEvidence("caption.group.\(group.rawValue)")
                     ForEach(Array(stride(from: 0, to: styles.count, by: 2)), id: \.self) { index in
                         HStack(alignment: .top, spacing: 8) {
-                            styleTile(styles[index]).frame(maxWidth: .infinity).id(CaptionGalleryTarget.tile(styles[index].id))
+                            styleTile(styles[index]).frame(maxWidth: .infinity).modifier(CaptionGalleryTargetModifier(target: .tile(styles[index].id)))
                             if index + 1 < styles.count {
-                                styleTile(styles[index + 1]).frame(maxWidth: .infinity).id(CaptionGalleryTarget.tile(styles[index + 1].id))
+                                styleTile(styles[index + 1]).frame(maxWidth: .infinity).modifier(CaptionGalleryTargetModifier(target: .tile(styles[index + 1].id)))
                             } else { Color.clear.frame(maxWidth: .infinity).accessibilityHidden(true) }
                         }
                     }
@@ -223,18 +238,22 @@ private extension VerticalAlignment {
         if phase == .tracking || phase == .interacting { galleryReveal.cancelForUserScroll() }
     }
     private var galleryRequest: CaptionGalleryRequest {
-        CaptionGalleryRequest(selection: "\(model.project.id)/\(model.activeClip?.id ?? "full")/\(model.project.captions.styleId)", size: galleryViewport.size, fineTune: fineTune)
+        CaptionGalleryRequest(selection: "\(model.project.id)/\(model.activeClip?.id ?? "full")/\(model.project.captions.styleId)", size: galleryViewportSize, fineTune: fineTune)
     }
+    private var galleryViewport: CaptionGalleryViewport { galleryScrollState.viewport }
     private var galleryLayout: CaptionGalleryLayout {
-        CaptionGalleryLayout(tile: galleryTile, header: style.flatMap { galleryHeaders[CaptionStyleGroup.group(for: $0)] }, viewport: galleryViewport)
+        CaptionGalleryLayout(tile: galleryTile, header: style.flatMap { galleryHeaders[CaptionStyleGroup.group(for: $0)] }, size: galleryViewportSize)
     }
     private var galleryTile: CaptionGalleryTileGeometry? {
         let identifier = model.project.captions.styleId
         return galleryTiles[identifier].map { CaptionGalleryTileGeometry(styleID: identifier, frame: $0) }
     }
     private func revealSelection(reader: ScrollViewProxy) {
-        guard !galleryReveal.interrupted, !fineTune, galleryViewport.size.height > 0, galleryReveal.request != nil else { return }
-        galleryReveal.resumeForLayout()
+        guard !galleryReveal.interrupted, galleryViewport.size.height > 0, galleryReveal.request == galleryRequest else { return }
+        var reveal = galleryReveal
+        reveal.resumeForLayout()
+        guard reveal.pending else { return }
+        defer { if reveal != galleryReveal { galleryReveal = reveal } }
         var target = CaptionGalleryTarget.tile(model.project.captions.styleId)
         if let tile = galleryTile, tile.styleID == model.project.captions.styleId {
             let expectedWidth: CGFloat = (galleryViewport.size.width - 14) / 2 + 6
@@ -247,22 +266,14 @@ private extension VerticalAlignment {
                 target = .header(CaptionStyleGroup.group(for: style))
                 complete = complete && visible.insetBy(dx: -0.5, dy: -0.5).contains(header)
             }
-            if complete { galleryReveal.complete(); return }
+            if complete { reveal.complete(); return }
         }
-        let geometry = [galleryViewport.visible.minY, galleryViewport.size.height, galleryTile?.frame.minY ?? -1, galleryLayout.header?.minY ?? -1]
-        if galleryReveal.shouldScroll(to: target, anchor: .top, geometry: geometry) {
-            // A lazy grid scrolls to a row it hasn't laid out by estimate, and repeats the same wrong
-            // estimate. The measured content frame is exact, so scroll to it whenever it is known.
-            let measured: CGFloat? = switch target {
-            case .header: galleryLayout.header?.minY
-            case .tile(let id): galleryTile.flatMap { $0.styleID == id ? $0.frame.minY : nil }
-            case .end: nil
-            }
-            if let measured { galleryPosition.scrollTo(y: max(0, measured)) } else { reader.scrollTo(target, anchor: .top) }
+        let geometry = [galleryViewport.visible.minY, galleryViewport.size.width, galleryViewport.size.height,
+                        galleryTile?.frame.minY ?? -1, galleryTile?.frame.width ?? -1,
+                        galleryTile?.frame.height ?? -1, galleryLayout.header?.minY ?? -1, galleryViewport.contentSize.height]
+        if reveal.shouldScroll(to: target, geometry: geometry) {
+            reader.scrollTo(target, anchor: .top)
         }
-        // A scroll that lands where the view already is changes no geometry, so nothing would
-        // re-check the reveal and it would stay pending. Check again next turn, a bounded number of times.
-        if galleryReveal.takeRecheck() { DispatchQueue.main.async { galleryRecheck &+= 1 } }
     }
     private var style: CaptionStyle? { model.app.styles.first { $0.id == model.project.captions.styleId } }
     private var storedPosition: CaptionPosition? { model.captionPreset == .source ? model.project.captions.position : model.project.captions.positionByAspect[model.captionPreset.rawValue] }
@@ -271,11 +282,11 @@ private extension VerticalAlignment {
     private func styleTile(_ style: CaptionStyle) -> some View {
         let id = style.id
         let selected = model.project.captions.styleId == id
-        return Button { model.setStyle(id) } label: {
+        return Button { selectTile(id) } label: {
             VStack(alignment: .leading, spacing: 4) {
                 ZStack(alignment: .topTrailing) {
                     CaptionTile(input: model.captionTileInput(style), pipeline: model.app.captions)
-                        .aspectRatio(1 / 0.45, contentMode: .fit).clipShape(.rect(cornerRadius: 10))
+                        .aspectRatio(1 / 0.45, contentMode: .fit).clipShape(.rect(cornerRadius: 10)).columnLayoutEvidence("caption.image.\(id)")
                     if selected { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white).frame(width: 18, height: 18).background(.black.opacity(0.62), in: Circle()).padding(5) }
                 }.overlay { if selected { RoundedRectangle(cornerRadius: 12).stroke(DesignValues.accentText, lineWidth: 2).padding(-2).columnLayoutEvidence("caption.ring.\(id)") } }
                 Text(style.name + (selected && model.captionsEdited ? " · Edited" : "")).font(.system(size: 11, weight: selected ? .semibold : .regular)).foregroundStyle(DesignValues.color("text.primary")).lineLimit(1).columnLayoutEvidence("caption.name.\(id)")
@@ -289,6 +300,11 @@ private extension VerticalAlignment {
                     .columnLayoutEvidence("caption.tile.\(id)")
                     .padding(.horizontal, -3).allowsHitTesting(false).accessibilityHidden(true)
             }
+    }
+    private func selectTile(_ identifier: String) {
+        let selection = "\(model.project.id)/\(model.activeClip?.id ?? "full")/\(identifier)"
+        galleryReveal.selectVisibleTile(selection)
+        model.setStyle(identifier)
     }
     private func value(_ group: String, _ key: String) -> JSONValue? { if case .object(let object) = model.project.captions.overrides[group] { return object[key] }; return nil }
     private func setOverride(_ group: String, _ key: String, _ value: JSONValue) {
@@ -304,6 +320,7 @@ struct CaptionGalleryRequest: Equatable {
     let selection: String
     let size: CGSize
     let fineTune: Bool
+    var scope: String { selection.split(separator: "/").dropLast().joined(separator: "/") }
 }
 
 struct CaptionGalleryReveal: Equatable {
@@ -312,42 +329,61 @@ struct CaptionGalleryReveal: Equatable {
     private(set) var interrupted = false
     private(set) var commands = 0
     private var lastTarget: CaptionGalleryTarget?
-    private var lastAnchor = UnitPoint.top
-    private var rechecks = 0
     private var lastGeometry: [CGFloat] = []
-    private var reissues = 0
+    private var visibleTileSelection: String?
+    private var revealWhileExpanded = false
     mutating func begin(_ request: CaptionGalleryRequest) {
         guard self.request != request else { return }
-        self.request = request; pending = !request.fineTune; interrupted = false; lastTarget = nil; rechecks = 0
+        let previous = self.request
+        self.request = request
+        let scopeChanged = previous.map { $0.scope != request.scope } ?? false
+        if visibleTileSelection == request.selection, !scopeChanged {
+            visibleTileSelection = nil
+            cancelForUserScroll()
+            return
+        }
+        visibleTileSelection = nil
+        let selectionChanged = previous?.selection != request.selection
+        let collapsed = previous?.fineTune == true && !request.fineTune
+        if selectionChanged || scopeChanged || collapsed {
+            revealWhileExpanded = scopeChanged && request.fineTune
+            pending = !request.fineTune || revealWhileExpanded
+            interrupted = false; lastTarget = nil
+        } else if request.fineTune && previous?.fineTune == false {
+            revealWhileExpanded = false; pending = false
+        }
     }
-    /// Whether a still-pending reveal may be checked again without a geometry change: at most
-    /// eight times per scroll command, so a reveal that can't complete doesn't spin.
-    mutating func takeRecheck() -> Bool {
-        guard pending, rechecks < 8 else { return false }
-        rechecks += 1
-        return true
+    mutating func selectVisibleTile(_ selection: String) {
+        visibleTileSelection = selection
+        cancelForUserScroll()
     }
     mutating func complete() { pending = false }
-    mutating func resumeForLayout() { if !interrupted { pending = request?.fineTune == false } }
-    mutating func restart() { pending = request?.fineTune == false; interrupted = false; lastTarget = nil; rechecks = 0 }
+    mutating func resumeForLayout() { if !interrupted { pending = request.map { !$0.fineTune || revealWhileExpanded } ?? false } }
+    mutating func restart() { pending = request.map { !$0.fineTune || revealWhileExpanded } ?? false; interrupted = false; lastTarget = nil }
     mutating func cancelForUserScroll() { pending = false; interrupted = true }
-    /// Identical commands are coalesced. The same command goes out again only when the geometry
-    /// moved since it was issued and the reveal still isn't complete: a lazy grid's first scroll to a
-    /// distant row lands on an estimate. At most three times per target, so it can't fight layout.
-    mutating func shouldScroll(to target: CaptionGalleryTarget, anchor: UnitPoint, geometry: [CGFloat] = []) -> Bool {
+    mutating func shouldScroll(to target: CaptionGalleryTarget, geometry: [CGFloat] = []) -> Bool {
         guard pending else { return false }
-        if lastTarget == target, abs(lastAnchor.x - anchor.x) < 0.000001, abs(lastAnchor.y - anchor.y) < 0.000001 {
-            guard geometry != lastGeometry, reissues < 3 else { return false }
-            reissues += 1
-        } else { reissues = 0 }
-        lastTarget = target; lastAnchor = anchor; lastGeometry = geometry; commands += 1; rechecks = 0
+        if lastTarget == target {
+            guard geometry != lastGeometry else { return false }
+        }
+        lastTarget = target; lastGeometry = geometry; commands += 1
         return true
     }
 }
 
-private struct CaptionGalleryViewport: Equatable {
+struct CaptionGalleryViewport: Equatable {
     var visible = CGRect.zero
     var size = CGSize.zero
+    var contentSize = CGSize.zero
+}
+
+@MainActor final class CaptionGalleryScrollState {
+    private(set) var viewport = CaptionGalleryViewport()
+    func record(_ viewport: CaptionGalleryViewport) -> Bool {
+        let sizeChanged = self.viewport.size != viewport.size
+        self.viewport = viewport
+        return sizeChanged
+    }
 }
 
 private struct CaptionGalleryTileGeometry: Equatable {
@@ -358,7 +394,7 @@ private struct CaptionGalleryTileGeometry: Equatable {
 private struct CaptionGalleryLayout: Equatable {
     let tile: CaptionGalleryTileGeometry?
     let header: CGRect?
-    let viewport: CaptionGalleryViewport
+    let size: CGSize
 }
 
 private enum CaptionGallerySpace: Hashable { case content }
@@ -370,7 +406,7 @@ private enum CaptionGallerySpace: Hashable { case content }
         let paint: CGRect?; let header: CGRect?; let visible: CGRect; let size: CGSize; let pending: Bool
         let selectedStyle: String; let paintStyle: String?; let interrupted: Bool; let commands: Int
         /// Whether the reveal has taken the gallery's current request (selection, viewport, Fine Tune).
-        let consumed: Bool; let requestStyle: String?; let requestHeight: CGFloat?
+        let consumed: Bool; let requestStyle: String?; let requestHeight: CGFloat?; let fineTune: Bool; let contentSize: CGSize
     }
     static var snapshots: [String: Snapshot] = [:]
 }

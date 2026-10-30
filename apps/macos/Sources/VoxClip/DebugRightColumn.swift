@@ -114,15 +114,24 @@ import VoxClipMedia
             // The stage keeps its §5.1 frame size wherever 320 points remain for the panel below
             // (every aspect at 1280×800 and 1440×900); on shorter columns only its height yields.
             let stage = measurement.stage.size
-            let ratio: Double = stage.height > 0 ? Double(stage.width / stage.height) : 1
+            let source = fixture.media.source.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 16, height: 9)
+            let ratio: Double = switch measurement.variant {
+            case "9:16": 9.0 / 16
+            case "1:1": 1
+            case "16:9": 16.0 / 9
+            default: Double(source.width) / Double(max(1, source.height))
+            }
             let inner: CGFloat = measurement.width - 32
-            let specified = viewerStageSize(ratio: ratio, innerWidth: inner, columnHeight: 10_000, rewriting: false)
-            let expected = viewerStageSize(ratio: ratio, innerWidth: inner, columnHeight: measurement.height, rewriting: false)
+            let aspectCap: CGFloat = rewriting && measurement.height < 760 ? 124 : ratio <= 1 ? 320 : .greatestFiniteMagnitude
+            let specifiedHeight = min(inner / ratio, aspectCap)
+            let specified = CGSize(width: specifiedHeight * ratio, height: specifiedHeight)
+            let expectedHeight = min(specifiedHeight, max(1, measurement.height - 320))
+            let expected = CGSize(width: expectedHeight * ratio, height: expectedHeight)
             let fullSize = measurement.height >= 675
             let stageMatches = abs(stage.width - expected.width) <= 0.5 && abs(stage.height - expected.height) <= 0.5
                 && (!fullSize || (abs(stage.width - specified.width) <= 0.5 && abs(stage.height - specified.height) <= 0.5))
             return [
-                .init(name: "right column height \(measurement.window) \(measurement.variant): stage \(stage) is \(fullSize ? "the specified frame" : "height-limited") \(expected)", passed: rewriting || (stage.height > 0 && stageMatches)),
+                .init(name: "right column height \(measurement.window) \(measurement.variant): stage \(stage) is \(fullSize ? "the specified frame" : "height-limited") \(expected)", passed: stage.height > 0 && stageMatches && abs(stage.width / stage.height - ratio) <= 0.001 && measurement.height - stage.height >= 319.5),
                 .init(name: "right column height \(measurement.window) \(measurement.variant): visible descendants fit", passed: measurement.viewOverflow.isEmpty && viewport.height > 0 && measurement.scrollClipping.allSatisfy { $0 }),
                 .init(name: "right column height \(measurement.window) \(measurement.variant): gallery bottom \(viewport.maxY) <= \(measurement.height - 16)", passed: rewriting || viewport.maxY <= measurement.height - 15.5)
             ]
@@ -198,6 +207,10 @@ import VoxClipMedia
         results.append(.init(name: "300-point Frame choices use a stacked picker spanning the leading inner width (\(stacked.map { "\($0)" } ?? "none"))",
             passed: stacked.map { abs($0.minX - 16) <= 0.5 && abs($0.width - 268) <= 0.5 } ?? false))
         for measurement in measurements {
+            let frameLabel = measurement.markers["control.frame.label"]
+            let framePicker = measurement.markers["control.frame.picker"]
+            results.append(.init(name: "Frame label and picker at \(measurement.width) (\(measurement.variant)) use the leading inner edge",
+                passed: frameLabel.map { abs($0.minX - 16) <= 0.5 } == true && framePicker.map { $0.width > 0 && $0.maxX <= measurement.width - 15.5 } == true))
             guard let heading = measurement.markers["header.captions.heading"], let toggle = measurement.markers["header.captions.switch"] else { continue }
             results.append(.init(name: "Captions switch at \(measurement.width) (\(measurement.variant)) is centred on the heading inside the inner width",
                 passed: abs(heading.midY - toggle.midY) <= 0.5 && toggle.maxX <= measurement.width - 16 + 0.5))
@@ -209,23 +222,21 @@ import VoxClipMedia
         for viewport: CGFloat in [399.5, 272, 264] {
             var reveal = CaptionGalleryReveal()
             reveal.begin(CaptionGalleryRequest(selection: "ring-probe", size: CGSize(width: 320, height: viewport), fineTune: false))
-            let first = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: .top)
-            let duplicate = reveal.shouldScroll(to: .tile("vox-highlight"), anchor: .top)
+            let first = reveal.shouldScroll(to: .tile("vox-highlight"))
+            let duplicate = reveal.shouldScroll(to: .tile("vox-highlight"))
             results.append(.init(name: "gallery at \(viewport) coalesces repeated top-alignment commands", passed: first && !duplicate))
-            var allowed = 0
-            while reveal.takeRecheck(), allowed < 100 { allowed += 1 }
-            let renewed = reveal.shouldScroll(to: .tile("outline"), anchor: .top) && reveal.takeRecheck()
+            let renewed = reveal.shouldScroll(to: .tile("outline"))
             reveal.complete()
-            results.append(.init(name: "gallery at \(viewport) re-checks a pending reveal at most 8 times per command, and none once complete",
-                passed: allowed == 8 && renewed && !reveal.takeRecheck()))
+            results.append(.init(name: "gallery at \(viewport) accepts a new target and issues nothing once complete",
+                passed: renewed && !reveal.shouldScroll(to: .tile("outline"), geometry: [999])))
             var landing = CaptionGalleryReveal()
-            landing.begin(CaptionGalleryRequest(selection: "lazy-landing", size: CGSize(width: 320, height: viewport), fineTune: false))
-            let issued = landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [0])
-            let unmoved = landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [0])
-            let reissued = (1...3).map { landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [CGFloat($0) * 100]) }
-            let capped = landing.shouldScroll(to: .tile("editorial"), anchor: .top, geometry: [400])
-            results.append(.init(name: "gallery at \(viewport) re-issues a command that landed short only after geometry moved, at most 3 times",
-                passed: issued && !unmoved && reissued == [true, true, true] && !capped))
+            landing.begin(CaptionGalleryRequest(selection: "resized-layout", size: CGSize(width: 320, height: viewport), fineTune: false))
+            let issued = landing.shouldScroll(to: .tile("editorial"), geometry: [0])
+            let unmoved = landing.shouldScroll(to: .tile("editorial"), geometry: [0])
+            let reissued = (1...3).map { landing.shouldScroll(to: .tile("editorial"), geometry: [CGFloat($0) * 100]) }
+            let delayed = landing.shouldScroll(to: .tile("editorial"), geometry: [400])
+            results.append(.init(name: "gallery at \(viewport) revalidates changed layout without repeating unchanged commands",
+                passed: issued && !unmoved && reissued == [true, true, true] && delayed))
         }
         return results
     }
@@ -335,7 +346,11 @@ import VoxClipMedia
     static func markers(in host: NSView) -> [String: CGRect] {
         var frames: [String: CGRect] = [:]
         func visit(_ view: NSView) {
-            if let marker = view as? ColumnLayoutMarker { frames[marker.name] = marker.convert(marker.bounds, to: host) }
+            if let marker = view as? ColumnLayoutMarker {
+                var frame = marker.convert(marker.bounds, to: host)
+                if marker.name == "viewer.stage", let size = marker.logicalSize { frame.size = size }
+                frames[marker.name] = frame
+            }
             view.subviews.forEach(visit)
         }
         visit(host)
@@ -345,15 +360,20 @@ import VoxClipMedia
 
 @MainActor final class ColumnLayoutMarker: NSView {
     var name = ""
+    var logicalSize: CGSize?
+    var scrollTarget: CaptionGalleryTarget?
     override func isAccessibilityElement() -> Bool { false }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 @MainActor struct ColumnLayoutProbe: NSViewRepresentable {
     let name: String
-    func makeNSView(context: Context) -> ColumnLayoutMarker { let view = ColumnLayoutMarker(); view.name = name; return view }
-    func updateNSView(_ view: ColumnLayoutMarker, context: Context) { view.name = name }
+    var scrollTarget: CaptionGalleryTarget? = nil
+    func makeNSView(context: Context) -> ColumnLayoutMarker { let view = ColumnLayoutMarker(); view.name = name; view.scrollTarget = scrollTarget; return view }
+    func updateNSView(_ view: ColumnLayoutMarker, context: Context) { view.name = name; view.scrollTarget = scrollTarget }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ColumnLayoutMarker, context: Context) -> CGSize? {
-        CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
+        let size = CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
+        if size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite { nsView.logicalSize = size }
+        return size
     }
 }
 #endif

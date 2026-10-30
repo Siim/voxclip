@@ -36,7 +36,7 @@ extension ProviderChoice {
         let plans = id == "claude-code" ? ["plan", "claude_ai", "claudeai", "oauth", "oauth_token"] : ["plan", "chatgpt"]
         return plans.contains(method) ? "plan" : nil
     }
-    func consentCopy(action: ConnectorConsentAction, wordCount: Int, authMethod: String? = nil) -> String {
+    func consentCopy(action: ConnectorConsentAction, wordCount: Int, authMethod: String? = nil, serverHost: String? = nil) -> String {
         if id == "claude-code" || id == "codex" {
             let name = id == "claude-code" ? "Claude Code" : "Codex"
             let vendor = id == "claude-code" ? "Anthropic" : "OpenAI"
@@ -47,6 +47,11 @@ extension ProviderChoice {
             if key == "api_key" { billing = "and billed to the API key \(name) is signed in with." }
             else { billing = "and \(action == .rewrite ? "count" : "counts") toward your \(plan) plan's usage." }
             return "VoxClip will run your installed \(name) with your own sign-in. \(subject) to \(vendor) \(billing)"
+        }
+        if let serverHost {
+            if action == .rewrite { return "Rewrite sends these \(wordCount) words (no audio or video) to the \(label) server at \(serverHost)." }
+            if action == .test { return "Test sends a short test request to the \(label) server at \(serverHost). Nothing from your projects is sent." }
+            return "Find clips sends this project's transcript (\(wordCount) words, no audio or video) to the \(label) server at \(serverHost)."
         }
         if action == .rewrite { return "Rewrite sends these \(wordCount) words (no audio or video) to \(label) using your API key." }
         if action == .test { return "Test sends a short test request to \(label) using your API key. Nothing from your projects is sent." }
@@ -132,7 +137,12 @@ extension ProviderChoice {
     var knownCLIAuthMethods: [String: String] = [:]
     var detectedConnectorStatus: [String: ConnectorStatus] = [:]
     func consentCopy(_ provider: ProviderChoice, action: ConnectorConsentAction, wordCount: Int) -> String {
-        provider.consentCopy(action: action, wordCount: wordCount, authMethod: knownCLIAuthMethods[provider.id + ":" + string("llm.cliPath.\(provider.id)")])
+        provider.consentCopy(action: action, wordCount: wordCount, authMethod: knownCLIAuthMethods[provider.id + ":" + string("llm.cliPath.\(provider.id)")],
+                             serverHost: localServerHost(provider))
+    }
+    func localServerHost(_ provider: ProviderChoice) -> String? {
+        guard provider.privacy == "localServer" else { return nil }
+        return LocalServerAddress.remoteHost(string("llm.baseUrl.\(provider.id)", fallback: provider.baseUrl ?? ""))
     }
     func connectorStatus(_ provider: ProviderChoice, using supplied: (any LLMConnector)? = nil) async -> ConnectorStatus? {
         guard supplied != nil || !Self.isTestSession || connectorOverride != nil else { return nil }
@@ -175,6 +185,7 @@ extension ProviderChoice {
     var providerKeyStore: any ProviderKeyStore { providerKeyStoreOverride ?? secrets }
     @ObservationIgnored lazy var captions = CaptionHandoff(shared: shared)
     @ObservationIgnored lazy var exportLedger = ExportLedger(file: locations.root.appendingPathComponent("exports.json"))
+    @ObservationIgnored lazy var appleSpeechAssets = AppleSpeechAssetLibrary(app: self)
 
     public init(settingsStore: (any SettingsStore)? = nil, updates: any UpdateChecking = UpdateChecker(), modelDownloader: (any ModelDownloader)? = nil) {
         let directory = DataLocations().logs
@@ -224,6 +235,14 @@ extension ProviderChoice {
             notice = await safeError(error, context: "Settings could not be loaded.")
             return
         }
+        if !Self.isTestSession {
+            let registry = locations.root.appendingPathComponent("Scratch", isDirectory: true)
+            let cache = locations.cache
+            let temporary = FileManager.default.temporaryDirectory
+            let exports = [ExportSelection.folder(string("export.folder", fallback: "~/Movies/VoxClip"))]
+                + exportLedger.records.map { URL(fileURLWithPath: $0.outputPath).deletingLastPathComponent() }
+            _ = await Task.detached(priority: .utility) { ScratchCleanup.sweep(registry: registry, cache: cache, temporary: temporary, exportDirectories: exports) }.value
+        }
         restoreCachedUpdate()
         #if DEBUG
         if Self.isTestSession || DebugProbes.requested { return }
@@ -238,6 +257,7 @@ extension ProviderChoice {
     }
     static var isTestSession: Bool {
         #if DEBUG
+        if CommandLine.arguments.contains("-transcriptionConsentAudit") { return true }
         if CommandLine.arguments.contains("-captionGalleryAudit") { return true }
         return CommandLine.arguments.contains("-layoutAudit") || CommandLine.arguments.contains("-round6SelfTest") || CommandLine.arguments.contains("-round5SelfTest") || CommandLine.arguments.contains("-round4SelfTest") || CommandLine.arguments.contains("-timelineAudit") || CommandLine.arguments.contains("-demoCapture") || CommandLine.arguments.contains("-uiSelfTest") || CommandLine.arguments.contains("-uiPerformanceTest") || CommandLine.arguments.contains("-sceneAudit") || CommandLine.arguments.contains("-saveBoundaryAudit") || CommandLine.arguments.contains("-settingsAudit") || CommandLine.arguments.contains("-voiceRecipeAudit")
         #else
@@ -272,7 +292,12 @@ extension ProviderChoice {
         guard settings.values[key] != value else { return true }
         if key == "editing.pauseBreath", settingsLoaded, settings.values[key] != value { pauseBreathRevision += 1 }
         if key == "llm.connector" || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") { refreshConnectorReadiness() }
+        let serverHost = key.hasPrefix("llm.baseUrl.") ? LocalServerAddress.remoteHost(string(key)) : nil
         settings.values[key] = value
+        if key.hasPrefix("llm.baseUrl."), LocalServerAddress.remoteHost(string(key)) != serverHost {
+            let consent = "llm.cloudConsent.\(key.dropFirst("llm.baseUrl.".count))"
+            if bool(consent) { set(consent, .bool(false)) }
+        }
         if key == "voiceLab.enabled" || key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
             shell.editor?.closeRewrite(returnFocus: false)
         }

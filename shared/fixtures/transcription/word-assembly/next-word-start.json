@@ -1,0 +1,97 @@
+{
+  "schema": "voxclip-word-assembly-fixture/1",
+  "name": "next-word-start",
+  "derivation": "Section 16.1 case 4 and section 6. nextWordStart ends a word at the next word's start in the same group: one, -> 0.75, two -> 1.5. three is the last word of group 0, so it keeps its last token's end 1.5 and is stretched to at least 0.04 s: 1.54. four is the last word of group 1 and already longer: 2.5. The joined comma does not move the end. conf mean: (0.5 + 1) / 2 = 0.75.",
+  "rule": {
+    "end": "nextWordStart",
+    "conf": "mean",
+    "bracketEvents": false
+  },
+  "timelineStart": 0,
+  "tokens": [
+    {
+      "text": "one",
+      "joinsPrevious": false,
+      "start": 0,
+      "end": 0.25,
+      "conf": 0.5,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": ",",
+      "joinsPrevious": true,
+      "start": 0.25,
+      "end": 0.375,
+      "conf": 1,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "two",
+      "joinsPrevious": false,
+      "start": 0.75,
+      "end": 1,
+      "conf": 1,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "three",
+      "joinsPrevious": false,
+      "start": 1.5,
+      "end": 1.5,
+      "conf": 0.25,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "four",
+      "joinsPrevious": false,
+      "start": 2,
+      "end": 2.5,
+      "conf": 0.75,
+      "speaker": null,
+      "kind": null,
+      "group": 1
+    }
+  ],
+  "expect": [
+    {
+      "text": "one,",
+      "start": 0,
+      "end": 0.75,
+      "conf": 0.75,
+      "speaker": null,
+      "kind": "word"
+    },
+    {
+      "text": "two",
+      "start": 0.75,
+      "end": 1.5,
+      "conf": 1,
+      "speaker": null,
+      "kind": "word"
+    },
+    {
+      "text": "three",
+      "start": 1.5,
+      "end": 1.54,
+      "conf": 0.25,
+      "speaker": null,
+      "kind": "word"
+    },
+    {
+      "text": "four",
+      "start": 2,
+      "end": 2.5,
+      "conf": 0.75,
+      "speaker": null,
+      "kind": "word"
+    }
+  ]
+}

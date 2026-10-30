@@ -19,10 +19,14 @@ import VoxClipCore
             Text("Find clips in this take").font(.headline)
             if let connector {
                 HStack(spacing: 6) {
-                    Text("Connector").foregroundStyle(DesignValues.color("text.secondary"))
-                    Text("\(connector.label) ·")
-                    Text("●").foregroundStyle(DesignValues.color(status == .ready ? "status.success" : "status.warning")).accessibilityHidden(true)
-                    Text(Self.statusText(status))
+                    HStack(spacing: 6) {
+                        Text("Connector").foregroundStyle(DesignValues.color("text.secondary"))
+                        Text("\(connector.label) ·")
+                        Text("●").foregroundStyle(DesignValues.color(status == .ready ? "status.success" : "status.warning")).accessibilityHidden(true)
+                        Text(Self.statusText(status))
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("clipConnectorStatus")
                     Spacer(minLength: 8)
                     Button("Change…") { model.showFindClips = false; openVoxClipSettings(pane: "ai") }.buttonStyle(.borderless).foregroundStyle(DesignValues.accentText)
                     if status != nil && status != .ready {
@@ -30,8 +34,6 @@ import VoxClipCore
                     }
                 }
                 .font(.callout)
-                .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("clipConnectorStatus")
             } else {
                 HStack {
                     Text("Choose a connector in AI settings.")
@@ -47,7 +49,7 @@ import VoxClipCore
                 .textFieldStyle(.roundedBorder).lineLimit(2...4)
                 .onSubmit(run)
                 .onChange(of: model.instruction) { _, value in if value.count > 500 { model.instruction = String(value.prefix(500)) } }
-            Text(connector?.group == "local" ? "Runs on this Mac. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.")
+            Text(Self.footnote(connector, serverHost: connector.flatMap { model.app.localServerHost($0) }))
                 .font(.caption).foregroundStyle(DesignValues.color("text.secondary"))
             HStack {
                 Spacer()
@@ -85,5 +87,10 @@ import VoxClipCore
         case .unavailable: "Unavailable"
         case nil: "Checking…"
         }
+    }
+
+    static func footnote(_ connector: ProviderChoice?, serverHost: String?) -> String {
+        if let serverHost { return "Sends transcript text with word numbers to \(serverHost). No audio or video." }
+        return connector?.group == "local" ? "Runs on this Mac. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video."
     }
 }

@@ -33,6 +33,10 @@ actor ConsentFixtureConnector: LLMConnector {
 @MainActor enum DebugConnectorRequests {
     static func run(fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
+        results.append(.init(name: "Release shortcuts omit Rewrite without hiding other bindings", passed:
+            !ShortcutsView.bindings(internalBuild: false).contains { $0.contains("Rewrite") || $0.contains("⇧⌘R") }
+                && ShortcutsView.bindings(internalBuild: true).contains("⇧⌘R|Rewrite")
+                && ShortcutsView.lines == ShortcutsView.bindings(internalBuild: RewriteEntryPolicy.buildEnabled)))
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         for id in ["anthropic", "claude-code", "codex"] {
             let methods: [String?] = id == "anthropic" ? ["api_key"] : ["api_key", id == "codex" ? "chatgpt" : "claude.ai", nil, "unrecognized"]
@@ -101,6 +105,58 @@ actor ConsentFixtureConnector: LLMConnector {
                 }
             }
             }
+        }
+        for (base, host) in [("http://127.0.0.1:11434", nil), ("http://192.168.1.20:11434", "192.168.1.20")] as [(String, String?)] {
+            for action in [ConnectorConsentAction.findClips, .test] {
+                for choice in ["cancel", "continue", "granted"] {
+                    let app = AppModel(settingsStore: RegressionSettingsStore())
+                    await app.start()
+                    guard let provider = app.providers.first(where: { $0.id == "ollama" }) else { throw CocoaError(.coderInvalidValue) }
+                    let fake = ConsentFixtureConnector(id: .ollama, authMethod: nil)
+                    app.connectorOverride = { _ in fake }
+                    app.set("llm.connector", .string("ollama"))
+                    app.set("llm.model.ollama", .string("fixture-local"))
+                    app.set("llm.baseUrl.ollama", .string(base))
+                    app.set("llm.cloudConsent.ollama", .bool(choice == "granted"))
+                    let observation = ConsentObservation()
+                    app.connectorConsentOverride = { _, _, copy in observation.copies.append(copy); return choice == "continue" }
+                    let editor = makeEditor(fixture: fixture, app: app)
+                    defer { editor.close(); app.connectorConsentOverride = nil; app.connectorOverride = nil }
+                    if action == .findClips { editor.findClips(); await wait { !editor.finding } } else { _ = await testProvider(provider, app: app) }
+                    let sends = await fake.sends
+                    let asked = host != nil && choice != "granted"
+                    let prefix = "ollama at \(host ?? "loopback") \(action) \(choice)"
+                    check("\(prefix) asks first only off this Mac and sends only after consent", observation.copies.count == (asked ? 1 : 0) && sends == (asked && choice == "cancel" ? 0 : 1))
+                    check("\(prefix) consent names the server, not an API key", observation.copies.allSatisfy { $0.contains("to the Ollama server at 192.168.1.20") && !$0.contains("API key") })
+                    let footnote = FindClipsPopover.footnote(provider, serverHost: app.localServerHost(provider))
+                    check("\(prefix) Find clips footnote says where the transcript goes", footnote == (host.map { "Sends transcript text with word numbers to \($0). No audio or video." } ?? "Runs on this Mac. Nothing leaves it."))
+                }
+            }
+        }
+        do {
+            let app = AppModel(settingsStore: RegressionSettingsStore())
+            await app.start()
+            app.set("llm.baseUrl.ollama", .string("http://192.168.1.20:11434")); app.set("llm.cloudConsent.ollama", .bool(true))
+            app.set("llm.baseUrl.ollama", .string("http://192.168.1.20:11500/"))
+            let sameHost = app.bool("llm.cloudConsent.ollama")
+            app.set("llm.baseUrl.ollama", .string("http://192.168.1.30:11434"))
+            check("a different Ollama server host asks for consent again", sameHost && !app.bool("llm.cloudConsent.ollama"))
+        }
+        for id in ["ollama", "lmstudio"] {
+            let app = AppModel(settingsStore: RegressionSettingsStore())
+            await app.start()
+            guard let provider = app.providers.first(where: { $0.id == id }) else { throw CocoaError(.coderInvalidValue) }
+            let fake = ConsentFixtureConnector(id: ConnectorID(rawValue: id)!, authMethod: nil)
+            app.connectorOverride = { _ in fake }
+            app.set("llm.baseUrl.\(id)", .string("http://192.168.1.20:1234"))
+            app.connectorConsentOverride = { _, _, _ in
+                app.set("llm.baseUrl.\(id)", .string("http://192.168.1.30:1234"))
+                return true
+            }
+            defer { app.connectorConsentOverride = nil; app.connectorOverride = nil }
+            let approved = try await app.authorizeConnectorRequest(provider, connector: fake, action: .test)
+            check("\(id) cannot reuse approval after its server changes", !approved && !app.bool("llm.cloudConsent.\(id)"))
+            check("\(id) remote copy names its host", app.consentCopy(provider, action: .test, wordCount: 0).contains("server at 192.168.1.30"))
         }
         return results
     }

@@ -92,11 +92,10 @@ copy_shared_resources() {
 
 compile_asset_catalog() {
     local accent partial="$WORK_DIR/asset-catalog-info.plist" log="$WORK_DIR/actool.log"
-    local transport="${TRANSPORT_ASSET_CATALOG:-Resources/Transport.xcassets}"
     accent=$(/usr/libexec/PlistBuddy -c 'Print :NSAccentColorName' "$INFO_PLIST" 2>/dev/null) \
         || die "Info.plist has no NSAccentColorName."
     # actool only warns about a missing accent colour, so require it in the partial plist.
-    if ! xcrun actool "$ASSET_CATALOG" "$transport" --compile "$APP_BUNDLE/Contents/Resources" --platform macosx \
+    if ! xcrun actool "$ASSET_CATALOG" --compile "$APP_BUNDLE/Contents/Resources" --platform macosx \
         --minimum-deployment-target "$MIN_MACOS" --accent-color "$accent" --output-partial-info-plist "$partial" \
         --output-format human-readable-text --errors --warnings > "$log" 2>&1; then
         cat "$log" >&2
@@ -224,13 +223,13 @@ license_gate() {
     "$NM" -a "$binary" > "$symbols" 2> "$WORK_DIR/nm.stderr" || die "Cannot inspect symbols in $binary."
     "$OTOOL" -L "$binary" > "$WORK_DIR/otool.stdout" || die "Cannot inspect linked libraries in $binary."
     sed '1d' "$WORK_DIR/otool.stdout" > "$dependencies"
-    if grep -E '(^|[[:space:]])_(espeak_|espeak_ng_|x264_|x265_|avcodec_|avformat_|avfilter_|avutil_|swresample_|swscale_)' "$symbols" >/dev/null; then
+    if grep -E '(^|[[:space:]])_(espeak_|espeak_ng_|x264_|x265_|av_|avcodec_|avformat_|avfilter_|avutil_|avdevice_|swresample_|swscale_|swr_|sws_|postproc_|pp_)' "$symbols" >/dev/null; then
         die "Licence gate: forbidden espeak, x264, x265 or FFmpeg code in $binary."
     else
         scan_status=$?
         [ "$scan_status" -eq 1 ] || die "Cannot scan symbols in $binary."
     fi
-    if grep -E '/lib(espeak(-ng)?|x264|x265|av(codec|format|filter|util)|sw(resample|scale))' "$dependencies" >/dev/null; then
+    if grep -E '/lib(espeak(-ng)?|x264|x265|av(codec|format|filter|util|device)|sw(resample|scale)|postproc)' "$dependencies" >/dev/null; then
         die "Licence gate: forbidden espeak, x264, x265 or FFmpeg code in $binary."
     else
         scan_status=$?

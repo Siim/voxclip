@@ -137,7 +137,7 @@ Main window (macOS: exactly one. Windows: one per process window; Ctrl+N opens a
       Voice Lab (M3 beta) · About
 ```
 
-**Sidebar selection model.** Selection is one value: `SidebarItem = home | fullTake | clip(ClipRange.id)`.
+**Sidebar selection model.** Selection is one value: `SidebarItem = home | fullTake | clip(ClipRange.id)`. On macOS a Recent row is a fourth case, `recent(URL)`: the arrow keys and Return can select it, and it shows Home like the Home row.
 
 - **Full take** sets `edits.activeClipId = null`. **A clip or suggestion row** sets `activeClipId` to that clip. Both use the existing `setActiveClip` command, so a row change is one undo step that pauses playback (editing §6.3, unchanged). The transcript highlight, the viewer, the timeline, the toolbar summary, Cut Fillers, Tighten Pauses, Restore Cuts and Export all follow `activeClipId`, as they already do.
 - **Home** does not change `activeClipId`. It pauses playback and shows Home in the detail area. Leaving Home goes back to the project's current scope.
@@ -554,7 +554,7 @@ Restore is disabled when nothing in the selection is cut. When the selection alr
   - trailing: the AI modified tag (12, 1 px `accent.text`, 16.34:1 light, 14.16:1 dark), then the time in Cascadia Mono 13.
 - **Frame row:** 24 high on macOS, 32 on Windows. The label "Frame" (13 or 14 `text.secondary`) leads.
   - The control: macOS `Picker(.segmented)` with `.labelsHidden()`; Windows `CommunityToolkit.WinUI.Controls.Segmented`.
-  - When the row doesn't fit, macOS first uses the small control size in the same 24-high row, then puts "Frame" on its own line, 6 above a full-width small picker. At 1280 (column 320) it stacks; at 360 the small control fits in one row. No label is truncated or dropped.
+  - When the row doesn't fit, macOS first uses the small control size in the same 24-high row, then puts "Frame" on its own line, 6 above a small picker at the leading edge. Inline rows also start at the leading inner edge. At 1280 (column 320) it stacks; at 360 the small control fits in one row. No label is truncated or dropped.
   - The options, in this order: **9:16 · 1:1 · 16:9 · Original**. The selected label is semibold, as a cue that does not depend on colour. On Windows the selected segment has a white knob with a 1 px `line.strong` stroke.
   - The control reads and writes `export.aspect`, whose persisted values (`portrait`, `square`, `landscape`, `source`) and file suffixes (§8) do not change. Only the label "Source" becomes "Original".
   - Face-tracked reframe (M2) adds a "Follow face" toggle to this row.
@@ -914,11 +914,11 @@ On macOS each segmented control's label leads it on one line; when they don't fi
 
 There is no separate Fine Tune row and no "Off" tile.
 
-The gallery scrolls inside the column and clips at its own viewport, which always ends above the column's bottom padding, so every style can be scrolled into view at any window height. The Captions header stays fixed; Fine Tune and caption errors scroll with the gallery. On macOS the small, fixed catalogue uses eager two-column rows, so reveal positions never depend on a lazy grid's estimated offscreen heights.
+The gallery scrolls inside the column and clips at its own viewport, which always ends above the column's bottom padding, so every style can be scrolled into view at any window height. The Captions header and caption errors stay fixed; Fine Tune scrolls with the gallery. Neither automatic reveal nor manual scrolling may hide a caption error. On macOS the small, fixed catalogue uses eager two-column rows, so every row is laid out before a selection is revealed.
 
 **Gallery.**
 
-- **Control:** macOS `LazyVGrid` of `Button`s with `.accessibilityRepresentation` as a `Picker` named "Caption style". Windows `GridView` with `SelectionMode="Single"` over a grouped `CollectionViewSource`.
+- **Control:** macOS eager two-tile `HStack` rows in a `VStack`, with `Button`s and `.accessibilityRepresentation` as a `Picker` named "Caption style". Windows `GridView` with `SelectionMode="Single"` over a grouped `CollectionViewSource`.
 - **Layout:** two columns with an 8 gap. Tile width is (inner width − 8) / 2; tile height is round(width × 0.45). That gives 160×72 at a 360 column, 140×63 at 320 and 173×78 at 388. Radius 10. The name sits under the tile with a 4 gap, and rows are 10 apart.
 - **Groups**, each with a section header (11/600 `text.secondary`), from the style's tags. A style goes to the first group it matches; within a group, styles sort by `order`:
 
@@ -931,7 +931,7 @@ The gallery scrolls inside the column and clips at its own viewport, which alway
   A style with none of these tags goes into an "Other" group at the end. A test asserts that the bundled styles produce no "Other" group.
 - **Tile content.** Each tile renders the real style with the export renderer: the current phrase at the playhead, with that style's word count and casing (captions spec §15.3; fallback: the style's `preview.text`). It is drawn over the band of the current frame behind the style's caption position, dimmed 35%. With no frame, samples sit on the card backdrop (§5.4.3), not dimmed. A tile that cannot render draws exactly the backdrop it would have had: the band of the current frame dimmed 35%, or the card backdrop (design.md section 5.4.3) when there is no frame, and stage black in the loading states (design.md section 5.4.4). It never draws text. In clip scope the playhead is inside the clip. The selected tile is drawn with the active overrides.
 - **Selected tile:** a 2 px `accent.text` outline at offset 2, a check badge (a white check on a 62% black disc, 18, top-right, inset 6), and the name "Box highlight · Edited" in 600 `text.primary`. Other names are 11 (macOS) or 12 (Windows) `text.secondary`.
-- **Scrolling.** The grid scrolls the selected tile into view when the scope changes. The scroll view ends 16 above the strip (the pane padding) with a 24 (macOS) or 12 (Windows) fade to the column background.
+- **Scrolling.** The grid scrolls the selected tile into view when the scope changes, including while Fine Tune is expanded. An external style change, Undo, or closing Fine Tune also reveals it. Clicking a visible tile never moves the gallery. Resizing alone never resumes a reveal interrupted by user scrolling. The scroll view ends 16 above the strip (the pane padding) with a 24 (macOS) or 12 (Windows) fade to the column background.
 - **Accessibility.** Options are named "{name}: {description}" ("Box highlight: a box behind the spoken word, a few words at a time").
 - **Motion.** Under Reduce Motion, tiles are static; animated styles show their resting frame.
 - Captions follow edited time, and phrase grouping does not break at cut seams (captions spec D9). Under Reduce Motion the preview shows animated styles without animation; export keeps them.
@@ -979,17 +979,18 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
   - the footnote "Sends transcript text with word numbers. No audio or video." For local connectors it reads "Runs on this {Mac/PC}. Nothing leaves it.";
   - **[Find Clips]** as the default button.
 - **Consent.** The first cloud use runs the existing consent alert (ai.md §4.8).
-- **While it runs:** the popover closes. The sidebar shows a "Finding clips…" row under the Suggested header, with a spinner (Windows: a fixed-width `ProgressRing`), **Cancel**, and the connector line "{connector} · reading {duration} of transcript" in 11 `text.secondary`.
+- **While it runs:** the popover closes. The sidebar shows a "Finding clips…" row under the Suggested header, with a spinner (Windows: a fixed-width `ProgressRing`), **Cancel**, and the connector line "{connector} · reading {duration} of transcript" in 11 `text.secondary`. On macOS, Clip > Cancel Finding Clips (⌘.) and Esc in the sidebar also cancel; cancelling is silent.
 - **Results:** the new suggestions appear under Suggested and the first is focused (not selected). Announce "Found 3 clips".
 - **No connector:** the popover is replaced by an inline callout under the sidebar actions. Copy is in §13, with **Set Up AI…** and the line "You can also select words and press ⌘K to make a clip yourself."
 - **Failures** show in the same place with **Retry** (§13).
 
 **Export ledger** (app-local, not in the project).
 
-- **Location:** `<app data>/exports.json`, keyed by project id and target ("full" or a clip id).
+- **Location:** `<app data>/exports.json`, keyed by project id and target ("full" or a clip id). macOS also keys it by aspect, so a row shows the status for the project's current Frame. Windows keeps one record per target.
 - **Record:** `{exportedAt, planFingerprint, styleId, aspect, outputPath}`, written after each successful export.
+- **Fingerprint:** `planFingerprint` is a SHA-256 over the render inputs both platforms share (`apps/windows/CONTRACTS.md`): the source's content key, duration, oriented size, rotation, frame rate, sample rate and channels; the scoped edit plan; quality and the resolved output encoding; the effective caption style and, when captions are on, the scoped caption words (including their timings), language, overrides and position for the aspect; and the Voice Lab output plan, disclosure and selected assets. SRT intent, titles, share text, the folder, word confidence, speakers, project bookkeeping timestamps and recipe provenance are left out.
 - **Statuses:**
-  - **Exported:** a record exists and `planFingerprint` (a SHA-256 of the scoped edit state, caption settings and aspect) matches the current one.
+  - **Exported:** a record exists and its `planFingerprint` matches the current one.
   - **Edited since export:** a record exists and the fingerprints differ.
   - **Exporting / Export failed:** taken from the live export queue.
 - Clearing app data removes the statuses, never the project.
@@ -1281,7 +1282,7 @@ Step 3 of 3   Five keys to know
               [ Open a video… ]                                                     [ Done ]
 ```
 
-- Step 2 preselects **nothing** (AI spec section 7.1 rule 8, `llm.connector` starts empty). **Not now** is the default button; **Continue** is disabled until an option is chosen. Choosing Installed CLI also requires picking Claude Code or Codex explicitly, and then shows the AI spec section 4.8 consent text inline (for example "…counts toward your Claude plan's usage"); Continue stores `llm.cloudConsent.<id>`.
+- Step 2 preselects **nothing** (AI spec section 7.1 rule 8, `llm.connector` starts empty). **Not now** is the default button; **Continue** is disabled until an option is chosen. Choosing Installed CLI also requires picking Claude Code or Codex explicitly. Continue stores only `llm.connector`; onboarding grants no consent. The AI spec section 4.8 sheet appears before the connector's first request (Find Clips, Rewrite or Settings → Test), once detection reports the connector ready, so a CLI sheet words its billing sentence from the detected sign-in. Windows, until its redesign merges: cloud and CLI connectors also show the checkbox "I understand what this connector sends and want to use it.", and Continue stores `llm.cloudConsent.<id>`. The redesign keeps the checkbox but stores only `llm.connector`.
 - Keys go straight to the Keychain / DPAPI (architecture.md section 11.4). Once saved, a key is never shown again; the field shows "Saved in the Keychain; paste to replace".
 - **Test** makes one minimal call through the normal path and shows the result in `status.success` or `status.warning`: AI connectors as AI spec section 10.2 ("Works · {model} · {seconds} s" / "Failed: {message}"), ElevenLabs as the transcription spec's key test. CLI rows show the local detection and sign-in status first (AI spec section 6.10).
 - If the user skips step 1, the first import asks inline: "Transcribe on this {Mac/PC} (download {model}, {size})" or "Use ElevenLabs (add key)".
@@ -1331,7 +1332,7 @@ Model row: name; "languages · size · licence"; third-party note with a Source 
 
 ### 11.1 Scope rule
 
-Single-letter keys (J K L I O P C [ ]) and bare Space, ⌫ and arrows act on the editor only when keyboard focus is in the transcript, the viewer or the timeline **and** no inline correction field is open **and** no IME composition is in progress (`NSTextInputClient.hasMarkedText()` false; WinUI: focus is not a `TextBox`, `PasswordBox`, `AutoSuggestBox`, `RichEditBox` or `NumberBox`). In any text field they type text. Single-letter keys do not act in the sidebar list either, except [ and ]. macOS implements them in the `NSTextView` subclass's `keyDown` and in `.onKeyPress` on the viewer and timeline; Windows uses `KeyboardAccelerator`s scoped with `ScopeOwner` to the editor root plus a focus check.
+Single-letter keys (J K L I O P C [ ]) and bare Space, ⌫ and arrows act on the editor only when keyboard focus is in the transcript, the viewer or the timeline **and** no inline correction field is open **and** no IME composition is in progress (`NSTextInputClient.hasMarkedText()` false; WinUI: focus is not a `TextBox`, `PasswordBox`, `AutoSuggestBox`, `RichEditBox` or `NumberBox`). In any text field they type text. Single-letter keys do not act in the sidebar list either, except [ and ]. A button, switch, segmented control or pop-up that has keyboard focus (Full Keyboard Access) keeps Space and the other bare keys for itself; on macOS the editor's bare-key menu commands are disabled for that key press. macOS implements them in the `NSTextView` subclass's `keyDown` and in `.onKeyPress` on the viewer and timeline; Windows uses `KeyboardAccelerator`s scoped with `ScopeOwner` to the editor root plus a focus check.
 
 On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). Use Ctrl+Shift.
 
@@ -1387,10 +1388,10 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 
 - **VoxClip:** About VoxClip, Check for Updates…, Settings…, Hide, Quit.
 - **File:** New Project from Video… (⌘N), New Recording (M2, ⌥⌘N), Open… (⌘O; projects and movies, opening in the main window), Open Recent, Close Project (⌘W), Save (⌘S), Save As… (⇧⌘S), Duplicate, Rename…, Move To…, Revert to Saved…, Export… (⌘E), Reveal Media in Finder.
-- **Edit:** Undo, Redo, Cut Selection, Restore Selection, Correct Word, Rewrite… (⇧⌘R), Insert Words…, Select All, Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again…; M2: Tighten with AI…, Clean Audio…; M3: Change Voice….
+- **Edit:** Undo, Redo, Cut, Copy, Paste, Select All, Cut Selection, Restore Selection, Correct Word, Rewrite… (⇧⌘R, subject to the Voice Lab beta entry policy in §6.3), Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again…; later: Insert Words… (hidden until Core can place an insertion, §6.3); M2: Tighten with AI…, Clean Audio…; M3: Change Voice….
 - **View:** Show/Hide Sidebar (⌃⌘S), Show/Hide Viewer (⌥⌘I), Home (⌘1), Full Take (⌘2), Show/Hide Cut Words (⇧⌘H), Show/Hide Pauses, Source/Edited Timeline, Bigger/Smaller/Actual Size, Enter Full Screen. Each Show/Hide title describes the current action.
 - **Playback:** Play/Pause, Play from Selection, Preview Cut, Back 3 Seconds (J), Forward 3 Seconds, Shuttle Back/Stop/Forward, Go to Start/End.
-- **Clip:** Make Clip from Selection (⌘K), Find Clips… (⇧⌘K), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Export Clip….
+- **Clip:** Make Clip from Selection (⌘K), Find Clips… (⇧⌘K), Cancel Finding Clips (⌘., only while finding), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Export Clip….
 - **Window:** standard items, plus "VoxClip" (brings back the main window).
 - **Help:** Keyboard Shortcuts, Welcome Tour, What Leaves This Mac, Reveal Logs, Copy Diagnostics.
 
@@ -1453,9 +1454,10 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Everything cut | Editor, Export | Export disabled; status "Keep at least one word before exporting." |
 | Suggestion selected, Export pressed | Export tooltip | "Keep this clip to export it." |
 | Edit summary | toolbar subtitle / command row | §3.5 grammar: "{edited} after cuts · {n} cuts", "Clip {k} · {edited} after cuts · {n} cuts", "Clip {k} · {edited} · No cuts yet" |
-| Export progress | Export sheet; sidebar row | sheet: "Rendering {i} of {n} · {p}% · about {t} left" [Cancel]; row: "Exporting {p}%" with a ring |
-| Export done | Export sheet | "Saved {n} video(s) to {folder}" + share buttons |
-| Export failure | Export sheet; sidebar row | sheet: "Export stopped: {reason}. Your edits are saved." [Try again]; row: "⚠ Export failed" [Retry] |
+| Export progress | Export sheet; sidebar row | sheet: "Rendering {i} of {n} · {p}% · about {t} left" [Cancel]; row: "Exporting {p}%" with a ring. Announce "Exporting {n} video(s)", then "Rendering {i} of {n} · {p}%" at 25, 50 and 75% |
+| Export done | Export sheet | "Saved {n} video(s) to {folder}" + share buttons. Announce it with the folder's name; Copy caption announces "Caption copied." |
+| Export failure | Export sheet; sidebar row | sheet: "Export stopped: {reason}. Your edits are saved." [Try again]; row: "⚠ Export failed" [Retry]. Announce the sheet message; a cancelled export is silent |
+| Export destination conflict | Export failure reason | "A file named {name} appeared in the export folder. Export again to replace it, or choose another name." Never silently replace a file which appeared or changed after the export was approved. |
 | Exported, then edited | sidebar row, second line | "⚠ Edited since export" in `status.warning` |
 | No encoder (Windows) | Export | "No H.264 encoder is available on this PC. Install the Media Feature Pack or update your graphics driver." (Error) |
 | HDR source (Windows) | Export | "This video is HDR. Colours are converted to standard range and may look flatter." (Informational) |
@@ -1548,7 +1550,7 @@ Contrast is a test, not a note: `npm --prefix tools/design test` computes WCAG 2
 
 The palette is the Document direction from the October 2026 design study: paper and ink neutrals and one accent, Ink, the icon tile's ink. Each colour token's `source` extension names the study token its value comes from (for example `bg.elevated` is the study's raised), or the ADR-R29 mockup token. `line.subtle` was removed because the study has two separators. `text.disabled`, `record.*`, `overlay.scrim` and `overlay.transportOpaque` keep values the study does not define. `stage` stays `#000000` rather than the study's `#0B0B0C`, because letterboxed video wants true black (§14). It is also the caption card's backdrop (§5.4.3). Three values step away from their sources so every pair passes: `text.muted` sits between `text.secondary` and `text.tertiary` (the study's pause label was brighter than `text.secondary`), `word.cut` is one step past the study's cutText so cut words pass on `pause.background`, and the dark `clip.badgeBackground` is 10% rather than the ADR-R29 delta's 13% so badge numerals pass on the sidebar glass.
 
-ADR-R29 adds `clip.badgeBackground`, `timeline.keptBackground`, `timeline.scopeDim` and `selection.transcript`, and retunes `timeline.waveform`. `timeline.clipBracket` marks the selected clip only; unselected brackets use `line.strong`. `timeline.clipBand`, `size.inspector`, `size.welcomeWindow`, `size.transportPillHeight`, `size.footerStatusHeightWindows` and `size.breakpointThreeColumn` are deprecated and removed with the old layout.
+ADR-R29 adds `clip.badgeBackground`, `timeline.keptBackground`, `timeline.scopeDim` and `selection.transcript`, and retunes `timeline.waveform`. `timeline.clipBracket` marks the selected clip only; unselected brackets use `line.strong`. `timeline.clipBand`, `size.inspector`, `size.welcomeWindow`, `size.transportPillHeight`, `size.footerStatusHeightWindows` and `size.breakpointThreeColumn` are deprecated and removed with the old layout. The generator already leaves them out of `Tokens.swift`; tokens.json and `Tokens.xaml` still carry them.
 
 The media stand-ins (§5.4) add `chip.mediaBackground`, `chip.mediaStroke`, `chip.mediaBackgroundOpaque`, `chip.mediaForeground` and `chip.warningGlyph` (§5.4.8). They have one value in both themes because they sit on media. They join tokens.json, with their pairs in `tools/design/contrast.mjs`, when the first chip is built.
 

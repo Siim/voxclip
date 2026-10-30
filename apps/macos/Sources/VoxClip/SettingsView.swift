@@ -66,6 +66,7 @@ extension AppModel {
                 Picker("Region", selection: app.stringBinding("transcription.elevenlabs.region", fallback: "default")) { Text("Default").tag("default"); Text("EU residency").tag("eu"); Text("US").tag("us"); Text("India").tag("in"); Text("Singapore").tag("sg") }
             } header: { Text("Advanced") } footer: { Text("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.") }
             LocalModelRows(app: app)
+            AppleSpeechAssetRows(app: app)
             Section {
                 Text("Models download on first use and never ship inside the app. Each runs entirely on this Mac.")
                 Text(app.locations.models.path.replacingOccurrences(of: FileManager.default.homeDirectoryForCurrentUser.path, with: "~")).font(.caption).textSelection(.enabled)
@@ -145,8 +146,7 @@ extension AppModel {
         }.formStyle(.grouped)
     }
     private func localPrivacy(_ provider: ProviderChoice) -> String {
-        let base = app.string("llm.baseUrl.\(provider.id)", fallback: provider.baseUrl ?? "")
-        if let url = URL(string: base), let host = url.host, !["localhost", "127.0.0.1", "::1"].contains(host) { return "Transcripts are sent to \(host)." }
+        if let host = app.localServerHost(provider) { return "Transcripts are sent to \(host)." }
         return "Runs on this Mac. Nothing leaves it."
     }
 }
@@ -197,7 +197,7 @@ extension AppModel {
                         if provider == "elevenlabs" { result = await testSpeechKey(app: app) }
                         else if let choice = app.providers.first(where: { $0.id == provider }) { result = await testProvider(choice, app: app) }
                     }
-                }.disabled(testing || !saved && value.isEmpty)
+                }.disabled(testing || !saved && value.isEmpty).accessibilityIdentifier("provider.\(provider).test").auditButtonAction("provider.\(provider).test")
                 if saved { Button("Forget key") { Task { do { try await app.saveProviderKey("", for: provider); saved = false; result = nil } catch { result = await app.safeError(error) } } } }
             }
             Text(provider == "elevenlabs" ? "The key stays in the macOS Keychain and is used only for transcription." : "The key stays in the macOS Keychain and is used only for AI features.").font(.caption).foregroundStyle(.secondary)

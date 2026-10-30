@@ -28,7 +28,7 @@ jobs:
     name: macOS (Swift app, .NET core on macOS)
     runs-on: macos-26
     # Every step after setup has its own budget; the job limit is their sum plus about five minutes of setup.
-    timeout-minutes: 175
+    timeout-minutes: 195
     steps:
       - uses: actions/checkout@v5
 
@@ -123,6 +123,8 @@ jobs:
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         run: swift test --jobs 2 --filter VoxClipCoreTests
 
       - name: Swift test (VoxClipMediaTests)
@@ -132,6 +134,8 @@ jobs:
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         run: swift test --jobs 2 --filter VoxClipMediaTests --skip CaptionParityTests
 
       # The caption golden renders keep all three runner cores busy for minutes, so they run alone instead
@@ -143,6 +147,8 @@ jobs:
         env:
           VOXCLIP_SHARED_DIR: ${{ github.workspace }}/shared
           VOXCLIP_CAPTION_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_SCHEMA_PYTHON: ${{ steps.py.outputs.python-path }}
+          VOXCLIP_REQUIRE_SCHEMA_PYTHON: "1"
         run: swift test --jobs 2 --filter CaptionParityTests
 
       # Runs after a Swift test failure too, with the Release CLI built above.
@@ -256,6 +262,25 @@ jobs:
         run: |
           swift build --package-path tools/media/sckrec --jobs 2 -Xswiftc -Xfrontend -Xswiftc -warn-long-expression-type-checking=300
           swift test --package-path tools/media/sckrec --jobs 2
+
+      - name: Release script safety tests (mocked signing, notarization and upload)
+        if: ${{ !cancelled() && steps.detect.outputs.swift == 'true' }}
+        timeout-minutes: 5
+        shell: bash
+        run: python3 apps/macos/scripts/test_release.py
+
+      - name: Ad-hoc app bundle with the release licence gates
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 15
+        working-directory: apps/macos
+        shell: bash
+        run: |
+          ./bundle.sh
+          frameworks="$PWD/dist/VoxClip.app/Contents/Frameworks"
+          [ -n "$(find "$frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -print -quit 2>/dev/null)" ] \
+            || { echo "::error::The ad-hoc bundle embeds no framework or dylib for the notice gate"; exit 1; }
+          APP_BUNDLE="$PWD/dist/VoxClip.app" /bin/bash -c 'source scripts/release-common.sh && framework_notice_gate'
+          echo "Framework notice gate passed"
 
   hevc-fixture:
     name: Test-only Windows Main 10 fixture
@@ -652,6 +677,27 @@ jobs:
           fi
           exit "$status"
 
+      - name: Regenerate project fixtures and check for drift
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          for generator in five_questions normalization relink timestamps; do
+            python "tools/fixtures/projects/generate_$generator.py"
+          done
+          status=0
+          git diff --exit-code || status=1
+          untracked=$(git status --porcelain --untracked-files=all)
+          if [ -n "$untracked" ]; then
+            echo "::error::A project fixture generator produced files that are not committed:"
+            echo "$untracked"
+            status=1
+          fi
+          if [ "$status" -ne 0 ]; then
+            git checkout -- .
+            git clean -fdq
+          fi
+          exit "$status"
+
       - name: Regenerate caption fixtures and check for drift
         if: ${{ !cancelled() }}
         shell: bash
@@ -693,6 +739,10 @@ jobs:
         run: |
           bash tools/release/check-version.sh
           python3 -m unittest discover -s tools/release -p 'test_*.py'
+
+      - name: CLI E2E report comparator unit tests
+        if: ${{ !cancelled() }}
+        run: python3 -m unittest discover -s tools/parity -p 'test_*.py'
 
       - name: Validate JSON in shared/
         if: ${{ !cancelled() }}

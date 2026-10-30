@@ -37,6 +37,21 @@ import VoxClipCore
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if DEBUG
+        if let index = CommandLine.arguments.firstIndex(of: "-transcriptionConsentAudit"), index + 1 < CommandLine.arguments.count {
+            let directory = URL(fileURLWithPath: CommandLine.arguments[index + 1])
+            Task {
+                do {
+                    await model.start()
+                    guard let shared = model.shared else { throw VoxClipError.sharedResourcesMissing }
+                    let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
+                    let results = try await DebugTranscriptionConsent.run(fixture: fixture)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("results.json"), options: .atomic)
+                    exit(results.allSatisfy(\.passed) ? 0 : 1)
+                } catch { fputs("Transcription consent audit failed: \(error)\n", stderr); exit(1) }
+            }
+            return
+        }
         if let index = CommandLine.arguments.firstIndex(where: { ["-layoutAudit", "-captionGalleryAudit"].contains($0) }), index + 1 < CommandLine.arguments.count {
             let directory = URL(fileURLWithPath: CommandLine.arguments[index + 1])
             Task {
@@ -253,6 +268,7 @@ import VoxClipCore
         case 46: editor.seek(source: max(0, editor.sourceTime - 3))
         case 47: editor.seek(source: min(editor.sourceDuration, editor.sourceTime + 3))
         case 48: editor.copySelection()
+        case 49: editor.findTask?.cancel()
         default: break
         }
     }
@@ -289,6 +305,14 @@ import VoxClipCore
         return "This replaces the transcript and removes \(edits.cutWordIds.count + edits.cutPauseIds.count) cuts, \(edits.corrections.count) corrections, \(edits.clips.count) clips and the AI suggestions."
     }
 
+    static func focusedControlKeepsKey(_ item: NSMenuItem, responder: NSResponder?) -> Bool {
+        guard !item.keyEquivalent.isEmpty, item.keyEquivalentModifierMask.isDisjoint(with: [.command, .control, .option]) else { return false }
+        if responder is NSText || responder is NSTextField || responder is NSTableView || responder is NSSlider { return false }
+        if responder is NSControl { return true }
+        guard responder is NSView, NSApp.isFullKeyboardAccessEnabled || NSWorkspace.shared.isVoiceOverEnabled,
+              let role = (NSApp.accessibilityFocusedUIElement as? any NSAccessibilityProtocol)?.accessibilityRole() else { return false }
+        return [.button, .checkBox, .radioButton, .radioGroup, .popUpButton, .menuButton, .disclosureTriangle].contains(role)
+    }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(checkUpdates(_:)) {
             item.title = model.update.map { "VoxClip \($0.version) Available…" } ?? "Check for Updates…"
@@ -309,6 +333,7 @@ import VoxClipCore
             }
             guard let editor else { return false }
             if editor.mutationEnabled(item.tag) == false { return false }
+            if NSApp.currentEvent?.type == .keyDown, Self.focusedControlKeepsKey(item, responder: NSApp.keyWindow?.firstResponder) { return false }
             if NSApp.currentEvent?.type == .keyDown, [40, 41, 43, 44].contains(item.tag) {
                 guard editor.focusedPane == .sidebar, model.shell.renaming == nil else { return false }
                 if let input = NSApp.keyWindow?.firstResponder as? any NSTextInputClient, input.hasMarkedText() { return false }
@@ -329,6 +354,7 @@ import VoxClipCore
             case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
             case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true
             case 42: return editor.capabilities.edit && !editor.suggestedClips.isEmpty
+            case 49: return editor.finding
             case 43, 44: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.capabilities.edit
             case 45: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.canExport && editor.mediaExportable
             case 46: return editor.mediaResolved && NSApp.keyWindow?.firstResponder is TranscriptNSTextView
@@ -448,6 +474,7 @@ import VoxClipCore
         let clip = menu("Clip")
         command(clip, "Make Clip from Selection", 29, "k")
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
+        command(clip, "Cancel Finding Clips", 49, ".")
         command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
         command(clip, "Dismiss Suggestion", 41, String(UnicodeScalar(NSDeleteCharacter)!), [])
         command(clip, "Keep All Suggestions", 42)

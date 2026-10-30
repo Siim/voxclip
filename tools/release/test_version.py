@@ -79,6 +79,20 @@ class VersionTests(unittest.TestCase):
         self.source("apps/windows/src/VoxClip.Cli/New.cs", 'const string Version = "9.8.7-beta.2";\n')
         self.assertEqual(self.check().returncode, 1)
 
+    def test_build_number_rises_once_per_new_version(self):
+        plist_path = self.root / "apps/macos/Sources/VoxClip/Info.plist"
+        build = int(plistlib.loads(plist_path.read_bytes())["CFBundleVersion"])
+        for version, expected in ((self.version, build), ("9.8.7", build + 1), ("9.8.7", build + 1),
+                                  ("9.8.8-beta.1", build + 2), ("9.8.8", build + 3)):
+            with self.subTest(version=version):
+                result = subprocess.run([sys.executable, str(self.root / "tools/release/version.py"), "set", version],
+                                        capture_output=True, text=True, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                info = plistlib.loads(plist_path.read_bytes())
+                self.assertEqual((info["CFBundleShortVersionString"], info["CFBundleVersion"]), (version, str(expected)))
+                props = ET.parse(self.root / "apps/windows/Directory.Build.props")
+                self.assertEqual(props.find("./PropertyGroup/Version").text, version)
+
     def test_embedded_raw_and_multiline_string_literals_fail(self):
         for filename, content in (
                 ("Planted.swift", f'let version = #"a " // {self.version}"#'),

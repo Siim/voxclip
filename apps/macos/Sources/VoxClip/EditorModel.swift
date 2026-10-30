@@ -267,10 +267,10 @@ struct EditorRenderSnapshot {
     #endif
     @ObservationIgnored private var renderedActiveClipID: String?
 
-    init(document: VoxClipDocument, app: AppModel, preview: (any PreviewEngine)? = nil, exporter: any Exporter = ExportQueue()) {
+    init(document: VoxClipDocument, app: AppModel, preview: (any PreviewEngine)? = nil, exporter: (any Exporter)? = nil) {
         self.document = document
         self.app = app
-        self.exporter = exporter
+        self.exporter = exporter ?? ExportQueue(exporter: AVExporter(cleanupRegistry: app.locations.root.appendingPathComponent("Scratch", isDirectory: true)))
         mediaResolved = document.demo
         if let preview { self.preview = preview; nativePreview = nil }
         else {
@@ -569,6 +569,9 @@ struct EditorRenderSnapshot {
             } catch is CancellationError {} catch { previewError = await app.safeError(error) }
         }
     }
+    #if DEBUG
+    func waitForPendingPreviewForAudit() async { await updateTask?.value }
+    #endif
     private func recordDocumentChange() {
         document.updateChangeCount(undoManager?.isUndoing == true ? .changeUndone : undoManager?.isRedoing == true ? .changeRedone : .changeDone)
     }

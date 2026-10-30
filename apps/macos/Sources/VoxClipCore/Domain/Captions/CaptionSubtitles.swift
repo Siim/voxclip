@@ -9,7 +9,7 @@ public enum CaptionSubtitles {
             }.joined(separator: "\n")
             cues.append("\(cues.count + 1)\n\(timestamp(layout.page.start)) --> \(timestamp(layout.page.end))\n\(text)\n")
         }
-        return cues.isEmpty ? "" : cues.joined(separator: "\n")
+        return cues.isEmpty ? "" : cues.joined(separator: "\n") + "\n"
     }
 
     private static func timestamp(_ seconds: Double) -> String {

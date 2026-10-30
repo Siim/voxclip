@@ -17,17 +17,17 @@ import VoxClipCore
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         check("bundled caption styles have no Other group", app.styles.allSatisfy { CaptionStyleGroup.group(for: $0) != .other })
-        check("visual gallery scroll targets cannot collide with the accessibility Picker's style IDs", AnyHashable(CaptionGalleryTarget.tile("vox-highlight")) != AnyHashable("vox-highlight"))
         var reveal = CaptionGalleryReveal()
         let size = CGSize(width: 294, height: 272)
         let firstRequest = CaptionGalleryRequest(selection: "full/vox-highlight", size: size, fineTune: false)
         reveal.begin(firstRequest); reveal.complete(); reveal.begin(firstRequest)
-        check("recreating a selected lazy tile does not steal the user's scroll position", !reveal.pending)
+        check("recreating a selected tile does not steal the user's scroll position", !reveal.pending)
         check("gallery geometry markers never intercept a tile click", ColumnLayoutMarker().hitTest(.zero) == nil)
         reveal.begin(CaptionGalleryRequest(selection: "clip/vox-highlight", size: size, fineTune: false))
         check("a scope change requests selected-tile visibility again", reveal.pending)
         reveal.complete(); reveal.begin(CaptionGalleryRequest(selection: "clip/editorial", size: size, fineTune: false))
         check("a style change requests selected-tile visibility again", reveal.pending)
+        results += revealPolicyChecks()
         let document = VoxClipDocument(project: fixture, demo: true)
         let model = EditorModel(document: document, app: app, preview: DemoPreviewEngine())
         defer { model.close() }
@@ -151,6 +151,43 @@ import VoxClipCore
         }
         try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("caption-results.json"), options: .atomic)
         return results
+    }
+    static func revealPolicyChecks() -> [DebugUISuite.Result] {
+        let size = CGSize(width: 294, height: 272)
+        var reveal = CaptionGalleryReveal()
+        reveal.begin(CaptionGalleryRequest(selection: "full/vox-highlight", size: size, fineTune: true))
+        reveal.begin(CaptionGalleryRequest(selection: "clip/vox-highlight", size: size, fineTune: true))
+        reveal.resumeForLayout()
+        let expandedScope = reveal.pending && !reveal.interrupted
+        reveal.cancelForUserScroll()
+        reveal.begin(CaptionGalleryRequest(selection: "clip/vox-highlight", size: CGSize(width: 300, height: 250), fineTune: true))
+        reveal.resumeForLayout()
+        let resized = reveal.interrupted && !reveal.pending
+        reveal.selectVisibleTile("clip/editorial")
+        reveal.begin(CaptionGalleryRequest(selection: "clip/editorial", size: size, fineTune: false))
+        reveal.resumeForLayout()
+        let clicked = reveal.interrupted && !reveal.pending
+        reveal.begin(CaptionGalleryRequest(selection: "next/editorial", size: size, fineTune: true))
+        let nextScope = reveal.pending && !reveal.interrupted
+        let scroll = CaptionGalleryScrollState()
+        let first = scroll.record(CaptionGalleryViewport(visible: CGRect(origin: .zero, size: size), size: size))
+        let frameUpdates = (1...120).filter { offset in
+            scroll.record(CaptionGalleryViewport(visible: CGRect(origin: CGPoint(x: 0, y: CGFloat(offset)), size: size), size: size))
+        }
+        let sizeUpdate = scroll.record(CaptionGalleryViewport(visible: .zero, size: CGSize(width: 320, height: 272)))
+        var delayed = CaptionGalleryReveal()
+        delayed.begin(CaptionGalleryRequest(selection: "full/editorial", size: size, fineTune: false))
+        let corrections = (0..<16).map { offset in
+            delayed.shouldScroll(to: .tile("editorial"), geometry: [CGFloat(offset)])
+        }
+        let duplicate = delayed.shouldScroll(to: .tile("editorial"), geometry: [15])
+        return [
+            .init(name: "changed viewport geometry can reveal again without duplicate commands", passed: corrections.allSatisfy { $0 } && !duplicate),
+            .init(name: "scope changes reveal the selected tile with Fine Tune expanded", passed: expandedScope && nextScope),
+            .init(name: "viewport resizing cannot resume a user-interrupted reveal", passed: resized),
+            .init(name: "clicking a visible tile does not request a reveal", passed: clicked),
+            .init(name: "120 scroll frames update non-observed geometry without publishing gallery size", passed: first && frameUpdates.isEmpty && sizeUpdate)
+        ]
     }
     static func tileBitmap(_ image: CGImage, width: Int, height: Int) -> NSBitmapImageRep? {
         guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,

@@ -7,6 +7,23 @@ import VoxClipCore
 @testable import VoxClipMedia
 
 extension HeavyMediaTests {
+@Test func retryKeepsUserPartialOutsidePrivateWorkspace() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-private-test-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let destination = root.appendingPathComponent("take.mp4")
+    let oldPartial = root.appendingPathComponent("take.mp4.partial")
+    let userBytes = Data("user file at an old partial path".utf8)
+    try userBytes.write(to: oldPartial)
+    let staging = try ExportSafety.preparePartial(for: destination)
+    #expect((try? Data(contentsOf: oldPartial)) == userBytes)
+    #expect(staging.deletingLastPathComponent() != root)
+    #expect(staging.deletingLastPathComponent().lastPathComponent.hasPrefix(".voxclip-export-"))
+    let mode = try FileManager.default.attributesOfItem(atPath: staging.deletingLastPathComponent().path)[.posixPermissions] as? NSNumber
+    #expect(mode?.intValue == 0o700)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).contains("take.mp4.partial"))
+}
+
 @Test func errorExitCodesMatchTheCompleteCLIContract() {
     let groups: [Int32: [VoxClipError]] = [
         1: [.modelChecksumMismatch("test"), .keyRejected("test"), .quotaExceeded("test"), .rateLimited("test"),
@@ -214,9 +231,9 @@ func publicationFailureRestoresReplacedFilesAndRemovesNewOutputs(_ existingVideo
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-publish-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: root) }
-    let outputs = ["mp4", "srt", "wav"].map { suffix in
+    let outputs = try ["mp4", "srt", "wav"].map { suffix in
         let destination = root.appendingPathComponent("out.\(suffix)")
-        return (partial: URL(fileURLWithPath: destination.path + ".partial"), destination: destination)
+        return (partial: try ExportSafety.preparePartial(for: destination), destination: destination)
     }
     for (index, output) in outputs.enumerated() {
         if index > 0 || existingVideo { try Data("original \(index)".utf8).write(to: output.destination) }
@@ -237,7 +254,7 @@ func publicationFailureRestoresReplacedFilesAndRemovesNewOutputs(_ existingVideo
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: root) }
     let destination = root.appendingPathComponent("out.mp4")
-    let partial = URL(fileURLWithPath: destination.path + ".partial")
+    let partial = try ExportSafety.preparePartial(for: destination)
     try Data("original".utf8).write(to: destination)
     try Data("staged".utf8).write(to: partial)
     let task = Task {
@@ -254,9 +271,9 @@ func failedRestoreKeepsItsBackupAndAttemptsEveryOtherRestore(_ failedIndex: Int)
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-restore-failure-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: root) }
-    let outputs = ["mp4", "srt", "wav"].map { suffix in
+    let outputs = try ["mp4", "srt", "wav"].map { suffix in
         let destination = root.appendingPathComponent("out.\(suffix)")
-        return (partial: URL(fileURLWithPath: destination.path + ".partial"), destination: destination)
+        return (partial: try ExportSafety.preparePartial(for: destination), destination: destination)
     }
     for (index, output) in outputs.enumerated() {
         try Data("original \(index)".utf8).write(to: output.destination)
@@ -265,29 +282,37 @@ func failedRestoreKeepsItsBackupAndAttemptsEveryOtherRestore(_ failedIndex: Int)
     var keptBackup: URL?
     var restored: [URL] = []
     do {
-        try ExportSafety.publishAll(outputs) { source, destination in
-            if source == outputs[2].partial { throw NSError(domain: NSPOSIXErrorDomain, code: Int(ENOSPC)) }
-            if source.lastPathComponent.contains(".rollback-") {
+        try ExportSafety.publishAll(outputs, events: { phase, destination in
+            if phase == .willPublish && destination == outputs[2].destination { throw POSIXError(.ENOSPC) }
+            if phase == .willRollback {
                 if destination == outputs[failedIndex].destination {
-                    keptBackup = source
+                    let directories = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+                        .filter { $0.lastPathComponent.hasPrefix(".voxclip-export-") }
+                    keptBackup = try directories.flatMap { try FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil) }
+                        .first { $0.lastPathComponent.hasPrefix(destination.lastPathComponent + ".rollback-") }
                     throw NSError(domain: NSPOSIXErrorDomain, code: Int(EIO))
                 }
                 restored.append(destination)
             }
-            try ExportSafety.publish(source, to: destination)
-        }
+        })
         Issue.record("Expected failed restore")
     } catch {
         let backup = try #require(keptBackup)
-        let message = "Couldn't put back \(outputs[failedIndex].destination.lastPathComponent). The previous version is saved as \(backup.lastPathComponent)."
+        let backupDirectory = backup.deletingLastPathComponent()
+        let backupPath = backupDirectory.lastPathComponent + "/" + backup.lastPathComponent
+        let message = "Couldn't put back \(outputs[failedIndex].destination.lastPathComponent). The previous version is saved as \(backupPath)."
         #expect(error as? VoxClipError == .exportFailed(message))
         #expect((error as? VoxClipError)?.errorDescription == message)
         #expect((error as? VoxClipError)?.exitCode == 5)
         #expect((error as? VoxClipError)?.requiresExportRecovery == true)
         #expect(try Data(contentsOf: backup) == Data("original \(failedIndex)".utf8))
+        let attributes = try FileManager.default.attributesOfItem(atPath: backupDirectory.path)
+        #expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o700)
+        let lease = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: backupDirectory.appendingPathComponent(".voxclip-owner.json"))) as? [String: Any])
+        #expect(lease["recovery"] as? Bool == true)
         #expect(restored == [outputs[1 - failedIndex].destination])
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted() ==
-            (["out.mp4", "out.srt", "out.wav", backup.lastPathComponent]).sorted())
+            (["out.mp4", "out.srt", "out.wav", backupDirectory.lastPathComponent]).sorted())
     }
     for (index, output) in outputs.enumerated() {
         #expect(try Data(contentsOf: output.destination) == Data("\(index == failedIndex ? "new" : "original") \(index)".utf8))
@@ -299,19 +324,18 @@ func cancellationAfterPublicationRestoresExistingAndRemovesNewDestinations(_ exi
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-published-cancel-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: root) }
-    let outputs = ["mp4", "srt", "wav"].map { suffix in
+    let outputs = try ["mp4", "srt", "wav"].map { suffix in
         let destination = root.appendingPathComponent("out.\(suffix)")
-        return (partial: URL(fileURLWithPath: destination.path + ".partial"), destination: destination)
+        return (partial: try ExportSafety.preparePartial(for: destination), destination: destination)
     }
     for output in outputs {
         if existing { try Data("original".utf8).write(to: output.destination) }
         try Data("new".utf8).write(to: output.partial)
     }
     let task = Task {
-        try ExportSafety.publishAll(outputs) { source, destination in
-            try ExportSafety.publish(source, to: destination)
-            if source == outputs[0].partial { withUnsafeCurrentTask { $0?.cancel() } }
-        }
+        try ExportSafety.publishAll(outputs, events: { phase, destination in
+            if phase == .didPublish && destination == outputs[0].destination { withUnsafeCurrentTask { $0?.cancel() } }
+        })
     }
     await #expect(throws: CancellationError.self) { try await task.value }
     if existing {

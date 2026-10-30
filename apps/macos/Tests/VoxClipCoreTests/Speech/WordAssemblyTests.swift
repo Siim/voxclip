@@ -2,8 +2,49 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
+private struct WordAssemblyFixture: Decodable {
+    var schema: String
+    var name: String
+    var derivation: String
+    var rule: GroupingRule
+    var timelineStart: Double
+    var tokens: [RawToken]
+    var expect: [RawWord]
+}
+
+private func sameWord(_ actual: RawWord, _ expected: RawWord) -> Bool {
+    func same(_ left: Double?, _ right: Double?) -> Bool {
+        guard let left, let right else { return left == nil && right == nil }
+        return abs(left - right) <= 1e-9
+    }
+    guard actual.text == expected.text, actual.speaker == expected.speaker, actual.kind == expected.kind else { return false }
+    return same(actual.start, expected.start) && same(actual.end, expected.end) && same(actual.conf, expected.conf)
+}
+
 @Suite("Speech word assembly")
 struct WordAssemblyTests {
+    static let sharedCases: [URL] = {
+        guard let directory = try? FixtureLoader.sharedRoot().appendingPathComponent("fixtures/transcription/word-assembly"),
+              let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return [] }
+        return files.filter { $0.pathExtension == "json" }.sorted { $0.path < $1.path }
+    }()
+
+    @Test func sharedWordAssemblyCasesArePresent() {
+        #expect(Self.sharedCases.count == 5)
+    }
+
+    @Test(arguments: sharedCases) func sharedWordAssemblyCase(_ file: URL) throws {
+        let fixture = try JSONDecoder().decode(WordAssemblyFixture.self, from: Data(contentsOf: file))
+        #expect(fixture.schema == "voxclip-word-assembly-fixture/1")
+        #expect(fixture.name + ".json" == file.lastPathComponent)
+        #expect(!fixture.derivation.isEmpty)
+        let words = try WordAssembler.group(fixture.tokens, rule: fixture.rule, timelineStart: fixture.timelineStart)
+        try #require(words.count == fixture.expect.count, "\(fixture.name): \(words.map(\.text))")
+        for (actual, expected) in zip(words, fixture.expect) {
+            #expect(sameWord(actual, expected), "\(fixture.name): \(actual) is not \(expected)")
+        }
+    }
+
     @Test func whisperGroupingAndEvents() throws {
         let result = try WordAssembler.group(RecordedSpeech.whisper, rule: GroupingRule(end: .nextWordStart, conf: .mean, bracketEvents: true), timelineStart: 0.5)
         #expect(result.map(\.text) == ["Tere,", "maailm", "(soft music)", "[laughs]"])

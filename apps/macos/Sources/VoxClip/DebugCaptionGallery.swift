@@ -14,6 +14,7 @@ import VoxClipCore
         let elapsed: Double
         let settled: Bool
         let passes: Int
+        let transitions: [CaptionGalleryAudit.Snapshot]
     }
     static func run(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
@@ -72,9 +73,77 @@ import VoxClipCore
             results.append(.init(name: "gallery user scroll at \(width) interrupts a pending reveal (\(state(pending)); then \(state(cancelled)))", passed: pending?.pending == true && cancelled?.pending == false && cancelled?.interrupted == true))
             results.append(.init(name: "gallery user scroll at \(width) stays cancelled through layout (\(state(cancelled)); then \(state(after)))", passed: after?.interrupted == true && after?.pending == false && after?.commands == cancelled?.commands))
         }
+        results += DebugCaptionsSection.revealPolicyChecks()
+        results += try await regressionChecks(app: app, fixture: fixture, ordered: ordered, directory: directory)
         results.append(.init(name: "gallery interaction audit opens no windows", passed: NSApp.windows.count == windowsBefore))
         try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("caption-gallery-interactions.json"), options: .atomic)
         return results
+    }
+    private static func regressionChecks(app: AppModel, fixture: Project, ordered: [CaptionStyle], directory: URL) async throws -> [DebugUISuite.Result] {
+        guard ordered.count >= 4, let first = ordered.first, let last = ordered.last, let clip = fixture.edits.clips.first else { throw CocoaError(.coderInvalidValue) }
+        let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.activate(nil)
+        model.setStyle(first.id)
+        let controller = NSHostingController(rootView: CaptionsSection(model: model))
+        controller.sizingOptions = []
+        let host = controller.view
+        host.frame = CGRect(x: 0, y: 0, width: 360, height: 4096)
+        let identifier = try await galleryID(in: host)
+        defer { CaptionGalleryAudit.snapshots.removeValue(forKey: identifier) }
+        _ = await settle(host: host, identifier: identifier, style: first.id, name: "regression-materialize", width: 360, height: 4096)
+        let firstReceipt = await settle(host: host, identifier: identifier, style: first.id, name: "regression-first", width: 360, height: 4096)
+        let markers = DebugRightColumn.markers(in: host)
+        let rowGap = markers["caption.name.\(first.id)"].flatMap { name in markers["caption.image.\(ordered[2].id)"].map { $0.minY - name.maxY } }
+        var results: [DebugUISuite.Result] = [
+            .init(name: "gallery visible row gap excludes the 3-point ring reserve (\(rowGap ?? -1))", passed: firstReceipt.settled && rowGap.map { abs($0 - 10) <= 0.5 } == true)
+        ]
+        model.setStyle(last.id)
+        let lastReceipt = await settle(host: host, identifier: identifier, style: last.id, name: "regression-last", width: 360, height: 4096)
+        let beforeRaw = snapshot(identifier)
+        var snapshots: [String: CaptionGalleryAudit.Snapshot] = [:]
+        snapshots["before-raw"] = beforeRaw
+        func targets(in view: NSView) -> [CaptionGalleryTarget] {
+            let own = (view as? ColumnLayoutMarker)?.scrollTarget.map { [$0] } ?? []
+            return own + view.subviews.flatMap { targets(in: $0) }
+        }
+        let registered = Set(targets(in: host))
+        results.append(.init(name: "every real gallery tile registers its typed scroll target, not a Picker style ID", passed:
+            lastReceipt.settled && ordered.allSatisfy { registered.contains(.tile($0.id)) }))
+        let clicked = ordered[1].id
+        let beforeClick = snapshot(identifier)
+        command(identifier, ["clickStyle": clicked])
+        await layoutTurns(host)
+        let afterClick = snapshot(identifier)
+        snapshots["after-click"] = afterClick
+        results.append(.init(name: "visible tile clicks select without issuing or resuming a reveal", passed:
+            model.project.captions.styleId == clicked && afterClick?.consumed == true && afterClick?.pending == false
+                && afterClick?.interrupted == true && afterClick?.commands == beforeClick?.commands && afterClick?.visible.origin == beforeClick?.visible.origin))
+        command(identifier, ["fineTune": true])
+        await layoutTurns(host)
+        model.activate(clip)
+        let scopeReceipt = await settle(host: host, identifier: identifier, style: clicked, name: "expanded-scope", width: 360, height: 4096)
+        snapshots["scope"] = scopeReceipt.snapshot
+        results.append(.init(name: "scope change with Fine Tune open reveals the selected tile without collapsing it", passed:
+            scopeReceipt.settled && scopeReceipt.snapshot?.fineTune == true && model.activeClip?.id == clip.id))
+        await model.waitForPendingPreviewForAudit()
+        model.captionError = "These caption settings could not be applied. Your media and edits are safe."
+        let errorReceipt = await settle(host: host, identifier: identifier, style: clicked, name: "caption-error", width: 360, height: 4096)
+        snapshots["error"] = errorReceipt.snapshot
+        func errorVisible() -> Bool {
+            guard let error = DebugRightColumn.markers(in: host)["caption.error"], let scroll = DebugRightColumn.scrollViews(in: host).first else { return false }
+            let viewport = scroll.convert(scroll.bounds, to: host)
+            return host.bounds.insetBy(dx: -0.5, dy: -0.5).contains(error) && error.maxY <= viewport.minY - 11.5
+        }
+        results.append(.init(name: "automatic reveal cannot hide a caption error above the gallery", passed: errorReceipt.settled && errorVisible()))
+        command(identifier, ["end": true])
+        await layoutTurns(host)
+        results.append(.init(name: "manual gallery scrolling also keeps the caption error visible", passed: errorVisible()))
+        try JSONEncoder().encode(snapshots).write(to: directory.appendingPathComponent("caption-gallery-regressions.json"), options: .atomic)
+        return results
+    }
+    private static func layoutTurns(_ host: NSView) async {
+        for _ in 0..<24 { host.layoutSubtreeIfNeeded(); await Task.yield() }
     }
     static func runNative(in host: NSView, model: EditorModel, window: NSWindow, name: String, directory: URL,
                           assertSelection: @MainActor (String, String) async throws -> Void) async throws {
@@ -232,11 +301,18 @@ import VoxClipCore
         var previous: CaptionGalleryAudit.Snapshot?
         var settled = false
         var passes = 0
+        var stablePasses = 0
+        var previousPaint: CGRect?
+        var transitions: [CaptionGalleryAudit.Snapshot] = []
         repeat {
+            host.needsLayout = true
             host.layoutSubtreeIfNeeded()
             current = snapshot(identifier)
+            if let current, transitions.last != current { transitions.append(current) }
             passes += 1
             var ready = false
+            let markers = DebugRightColumn.markers(in: host)
+            let actualPaint = markers["caption.target.\(style)"]?.insetBy(dx: -3, dy: 0)
             // Cached frames and the model's style are right the moment a change is made, before SwiftUI
             // has delivered it; only a consumed request shows the gallery has acted on the change.
             if let current, let paint = current.paint, current.consumed, current.selectedStyle == style, current.paintStyle == style, !current.pending,
@@ -252,16 +328,26 @@ import VoxClipCore
                 }
                 // An unattached host has no display cycle: its measured viewport must match the gallery's real frame.
                 if ready, host.window == nil {
-                    ready = DebugRightColumn.markers(in: host)["caption.gallery.\(identifier)"].map { abs($0.height - current.size.height) <= 0.5 } ?? false
+                    ready = markers["caption.gallery.\(identifier)"].map { abs($0.height - current.size.height) <= 0.5 } ?? false
+                }
+                if ready, let viewport = markers["caption.gallery.\(identifier)"]?.insetBy(dx: -3, dy: 0), let actualPaint {
+                    if short {
+                        ready = abs(actualPaint.minY - viewport.minY) <= 0.5
+                    } else {
+                        ready = viewport.insetBy(dx: -0.5, dy: -0.5).contains(actualPaint)
+                    }
+                } else {
+                    ready = false
                 }
             }
-            // Settled once the state holds across a turn, so nothing owed is still on its way.
-            if ready, let previous, previous == current { settled = true; break }
+            stablePasses = ready && previous == current && previousPaint == actualPaint ? stablePasses + 1 : (ready ? 1 : 0)
+            if stablePasses >= 3 { settled = true; break }
             previous = ready ? current : nil
-            await Task.yield()
+            previousPaint = ready ? actualPaint : nil
+            if !ready { await Task.yield() }
         } while ProcessInfo.processInfo.systemUptime - started < 2
         return Measurement(name: name, width: width, height: height, style: style, snapshot: current,
-            elapsed: ProcessInfo.processInfo.systemUptime - started, settled: settled, passes: passes)
+            elapsed: ProcessInfo.processInfo.systemUptime - started, settled: settled, passes: passes, transitions: transitions)
     }
 }
 #endif

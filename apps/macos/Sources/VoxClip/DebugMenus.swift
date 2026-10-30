@@ -4,6 +4,24 @@ import SwiftUI
 import VoxClipCore
 
 @MainActor enum DebugMenus {
+    static func focusedControlChecks() -> [DebugUISuite.Result] {
+        let play = NSMenuItem(title: "Play/Pause", action: nil, keyEquivalent: " ")
+        play.keyEquivalentModifierMask = []
+        let cut = NSMenuItem(title: "Cut Selection", action: nil, keyEquivalent: String(UnicodeScalar(NSDeleteCharacter)!))
+        cut.keyEquivalentModifierMask = []
+        let findNext = NSMenuItem(title: "Find Next", action: nil, keyEquivalent: "g")
+        findNext.keyEquivalentModifierMask = .command
+        let controls: [NSResponder] = [NSButton(), NSSwitch(), NSSegmentedControl(), NSPopUpButton()]
+        return [
+            .init(name: "bare keys remain with focused controls", passed: controls.allSatisfy {
+                AppDelegate.focusedControlKeepsKey(play, responder: $0) && AppDelegate.focusedControlKeepsKey(cut, responder: $0)
+            }),
+            .init(name: "transcript, sidebar and timeline retain transport keys", passed: [TranscriptNSTextView(), NSTableView(), NSSlider()].allSatisfy {
+                !AppDelegate.focusedControlKeepsKey(play, responder: $0)
+            }),
+            .init(name: "Command shortcuts remain available over focused controls", passed: !AppDelegate.focusedControlKeepsKey(findNext, responder: NSButton()))
+        ]
+    }
     static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
@@ -31,7 +49,7 @@ import VoxClipCore
             ("Edit", "Cut Fillers", "u", [.command, .option]), ("Edit", "Tighten Pauses", "p", [.command, .option]),
             ("Edit", "Restore All Cuts", "r", [.command, .option]), ("View", "Hide Cut Words", "h", [.command, .shift]),
             ("Edit", "Find…", "f", .command), ("Edit", "Find Next", "g", .command), ("Edit", "Find Previous", "g", [.command, .shift]),
-            ("Clip", "Make Clip from Selection", "k", .command),
+            ("Clip", "Make Clip from Selection", "k", .command), ("Clip", "Cancel Finding Clips", ".", .command),
             ("Clip", "Keep Suggestion", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),
             ("Clip", "Dismiss Suggestion", String(UnicodeScalar(NSDeleteCharacter)!), []),
             ("Clip", "Rename Clip…", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),
@@ -41,6 +59,12 @@ import VoxClipCore
         ]
         for (menu, title, key, modifiers) in bindings {
             check("native menu shortcut: \(title)", item(menu, title).map { $0.keyEquivalent == key && $0.keyEquivalentModifierMask == modifiers } == true)
+        }
+        if let play = item("Playback", "Play/Pause"), let cut = item("Edit", "Cut Selection"), let findNext = item("Edit", "Find Next") {
+            let controls: [NSResponder] = [NSButton(), NSSwitch(), NSSegmentedControl(), NSPopUpButton()]
+            check("bare Space and Delete leave a focused button, switch, segmented control or pop-up to the control", controls.allSatisfy { AppDelegate.focusedControlKeepsKey(play, responder: $0) && AppDelegate.focusedControlKeepsKey(cut, responder: $0) })
+            check("bare keys still reach the editor from the transcript and the sidebar list", [TranscriptNSTextView(), NSTableView()].allSatisfy { !AppDelegate.focusedControlKeepsKey(play, responder: $0) && !AppDelegate.focusedControlKeepsKey(cut, responder: $0) })
+            check("Command shortcuts still work while a control has keyboard focus", !AppDelegate.focusedControlKeepsKey(findNext, responder: NSButton()))
         }
         let standard: [(Selector, String, NSEvent.ModifierFlags)] = [
             (Selector(("undo:")), "z", .command), (Selector(("redo:")), "z", [.command, .shift]),
@@ -117,6 +141,13 @@ import VoxClipCore
         invoke("Clip", "Rename Clip…")
         check("Rename Clip uses the sidebar's native inline rename", app.shell.renaming == kept.id)
         app.shell.endRename(keep: false)
+        check("Cancel Finding Clips is disabled while no clip search runs", item("Clip", "Cancel Finding Clips").map(delegate.validateMenuItem) == false)
+        let search = Task<Void, Never> { while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(10)) } }
+        editor.finding = true; editor.findTask = search
+        check("Cancel Finding Clips is enabled while a clip search runs", item("Clip", "Cancel Finding Clips").map(delegate.validateMenuItem) == true)
+        invoke("Clip", "Cancel Finding Clips")
+        check("Command-period cancels the running clip search", search.isCancelled)
+        editor.finding = false; editor.findTask = nil
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             try await DebugUISuite.snapshot(ShortcutsView(), name: "keyboard-shortcuts-\(name)", size: NSSize(width: 628, height: 760), appearance: appearance, directory: directory)
             try await DebugUISuite.snapshot(VoiceLabOptInView(editor: editor), name: "voice-lab-opt-in-\(name)", size: NSSize(width: 460, height: 270), appearance: appearance, directory: directory)

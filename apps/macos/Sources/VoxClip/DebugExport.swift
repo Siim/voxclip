@@ -143,6 +143,9 @@ actor RegressionExporter: Exporter {
             failed.beginExport(targets: [.clip(clip.id)], folder: directory)
             await failed.exportTask?.value
             results.append(.init(name: failure == .cancelled ? "VoxClip export cancellation is silent" : "real export failures retain an inline error", passed: failure == .cancelled ? failed.exportError == nil : failed.exportError?.isEmpty == false))
+            let heard = failed.announcements
+            results.append(.init(name: failure == .cancelled ? "a cancelled export announces only its start and progress" : "a failed export announces its inline error", passed: heard.first == "Exporting 1 video" &&
+                (failure == .cancelled ? heard.allSatisfy { $0.hasPrefix("Exporting") || $0.hasPrefix("Rendering") } : heard.last == failed.exportError)))
             failed.close()
         }
         results += try await batchSnapshot(app: app, project: project, directory: directory)
@@ -179,7 +182,8 @@ actor RegressionExporter: Exporter {
         await editor.exportTask?.value
         let jobs = await exporter.jobs
         var results: [DebugUISuite.Result] = [
-            .init(name: "batch exports removed later target without error", passed: jobs.count == 2 && editor.exports.count == 2 && editor.exportError == nil)
+            .init(name: "batch exports removed later target without error", passed: jobs.count == 2 && editor.exports.count == 2 && editor.exportError == nil),
+            .init(name: "a finished batch announces its start and where the videos were saved", passed: editor.announcements.contains("Exporting 2 videos") && editor.announcements.last == "Saved 2 videos to \(FileManager.default.displayName(atPath: directory.path))")
         ]
         for (index, job) in jobs.enumerated() {
             let target = targets[index]

@@ -82,9 +82,10 @@ import VoxClipCore
                 if editor.isSuggestion(id) { editor.keep(id) } else { shell.beginRename(id) }
                 return .handled
             }
-            // Escape hides the overlay sidebar (design §3.7).
             .onKeyPress(.escape) {
-                guard overlay, shell.renaming == nil else { return .ignored }
+                guard shell.renaming == nil else { return .ignored }
+                if let editor = shell.editor, editor.finding { editor.findTask?.cancel(); return .handled }
+                guard overlay else { return .ignored }
                 shell.sidebarOverlay = false
                 return .handled
             }
@@ -266,7 +267,7 @@ import VoxClipCore
                 Button("Remove Clip") { editor.removeClip(clip.id) }.disabled(!editor.capabilities.edit)
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: shell.renaming == clip.id ? .contain : .combine)
         .accessibilityLabel(suggested ? "Suggested clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))" : "Clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))")
         .accessibilityHint(suggested ? reason : exportStatus.label)
         .accessibilityActions {
@@ -276,6 +277,9 @@ import VoxClipCore
             } else {
                 Button("Rename") { shell.beginRename(clip.id) }.disabled(!editor.capabilities.edit)
                 Button("Remove") { editor.removeClip(clip.id) }.disabled(!editor.capabilities.edit)
+                if exportStatus == .failed {
+                    Button("Retry export") { editor.retryExport(clip.id) }.disabled(!editor.canExport || !editor.mediaExportable)
+                }
             }
         }
     }

@@ -5,6 +5,39 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
+private struct SRTFixture: Decodable {
+    struct Page: Decodable { var start: Double; var end: Double; var lines: [[Int]] }
+    var schema: String
+    var derivation: String
+    var words: [CaptionInputWord]
+    var pages: [Page]
+    var expected: String
+}
+
+@Test func srtBytesFollowSharedFixture() async throws {
+    let fixture = try FixtureLoader.decode(SRTFixture.self, at: "fixtures/captions/srt.json")
+    #expect(fixture.schema == "voxclip-srt-fixture/1")
+    #expect(!fixture.derivation.isEmpty)
+    let words = fixture.words.map { CaptionWord(id: $0.id, text: $0.text, start: $0.start, end: $0.end) }
+    let rectangle = CaptionRect(x: 0, y: 0, width: 100, height: 20)
+    let pages = fixture.pages.enumerated().map { index, page in
+        CaptionPage(index: index, words: page.lines.flatMap { $0 }.map { words[$0] }, start: page.start, end: page.end,
+            fontPx: 20, lines: page.lines.map { CaptionLine(words: $0, units: 100, rect: rectangle, baseline: 10) }, block: rectangle, visual: rectangle)
+    }
+    let expected = Data(fixture.expected.utf8)
+    #expect(Data(AVExporter.srt(CaptionTrack(words: words, pages: pages)).utf8) == expected)
+    #expect(AVExporter.srt(CaptionTrack()).isEmpty)
+    let harness = try CaptionRenderHarness(shared: CaptionMediaFixtures.shared())
+    var layout = try await harness.layout(CaptionLayoutInput(style: "vox-bold", frame: .init(width: 640, height: 360),
+        language: "en", duration: 2, words: fixture.words))
+    #expect(layout.words.map(\.input.text) == fixture.words.map(\.text))
+    let template = try #require(layout.pages.first)
+    layout.pages = pages.map { page in var copy = template; copy.page = page; return copy }
+    #expect(Data(CaptionSubtitles.srt(layout).utf8) == expected)
+    layout.pages = []
+    #expect(CaptionSubtitles.srt(layout).isEmpty)
+}
+
 private struct ExportPresetFixture: Decodable {
     struct Case: Decodable {
         struct Expected: Decodable {
@@ -85,13 +118,13 @@ private func reviewDirectory() throws -> URL {
         lines: [CaptionLine(words: [3], units: 100, rect: rectangle, baseline: 10),
                 CaptionLine(words: [4], units: 100, rect: rectangle, baseline: 10)], block: rectangle, visual: rectangle)
     #expect(AVExporter.srt(CaptionTrack(words: words, pages: [hidden, page, backwards, next])) ==
-        "1\n00:00:00,001 --> 00:00:01,250\nTere, maailm!\nStraße…\n\n2\n00:00:01,300 --> 00:00:01,800\nNext\npage!\n")
+        "1\n00:00:00,001 --> 00:00:01,250\nTere, maailm!\nStraße…\n\n2\n00:00:01,300 --> 00:00:01,800\nNext\npage!\n\n")
     var invalid = next
     invalid.lines[0].words = [-1, 99]
     #expect(AVExporter.srt(CaptionTrack(words: words, pages: [invalid])) ==
-        "1\n00:00:01,300 --> 00:00:01,800\nNext page!\n")
+        "1\n00:00:01,300 --> 00:00:01,800\nNext page!\n\n")
     #expect(AVExporter.srt(CaptionTrack(pages: [next])) ==
-        "1\n00:00:01,300 --> 00:00:01,800\nNext page!\n")
+        "1\n00:00:01,300 --> 00:00:01,800\nNext page!\n\n")
     #expect(AVExporter.srt(CaptionTrack(pages: [hidden, backwards])).isEmpty)
 }
 

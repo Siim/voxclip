@@ -21,7 +21,11 @@ public sealed record ComposeSnapshot(MediaInfo Media, EditPlan Plan, CaptionTrac
 }
 /// <summary>Output encoding configuration; architecture §4.1 and §6.4.</summary>
 public sealed record OutputSpec(PixelSize Size, double FrameRate, long VideoBitrate, int AudioSampleRate = 48_000,
-    int AudioChannels = 2, long AudioBitrate = 160_000, string VideoCodec = "h264");
+    int AudioChannels = 2, long AudioBitrate = 160_000, string VideoCodec = "h264")
+{
+    /// <summary>Preserve the whole source when Source output rounding differs by at most one pixel.</summary>
+    public bool PreserveSource { get; init; }
+}
 /// <summary>Full-edit or clip export target; architecture §4.</summary>
 public abstract record ExportTarget
 {

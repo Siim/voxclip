@@ -105,7 +105,9 @@ extension HeavyMediaTests {
     let directory = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
     let destination = directory.appendingPathComponent("out.mp4")
-    let result = try await AVExporter().export(ExportJob(render: request(), outputURL: destination)) { _ in }
+    let registry = directory.appendingPathComponent("Scratch")
+    let result = try await AVExporter(cleanupRegistry: registry).export(ExportJob(render: request(), outputURL: destination)) { _ in }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: registry.path).isEmpty)
     #expect(result.width == 320 && result.height == 180)
     #expect(result.frames >= 52 && result.frames <= 53)
     #expect(result.audioSamples == 84000)
@@ -138,6 +140,69 @@ extension HeavyMediaTests {
     let render = RenderRequest(sourceURL: source, plan: plan, output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 2_000_000))
     let result = try await AVExporter().export(ExportJob(render: render, outputURL: directory.appendingPathComponent("pocket.mp4"))) { _ in }
     #expect(result.frames == 30)
+}
+
+@Test(.timeLimit(.minutes(2))) func sharedPocket4FixtureUsesTheFirstAudioTrack() async throws {
+    let source = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/ingest/media/pocket4-like-2tracks.mov")
+    let probe = try await AVMediaProbe().probe(source)
+    #expect(probe.isPlayable)
+    #expect(probe.videoCodec == "hevc")
+    #expect(probe.orientedSize == PixelSize(width: 1280, height: 720))
+    #expect(probe.audio == MediaAudio(sampleRate: 48000, channels: 2))
+    #expect(abs(probe.durationSeconds - 6) < 0.07)
+    let poster = try await AVAssetImageGenerator(asset: AVURLAsset(url: source)).image(at: CMTime(value: 3, timescale: 1)).image
+    #expect(poster.width == 1280 && poster.height == 720)
+    var pixels = [UInt8](repeating: 0, count: 16 * 9 * 4)
+    pixels.withUnsafeMutableBytes { bytes in
+        let context = CGContext(data: bytes.baseAddress, width: 16, height: 9, bitsPerComponent: 8, bytesPerRow: 16 * 4,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        context.draw(poster, in: CGRect(x: 0, y: 0, width: 16, height: 9))
+    }
+    #expect(pixels.enumerated().contains { $0.offset % 4 != 3 && $0.element > 64 })
+    let directory = try temporaryDirectory(), exportDirectory = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory); try? FileManager.default.removeItem(at: exportDirectory) }
+    let extracted = try await AVAudioExtractor().extract(AudioExtractionRequest(sourceURL: source, contentKey: "pocket4", durationSeconds: probe.durationSeconds, cacheDirectory: directory)) { _ in }
+    #expect(extracted.audio.audioTrackIndex == 0)
+    let sourceTones = try pocketTones(extracted.audio.wav16k)
+    #expect(sourceTones.first > 100 * sourceTones.second, "1 kHz \(sourceTones.first), 300 Hz \(sourceTones.second)")
+    let samples = Int64((probe.durationSeconds * 48000).rounded(.down))
+    let plan = EditPlan(sampleRate: 48000, totalSamples: samples, kept: [MediaInterval(startSample: 0, endSample: samples)])
+    var render = RenderRequest(sourceURL: source, plan: plan, output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 2_000_000))
+    render.forPreview = true
+    let preview = try await CompositionBuilder().build(render)
+    #expect(preview.videoTrack.segments.count == 1)
+    #expect(preview.audioTrack?.segments.count == 1)
+    render.forPreview = false
+    let destination = directory.appendingPathComponent("pocket4.mp4")
+    let result = try await AVExporter().export(ExportJob(render: render, outputURL: destination)) { _ in }
+    #expect(abs(result.frames - 180) <= 1)
+    #expect(try await AVURLAsset(url: destination).loadTracks(withMediaType: .audio).count == 1)
+    let exportedSampleCount = Double(result.audioSamples)
+    let exportDuration: Double = exportedSampleCount / 48000
+    let extraction = AudioExtractionRequest(sourceURL: destination, contentKey: "pocket4-export", durationSeconds: exportDuration, cacheDirectory: exportDirectory)
+    let exported = try await AVAudioExtractor().extract(extraction) { _ in }
+    let exportTones = try pocketTones(exported.audio.wav16k)
+    #expect(exportTones.first > 100 * exportTones.second, "1 kHz \(exportTones.first), 300 Hz \(exportTones.second)")
+}
+
+private func pocketTones(_ wav: URL) throws -> (first: Double, second: Double) {
+    let samples = try Data(contentsOf: wav).dropFirst(44).withUnsafeBytes { Array($0.bindMemory(to: Int16.self)) }
+    try #require(samples.count > 32000)
+    let window = samples[8000..<(samples.count - 8000)]
+    func power(_ frequency: Double) -> Double {
+        let angularFrequency: Double = 2 * Double.pi * frequency
+        let radiansPerSample: Double = angularFrequency / 16000
+        let coefficient: Double = 2 * cos(radiansPerSample)
+        var previous = 0.0, older = 0.0
+        for sample in window {
+            let converted = Double(sample)
+            let weighted: Double = coefficient * previous
+            let current: Double = converted + weighted - older
+            older = previous; previous = current
+        }
+        return previous * previous + older * older - coefficient * previous * older
+    }
+    return (power(1000), power(300))
 }
 
 @Test func everythingCutLeavesNoOutput() async throws {

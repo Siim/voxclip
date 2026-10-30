@@ -52,6 +52,18 @@
 
 - Both Cores trust positive v0 context fields only for `state: loaded`, preferring `loaded_context_length`. Unloaded/unknown contexts use the conservative 4,096-token fallback from ai.md §§6.6/11.5, never a JIT model's advertised maximum. Stub tests cover states and positive loaded lengths.
 
+### 2026-10-30 — sol-mac-polish r2 — Source-only crop rounding
+
+- CenterCrop now defaults to exact fixed-aspect cropping. Only the selected Source aspect sets OutputSpec.PreserveSource; FrameComposer consumes that captured flag, and current-frame/gallery reads forward the explicit Source selection. The only Windows App change is the required one-line flag plumbing in CaptionGalleryFrames, not UI redesign or consent code.
+- Six regressions near both sides of 16:9, 9:16 and 1:1 fail before the fix; 2560×1441 to fixed 1920×1080 again crops (0, 0.5, 2560, 1440). Source explicitly preserves the whole frame, and all 15 shared export presets remain the oracle.
+
+### 2026-10-30 — sol-mac-polish — shared fixture parity gaps
+
+- Replay the new hand-derived SRT fixture against the existing portable Windows writer without changing Windows Media production code. Both Mac writers now match its final blank LF line; empty tracks stay empty.
+- Core replays all nine shared version cases, 15 export presets and five word-assembly fixtures. Source-aspect even rounding now preserves the whole source when scaling leaves both output dimensions within one pixel, matching Mac OutputSizing.centerCrop. Exact-output and portrait crop regressions remain covered; no Windows App implementation changes are included.
+- Native Media tests consume the committed Pocket-4-like two-track HEVC fixture: probe, nonempty decoded frame, first-track extraction and tone discrimination, then Windows preview/export with first-track audio. Existing RequiresFFmpeg/RequiresWindows gates skip these off-platform; the Windows native checks are owed, and no VM was used.
+- Shared word fixtures carry hand derivations; comparisons are semantic with 1e-9 time/confidence tolerance, not byte-identical JSON. Existing provider-specific inline tests remain. CI adds strict Swift schema prerequisites, project generator drift and comparator tests. Windows release-script draft 5 remains owed to the Windows track.
+
 ### 2026-10-30 — lead — Windows redesign merged
 
 - Squash-merged track/sol-win-redesign at c4e47a49: rounds 2-17, the clips-first WinUI window matching doc/design.md, plus every fix from the pre-merge release sweep (entries 1-11, 15 and 20-29). These include Codex API-key sign-in, Claude Code `oauth_token`, the vcredist145 prerequisite (minimum 14.50) above the 14.40 App floor and the 14.44 release gate, Rewrite forced-show, High Contrast repaint, F6 in read-only Captions, and first-use ElevenLabs consent.

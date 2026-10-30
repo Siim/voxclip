@@ -1,0 +1,87 @@
+{
+  "schema": "voxclip-word-assembly-fixture/1",
+  "name": "hard-boundaries",
+  "derivation": "Section 6. joinsPrevious never crosses a group change or an event token, and nothing joins an event: four words. conf min ignores missing values, so a word without any conf has conf null; the speaker is the first token's.",
+  "rule": {
+    "end": "lastToken",
+    "conf": "min",
+    "bracketEvents": false
+  },
+  "timelineStart": 0,
+  "tokens": [
+    {
+      "text": "one",
+      "joinsPrevious": false,
+      "start": 0,
+      "end": 0.25,
+      "conf": 0.75,
+      "speaker": "a",
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "two",
+      "joinsPrevious": true,
+      "start": 0.25,
+      "end": 0.5,
+      "conf": 0.25,
+      "speaker": null,
+      "kind": null,
+      "group": 1
+    },
+    {
+      "text": "(laughs)",
+      "joinsPrevious": true,
+      "start": 0.5,
+      "end": 1,
+      "conf": null,
+      "speaker": null,
+      "kind": "event",
+      "group": 1
+    },
+    {
+      "text": "three",
+      "joinsPrevious": true,
+      "start": 1,
+      "end": 1.5,
+      "conf": null,
+      "speaker": null,
+      "kind": null,
+      "group": 1
+    }
+  ],
+  "expect": [
+    {
+      "text": "one",
+      "start": 0,
+      "end": 0.25,
+      "conf": 0.75,
+      "speaker": "a",
+      "kind": "word"
+    },
+    {
+      "text": "two",
+      "start": 0.25,
+      "end": 0.5,
+      "conf": 0.25,
+      "speaker": null,
+      "kind": "word"
+    },
+    {
+      "text": "(laughs)",
+      "start": 0.5,
+      "end": 1,
+      "conf": null,
+      "speaker": null,
+      "kind": "event"
+    },
+    {
+      "text": "three",
+      "start": 1,
+      "end": 1.5,
+      "conf": null,
+      "speaker": null,
+      "kind": "word"
+    }
+  ]
+}

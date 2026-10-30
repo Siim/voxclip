@@ -1,0 +1,89 @@
+{
+  "schema": "voxclip-word-assembly-fixture/1",
+  "name": "bracket-events",
+  "derivation": "Section 16.1 case 7 and section 6. With bracketEvents, [laughs] becomes an event; (soft absorbs music) in the same group into one event ending at 1.5; [BLANK_AUDIO] (letters blankaudio) is dropped. conf single keeps the first token's value.",
+  "rule": {
+    "end": "lastToken",
+    "conf": "single",
+    "bracketEvents": true
+  },
+  "timelineStart": 0,
+  "tokens": [
+    {
+      "text": "[laughs]",
+      "joinsPrevious": false,
+      "start": 0,
+      "end": 0.5,
+      "conf": null,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "(soft",
+      "joinsPrevious": false,
+      "start": 0.5,
+      "end": 1,
+      "conf": null,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "music)",
+      "joinsPrevious": false,
+      "start": 1,
+      "end": 1.5,
+      "conf": null,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "[BLANK_AUDIO]",
+      "joinsPrevious": false,
+      "start": 1.5,
+      "end": 2,
+      "conf": null,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    },
+    {
+      "text": "hello",
+      "joinsPrevious": false,
+      "start": 2,
+      "end": 2.5,
+      "conf": 0.5,
+      "speaker": null,
+      "kind": null,
+      "group": 0
+    }
+  ],
+  "expect": [
+    {
+      "text": "[laughs]",
+      "start": 0,
+      "end": 0.5,
+      "conf": null,
+      "speaker": null,
+      "kind": "event"
+    },
+    {
+      "text": "(soft music)",
+      "start": 0.5,
+      "end": 1.5,
+      "conf": null,
+      "speaker": null,
+      "kind": "event"
+    },
+    {
+      "text": "hello",
+      "start": 2,
+      "end": 2.5,
+      "conf": 0.5,
+      "speaker": null,
+      "kind": "word"
+    }
+  ]
+}

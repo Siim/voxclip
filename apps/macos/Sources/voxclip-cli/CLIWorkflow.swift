@@ -255,15 +255,17 @@ enum CLIWorkflow {
         case .render: throw VoxClipError.exportFailed("Invalid caption operation")
         }
         try Task.checkCancellation()
-        let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version)
+        let exporter = AVExporter(appVersion: VoxClipCLI.configuration.version,
+                                  cleanupRegistry: DataLocations().root.appendingPathComponent("Scratch"))
         let job = ExportJob(render: render, aspect: aspect, quality: quality, outputURL: URL(fileURLWithPath: options.output!),
             writeSRT: options.srt != nil, srtURL: options.srt.map { URL(fileURLWithPath: $0) })
         let audioDestination = options.audioOut.map { URL(fileURLWithPath: $0).standardizedFileURL.resolvingSymlinksInPath() }
         var audioStaging: URL?
-        defer { if let audioStaging { try? FileManager.default.removeItem(at: audioStaging) } }
+        var approvals: [URL: ExportSafety.DestinationApproval]?
+        defer { if let audioStaging { ExportSafety.discardPartial(audioStaging) } }
         try Task.checkCancellation()
         if let audioDestination {
-            try await exporter.preflightCombinedExport(job, editedAudioURL: audioDestination)
+            approvals = try await exporter.preflightCombinedExport(job, editedAudioURL: audioDestination)
             try Task.checkCancellation()
             audioStaging = try await exporter.stageEditedAudio(render, to: audioDestination)
             try Task.checkCancellation()
@@ -274,7 +276,7 @@ enum CLIWorkflow {
         let reporter = CLIProgressReporter(quiet: options.quiet)
         try Task.checkCancellation()
         CLIInterruptTiming.testOnly?.exportStarting()
-        let result = try await exporter.export(job, additionalOutputs: additionalOutputs) { progress in
+        let result = try await exporter.export(job, additionalOutputs: additionalOutputs, approvals: approvals) { progress in
             reporter.report(progress)
         }
         guard case .object(var fields) = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(result)) else { throw VoxClipError.exportFailed("Cannot encode result") }

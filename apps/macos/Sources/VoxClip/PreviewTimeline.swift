@@ -62,8 +62,8 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             .accessibilityIdentifier("voxclip.viewer.stage")
             viewerRow
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.regular) }.frame(height: 24).columnLayoutEvidence("frame.regular")
-                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(height: 24).columnLayoutEvidence("frame.small")
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.regular) }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 24).columnLayoutEvidence("frame.regular")
+                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 24).columnLayoutEvidence("frame.small")
                 VStack(alignment: .leading, spacing: 6) {
                     frameLabel
                     framePicker.controlSize(.small).frame(maxWidth: .infinity, alignment: .leading)
@@ -77,7 +77,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
     }
     private var frameLabel: some View {
-        Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize()
+        Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize().columnLayoutEvidence("control.frame.label")
     }
     private var framePicker: some View {
         Picker("Frame", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
@@ -85,7 +85,7 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 Text(aspect == .source ? "Original" : aspect.rawValue)
                     .fontWeight(model.project.export.aspect == aspect ? .semibold : .regular).tag(aspect)
             }
-        }.labelsHidden().pickerStyle(.segmented).frame(height: 24).accessibilityLabel("Frame")
+        }.labelsHidden().pickerStyle(.segmented).frame(height: 24).accessibilityLabel("Frame").columnLayoutEvidence("control.frame.picker")
     }
     private var stageLabel: String {
         let scope = model.activeClip.flatMap { model.clipNumber($0.id) }.map { "clip \($0)" } ?? "full take"
@@ -133,17 +133,16 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
     }
     private var transportButtons: some View {
         Group {
-            Button { model.transport("j") } label: { transportSymbol("gobackward.3", fallback: "gobackward").frame(width: 28, height: 28) }
+            Button { model.transport("j") } label: { transportSymbol("gobackward").frame(width: 28, height: 28) }
                 .help("Back 3 Seconds (J)").accessibilityLabel(EditorIconAction.back.name)
             Button { model.transport(" ") } label: { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").frame(width: 34, height: 34) }
                 .background(DesignValues.color("bg.sunken"), in: Circle()).help("Play/Pause (Space)").accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
-            Button { model.seek(source: min(model.sourceDuration, model.sourceTime + 3)) } label: { transportSymbol("goforward.3", fallback: "goforward").frame(width: 28, height: 28) }
+            Button { model.seek(source: min(model.sourceDuration, model.sourceTime + 3)) } label: { transportSymbol("goforward").frame(width: 28, height: 28) }
                 .help("Forward 3 Seconds").accessibilityLabel(EditorIconAction.forward.name)
         }
     }
-    @ViewBuilder private func transportSymbol(_ name: String, fallback: String) -> some View {
-        if NSImage(named: name) != nil { Image(name).renderingMode(.template) }
-        else { Image(systemName: fallback).overlay { Text("3").font(.system(size: 7, weight: .semibold)).offset(y: 1) } }
+    private func transportSymbol(_ name: String) -> some View {
+        Image(systemName: name).overlay { Text("3").font(.system(size: 7, weight: .semibold)).offset(y: 1) }
     }
 }
 

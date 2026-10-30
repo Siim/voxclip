@@ -1,5 +1,23 @@
 # macOS implementation contracts
 
+### 2026-10-30 — lead — Mac release polish merged
+
+- Squash-merged track/sol-mac-polish at 48f43109 (rounds 1-3; the entries below). It covers:
+  - the release gaps: no Apple-derived artwork, Rewrite hidden from the Release shortcuts sheet, remote local-AI hosts treated as network connectors, Apple Speech asset rows;
+  - the accessibility fixes D1, D3, D5, D6 and D8, and the right-column follow-ups;
+  - factual documentation fixes;
+  - release-tool safety gates;
+  - shared fixture parity;
+  - first-use ElevenLabs consent driven through the real Transcribe action.
+- **Scratch:** every partial and work file lives in a VoxClip-created mode-0700 private directory, journalled with its owner (pid plus process start time) and its directory identity. Cleanup removes only a whole directory whose owner is dead and whose identity matches, through O_NOFOLLOW directory fds. Nothing outside such directories is deleted or renamed. Unleased legacy scratch is left alone.
+- **Export publication:** a destination observed absent is published with RENAME_EXCL. EEXIST replaces nothing and reports: "A file named {name} appeared in the export folder. Export again to replace it, or choose another name." An approved replacement swaps with RENAME_SWAP only while the destination still has the approved identity. Rollback never removes or replaces an unrelated file.
+- **Gallery:** main's eager two-tile rows (c7396cbc) plus polish's measured reveal convergence and stable-layout audit receipts. Eager rows alone still failed the 320-point external-change check on hosted run 41007865448; the combination passed hosted CI 41008651801 and 10 of 10 local runs.
+- **Verification:**
+  - three Terra reviews; the last (r3) found nothing, and its race probe preserved the user's file;
+  - CI 41008651801, all five jobs;
+  - Core, Media, CaptionParity, the headless App and the window-free audits.
+- **Owed before 0.1.0:** the native scene audit, demo window, self-test, settings and Save As gates on this code. They are queued on the host for the next idle window.
+
 ### 2026-10-30 — Deterministic interrupted model-download fixture
 
 - SpeechStubHTTP no longer polls or sleeps on URLSession's shared loading thread before dropping a stream. A one-shot write acknowledgement schedules failure back on that thread only after ModelStore's existing post-write progress callback; it handles either registration order without blocking delivery. The resume regression checks the actual partial bytes before each drop and exact Range offsets 1000/2000, then verifies the final payload. Product retry, file-write and resume behavior are unchanged. Windows has no polling interruption twin; its seeded-range and cancellation tests do not share this race.
@@ -53,6 +71,112 @@
 
 - Both Cores trust positive v0 context fields only for `state: loaded`, preferring `loaded_context_length`. Unloaded/unknown contexts use the conservative 4,096-token fallback from ai.md §§6.6/11.5, never a JIT model's advertised maximum. Stub tests cover states and positive loaded lengths; the Mac retains its assumed-context note.
 
+### 2026-10-30 — sol-mac-polish r3 — merge eager gallery rows
+
+- Merge origin/lead/main-candidate at 78e10752, retaining c7396cbc's eager two-tile HStack rows inside VStack. Real tile/header ID evidence, scope/click/interruption behavior, content-size observations, non-observed scroll-frame state and three-stable-layout audit receipts remain. Preserve the existing seven-point structural spacing plus three-point ring reserve so the measured visible row gap stays ten points.
+- Remove the lazy-estimate numeric ScrollPosition workaround and unused anchor state. Eager rows reveal through their real IDs; geometry changes still revalidate resize/state transitions, and identical observations coalesce. There are no retry/re-issue budgets or asynchronous recheck loops. The caption error stays fixed outside the gallery and design section 6.1 now agrees.
+- Preserve both platforms' contract histories and the candidate's ElevenLabs detail/residency and Windows redesign changes. AppModel startup cleanup, Sidebar cancellation/accessibility and Transcript spoken-state changes merge unchanged from polish. Local repetitions and hosted proof are recorded in the round-three handoff; native window checks remain lead-owned.
+
+### 2026-10-30 — sol-mac-polish r3 — identity-bound export publication
+
+- Capture absent/replacement approvals before encoding and before combined CLI WAV staging, including the approved file's device/inode/nanosecond birth time. Pin destination/private directory descriptors and publish with renameatx_np RENAME_EXCL or RENAME_SWAP. Verify the swapped-out original, undo an identity mismatch immediately and report the documented retry/name conflict copy. No plain replacing rename or destination unlink remains in publication.
+- Swapped-out originals are the transaction's backups inside recovery-marked mode-0700 private directories. Commit removes them only after every video/SRT/provenance/WAV output succeeds. Rollback refuses changed destinations, verifies reversed operations too, and retains/report originals it cannot restore without touching an unrelated replacement. Existing cancellation and failed-restore assertions stay mandatory.
+- Deterministic hooks reproduce absent-path appearance, unapproved replacement and unrelated rollback replacement on the old implementation (six failing assertions). Regressions also cover pre-encoding approvals, races after the rollback identity check, successful create/replace, multi-output conflict rollback and protected recovery paths. Verification results are recorded in the round-three handoff.
+
+### 2026-10-30 — sol-mac-polish r2 — private scratch directories and fd cleanup
+
+- Supersedes the per-file check/unlink contract below: all new GUI/CLI export partials, SRT/provenance/WAV staging and writer work live in unique mode-0700 destination-local directories. Schema-4 leases bind directory dev/inode/birth identity to pid plus kernel process start. Registry references also live in leased private directories; no scratch metadata file outside those directories is unlinked.
+- Launch cleanup pins an O_NOFOLLOW directory fd, validates fstat identity/permissions and dead ownership, then uses fd-relative unlinkat traversal. It never renames/quarantines a scratch path or deletes a legacy external partial. Unknown/live owners, replaced roots, symlinks, traversal, unleased legacy items and flat old journals are retained. Abandoned private indexes are dropped. Rollback backups are recovery-marked private directories from creation, and failed-restore copy names their relative recovery path.
+- Regression evidence: the legacy external-partial and preparePartial user-file tests fail against the previous implementation and pass after this change. A deterministic swap after the real fd opens preserves the replacement directory/user file and cleans only the opened directory. Real child lifetime, pid reuse, clock skew, private permissions, root/content symlinks, traversal and protected recovery backup cases cover the boundary. Publication cancellation/restore assertions remain intact with private staging fixtures.
+- Real CLI interrupt readiness now observes the current child pid's leased private video partial, not an obsolete public filename. Concurrent interrupts still meet the existing two-second stop bound and leave no private export directories. The combined MP4/SRT/WAV symlink export preserves all three pre-existing public partials byte-for-byte and removes only its new private staging. An occupied legacy provenance reservation still refuses the transaction before changing outputs; no Voice Lab source or test is modified.
+- Local verification passes Debug and Release builds, Core 618, Media 288, CaptionParity 4, headless App 887/887 and all three explicit window-free audits. The 300-ms expression diagnostic reports no slow expression in the 43 touched Swift files; the new conversion/capacity arithmetic is split into typed intermediates. Two pre-existing Text-concatenation deprecations remain outside this fix.
+- Final portable verification passes the .NET Release build (zero warnings/errors), Core 2,078 with 28 prerequisite skips, Media 625 with four opt-in skips, Mac release safety 50, version tooling 15, design 17 and design/editing/version drift checks. Every build starts above the 15-GB reserve. Unleased legacy upload/CLI scratch is intentionally retained under the fail-closed rule, not claimed as reclaimed.
+- Both round-two pushes/dispatches were already used before this refinement. Hosted run 40997687447 passed every job at 73fe0367; its gallery test passed in 7.329 seconds. The private-directory refinement is local-only pending lead authorization to push/retest. Native window checks remain owed.
+
+### 2026-10-30 — sol-mac-polish r2 — gallery layout receipt, not render queue timing
+
+- Loaded diagnostic traces reproduced a different failure after removing reveal budgets: last-selection paint was already contained, the request consumed and pending false, with zero scroll commands, but only two/three samples ran before the unchanged two-second deadline. Yielding between valid geometry samples lets unrelated caption rendering consume the deadline; the 4096-point window-free hosts do not need to scroll in these cases. Round-one reveal triggers and scroll-state suppression did not fix this harness scheduling dependency.
+- Settlement now forces three actual host layout passes and compares the selected native marker frame as well as the consumed SwiftUI geometry. Valid passes complete together, without yielding to unrelated rendering; incomplete geometry still yields and retains the two-second failure bound. No timeout increase or retry is added. Diagnostic measurement files retain geometry transitions so a future failure has exact evidence. Native short-viewport paint alignment and every existing containment assertion remain.
+- The focused test passes, followed by ten consecutive actual captionGalleryInteractions tests under nice while a real Release build remains running from the start through the end of every run. All ten pass in 3.3–3.9 seconds each; each selected tile has three stable measured layout passes. Earlier 9/10 and 8/10 diagnostic batches are retained as failures, not acceptance evidence.
+
+### 2026-10-30 — sol-mac-polish r2 — hosted compiler guard
+
+- Rebuilt all tests with warn-long-expression-type-checking=300; no expression in the round-one/round-two touched files exceeds 300 ms. Reviewed added conversion arithmetic as well, and split export-progress quarters and Pocket-4 sample-duration/tone intermediates into typed operations for Xcode 26. The eight ownership/identity regressions pass in that build.
+
+### 2026-10-30 — sol-mac-polish r2 — real transcription consent actions
+
+- The window-free integration audit mounts TranscriptionSheet and the real Settings key row. A DEBUG primitive-button style records SwiftUI's actual configuration.trigger for Transcribe, the shared consent sheet's Cancel/Continue, and Settings Test; it does not substitute gate callbacks. Consent content is mounted inline only in the audit, so no window is opened. Release buttons and normal sheet presentation are unchanged.
+- An injected URLProtocol transport drives the real Scribe adapter through readiness, audio extraction, upload, mapping and transcript import. It verifies zero requests before Continue/after Cancel, unchanged Not transcribed state, exactly one upload after Continue, persisted consent after restart, and the real Settings Test account request without consent. The adapter and testSpeechKey implementation are untouched.
+- Regression evidence: bypassing the gate in the actual Transcribe button makes the new App test fail its first-use assertion; restoring production wiring passes all seven checks. This replaces the earlier direct-gate fake-upload coverage. Windows App first-use consent integration remains owed to the Windows track; native Mac sheet/focus checks remain owed to the lead.
+
+### 2026-10-30 — sol-mac-polish r2 — event-driven gallery convergence
+
+- Lazy-grid estimates can be revised after the previous three-command correction budget is spent. Reveal now responds to every changed measured geometry, including content extent changes that release an earlier clamped scroll, coalesces identical commands, and stops on complete paint or explicit user interruption, not an elapsed number of dispatch turns. Late viewport changes revalidate completed paint without publishing every scroll frame; requests must be current and completed checks do not churn observed state.
+- Window-free acceptance requires the current request to be consumed, complete measured paint/header containment, the actual host viewport, and three stable layout/display passes. The original two-second failure bound and all paint assertions remain. A sixteen-layout correction regression fails on the budgeted policy; scope, Fine Tune, tile-click and scroll-interruption regressions remain.
+
+### 2026-10-30 — sol-mac-polish r2 — abandoned process leases
+
+- Export journals bind identities to the owner's pid and exact sysctl kinfo_proc process start. Reaping requires a missing owner or a different start time; a live matching owner or an unqueryable owner is never reaped. Wall-clock age, creation dates and modification dates do not establish abandonment. A replacement item is retained and the abandoned journal dropped.
+- Unleased legacy export directories, uploads and CLI workspaces are conservatively left alone, regardless of age. Their earlier age-only cleanup is superseded; producers need an ownership lease before launch may reap them. Symlinked items/ancestors and traversal are refused.
+- The live-owner regression fails before the fix. Real child-process tests retain its live export, reap it after exit, and treat a reused pid with a different kernel start as abandoned. Clock-skew, replacement, traversal and symlink regressions cover the fail-closed policy; no native windows or external calls are used.
+
+### 2026-10-30 — sol-mac-polish r2 — exact scratch file identities
+
+- Export journals snapshot each created item's device, inode and nanosecond birth time. Cleanup refuses a replacement at the same path and drops the stale record rather than claiming the replacement. Journaled MP4/SRT partials use unique VoxClip UUID names; writer creation and exclusive sidecar creation record their actual identities, never a guessed future file.
+- The replacement-user-file regression fails on round 1 and passes with this change; all four scratch tests and the real H.264/AAC export/journal-cleanup test pass. Cross-process abandonment protection is recorded in the subsequent round-two entry.
+
+### 2026-10-30 — sol-mac-polish — ElevenLabs first-use consent regression
+
+- Move the sheet's decision and pending action into TranscriptionConsentGate, used directly by Transcribe/Retry, Continue and Cancel. Consent is stored before the operation starts; cancelling or dismissing discards the pending operation without changing settings or the project. The paid adapter and key Test implementation are untouched.
+- Headless fake-upload checks cover zero uploads/project mutation before consent, cancellation leaving the take untranscribed, exactly one upload after Continue, persisted consent across a new AppModel, and local/Apple engines never granting cloud consent. Windows App consent and native Mac sheet/focus checks remain owed to their owners.
+- Final offline verification for this track: Mac Debug and Release builds; Core 610/610, Media 286/286, CaptionParity 4/4, headless App 886/886, and both window-free UI audits (63 gallery checks, 433 right-column checks). The cross-platform .NET Release build has no warnings or errors; Core passes 2,072 with 28 prerequisite skips, portable Media passes 624 with five skips. Release tooling (15), Mac release safety (50), design (17), schemas, caption styles and fixture drift pass. An initial Core timing assertion failed under concurrent host load; the unchanged full suite passed after the other CPU-heavy run finished. No native windows, live providers or Windows VM were used.
+
+### 2026-10-30 — sol-mac-polish — stale owned scratch after interrupted tasks
+
+- Launch sweeps only recognized VoxClip scratch older than the kernel-reported process start: exact UUID Scribe multipart files in hash-named cache entries, UUID CLI workspaces, and UUID export writer folders in known export directories. Both creation and modification dates, including directory descendants, must predate startup; links are never followed and newer work is retained.
+- GUI exports journal their exact MP4/SRT partial basenames and writer folder in a private app-data Scratch registry before writing. A later launch can recover a first export to a custom directory even if it never completed. Normal success/failure/cancellation removes the journal after partial cleanup. Unjournaled ambiguous user-named .partial files are deliberately preserved; the existing same-destination retry cleanup still applies.
+- Tests cover old versus new work, cache/transcript/completed-export preservation, malformed ownership records, traversal and links, plus successful export journal cleanup. This fixes interrupted-work disk residue, not an established external disclosure; no source media or paid assets are swept.
+
+### 2026-10-30 — sol-mac-polish — shared fixture parity gaps
+
+- Confirm the sweep's SRT terminator divergence and align both Mac writers with the Windows blank-line terminator. A new hand-derived shared fixture pins exact UTF-8 bytes, multiline/multipage text, half-up milliseconds and skipped non-positive pages; existing exact Mac assertions are updated to the specified bytes, not relaxed.
+- Both Cores replay the nine version comparisons and five shared, hand-derived word-assembly cases with explicit rules, token groups and expected timings. Inline adapter/provider coverage remains; fixtures compare values at 1e-9, not serialized bytes.
+- The existing Pocket-4-like two-audio HEVC fixture now runs through probe, poster decode, first-track extraction, preview composition and export in serialized HeavyMediaTests. Tone checks distinguish the first track's 1 kHz signal from the second track's 300 Hz signal. Matching native Windows decode/extraction/export tests are written but remain owed to Windows CI/the Windows track; no VM is used here.
+- CI requires schema Python for Swift test steps and checks project-fixture generator drift plus parity comparator unit tests. Windows Core also replays all 15 shared export presets and matches the Mac whole-frame rule within one scaled output pixel.
+
+### 2026-10-30 — sol-mac-polish — release tool safety gates
+
+- Setting the same version preserves CFBundleVersion; a different version increments it once. Regression tests cover reruns, stable and beta versions. Release prerequisites now match the SDK roll-forward, private pinned vpk tool store and signing-tool selection implemented by the Windows scripts.
+- CI runs the offline release script tests and ad-hoc debug bundle licence, entitlement, resource, SDK and framework-notice gates without signing credentials. Transport symbols are runtime system artwork, not shipped catalogue exports.
+- Add the observed Windows SDK projection files and exact cached SDK licence text to the shipped notices with source hashes. The live licence URL equivalence, REDIST coverage, release SDK-selected pack and any additional agreement requirements remain public-release blockers. Windows build-script draft 5 is not applied and remains owned by the Windows track.
+
+### 2026-10-30 — sol-mac-polish — factual documentation reconciliation
+
+- Correct the menu inventory, kept/suggested selection semantics, export ledger keys and render fingerprint, connector onboarding, token generation and integrated app/CLI READMEs against the current code. Caption word timings affect export fingerprints; project bookkeeping timestamps do not.
+- Drop superseded draft claims that Voice Lab generation is DEBUG-only or absent from 0.1.0. The Voice Lab track owns its beta-opt-in generation changes and specification. Retain the native accessibility acceptance gates without the draft's contradictory enabled-but-hidden check.
+
+### 2026-10-30 — sol-mac-polish — right-column review follow-ups
+
+- Stage expectations now come from the requested variant and source orientation, not the measured stage. Rewrite uses its 124-point cap; literal 320×675 stage sizes are asserted by the window-free test. The probe records the background's actual logical proposal so an unattached, 1× AppKit marker's integral rounding cannot masquerade as aspect distortion; native descendant overflow checks and the original half-point size tolerance remain intact.
+- Gallery scope changes reveal selection while Fine Tune stays open. Tile clicks suspend automatic reveal; Picker and external/Undo changes still reveal, and resizing does not clear a user interruption. Non-observed scroll geometry publishes only viewport size changes, not each scroll frame. Policy checks cover all these transitions and 120 position-only updates.
+- Typed scroll IDs are assigned by one target modifier and inspected on the real rendered tile markers, replacing the old type-inequality tautology. The gallery's visual row gap is 10 points after accounting for the 3-point ring reserve. Frame inline labels and stacked pickers align to the leading inner edge.
+- Caption errors remain outside the scroll view, below the fixed header. The window-free gallery checks their bounds before and after reveal/scroll requests, the actual row gap and target registrations, and tile/scope actions without opening windows. Existing gallery, ring, layout, overflow and timing assertions are retained. The Picker-based VoiceOver outline remains unchanged pending a design decision.
+- Headless asset tests now skip ordered-window snapshots and cover failure, silent cancellation, and changing language during a download. Native short-viewport reveal, real tile clicks, divider resizing and VoiceOver/FKA checks remain lead-owned. Final offline verification is recorded in the newest entry above; all builds and tests kept the required 15 GB host reserve.
+
+### 2026-10-30 — sol-mac-polish — accessibility follow-ups
+
+- Bare-key menu equivalents yield to focused buttons, switches, segmented controls and pop-ups; transcript, sidebar and timeline transport paths remain available, as do Command shortcuts. Native menu checks and window-free focused-control checks cover the distinction.
+- Transcript accessibility exposes cut/playing/AI-modified states, hides decoration markers in length-preserving whole-text reads, and supplies spoken selected text. Collapsed cuts read as a count of cut words. Attributed-text checks protect offsets; actual VoiceOver speech remains a lead-owned acceptance gate.
+- Rename, Retry export, Locate, Cancel transcription and connector Change/Retry remain independently reachable. Clip → Cancel Finding Clips uses Command-period; sidebar Escape cancels a search before hiding the sidebar. Cancellation stays silent.
+- Export announces start, quarter-progress, success or the inline error; Caption and Export progress have labels, and copying announces completion. Fake-export headless checks cover start/completion/error/cancellation; native focus and announcement order are owed to the lead.
+
+### 2026-10-30 — sol-mac-polish — release gaps
+
+- Transport buttons use system arrows with a runtime 3 overlay; no Apple-derived symbol artwork is bundled or retained in the source tree. Asset-catalog release tests reject custom symbol files and the old compiled glyphs.
+- Shortcuts derive Rewrite visibility from the current entry policy. Release continues to omit it pending the beta-opt-in track; this is not a decision to exclude generation from 0.1.0.
+- Non-loopback Ollama and LM Studio hosts require first-request consent, name the destination in Settings and Find clips, revoke consent on host changes, and revalidate the host after asynchronous approval. Core address fixtures cover loopback, remote and malformed hosts; headless connector checks exercise sends and cancellation without real requests.
+- Settings → Transcription owns Apple Speech asset rows through AppModel, uses the Transcriber readiness/prepare path, shows progress/cancel/retry, and survives Settings closure. The transcription sheet links to the correct pane. Headless checks use a fake speech engine; actual Apple downloads and native Settings/VoiceOver are lead-owned checks.
+- The RewriteSession privacy-copy hunk is deliberately left to track/sol-mac-voicelab; it must consume AppModel.localServerHost rather than claiming a remote server runs on this Mac.
 ### 2026-10-30 — lead — ElevenLabs error detail and residency keys
 
 - A live Scribe upload failed with only "ElevenLabs answered 400: the request could not finish". `ElevenLabsTranscriber.providerError(status:data:key:region:)` now also reads the object form of `detail` (`{type, code, message, status}`), not only a string or a list. `UserMessages` shows the redacted reason unless it is the generic text, and the import logs `engine=elevenlabs status=… detail=…` at warn level.

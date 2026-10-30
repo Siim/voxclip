@@ -89,76 +89,19 @@ package enum ExportSafety {
         return partial
     }
 
-    static func preparePartial(for destination: URL) throws -> URL {
-        let partial = try partialURL(for: destination)
-        if FileManager.default.fileExists(atPath: partial.path) { try FileManager.default.removeItem(at: partial) }
-        return partial
+    static func preparePartial(for destination: URL, registry: URL? = nil) throws -> URL {
+        let directory = try ScratchCleanup.createExportDirectory(in: destination.deletingLastPathComponent(), registry: registry)
+        return directory.url.appendingPathComponent(destination.lastPathComponent + ".partial")
+    }
+
+    package static func discardPartial(_ partial: URL) {
+        ScratchCleanup.discardExportDirectory(at: partial.deletingLastPathComponent())
     }
 
     static func validateDestination(_ destination: URL) throws {
         if let values = try? destination.resourceValues(forKeys: [.isRegularFileKey, .isDirectoryKey]),
            values.isDirectory == true || values.isRegularFile != true {
             throw VoxClipError.exportFailed("The destination must be a regular file, not a folder or special file")
-        }
-    }
-
-    package static func publish(_ partial: URL, to destination: URL) throws {
-        try validateDestination(destination)
-        guard rename(partial.path, destination.path) == 0 else {
-            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: destination.path])
-        }
-    }
-
-    package static func publishAll(_ outputs: [(partial: URL, destination: URL)],
-                                   move: (URL, URL) throws -> Void = { try publish($0, to: $1) }) throws {
-        let manager = FileManager.default
-        var backups: [URL?] = []
-        var published = 0
-        var retainedBackups: Set<Int> = []
-        defer {
-            for output in outputs { try? manager.removeItem(at: output.partial) }
-            for (index, backup) in backups.enumerated() where !retainedBackups.contains(index) {
-                if let backup { try? manager.removeItem(at: backup) }
-            }
-        }
-        do {
-            for output in outputs {
-                try Task.checkCancellation()
-                try validateDestination(output.destination)
-                if manager.fileExists(atPath: output.destination.path) {
-                    let backup = URL(fileURLWithPath: output.destination.path + ".rollback-" + UUID().uuidString)
-                    backups.append(backup)
-                    try manager.copyItem(at: output.destination, to: backup)
-                    try manager.setAttributes([.immutable: false, .appendOnly: false], ofItemAtPath: backup.path)
-                } else { backups.append(nil) }
-            }
-            for output in outputs {
-                try Task.checkCancellation()
-                try move(output.partial, output.destination)
-                published += 1
-            }
-            try Task.checkCancellation()
-        } catch {
-            var rollbackFailure: (any Error)?
-            var recoveryMessages: [String] = []
-            for index in (0..<published).reversed() {
-                do {
-                    if let backup = backups[index] { try move(backup, outputs[index].destination) }
-                    else { try manager.removeItem(at: outputs[index].destination) }
-                } catch {
-                    rollbackFailure = rollbackFailure ?? error
-                    if let backup = backups[index] {
-                        retainedBackups.insert(index)
-                        recoveryMessages.append("\(VoxClipError.exportRecoveryMessagePrefix)\(outputs[index].destination.lastPathComponent). The previous version is saved as \(backup.lastPathComponent).")
-                    }
-                }
-            }
-            if !recoveryMessages.isEmpty {
-                if let destination = outputs.first?.destination { _ = failure(error, destination: destination) }
-                throw VoxClipError.exportFailed(recoveryMessages.joined(separator: " "))
-            }
-            if let rollbackFailure { throw rollbackFailure }
-            throw error
         }
     }
 

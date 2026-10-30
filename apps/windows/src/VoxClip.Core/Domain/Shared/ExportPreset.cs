@@ -71,7 +71,7 @@ public static class ExportPresets
     {
         var size = OutputSize(source, aspect);
         var fps = OutputFrameRate(sourceRate);
-        return new(size, fps, VideoBitrate(size, aspect, quality, fps), 48_000, 2, 160_000, codec);
+        return new(size, fps, VideoBitrate(size, aspect, quality, fps), 48_000, 2, 160_000, codec) { PreserveSource = aspect == ExportAspect.Source };
     }
     /// <summary>Returns even output dimensions, capped at 1920 for source aspect.</summary>
     public static PixelSize OutputSize(PixelSize source, ExportAspect aspect)
@@ -94,8 +94,11 @@ public static class ExportPresets
         return (long)Math.Floor(bitrate * (quality == ExportQuality.High ? 1.5 : 1) * (fps >= 50 ? 1.5 : 1) + 0.5);
     }
     /// <summary>Centre-crop rectangle in oriented source pixels.</summary>
-    public static RectD CenterCrop(PixelSize source, PixelSize output)
+    public static RectD CenterCrop(PixelSize source, PixelSize output, bool preserveSource = false)
     {
+        var scale = Math.Max((double)output.Width / source.Width, (double)output.Height / source.Height);
+        if (preserveSource && Math.Abs(source.Width * scale - output.Width) <= 1 && Math.Abs(source.Height * scale - output.Height) <= 1)
+            return new(0, 0, source.Width, source.Height);
         var aspect = (double)output.Width / output.Height;
         var height = Math.Min(source.Height, source.Width / aspect);
         var width = height * aspect;

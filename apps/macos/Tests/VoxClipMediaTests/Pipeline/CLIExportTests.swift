@@ -130,12 +130,12 @@ func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil
     environment["TMPDIR"] = scratch.path
     process.environment = environment
     process.standardOutput = stdout; process.standardError = stderr
-    let partial: URL?
+    let exportParent: URL?
     if interruptAfter != nil && !interruptBeforeExport {
         let index = try #require(arguments.firstIndex(of: "--export"))
         try #require(index + 1 < arguments.count)
-        partial = URL(fileURLWithPath: arguments[index + 1] + ".partial")
-    } else { partial = nil }
+        exportParent = URL(fileURLWithPath: arguments[index + 1]).deletingLastPathComponent().resolvingSymlinksInPath()
+    } else { exportParent = nil }
     try process.run()
     let timing = CLIProcessTiming()
     let watchdog = DispatchWorkItem {
@@ -157,8 +157,16 @@ func runCLI(_ arguments: [String], directory: URL, interruptAfter: Double? = nil
         // when SIGINT is actually sent, after readiness and the seeded offset.
         let readinessDeadline = ContinuousClock.now + .seconds(60)
         while process.isRunning {
-            if let partial {
-                readinessObserved = FileManager.default.fileExists(atPath: partial.path)
+            if let exportParent {
+                let directories = (try? FileManager.default.contentsOfDirectory(at: exportParent, includingPropertiesForKeys: nil)) ?? []
+                readinessObserved = directories.contains { directory in
+                    guard directory.lastPathComponent.hasPrefix(".voxclip-export-"),
+                          let data = try? Data(contentsOf: directory.appendingPathComponent(".voxclip-owner.json")),
+                          let lease = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let owner = lease["owner"] as? [String: Any],
+                          (owner["pid"] as? NSNumber)?.int32Value == process.processIdentifier else { return false }
+                    return FileManager.default.fileExists(atPath: directory.appendingPathComponent("video.mp4.partial").path)
+                }
             } else {
                 let data = try? Data(contentsOf: stderrURL)
                 readinessObserved = data.map { String(decoding: $0, as: UTF8.self)
@@ -589,7 +597,7 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
             #expect(!FileManager.default.fileExists(atPath: output.path + ".partial"))
         }
         let remaining = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-        #expect(remaining.filter { $0.contains(".partial") || $0.hasPrefix("voxclip-export-") || $0.hasPrefix("Remaker-") } == [unrelated.lastPathComponent])
+        #expect(remaining.filter { $0.contains(".partial") || $0.hasPrefix("voxclip-export-") || $0.hasPrefix(".voxclip-export-") || $0.hasPrefix("Remaker-") } == [unrelated.lastPathComponent])
     }
     #expect(try Data(contentsOf: unrelated) == Data("preserve this file".utf8))
     let internalSummary = "internal_min=\(latencies.min() ?? 0) internal_max=\(latencies.max() ?? 0) internal_mean=\(latencies.reduce(0, +) / Double(latencies.count))"
@@ -902,8 +910,11 @@ func cliRejectsUnusableSidecarsBeforeTranscriptionAndEditing(_ scenario: String)
     #expect(try result.json["srt"] as? String == srtTarget.path)
     #expect(try Data(contentsOf: target).count == 44 + 96624 * 8)
     #expect((try result.json)["audioSamples"] as? Int == 96624)
+    let retainedPartials = [output, target, srtTarget].map { URL(fileURLWithPath: $0.path + ".partial") }
+    for partial in retainedPartials { #expect(try Data(contentsOf: partial) == Data("stale partial".utf8)) }
     let remaining = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-    #expect(!remaining.contains { $0.hasPrefix(".voxclip-audio-") || $0.contains(".partial") || $0.contains(".rollback-") })
+    #expect(Set(remaining.filter { $0.contains(".partial") }) == Set(retainedPartials.map(\.lastPathComponent)))
+    #expect(!remaining.contains { $0.hasPrefix(".voxclip-audio-") || $0.hasPrefix(".voxclip-export-") || $0.contains(".rollback-") })
 }
 
 @Test(arguments: ["video", "srt", "audio"], ["directory", "symlink"])

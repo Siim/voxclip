@@ -681,6 +681,7 @@ ElevenLabs transcribes files longer than 8 minutes in parallel internally, with 
   - Body: "ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent."
   - Buttons: [Continue] (default) stores `transcription.cloudConsent.elevenlabs = true` and uploads; [Cancel] uploads nothing and leaves the project "Not transcribed".
   - The Test button (below) sends no audio and needs no consent.
+  - The Mac headless App harness checks the same consent gate used by the sheet: no upload or project change before consent, cancellation without a stored grant, persistence before the first upload, and no repeat prompt after loading that grant. It uses a fake upload, not a provider call. The corresponding Windows App behavior/tests are owed to the Windows track.
 - **Test button**: `GET {base}/v1/user/subscription`. The button makes no paid call.
   - 200 shows "Works."
   - A 401 or 403 whose body says the key lacks a permission shows "The key works. It can't read account details (user_read), and that is fine for transcription." This proves the key is valid but does not prove it has `speech_to_text`.
@@ -959,6 +960,7 @@ case .supported, .downloading:
   | anything else | `speechAssetsUnavailable` |
 
 - While downloading, the UI shows "Downloading Apple's {Language} speech model…" with the fraction. macOS hosts the files, and VoxClip shows no size it does not know.
+- Settings → Transcription lists the selected language's Apple speech model, with Download, progress and Cancel, Retry after failure, or Installed. Auto asks the user to choose a language. A missing-assets message in the transcription sheet opens that pane through Models and keys…. Downloads are app-owned and continue after Settings closes; cancellation is silent. A language chosen during a download is checked after that download finishes.
 
 ### 10.4 Analysis
 
@@ -1332,6 +1334,8 @@ Apple: a recorded list of `(result, runs, ranges, confidence)` converts to the e
 - `VOXCLIP_LIVE_TESTS=1` and `VOXCLIP_ELEVENLABS_API_KEY` set, local runs only: run the same clip through Scribe v2. Assert `language == "en"` and that the filler is kept as a word.
 
 ### 16.4 Quality acceptance before the 0.1.0 defaults are final
+
+**Release evidence (2026-10-30): pending.** No measurements for this quality gate or the §17 open verification are recorded here. The lead must record the results or a scoped waiver before publishing (release.md §4 step 3c); synthetic fixture passes do not establish these thresholds.
 
 Build a 10-minute bilingual test set from the author's own takes: Estonian with English terms, plus English only. Annotate the word boundaries and fillers by hand. Then measure:
 

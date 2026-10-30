@@ -79,7 +79,7 @@ public sealed class FrameComposer : IFrameComposer
                 Rotate(decoded, oriented, rotation, width, ct);
                 decoded = new(oriented.AsMemory(0, width * height * 4), width, height, width * 4);
             }
-            var crop = ExportPresets.CenterCrop(new(decoded.Width, decoded.Height), new(output.Width, output.Height));
+            var crop = ExportPresets.CenterCrop(new(decoded.Width, decoded.Height), new(output.Width, output.Height), snapshot.Output.PreserveSource);
             var left = (int)Math.Floor(crop.X);
             var top = (int)Math.Floor(crop.Y);
             var widthCrop = Math.Clamp((int)Math.Round(crop.Width), 1, decoded.Width - left);
