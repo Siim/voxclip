@@ -54,9 +54,7 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
     internal string CreateBlockedReason => VoiceLabCopy.SpeakerUnavailable;
     internal static string CardName(VoiceConsentRecord record)
     {
-        string[] months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-        var date = record.CreatedAt;
-        return string.Create(CultureInfo.InvariantCulture, $"{record.VoiceName}, created {date.Day} {months[date.Month - 1]} {date.Year}");
+        return VoiceLabActionNames.Created(record.VoiceName, record.CreatedAt);
     }
     private void Notify() => Changed?.Invoke(this, EventArgs.Empty);
     internal void Request(VoiceLabRequest request)

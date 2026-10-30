@@ -24,7 +24,8 @@ internal sealed class VoiceLabSettingsPane : UserControl
     private readonly TextBlock beta = Ui.Text("Beta");
     private readonly Border betaTag = new() { BorderThickness = new Thickness(1), Padding = new Thickness(6, 2, 6, 2), VerticalAlignment = VerticalAlignment.Center };
     private bool updating;
-    private bool keysLoaded;
+    private readonly VoiceLabKeyInventory keyInventory;
+    private SettingsExpander? keySection;
     private readonly VoiceLabSession session = App.Services.VoiceLab;
     private readonly SettingsExpander ownVoice = Section("Own-voice check · on this PC");
     private readonly SettingsExpander voices = Section("My voices");
@@ -36,6 +37,8 @@ internal sealed class VoiceLabSettingsPane : UserControl
         this.owner = owner;
         lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
         token = lifetime.Token;
+        keyInventory = new(App.Services.Keys, () => App.Services.VoiceLabEnabled, token);
+        keyInventory.Changed += (_, _) => RenderKeys();
         Content = body;
         var title = Ui.Stack(8); title.Orientation = Orientation.Horizontal;
         var heading = Ui.Text("Voice Lab", "TitleTextBlockStyle");
@@ -81,7 +84,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
         };
         ActualThemeChanged += (_, _) => RefreshTheme();
         Ui.EffectsChanged += EffectsChanged;
-        Unloaded += (_, _) => { session.Changed -= SessionChanged; Ui.EffectsChanged -= EffectsChanged; lifetime.Cancel(); lifetime.Dispose(); };
+        Unloaded += (_, _) => { session.Changed -= SessionChanged; Ui.EffectsChanged -= EffectsChanged; keyInventory.Dispose(); lifetime.Cancel(); lifetime.Dispose(); };
         Refresh();
     }
 
@@ -91,9 +94,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
         try { enabled.IsOn = App.Services.Settings.GetBool("voiceLab.enabled") == true; }
         finally { updating = false; }
         enabledContent.Visibility = App.Services.VoiceLabEnabled ? Visibility.Visible : Visibility.Collapsed;
-        if (!App.Services.VoiceLabEnabled || keysLoaded) return;
-        keysLoaded = true;
-        _ = Ui.RunAsync(message, AddKeysAsync, "Voice Lab keys");
+        _ = Ui.RunAsync(message, () => keyInventory.RefreshAsync(), "Voice Lab keys");
     }
     private void EffectsChanged(object? sender, EventArgs args) => RefreshTheme();
     private void RefreshTheme()
@@ -115,18 +116,21 @@ internal sealed class VoiceLabSettingsPane : UserControl
     {
         var block = Ui.Text(text, "HelperText"); block.IsTextSelectionEnabled = true; return block;
     }
-    private async Task AddKeysAsync()
+    private void RenderKeys()
     {
+        if (keySection is not null) enabledContent.Children.Remove(keySection);
+        keySection = null;
+        accountCheck = null;
+        if (!App.Services.VoiceLabEnabled || keyInventory.Rows.Count == 0) return;
         var section = Section("Your API keys");
+        keySection = section;
         enabledContent.Children.Insert(0, section);
-        foreach (var provider in new[] { ("ElevenLabs", "elevenlabs-api-key"), ("fal.ai", "fal-api-key"), ("sync.so", "syncso-api-key") })
+        foreach (var entry in keyInventory.Rows)
         {
+            var provider = (entry.Provider, entry.Account);
             var panel = Ui.Stack();
-            var hasKey = false;
-            var unreadable = false;
-            try { hasKey = await App.Services.Keys.GetKeyAsync(provider.Item2, token) is not null; }
-            catch (Exception exception) when (exception is not OperationCanceledException) { hasKey = true; unreadable = true; }
-            token.ThrowIfCancellationRequested();
+            var hasKey = entry.Saved;
+            var unreadable = entry.Unreadable;
             var status = Ui.Text(unreadable ? "This saved key can't be read. Forget it, then save a new key. Your media and edits are still here." : hasKey ? "Key saved securely." : "No key saved.", "HelperText");
             var key = new PasswordBox { Header = provider.Item1 + " API key", PasswordRevealMode = PasswordRevealMode.Hidden,
                 PlaceholderText = hasKey ? "Saved for your Windows account; paste to replace" : "API key" };
@@ -242,17 +246,25 @@ internal sealed class VoiceLabSettingsPane : UserControl
             if (record.Status == VoiceConsentStatus.VerificationRequired) card.Children.Add(Ui.Text(VoiceLabCopy.VerificationRequired, "HelperText"));
             var deleting = session.Deleting.Contains(record.RecordId);
             if (deleting) card.Children.Add(Ui.Text(session.Busy ? "Deleting…" : "Couldn't finish deleting", "HelperText"));
-            card.Children.Add(SessionButton(deleting ? "Retry deletion…" : "Delete voice", "Delete voice " + record.VoiceName,
-                () => ConfirmAsync(new(VoiceLabRequestKind.Delete, record.RecordId))));
-            card.Children.Add(SessionButton("Remove from VoxClip only", "Remove " + record.VoiceName + " from VoxClip only",
-                () => ConfirmAsync(new(VoiceLabRequestKind.RemoveLocal, record.RecordId))));
+            var delete = SessionButton(deleting ? "Retry deletion…" : "Delete voice", VoiceLabActionNames.ForRecord("Delete voice", record, session.VisibleRecords),
+                () => ConfirmAsync(new(VoiceLabRequestKind.Delete, record.RecordId)));
+            AutomationProperties.SetAutomationId(delete, "delete-voice-" + record.RecordId);
+            card.Children.Add(delete);
+            var removeLocal = SessionButton("Remove from VoxClip only", VoiceLabActionNames.ForRecord("Remove from VoxClip only", record, session.VisibleRecords),
+                () => ConfirmAsync(new(VoiceLabRequestKind.RemoveLocal, record.RecordId)));
+            AutomationProperties.SetAutomationId(removeLocal, "remove-local-voice-" + record.RecordId);
+            card.Children.Add(removeLocal);
             AddCard(voices, card);
         }
         if (session.UnsavedRecord is { } unsaved)
         {
             var row = Ui.Stack();
-            row.Children.Add(SessionButton("Retry saving consent record", "Retry saving consent record", session.RetryUnsavedAsync));
-            row.Children.Add(SessionButton("Remove This Voice", "Remove unsaved voice", () => session.WithdrawOperationAsync(unsaved.RecordId)));
+            var retrySave = SessionButton("Retry saving consent record", VoiceLabActionNames.ForRecord("Retry saving consent record", unsaved, session.Records.Append(unsaved).DistinctBy(record => record.RecordId).ToArray()), session.RetryUnsavedAsync);
+            AutomationProperties.SetAutomationId(retrySave, "retry-save-voice-" + unsaved.RecordId);
+            row.Children.Add(retrySave);
+            var removeUnsaved = SessionButton("Remove This Voice", VoiceLabActionNames.ForRecord("Remove This Voice", unsaved, session.Records.Append(unsaved).DistinctBy(record => record.RecordId).ToArray()), () => session.WithdrawOperationAsync(unsaved.RecordId));
+            AutomationProperties.SetAutomationId(removeUnsaved, "remove-unsaved-voice-" + unsaved.RecordId);
+            row.Children.Add(removeUnsaved);
             AddCard(voices, row);
         }
         foreach (var operation in session.Operations.Where(operation => !operation.Finished))
@@ -264,20 +276,21 @@ internal sealed class VoiceLabSettingsPane : UserControl
             AutomationProperties.SetAutomationId(state, "voice-operation-" + operation.Id);
             AutomationProperties.SetLiveSetting(state, AutomationLiveSetting.Polite);
             row.Children.Add(state);
-            var retry = SessionButton("Retry", (operation.Kind == VoiceOperationKind.Create ? "Retry voice creation" : "Retry voice removal") + " " + operation.RecordId, () => session.LoadAsync(force: true));
+            var retry = SessionButton("Retry", VoiceLabActionNames.ForOperation(operation.Kind == VoiceOperationKind.Create ? "Retry voice creation" : "Retry voice removal", operation, session.Operations, session.Records), () => session.LoadAsync(force: true));
             AutomationProperties.SetAutomationId(retry, "retry-voice-" + operation.Id);
             row.Children.Add(retry);
             if (operation.Kind == VoiceOperationKind.Create)
             {
-                var remove = SessionButton("Remove unfinished voice", "Remove unfinished voice " + operation.RecordId, () => session.WithdrawOperationAsync(operation.RecordId));
+                var remove = SessionButton("Remove unfinished voice", VoiceLabActionNames.ForOperation("Remove unfinished voice", operation, session.Operations, session.Records), () => session.WithdrawOperationAsync(operation.RecordId));
                 AutomationProperties.SetAutomationId(remove, "remove-unfinished-" + operation.Id);
                 row.Children.Add(remove);
             }
             AddCard(voices, row);
         }
-        var create = Ui.Button("Create Your Voice…", () => { }); create.IsEnabled = false;
+        var create = Ui.Button("Create Your Voice…", owner.ShowCreateVoice); create.IsEnabled = session.Enabled && !session.Busy;
         AutomationProperties.SetName(create, "Create Your Voice…");
         AutomationProperties.SetHelpText(create, session.CreateBlockedReason);
+        AutomationProperties.SetAutomationId(create, "voice-create-open");
         AddCard(voices, create); AddCard(voices, Ui.Text(session.SpeakerMessage, "HelperText"));
         if (session.Message is { } text) Ui.Show(message, text, InfoBarSeverity.Informational);
     }

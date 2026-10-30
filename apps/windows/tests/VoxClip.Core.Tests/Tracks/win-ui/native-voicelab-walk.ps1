@@ -2,7 +2,9 @@ param([Parameter(Mandatory=$true)][string]$Root, [Parameter(Mandatory=$true)][st
     [Parameter(Mandatory=$true)][string]$EvidenceDir, [string]$NormalProject,
     [ValidateSet('win-arm64','win-x64')][string]$RuntimeIdentifier='win-arm64',
     [ValidateSet('Debug','Release')][string]$Configuration='Debug',
-    [ValidateSet('pane','cancel','turn-on','cap','label','light','dark','night-sky','release-off','release-on','release-smoke','session','account-cancel','delete-cancel','zero-http')][string]$Step='pane', [switch]$SessionFixtures, [switch]$Schedule)
+    [ValidateSet('pane','cancel','turn-on','cap','label','light','dark','night-sky','release-off','release-on','release-smoke','session','account-cancel','delete-cancel','zero-http','consent-gate','consent','consent-cap','consent-error')][string]$Step='pane',
+    [ValidatePattern('^[^"\r\n]*$')][string]$ConsentScenario='tone;rate=44100;channels=2', [ValidateRange(1,35)][int]$StopSeconds=12,
+    [switch]$SessionFixtures, [switch]$Schedule)
 $ErrorActionPreference='Stop'
 New-Item -ItemType Directory -Force $EvidenceDir | Out-Null
 $EvidenceDir=(Resolve-Path -LiteralPath $EvidenceDir).Path
@@ -13,6 +15,7 @@ if ($Schedule) {
     $projectArgument=if($NormalProject){' -NormalProject "'+$NormalProject+'"'}else{''}
     $arguments='-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "'+$PSCommandPath+'" -Root "'+$Root+'" -AcceptedDataRoot "'+$AcceptedDataRoot+'" -EvidenceDir "'+$EvidenceDir+'" -RuntimeIdentifier '+$RuntimeIdentifier+' -Configuration '+$Configuration+' -Step '+$Step+$projectArgument
     if($SessionFixtures){$arguments+=' -SessionFixtures'}
+    $arguments+=' -ConsentScenario "'+$ConsentScenario+'" -StopSeconds '+$StopSeconds
     $action=New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments
     $principal=New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
     try {
@@ -88,6 +91,117 @@ function Invoke-Control([string]$name) {
     else {$element.SetFocus();[VoiceLabNative]::Key(0x0D)}
     Start-Sleep -Milliseconds 400
 }
+function Find-Id([string]$id,[switch]$Optional) {
+    $condition=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty,$id)
+    for($attempt=0;$attempt -lt 60;$attempt++) {
+        $element=[System.Windows.Automation.AutomationElement]::FromHandle($script:window).FindFirst([System.Windows.Automation.TreeScope]::Descendants,$condition)
+        if($element){return $element}
+        if($Optional){return $null}
+        Start-Sleep -Milliseconds 200
+    }
+    throw "Missing Voice Lab AutomationId: $id"
+}
+function Assert-NoStatement {
+    if(Get-ChildItem -LiteralPath $data -Recurse -Filter 'statement.wav'){throw 'Abandon left statement audio behind.'}
+    $temporary=Join-Path $data 'Cache\voice-consent'
+    if((Test-Path -LiteralPath $temporary) -and (Get-ChildItem -LiteralPath $temporary -Force)){throw 'Verify left temporary audio behind.'}
+}
+function Consent-Step {
+    if($Step -ne 'consent-gate') {
+        if($Configuration -ne 'Debug'){throw 'Consent fixtures require DEBUG; refusing provider access.'}
+        Invoke-Control 'Check ElevenLabs account';Invoke-Control 'Continue'
+    }
+    Invoke-Control ('Create Your Voice'+[char]0x2026)
+    [void](Find-Control 'Back to Voice Lab')
+    $record=Find-Id 'voice-record-statement'
+    $teleprompter=Find-Id 'voice-consent-teleprompter'
+    if($teleprompter.Current.Name -ne 'Read this aloud'){throw 'Teleprompter has no accessible name.'}
+    [void](Find-Id 'voice-consent-headphones')
+    if($Step -eq 'consent-gate') {
+        if($record.Current.IsEnabled){throw 'A8-closed Record is enabled.'}
+        if(-not (Find-Id 'voice-create-gate').Current.Name.Contains('The speaker check is not ready on Windows yet. Creating a voice is unavailable.')){throw 'A8 gate reason missing.'}
+        Assert-NoStatement
+        Capture 'consent-gated'
+        return
+    }
+    (Find-Id 'voice-display-name').GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('Example')
+    foreach($id in @('voice-attest-own','voice-attest-adult','voice-attest-videos')) {
+        (Find-Id $id).GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    }
+    $teleprompter.SetFocus()
+    foreach($id in @('voice-consent-teleprompter','voice-consent-headphones','voice-record-statement')) {
+        $focused=[System.Windows.Automation.AutomationElement]::FocusedElement
+        if($focused.Current.ProcessId -ne $app.Id -or $focused.Current.AutomationId -ne $id){throw ('Consent Tab order skipped '+$id)}
+        $tabOrder.Add($focused.Current.Name)
+        [VoiceLabNative]::Key(0x09);Start-Sleep -Milliseconds 150
+    }
+    $expected=$null
+    if($Step -eq 'consent-error') {
+        switch -Regex ($ConsentScenario) {
+            '^denied' {$expected='Microphone access is off. Turn on Microphone access and Let desktop apps access your microphone in Settings '+[char]0x2192+' Privacy & security '+[char]0x2192+' Microphone to record your consent.';break}
+            '^nodevice' {$expected='No microphone found. Connect one and try again.';break}
+            '^inuse' {$expected="The microphone isn't available. Check your input device and try again.";break}
+            '^(lost@|stall@)' {$expected='The microphone stopped sending audio. This take was discarded. Check your input device and record again.';break}
+            '^silentflags' {$expected="The microphone sent only silence. Check that it isn't muted, and that Settings "+[char]0x2192+' Privacy & security '+[char]0x2192+' Microphone lets desktop apps use it.';break}
+            default {throw 'U6 requires denied, nodevice, inuse, lost@3, stall@2 or silentflags.'}
+        }
+    }
+    Invoke-Control 'Record statement'
+    $deadline=[DateTime]::UtcNow.AddSeconds(75)
+    $finished=$false
+    while([DateTime]::UtcNow -lt $deadline) {
+        if($expected -and (Find-Control $expected -Optional)){$finished=$true;break}
+        $verify=Find-Id 'voice-verify-statement' -Optional
+        if($verify -and $verify.Current.IsEnabled){$finished=$true;break}
+        $seconds=Find-Id 'voice-microphone-seconds' -Optional
+        if($seconds -and $seconds.Current.Name -match '^([0-9]+\.[0-9]+) seconds$' -and [double]::Parse($Matches[1],[Globalization.CultureInfo]::InvariantCulture) -ge $StopSeconds) {
+            Invoke-Control 'Stop recording';$finished=$true;break
+        }
+        Start-Sleep -Milliseconds 50
+    }
+    if(-not $finished){throw 'Consent capture did not complete before the probe deadline.'}
+    if($expected) {
+        [void](Find-Control $expected)
+        Assert-NoStatement
+        if($ConsentScenario -match '^(denied|silentflags)') {
+            Invoke-Control 'Open Settings'
+            $uri=Join-Path $data 'Cache\microphone-settings-uri.txt'
+            for($attempt=0;$attempt -lt 30;$attempt++) {
+                if((Test-Path -LiteralPath $uri) -and (Get-Content -LiteralPath $uri -Raw) -eq 'ms-settings:privacy-microphone'){break}
+                Start-Sleep -Milliseconds 100
+            }
+            if(-not (Test-Path -LiteralPath $uri) -or (Get-Content -LiteralPath $uri -Raw) -ne 'ms-settings:privacy-microphone'){throw 'DEBUG did not intercept the privacy deep link.'}
+        }
+        Capture 'consent-error'
+        return
+    }
+    if($StopSeconds -lt 5) {
+        [void](Find-Control ('Record the statement clearly, in one take lasting 5'+[char]0x2013+'30 seconds.'))
+        Assert-NoStatement
+        return
+    }
+    for($attempt=0;$attempt -lt 60;$attempt++) {if((Find-Id 'voice-verify-statement').Current.IsEnabled){break};Start-Sleep -Milliseconds 200}
+    if(-not (Find-Id 'voice-verify-statement').Current.IsEnabled){throw 'Verify was not enabled after a valid take.'}
+    $statements=@(Get-ChildItem -LiteralPath $data -Recurse -Filter 'statement.wav')
+    if($statements.Count -ne 1){throw 'Expected one private statement.'}
+    $bytes=[IO.File]::ReadAllBytes($statements[0].FullName)
+    $rate=[BitConverter]::ToInt32($bytes,24);$frames=([BitConverter]::ToInt32($bytes,40)/2)
+    if($rate -ne 48000 -or $frames -lt (5*48000) -or $frames -gt (30*48000)){throw 'Statement rate or duration is outside the contract.'}
+    Invoke-Control ('Verify statement '+[char]0xB7+' < $0.01')
+    [void](Find-Id 'voice-verify-confirmation')
+    [VoiceLabNative]::Key(0x0D)
+    [void](Find-Control 'Statement verified. Record your training read-aloud next.')
+    $scribe=Get-Content -LiteralPath (Join-Path $data 'Cache\consent-scribe-result.json') -Raw | ConvertFrom-Json
+    if($scribe.fixture -ne 'consent-scribe.json' -or $scribe.calls -ne 1 -or $scribe.httpCalls -ne 0){throw 'Fake Scribe zero-HTTP evidence missing.'}
+    Capture 'consent-verified'
+    Invoke-Control 'Back to Voice Lab';[void](Find-Control 'Keep going');[VoiceLabNative]::Key(0x0D)
+    [void](Find-Id 'voice-consent-teleprompter')
+    Invoke-Control 'Back to Voice Lab';[void](Find-Control 'Keep going');[VoiceLabNative]::Key(0x1B)
+    [void](Find-Id 'voice-consent-teleprompter')
+    Invoke-Control 'Back to Voice Lab';Invoke-Control 'Stop'
+    [void](Find-Control 'Show Voice Lab (beta)')
+    Assert-NoStatement
+}
 function Toggle-VoiceLab {
     $element=Find-Control 'Show Voice Lab (beta)'
     $element.SetFocus()
@@ -119,10 +233,14 @@ function Start-App([string]$arguments) {
     $start.EnvironmentVariables['VOXCLIP_DATA_DIR']=$data
     $start.EnvironmentVariables['VOXCLIP_SHARED_DIR']=Join-Path $root 'shared'
     $start.EnvironmentVariables['VOXCLIP_LIVE_TESTS']='0'
-    if($SessionFixtures -or $Step -in @('session','account-cancel','delete-cancel','zero-http')){
+    $start.EnvironmentVariables.Remove('VOXCLIP_DEBUG_VOICELAB')
+    $start.EnvironmentVariables.Remove('VOXCLIP_DEBUG_MIC')
+    if($Step -eq 'consent-gate' -and $SessionFixtures){throw 'U3 must use the production speaker gate, not the DEBUG available fake.'}
+    if($SessionFixtures -or $Step -in @('session','account-cancel','delete-cancel','zero-http','consent','consent-cap','consent-error')){
         if($Configuration -ne 'Debug'){throw 'Session fixtures require a DEBUG build; refusing real provider access.'}
         $start.EnvironmentVariables['VOXCLIP_DEBUG_VOICELAB']='fixtures:'+(Join-Path $root 'shared\fixtures\voice-lab')
     }
+    if($Step -in @('consent','consent-cap','consent-error')){$start.EnvironmentVariables['VOXCLIP_DEBUG_MIC']=$ConsentScenario}
     $script:app=[System.Diagnostics.Process]::Start($start)
     $script:ownedStart=$app.StartTime.ToUniversalTime().Ticks
 }
@@ -201,6 +319,7 @@ try {
         if($Configuration -eq 'Release'){Invoke-Control 'Voice Lab'}
         [void](Find-Control 'Show Voice Lab (beta)')
         switch($Step) {
+            {$_ -in @('consent-gate','consent','consent-cap','consent-error')} {Consent-Step}
             'session' {
                 [void](Find-Control 'Check ElevenLabs account')
                 [void](Find-Control ('Own-voice check '+[char]0xB7+' on this PC'))
@@ -213,7 +332,7 @@ try {
                 [void](Find-Control 'Recovery needs the ElevenLabs key that started this voice.')
                 [void](Find-Control ('Checking paused '+[char]0x2014+' review the unfinished voice in your ElevenLabs account.'))
                 $create=Find-Control ('Create Your Voice'+[char]0x2026)
-                if($create.Current.IsEnabled){throw 'A8-closed creation is enabled.'}
+                if(-not $create.Current.IsEnabled){throw 'Create Your Voice page is unreachable.'}
                 $download=Find-Control 'Download own-voice check model'
                 if($download.Current.IsEnabled){throw 'A8-closed download is enabled.'}
                 $reason='The speaker check is not ready on Windows yet. Creating a voice is unavailable.'
@@ -231,17 +350,17 @@ try {
                 if((Read-Settings).'voiceLab.providerConsent.elevenlabs' -eq $true){throw 'Cancel persisted provider consent.'}
             }
             'delete-cancel' {
-                Invoke-Control 'Delete voice Example (VoxClip)'
+                Invoke-Control 'Delete voice Example (VoxClip), created 29 October 2026'
                 [void](Find-Control 'Delete voice');[void](Find-Control 'Cancel')
                 [VoiceLabNative]::Key(0x0D);Start-Sleep -Milliseconds 400
                 if(Find-Control 'Cancel' -Optional){throw 'Delete confirmation did not default to Cancel.'}
-                Invoke-Control 'Delete voice Example (VoxClip)';[VoiceLabNative]::Key(0x1B);Start-Sleep -Milliseconds 400
+                Invoke-Control 'Delete voice Example (VoxClip), created 29 October 2026';[VoiceLabNative]::Key(0x1B);Start-Sleep -Milliseconds 400
                 if(Find-Control 'Cancel' -Optional){throw 'Esc did not cancel deletion.'}
                 [void](Find-Control 'Example (VoxClip), created 29 October 2026')
-                Invoke-Control 'Remove Example (VoxClip) from VoxClip only'
+                Invoke-Control 'Remove from VoxClip only Example (VoxClip), created 29 October 2026'
                 [void](Find-Control 'Cancel');[VoiceLabNative]::Key(0x0D);Start-Sleep -Milliseconds 400
                 [void](Find-Control 'Example (VoxClip), created 29 October 2026')
-                Invoke-Control 'Remove Example (VoxClip) from VoxClip only';[VoiceLabNative]::Key(0x1B);Start-Sleep -Milliseconds 400
+                Invoke-Control 'Remove from VoxClip only Example (VoxClip), created 29 October 2026';[VoiceLabNative]::Key(0x1B);Start-Sleep -Milliseconds 400
                 if(Find-Control 'Cancel' -Optional){throw 'Esc did not cancel local removal.'}
             }
             'pane' {

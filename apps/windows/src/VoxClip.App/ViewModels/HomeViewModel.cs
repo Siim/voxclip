@@ -110,6 +110,7 @@ public sealed class RecentProject(string path, string name) : ObservableObject
     /// reads "Loading…" (design §5.4.5). Before that the tile holds stage black with no text.</summary>
     public bool IsStalled { get => stalled; set { if (SetProperty(ref stalled, value)) Changed(); } }
     public bool IsLoaded => loaded;
+    internal string? TranscriptLanguage { get; private set; }
     private TranscriptionStatus? transcription;
     /// <summary>The transcription any window runs for this project; null otherwise.</summary>
     public TranscriptionStatus? Transcription { get => transcription; set { if (SetProperty(ref transcription, value)) Changed(); } }
@@ -167,6 +168,7 @@ public sealed class RecentProject(string path, string name) : ObservableObject
     public void Load(Project project, bool missingVideo, DateTimeOffset today, CaptionCard? captionCard = null)
     {
         loaded = true; unavailable = false; stalled = false; unreadable = false;
+        TranscriptLanguage = project.Transcript?.Language;
         durationSeconds = project.Media.Source.DurationSeconds;
         modifiedAt = project.ModifiedAt;
         now = today;
@@ -182,7 +184,7 @@ public sealed class RecentProject(string path, string name) : ObservableObject
     }
 
     /// <summary>The project file can't be read: keep the row so the user can show it in Explorer or remove it.</summary>
-    public void Fail() { unavailable = true; loaded = false; stalled = false; Changed(); }
+    public void Fail() { unavailable = true; loaded = false; stalled = false; TranscriptLanguage = null; Changed(); }
 
     /// <summary>"Today", "Yesterday", the weekday within a week, then "Oct 19", or "Oct 19, 2025" in another year.</summary>
     public static string When(DateTimeOffset modified, DateTimeOffset now)

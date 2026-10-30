@@ -44,6 +44,16 @@ public sealed class HomeViewModelTests
     }
 
     [Fact]
+    public void ConsentLanguageFollowsLoadedTranscriptAndClearsOnFailure()
+    {
+        var project = Fixture("interview-take.voxclip");
+        var tile = Tile(project with { Transcript = project.Transcript! with { Language = "et" } });
+        Assert.Equal("et", tile.TranscriptLanguage);
+        tile.Fail();
+        Assert.Null(tile.TranscriptLanguage);
+    }
+
+    [Fact]
     public void TileMetaReadsDurationDateAndKeptClips()
     {
         var take = Take("First year at the café", Now.AddHours(-2), (ClipOrigin.Manual, true), (ClipOrigin.Ai, true), (ClipOrigin.Ai, false));
