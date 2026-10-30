@@ -266,7 +266,7 @@ The Windows data root is deliberately **not** `%LOCALAPPDATA%\VoxClip\`, because
 
 `VOXCLIP_DATA_DIR` overrides `<data>` on both platforms (tests, CLI, CI). When it is set, logs go to `<data>/Logs/` too.
 
-Settings are one flat JSON file with dotted keys on both platforms (schema `shared/schemas/settings.schema.json`, `"schema": "voxclip-settings/1"`; every key, type and default is listed there and design.md section 10 names the key of each row), written atomically (temp file + rename) 500 ms after the last change. Unknown keys are preserved. LLM model ids are stored **per provider** (`llm.model.anthropic`, `llm.model.openai`, …), never in one shared key.
+Settings are one flat JSON file with dotted keys on both platforms (schema `shared/schemas/settings.schema.json`, `"schema": "voxclip-settings/1"`; every key, type and default is listed there and design.md section 10 names the key of each row), written atomically (temp file + rename) 500 ms after the last change. Untouched defaults are not written, and unknown keys are preserved. Development builds read an unset `voiceLab.enabled` and `voiceLab.betaNoticeAccepted` as true without writing them (voice-lab.md section 5). LLM model ids are stored **per provider** (`llm.model.anthropic`, `llm.model.openai`, …), never in one shared key.
 
 On macOS, damaged settings are backed up before valid preferences are recovered. If persisting the recovered document fails, the store reports the load/write error but keeps that document in memory and pending for a later write. Subsequent loads and saves reuse the recovered state; write retries do not repeat recovery or create more damaged backups.
 

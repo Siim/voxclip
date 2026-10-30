@@ -395,7 +395,7 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 
 ## 5. M3 beta: gate and settings
 
-- Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default. Turning it on shows a one-time sheet:
+- Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default in release builds; development builds turn it on (below). Turning it on shows a one-time sheet:
   - "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
   - Buttons [Turn on] and [Cancel].
 - With Voice Lab on, **Rewrite…** appears on transcript selections, **Change Voice…** is in the Edit menu, **My voice** is in Settings → Voice Lab, and **Lip sync** is offered inside Rewrite when the length changes (`doc/design.md` §6.3–§6.4). Each panel shows its cost, what it sends, and the label that export will add.
@@ -409,7 +409,13 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 
 Settings persist the switch as `voiceLab.enabled` (default false), the acknowledged one-time notice as `voiceLab.betaNoticeAccepted` (default false), the label position as `voiceLab.labelPosition` (`top-right` by default; `top-left`, `bottom-right`, `bottom-left` are the other values), and the Clean-audio-only C2PA preference as `voiceLab.c2pa` (default true). Keys and consent records are not settings values. Per-provider caps retain the keys and decimal-string format in §3.1.
 
-The staged macOS W1 implementation exposes this pane with the switch off only in DEBUG builds. A Release build with the switch off has no Voice Lab tab. W6 must resolve the shipping opt-in entry before 0.1.0; this staging constraint does not defer Rewrite generation from that release. Rewrite itself remains DEBUG-only until W6 completes its generation acceptance gates.
+Release builds always list the Voice Lab pane. Rewrite needs both `voiceLab.enabled` and `voiceLab.betaNoticeAccepted`.
+
+Development builds turn Voice Lab on by default, because the app is under active development. While the settings file has no `voiceLab.enabled` or no `voiceLab.betaNoticeAccepted`, a development build reads that key as true. The app never writes this value. A value the user sets, true or false, always wins, so turning Voice Lab off sticks. Development builds also let Rewrite skip the beta notice.
+
+- **macOS.** A development build is a DEBUG build (`./bundle.sh` without `--release`). Only the app's own settings file gets the overlay; harness sessions and injected test stores keep the shipped default.
+- **Windows.** A development build defines `VOXCLIP_DEVELOPMENT`. Debug defines it by default, and a Release-config test copy opts in with `-p:VoxClipDevelopmentBuild=true`. MSBuild ignores an environment variable of that name.
+- Release pipelines never make a development build. Release-boundary tests check this on both platforms.
 
 ---
 
