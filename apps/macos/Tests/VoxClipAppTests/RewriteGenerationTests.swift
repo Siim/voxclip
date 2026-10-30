@@ -41,10 +41,17 @@ private struct GenerationTestKeys: KeyProvider {
         let session = RewriteSession(editor: editor, range: 0...0, envelope: nil, connector: nil)
         let expected = VoiceLabGate.rewriteEnabled(enabled: enabled, noticeAccepted: accepted, internalBuild: RewriteEntryPolicy.buildEnabled)
         #expect(app.voiceLabRewriteEnabled == expected)
+        #expect(editor.mutationEnabled(38) == expected)
         #expect(session.generationIsCurrent(region: .default) == expected)
         #expect(!session.generationIsCurrent(region: .eu))
         app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
         #expect(!session.generationIsCurrent(region: .default))
+        let lease = try #require(editor.llmRuns.acquire())
+        #expect(editor.mutationEnabled(38) == false)
+        editor.llmRuns.release(lease)
+        #expect(editor.mutationEnabled(38) == expected)
+        editor.mediaResolved = false
+        #expect(editor.mutationEnabled(38) == false)
     }
     private func session(current: @escaping @MainActor () -> Bool = { true }) -> RewriteGenerationSession {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

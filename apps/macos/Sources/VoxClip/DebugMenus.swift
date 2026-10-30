@@ -101,13 +101,31 @@ import VoxClipCore
         check("Shift-Command-K routes to the existing Find Clips popover", editor.showFindClips)
         editor.showFindClips = false
         app.set("voiceLab.enabled", .bool(false))
+        let editMenu = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu
+        if let editMenu { delegate.menuNeedsUpdate(editMenu) }
+        let rewriteItem = item("Edit", "Rewrite…")
         invoke("Edit", "Rewrite…")
-        check("Rewrite menu uses the off-by-default Voice Lab opt-in", editor.showVoiceLabOptIn && editor.rewrite == nil)
+        results.append(.equal("Rewrite menu uses the off-by-default Voice Lab opt-in", expected: [
+            "item exists": true, "hidden": true, "validated": false, "hidden shortcut allowed": false,
+            "opt-in opened": false, "Rewrite opened": false, "opening task": false
+        ], actual: [
+            "item exists": rewriteItem != nil, "hidden": rewriteItem?.isHidden == true,
+            "validated": rewriteItem.map(delegate.validateMenuItem) == true,
+            "hidden shortcut allowed": rewriteItem?.allowsKeyEquivalentWhenHidden == true,
+            "opt-in opened": editor.showVoiceLabOptIn, "Rewrite opened": editor.rewrite != nil,
+            "opening task": editor.rewriteOpenTask != nil
+        ]))
         editor.showVoiceLabOptIn = false
         app.set("voiceLab.enabled", .bool(true))
+        if let editMenu { delegate.menuNeedsUpdate(editMenu) }
         invoke("Edit", "Rewrite…")
         await editor.rewriteOpenTask?.value
-        check("Shift-Command-R opens the selected passage", editor.rewriteRange == 0...0 && editor.rewrite != nil)
+        results.append(.equal("Shift-Command-R opens the selected passage", expected: [
+            "visible": true, "selected passage": true, "Rewrite opened": true
+        ], actual: [
+            "visible": rewriteItem?.isHidden == false, "selected passage": editor.rewriteRange == 0...0,
+            "Rewrite opened": editor.rewrite != nil
+        ]))
         check("Insert Words stays hidden until Core can place insertions", item("Edit", "Insert Words…") == nil)
         editor.closeRewrite(returnFocus: false)
         app.shell.selection = .clip(suggestion.id)

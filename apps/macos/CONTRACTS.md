@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W9 native Rewrite menu self-test
+
+The old native menu check expected the retired pre-W6 opt-in sheet while Voice Lab was off. The central beta gate intentionally hides Rewrite and blocks both its action and hidden shortcut while off; in DEBUG it permits enabled internal builds without a beta notice, and Release still requires the notice. The native check refreshes Edit-menu visibility, invokes the actual action and proves no sheet, Rewrite session or opening task appears while off, then checks the enabled selected-passage route. Failures print labelled expected/actual state. Headless App checks cover the actual menu mutation gate in all enabled/notice combinations, plus busy-run and missing-media refusals. No production menu policy changes.
+
 ### 2026-10-30 — sol-mac-voicelab — W9 room-tone copy self-test
 
 The native room-tone refusal expectation predates W6's capability limitation. Product copy correctly says Clean audio is unavailable in this build and offers re-recording instead; do not remove that qualification or advertise a non-existent cleaning client. Native and headless App checks now assert the complete exact refusal, not just substrings. A native mismatch prints the full expected and actual copy.
