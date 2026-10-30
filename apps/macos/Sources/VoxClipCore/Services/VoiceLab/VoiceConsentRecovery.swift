@@ -29,12 +29,15 @@ public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
     public var failed: Bool
     public var audit: VoiceConsentAudit?
     public var ambiguousDispatchIDs: [UUID]?
+    public var expectedVoiceName: String?
+    public var recoveryNeedsReview: Bool?
     public var finished: Bool { [.saved, .withdrawn, .tombstoned, .abandoned].contains(state) }
     public var blocksCreation: Bool { blocksCreation(at: Date()) }
     public func blocksCreation(at date: Date) -> Bool {
         kind == .create && [.dispatched, .created].contains(state) && date < startedAt.addingTimeInterval(24 * 60 * 60)
     }
     public var displayState: String {
+        if recoveryNeedsReview == true { return "More than one voice may match. Check your ElevenLabs voices, then Retry. No voice was deleted." }
         if kind == .create, wasDispatched, remoteVoiceID == nil, !finished {
             return "Checking your ElevenLabs account for an unfinished voice…"
         }
@@ -115,6 +118,7 @@ extension VoiceConsentStore {
         try save(record)
         var value = VoiceOperation(id: requestID, kind: .create, recordID: record.id, region: region, at: date)
         value.audit = try VoiceConsentAudit(record: record)
+        value.expectedVoiceName = record.voiceName + " (VoxClip)"
         try writeOperation(value, checkpoint: .creationIntent)
         claimedOperations.insert(value.id)
         return value
@@ -159,6 +163,11 @@ extension VoiceConsentStore {
            date < value.startedAt.addingTimeInterval(24 * 60 * 60) {
             value.nextAttemptAt = min(value.nextAttemptAt!, value.startedAt.addingTimeInterval(24 * 60 * 60))
         }
+        try writeOperation(value, checkpoint: .retryScheduled)
+    }
+    package func requireRecoveryReview(_ id: UUID) throws {
+        var value = try operation(id)
+        value.recoveryNeedsReview = true
         try writeOperation(value, checkpoint: .retryScheduled)
     }
     package func removeOperation(_ value: VoiceOperation) throws {

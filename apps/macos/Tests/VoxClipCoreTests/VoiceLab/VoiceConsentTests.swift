@@ -563,7 +563,7 @@ struct VoiceConsentTests {
 }
 
 extension VoiceConsentTests {
-    private func operationClient(_ remote: OperationRemote, nonce: String) -> ElevenLabsVoiceLab {
+    private func operationClient(_ remote: OperationRemote, nonce: String, fallbackName: String? = nil, duplicate: Bool = false) -> ElevenLabsVoiceLab {
         let base = SpeechStubHTTP.register { request in
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/v1/user/subscription"):
@@ -575,7 +575,9 @@ extension VoiceConsentTests {
             case ("GET", "/v2/voices"):
                 let state = remote.value.withLock { $0.lists += 1; return $0 }
                 if state.listFailure { return (500, [:], Data()) }
-                let rows: [[String: Any]] = state.present ? [["voice_id": "fixtureOwnVoice", "name": "Example (VoxClip)", "category": "cloned", "is_owner": true, "labels": ["voxclip_record_id": nonce], "voice_verification": ["is_verified": true]]] : []
+                var rows: [[String: Any]] = state.present ? [["voice_id": "fixtureOwnVoice", "name": fallbackName ?? "Example (VoxClip)", "category": "cloned", "is_owner": true,
+                    "created_at_unix": 1_793_275_201, "labels": fallbackName == nil ? ["voxclip_record_id": nonce] : [:], "voice_verification": ["is_verified": true]]] : []
+                if duplicate, var second = rows.first { second["voice_id"] = "anotherVoice"; rows.append(second) }
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["voices": rows, "has_more": false]))
             case ("DELETE", "/v1/voices/fixtureOwnVoice"):
                 let existed = remote.value.withLock { state in state.deletes += 1; let present = state.present; state.present = false; return present }
@@ -590,6 +592,31 @@ extension VoiceConsentTests {
         let value = try await store.beginClaimedCreation(record: record.assigningVoice("pending", requiresVerification: true), requestID: UUID(), region: .default, at: now)
         await store.releaseOperation(value.id)
         return value
+    }
+    @Test(arguments: [false, true])
+    func missingProviderLabelRecoversByExactNameWindowAndCategory(ambiguous: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root), record = try fixtureRecord(wav: wav)
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let remote = OperationRemote(); remote.value.withLock { $0.present = true }
+        let reconciler = VoiceOperationReconciler(store: store,
+            client: operationClient(remote, nonce: record.id, fallbackName: record.voiceName + " (VoxClip)", duplicate: ambiguous))
+        if ambiguous {
+            await #expect(throws: (any Error).self) { try await reconciler.reconcile(force: true) }
+            let pending = try await store.operation(operation.id)
+            #expect(pending.recoveryNeedsReview == true && !pending.finished)
+            #expect(pending.displayState.contains("No voice was deleted"))
+            #expect(remote.value.withLock { $0.deletes } == 0)
+            remote.value.withLock { $0.present = false }
+            try await reconciler.reconcile(force: true)
+            #expect(try await store.operation(operation.id).recoveryNeedsReview == true)
+        } else {
+            try await reconciler.reconcile(force: true)
+            #expect(try await store.operations().isEmpty)
+            #expect(remote.value.withLock { $0.deletes } == 1)
+        }
+        #expect(remote.value.withLock { $0.posts } == 0)
     }
     @Test func creationClaimSurvivesLaunchSettingsAndWithdrawalRaces() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }

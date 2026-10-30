@@ -103,9 +103,11 @@ public struct VoiceLabVoice: Sendable, Equatable {
     public let requiresVerification: Bool
     public let isVerified: Bool
     public let consentRecordID: String?
-    public init(id: String, name: String, category: String, isOwner: Bool, requiresVerification: Bool, isVerified: Bool, consentRecordID: String? = nil) {
+    public let createdAt: Date?
+    public init(id: String, name: String, category: String, isOwner: Bool, requiresVerification: Bool, isVerified: Bool, consentRecordID: String? = nil, createdAt: Date? = nil) {
         self.id = id; self.name = name; self.category = category; self.isOwner = isOwner
         self.requiresVerification = requiresVerification; self.isVerified = isVerified; self.consentRecordID = consentRecordID
+        self.createdAt = createdAt
     }
 }
 

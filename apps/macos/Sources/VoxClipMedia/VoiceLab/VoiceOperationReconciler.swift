@@ -85,9 +85,23 @@ public actor VoiceOperationReconciler {
         if !force, let next = value.nextAttemptAt, now() < next { return nil }
         let client = clients(value.region)
         guard client.region == value.region else { throw VoiceConsentError.invalidRecord }
-        let voices = try await client.listOwnClones().filter { $0.consentRecordID == value.providerNonce }
-        guard voices.count <= 1 else { throw VoiceConsentError.invalidRecord }
+        let discovered = try await client.listOwnClones()
+        let start = floor(value.startedAt.timeIntervalSince1970)
+        let end = value.startedAt.addingTimeInterval(24 * 60 * 60)
+        let voices = discovered.filter { voice in
+            voice.consentRecordID == value.providerNonce ||
+                (voice.name == value.expectedVoiceName && voice.createdAt.map { $0.timeIntervalSince1970 >= start && $0 <= end } == true)
+        }
+        let uncertain = discovered.contains { $0.name == value.expectedVoiceName && $0.createdAt == nil && $0.consentRecordID != value.providerNonce }
+        guard voices.count <= 1, !uncertain else {
+            try await store.requireRecoveryReview(value.id)
+            throw VoiceConsentError.invalidRecord
+        }
         if let voice = voices.first { return voice }
+        if value.recoveryNeedsReview == true {
+            try await store.scheduleRetry(value.id, at: now())
+            return nil
+        }
         if now().timeIntervalSince(value.startedAt) >= 24 * 60 * 60 {
             try await store.tombstone(value)
             _ = try await store.transition(value.id, to: .abandoned, at: now())

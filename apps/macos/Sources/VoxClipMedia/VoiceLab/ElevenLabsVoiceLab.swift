@@ -122,7 +122,12 @@ public actor ElevenLabsVoiceLab {
                 result.append(VoiceLabVoice(id: id, name: name, category: category, isOwner: item["is_owner"] as? Bool == true,
                                             requiresVerification: verification["requires_verification"] as? Bool == true,
                                             isVerified: verification["is_verified"] as? Bool == true,
-                                            consentRecordID: (item["labels"] as? [String: String])?["voxclip_record_id"]))
+                                            consentRecordID: (item["labels"] as? [String: String])?["voxclip_record_id"],
+                                            createdAt: (item["created_at_unix"] as? NSNumber).flatMap { number in
+                                                let seconds = number.doubleValue
+                                                return CFGetTypeID(number) != CFBooleanGetTypeID() && seconds.isFinite && seconds >= 0 && seconds <= 253_402_300_799
+                                                    ? Date(timeIntervalSince1970: seconds) : nil
+                                            }))
             }
             if !more { discoveredVoices = Dictionary(result.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }); return result }
             guard let next = row["next_page_token"] as? String, !next.isEmpty, next.count <= 256, seen.insert(next).inserted else { throw VoiceLabError.malformedResponse }
