@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W8 creator-bound recovery discovery
+
+Recovery already checked the operation's region and creator fingerprint before discovery. Now every discovery page additionally binds the fingerprint to the exact key used by transport, closing key changes between the initial check and dispatch or between pages. Recheck the selected region before trusting results. A mismatch leaves the durable operation pending and Settings shows "Recovery needs the ElevenLabs key that started this voice." No empty result from a different creator can abandon an operation. Legacy operations still match on their recorded region only. Deterministic tests change keys before the initial check, before first dispatch and before a later page; all retain the obligation beyond its 24-hour window without deletion or abandonment.
+
 ### 2026-10-30 — sol-mac-voicelab — W8 pre-receipt initialization failure
 
 Immediately after exclusive mkdir, open the operation directory with `O_DIRECTORY | O_NOFOLLOW` and capture its identity with fstat before writing the receipt. An ordinary failure before a durable receipt only attempts rmdir after comparing the open fd and current path identities; it never empties a non-empty directory. A failure after open but before initial identity assignment obtains the identity from that same pinned fd in cleanup. A replacement or non-empty directory and its intent survive. After a complete receipt is journalled, the existing owned-directory cleanup applies. Deterministic `opened` and `directory` fault points cover both pre-receipt stages, plus path replacement and unexpected contents.

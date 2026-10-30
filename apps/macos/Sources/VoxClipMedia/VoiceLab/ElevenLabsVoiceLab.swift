@@ -118,6 +118,9 @@ public actor ElevenLabsVoiceLab {
     }
 
     public func voices() async throws -> [VoiceLabVoice] {
+        try await voices(creatorKeyFingerprint: nil)
+    }
+    private func voices(creatorKeyFingerprint: String?) async throws -> [VoiceLabVoice] {
         var result: [VoiceLabVoice] = []
         var cursor: String?
         var seen: Set<String> = []
@@ -127,7 +130,7 @@ public actor ElevenLabsVoiceLab {
             var components = URLComponents(url: region.baseURL.appendingPathComponent("v2/voices"), resolvingAgainstBaseURL: false)!
             components.queryItems = [URLQueryItem(name: "page_size", value: "100")]
             if let cursor { components.queryItems?.append(URLQueryItem(name: "next_page_token", value: cursor)) }
-            let data = try await send(components.url!, method: "GET", limit: 4 * 1_024 * 1_024)
+            let data = try await send(components.url!, method: "GET", limit: 4 * 1_024 * 1_024, discoveryCreator: creatorKeyFingerprint)
             guard let row = try? JSONSerialization.jsonObject(with: data.bytes) as? [String: Any],
                   let voices = row["voices"] as? [[String: Any]], let more = row["has_more"] as? Bool else { throw VoiceLabError.malformedResponse }
             for item in voices {
@@ -152,8 +155,8 @@ public actor ElevenLabsVoiceLab {
         throw VoiceLabError.responseTooLarge
     }
 
-    public func listOwnClones() async throws -> [VoiceLabVoice] {
-        try await voices().filter { $0.isOwner && $0.category == "cloned" }
+    public func listOwnClones(creatorKeyFingerprint: String? = nil) async throws -> [VoiceLabVoice] {
+        try await voices(creatorKeyFingerprint: creatorKeyFingerprint).filter { $0.isOwner && $0.category == "cloned" }
     }
 
     /// The catalog estimate (voice-lab §3.2) for `units` of an ElevenLabs operation: seconds of audio, characters
@@ -601,10 +604,13 @@ public actor ElevenLabsVoiceLab {
     /// `billing` is the approved action the request runs. Its 2xx status line is the provider's acceptance, so the estimate is
     /// recorded once from then on however the body ends, and the record finishes before `send` returns or throws (§3.1).
     private func send(_ url: URL, method: String, body: Data? = nil, contentType: String? = nil, limit: Int,
-                      billing: VoiceLabAuthorization? = nil, capability: VoiceOperationCapability? = nil) async throws -> Reply {
+                      billing: VoiceLabAuthorization? = nil, capability: VoiceOperationCapability? = nil, discoveryCreator: String? = nil) async throws -> Reply {
         try Task.checkCancellation()
         guard url.scheme == "https", url.host == region.baseURL.host, body?.count ?? 0 <= maxRequest else { throw VoiceLabError.invalidInput }
         guard let key = try await keys.key(for: "elevenlabs"), !key.isEmpty else { throw VoiceLabError.missingKey }
+        if let discoveryCreator {
+            guard String(VoiceLabFingerprint.bytes(Data(key.utf8)).prefix(16)) == discoveryCreator else { throw VoiceConsentError.recoveryCreatorMismatch }
+        }
         if let billing, let expected = creatorBindings.removeValue(forKey: billing.quote.id) {
             guard String(VoiceLabFingerprint.bytes(Data(key.utf8)).prefix(16)) == expected else { throw VoiceConsentError.creatorMismatch }
         }

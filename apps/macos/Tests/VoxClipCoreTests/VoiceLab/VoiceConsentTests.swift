@@ -12,6 +12,15 @@ private final class ConsentMutableKeys: KeyProvider, Sendable {
     let value = Mutex("synthetic-creator-key")
     func key(for provider: String) async throws -> String? { value.withLock { $0 } }
 }
+private final class ConsentDiscoveryKeys: KeyProvider, Sendable {
+    let changeAt: Int
+    let reads = Mutex(0)
+    init(changeAt: Int) { self.changeAt = changeAt }
+    func key(for provider: String) async throws -> String? {
+        let read = reads.withLock { $0 += 1; return $0 }
+        return read >= changeAt ? "synthetic-other-creator-key" : "synthetic-original-creator-key"
+    }
+}
 private final class OperationRemote: Sendable {
     struct State { var present = false; var lists = 0; var posts = 0; var deletes = 0; var listFailure = false; var createFailure = false }
     let value = Mutex(State())
@@ -719,6 +728,30 @@ struct VoiceConsentTests {
 }
 
 extension VoiceConsentTests {
+    @Test(arguments: [1, 2, 3])
+    func recoveryBindsEveryDiscoveryPageToTheOperationCreator(changeAt: Int) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let store = storage(root); var record = try fixtureRecord(wav: wav)
+        record.creator = .init(region: .default, keyFingerprint: String(VoiceLabFingerprint.bytes(Data("synthetic-original-creator-key".utf8)).prefix(16)))
+        let operation = try await seedOperation(store, record: record)
+        _ = try await store.transition(operation.id, to: .dispatched, at: now)
+        let calls = ConsentRequestLog()
+        let base = SpeechStubHTTP.register { request in
+            calls.value.withLock { $0.append(request.httpMethod ?? "") }
+            #expect(request.value(forHTTPHeaderField: "xi-api-key") == "synthetic-original-creator-key")
+            let listing = changeAt == 3 ? #"{"voices":[],"has_more":true,"next_page_token":"second"}"# : #"{"voices":[],"has_more":false}"#
+            return (200, [:], Data(listing.utf8))
+        }
+        let client = ElevenLabsVoiceLab(keys: ConsentDiscoveryKeys(changeAt: changeAt), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)))
+        let clock = OperationClock(now.addingTimeInterval(24 * 60 * 60 + 1))
+        let reconciler = VoiceOperationReconciler(store: store, client: client, now: { clock.now() })
+        await #expect(throws: VoiceConsentError.recoveryCreatorMismatch) { try await reconciler.reconcile(force: true) }
+        #expect(VoiceConsentError.recoveryCreatorMismatch.localizedDescription == "Recovery needs the ElevenLabs key that started this voice.")
+        let pending = try await storage(root).operation(operation.id)
+        #expect(!pending.finished && pending.failed && pending.attempts == 1 && pending.nextAttemptAt != nil)
+        #expect(try await store.auditTombstone(recordID: record.id) == nil)
+        #expect(calls.value.withLock { $0 } == (changeAt == 3 ? ["GET"] : []))
+    }
     private func operationClient(_ remote: OperationRemote, nonce: String, fallbackName: String? = nil, duplicate: Bool = false, conflictingNonce: Bool = false) -> ElevenLabsVoiceLab {
         let base = SpeechStubHTTP.register { request in
             switch (request.httpMethod, request.url?.path) {

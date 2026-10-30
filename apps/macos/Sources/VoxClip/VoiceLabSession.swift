@@ -100,6 +100,7 @@ import VoxClipMedia
             if recover {
                 try await store.reconcileAbandonedEnrollments()
                 do { try await reconciler.reconcile(force: force) }
+                catch VoiceConsentError.recoveryCreatorMismatch { message = VoiceConsentError.recoveryCreatorMismatch.localizedDescription }
                 catch { message = "Couldn't finish a voice operation. Retry below. No create request was repeated." }
             }
             operations = try await store.operations()

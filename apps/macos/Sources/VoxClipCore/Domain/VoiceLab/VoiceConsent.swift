@@ -3,7 +3,7 @@ import Foundation
 public enum VoiceConsentError: Error, LocalizedError, Equatable, Sendable {
     case invalidRecord, invalidName, invalidWords, attestationsRequired, statementMismatch, tooManyAttempts
     case speakerUnavailable, speakerMismatch, voiceOwnerMismatch, inactive, cancelled, creationPending
-    case creatorMismatch
+    case creatorMismatch, recoveryCreatorMismatch
     public var errorDescription: String? {
         switch self {
         case .invalidName: "Enter a name with 1 to 60 Unicode scalars and no control characters."
@@ -19,6 +19,7 @@ public enum VoiceConsentError: Error, LocalizedError, Equatable, Sendable {
         case .creationPending: "Voice creation may have completed. Reconcile the pending voice in Settings. Do not create it again."
         case .invalidRecord: "The voice consent record could not be verified. No audio was sent."
         case .creatorMismatch: "This voice was created with a different ElevenLabs key or region. Use that key to delete it, or remove it from VoxClip only; the voice may stay in that ElevenLabs account."
+        case .recoveryCreatorMismatch: "Recovery needs the ElevenLabs key that started this voice."
         }
     }
 }

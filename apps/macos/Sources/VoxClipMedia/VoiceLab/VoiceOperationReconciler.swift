@@ -87,14 +87,15 @@ public actor VoiceOperationReconciler {
         }
     }
     private func findRemote(_ value: VoiceOperation, force: Bool) async throws -> VoiceLabVoice? {
-        guard await regionIsCurrent(value.region) else { throw VoiceConsentError.creatorMismatch }
+        guard await regionIsCurrent(value.region) else { throw VoiceConsentError.recoveryCreatorMismatch }
         if !force, let next = value.nextAttemptAt, now() < next { return nil }
         let client = clients(value.region)
         guard client.region == value.region else { throw VoiceConsentError.invalidRecord }
         if let expected = value.creatorKeyFingerprint {
-            guard try await client.creatorKeyFingerprint() == expected else { throw VoiceConsentError.creatorMismatch }
+            guard try await client.creatorKeyFingerprint() == expected else { throw VoiceConsentError.recoveryCreatorMismatch }
         }
-        let discovered = try await client.listOwnClones()
+        let discovered = try await client.listOwnClones(creatorKeyFingerprint: value.creatorKeyFingerprint)
+        guard await regionIsCurrent(value.region) else { throw VoiceConsentError.recoveryCreatorMismatch }
         let start = floor(value.startedAt.timeIntervalSince1970)
         let end = value.startedAt.addingTimeInterval(24 * 60 * 60)
         let voices = discovered.filter { voice in
