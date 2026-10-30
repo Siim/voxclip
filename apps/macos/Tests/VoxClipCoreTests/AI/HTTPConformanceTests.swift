@@ -3,6 +3,22 @@ import Testing
 @testable import VoxClipCore
 
 extension HTTPConnectorTests {
+    @Test(arguments: ["FINISH_REASON_UNSPECIFIED", "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "NO_IMAGE", "IMAGE_RECITATION", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS", "MISSING_THOUGHT_SIGNATURE", "MALFORMED_RESPONSE", "ESCALATION", "PUP_LIMITED_DISABLED", "CONTINUATION", "", "FUTURE_REASON"])
+    func geminiFinishReasonsNeverCompleteUnlessStopped(_ reason: String) async throws {
+        let reply = try HTTPFixtures.encode(["candidates": [["finishReason": reason, "content": ["parts": [["text": HTTPFixtures.completion]]]]]])
+        let harness = try HTTPHarness(.gemini, replies: [.json(reply)])
+        defer { harness.finish() }
+        let refused = ["SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "IMAGE_RECITATION", "ESCALATION"]
+        if reason == "STOP" || reason == "MAX_TOKENS" || reason == "CONTINUATION" || refused.contains(reason) {
+            let result = try await harness.connector.send(harness.catalog.connectionTest(for: .gemini), model: harness.model)
+            #expect(result.stop == (reason == "STOP" ? .complete : refused.contains(reason) ? .refused(category: reason) : .truncated))
+        } else {
+            let expected: LLMError = reason == "PUP_LIMITED_DISABLED" ? .unavailable(reason: "Google Gemini has limited or disabled this account for prohibited use.") : .server(status: 500)
+            await #expect(throws: expected) { try await harness.runner().test(on: harness.connector, model: harness.model) }
+        }
+        #expect(HTTPStubProtocol.requests.count == 1)
+    }
+
     @Test(arguments: ["server_error", "rate_limit_exceeded", "invalid_prompt", "bio_policy", "misalignment_policy_violation", "image_content_policy_violation", "vector_store_timeout", "data_residency_mismatch", "invalid_image", "invalid_image_format", "invalid_base64_image", "invalid_image_url", "image_too_large", "image_too_small", "image_parse_error", "invalid_image_mode", "image_file_too_large", "unsupported_image_media_type", "empty_image_file", "failed_to_download_image", "image_file_not_found", "unknown", "model_not_found", "context_length_exceeded", "insufficient_quota"])
     func openAIFailedResponseUsesDocumentedCodesWithoutRetries(_ code: String) async throws {
         let harness = try HTTPHarness(.openai, replies: [.json(try HTTPFixtures.encode(["status": "failed", "error": ["code": code]]))])

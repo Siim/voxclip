@@ -8,6 +8,33 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 
 public sealed class HttpConformanceTests
 {
+    public static TheoryData<string> GeminiFinishReasons => new("FINISH_REASON_UNSPECIFIED", "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "NO_IMAGE", "IMAGE_RECITATION", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS", "MISSING_THOUGHT_SIGNATURE", "MALFORMED_RESPONSE", "ESCALATION", "PUP_LIMITED_DISABLED", "CONTINUATION", "", "FUTURE_REASON");
+
+    [Theory]
+    [MemberData(nameof(GeminiFinishReasons))]
+    public async Task GeminiFinishReasonsNeverCompleteUnlessStopped(string reason)
+    {
+        var body = new JsonObject { ["candidates"] = new JsonArray(new JsonObject { ["finishReason"] = reason, ["content"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["text"] = "{\"ok\":true,\"echo\":\"voxclip\"}" }) } }) };
+        using var handler = new StubHttp((_, _, _) => Task.FromResult(Response(200, body.ToJsonString())));
+        using var client = new HttpClient(handler);
+        var keys = new MemoryKeys();
+        var connector = new LlmConnector(ConnectorId.Gemini, Catalog(), client, keys, new Redactor());
+        string[] refused = ["SAFETY", "RECITATION", "LANGUAGE", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "IMAGE_RECITATION", "ESCALATION"];
+        if (reason is "STOP" or "MAX_TOKENS" or "CONTINUATION" || refused.Contains(reason))
+        {
+            var result = await connector.SendAsync(Catalog().TestRequest(ConnectorId.Gemini), "gemini-3.8-flash", TestContext.Current.CancellationToken);
+            StopKind expected = reason == "STOP" ? new StopKind.Complete() : refused.Contains(reason) ? new StopKind.Refused(reason) : new StopKind.Truncated();
+            Assert.Equal(expected, result.Stop);
+        }
+        else
+        {
+            var runner = new LlmRunner(keys, Catalog(), new Redactor());
+            var failure = await Assert.ThrowsAsync<LlmException>(() => runner.RunAsync(Catalog().TestRequest(ConnectorId.Gemini), connector, "gemini-3.8-flash", TestContext.Current.CancellationToken));
+            Assert.Equal(reason == "PUP_LIMITED_DISABLED" ? LlmErrorKind.Unavailable : LlmErrorKind.Server, failure.Error.Kind);
+        }
+        Assert.Single(handler.Requests);
+    }
+
     public static TheoryData<string, LlmErrorKind> ResponseCodes => new()
     {
         { "server_error", LlmErrorKind.Server }, { "vector_store_timeout", LlmErrorKind.Server },

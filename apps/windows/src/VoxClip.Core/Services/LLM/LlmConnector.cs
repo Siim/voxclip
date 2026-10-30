@@ -443,8 +443,14 @@ public sealed partial class LlmConnector
             var finish = candidate?["finishReason"]?.GetValue<string>();
             var blocked = body["promptFeedback"]?["blockReason"]?.GetValue<string>();
             if (!string.IsNullOrEmpty(blocked)) stop = new StopKind.Refused(blocked);
-            else if (finish is "MAX_TOKENS" or "CONTINUATION") stop = new StopKind.Truncated();
-            else if (finish is "SAFETY" or "RECITATION" or "LANGUAGE" or "BLOCKLIST" or "PROHIBITED_CONTENT" or "SPII" or "OTHER") stop = new StopKind.Refused(finish);
+            else stop = finish switch
+            {
+                "STOP" => new StopKind.Complete(),
+                "MAX_TOKENS" or "CONTINUATION" => new StopKind.Truncated(),
+                "SAFETY" or "RECITATION" or "LANGUAGE" or "BLOCKLIST" or "PROHIBITED_CONTENT" or "SPII" or "OTHER" or "IMAGE_SAFETY" or "IMAGE_PROHIBITED_CONTENT" or "IMAGE_OTHER" or "IMAGE_RECITATION" or "ESCALATION" => new StopKind.Refused(finish),
+                "PUP_LIMITED_DISABLED" => throw Error(LlmErrorKind.Unavailable, model, request.Feature, detail: "Google Gemini has limited or disabled this account for prohibited use."),
+                _ => throw Error(LlmErrorKind.Server, model, request.Feature, status: 500)
+            };
         }
         else if (Id == ConnectorId.Ollama)
         {

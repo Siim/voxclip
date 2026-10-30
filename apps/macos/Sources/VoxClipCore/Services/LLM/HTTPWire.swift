@@ -123,10 +123,18 @@ extension HTTPConnector {
             usage = LLMUsage(input: value[ai: "usage"][ai: "prompt_tokens"].aiInt, output: value[ai: "usage"][ai: "completion_tokens"].aiInt, cacheRead: value[ai: "usage"][ai: "prompt_tokens_details"][ai: "cached_tokens"].aiInt)
         case .gemini:
             let candidate = value[ai: "candidates"].aiArray.first ?? .null
-            if let reason = value[ai: "promptFeedback"][ai: "blockReason"].aiString { stop = .refused(category: reason) }
-            let reason = candidate[ai: "finishReason"].aiString ?? ""
-            if ["MAX_TOKENS", "CONTINUATION"].contains(reason) { stop = .truncated }
-            if ["SAFETY", "RECITATION", "LANGUAGE", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "OTHER"].contains(reason) { stop = .refused(category: reason) }
+            if let reason = value[ai: "promptFeedback"][ai: "blockReason"].aiString, !reason.isEmpty {
+                stop = .refused(category: reason)
+            } else {
+                let reason = candidate[ai: "finishReason"].aiString ?? ""
+                switch reason {
+                case "STOP": break
+                case "MAX_TOKENS", "CONTINUATION": stop = .truncated
+                case "SAFETY", "RECITATION", "LANGUAGE", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "OTHER", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_OTHER", "IMAGE_RECITATION", "ESCALATION": stop = .refused(category: reason)
+                case "PUP_LIMITED_DISABLED": throw LLMError.unavailable(reason: "Google Gemini has limited or disabled this account for prohibited use.")
+                default: throw LLMError.server(status: 500)
+                }
+            }
             text = candidate[ai: "content"][ai: "parts"].aiArray.filter { $0[ai: "thought"].aiBool != true }.compactMap { $0[ai: "text"].aiString }.joined()
             usage = LLMUsage(input: value[ai: "usageMetadata"][ai: "promptTokenCount"].aiInt, output: value[ai: "usageMetadata"][ai: "candidatesTokenCount"].aiInt, cacheRead: value[ai: "usageMetadata"][ai: "cachedContentTokenCount"].aiInt)
         case .ollama:

@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — Gemini terminal reasons
+
+- Mirrored tables accept only `STOP` as complete. Token limits truncate; policy/image blocks and escalation refuse; PUP-limited accounts are unavailable; malformed, tool, missing, unspecified and future reasons fail closed as server errors without a corrective retry. Prompt blocking takes precedence. Both Core suites cover every documented FinishReason plus empty/unknown values.
+
 ### 2026-10-30 — OpenAI failed Responses
 
 - Both Cores use the same documented `Response.error.code` table for HTTP-200 failed envelopes: rate limits, policy refusals, region unavailability, invalid-image requests and server failures. HTTP-only error codes are not reinterpreted here. Tests cover all 21 documented codes, unknown codes and HTTP-only codes; failed envelopes never trigger a transport or corrective retry.
