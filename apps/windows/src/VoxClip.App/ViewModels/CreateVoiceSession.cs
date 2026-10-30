@@ -19,6 +19,7 @@ internal interface IVoiceStatementBackend : IDisposable
 internal interface IVoiceStatementCapture : IAsyncDisposable
 {
     Task StartAsync(CancellationToken ct);
+    Task StartTrainingAsync(CancellationToken ct);
     Task Completion { get; }
     MicrophoneSnapshot Snapshot { get; }
     MicrophoneTake Stop();
@@ -27,7 +28,7 @@ internal interface IVoiceStatementCapture : IAsyncDisposable
 
 internal enum VoiceCreationLeaveTrigger { Navigation, Back, Escape, Closing }
 
-internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceStatementCapture capture,
+internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceStatementCapture capture,
     Func<Action, Task> dispatch, TimeProvider? timeProvider = null) : IAsyncDisposable
 {
     private readonly TimeProvider clock = timeProvider ?? TimeProvider.System;
@@ -59,7 +60,7 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
     internal bool HasFailure { get; private set; }
     internal MicrophoneSnapshot Capture => capture.Snapshot;
     internal string VerificationCost => backend.VerificationCost;
-    internal bool IsBusyForRestart => Busy || Recording || Activating || HasStatementRecording || cleanupPending || leaving;
+    internal bool IsBusyForRestart => !ReturnToPane && (Busy || Recording || Activating || HasStatementRecording || cleanupPending || leaving || UnsavedRecord is not null || CreationConfirmation is not null);
     internal IReadOnlyList<string> GateMessages => new[]
     {
         !backend.Enabled ? "Turn on Voice Lab to create your voice." : null,
@@ -69,8 +70,8 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
     }.OfType<string>().ToArray();
     internal string? BlockedReason => GateMessages.FirstOrDefault();
     internal bool CanRetryCleanup => cleanupPending && !Busy && !leaving;
-    internal bool InputsEditable => !Busy && !Recording && !Activating && !HasStatementRecording && !Verified && !cleanupPending && !leaving;
-    internal bool CanRecord => !disposed && !Busy && !Recording && !Activating && !Verified && !cleanupPending && !leaving && BlockedReason is null && ownVoice && adult && ownVideos && ValidName();
+    internal bool InputsEditable => !ReturnToPane && !Busy && !Recording && !Activating && !HasStatementRecording && !Verified && !cleanupPending && !leaving;
+    internal bool CanRecord => !ReturnToPane && !disposed && !Busy && !Recording && !Activating && !Verified && !cleanupPending && !leaving && BlockedReason is null && ownVoice && adult && ownVideos && ValidName();
     internal bool CanVerify => !disposed && !Busy && !Recording && !leaving && !cleanupPending && HasStatementRecording && !Verified && BlockedReason is null;
     private bool ValidName()
     {
@@ -207,7 +208,7 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
         try
         {
             if (recordId is not null) await Task.Run(() => backend.AbandonAsync(recordId));
-            await dispatch(() => { recordId = null; HasStatementRecording = false; Verified = false; cleanupPending = false; });
+            await dispatch(() => { recordId = null; HasStatementRecording = false; Verified = false; TrainingReady = false; CreationConfirmation = null; cleanupPending = false; });
         }
         finally { cleanup.Release(); }
     }
@@ -244,10 +245,12 @@ internal sealed class CreateVoiceSession(IVoiceStatementBackend backend, IVoiceS
     }
     internal async Task<bool> AbandonAsync()
     {
+        if (ReturnToPane) return true;
         operation?.Cancel(); capture.Discard();
         await work;
         await CleanupAfterFailureAsync();
         if (cleanupPending) { Notify(); return false; }
+        await dispatch(() => UnsavedRecord = null);
         await dispatch(() => { Statement = null; Message = null; VerificationRequested = false; Notify(); });
         return true;
     }

@@ -14,6 +14,19 @@ internal sealed class DebugVoiceLabBackend(Func<bool> enabled, Func<Cancellation
     private string? fixtureDirectory;
     internal int HttpCalls => 0;
     public bool Enabled => enabled();
+    internal bool HasPendingCreation => operations.Any(operation => operation.Kind == VoiceOperationKind.Create && !operation.Finished && operation.ProviderNonce == "r5-fixture");
+    internal void StageCreation(VoiceConsentRecord record, bool uncertain)
+    {
+        operations.Add(new(Guid.NewGuid(), VoiceOperationKind.Create, record.RecordId, "r5-fixture", ElevenLabsRegion.Default,
+            record.CreatedAt, record.CreatedAt, uncertain ? VoiceOperationState.Dispatched : VoiceOperationState.Created, uncertain ? null : record.VoiceId,
+            true, false, 0, null, false, null, null, RecoveryNeedsReview: uncertain, ExpectedVoiceName: record.VoiceName));
+    }
+    internal void CompleteCreation(VoiceConsentRecord record)
+    {
+        records.RemoveAll(value => value.RecordId == record.RecordId); records.Add(record);
+        for (var index = 0; index < operations.Count; index++)
+            if (operations[index].RecordId == record.RecordId) operations[index] = operations[index] with { State = VoiceOperationState.Saved };
+    }
     internal static DebugVoiceLabBackend FromFixtures(string directory, Func<bool> enabled, Func<CancellationToken, Task> persistConsent)
     {
         var backend = new DebugVoiceLabBackend(enabled, persistConsent);
@@ -70,5 +83,13 @@ internal sealed class DebugVoiceLabBackend(Func<bool> enabled, Func<Cancellation
     { Guard(ct); operations.RemoveAll(operation => operation.RecordId == recordId); return Task.CompletedTask; }
     public Task SaveAsync(VoiceConsentRecord record, CancellationToken ct) { Guard(ct); records.Add(record); return Task.CompletedTask; }
     public Task RemoveSpeakerAsync(CancellationToken ct) { Guard(ct); return Task.CompletedTask; }
+    public Task StopLookingAsync(Guid operationId, CancellationToken ct)
+    {
+        Guard(ct);
+        var index = operations.FindIndex(operation => operation.Id == operationId && VoiceLabSession.CanStopLooking(operation));
+        if (index < 0) throw new InvalidOperationException();
+        operations[index] = operations[index] with { State = VoiceOperationState.Abandoned, RemoteStateUnknown = true };
+        return Task.CompletedTask;
+    }
 }
 #endif

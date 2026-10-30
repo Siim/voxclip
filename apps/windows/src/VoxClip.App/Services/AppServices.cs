@@ -124,7 +124,12 @@ internal sealed class AppServices : IAsyncDisposable
         var backend = await Task.Run(() => new VoiceStatementBackend(Data, Keys, Log, selectedRegion,
             () => VoiceLabEnabled, () => VoiceLab.PlanMessage, Consent, speakerAvailable: speaker, transcribe: scribe), ct);
         if (ct.IsCancellationRequested) { backend.Dispose(); ct.ThrowIfCancellationRequested(); }
-        return new(backend, new VoiceStatementCapture(new VoxClip.Media.Audio.VoiceMicrophoneRecorder(Log)), OnUiAsync);
+        IVoiceStatementBackend selected = backend;
+#if DEBUG
+        if (fixtures?.StartsWith("fixtures:", StringComparison.Ordinal) == true && debugVoiceLab is not null)
+            selected = new DebugVoiceCreationBackend(backend, debugVoiceLab, Data, fixtures[9..]);
+#endif
+        return new(selected, new VoiceStatementCapture(new VoxClip.Media.Audio.VoiceMicrophoneRecorder(Log)), OnUiAsync);
     }
 #if DEBUG
     internal string? DebugMicrophoneSettingsUri { get; set; }

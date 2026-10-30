@@ -163,6 +163,20 @@ public sealed partial class SettingsWindow : Window
         if (preparing) return;
         _ = Ui.RunAsync(notice, () => App.Services.SetAsync(key, value, lifetime.Token), "Save settings");
     }
+    internal void CompleteCreateVoice(string recordId, string text) => RunSensitive(async () =>
+    {
+        if (preparing || navigating || createVoicePage is null) return;
+        navigating = true; Navigation.IsEnabled = false;
+        try
+        {
+            await createVoicePage.DisposeAsync(); createVoicePage = null;
+            App.Services.VoiceLab.ClearUnsaved(recordId);
+            await App.Services.VoiceLab.CreationReturnedAsync(text);
+            Body.Children.Clear(); Body.Children.Add(notice);
+            voiceLabPane = new(this, lifetime.Token, recordId); Body.Children.Add(voiceLabPane);
+        }
+        finally { navigating = false; Navigation.IsEnabled = !preparing; }
+    }, "Create voice");
     internal void RunSensitive(Func<Task> action, string feature)
     {
         if (preparing) return;

@@ -33,6 +33,14 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
     private readonly Button cancel;
     private readonly Button openSettings;
     private readonly Button retryCleanup;
+    private readonly Button training;
+    private readonly Button create;
+    private readonly Button retrySave;
+    private readonly Button removeUnsaved;
+    private readonly ProgressRing working = new() { IsActive = false };
+    private bool hadTraining;
+    private bool completing;
+    private string? stagedRecordId;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private bool wasRecording;
     private bool hadStatement;
@@ -74,6 +82,16 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         AutomationProperties.SetAutomationId(cancel, "voice-create-cancel"); body.Children.Add(cancel);
         verify = Ui.Button("Verify statement · < $0.01", () => owner.RunSensitive(VerifyAsync, "Verify statement"));
         AutomationProperties.SetAutomationId(verify, "voice-verify-statement"); body.Children.Add(verify);
+        training = Ui.Button("Record training read-aloud", () => owner.RunSensitive(session.RecordTrainingAsync, "Record training read-aloud"));
+        AutomationProperties.SetAutomationId(training, "voice-record-training"); body.Children.Add(training);
+        create = Ui.Button("Create voice…", () => owner.RunSensitive(CreateAsync, "Create voice"));
+        create.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
+        AutomationProperties.SetAutomationId(create, "voice-create-submit"); body.Children.Add(create);
+        removeUnsaved = Ui.Button("Remove This Voice", () => owner.RunSensitive(session.RemoveUnsavedVoiceAsync, "Remove This Voice"));
+        AutomationProperties.SetAutomationId(removeUnsaved, "voice-create-remove-unsaved"); body.Children.Add(removeUnsaved);
+        retrySave = Ui.Button("Retry saving consent record", () => owner.RunSensitive(session.RetrySavingRecordAsync, "Retry saving consent record"));
+        AutomationProperties.SetAutomationId(retrySave, "voice-create-retry-save"); body.Children.Add(retrySave);
+        AutomationProperties.SetName(working, "Working"); AutomationProperties.SetAutomationId(working, "voice-create-working"); body.Children.Add(working);
         AutomationProperties.SetAutomationId(message, "voice-create-message"); body.Children.Add(message);
         retryCleanup = Ui.Button("Try removing the recording again", () => owner.RunSensitive(session.RetryCleanupAsync, "Remove recording"));
         AutomationProperties.SetAutomationId(retryCleanup, "voice-retry-recording-cleanup"); body.Children.Add(retryCleanup);
@@ -103,9 +121,27 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         gate.Text = string.Join("\n", session.GateMessages);
         gate.Visibility = session.BlockedReason is null ? Visibility.Collapsed : Visibility.Visible;
         foreach (var input in new Control[] { name, ownVoice, adult, ownVideos }) input.IsEnabled = session.InputsEditable && session.BlockedReason is null;
-        teleprompter.Text = session.Statement?.Text ?? "";
+        teleprompter.Text = session.Verified ? session.TrainingScript : session.Statement?.Text ?? "";
+        AutomationProperties.SetName(teleprompter, session.Verified ? "Training read-aloud · about 90 seconds" : "Read this aloud");
         record.IsEnabled = session.CanRecord; record.Content = session.HasStatementRecording ? "Record statement again" : "Record statement";
+        record.Visibility = session.Verified ? Visibility.Collapsed : Visibility.Visible;
         verify.IsEnabled = session.CanVerify;
+        verify.Visibility = session.Verified ? Visibility.Collapsed : Visibility.Visible;
+        training.IsEnabled = session.CanTrain; training.Content = session.TrainingReady ? "Record training again" : "Record training read-aloud";
+        training.Visibility = session.Verified ? Visibility.Visible : Visibility.Collapsed;
+        create.IsEnabled = session.CanCreate; create.Visibility = session.UnsavedRecord is null ? Visibility.Visible : Visibility.Collapsed;
+        cancel.Visibility = session.UnsavedRecord is null ? Visibility.Visible : Visibility.Collapsed;
+        removeUnsaved.Visibility = retrySave.Visibility = session.UnsavedRecord is null ? Visibility.Collapsed : Visibility.Visible;
+        removeUnsaved.IsEnabled = retrySave.IsEnabled = !session.Busy;
+        working.IsActive = session.Busy; working.Visibility = session.Busy ? Visibility.Visible : Visibility.Collapsed;
+        if (session.UnsavedRecord is { } unsaved)
+        {
+            stagedRecordId = unsaved.RecordId; App.Services.VoiceLab.StageUnsaved(unsaved);
+            var peers = App.Services.VoiceLab.Records.Append(unsaved).DistinctBy(record => record.RecordId).ToArray();
+            AutomationProperties.SetName(removeUnsaved, VoiceLabActionNames.ForRecord("Remove This Voice", unsaved, peers));
+            AutomationProperties.SetName(retrySave, VoiceLabActionNames.ForRecord("Retry saving consent record", unsaved, peers));
+        }
+        else if (stagedRecordId is { } staged) { App.Services.VoiceLab.ClearUnsaved(staged); stagedRecordId = null; }
         retryCleanup.Visibility = session.CanRetryCleanup ? Visibility.Visible : Visibility.Collapsed;
         stop.Visibility = session.Recording ? Visibility.Visible : Visibility.Collapsed;
         level.Visibility = session.Recording ? Visibility.Visible : Visibility.Collapsed;
@@ -115,8 +151,15 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         openSettings.Visibility = session.MicrophoneFailure is MicrophoneError.Permission or MicrophoneError.Silent ? Visibility.Visible : Visibility.Collapsed;
         if (!wasRecording && session.Recording) stop.Focus(FocusState.Programmatic);
         if (!hadStatement && session.HasStatementRecording) verify.Focus(FocusState.Programmatic);
+        if (!hadTraining && session.TrainingReady && session.CanCreate) create.Focus(FocusState.Programmatic);
+        hadTraining = session.TrainingReady;
         wasRecording = session.Recording; hadStatement = session.HasStatementRecording;
         UpdateMeter();
+        if (session.ReturnToPane && !session.Busy && !completing)
+        {
+            completing = true;
+            DispatcherQueue.TryEnqueue(() => owner.CompleteCreateVoice(session.FocusRecordId!, session.Message!));
+        }
     }
     private void UpdateMeter()
     {
@@ -132,6 +175,14 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         DialogOpen = true;
         try { approved = await VoiceLabDialogs.ConfirmCreationAsync(XamlRoot, VoiceCreationDialog.Verify(session.VerificationCost), lifetime.Token); }
         finally { DialogOpen = false; await session.ApproveVerificationAsync(approved); }
+    }
+    private async Task CreateAsync()
+    {
+        await session.PrepareCreationAsync();
+        if (session.CreationConfirmation is not { } quote) return;
+        var approved = false; DialogOpen = true;
+        try { approved = await VoiceLabDialogs.ConfirmCreationAsync(XamlRoot, VoiceCreationDialog.Create(quote), lifetime.Token); }
+        finally { DialogOpen = false; await session.ApproveCreationAsync(approved); }
     }
     internal Task<bool> TryLeaveAsync(VoiceCreationLeaveTrigger trigger) => session.TryLeaveAsync(trigger, async _ =>
     {

@@ -31,10 +31,13 @@ internal sealed class VoiceLabSettingsPane : UserControl
     private readonly SettingsExpander voices = Section("My voices");
     private Button? accountCheck;
     private readonly Dictionary<Guid, TextBlock> operationStates = [];
+    private string? focusRecordId;
+    private bool initialLoadComplete;
 
-    internal VoiceLabSettingsPane(SettingsWindow owner, CancellationToken ct)
+    internal VoiceLabSettingsPane(SettingsWindow owner, CancellationToken ct, string? focusRecordId = null)
     {
         this.owner = owner;
+        this.focusRecordId = focusRecordId;
         lifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
         token = lifetime.Token;
         keyInventory = new(App.Services.Keys, () => App.Services.VoiceLabEnabled, token);
@@ -81,6 +84,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
             session.Changed += SessionChanged;
             RefreshTheme(); Refresh(); RenderSession();
             await session.RefreshEnabledStateAsync();
+            initialLoadComplete = true; RenderSession();
         };
         ActualThemeChanged += (_, _) => RefreshTheme();
         Ui.EffectsChanged += EffectsChanged;
@@ -193,12 +197,14 @@ internal sealed class VoiceLabSettingsPane : UserControl
         {
             VoiceLabRequestKind.Subscription => "Check ElevenLabs account",
             VoiceLabRequestKind.Delete => "Delete voice",
+            VoiceLabRequestKind.StopLooking => VoiceLabCopy.StopLooking,
             _ => "Remove from VoxClip only"
         };
         var explanation = request.Kind switch
         {
             VoiceLabRequestKind.Subscription => VoiceLabCopy.ProviderConsent + "\n\n" + VoiceLabCopy.AccountCheck,
             VoiceLabRequestKind.Delete => VoiceLabCopy.DeleteExplanation,
+            VoiceLabRequestKind.StopLooking => VoiceLabCopy.StopLookingExplanation,
             _ => VoiceLabCopy.RemoveLocalExplanation
         };
         var approved = false;
@@ -254,7 +260,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
                 () => ConfirmAsync(new(VoiceLabRequestKind.RemoveLocal, record.RecordId)));
             AutomationProperties.SetAutomationId(removeLocal, "remove-local-voice-" + record.RecordId);
             card.Children.Add(removeLocal);
-            AddCard(voices, card);
+            AddVoiceCard(card, record.RecordId, VoiceLabSession.CardName(record));
         }
         if (session.UnsavedRecord is { } unsaved)
         {
@@ -265,7 +271,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
             var removeUnsaved = SessionButton("Remove This Voice", VoiceLabActionNames.ForRecord("Remove This Voice", unsaved, session.Records.Append(unsaved).DistinctBy(record => record.RecordId).ToArray()), () => session.WithdrawOperationAsync(unsaved.RecordId));
             AutomationProperties.SetAutomationId(removeUnsaved, "remove-unsaved-voice-" + unsaved.RecordId);
             row.Children.Add(removeUnsaved);
-            AddCard(voices, row);
+            AddVoiceCard(row, unsaved.RecordId, VoiceLabSession.CardName(unsaved));
         }
         foreach (var operation in session.Operations.Where(operation => !operation.Finished))
         {
@@ -285,7 +291,14 @@ internal sealed class VoiceLabSettingsPane : UserControl
                 AutomationProperties.SetAutomationId(remove, "remove-unfinished-" + operation.Id);
                 row.Children.Add(remove);
             }
-            AddCard(voices, row);
+            if (VoiceLabSession.CanStopLooking(operation))
+            {
+                var stopLooking = SessionButton(VoiceLabCopy.StopLooking, VoiceLabActionNames.ForOperation(VoiceLabCopy.StopLooking, operation, session.Operations, session.Records),
+                    () => ConfirmAsync(new(VoiceLabRequestKind.StopLooking, OperationId: operation.Id)));
+                AutomationProperties.SetAutomationId(stopLooking, "stop-looking-voice-" + operation.Id);
+                row.Children.Add(stopLooking);
+            }
+            AddVoiceCard(row, operation.RecordId, VoiceLabActionNames.Created(operation.ExpectedVoiceName ?? "Voice creation", operation.StartedAt));
         }
         var create = Ui.Button("Create Your Voice…", owner.ShowCreateVoice); create.IsEnabled = session.Enabled && !session.Busy;
         AutomationProperties.SetName(create, "Create Your Voice…");
@@ -334,6 +347,17 @@ internal sealed class VoiceLabSettingsPane : UserControl
         c2pa.Toggled += (_, _) => owner.RunSensitive(() => Ui.RunAsync(message,
             () => App.Services.SetAsync("voiceLab.c2pa", c2pa.IsOn, token), "Save Content Credentials preference"), "Save Content Credentials preference");
         var credentials = Ui.Stack(); credentials.Children.Add(c2pa); credentials.Children.Add(Ui.Text(VoiceLabCopy.C2paHelper, "HelperText")); AddCard(section, credentials);
+    }
+    private void AddVoiceCard(UIElement content, string recordId, string label)
+    {
+        var card = new ContentControl { Content = content, IsTabStop = true, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        AutomationProperties.SetName(card, label); AutomationProperties.SetAutomationId(card, "voice-card-" + recordId);
+        if (focusRecordId == recordId)
+        {
+            voices.IsExpanded = true;
+            card.Loaded += (_, _) => { if (initialLoadComplete && focusRecordId == recordId) { card.Focus(FocusState.Programmatic); card.StartBringIntoView(); focusRecordId = null; } };
+        }
+        AddCard(voices, card);
     }
     private void AddStorage()
     {

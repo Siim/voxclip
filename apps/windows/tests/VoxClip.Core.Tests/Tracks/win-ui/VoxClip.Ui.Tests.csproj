@@ -30,6 +30,8 @@
     <Compile Include="VoiceLabSessionTests.cs" />
     <Compile Include="VoiceLabReviewTests.cs" />
     <Compile Include="CreateVoiceTests.cs" />
+    <Compile Include="VoiceCreationFlowTests.cs" />
+    <Compile Include="../../../../src/VoxClip.App/Services/DebugVoiceCreationBackend.cs" Link="Services/DebugVoiceCreationBackend.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/VoiceStatementBackend.cs" Link="Services/VoiceStatementBackend.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/DebugConsentScribe.cs" Link="Services/DebugConsentScribe.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/VoiceLabBackend.cs" Link="Services/VoiceLabBackend.cs" />

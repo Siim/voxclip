@@ -12,7 +12,7 @@ using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.App.Services;
 
-internal sealed class VoiceStatementBackend : IVoiceStatementBackend
+internal sealed class VoiceStatementBackend : IVoiceCreationBackend
 {
     private readonly DataLocations data;
     private readonly Func<bool> enabled;
@@ -26,9 +26,11 @@ internal sealed class VoiceStatementBackend : IVoiceStatementBackend
     private readonly ElevenLabsVoiceLab client;
     private readonly ElevenLabsTranscriber transcriber;
     private readonly VoiceEnrollment enrollment;
+    private readonly TimeProvider clock;
     private readonly Func<VoiceConsentStatement, TranscriptionRequest, CancellationToken, Task<RawTranscript>>? transcribe;
     private VoiceConsentStatement? verifying;
     private double seconds;
+    private IReadOnlyList<VoiceTrainingSample> training = [];
 
     internal VoiceStatementBackend(DataLocations data, IKeyProvider keys, ILog log, ElevenLabsRegion region,
         Func<bool> enabled, Func<string?> plan, Func<CancellationToken, Task> consent, TimeProvider? clock = null,
@@ -36,6 +38,7 @@ internal sealed class VoiceStatementBackend : IVoiceStatementBackend
         Func<VoiceConsentStatement, TranscriptionRequest, CancellationToken, Task<RawTranscript>>? transcribe = null)
     {
         this.data = data; this.enabled = enabled; this.plan = plan; this.consent = consent;
+        this.clock = clock ?? TimeProvider.System;
         this.speakerAvailable = speakerAvailable ?? (() => VoiceSpeakerCheck.Unavailable.Available);
         this.transcribe = transcribe;
         var shared = SharedResources.ResolveRoot();
@@ -125,15 +128,50 @@ internal sealed class VoiceStatementBackend : IVoiceStatementBackend
     public Task AbandonAsync(string recordId)
     {
         enrollment.Cancel(recordId);
-        seconds = 0;
+        seconds = 0; training = [];
         return Task.CompletedTask;
     }
-    public void Dispose() { client.Dispose(); transcriber.Dispose(); }
+    public bool CreationPending => store.Operations().Any(operation => operation.BlocksCreation(clock.GetUtcNow()));
+    public Task SaveTrainingAsync(MicrophoneTake take, CancellationToken ct)
+    {
+        Require(ct); training = [];
+        var samples = VoiceConsentAudio.Resample(take.Mono, take.Rate, 48000);
+        try { training = VoiceTrainingAudio.ReadAloud(samples); Require(ct); }
+        finally { Array.Clear(samples); }
+        return Task.CompletedTask;
+    }
+    public async Task<VoiceCreationQuote> PrepareCreationAsync(string recordId, string name, CancellationToken ct)
+    {
+        Require(ct);
+        var quote = await enrollment.PrepareAsync(recordId, name, training, Enabled, ct).ConfigureAwait(false);
+        return new(VoiceLabCostPresentation.Kind(quote.Estimate.ToCostEstimate(), false, "ElevenLabs"), quote);
+    }
+    public bool QuoteIsFresh(VoiceCreationQuote quote) => quote.Ticket is VoiceLabPreparedAction action && client.QuotesAreFresh([action]);
+    public async Task<VoiceConsentRecord> CreateAsync(VoiceCreationQuote quote, CancellationToken ct)
+    {
+        Require(ct);
+        if (!QuoteIsFresh(quote)) throw new VoiceCreationExpiredException();
+        var subscription = await client.DiscoverSubscriptionAsync(ct).ConfigureAwait(false);
+        Require(ct);
+        if (!subscription.CanClone) throw new VoiceLabException(VoiceLabErrorKind.PlanUnavailable);
+        if (subscription.VoiceSlotsUsed >= subscription.VoiceLimit) throw new VoiceLabException(VoiceLabErrorKind.NoVoiceSlots);
+        if (!QuoteIsFresh(quote)) throw new VoiceCreationExpiredException();
+        return await enrollment.CreateAsync((VoiceLabPreparedAction)quote.Ticket, true, Enabled, typeof(VoiceStatementBackend).Assembly.GetName().Version?.ToString() ?? "0.1.0", ct).ConfigureAwait(false);
+    }
+    public async Task SaveCreationRecordAsync(VoiceConsentRecord record, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested(); store.Save(record);
+        var reconciler = new VoiceOperationReconciler(store, _ => client, clock);
+        foreach (var operation in store.Operations().Where(operation => operation.RecordId == record.RecordId && !operation.Finished))
+            await reconciler.ReconcileAsync(operation.Id, true, ct).ConfigureAwait(false);
+    }
+    public void Dispose() { training = []; client.Dispose(); transcriber.Dispose(); }
 }
 
 internal sealed class VoiceStatementCapture(VoiceMicrophoneRecorder recorder) : IVoiceStatementCapture
 {
     public Task StartAsync(CancellationToken ct) => recorder.StartAsync(30, ct);
+    public Task StartTrainingAsync(CancellationToken ct) => recorder.StartAsync(90, ct);
     public Task Completion => recorder.Completion;
     public MicrophoneSnapshot Snapshot => recorder.Snapshot();
     public MicrophoneTake Stop() => recorder.Stop();

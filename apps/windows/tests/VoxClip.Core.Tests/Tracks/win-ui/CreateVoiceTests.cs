@@ -223,16 +223,18 @@ public sealed class CreateVoiceTests
         await work; setup.AssertNoStatement(); Assert.False(setup.Session.Recording);
     }
 
-    [Fact]
-    public async Task FailedVerifyKeepsCleanupWarningAndVetoesLeaving()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedVerifyKeepsCleanupWarningAndVetoesLeaving(bool rateLimited)
     {
-        await using var setup = new ConsentSetup { Mismatch = true };
+        await using var setup = new ConsentSetup { Mismatch = !rateLimited, ForceTooMany = rateLimited };
         await setup.TakeAsync();
         setup.FailDeletion = true;
         Assert.True(setup.Session.RequestVerification());
         await setup.Session.ApproveVerificationAsync(true);
         Assert.StartsWith("The statement recording could not be removed.", setup.Session.Message);
-        Assert.Contains("That didn't match the statement.", setup.Session.Message);
+        Assert.Contains(rateLimited ? "Three attempts are allowed per 10 minutes." : "That didn't match the statement.", setup.Session.Message);
         Assert.False(await setup.Session.TryLeaveAsync(VoiceCreationLeaveTrigger.Back, _ => Task.FromResult(true)));
         Assert.True(setup.Session.IsBusyForRestart);
         setup.FailDeletion = false;
@@ -367,10 +369,10 @@ public sealed class CreateVoiceTests
         Assert.True(File.Exists(typecheck), "Build the Release App typecheck before running the Release UI tests.");
         using var stream = File.OpenRead(typecheck); using var pe = new PEReader(stream);
         var metadata = pe.GetMetadataReader();
-        Assert.DoesNotContain(metadata.TypeDefinitions.Select(handle => metadata.GetString(metadata.GetTypeDefinition(handle).Name)), name => name.StartsWith("DebugConsent", StringComparison.Ordinal) || name.StartsWith("DebugAvailableSpeaker", StringComparison.Ordinal));
+        Assert.DoesNotContain(metadata.TypeDefinitions.Select(handle => metadata.GetString(metadata.GetTypeDefinition(handle).Name)), name => name.StartsWith("DebugConsent", StringComparison.Ordinal) || name.StartsWith("DebugAvailableSpeaker", StringComparison.Ordinal) || name.StartsWith("DebugVoice", StringComparison.Ordinal));
         var prefix = string.Join("_", "VOXCLIP", "DEBUG", "");
         Assert.Equal(-1, File.ReadAllBytes(typecheck).AsSpan().IndexOf(Encoding.Unicode.GetBytes(prefix)));
-        foreach (var file in new[] { "Services/DebugConsentScribe.cs", "Services/DebugVoiceLabBackend.cs" })
+        foreach (var file in new[] { "Services/DebugConsentScribe.cs", "Services/DebugVoiceLabBackend.cs", "Services/DebugVoiceCreationBackend.cs" })
         { var source = AppFile(file); Assert.StartsWith("#if DEBUG", source); Assert.EndsWith("#endif", source.TrimEnd()); }
         foreach (var file in new[] { "Services/AppServices.cs", "Controls/CreateVoicePage.cs" })
         {
@@ -379,7 +381,7 @@ public sealed class CreateVoiceTests
             {
                 if (line.Trim() == "#if DEBUG") depth++;
                 if (line.Trim() == "#endif" && depth > 0) depth--;
-                if (line.Contains("VOXCLIP_DEBUG_", StringComparison.Ordinal) || line.Contains("DebugConsent", StringComparison.Ordinal) || line.Contains("DebugAvailableSpeaker", StringComparison.Ordinal))
+                if (line.Contains("VOXCLIP_DEBUG_", StringComparison.Ordinal) || line.Contains("DebugConsent", StringComparison.Ordinal) || line.Contains("DebugAvailableSpeaker", StringComparison.Ordinal) || line.Contains("DebugVoiceCreation", StringComparison.Ordinal))
                     Assert.True(depth > 0, $"DEBUG wiring must be guarded in {file}: {line}");
             }
         }
@@ -392,7 +394,7 @@ public sealed class CreateVoiceTests
         internal readonly ConsentClock Clock = new();
         internal readonly ConsentCapture Capture = new();
         internal readonly CreateVoiceSession Session;
-        internal bool Enabled = true, Speaker = true, Mismatch, FailDeletion;
+        internal bool Enabled = true, Speaker = true, Mismatch, FailDeletion, ForceTooMany;
         internal string? Plan;
         internal int Consents, ScribeCalls;
         internal TaskCompletionSource? HoldScribe;
@@ -402,7 +404,7 @@ public sealed class CreateVoiceTests
             var locations = new DataLocations(root, Path.Combine(root, "settings.json"), Path.Combine(root, "Models"), Path.Combine(root, "cache"), Path.Combine(root, "autosave"), Path.Combine(root, "secrets"), Path.Combine(root, "logs"));
             var backend = new VoiceStatementBackend(locations, new NoKeys(), new QuietLog(), ElevenLabsRegion.Default,
                 () => Enabled, () => Plan, _ => { Consents++; return Task.CompletedTask; }, Clock, () => Speaker, ScribeAsync);
-            Session = new(new DeletionFailureBackend(backend, () => FailDeletion), Capture, Dispatch, Clock);
+            Session = new(new DeletionFailureBackend(backend, () => FailDeletion, () => ForceTooMany), Capture, Dispatch, Clock);
         }
         internal void Inputs() => Session.SetInputs("Example", "en", true, true, true);
         internal Task WhenRecording()
@@ -445,7 +447,7 @@ public sealed class CreateVoiceTests
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     }
-    private sealed class DeletionFailureBackend(IVoiceStatementBackend inner, Func<bool> fail) : IVoiceStatementBackend
+    private sealed class DeletionFailureBackend(IVoiceStatementBackend inner, Func<bool> fail, Func<bool> tooMany) : IVoiceStatementBackend
     {
         public bool Enabled => inner.Enabled;
         public bool SpeakerAvailable => inner.SpeakerAvailable;
@@ -453,12 +455,13 @@ public sealed class CreateVoiceTests
         public string VerificationCost => inner.VerificationCost;
         public VoiceConsentStatement Statement(string name, string language, DateOnly date) => inner.Statement(name, language, date);
         public Task SaveStatementAsync(string recordId, MicrophoneTake take, CancellationToken ct) => inner.SaveStatementAsync(recordId, take, ct);
-        public Task VerifyAsync(string recordId, VoiceConsentStatement statement, VoiceConsentAttestations attestations, CancellationToken ct) => inner.VerifyAsync(recordId, statement, attestations, ct);
+        public Task VerifyAsync(string recordId, VoiceConsentStatement statement, VoiceConsentAttestations attestations, CancellationToken ct) => tooMany() ? Task.FromException(new VoiceConsentException(VoiceConsentError.TooManyAttempts)) : inner.VerifyAsync(recordId, statement, attestations, ct);
         public Task AbandonAsync(string recordId) => fail() ? Task.FromException(new IOException("injected deletion failure")) : inner.AbandonAsync(recordId);
         public void Dispose() => inner.Dispose();
     }
     private sealed class ConsentCapture : IVoiceStatementCapture
     {
+        public Task StartTrainingAsync(CancellationToken ct) => StartAsync(ct);
         private TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private bool recording;
         private MicrophoneTake? take;
