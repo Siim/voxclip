@@ -157,7 +157,8 @@ public sealed class SharedContractTests
             Assert.Equal(new PixelSize(expected["size"]![0]!.GetValue<int>(), expected["size"]![1]!.GetValue<int>()), output.Size);
             Assert.Equal(expected["fps"]!.GetValue<double>(), output.FrameRate);
             Assert.Equal(expected["videoBitrate"]!.GetValue<long>(), output.VideoBitrate);
-            var crop = ExportPresets.CenterCrop(source, output.Size);
+            Assert.Equal(aspect == ExportAspect.Source, output.PreserveSource);
+            var crop = ExportPresets.CenterCrop(source, output.Size, output.PreserveSource);
             var actual = new[] { crop.X, crop.Y, crop.Width, crop.Height };
             for (var index = 0; index < actual.Length; index++)
                 Assert.True(Math.Abs(actual[index] - expected["crop"]![index]!.GetValue<double>()) < 1e-9,
@@ -168,9 +169,26 @@ public sealed class SharedContractTests
     [Fact]
     public void CenterCropKeepsAWholeSourceThatRoundsToTheOutputAspect()
     {
-        Assert.Equal(new RectD(0, 0, 853, 480), ExportPresets.CenterCrop(new(853, 480), ExportPresets.OutputSize(new(853, 480), ExportAspect.Source)));
-        Assert.Equal(new RectD(0, 0, 2560, 1441), ExportPresets.CenterCrop(new(2560, 1441), new(1920, 1080)));
+        Assert.Equal(new RectD(0, 0, 853, 480), ExportPresets.CenterCrop(new(853, 480), ExportPresets.OutputSize(new(853, 480), ExportAspect.Source), preserveSource: true));
+        Assert.Equal(new RectD(0, 0, 2560, 1441), ExportPresets.CenterCrop(new(2560, 1441), new(1920, 1080), preserveSource: true));
         Assert.Equal(new RectD(656.25, 0, 607.5, 1080), ExportPresets.CenterCrop(new(1920, 1080), new(1080, 1920)));
+    }
+
+    [Theory]
+    [InlineData(2560, 1441, 1920, 1080, 0, 0.5, 2560, 1440)]
+    [InlineData(2561, 1440, 1920, 1080, 0.5, 0, 2560, 1440)]
+    [InlineData(1441, 2560, 1080, 1920, 0.5, 0, 1440, 2560)]
+    [InlineData(1440, 2561, 1080, 1920, 0, 0.5, 1440, 2560)]
+    [InlineData(1081, 1080, 1080, 1080, 0.5, 0, 1080, 1080)]
+    [InlineData(1080, 1081, 1080, 1080, 0, 0.5, 1080, 1080)]
+    public void FixedAspectNeverUsesTheSourceRoundingTolerance(int width, int height, int outputWidth, int outputHeight,
+        double left, double top, double cropWidth, double cropHeight)
+    {
+        var actual = ExportPresets.CenterCrop(new(width, height), new(outputWidth, outputHeight));
+        Assert.Equal(left, actual.X, 9);
+        Assert.Equal(top, actual.Y, 9);
+        Assert.Equal(cropWidth, actual.Width, 9);
+        Assert.Equal(cropHeight, actual.Height, 9);
     }
 }
 

@@ -15,6 +15,6 @@ internal static class CaptionGalleryFrames
         const int width = 480;
         var height = Math.Max(1, (int)Math.Round(width * (double)output.Height / output.Width));
         return await CurrentFrames.ReadAsync(mediaPath, Math.Clamp(time, 0, Math.Max(0, project.Media.Source.DurationSeconds - 0.05)),
-            video.RotationDegrees, new(width, height), output, ct).ConfigureAwait(false);
+            video.RotationDegrees, new(width, height), output, ct, project.Export.Aspect == ExportAspect.Source).ConfigureAwait(false);
     }
 }

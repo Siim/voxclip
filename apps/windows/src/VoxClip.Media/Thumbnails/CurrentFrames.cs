@@ -9,17 +9,17 @@ namespace VoxClip.Media.Thumbnails;
 public static class CurrentFrames
 {
     /// <summary>Decode one frame without the poster-selection black-frame heuristic.</summary>
-    public static Task<PixelBuffer> ReadAsync(string mediaPath, double time, int rotation, PixelSize output, PixelSize exportFrame, CancellationToken ct) =>
+    public static Task<PixelBuffer> ReadAsync(string mediaPath, double time, int rotation, PixelSize output, PixelSize exportFrame, CancellationToken ct, bool preserveSource = false) =>
         MediaThread.Run("vc-current-frame", () =>
         {
             FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult();
             using var decoder = new VideoDecoder(mediaPath, hardware: false);
             var frame = decoder.ReadAt(time, false, ct);
-            return Transform(frame, rotation, output, exportFrame);
+            return Transform(frame, rotation, output, exportFrame, preserveSource);
         }, ct);
 
     /// <summary>Orient and centre-crop using the preview/export source rectangle.</summary>
-    public static unsafe PixelBuffer Transform(PixelBuffer frame, int rotation, PixelSize output, PixelSize? exportFrame = null)
+    public static unsafe PixelBuffer Transform(PixelBuffer frame, int rotation, PixelSize output, PixelSize? exportFrame = null, bool preserveSource = false)
     {
         rotation = ((rotation % 360) + 360) % 360;
         var quarter = rotation is 90 or 270;
@@ -35,7 +35,7 @@ public static class CurrentFrames
             canvas.RotateDegrees(rotation);
             canvas.DrawImage(source, -frame.Width / 2f, -frame.Height / 2f);
         }
-        var crop = ExportPresets.CenterCrop(new(orientedWidth, orientedHeight), exportFrame ?? output);
+        var crop = ExportPresets.CenterCrop(new(orientedWidth, orientedHeight), exportFrame ?? output, preserveSource);
         var left = (int)Math.Floor(crop.X); var top = (int)Math.Floor(crop.Y);
         var width = Math.Clamp((int)Math.Round(crop.Width), 1, orientedWidth - left);
         var height = Math.Clamp((int)Math.Round(crop.Height), 1, orientedHeight - top);

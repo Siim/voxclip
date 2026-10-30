@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-10-30 — sol-mac-polish r2 — Source-only crop rounding
+
+- CenterCrop now defaults to exact fixed-aspect cropping. Only the selected Source aspect sets OutputSpec.PreserveSource; FrameComposer consumes that captured flag, and current-frame/gallery reads forward the explicit Source selection. The only Windows App change is the required one-line flag plumbing in CaptionGalleryFrames, not UI redesign or consent code.
+- Six regressions near both sides of 16:9, 9:16 and 1:1 fail before the fix; 2560×1441 to fixed 1920×1080 again crops (0, 0.5, 2560, 1440). Source explicitly preserves the whole frame, and all 15 shared export presets remain the oracle.
+
 ### 2026-10-30 — sol-mac-polish — shared fixture parity gaps
 
 - Replay the new hand-derived SRT fixture against the existing portable Windows writer without changing Windows Media production code. Both Mac writers now match its final blank LF line; empty tracks stay empty.
