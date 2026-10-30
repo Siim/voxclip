@@ -75,7 +75,8 @@ internal sealed class CaptionsPanel : UserControl
                 if (gallery.ContainerFromItem(selected) is Control target &&
                     !Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(target).IsOffscreen()) return target;
             }
-            return enabled;
+            if (enabled.IsEnabled) return enabled;
+            return Microsoft.UI.Xaml.Input.FocusManager.FindFirstFocusableElement(fineTuneViewport) as Control ?? fineTune;
         }
     }
     private sealed class Tile(CaptionStyle style) : INotifyPropertyChanged
@@ -580,6 +581,17 @@ internal sealed class CaptionsPanel : UserControl
         try
         {
             await Inspect("captions");
+            var readOnly = model.IsReadOnly;
+            try
+            {
+                model.SetMediaUnavailable(true);
+                UpdateLayout();
+                var target = FocusTarget;
+                if (!target.IsEnabled || !target.Focus(FocusState.Programmatic) ||
+                    Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(target).IsOffscreen())
+                    throw new InvalidOperationException("Read-only Captions has no enabled, visible F6 focus target.");
+            }
+            finally { model.SetMediaUnavailable(readOnly); }
             model.SetCaptionStyle("karaoke");
             fineTune.IsExpanded = true;
             await Inspect("fine-tune");

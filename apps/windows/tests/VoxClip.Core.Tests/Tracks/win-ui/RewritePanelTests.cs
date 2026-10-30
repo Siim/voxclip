@@ -34,7 +34,9 @@ public sealed class RewritePanelTests
         Assert.Contains("gallery.ScrollIntoView(selected, ScrollIntoViewAlignment.Leading);", panel);
         Assert.Contains("gallery.ContainerFromItem(selected) is Control target", panel);
         Assert.Contains("CreatePeerForElement(target).IsOffscreen()", panel);
-        Assert.Contains("return enabled;", panel);
+        Assert.Contains("if (enabled.IsEnabled) return enabled;", panel);
+        Assert.Contains("FocusManager.FindFirstFocusableElement(fineTuneViewport)", panel);
+        Assert.Contains("Read-only Captions has no enabled, visible F6 focus target.", panel);
     }
 
     [Fact]
