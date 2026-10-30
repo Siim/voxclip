@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W8 intent-only recovery
+
+An intent proves a planned name, not exclusive creation. With a dead/reused owner and no valid identity receipt, recovery only attempts `rmdir` (`unlinkat` with `AT_REMOVEDIR`) on the canonical real directory pinned with `O_NOFOLLOW`; it never unlinks entries. A non-empty intent-only directory, including one containing only an incomplete `.operation.json` or VoxClip-named partials, and its intent are retained with a redacted warning. An absent directory drops the intent. Identity-bearing receipts retain the existing descriptor-confined cleanup protocol.
+
 ### 2026-10-30 — sol-mac-voicelab — W8 automatic replacement quotes
 
 This supersedes W7's unpriced preparation click. On run completion and voice/model/text/consent changes, prepare a fresh immutable whole-three-take quote automatically, using local pricing and free discovery only. Keep the previous rows, selection and scratch/audition leases until an approved replacement actually starts. While preparing, both Generate Again and Try Another have plain disabled titles; once ready, both show the known estimate before the click, including estimates that need confirmation. One click executes a known below-S14 quote or opens confirmation otherwise. Declining approval preserves rows and selection. Preparation errors remain inline with an enabled Retry that prepares only; it never dispatches a paid request. Changed inputs invalidate approval and acceptance of old takes, synchronously invalidate the run's dispatch revision, and cancel the old run without destroying audition leases. `cancel(keepingTakes: true)` preserves these leases; normal cancel/session end still invalidates them.

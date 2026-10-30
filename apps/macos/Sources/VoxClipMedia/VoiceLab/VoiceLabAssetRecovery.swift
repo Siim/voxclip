@@ -164,7 +164,7 @@ enum VoiceLabAssetRecovery {
     }
 
     private static func recoverIntents(_ parent: Int32, status: (Int32) -> OwnerStatus,
-                                       afterOpening: ((String) throws -> Void)?) throws -> Int {
+                                       afterOpening: ((String) throws -> Void)?, reportRetained: (LogEntry) -> Void) throws -> Int {
         var removed = 0
         for journal in try names(parent) {
             guard journal.hasPrefix(".voxclip-op-"), journal.hasSuffix(".intent.json"),
@@ -197,9 +197,16 @@ enum VoiceLabAssetRecovery {
                       receipt.identity?.matches(opened, type: S_IFDIR) == true else { continue }
                 record = receipt
             } else {
-                let entries = try names(directory)
-                guard entries.allSatisfy({ $0 == ".operation.json" }) else { continue }
-                record = DirectoryRecord(name: intent.name, owner: intent.owner, identity: identity)
+                try afterOpening?(intent.name)
+                guard fstatat(parent, intent.name, &pathInfo, AT_SYMLINK_NOFOLLOW) == 0,
+                      identity.matches(pathInfo, type: S_IFDIR) else { continue }
+                if unlinkat(parent, intent.name, AT_REMOVEDIR) == 0 {
+                    removeIntent(parent, name: intent.name, identity: Identity(journalInfo)); removed += 1
+                } else if errno == ENOTEMPTY || errno == EEXIST {
+                    reportRetained(LogEntry(level: .warn, category: "voice-lab",
+                        message: "Kept a non-empty Voice Lab operation directory without an ownership receipt."))
+                }
+                continue
             }
             try afterOpening?(intent.name)
             if try clear(directory, parent: parent, record: record) {
@@ -303,14 +310,15 @@ enum VoiceLabAssetRecovery {
         return result
     }
     static func recover(_ root: Int32, status: (Int32) -> OwnerStatus = ownerStatus,
-                        afterOpening: ((String) throws -> Void)? = nil) throws -> Int {
+                        afterOpening: ((String) throws -> Void)? = nil,
+                        reportRetained: (LogEntry) -> Void = logRetention) throws -> Int {
         var removed = 0
         for project in try names(root) {
             guard (try? VoiceLabAssetNaming.file(projectId: project, assetId: "probe", extension: "wav")) != nil else { continue }
             let directory = openat(root, project, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
             guard directory >= 0 else { continue }
             defer { close(directory) }
-            removed += try recoverIntents(directory, status: status, afterOpening: afterOpening)
+            removed += try recoverIntents(directory, status: status, afterOpening: afterOpening, reportRetained: reportRetained)
             for name in try names(directory) {
                 guard name.hasPrefix(".voxclip-operation-"),
                       let uuid = UUID(uuidString: String(name.dropFirst(".voxclip-operation-".count))),
@@ -333,5 +341,9 @@ enum VoiceLabAssetRecovery {
             guard VoiceLabPaidRoot.fullSync(directory) else { throw VoiceLabAssetStoreError.unwritable(project) }
         }
         return removed
+    }
+    private static func logRetention(_ entry: LogEntry) {
+        let logger = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path)
+        Task { await logger.write(entry) }
     }
 }

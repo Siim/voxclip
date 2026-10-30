@@ -487,9 +487,32 @@ extension HeavyMediaTests {
             #expect(mkdirat(parent, name, 0o700) == 0)
             if point == "during-identity" { try Data("{incomplete".utf8).write(to: project.appendingPathComponent(name).appendingPathComponent(".operation.json")) }
         }
-        #expect(try VoiceLabAssetRecovery.recover(rootFD, status: { _ in .gone }) == (point == "before-mkdir" ? 0 : 1))
-        #expect(try FileManager.default.contentsOfDirectory(atPath: project.path).isEmpty)
+        var logs: [LogEntry] = []
+        #expect(try VoiceLabAssetRecovery.recover(rootFD, status: { _ in .gone }, reportRetained: { logs.append($0) }) == (point == "after-mkdir" ? 1 : 0))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: project.path).isEmpty == (point != "during-identity"))
+        #expect(logs.count == (point == "during-identity" ? 1 : 0))
         #expect(try VoiceLabAssetRecovery.recover(rootFD, status: { _ in .gone }) == 0)
+    }
+    @Test(arguments: [".operation.json", ".voxclip-audio.partial", "user.txt"])
+    func intentOnlyRecoveryNeverEmptiesAnExistingDirectory(entry: String) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let project = root.appendingPathComponent(projectId)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rootFD = try VoiceLabPaidRoot.open(root), parent = Darwin.open(project.path, O_RDONLY | O_DIRECTORY)
+        defer { Darwin.close(parent); Darwin.close(rootFD) }
+        let name = "op-\(UUID().uuidString.lowercased())"
+        let intent = VoiceLabAssetRecovery.DirectoryRecord(name: name, owner: .init(pid: 123, seconds: 100, microseconds: 0), identity: nil)
+        _ = try VoiceLabAssetRecovery.writeRecord(intent, directory: parent, filename: VoiceLabAssetRecovery.intentName(name))
+        #expect(mkdirat(parent, name, 0o700) == 0)
+        let file = project.appendingPathComponent(name).appendingPathComponent(entry)
+        let bytes = Data("not ownership proof".utf8)
+        try bytes.write(to: file)
+        var logs: [LogEntry] = []
+        #expect(try VoiceLabAssetRecovery.recover(rootFD, status: { _ in .gone }, reportRetained: { logs.append($0) }) == 0)
+        #expect(try Data(contentsOf: file) == bytes)
+        #expect(FileManager.default.fileExists(atPath: project.appendingPathComponent(VoiceLabAssetRecovery.intentName(name)).path))
+        #expect(logs.count == 1 && logs.first?.level == .warn && logs.first?.message.contains("without an ownership receipt") == true)
     }
     @Test(arguments: ["intent", "directory"])
     func initializationFailureImmediatelyRemovesItsOwnedDirectory(point: String) throws {
