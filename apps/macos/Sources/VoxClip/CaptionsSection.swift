@@ -192,14 +192,20 @@ private extension VerticalAlignment {
             .coordinateSpace(name: CaptionGallerySpace.content)
     }
     private var galleryGrid: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(CaptionStyleGroup.allCases, id: \.self) { group in
                 let styles = model.app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
                 if !styles.isEmpty {
-                    Section { ForEach(styles, id: \.id) { style in styleTile(style).id(CaptionGalleryTarget.tile(style.id)) } } header: {
-                        Text(group.rawValue).font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary")).padding(.top, 2)
-                            .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .named(CaptionGallerySpace.content)) } action: { galleryHeaders[group] = $0 }
-                            .id(CaptionGalleryTarget.header(group)).columnLayoutEvidence("caption.group.\(group.rawValue)")
+                    Text(group.rawValue).font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary")).padding(.top, 2)
+                        .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .named(CaptionGallerySpace.content)) } action: { galleryHeaders[group] = $0 }
+                        .id(CaptionGalleryTarget.header(group)).columnLayoutEvidence("caption.group.\(group.rawValue)")
+                    ForEach(Array(stride(from: 0, to: styles.count, by: 2)), id: \.self) { index in
+                        HStack(alignment: .top, spacing: 8) {
+                            styleTile(styles[index]).frame(maxWidth: .infinity).id(CaptionGalleryTarget.tile(styles[index].id))
+                            if index + 1 < styles.count {
+                                styleTile(styles[index + 1]).frame(maxWidth: .infinity).id(CaptionGalleryTarget.tile(styles[index + 1].id))
+                            } else { Color.clear.frame(maxWidth: .infinity).accessibilityHidden(true) }
+                        }
                     }
                 }
             }
