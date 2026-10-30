@@ -14,8 +14,11 @@ internal sealed record VoiceLabCapInput(decimal? Amount, string? Canonical, stri
 internal static class VoiceLabSettingsState
 {
     internal static bool PaneVisible => true;
-    internal static VoiceLabTurnOn TurnOn(bool accepted) => new(!accepted,
-        [new("voiceLab.betaNoticeAccepted", true), new("voiceLab.enabled", true)]);
+    /// <summary>Acceptance is written only when the notice is shown and confirmed. A development build's unset notice reads as
+    /// accepted (doc/spec/voice-lab.md §5); turning Voice Lab back on there must not save that as the user's acceptance.</summary>
+    internal static VoiceLabTurnOn TurnOn(bool accepted) => accepted
+        ? new(false, [new("voiceLab.enabled", true)])
+        : new(true, [new("voiceLab.betaNoticeAccepted", true), new("voiceLab.enabled", true)]);
     internal static IReadOnlyList<VoiceLabLabelChoice> LabelChoices { get; } = Array.AsReadOnly<VoiceLabLabelChoice>(
         [new("top-right", "Top right"), new("top-left", "Top left"), new("bottom-right", "Bottom right"), new("bottom-left", "Bottom left")]);
     internal static VoiceLabLabelPosition LabelPosition(string? value) => value switch

@@ -26,9 +26,9 @@ internal sealed class AppServices : IAsyncDisposable
     internal ILog Log { get; }
     internal SecretStore Keys { get; }
     internal IProjectStore Projects { get; } = new ProjectStore();
-    /// <summary>The user's settings file. A development build reads an unset Voice Lab switch and beta notice as on and never saves
-    /// that overlay; an explicit value wins (doc/spec/voice-lab.md §5).</summary>
-    internal ISettingsStore SettingsStore { get; } = new SettingsStore { UnsetDefaults = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.InternalBuild) };
+    /// <summary>The user's settings file. A development build outside the harness reads an unset Voice Lab switch and beta notice as
+    /// on and never saves that overlay; an explicit value wins (doc/spec/voice-lab.md §5).</summary>
+    internal ISettingsStore SettingsStore { get; } = new SettingsStore { UnsetDefaults = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.DevelopmentDefaults(Program.Arguments)) };
     internal AppSettings Settings => settingsWrites.Current;
     internal IMediaProbe Probe { get; } = new FfmpegMediaProbe();
     internal IAudioExtractor Audio { get; } = new FfmpegAudioExtractor();

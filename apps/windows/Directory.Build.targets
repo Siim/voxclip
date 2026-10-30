@@ -3,7 +3,8 @@
        (doc/spec/voice-lab.md section 5). Debug is a development build by default; a Release-config test copy opts in with
        -p:VoxClipDevelopmentBuild=true. Release pipelines never set it. -->
   <PropertyGroup>
-    <!-- Only -p: sets it. MSBuild would otherwise read an environment variable of the same name. -->
+    <!-- Only -p: sets it. MSBuild would otherwise read an environment variable of the same name. The lookup ignores letter case on
+         Windows, where release builds run, and matches the exact name on macOS and Linux. -->
     <VoxClipDevelopmentBuild Condition="'$([System.Environment]::GetEnvironmentVariable(`VoxClipDevelopmentBuild`))' != ''"></VoxClipDevelopmentBuild>
     <VoxClipDevelopmentBuild Condition="'$(VoxClipDevelopmentBuild)' == '' and '$(Configuration)' == 'Debug'">true</VoxClipDevelopmentBuild>
     <DefineConstants Condition="'$(VoxClipDevelopmentBuild)' == 'true'">$(DefineConstants);VOXCLIP_DEVELOPMENT</DefineConstants>

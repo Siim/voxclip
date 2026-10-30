@@ -246,7 +246,8 @@ public sealed class VoiceLabSettingsTests
             var turnOn = VoiceLabSettingsState.TurnOn(accepted);
             Assert.Equal(!accepted, turnOn.ShowNotice);
             foreach (var write in turnOn.WritesAfterNotice(true)) await queue.SetAsync(write.Key, write.Value, ct);
-            Assert.Equal(new[] { "voiceLab.betaNoticeAccepted", "voiceLab.enabled" }, writes);
+            // Acceptance is written only after the notice; an already accepted notice is left as stored.
+            Assert.Equal(accepted ? new[] { "voiceLab.enabled" } : new[] { "voiceLab.betaNoticeAccepted", "voiceLab.enabled" }, writes);
             await queue.FlushAsync(ct);
             var saved = await new SettingsStore(path).LoadAsync(ct);
             Assert.True(saved.GetBool("voiceLab.betaNoticeAccepted")); Assert.True(saved.GetBool("voiceLab.enabled"));
@@ -259,8 +260,8 @@ public sealed class VoiceLabSettingsTests
     {
         var directory = Path.Combine(Path.GetTempPath(), "voxclip-voice-lab-development-" + Guid.NewGuid().ToString("N"));
         var path = Path.Combine(directory, "settings.json");
-        // The App's own store (AppServices) passes exactly this overlay.
-        var overlay = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.InternalBuild);
+        // The App's own store (AppServices) passes exactly this overlay for an ordinary launch.
+        var overlay = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.DevelopmentDefaults([]));
         var store = new SettingsStore(path) { UnsetDefaults = overlay };
         var queue = new SettingsWriteQueue(store);
         var ct = TestContext.Current.CancellationToken;
@@ -288,8 +289,44 @@ public sealed class VoiceLabSettingsTests
             Assert.False(reopened.GetBool("voiceLab.enabled"));
             Assert.Equal(development, reopened.GetBool("voiceLab.betaNoticeAccepted"));
             Assert.False(RewriteEntryPolicy.Available(reopened.GetBool("voiceLab.enabled") == true, reopened.GetBool("voiceLab.betaNoticeAccepted") == true));
+            // Turning it back on as VoiceLabDialogs.TurnOnAsync does: a development build skips the notice and never saves the overlay's
+            // acceptance, so a later Release build on the same data root still shows the notice.
+            var turnOn = VoiceLabSettingsState.TurnOn(queue.Current.GetBool("voiceLab.betaNoticeAccepted") == true);
+            Assert.Equal(!development, turnOn.ShowNotice);
+            foreach (var write in turnOn.WritesAfterNotice(true)) await queue.SetAsync(write.Key, write.Value, ct);
+            await queue.FlushAsync(ct);
+            Assert.Equal(development ? new[] { "general.appearance", "schema", "voiceLab.enabled" }
+                : new[] { "general.appearance", "schema", "voiceLab.betaNoticeAccepted", "voiceLab.enabled" }, Written(path));
+            Assert.True(queue.Current.GetBool("voiceLab.enabled"));
+            var shipped = await new SettingsStore(path).LoadAsync(ct);
+            Assert.True(shipped.GetBool("voiceLab.enabled"));
+            Assert.Equal(!development, shipped.GetBool("voiceLab.betaNoticeAccepted"));
         }
         finally { await queue.FlushAsync(ct); if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+#if DEBUG
+    private static readonly bool DebugBuild = true;
+#else
+    private static readonly bool DebugBuild = false;
+#endif
+
+    [Theory]
+    [InlineData(new string[0], false, false)]
+    [InlineData(new[] { @"C:\Projects\Talk.voxclip" }, false, false)]
+    [InlineData(new[] { "--self-check", "report.json" }, true, false)]
+    [InlineData(new[] { @"C:\Projects\Talk.voxclip", "--self-check", "report.json" }, true, false)]
+    [InlineData(new[] { "--demo-project", "fixture", "--demo-screen", "settings-voicelab", "--self-check", "report.json" }, true, false)]
+    [InlineData(new[] { "--demo-project", "fixture" }, true, true)]
+    [InlineData(new[] { "--screen", "settings-voicelab" }, true, true)]
+    [InlineData(new[] { "--restart-probe", "probe.json" }, true, true)]
+    public void HarnessLaunchesKeepTheShippedOffDefault(string[] arguments, bool harnessOption, bool debugOnly)
+    {
+        // The demo and probe options are DEBUG-only; elsewhere they do nothing and the launch is ordinary.
+        var harness = harnessOption && (!debugOnly || DebugBuild);
+        Assert.Equal(harness, RewriteEntryPolicy.HarnessLaunch(arguments));
+        Assert.Equal(RewriteEntryPolicy.InternalBuild && !harness, RewriteEntryPolicy.DevelopmentDefaults(arguments));
+        if (harness) Assert.Empty(VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.DevelopmentDefaults(arguments)));
     }
 
     [Fact]
@@ -319,7 +356,7 @@ public sealed class VoiceLabSettingsTests
     public void AppServicesPassesTheDevelopmentOverlayOnlyToTheUsersStore()
     {
         var services = AppSource("Services/AppServices.cs");
-        Assert.Contains("new SettingsStore { UnsetDefaults = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.InternalBuild) }", services);
+        Assert.Contains("new SettingsStore { UnsetDefaults = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.DevelopmentDefaults(Program.Arguments)) }", services);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(services, "UnsetDefaults ="));
         Assert.Contains("var next = Current.With(key, JsonSerializer.SerializeToElement(value));", AppSource("Services/SettingsWriteQueue.cs"));
     }

@@ -177,7 +177,8 @@ public sealed class VoiceLabReleaseBoundaryTests
         var policy = ReleaseSource(Source("ViewModels/RewriteEntryPolicy.cs"));
         Assert.Contains("internal static bool InternalBuild => false;", policy);
         Assert.DoesNotContain("InternalBuild => true", policy);
-        Assert.Contains("new SettingsStore { UnsetDefaults = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.InternalBuild) }", ReleaseSource(Source("Services/AppServices.cs")));
+        Assert.Contains("internal static bool DevelopmentDefaults(IReadOnlyList<string> arguments) => InternalBuild && !HarnessLaunch(arguments);", policy);
+        Assert.Contains("new SettingsStore { UnsetDefaults = VoiceLabBeta.DevelopmentDefaults(RewriteEntryPolicy.DevelopmentDefaults(Program.Arguments)) }", ReleaseSource(Source("Services/AppServices.cs")));
         var beta = ReleaseSource(File.ReadAllText(Path.Combine(Root, "apps/windows/src/VoxClip.Core/Domain/VoiceLab/VoiceLabBeta.cs")));
         Assert.Contains("return enabled && betaNoticeAccepted;", beta);
         Assert.DoesNotContain("betaNoticeAccepted || internalBuild", beta);
@@ -219,16 +220,49 @@ public sealed class VoiceLabReleaseBoundaryTests
     [InlineData("Debug", "false", false, false)]
     public async Task OnlyDebugOrAnExplicitPropertyDefinesTheDevelopmentConstant(string configuration, string? property, bool environment, bool expected)
     {
+        string[] arguments = ["src/VoxClip.Core/VoxClip.Core.csproj", "-p:Configuration=" + configuration];
+        if (property is not null) arguments = [.. arguments, "-p:VoxClipDevelopmentBuild=" + property];
+        var constants = await DefineConstants(arguments, environment);
+        Assert.Contains(configuration.ToUpperInvariant(), constants);
+        Assert.Equal(expected, constants.Contains("VOXCLIP_DEVELOPMENT"));
+    }
+
+    [Theory]
+    [InlineData("VoxClip.App", "win-x64", "x64")]
+    [InlineData("VoxClip.App", "win-arm64", "ARM64")]
+    [InlineData("VoxClip.Cli", "win-x64", null)]
+    [InlineData("VoxClip.Cli", "win-arm64", null)]
+    public async Task ReleasePublishOfTheShippedProjectsNeverDefinesTheDevelopmentConstant(string project, string runtime, string? platform)
+    {
+        // vm-release.ps1 publishes each shipped project like this. dotnet publish passes -c, -r and --self-contained to MSBuild as the
+        // properties below and sets _IsPublishing; EnableWindowsTargeting lets the App evaluate off Windows.
+        var release = File.ReadAllText(Path.Combine(Root, "apps/windows/build/vm-release.ps1"));
+        Assert.Contains("@('publish', (Join-Path $windows \"src\\$project\\$project.csproj\"), '-c', 'Release', '-r', $rid, '--self-contained', ", release);
+        Assert.Contains("$arguments += \"-p:Platform=$platform\"", release);
+        string[] arguments = ["src/" + project + "/" + project + ".csproj", "-p:Configuration=Release", "-p:RuntimeIdentifier=" + runtime,
+            "-p:_CommandLineDefinedRuntimeIdentifier=true", "-p:SelfContained=true", "-p:_CommandLineDefinedSelfContained=true",
+            "-p:_IsPublishing=true", "-p:UseSharedCompilation=false", "-p:EnableWindowsTargeting=true"];
+        if (platform is not null) arguments = [.. arguments, "-p:Platform=" + platform];
+        foreach (var environment in new[] { false, true })
+        {
+            var constants = await DefineConstants(arguments, environment);
+            Assert.Contains("RELEASE", constants);
+            Assert.DoesNotContain("DEBUG", constants);
+            Assert.DoesNotContain("VOXCLIP_DEVELOPMENT", constants);
+        }
+    }
+
+    private static async Task<string[]> DefineConstants(IEnumerable<string> arguments, bool environment)
+    {
         var host = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
         var start = new ProcessStartInfo(string.IsNullOrEmpty(host) ? "dotnet" : host)
         {
             UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = Path.Combine(Root, "apps/windows")
         };
-        foreach (var argument in new[] { "msbuild", "src/VoxClip.Core/VoxClip.Core.csproj", "-nologo", "-nodeReuse:false", "-getProperty:DefineConstants", "-p:Configuration=" + configuration })
+        foreach (var argument in new[] { "msbuild", "-nologo", "-nodeReuse:false", "-getProperty:DefineConstants" }.Concat(arguments))
             start.ArgumentList.Add(argument);
-        if (property is not null) start.ArgumentList.Add("-p:VoxClipDevelopmentBuild=" + property);
         start.Environment.Remove("VoxClipDevelopmentBuild");
-        // MSBuild reads environment variables as properties; Directory.Build.targets ignores this one.
+        // MSBuild reads environment variables as properties; Directory.Build.targets ignores this one (by exact name off Windows).
         if (environment) start.Environment["VoxClipDevelopmentBuild"] = "true";
         start.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
         start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
@@ -237,9 +271,7 @@ public sealed class VoiceLabReleaseBoundaryTests
         var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
         await process.WaitForExitAsync(TestContext.Current.CancellationToken);
         Assert.True(process.ExitCode == 0, await error + await output);
-        var constants = (await output).Trim().Split(';', StringSplitOptions.TrimEntries);
-        Assert.Contains(configuration.ToUpperInvariant(), constants);
-        Assert.Equal(expected, constants.Contains("VOXCLIP_DEVELOPMENT"));
+        return (await output).Trim().Split(';', StringSplitOptions.TrimEntries);
     }
 
 #if !DEBUG

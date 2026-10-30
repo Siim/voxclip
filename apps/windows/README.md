@@ -48,7 +48,7 @@ Debug builds are development builds: Voice Lab reads as on until you set the swi
 dotnet publish src/VoxClip.App/VoxClip.App.csproj -c Release -r win-arm64 --self-contained -m:1 -p:VoxClipDevelopmentBuild=true
 ```
 
-Use `-r win-x64` for x64. Only `-p:` sets the property; an environment variable of that name is ignored. Never pass it to a release build. `build/` and CI never do, and `VoiceLabReleaseBoundaryTests` checks this.
+Use `-r win-x64` for x64. Only `-p:` sets the property. On Windows an environment variable of that name is ignored in any letter case; on macOS and Linux only the exact name is ignored. Never pass it to a release build. `build/` and CI never do, and `VoiceLabReleaseBoundaryTests` checks this. Self-checks, demo captures and native probes (`--self-check`, `--demo-project` and the other harness options) keep Voice Lab off unless their settings turn it on.
 
 An explicit value in `settings.json` always wins. Earlier Windows builds wrote every default on the first settings change, so an older test copy's settings may already store `"voiceLab.enabled": false`. Turn Voice Lab on once in Settings, or delete the `voiceLab.enabled` and `voiceLab.betaNoticeAccepted` lines.
 

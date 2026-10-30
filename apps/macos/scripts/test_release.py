@@ -664,7 +664,8 @@ fi
         self.assertIn("guard internalBuild else { return [:] }", gate)
         self.assertNotIn(".define(", (PACKAGE / "Package.swift").read_text())
         script = self.prepare_release()
-        for arguments in (("--release", "--no-upload", "--allow-dirty"), ("--release",)):
+        # Every mode except the default debug build makes a signed Release build, including --sign-only.
+        for arguments in (("--release", "--no-upload", "--allow-dirty"), ("--release",), ("--sign-only",)):
             with self.subTest(arguments=arguments):
                 self.calls.unlink(missing_ok=True)
                 self.assert_failed(self.run_bundle(script, *arguments), "Mock swift build stopped")

@@ -413,8 +413,9 @@ Release builds always list the Voice Lab pane. Rewrite needs both `voiceLab.enab
 
 Development builds turn Voice Lab on by default, because the app is under active development. While the settings file has no `voiceLab.enabled` or no `voiceLab.betaNoticeAccepted`, a development build reads that key as true. The app never writes this value. A value the user sets, true or false, always wins, so turning Voice Lab off sticks. Development builds also let Rewrite skip the beta notice.
 
-- **macOS.** A development build is a DEBUG build (`./bundle.sh` without `--release`). Only the app's own settings file gets the overlay; harness sessions and injected test stores keep the shipped default.
-- **Windows.** A development build defines `VOXCLIP_DEVELOPMENT`. Debug defines it by default, and a Release-config test copy opts in with `-p:VoxClipDevelopmentBuild=true`. MSBuild ignores an environment variable of that name.
+- **macOS.** A development build is a DEBUG build: `./bundle.sh` with no mode option. `--release` and `--sign-only` make Release builds. Only the app's own settings file gets the overlay; harness sessions and injected test stores keep the shipped default.
+- **Windows.** A development build defines `VOXCLIP_DEVELOPMENT`. Debug defines it by default, and a Release-config test copy opts in with `-p:VoxClipDevelopmentBuild=true`. On Windows, MSBuild ignores an environment variable of that name in any letter case; on macOS and Linux it ignores only the exact name. Self-checks, demo captures and native probes keep the shipped default, and so do test stores.
+- Turning Voice Lab back on in a development build skips the beta notice and writes only `voiceLab.enabled`. Acceptance is written only when the user confirms the notice.
 - Release pipelines never make a development build. Release-boundary tests check this on both platforms.
 
 ---
