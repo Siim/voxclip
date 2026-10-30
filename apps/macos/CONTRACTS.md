@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W8 pre-receipt initialization failure
+
+Immediately after exclusive mkdir, open the operation directory with `O_DIRECTORY | O_NOFOLLOW` and capture its identity with fstat before writing the receipt. An ordinary failure before a durable receipt only attempts rmdir after comparing the open fd and current path identities; it never empties a non-empty directory. A failure after open but before initial identity assignment obtains the identity from that same pinned fd in cleanup. A replacement or non-empty directory and its intent survive. After a complete receipt is journalled, the existing owned-directory cleanup applies. Deterministic `opened` and `directory` fault points cover both pre-receipt stages, plus path replacement and unexpected contents.
+
 ### 2026-10-30 — sol-mac-voicelab — W8 intent-only recovery
 
 An intent proves a planned name, not exclusive creation. With a dead/reused owner and no valid identity receipt, recovery only attempts `rmdir` (`unlinkat` with `AT_REMOVEDIR`) on the canonical real directory pinned with `O_NOFOLLOW`; it never unlinks entries. A non-empty intent-only directory, including one containing only an incomplete `.operation.json` or VoxClip-named partials, and its intent are retained with a redacted warning. An absent directory drops the intent. Identity-bearing receipts retain the existing descriptor-confined cleanup protocol.

@@ -47,6 +47,7 @@ enum VoiceLabAssetRecovery {
             guard parentCopy >= 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
             var directory: Int32 = -1
             var created = false
+            var journalled = false
             var identity: Identity?
             var intent: Identity?
             do {
@@ -56,18 +57,29 @@ enum VoiceLabAssetRecovery {
                 guard mkdirat(parentCopy, name, 0o700) == 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
                 created = true
                 directory = openat(parentCopy, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                guard directory >= 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
+                try checkpoint?("opened")
                 var info = stat()
-                guard directory >= 0, fstat(directory, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
+                guard fstat(directory, &info) == 0, info.st_mode & S_IFMT == S_IFDIR,
                       info.st_uid == getuid(), info.st_mode & 0o777 == 0o700 else { throw VoiceLabAssetStoreError.unsafePath(name) }
                 identity = Identity(info)
                 try checkpoint?("directory")
                 _ = try writeRecord(DirectoryRecord(name: name, owner: current, identity: identity), directory: directory)
+                journalled = true
                 guard VoiceLabPaidRoot.fullSync(parentCopy) else { throw VoiceLabAssetStoreError.unwritable(name) }
             } catch {
-                if let identity {
+                if journalled, let identity {
                     let record = DirectoryRecord(name: name, owner: current, identity: identity)
                     if (try? clear(directory, parent: parentCopy, record: record)) == true, let intent {
                         removeIntent(parentCopy, name: name, identity: intent)
+                    }
+                } else if created, directory >= 0 {
+                    var info = stat()
+                    if fstat(directory, &info) == 0 {
+                        let captured = identity ?? Identity(info)
+                        if removeEmptyDirectory(directory, parent: parentCopy, name: name, identity: captured), let intent {
+                            removeIntent(parentCopy, name: name, identity: intent)
+                        }
                     }
                 } else if !created, let intent { removeIntent(parentCopy, name: name, identity: intent) }
                 if directory >= 0 { close(directory) }
@@ -161,6 +173,13 @@ enum VoiceLabAssetRecovery {
             _ = unlinkat(parent, journal, 0)
             _ = VoiceLabPaidRoot.fullSync(parent)
         }
+    }
+    private static func removeEmptyDirectory(_ descriptor: Int32, parent: Int32, name: String, identity: Identity) -> Bool {
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, identity.matches(info, type: S_IFDIR), info.st_mode & 0o777 == 0o700,
+              fstatat(parent, name, &info, AT_SYMLINK_NOFOLLOW) == 0, identity.matches(info, type: S_IFDIR),
+              unlinkat(parent, name, AT_REMOVEDIR) == 0 else { return false }
+        return VoiceLabPaidRoot.fullSync(parent)
     }
 
     private static func recoverIntents(_ parent: Int32, status: (Int32) -> OwnerStatus,

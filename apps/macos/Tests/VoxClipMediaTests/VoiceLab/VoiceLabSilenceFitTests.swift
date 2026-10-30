@@ -514,7 +514,7 @@ extension HeavyMediaTests {
         #expect(FileManager.default.fileExists(atPath: project.appendingPathComponent(VoiceLabAssetRecovery.intentName(name)).path))
         #expect(logs.count == 1 && logs.first?.level == .warn && logs.first?.message.contains("without an ownership receipt") == true)
     }
-    @Test(arguments: ["intent", "directory"])
+    @Test(arguments: ["intent", "opened", "directory"])
     func initializationFailureImmediatelyRemovesItsOwnedDirectory(point: String) throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
@@ -527,6 +527,33 @@ extension HeavyMediaTests {
             })
         }
         #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+    }
+    @Test(arguments: ["opened", "directory"], [false, true])
+    func preJournalFailurePreservesReplacementOrNonemptyDirectory(point: String, replace: Bool) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let parent = Darwin.open(root.path, O_RDONLY | O_DIRECTORY)
+        defer { Darwin.close(parent) }
+        var retained: URL?
+        #expect(throws: VoiceLabAssetStoreError.self) {
+            _ = try VoiceLabAssetRecovery.Operation(parent: parent, checkpoint: { stage in
+                guard stage == point else { return }
+                let names = try FileManager.default.contentsOfDirectory(atPath: root.path)
+                let name = try #require(names.first(where: { $0.hasPrefix("op-") }))
+                let directory = root.appendingPathComponent(name)
+                if replace {
+                    try FileManager.default.moveItem(at: directory, to: root.appendingPathComponent("detached"))
+                    #expect(mkdirat(parent, name, 0o700) == 0)
+                }
+                let file = directory.appendingPathComponent("user.txt")
+                try Data("keep".utf8).write(to: file)
+                retained = file
+                throw VoiceLabAssetStoreError.unwritable("injected")
+            })
+        }
+        #expect(try Data(contentsOf: #require(retained)) == Data("keep".utf8))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).contains(where: { $0.hasSuffix(".intent.json") }))
     }
     @Test(arguments: ["live", "unknown", "symlink", "foreign-entry", "noncanonical-name", "reused-pid"])
     func identitylessIntentRecoveryRequiresDeadOwnerAndStrictDirectory(scenario: String) throws {
