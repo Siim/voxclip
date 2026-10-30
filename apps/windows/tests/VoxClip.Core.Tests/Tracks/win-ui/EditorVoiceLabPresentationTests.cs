@@ -8,6 +8,26 @@ namespace VoxClip.Ui.Tests;
 
 public sealed class EditorVoiceLabPresentationTests
 {
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ReplacementAccessibilityReportsPlaybackAnywhereInItsSourceSpan(int position)
+    {
+        var project = Fixture("passage-render-v3");
+        var editor = new EditorViewModel(project);
+        var segment = project.VoiceLab.Segments.First(segment => segment.Enabled);
+        var first = editor.Index(segment.Replace.FirstWordId);
+        var last = editor.Index(segment.Replace.LastWordId);
+        var covered = position == 0 ? first : position == 1 ? (first + last) / 2 : last;
+        editor.SourceTime = (editor.Words[covered].Start + editor.Words[covered].End) / 2;
+        var words = string.Join(" ", segment.Words!.Select(word => word.Text));
+        Assert.Equal(words + ", playing, AI modified", editor.AccessibleWord(first));
+        Assert.DoesNotContain(", cut", editor.AccessibleWord(covered));
+        editor.SourceTime = editor.Words[last].End;
+        Assert.Equal(words + ", AI modified", editor.AccessibleWord(first));
+    }
+
     private static string Shared => Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
     private static Project Fixture(string name) => ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(Shared, "fixtures", "voice-lab", name + ".voxclip")));
     private static string Source(string file) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!, "apps/windows/src/VoxClip.App", file));

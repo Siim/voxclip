@@ -527,7 +527,13 @@ public sealed class EditorViewModel : ObservableObject
             + (!speech.AiModified && EditingAlgorithms.IsFillerText(DisplayText(word)) ? ", filler" : "")
             + (!speech.AiModified && showLowConfidence && word.Conf is < 0.6 ? ", low confidence" : "")
             + (!speech.AiModified && state?.Corrections.ContainsKey(word.Id) == true ? ", corrected, heard as: " + word.Text : "")
+            + (speech.AiModified && SourceTime >= Words[IndexOfSpeechStart(index)].Start && SourceTime < Words[speech.LastSourceIndex].End ? ", playing" : "")
             + (speech.AiModified ? ", AI modified" : "");
+    }
+    private int IndexOfSpeechStart(int index)
+    {
+        while (index > 0 && !PresentedWord(index).Visible) index--;
+        return index;
     }
     public bool CanPreviewCut => HasSelection && CanExport;
     internal TimeRange? PreviewCutRange() => CanPreviewCut
