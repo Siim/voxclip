@@ -14,6 +14,7 @@ internal sealed class RewriteSession : IDisposable
     private readonly VoiceRewriteService service = new(new LlmCatalog());
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? sending;
+    private CancellationTokenSource? confirming;
     private IDisposable? proposalLease;
     private bool dispatched;
     private VoiceRewriteRequest? request;
@@ -35,6 +36,7 @@ internal sealed class RewriteSession : IDisposable
     internal int? InsertionAfter { get; }
     internal bool IsOpen { get; private set; } = true;
     internal bool IsProposing { get; private set; }
+    internal int ProposalRevision { get; private set; }
     internal string Instruction { get; private set; } = "";
     internal string NewWords { get; private set; }
     internal string Problem => proposalProblem.Length > 0 ? proposalProblem : reviewProblem;
@@ -130,6 +132,20 @@ internal sealed class RewriteSession : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    internal async Task<bool> ConfirmCostAsync(VoiceLabPreparedAction action, Func<CancellationToken, Task<bool>> confirm)
+    {
+        if (!CanPropose || confirming is not null || !ReferenceEquals(Prepared, action)) return false;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        confirming = cancellation;
+        try
+        {
+            return await confirm(cancellation.Token).WaitAsync(cancellation.Token) && !cancellation.IsCancellationRequested &&
+                CanPropose && ReferenceEquals(Prepared, action);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return false; }
+        finally { if (ReferenceEquals(confirming, cancellation)) confirming = null; }
+    }
+
     internal async Task<bool> ProposeAsync(VoiceLabPreparedAction action, bool affirmative)
     {
         if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action) || request is null || Connector is null) return false;
@@ -155,6 +171,7 @@ internal sealed class RewriteSession : IDisposable
             if (!IsOpen || revision != current) return false;
             NewWords = result.ProposedText;
             RefreshReview();
+            ProposalRevision++;
             return true;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { return false; }
@@ -212,7 +229,7 @@ internal sealed class RewriteSession : IDisposable
         return Editor.ApplyBatch(operations);
     }
 
-    private void InvalidateProposal() { revision++; sending?.Cancel(); }
+    private void InvalidateProposal() { revision++; sending?.Cancel(); confirming?.Cancel(); }
     internal void SettingsChanged(bool voiceLabEnabled)
     {
         if (!voiceLabEnabled || !connectorIsCurrent()) Dispose();
@@ -246,5 +263,24 @@ internal sealed class RewriteSession : IDisposable
         Editor.PropertyChanged -= EditorPropertyChanged;
         Editor.SetRewriteRange(-1, -1);
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+}
+
+internal sealed class RewriteAnnouncements
+{
+    private bool proposing;
+    private int proposalRevision;
+    private string problem = "";
+
+    internal IReadOnlyList<string> Next(bool busy, int revision, string refusal, string summary)
+    {
+        var messages = new List<string>();
+        if (busy && !proposing) messages.Add("AI request in progress");
+        if (revision != proposalRevision) messages.Add("New words ready: " + summary);
+        if (refusal.Length > 0 && refusal != problem) messages.Add(refusal);
+        proposing = busy;
+        proposalRevision = revision;
+        problem = refusal;
+        return messages;
     }
 }

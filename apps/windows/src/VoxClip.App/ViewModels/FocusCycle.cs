@@ -3,6 +3,7 @@ namespace VoxClip.App.ViewModels;
 internal enum EditorFocusRegion { Pane, CommandBar, Transcript, Viewer, Captions, Timeline }
 internal static class FocusCycle
 {
+    internal static bool RestoreRewriteFocus(bool insidePanel, bool explicitClose, bool disposed) => !disposed && (insidePanel || explicitClose);
     internal static IReadOnlyList<EditorFocusRegion> Regions(bool viewer) => viewer
         ? [EditorFocusRegion.Pane, EditorFocusRegion.CommandBar, EditorFocusRegion.Transcript, EditorFocusRegion.Viewer, EditorFocusRegion.Captions, EditorFocusRegion.Timeline]
         : [EditorFocusRegion.Pane, EditorFocusRegion.CommandBar, EditorFocusRegion.Transcript, EditorFocusRegion.Timeline];

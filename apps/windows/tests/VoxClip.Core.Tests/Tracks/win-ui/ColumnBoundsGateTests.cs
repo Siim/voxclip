@@ -6,6 +6,42 @@ namespace VoxClip.Ui.Tests;
 
 public sealed class ColumnBoundsGateTests
 {
+    [Fact]
+    public void NestedDisabledOrZeroExtentViewersDeferToTheOuterScrollOwner()
+    {
+        var viewers = new[] { (Enabled: false, Height: 120.0), (Enabled: true, Height: 0.0), (Enabled: true, Height: 240.0) };
+        Assert.Equal(2, Array.FindIndex(viewers, viewer => ColumnBoundsGate.OwnsVerticalScroll(viewer.Enabled, viewer.Height)));
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.FitProbe.cs"));
+        Assert.Contains("ColumnBoundsGate.OwnsVerticalScroll(viewer.VerticalScrollMode != ScrollMode.Disabled, viewer.ScrollableHeight)", probe);
+        Assert.Contains("rewritePanel?.DebugFitRequiredIds()", probe);
+        var panel = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/RewritePanel.cs"));
+        Assert.Contains("AutomationProperties.SetAutomationId(scroll, \"Rewrite.Scroll\")", panel);
+        Assert.Contains("DebugFitRequiredIds()", panel);
+    }
+
+    [Fact]
+    public void RewriteRequiresExactlyThePanelsCurrentPeerSet()
+    {
+        string[] peers = ["Rewrite.Header", "Rewrite.Generate", "Rewrite.Takes", "Rewrite.UseTake"];
+        Assert.Equal(ColumnBoundsGate.Common.Concat(peers), ColumnBoundsGate.RequiredIds(ColumnFitState.Rewrite, [], peers));
+    }
+
+    [Fact]
+    public void CompactTransportChecksTimeTagAndTargetsBesideTheStage()
+    {
+        var bar = new ColumnRect(228, 0, 112, 100);
+        var back = new ColumnRect(228, 56, 32, 32);
+        var play = new ColumnRect(264, 52, 40, 40);
+        var forward = new ColumnRect(308, 56, 32, 32);
+        var time = new ColumnRect(228, 0, 112, 20);
+        var tag = new ColumnRect(228, 24, 90, 20);
+        var stage = new ColumnRect(0, 0, 220, 124);
+        Assert.Empty(ColumnBoundsGate.TransportFailures(bar, back, play, forward, tag, time, true, 4, stage));
+        Assert.NotEmpty(ColumnBoundsGate.TransportFailures(bar, back, play, forward, tag, time, false, 4, stage));
+        Assert.NotEmpty(ColumnBoundsGate.TransportFailures(bar, back, play, forward, tag, time, true, 4, stage with { X = 40 }));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -206,7 +242,7 @@ public sealed class ColumnBoundsGateTests
         string[] rewrite = ["Rewrite.Header", "Rewrite.Instruction", "Rewrite.Words", "Rewrite.Close", "Rewrite.Propose", "Rewrite.Apply", "Rewrite.Settings"];
         Assert.Equal(common.Concat(captions), ColumnBoundsGate.RequiredIds(ColumnFitState.Captions, ["CaptionStyle.first", "CaptionStyle.second"]));
         Assert.Equal(common.Concat(captions).Concat(fineTune), ColumnBoundsGate.RequiredIds(ColumnFitState.FineTune, ["CaptionStyle.first", "CaptionStyle.second"]));
-        Assert.Equal(common.Concat(rewrite), ColumnBoundsGate.RequiredIds(ColumnFitState.Rewrite, [], apply: true, settings: true));
+        Assert.Equal(common.Concat(rewrite), ColumnBoundsGate.RequiredIds(ColumnFitState.Rewrite, [], rewrite));
         Assert.DoesNotContain("Rewrite.Apply", ColumnBoundsGate.RequiredIds(ColumnFitState.Rewrite, []));
         Assert.DoesNotContain("Rewrite.Settings", ColumnBoundsGate.RequiredIds(ColumnFitState.Rewrite, []));
     }
@@ -224,7 +260,7 @@ public sealed class ColumnBoundsGateTests
     {
         foreach (var state in Enum.GetValues<ColumnFitState>())
         {
-            var ids = ColumnBoundsGate.RequiredIds(state, ["CaptionStyle.first"], apply: true, settings: true);
+            var ids = ColumnBoundsGate.RequiredIds(state, ["CaptionStyle.first"], [.. ColumnBoundsGate.Rewrite, "Rewrite.Apply", "Rewrite.Settings"]);
             var peers = ids.Select(id => Peer(id)).ToArray();
             Assert.Empty(ColumnBoundsGate.RequiredFailures(ids, peers, Column, Client));
             foreach (var id in ids)

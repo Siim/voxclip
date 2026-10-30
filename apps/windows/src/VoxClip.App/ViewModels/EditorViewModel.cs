@@ -163,8 +163,20 @@ public sealed class EditorViewModel : ObservableObject
         RewriteEnd = last;
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
-    public bool IsAiWord(int index) => index >= 0 && index < Words.Count && project.VoiceLab.Segments.Any(segment =>
-        segment.Enabled && Words[index].Start < segment.Replace.End && Words[index].End > segment.Replace.Start);
+    private Project? speechProject;
+    private EditState? speechState;
+    private IReadOnlyList<TranscriptSpeechWord> speechWords = [];
+    internal TranscriptSpeechWord PresentedWord(int index)
+    {
+        if (!ReferenceEquals(speechProject, project) || !ReferenceEquals(speechState, state))
+        {
+            speechWords = TranscriptWordDecoration.Speech(project, Words, state?.Corrections);
+            speechProject = project;
+            speechState = state;
+        }
+        return index >= 0 && index < speechWords.Count ? speechWords[index] : new("", false, false, false, index);
+    }
+    internal bool ContainsAiSpeech(string? clipId = null) => VoiceLabDisclosure.Contains(() => ScopedProject(State), clipId, IsReadOnly, voiceLabLabelPosition);
     public ObservableCollection<TranscriptParagraph> Paragraphs { get; } = [];
     public ObservableCollection<ClipRow> Clips { get; } = [];
     public EditSummary Summary { get; private set; } = new(0, 0, 0, 0, false, false, false, true);
@@ -506,11 +518,16 @@ public sealed class EditorViewModel : ObservableObject
     private string WordStates(int index, bool showLowConfidence)
     {
         var word = Words[index];
-        return DisplayText(word) + (state?.CutWordIds.Contains(word.Id) == true ? ", cut" : "")
-            + (EditingAlgorithms.IsFillerText(DisplayText(word)) ? ", filler" : "")
-            + (showLowConfidence && word.Conf is < 0.6 ? ", low confidence" : "")
-            + (state?.Corrections.ContainsKey(word.Id) == true ? ", corrected, heard as: " + word.Text : "")
-            + (IsAiWord(index) ? ", AI modified" : "");
+        var speech = PresentedWord(index);
+        if (!speech.Visible)
+            for (var first = index - 1; first >= 0; first--)
+                if (PresentedWord(first) is { Visible: true, AiModified: true } replacement && replacement.LastSourceIndex >= index)
+                { speech = replacement; break; }
+        return speech.Text + (!speech.AiModified && state?.CutWordIds.Contains(word.Id) == true ? ", cut" : "")
+            + (!speech.AiModified && EditingAlgorithms.IsFillerText(DisplayText(word)) ? ", filler" : "")
+            + (!speech.AiModified && showLowConfidence && word.Conf is < 0.6 ? ", low confidence" : "")
+            + (!speech.AiModified && state?.Corrections.ContainsKey(word.Id) == true ? ", corrected, heard as: " + word.Text : "")
+            + (speech.AiModified ? ", AI modified" : "");
     }
     public bool CanPreviewCut => HasSelection && CanExport;
     internal TimeRange? PreviewCutRange() => CanPreviewCut
@@ -576,7 +593,7 @@ public sealed class EditorViewModel : ObservableObject
             {
                 var split = index == Words.Count || (Words[index].Speaker != Words[index - 1].Speaker ||
                     Words[index].Start - Words[index - 1].End >= 1.5 && Words[index - 1].Text.EndsWithAny(".!?")) || index - start >= 100;
-                if (!split) continue;
+                if (!split || index < Words.Count && !PresentedWord(index).Visible) continue;
                 Paragraphs.Add(new(start, index - start, Timecode(Words[start].Start), Words[start].Speaker));
                 start = index;
             }

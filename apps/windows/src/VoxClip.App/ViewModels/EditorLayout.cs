@@ -45,6 +45,15 @@ public static class EditorLayout
         return (width, width * ratio);
     }
 
+    public static bool CompactStage(bool rewriteOpen, double columnHeight) => rewriteOpen && columnHeight < 760;
+
+    public static (double Width, double Height) RewriteStage(double inner, ExportAspect aspect, PixelSize source, double transportWidth)
+    {
+        var stage = Stage(Math.Min(220, Math.Max(1, inner - transportWidth - 8)), aspect, source);
+        var scale = Math.Min(1, 124 / stage.Height);
+        return (stage.Width * scale, stage.Height * scale);
+    }
+
     public static double StageHeightBudget(double columnHeight, double frameHeight, double transportHeight,
         double chromeHeight, double captionsHeight) => Math.Max(1, columnHeight - frameHeight - transportHeight - chromeHeight - captionsHeight);
 

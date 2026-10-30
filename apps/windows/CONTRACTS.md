@@ -1,5 +1,15 @@
 # Windows fixed contracts
 
+### 2026-10-30 - Windows Voice Lab editor R7/R8
+
+- Rewrite bounds use the panel's current required AutomationIds and ignore disabled or zero-extent nested scroll viewers. The outer viewport is `Rewrite.Scroll`. The native Rewrite sweep covers columns 300/348/388/560 at both 1440x900 and 1280x800.
+- Below a 760-epx column height, Rewrite uses a 220x124 stage bounding box with time, disclosure and unchanged 32/40/32 transport targets stacked beside it. At narrow column widths the stage scales down further, preserving its frame aspect, so the measured time and targets never overflow. Normal layout returns when Rewrite closes or the column grows.
+- Every Rewrite close path hands focus from the disappearing panel to the transcript before removal, without stealing unrelated sidebar focus. Cost confirmation uses the shared cancellable dialog, defaults to Cancel, and invalidates on edits, settings/source changes or close. Return applies the local Apply Cuts / Apply Correction footer action; neither action sends a request.
+- Busy transitions, arriving proposals and changed refusals use deduplicated notification events, not live regions. Brushes resolve again after parenting and on theme/high-contrast changes. CaptionsHost owns the outer hairline; Rewrite keeps only its footer divider.
+- A source-preserving transcript projection displays enabled segment words once, groups their source selection, and restores original/corrected source text when disabled. The AI chip uses mono 10/600, accent text/soft fill, a 1-pixel accent outline and radius 4; generated words have a 1-pixel dashed underline and the accessible suffix `, AI modified`.
+- `VoiceLabDisclosure.Contains` is the single fail-closed scope predicate for the viewer tag, stage name, Export name, export-sheet disclosure and sidebar metadata. It derives the current render contract's disclosure and shows the warning on missing media or a recoverable evaluation error. No source timestamps, serialized formats, render paths, provider calls or dependencies change.
+- Host gates include window-free editor regressions, Core and portable Media, cross-platform Release and both App typechecks, XAML/design/contrast and fixture drift. Native light/dark/high-contrast pixels, UIA bounds/names and spoken Narrator remain owed on Windows; no VM acceptance is inferred from a host typecheck.
+
 ### 2026-10-30 — sol-win-voicelab-ui round 3 — Settings sessions
 
 - Merge the exact Windows Core port `8ca4d1ce` with `--no-ff`; preserve both tracks' contracts, newest first. R2b CI `41015322827` is green at `371f58a1`. No later Core review fixes are pulled into this round.

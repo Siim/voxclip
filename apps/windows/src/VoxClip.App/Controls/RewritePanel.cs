@@ -20,6 +20,8 @@ internal sealed class RewritePanel : Grid
     private readonly StackPanel review = Ui.Stack(6);
     private readonly TextBlock changeSummary = Ui.Text("");
     private readonly Button apply = new() { HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly RewriteAnnouncements announcements = new();
+    private readonly List<(DependencyObject Target, DependencyProperty Property, string Key)> brushes = [];
     private bool updating;
     internal Control FocusTarget => instruction;
     internal bool ReturnFocusOnClose { get; private set; }
@@ -36,8 +38,6 @@ internal sealed class RewritePanel : Grid
         AutomationProperties.SetName(busy, "AI request in progress");
         RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         RowDefinitions.Add(new() { Height = GridLength.Auto });
-        BorderBrush = Ui.ThemeBrush(this, "VcLineDefaultBrush");
-        BorderThickness = new(0, 1, 0, 0);
         var body = Ui.Stack(12);
         body.Margin = new(16, 12, 16, 12);
         var header = new Grid { ColumnSpacing = 6 };
@@ -48,16 +48,16 @@ internal sealed class RewritePanel : Grid
         var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
         var waveform = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         foreach (var height in new[] { 4.0, 10.0, 14.0, 8.0, 4.0 })
-            waveform.Children.Add(new Border { Width = 1.5, Height = height, VerticalAlignment = VerticalAlignment.Center,
-                Background = Ui.ThemeBrush(this, "VcTextPrimaryBrush") });
+            waveform.Children.Add(Themed(new Border { Width = 1.5, Height = height, VerticalAlignment = VerticalAlignment.Center },
+                Border.BackgroundProperty, "VcTextPrimaryBrush"));
         heading.Children.Add(waveform);
         var title = Ui.Text("Rewrite", "BodyStrongTextBlockStyle");
         AutomationProperties.SetAutomationId(title, "Rewrite.Header");
         title.FontSize = 13;
         heading.Children.Add(title);
         header.Children.Add(heading);
-        var beta = new Border { BorderThickness = new(1), BorderBrush = Ui.ThemeBrush(this, "VcLineStrongBrush"),
-            CornerRadius = new(4), Padding = new(4, 0, 4, 0), Child = Small("Beta") };
+        var beta = Themed(new Border { BorderThickness = new(1),
+            CornerRadius = new(4), Padding = new(4, 0, 4, 0), Child = Small("Beta") }, Border.BorderBrushProperty, "VcLineStrongBrush");
         Grid.SetColumn(beta, 1); header.Children.Add(beta);
         var selection = Small(session.Header); Grid.SetColumn(selection, 2); header.Children.Add(selection);
         selection.MinWidth = 0;
@@ -77,8 +77,8 @@ internal sealed class RewritePanel : Grid
             if (session.Prepared is not { } action || !session.CanPropose) return;
             var approved = true;
             if (session.Estimate is { Kind: VoiceLabCostPresentationKind.Confirm } confirmation)
-                approved = await new ContentDialog { XamlRoot = XamlRoot, Title = "Rewrite", Content = Ui.Text(confirmation.Text),
-                    PrimaryButtonText = "Continue", CloseButtonText = "Cancel" }.ShowAsync() == ContentDialogResult.Primary;
+                approved = await session.ConfirmCostAsync(action, token => Ui.ConfirmAsync(XamlRoot, "Rewrite", confirmation.Text, "Continue", token));
+            if (!approved || !session.IsOpen) return;
             App.Services.BusyOperations++;
             try { await session.ProposeAsync(action, approved); }
             finally { App.Services.BusyOperations--; }
@@ -103,13 +103,15 @@ internal sealed class RewritePanel : Grid
         newHeader.Children.Add(changeSummary);
         body.Children.Add(newHeader);
         body.Children.Add(words); body.Children.Add(review); body.Children.Add(problem);
-        Children.Add(new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
+        var scroll = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        AutomationProperties.SetAutomationId(scroll, "Rewrite.Scroll");
+        Children.Add(scroll);
         var footerContent = Ui.Stack(12);
         var disclosure = new Grid { ColumnSpacing = 6 };
         disclosure.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         disclosure.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
-        disclosure.Children.Add(new FontIcon { Glyph = "\uE946", FontSize = 12, VerticalAlignment = VerticalAlignment.Top,
-            Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush") });
+        disclosure.Children.Add(Themed(new FontIcon { Glyph = "\uE946", FontSize = 12, VerticalAlignment = VerticalAlignment.Top },
+            IconElement.ForegroundProperty, "VcTextSecondaryBrush"));
         var disclosureText = Small("Exports show AI MODIFIED on the video and in the post.");
         Grid.SetColumn(disclosureText, 1); disclosure.Children.Add(disclosureText);
         footerContent.Children.Add(disclosure);
@@ -119,24 +121,45 @@ internal sealed class RewritePanel : Grid
             ReturnFocusOnClose = true;
             if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false;
         };
-        var footer = new Border { Padding = new(16, 12, 16, 12), BorderThickness = new(0, 1, 0, 0),
-            BorderBrush = Ui.ThemeBrush(this, "VcLineDefaultBrush"), Child = footerContent };
+        var footer = Themed(new Border { Padding = new(16, 12, 16, 12), BorderThickness = new(0, 1, 0, 0),
+            Child = footerContent }, Border.BorderBrushProperty, "VcLineDefaultBrush");
         Grid.SetRow(footer, 1); Children.Add(footer);
         session.Changed += Changed;
-        Loaded += (_, _) => instruction.Focus(FocusState.Programmatic);
-        Unloaded += (_, _) => session.Changed -= Changed;
-        KeyDown += Escape;
+        Loaded += (_, _) =>
+        {
+            session.Changed -= Changed; session.Changed += Changed;
+            Ui.EffectsChanged += EffectsChanged;
+            RefreshBrushes();
+            instruction.Focus(FocusState.Programmatic);
+        };
+        ActualThemeChanged += (_, _) => RefreshBrushes();
+        Unloaded += (_, _) => { session.Changed -= Changed; Ui.EffectsChanged -= EffectsChanged; };
+        PreviewKeyDown += Escape;
         Render();
     }
 
     private static void SetName(DependencyObject target, string name) => AutomationProperties.SetName(target, name);
 #if DEBUG
-    internal bool DebugFitRequiresApply => session.LocalAction is not null;
-    internal bool DebugFitRequiresSettings => session.Connector is null;
+    internal IReadOnlyList<string> DebugFitRequiredIds() => [.. ColumnBoundsGate.Rewrite,
+        .. session.LocalAction is null ? Array.Empty<string>() : ["Rewrite.Apply"],
+        .. session.Connector is null ? new[] { "Rewrite.Settings" } : Array.Empty<string>()];
 #endif
+    private T Themed<T>(T target, DependencyProperty property, string key) where T : DependencyObject
+    {
+        brushes.Add((target, property, key));
+        target.SetValue(property, Ui.ThemeBrush(this, key));
+        return target;
+    }
+    private void EffectsChanged(object? sender, EventArgs args) => RefreshBrushes();
+    private void RefreshBrushes()
+    {
+        foreach (var (target, property, key) in brushes) target.SetValue(property, Ui.ThemeBrush(this, key));
+        Render();
+    }
     private TextBlock Small(string text)
     {
-        var label = Ui.Text(text); label.FontSize = 11; label.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush"); return label;
+        var label = Ui.Text(text); label.FontSize = 11;
+        return Themed(label, TextBlock.ForegroundProperty, "VcTextSecondaryBrush");
     }
     private void Changed(object? sender, EventArgs args)
     {
@@ -160,6 +183,7 @@ internal sealed class RewritePanel : Grid
         estimate.FontSize = 11;
         problem.Text = session.Problem;
         problem.Visibility = session.Problem.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        brushes.RemoveAll(binding => binding.Target is TextBlock label && review.Children.Contains(label));
         review.Children.Clear();
         changeSummary.Text = session.Review?.ChangeSummary ?? "";
         if (session.Review is { } current)
@@ -170,9 +194,20 @@ internal sealed class RewritePanel : Grid
             if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));
         }
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
+        if (IsLoaded)
+            foreach (var message in announcements.Next(session.IsProposing, session.ProposalRevision, session.Problem, session.Review?.ChangeSummary ?? ""))
+                Ui.Announce(this, message, "rewrite");
     }
     private void Escape(object sender, KeyRoutedEventArgs args)
     {
+        if (args.Key == VirtualKey.Enter && !InputState.Down(VirtualKey.Control) && !InputState.Down(VirtualKey.Menu) &&
+            !InputState.Down(VirtualKey.Shift) && session.LocalAction is not null && !session.Editor.Busy)
+        {
+            ReturnFocusOnClose = true;
+            if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false;
+            args.Handled = true;
+            return;
+        }
         if (args.Key != VirtualKey.Escape) return;
         Close(); args.Handled = true;
     }

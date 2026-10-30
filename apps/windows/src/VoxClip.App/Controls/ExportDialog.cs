@@ -118,19 +118,9 @@ internal sealed class ExportDialog : ContentDialog
     private IReadOnlyList<ExportTarget> Targets() => ExportDialogRouting.SelectedTargets(model, onlyClip, target.SelectedIndex);
     private void UpdateDisclosure()
     {
-        var contains = false;
-        foreach (var item in Targets())
-        {
-            var scoped = model.ScopedProject(ExportSelection.Scope(model.State, item));
-            if (scoped.SchemaVersion != 3) continue;
-            try
-            {
-                var scope = item is ExportTarget.Clip clip ? VoiceLabOutputScope.Clip(clip.Id) : VoiceLabOutputScope.Full;
-                contains |= VoiceLabRenderContract.Prepare(scoped, scope, VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition"))).OutputPlan.RequiresSyntheticRendering;
-            }
-            catch (Exception exception) when (exception is not OutOfMemoryException) { }
-        }
+        var contains = Targets().Any(item => model.ContainsAiSpeech(item is ExportTarget.Clip clip ? clip.Id : null));
         disclosure.Visibility = contains ? Visibility.Visible : Visibility.Collapsed;
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(this, VoiceLabDisclosure.AccessibleName("Export video", contains));
     }
     /// <summary>One composer at a time: a click while the X text is still being cut does nothing.</summary>
     private async Task OpenComposerAsync(string destination)

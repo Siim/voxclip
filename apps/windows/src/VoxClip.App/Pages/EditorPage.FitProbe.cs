@@ -41,7 +41,8 @@ public sealed partial class EditorPage
             {
                 if (ancestor is UIElement { Visibility: not Visibility.Visible }) return null;
                 if (ancestor == RightPane) return nearest;
-                if (ancestor != element && ancestor is ScrollViewer viewer) nearest ??= viewer;
+                if (ancestor != element && ancestor is ScrollViewer viewer &&
+                    ColumnBoundsGate.OwnsVerticalScroll(viewer.VerticalScrollMode != ScrollMode.Disabled, viewer.ScrollableHeight)) nearest ??= viewer;
             }
             return null;
         }
@@ -58,7 +59,7 @@ public sealed partial class EditorPage
         var rewritePanel = NativeDescendants(RightPane).OfType<RewritePanel>().SingleOrDefault();
         captionPanel?.DebugFitRealizeGallery();
         var required = ColumnBoundsGate.RequiredIds(state, captionPanel?.DebugFitAllGalleryIds() ?? [],
-            rewritePanel?.DebugFitRequiresApply == true, rewritePanel?.DebugFitRequiresSettings == true, captionPanel?.DebugFitRequiresAccent == true);
+            rewritePanel?.DebugFitRequiredIds(), captionPanel?.DebugFitRequiresAccent == true);
         var scrollOffsets = NativeDescendants(RightPane).OfType<ScrollViewer>()
             .Select(viewer => (Viewer: viewer, Offset: viewer.VerticalOffset)).ToArray();
         var observations = new List<object>();
@@ -236,7 +237,8 @@ public sealed partial class EditorPage
             Forward = InBar(PreviewForward), Tag = AiModified.Visibility == Visibility.Visible ? InBar(AiModified) : (ColumnRect?)null, Time = InBar(TransportTime)
         };
         failures.AddRange(ColumnBoundsGate.TransportFailures(transport.Bar, transport.Back, transport.Play, transport.Forward, transport.Tag,
-            transport.Time, TransportRow.Stacked, TransportRow.Gap));
+            transport.Time, TransportRow.Stacked, TransportRow.Gap,
+            Grid.GetColumn(TransportRow) == 1 ? InBar(PreviewStage) : null));
         try
         {
             var peers = Observe("initial");

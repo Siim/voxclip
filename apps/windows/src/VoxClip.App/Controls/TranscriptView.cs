@@ -31,7 +31,7 @@ public sealed class TranscriptView : UserControl
     private double fontSize = DefaultFontSize;
     private string structure = "";
     private readonly Popup correction = new() { IsLightDismissEnabled = true };
-    private sealed record WordRun(int Index, Run Run, int After);
+    private sealed record WordRun(int Index, Run Run, int After, int LastIndex);
     private sealed record PauseRun(Pause Pause, Inline Inline, Run? Run);
     private sealed record ParagraphVisual(RichTextBlock Text, List<WordRun> Runs, List<PauseRun> Pauses, TranscriptOverlay Overlay)
     {
@@ -257,7 +257,7 @@ public sealed class TranscriptView : UserControl
         if (model is null || !model.HasSelection || dragging || CorrectionOpen || !IsLoaded || FocusManager.GetFocusedElement(XamlRoot) is TextBox) return;
         var rectangles = new List<Windows.Foundation.Rect>();
         foreach (var visual in realized.Values)
-            foreach (var run in visual.Runs.Where(run => run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd))
+            foreach (var run in visual.Runs.Where(run => run.LastIndex >= model.SelectionStart && run.Index <= model.SelectionEnd))
                 foreach (var rect in TranscriptOverlay.Bounds(run.Run))
                 {
                     var bounds = visual.Text.TransformToVisual(this).TransformBounds(rect);
@@ -373,17 +373,21 @@ public sealed class TranscriptView : UserControl
             {
                 paragraph.Inlines.Add(new InlineUIContainer { Child = ClipBadge(clip) });
             }
-            if (model.IsAiWord(index) && (index == 0 || !model.IsAiWord(index - 1)))
+            var speech = model.PresentedWord(index);
+            if (!speech.Visible) continue;
+            if (speech.StartsSegment)
             {
-                var chip = new Border { Background = Brush("VcAccentSoftBrush"), CornerRadius = new CornerRadius(3), Margin = new Thickness(0, 0, 4, 0), Padding = new Thickness(3, 0, 3, 0),
-                    Child = new TextBlock { Text = "AI", FontSize = 11, Foreground = Brush("VcAccentTextBrush"), FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"] } };
+                var chip = new Border { Background = Brush("VcAccentSoftBrush"), BorderBrush = Brush("VcAccentTextBrush"), BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 4, 0), Padding = new Thickness(3, 0, 3, 0),
+                    Child = new TextBlock { Text = "AI", FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+                        Foreground = Brush("VcAccentTextBrush"), FontFamily = (FontFamily)Application.Current.Resources["VcMonoFontFamily"] } };
                 AutomationProperties.SetName(chip, "AI modified");
                 paragraph.Inlines.Add(new InlineUIContainer { Child = chip });
             }
             var word = model.Words[index];
-            var run = new Run { Text = model.DisplayText(word) + " " };
+            var run = new Run { Text = speech.Text + " " };
             paragraph.Inlines.Add(run);
-            foreach (var clip in model.Clips.Where(clip => model.Index(clip.Clip.EndWordId) == index))
+            foreach (var clip in model.Clips.Where(clip => model.Index(clip.Clip.EndWordId) >= index && model.Index(clip.Clip.EndWordId) <= speech.LastSourceIndex))
             {
                 paragraph.Inlines.Add(new Run { Text = "]", Foreground = Brush(clip.Id == model.State?.ActiveClipId ? "VcAccentTextBrush" : "VcLineStrongBrush") });
                 after++;
@@ -408,7 +412,7 @@ public sealed class TranscriptView : UserControl
                     pauses.Add(new(pause, pauseRun, pauseRun));
                 }
             }
-            runs.Add(new(index, run, after));
+            runs.Add(new(index, run, after, speech.LastSourceIndex));
         }
         rich.Blocks.Add(paragraph);
         var overlay = new TranscriptOverlay(rich, (FrameworkElement)page.Children[0], (FrameworkElement)page.Children[2]);
@@ -480,7 +484,7 @@ public sealed class TranscriptView : UserControl
             {
                 var word = model.Words[run.Index];
                 if (showCuts && state.CutWordIds.Contains(word.Id) || EditingAlgorithms.IsFillerText(model.DisplayText(word)) ||
-                    lowConfidence && word.Conf is < 0.6 || state.Corrections.ContainsKey(word.Id) || model.IsAiWord(run.Index) ||
+                    lowConfidence && word.Conf is < 0.6 || state.Corrections.ContainsKey(word.Id) || model.PresentedWord(run.Index).AiModified ||
                     model.SourceTime >= word.Start && model.SourceTime < word.End || run.Index >= model.RewriteStart && run.Index <= model.RewriteEnd ||
                     model.HasSelection && run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd)
                     visual.Overlay.Measure(run.Run);
@@ -493,8 +497,9 @@ public sealed class TranscriptView : UserControl
             {
                 var word = model.Words.ElementAtOrDefault(run.Index);
                 if (word is null) continue;
-                var cut = state.CutWordIds.Contains(word.Id);
-                var text = model.DisplayText(word) + " ";
+                var speech = model.PresentedWord(run.Index);
+                var cut = !speech.AiModified && state.CutWordIds.Contains(word.Id);
+                var text = speech.Text + " ";
                 if (cut && !showCuts)
                 {
                     var count = 1;
@@ -524,14 +529,15 @@ public sealed class TranscriptView : UserControl
                 var run = visual.Runs[index];
                 var word = model.Words.ElementAtOrDefault(run.Index);
                 if (word is null) continue;
-                var selected = model.HasSelection && run.Index >= model.SelectionStart && run.Index <= model.SelectionEnd;
-                var rewriting = run.Index >= model.RewriteStart && run.Index <= model.RewriteEnd;
-                var playing = model.SourceTime >= word.Start && model.SourceTime < word.End;
+                var selected = model.HasSelection && run.LastIndex >= model.SelectionStart && run.Index <= model.SelectionEnd;
+                var rewriting = run.LastIndex >= model.RewriteStart && run.Index <= model.RewriteEnd;
+                var playing = model.SourceTime >= word.Start && model.SourceTime < model.Words[run.LastIndex].End;
                 var length = run.Run.Text.TrimEnd().Length;
-                var decoration = TranscriptWordDecoration.For(state.CutWordIds.Contains(word.Id), false, EditingAlgorithms.IsFillerText(model.DisplayText(word)),
-                    lowConfidence && word.Conf is < 0.6, state.Corrections.ContainsKey(word.Id), word.Text);
-                visual.Overlay.Word(run.Run, state.CutWordIds.Contains(word.Id) && showCuts, decoration.Filler, decoration.LowConfidence,
-                    decoration.Corrected, model.IsAiWord(run.Index), selected, playing, rewriting);
+                var ai = model.PresentedWord(run.Index).AiModified;
+                var decoration = TranscriptWordDecoration.For(!ai && state.CutWordIds.Contains(word.Id), false, !ai && EditingAlgorithms.IsFillerText(model.DisplayText(word)),
+                    !ai && lowConfidence && word.Conf is < 0.6, !ai && state.Corrections.ContainsKey(word.Id), word.Text);
+                visual.Overlay.Word(run.Run, !ai && state.CutWordIds.Contains(word.Id) && showCuts, decoration.Filler, decoration.LowConfidence,
+                    decoration.Corrected, ai, selected, playing, rewriting);
                 if (length == 0 || TranscriptWordHighlight.For(selected && !rewriting, playing, Ui.HighContrast) is not { } highlight) continue;
                 // Selected words draw in text.primary on the selection fill, which also overrides the cut and filler colours
                 // (they fail contrast on it); High Contrast maps the fill to Highlight, so the text takes HighlightText.
@@ -580,6 +586,7 @@ public sealed class TranscriptView : UserControl
         if (index < 0) return;
         Focus(FocusState.Pointer);
         model.Select(index, InputState.Down(Windows.System.VirtualKey.Shift));
+        if (model.PresentedWord(index).LastSourceIndex > index) model.Select(model.PresentedWord(index).LastSourceIndex, true);
         dragging = true;
         rich.CapturePointer(args.Pointer);
         SeekRequested?.Invoke(this, EventArgs.Empty);

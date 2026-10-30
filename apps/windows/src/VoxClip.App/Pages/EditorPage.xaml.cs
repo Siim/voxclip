@@ -120,6 +120,7 @@ public sealed partial class EditorPage : Page
         ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName == nameof(EditorViewModel.CanExport)) UpdateExport();
+            if (args.PropertyName == nameof(EditorViewModel.IsReadOnly)) { UpdateAiTag(); SizeStage(); }
             if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanFindClips)) UpdateFindClips();
         };
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
@@ -532,11 +533,14 @@ public sealed partial class EditorPage : Page
         var panel = new RewritePanel(rewrite);
         panel.Closed += (_, _) =>
         {
+            var insidePanel = InputState.DescendsFrom(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, panel);
+            if (FocusCycle.RestoreRewriteFocus(insidePanel, panel.ReturnFocusOnClose, disposed)) FocusTranscript();
             rightContent.CloseRewrite();
-            if (panel.ReturnFocusOnClose && !disposed && !ViewModel.IsLeaving) FocusTranscript();
+            SizeStage();
         };
         SetViewerVisible(true);
         rightContent.ShowRewrite(panel);
+        SizeStage();
         await rewrite.SetInstructionAsync("");
     }
     private void CutSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection();
@@ -767,16 +771,8 @@ public sealed partial class EditorPage : Page
         ExportButton.Content = label;
         ExportButton.IsEnabled = reason is null;
         ToolTipService.SetToolTip(ExportHost, reason ?? $"{label} (Ctrl+E)");
-        AutomationProperties.SetName(ExportButton, ScopeHasAiSpeech() ? label + ", contains AI-modified speech" : label);
+        AutomationProperties.SetName(ExportButton, VoiceLabDisclosure.AccessibleName(label, ViewModel.ContainsAiSpeech(ViewModel.State?.ActiveClipId)));
         AutomationProperties.SetHelpText(ExportButton, reason ?? "");
-    }
-    private bool ScopeHasAiSpeech()
-    {
-        var project = ViewModel.ScopedProject(ViewModel.State);
-        if (project.SchemaVersion != 3) return false;
-        var scope = project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full;
-        try { return VoiceLabRenderContract.Prepare(project, scope, VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition"))).OutputPlan.RequiresSyntheticRendering; }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { return false; }
     }
     private void ViewerClicked(object sender, RoutedEventArgs args)
         => SetViewerVisible(Viewer.IsChecked == true);
@@ -835,20 +831,43 @@ public sealed partial class EditorPage : Page
     private void SizeStage()
     {
         var oriented = media?.OrientedSize ?? MediaFromProject(ViewModel.Project).OrientedSize;
-        (PreviewStage.Width, PreviewStage.Height) = EditorLayout.Stage(RightPane.ActualWidth - RightPane.BorderThickness.Left - 32, ViewModel.Project.Export.Aspect, oriented);
+        var inner = RightPane.ActualWidth - RightPane.BorderThickness.Left - 32;
+        var compact = EditorLayout.CompactStage(rewrite is { IsOpen: true }, RightPane.ActualHeight);
+        if (Grid.GetColumn(TransportRow) != (compact ? 1 : 0))
+        {
+            TransportRow.Children.Clear();
+            TransportRow.Children.Add(compact ? TransportMeta : TransportButtons);
+            TransportRow.Children.Add(compact ? TransportButtons : TransportMeta);
+            TransportMeta.Children.Clear();
+            TransportMeta.Children.Add(compact ? TransportTime : AiModified);
+            TransportMeta.Children.Add(compact ? AiModified : TransportTime);
+        }
+        Grid.SetRow(TransportRow, compact ? 0 : 1);
+        Grid.SetColumn(TransportRow, compact ? 1 : 0);
+        TransportMeta.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
+        TransportRow.VerticalAlignment = compact ? VerticalAlignment.Top : VerticalAlignment.Stretch;
+        PreviewStage.VerticalAlignment = compact ? VerticalAlignment.Top : VerticalAlignment.Stretch;
+        TransportRow.Margin = compact ? new Thickness(8, 0, 0, 0) : new Thickness(0);
+        TransportTime.Measure(new(double.PositiveInfinity, double.PositiveInfinity));
+        AiModified.Measure(new(double.PositiveInfinity, double.PositiveInfinity));
+        var rail = Math.Max(112, Math.Max(TransportTime.DesiredSize.Width, AiModified.DesiredSize.Width));
+        TransportRow.Width = compact ? rail : double.NaN;
+        (PreviewStage.Width, PreviewStage.Height) = compact
+            ? EditorLayout.RewriteStage(inner, ViewModel.Project.Export.Aspect, oriented, rail)
+            : EditorLayout.Stage(inner, ViewModel.Project.Export.Aspect, oriented);
         var chrome = PreviewPane.Padding.Top + PreviewPane.Padding.Bottom + PreviewPane.RowSpacing +
             FrameRow.Margin.Top + FrameRow.Margin.Bottom + CaptionsHost.BorderThickness.Top + CaptionsHost.BorderThickness.Bottom;
         // Prefer the full header with an 80-high stage; short columns scroll it in the existing details viewport.
         captions?.ConstrainHeight(RightPane.ActualHeight - FrameRow.ActualHeight - TransportRow.ActualHeight - chrome - 80);
         var maximum = EditorLayout.StageHeightBudget(RightPane.ActualHeight, FrameRow.ActualHeight,
             TransportRow.ActualHeight, chrome, captions?.MinimumContentHeight ?? 160);
-        if (PreviewStage.Height > maximum)
+        if (!compact && PreviewStage.Height > maximum)
         {
             PreviewStage.Width *= maximum / PreviewStage.Height;
             PreviewStage.Height = maximum;
         }
         var clip = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
-        var name = EditorMediaPresentation.Accessible(mediaState, clip?.Number, ScopeHasAiSpeech());
+        var name = EditorMediaPresentation.Accessible(mediaState, clip?.Number, ViewModel.ContainsAiSpeech(ViewModel.State?.ActiveClipId));
         AutomationProperties.SetName(PreviewStage, name); AutomationProperties.SetName(PreviewImage, name);
         PreviewEmpty.Text = EditorMediaPresentation.Title(mediaState);
         PreviewFile.Text = mediaState is EditorMediaState.Missing or EditorMediaState.Corrupt ? EditorMediaPresentation.FileName(ViewModel.Project.Media.Source.AbsolutePath) : "";
@@ -868,13 +887,7 @@ public sealed partial class EditorPage : Page
     }
     private void UpdateAiTag()
     {
-        var first = 0;
-        var last = ViewModel.Words.Count - 1;
-        if (ViewModel.State?.ActiveClipId is { } id && ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip)
-        {
-            first = ViewModel.Index(clip.Clip.StartWordId); last = ViewModel.Index(clip.Clip.EndWordId);
-        }
-        AiModified.Visibility = first >= 0 && Enumerable.Range(first, Math.Max(0, last - first + 1)).Any(ViewModel.IsAiWord) ? Visibility.Visible : Visibility.Collapsed;
+        AiModified.Visibility = ViewModel.ContainsAiSpeech(ViewModel.State?.ActiveClipId) ? Visibility.Visible : Visibility.Collapsed;
     }
     internal async Task<bool> TrySaveBeforeLeavingAsync()
     {

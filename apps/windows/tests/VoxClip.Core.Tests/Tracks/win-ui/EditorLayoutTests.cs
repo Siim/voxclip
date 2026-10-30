@@ -9,6 +9,39 @@ namespace VoxClip.Ui.Tests;
 public sealed class EditorLayoutTests
 {
     [Theory]
+    [InlineData(true, 759, true)]
+    [InlineData(true, 760, false)]
+    [InlineData(false, 600, false)]
+    public void RewriteCompactsOnlyInShortColumns(bool rewrite, double height, bool expected) =>
+        Assert.Equal(expected, EditorLayout.CompactStage(rewrite, height));
+
+    [Theory]
+    [InlineData(ExportAspect.Landscape)]
+    [InlineData(ExportAspect.Portrait)]
+    [InlineData(ExportAspect.Square)]
+    [InlineData(ExportAspect.Source)]
+    public void CompactStageFitsItsBoxAndLeavesFullSizedTransportBesideIt(ExportAspect aspect)
+    {
+        foreach (var inner in new[] { 268.0, 316, 356, 528 })
+        {
+            var stage = EditorLayout.RewriteStage(inner, aspect, new(1920, 1080), 112);
+            Assert.InRange(stage.Width, 1, 220);
+            Assert.InRange(stage.Height, 1, 124);
+            Assert.True(stage.Width + 112 + 8 <= inner);
+            var full = EditorLayout.Stage(inner, aspect, new(1920, 1080));
+            Assert.Equal(full.Width / full.Height, stage.Width / stage.Height, 8);
+        }
+        var landscape = EditorLayout.RewriteStage(528, ExportAspect.Landscape, new(1920, 1080), 112);
+        Assert.Equal(220, landscape.Width);
+        Assert.Equal(123.75, landscape.Height);
+        var page = File.ReadAllText(Path.Combine(Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!,
+            "apps/windows/src/VoxClip.App/Pages/EditorPage.xaml.cs"));
+        Assert.Contains("EditorLayout.CompactStage(rewrite is { IsOpen: true }, RightPane.ActualHeight)", page);
+        Assert.Contains("Grid.SetColumn(TransportRow, compact ? 1 : 0)", page);
+        Assert.Contains("EditorLayout.RewriteStage(inner", page);
+    }
+
+    [Theory]
     [InlineData(268, 40, 216, 12, false)]
     [InlineData(267.9, 40, 216, 12, true)]
     [InlineData(356, 40, 320, 12, true)]
