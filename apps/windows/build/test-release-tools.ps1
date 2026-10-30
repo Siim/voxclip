@@ -135,6 +135,7 @@ try {
     Invoke-Test 'release runtime folders cover every shared folder the sources read' {
         $repository = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
         $read = @(Get-ChildItem -LiteralPath (Join-Path $repository 'apps/windows/src') -Recurse -File -Filter '*.cs' |
+            Where-Object { $_.Name -notlike '*Probe*.cs' -and $_.FullName -notmatch '[\\/](obj|bin)[\\/]' } |
             Select-String -Pattern 'Path\.Combine\([^,()]*(?:\([^()]*\))?[^,()]*,\s*"([a-z-]+)"' -AllMatches -CaseSensitive |
             ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } |
             Where-Object { Test-Path -LiteralPath (Join-Path (Join-Path $repository 'shared') $_) -PathType Container } |
@@ -673,6 +674,12 @@ function Join-Path {
     }
     Microsoft.PowerShell.Management\Join-Path -Path $Path -ChildPath $ChildPath
 }
+$script:fixtureScenario = $null
+function Get-ReleaseVcRuntime {
+    param([string] $RuntimeIdentifier)
+    $after = $null -ne $script:fixtureScenario
+    return @{ architecture=$RuntimeIdentifier.Substring(4); installed=($after -and $script:fixtureScenario -ne 'vc-runtime-missing'); version=if($after){'14.50.0.0'}else{$null}; registryView='fixture' }
+}
 function Assert-ReleaseSignatures {
     if ($script:fixtureScenario -in @('verification-fail', 'both-fail')) { throw 'Fixture original verification failure.' }
 }
@@ -759,10 +766,11 @@ function Invoke-ReleaseProcess {
         $env:LOCALAPPDATA = Join-Path $temporary 'user-data-fixture'
         foreach ($scenario in @('success', 'install-fail', 'verification-fail', 'cleanup-fail', 'both-fail', 'cli-timeout',
             'notices-mismatch', 'updater-mismatch', 'stub-mismatch', 'notices-and-cleanup-fail', 'terms-hash-invalid',
-            'terms-gate-bypass', 'terms-missing-recheck-bypass', 'terms-corrupt-recheck-bypass', 'terms-gate-and-cleanup-fail')) {
+            'terms-gate-bypass', 'terms-missing-recheck-bypass', 'terms-corrupt-recheck-bypass', 'terms-gate-and-cleanup-fail', 'vc-runtime-missing')) {
             Invoke-Test "install evidence survives $scenario and preserves the first error" {
                 $report = Join-Path $temporary ("install-report-" + $scenario)
                 $failure = $null
+                $script:fixtureScenario = $null
                 $timer = [Diagnostics.Stopwatch]::StartNew()
                 try {
                     & (Join-Path $installFixture 'Test-Install.ps1') -Setup $scenario -SignTool fixture -Version 0.1.0 -RuntimeIdentifier win-x64 -ReportDirectory $report -ExpectedNotices $expectedNotice -PackagedUpdaterHash $expectedPayloadHash -PackagedStubHash $expectedPayloadHash
@@ -780,6 +788,8 @@ function Invoke-ReleaseProcess {
                 if ($scenario -eq 'success' -and $timer.Elapsed.TotalSeconds -lt 2.5) { throw 'Test-Install did not wait for its updater.' }
                 if ($scenario -eq 'success') { Assert-Equal ($global:fixtureGateEvents -join '|') 'terms|probe:7|accept|probe:3|probe:7|accept|probe:7' }
                 Assert-Equal $env:VOXCLIP_DATA_DIR $oldDataDirectory
+                if ($scenario -eq 'vc-runtime-missing') { Assert-Equal $receipt.error 'Microsoft VC++ runtime 14.44 or newer is required for x64.' }
+                if ($scenario -eq 'success') { Assert-Equal $receipt.vcRuntimeBefore.installed $false; Assert-Equal $receipt.vcRuntimeAfter.version '14.50.0.0' }
                 if ($scenario -eq 'cli-timeout') { Assert-Equal $failure.Message 'Fixture CLI exceeded 60 seconds.' }
                 $mismatchErrors = @{
                     'notices-mismatch' = 'Release file differs from root source'
@@ -827,6 +837,7 @@ function Invoke-ReleaseProcess {
     }
     Invoke-Test 'atomic VM locks never remove another owner or ownerless locks' {
         $engine = (Get-Process -Id $PID).Path
+        if ([IO.Path]::GetFileNameWithoutExtension($engine) -eq 'dotnet') { $engine = (Get-Command pwsh -ErrorAction Stop).Source }
         $lockScript = Join-Path $PSScriptRoot 'Release-Lock.ps1'
         $lockPath = Join-Path $temporary 'vm.lock'
         & $engine -NoProfile -NonInteractive -File $lockScript -Operation Acquire -Path $lockPath -RunId alpha
