@@ -144,25 +144,30 @@ public enum VoiceLabRenderContract {
                     intervals.append(VoiceLabLabelInterval(start: max(0, Double(item.piece.outputStartSample)/plan.sampleRate - 0.5),
                                                             end: min(plan.duration, Double(item.piece.outputEndSample)/plan.sampleRate + 0.5)))
                 }
-                intervals.sort { $0.start < $1.start }
-                var merged: [VoiceLabLabelInterval] = []
-                for interval in intervals {
-                    if let last = merged.last, interval.start - last.end < 1 {
-                        merged[merged.count-1] = VoiceLabLabelInterval(start: last.start, end: max(last.end, interval.end))
-                    } else { merged.append(interval) }
-                }
-                intervals = merged
+                intervals = mergeDisclosureIntervals(intervals)
             }
         }
-        let estonian = project.transcript?.language?.split(separator: "-", omittingEmptySubsequences: false).first?.lowercased() == "et"
+        let own = selected.contains { item in item.recipe.voiceSource == .own && project.voiceLab.segments.first(where: { $0.id == item.segmentId })?.kind == .voiceChanger }
+        return VoiceLabDisclosurePlan(required: required, kinds: kinds, outputAISeconds: aiSeconds, persistent: persistent,
+                                      intervals: intervals, fadeSeconds: 0.15, position: position, postText: disclosurePostText(kinds: kinds, ownVoice: own, language: project.transcript?.language))
+    }
+    static func disclosurePostText(kinds: [String], ownVoice own: Bool, language: String?) -> String? {
+        let estonian = language?.split(separator: "-", omittingEmptySubsequences: false).first?.lowercased() == "et"
         var lines: [String] = []
         if kinds.contains("tts") { lines.append(estonian ? "Mõned sõnad selles videos on loetud minu enda hääle tehisintellekti-koopiaga." : "Some words in this video were re-voiced with an AI copy of my own voice.") }
         if kinds.contains("voiceChanger") {
-            let own = selected.contains { item in item.recipe.voiceSource == .own && project.voiceLab.segments.first(where: { $0.id == item.segmentId })?.kind == .voiceChanger }
             lines.append(estonian ? (own ? "Selle video hääl on tehisintellektiga muudetud minu enda hääle koopiaks." : "Selle video häält on muudetud tehisintellektiga.") : (own ? "The voice in this video was converted with AI into a copy of my own voice." : "The voice in this video was changed with AI."))
         }
         if kinds.contains("lipsync") { lines.append(estonian ? "Osa huulte liikumisest on loodud tehisintellektiga." : "Lip movements in parts of it were generated with AI.") }
-        return VoiceLabDisclosurePlan(required: required, kinds: kinds, outputAISeconds: aiSeconds, persistent: persistent,
-                                      intervals: intervals, fadeSeconds: 0.15, position: position, postText: lines.isEmpty ? nil : lines.joined(separator: " "))
+        return lines.isEmpty ? nil : lines.joined(separator: " ")
+    }
+    static func mergeDisclosureIntervals(_ intervals: [VoiceLabLabelInterval]) -> [VoiceLabLabelInterval] {
+        var merged: [VoiceLabLabelInterval] = []
+        for interval in intervals.sorted(by: { $0.start < $1.start }) {
+            if let last = merged.last, interval.start - last.end < 1 {
+                merged[merged.count-1] = VoiceLabLabelInterval(start: last.start, end: max(last.end, interval.end))
+            } else { merged.append(interval) }
+        }
+        return merged
     }
 }
