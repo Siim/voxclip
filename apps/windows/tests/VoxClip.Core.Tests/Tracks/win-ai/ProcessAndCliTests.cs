@@ -13,9 +13,11 @@ public sealed class ProcessAndCliTests
     [Theory]
     [InlineData("", 0, null)]
     [InlineData("Ready", 0, null)]
-    [InlineData("Unknown API key status", 0, null)]
+    [InlineData("Unknown sign-in status", 0, null)]
     [InlineData("Logged in using ChatGPT", 0, "chatgpt")]
     [InlineData("Logged in using an API key", 0, "apiKey")]
+    [InlineData("API key configured - sk-proj-***ABCDE\nAuthentication is checked when you send a request.", 0, "apiKey")]
+    [InlineData("Logged in using an API key - sk-***ABCDE", 0, "apiKey")]
     [InlineData("Not logged in", 1, "signedOut")]
     public async Task CodexStatusRecognizesOnlyTheDocumentedSignInMethods(string output, int exitCode, string? expected)
     {
