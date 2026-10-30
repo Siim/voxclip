@@ -17,12 +17,17 @@ enum EditorPane: CaseIterable {
     let model: EditorModel?
     let pane: EditorPane
     @FocusState private var focused: Bool
+    /// The whole-pane ring marks a pane reached from the keyboard (⌃F6, Tab), not the focus a launch or a click gives it.
+    @State private var ringVisible = false
     func body(content: Content) -> some View {
         content.focusable().focused($focused).focusSection()
+            .focusEffectDisabled(!ringVisible)
             .onChange(of: model?.paneFocusRequest) { _, _ in
-                if model?.focusedPane == pane { focused = true }
+                if model?.focusedPane == pane { ringVisible = true; focused = true }
             }
-            .onChange(of: focused) { _, value in if value { model?.focusedPane = pane } }
+            .onChange(of: focused) { _, value in
+                if value { model?.focusedPane = pane; ringVisible = ringVisible || NSApp.currentEvent?.type == .keyDown } else { ringVisible = false }
+            }
     }
 }
 
