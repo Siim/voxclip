@@ -10,6 +10,7 @@ import VoxClipMedia
         var title: String {
             switch self { case .subscription: "Check ElevenLabs account"; case .verify: "Verify statement · < $0.01"; case .create: "Create your voice"; case .delete: "Delete voice" }
         }
+        var defaultIsCancel: Bool { if case .delete = self { true } else { false } }
     }
     static let betaCopy = "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
     static let providerCopy = "Voice Lab sends audio of your voice and the words to speak to ElevenLabs with your key. Under ElevenLabs' terms, ElevenLabs may use uploaded content, including your voice, to improve its services unless you opt out in your ElevenLabs account. Generated audio can be traced to your account."

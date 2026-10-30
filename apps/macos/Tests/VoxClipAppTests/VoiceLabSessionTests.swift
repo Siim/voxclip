@@ -7,6 +7,10 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test func deletionNeverUsesTheDestructiveDefault() {
+        #expect(VoiceLabSession.Request.delete("voice").defaultIsCancel)
+        for request: VoiceLabSession.Request in [.subscription, .verify, .create] { #expect(!request.defaultIsCancel) }
+    }
     @Test func unavailableSpeakerCheckPreventsRecordingAndPaidApproval() async {
         let app = AppModel(); app.settings.values["voiceLab.enabled"] = .bool(true)
         let session = VoiceLabSession(app: app)

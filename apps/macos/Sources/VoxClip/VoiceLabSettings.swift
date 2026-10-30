@@ -159,10 +159,15 @@ import VoxClipCore
             }
             HStack {
                 Spacer()
-                Button("Cancel", role: .cancel) { session.confirmation = nil }.keyboardShortcut(.cancelAction)
-                Button(action == .subscription ? "Continue" : action.title) { Task { await session.approve(action) } }.keyboardShortcut(.defaultAction)
+                if action.defaultIsCancel {
+                    Button("Cancel", role: .cancel) { session.confirmation = nil }.keyboardShortcut(.defaultAction)
+                    Button(action.title, role: .destructive) { Task { await session.approve(action) } }
+                } else {
+                    Button("Cancel", role: .cancel) { session.confirmation = nil }.keyboardShortcut(.cancelAction)
+                    Button(action == .subscription ? "Continue" : action.title) { Task { await session.approve(action) } }.keyboardShortcut(.defaultAction)
+                }
             }
-        }.padding(24).frame(width: 500)
+        }.padding(24).frame(width: 500).onExitCommand { session.confirmation = nil }
     }
 }
 
@@ -188,7 +193,11 @@ import VoxClipCore
             }
             HStack {
                 Spacer()
-                Button(session.unsavedRecord == nil ? "Cancel" : "Remove This Voice", role: session.unsavedRecord == nil ? .cancel : .destructive) { Task { await session.cancelEnrollment() } }.keyboardShortcut(.cancelAction).disabled(session.busy)
+                if session.unsavedRecord == nil {
+                    Button("Cancel", role: .cancel) { Task { await session.cancelEnrollment() } }.keyboardShortcut(.cancelAction).disabled(session.busy)
+                } else {
+                    Button("Remove This Voice", role: .destructive) { Task { await session.cancelEnrollment() } }.disabled(session.busy)
+                }
                 if session.unsavedRecord != nil {
                     Button("Retry saving consent record") { Task { await session.retrySavingRecord() } }.disabled(session.busy)
                 } else {
