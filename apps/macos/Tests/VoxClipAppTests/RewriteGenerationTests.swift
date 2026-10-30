@@ -82,6 +82,19 @@ private struct GenerationTestKeys: KeyProvider {
         #expect(RewriteGenerationSession.completionAnnouncement(count: 2, fittedTake: nil) == "Two takes ready.")
         #expect(RewriteGenerationSession.completionAnnouncement(count: 1, fittedTake: 1) == "Take 1 fits.")
     }
+    @Test func completionAnnouncementsCountEveryFailedTake() {
+        for failures in [1, 2] {
+            for fits in [false, true] {
+                let session = session()
+                session.review(VoiceLabTakeRunResult(rows: [row(index: 0, failure: true),
+                    row(index: 1, residual: 0.5, failure: failures == 2, score: 0.1),
+                    row(index: 2, residual: fits ? 0 : 0.5, score: 0.9)], end: .completed))
+                let count = failures == 1 ? "one" : "two"
+                let expected = fits ? "Take 3 fits. \(count.capitalized) failed the speech check." : "Three takes ready, \(count) failed the speech check."
+                #expect(session.announcement == expected)
+            }
+        }
+    }
     @Test func remoteLocalServerNeverClaimsNothingLeavesTheMac() {
         for url in ["http://localhost:11434", "http://127.0.0.1:8080", "http://[::1]:8080"] {
             #expect(RewriteSession.localSendLine(count: 12, baseURL: url) == "Runs on this Mac. Nothing leaves it.")

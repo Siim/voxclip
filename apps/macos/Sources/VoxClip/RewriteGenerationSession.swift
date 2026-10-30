@@ -236,15 +236,16 @@ import VoxClipMedia
         guard let best = result.best else { phase = .nonePassed; announcement = "These takes didn't sound right. Try different wording or re-record."; return }
         selectedID = best.id
         phase = best.fits ? .readyToAccept : .lengthChanged
-        announcement = Self.completionAnnouncement(count: rows.count, fittedTake: best.fits ? best.index + 1 : nil)
-        if rows.contains(where: { !$0.selectable }) {
-            if !best.fits && rows.count == 3 { announcement = "Three takes ready, one failed the speech check." }
-            else { announcement += " One failed the speech check." }
-        }
+        announcement = Self.completionAnnouncement(count: rows.count, fittedTake: best.fits ? best.index + 1 : nil,
+                                                  failed: rows.filter { !$0.selectable }.count)
     }
-    static func completionAnnouncement(count: Int, fittedTake: Int?) -> String {
-        if let fittedTake { return "Take \(fittedTake) fits." }
-        return count == 3 ? "Three takes ready." : count == 1 ? "One take ready." : "Two takes ready."
+    static func completionAnnouncement(count: Int, fittedTake: Int?, failed: Int = 0) -> String {
+        let failures = failed == 1 ? "one" : failed == 2 ? "two" : "\(failed)"
+        if let fittedTake {
+            return "Take \(fittedTake) fits." + (failed > 0 ? " \(failures.capitalized) failed the speech check." : "")
+        }
+        let ready = count == 3 ? "Three takes ready." : count == 1 ? "One take ready." : "Two takes ready."
+        return failed > 0 ? "\(ready.dropLast()), \(failures) failed the speech check." : ready
     }
     @discardableResult func select(_ id: UUID) -> Bool {
         guard !accepting, [.lengthChanged, .readyToAccept, .nonePassed].contains(phase),
