@@ -142,7 +142,7 @@ public sealed class VoiceLabCoreTests
         Assert.Equal(VoiceLabErrorKind.RateLimited, first.Kind);
         Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() => service.CreateOwnCloneAsync(clone, Policy(null), approval, TestContext.Current.CancellationToken))).Kind);
         Assert.Equal(1, mutations);
-        Assert.True(handler.Calls[^1].Body.Contains("name=files[]", StringComparison.Ordinal) || handler.Calls[^1].Body.Contains("name=\"files[]\"", StringComparison.Ordinal));
+        Assert.True(handler.Calls[^1].Body.Contains("name=files", StringComparison.Ordinal) || handler.Calls[^1].Body.Contains("name=\"files\"", StringComparison.Ordinal));
         Assert.Equal("api.us.elevenlabs.io", new Uri(handler.Calls[^1].Url).Host);
     }
 

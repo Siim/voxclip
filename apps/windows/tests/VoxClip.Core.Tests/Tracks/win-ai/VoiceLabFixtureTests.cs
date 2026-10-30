@@ -251,8 +251,8 @@ public sealed class VoiceLabFixtureTests
         var multipart = Encoding.UTF8.GetString(handler.LastBody!);
         Assert.Contains("name=\"name\"", multipart);
         Assert.Contains("\r\n\r\nVoice ä (VoxClip)\r\n", multipart);
-        Assert.Contains("name=\"files[]\"; filename=\"consent-statement.wav\"", multipart);
-        Assert.Contains("name=\"files[]\"; filename=\"sample-02.wav\"", multipart);
+        Assert.Contains("name=\"files\"; filename=\"consent-statement.wav\"", multipart);
+        Assert.Contains("name=\"files\"; filename=\"sample-02.wav\"", multipart);
         Assert.Contains("\r\n\r\nVoxClip own-voice clone. Consent sha256:" + consentSha256 + ". Created 2026-10-26T09:15:42Z.\r\n", multipart);
         Assert.Contains("\r\n\r\n{\"language\":\"en\"}\r\n", multipart);
         Assert.DoesNotContain("filename*", multipart);
