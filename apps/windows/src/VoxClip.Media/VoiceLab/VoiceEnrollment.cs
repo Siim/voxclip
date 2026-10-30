@@ -145,15 +145,11 @@ public sealed class VoiceEnrollment
             try { result = await client.CreateOwnCloneAsync(draft.Request, policy, authorization, ct, operation.Id).ConfigureAwait(false); }
             catch
             {
-                var current = claim.Operation;
-                if (current.State == VoiceOperationState.Intent)
+                if (await ResolveCreationFailureAsync(claim, reconciler, clock.GetUtcNow()).ConfigureAwait(false))
                 {
-                    claim.Dispose();
                     claim = null;
-                    await reconciler.ReconcileAsync(operation.Id, true, CancellationToken.None).ConfigureAwait(false);
                     throw;
                 }
-                claim.PreserveAmbiguousDispatch(clock.GetUtcNow());
                 throw new VoiceConsentException(VoiceConsentError.CreationPending);
             }
             record = record with { VoiceId = result.VoiceId, Status = result.RequiresVerification ? VoiceConsentStatus.VerificationRequired : VoiceConsentStatus.Active };
@@ -214,6 +210,16 @@ public sealed class VoiceEnrollment
         if (Interlocked.CompareExchange(ref busy, 1, 0) != 0) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
     }
     private void Release() => Volatile.Write(ref busy, 0);
+    internal static Task<bool> ResolveCreationFailureAsync(VoiceCreationClaim claim, VoiceOperationReconciler reconciler, DateTimeOffset now)
+    {
+        if (claim.Operation.State == VoiceOperationState.Intent)
+        {
+            claim.RollbackUndispatched();
+            return Task.FromResult(true);
+        }
+        claim.PreserveAmbiguousDispatch(now);
+        return Task.FromResult(false);
+    }
     private static void RequireApproval(bool approved, bool enabled)
     {
         if (!approved || !enabled) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);

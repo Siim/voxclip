@@ -394,6 +394,18 @@ public sealed class VoiceConsentStore
         lock (State.Sync) WriteOperation(Operation(id) with { RecoveryNeedsReview = true }, "recoveryReview");
     }
     internal void Release(Guid id) { lock (State.Sync) State.Claimed.Remove(id); }
+    internal void RollbackUndispatched(Guid id)
+    {
+        lock (State.Sync)
+        {
+            var operation = Operation(id);
+            if (!State.Claimed.Contains(id) || operation.Kind != VoiceOperationKind.Create ||
+                operation.State != VoiceOperationState.Intent || operation.WasDispatched || State.Revoked.Contains(operation.RecordId)) throw Invalid();
+            DiscardUnresolvedDraft(operation);
+            DeleteFile(OperationFile(id), "rollbackUndispatched");
+            State.Live.Add(operation.RecordId);
+        }
+    }
     internal bool HasOperation(string id) => Operations().Any(value => value.RecordId == id && !value.Finished);
     public VoiceOperation BeginDeletion(string recordId, ElevenLabsRegion region, DateTimeOffset now)
     {
@@ -614,6 +626,12 @@ public sealed class VoiceCreationClaim : IDisposable
     internal VoiceCreationClaim(VoiceConsentStore store, VoiceOperation operation, string statementHash)
     { this.store = store; id = operation.Id; this.statementHash = statementHash; }
     public VoiceOperation Operation => store.Operation(id);
+    public void RollbackUndispatched()
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        store.RollbackUndispatched(id);
+        Dispose();
+    }
     public OwnVoicePolicy DispatchPolicy(Func<CancellationToken, Task> validateDispatch)
     {
         ObjectDisposedException.ThrowIf(disposed, this);

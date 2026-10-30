@@ -38,6 +38,24 @@ public sealed class VoiceConsentMediaTests
     private static float[] Tone(int rate, int seconds) => Enumerable.Range(0, rate * seconds)
         .Select(index => (float)(0.1 * Math.Sin(2 * Math.PI * 440 * index / rate))).ToArray();
     [Fact]
+    public async Task ReviewProbe_KnownUndispatchedFailureKeepsVerifiedStatementForRetry()
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var wav = VoiceTrainingAudio.Wav(Tone(48000, 6));
+        var record = System.Text.Json.JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
+        record = record with { RecordId = Guid.NewGuid().ToString("D"), VoiceId = "pending",
+            Statement = record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+        store.SaveStatement(wav, record.RecordId);
+        using var claim = store.ClaimCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, DateTimeOffset.UtcNow);
+        var reconciler = new VoiceOperationReconciler(store, _ => throw new InvalidOperationException("No transport allowed"));
+        Assert.True(await VoiceEnrollment.ResolveCreationFailureAsync(claim, reconciler, DateTimeOffset.UtcNow));
+        Assert.Equal(wav, store.Statement(record.RecordId));
+        Assert.Empty(store.Operations());
+        using var retry = store.ClaimCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, DateTimeOffset.UtcNow);
+        Assert.Equal(VoiceOperationState.Intent, retry.Operation.State);
+    }
+    [Fact]
     public void NativeWindowsParityGateMustRemainClosedUntilBothRidsHaveEvidence()
     {
         Assert.False(VoiceSpeakerCheck.WindowsNativeParityVerified);
