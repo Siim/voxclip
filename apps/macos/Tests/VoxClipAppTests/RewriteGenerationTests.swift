@@ -10,6 +10,16 @@ private struct GenerationTestKeys: KeyProvider {
     func key(for provider: String) async throws -> String? { Issue.record("State tests must not ask for credentials"); return nil }
 }
 
+@MainActor private final class GenerationQuoteTestState {
+    var preparations = 0
+    var executions = 0
+    var suspended: CheckedContinuation<Void, Never>?
+    var resume: CheckedContinuation<Void, Never>?
+    var unknown = false
+    var failing = false
+    var usdPerCall = Decimal(string: "0.01")!
+}
+
 @Suite("Headless Rewrite generation", .serialized)
 @MainActor struct RewriteGenerationTests {
     @Test func proposalErrorsNameTheConnectorAndRewrite() {
@@ -121,6 +131,127 @@ private struct GenerationTestKeys: KeyProvider {
         session.prepareForTests = { _ in throw CancellationError() }
         #expect(prepared == [quote.id])
         session.invalidate()
+    }
+    @Test func completedRunAutomaticallyPricesTheNextSingleClickRun() async throws {
+        let session = session()
+        let shared = try SharedResources.locate()
+        let voice = try JSONDecoder().decode(VoiceConsentRecord.self,
+            from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))
+        session.showFixture("ready", voice: voice)
+        let window = VoiceLabWindow(firstWordId: "word", lastWordId: "word", leftBridgeWordIds: [], rightBridgeWordIds: [],
+            start: 1, end: 2, startSample: 24_000, endSample: 48_000,
+            leftSeam: .init(kind: .hard, time: 1, sample: 24_000, fadeSamples: 288),
+            rightSeam: .init(kind: .hard, time: 2, sample: 48_000, fadeSamples: 288))
+        let input = VoiceLabTakeInput(text: "Hello", modelID: "eleven_multilingual_v2", recordID: voice.id, language: "en",
+            seed: 7, contentKey: "test", source: [], sourceSampleRate: 24_000, items: [], window: window,
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+        let state = GenerationQuoteTestState()
+        session.prepareForTests = { _ in
+            state.preparations += 1
+            if let suspended = state.suspended {
+                await withCheckedContinuation { state.resume = $0; suspended.resume() }
+            }
+            if state.failing { throw VoiceLabError.unauthorized }
+            let takes = (0..<3).map { index in
+                let estimate = CostEstimate(provider: "elevenlabs", operation: "test", units: 1, unit: "take",
+                    usd: state.unknown ? nil : state.usdPerCall, basis: "test")
+                let quote = VoiceLabQuote(id: UUID(), operation: .textToSpeech, requestID: UUID(), estimate: estimate,
+                    region: .default, endpoint: "test", languageMode: nil, fingerprint: "test")
+                return VoiceLabTakeQuote(index: index, seed: UInt32(index), synthesis: quote, qa: quote)
+            }
+            return VoiceLabTakeRunQuote(id: UUID(), takes: takes, preparedAt: Date())
+        }
+        session.prepareQuote = { await session.prepare(input) }
+        session.executeForTests = { _, progress in
+            state.executions += 1
+            await progress([])
+            return .init(rows: [row(index: 0), row(index: 1, failure: true)], end: .completed)
+        }
+        session.requestQuote()
+        await session.finishQuotePreparationForTests()
+        #expect(state.preparations == 1 && state.executions == 0 && session.canExecute)
+        session.approve(true)
+        await session.finishGenerationForTests()
+        #expect(state.preparations == 2 && state.executions == 1 && session.canExecute)
+        #expect(session.buttonTitle.contains("0.06") && session.generationButtonTitle("Try Another", takes: 3).contains("0.06"))
+        let previous = session.rows, selected = session.selectedID, quote = session.quote
+        session.approve(false)
+        #expect(session.rows == previous && session.selectedID == selected && session.quote == quote)
+        session.approve(true)
+        await session.finishGenerationForTests()
+        #expect(state.executions == 2 && state.preparations == 3 && session.rows.map(\.index) == [0, 1])
+        let retained = session.rows, retainedID = session.selectedID
+        await withCheckedContinuation { ready in
+            state.suspended = ready
+            session.requestQuote()
+        }
+        #expect(session.preparingQuote && !session.canExecute && session.buttonTitle == "Generate Again")
+        #expect(session.rows == retained && session.selectedID == retainedID)
+        state.suspended = nil; state.resume?.resume()
+        await session.finishQuotePreparationForTests()
+        state.unknown = true
+        session.requestQuote()
+        await session.finishQuotePreparationForTests()
+        guard case .confirm = session.cost else { Issue.record("Unknown price must ask"); return }
+        session.approve(false)
+        #expect(session.rows == retained && session.selectedID == retainedID)
+        state.unknown = false; state.usdPerCall = Decimal(string: "0.10")!; session.requestQuote()
+        await session.finishQuotePreparationForTests()
+        guard case .confirm = session.cost else { Issue.record("Above S14 must ask"); return }
+        #expect(session.canExecute && session.buttonTitle.contains("0.60") && session.generationButtonTitle("Try Another", takes: 3).contains("0.60"))
+        session.approve(false)
+        #expect(session.rows == retained && session.selectedID == retainedID)
+        state.failing = true; session.requestQuote()
+        await session.finishQuotePreparationForTests()
+        #expect(session.quotePreparationFailed && session.problem.contains("ElevenLabs") && !session.canExecute && session.canGenerate)
+        state.failing = false; state.unknown = false; session.requestQuote()
+        await session.finishQuotePreparationForTests()
+        #expect(session.canExecute && !session.quotePreparationFailed)
+        session.chooseVoice(nil); session.chooseVoice(voice.id)
+        await session.finishQuotePreparationForTests()
+        #expect(session.canExecute && session.rows == retained && !session.readyToAccept)
+        session.chooseModel(nil); session.chooseModel(input.modelID)
+        await session.finishQuotePreparationForTests()
+        #expect(session.canExecute && session.rows == retained && !session.readyToAccept)
+        session.executeForTests = { _, _ in
+            await withCheckedContinuation { state.resume = $0; state.suspended?.resume() }
+            #expect(!session.dispatchIsCurrent)
+            return .init(rows: [], end: .cancelled)
+        }
+        await withCheckedContinuation { ready in
+            state.suspended = ready
+            session.approve(true)
+        }
+        session.inputsChanged()
+        #expect(!session.dispatchIsCurrent && session.rows == retained && session.selectedID == retainedID)
+        #expect(session.phase == .readyToAccept && !session.readyToAccept)
+        state.suspended = nil; state.resume?.resume()
+        await session.finishQuotePreparationForTests()
+        #expect(session.canExecute && session.rows == retained && session.selectedID == retainedID)
+        session.invalidate()
+    }
+    @Test func editedWordsRefreshTheQuoteWithoutDiscardingPreviousTakes() async throws {
+        let app = AppModel()
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        app.settings.values["transcription.elevenlabs.region"] = .string("default")
+        let shared = try SharedResources.locate()
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let rewrite = RewriteSession(editor: editor, range: 0...0, envelope: nil, connector: nil)
+        rewrite.configureGeneration(client: ElevenLabsVoiceLab(keys: GenerationTestKeys(), region: .default),
+            store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
+        let generation = try #require(rewrite.generation)
+        let previous = row(index: 0)
+        generation.review(.init(rows: [previous], end: .completed))
+        var preparations = 0
+        generation.prepareQuote = { preparations += 1 }
+        rewrite.edit("New wording")
+        await generation.finishQuotePreparationForTests()
+        #expect(preparations == 1 && generation.rows == [previous] && generation.selectedID == previous.id)
+        #expect(!generation.readyToAccept)
+        rewrite.close()
     }
     @Test func changedLengthRequiresExplicitTakeAndVideoChoices() {
         let session = session(); let take = row(index: 0, residual: 0.5)

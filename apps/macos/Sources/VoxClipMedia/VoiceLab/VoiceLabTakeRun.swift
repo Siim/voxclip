@@ -161,12 +161,14 @@ public actor VoiceLabTakeRun {
         guard executionOwner == owner else { return }
         task = nil; runningID = nil; executionOwner = nil
     }
-    public func cancel() async {
+    public func cancel(keepingTakes: Bool = false) async {
         stop = .cancelled; revision += 1; task?.cancel()
         dispatchRevision.withLock { $0 = revision }
-        let retired = Array(scratches.values)
-        scratches.removeAll()
-        for scratch in retired { await scratch.invalidate() }
+        if !keepingTakes {
+            let retired = Array(scratches.values)
+            scratches.removeAll()
+            for scratch in retired { await scratch.invalidate() }
+        }
         if let pending {
             self.pending = nil
             await client.discardRun(pending.quote.id, quotes: pending.quote.takes.flatMap { [$0.synthesis, $0.qa] })

@@ -8,7 +8,7 @@ import re
 
 
 def check_staged_actions(root):
-    pattern = re.compile(r'\b(?:publishForTests|prepareForTests|executeForTests|finishGenerationForTests|voiceRecoveryForTests|DebugRewrite|DebugRewriteGeneration|showFixture|DebugVoiceLab)\b')
+    pattern = re.compile(r'\b(?:publishForTests|prepareForTests|executeForTests|finishGenerationForTests|finishQuotePreparationForTests|voiceRecoveryForTests|DebugRewrite|DebugRewriteGeneration|showFixture|DebugVoiceLab)\b')
     for source in sorted(root.rglob('*.swift')):
         if '.build' in source.parts:
             continue

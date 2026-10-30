@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-voicelab — W8 automatic replacement quotes
+
+This supersedes W7's unpriced preparation click. On run completion and voice/model/text/consent changes, prepare a fresh immutable whole-three-take quote automatically, using local pricing and free discovery only. Keep the previous rows, selection and scratch/audition leases until an approved replacement actually starts. While preparing, both Generate Again and Try Another have plain disabled titles; once ready, both show the known estimate before the click, including estimates that need confirmation. One click executes a known below-S14 quote or opens confirmation otherwise. Declining approval preserves rows and selection. Preparation errors remain inline with an enabled Retry that prepares only; it never dispatches a paid request. Changed inputs invalidate approval and acceptance of old takes, synchronously invalidate the run's dispatch revision, and cancel the old run without destroying audition leases. `cancel(keepingTakes: true)` preserves these leases; normal cancel/session end still invalidates them.
+
 ### 2026-10-30 — sol-mac-voicelab — W7 Windows command handoff
 
 This entry supersedes the older W5 statement that `VoiceLabEditCommand` is DEBUG-only. The command and editor actions ship in Release behind the central beta gate. The pure `applying(to:)` transition performs no I/O and never deletes media. `EditorModel.applyVoiceLab` additionally requires an editable document, the central Rewrite gate, no export and no AI run. Any accompanying local edit commands are validated and committed in the same undo group; a failed transition changes nothing.

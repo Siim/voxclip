@@ -6,6 +6,29 @@ import VoxClipCore
     @Bindable var generation: RewriteGenerationSession
     let generate: () -> Void
     var body: some View {
+        consentObservedContent
+            .onChange(of: generation.announcement) { _, message in
+                guard !message.isEmpty else { return }
+                NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                    userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+            }
+            .task(id: generation.bestID) { await generation.autoplayBest() }
+    }
+    private var selectedConsent: VoiceConsentRecord? {
+        guard let voiceID = generation.selectedVoiceID else { return nil }
+        let editor: EditorModel = session.editor
+        let app: AppModel = editor.app
+        let voiceLab: VoiceLabSession = app.voiceLabSession
+        let records: [VoiceConsentRecord] = voiceLab.records
+        for record in records where record.id == voiceID { return record }
+        return nil
+    }
+    private var consentObservedContent: some View {
+        content.frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: session.editor.app.bool("voiceLab.providerConsent.elevenlabs")) { _, _ in generation.inputsChanged() }
+            .onChange(of: selectedConsent) { _, _ in generation.inputsChanged() }
+    }
+    private var content: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Voice").font(.system(size: 12, weight: .semibold))
             if generation.voices.isEmpty {
@@ -27,7 +50,7 @@ import VoxClipCore
             }
             Text("Takes").font(.system(size: 12, weight: .semibold))
             Button(generation.buttonTitle, action: generate)
-                .disabled(generation.selectedVoiceID == nil || generation.selectedModelID == nil || generation.cost == nil || generation.phase == .generating || generation.phase == .preparing || !session.current)
+                .disabled(!generation.canExecute)
                 .help("Generate up to 3 new takes")
                 .accessibilityLabel(generation.buttonTitle)
             Text("Sends the new words and a short audio check to ElevenLabs with your key. No video.")
@@ -41,7 +64,7 @@ import VoxClipCore
                 }.listStyle(.plain).environment(\.defaultMinListRowHeight, 36).frame(height: takeListHeight)
                     .accessibilityLabel("Takes, choose one")
             }
-            if generation.phase == .preparing { ProgressView("Preparing takes…").controlSize(.small) }
+            if generation.preparingQuote { ProgressView("Preparing takes…").controlSize(.small) }
             if generation.phase == .generating {
                 ProgressView("Generating take \(min(3, generation.rows.count + 1)) of 3…").controlSize(.small)
                 Button("Cancel") { generation.cancel() }
@@ -51,24 +74,17 @@ import VoxClipCore
             }
             if generation.phase == .failed {
                 InlineNotice(text: generation.problem)
-                HStack { Button("Open Settings") { openVoxClipSettings(pane: "voiceLab") }; Button("Retry", action: generate) }
+                Button("Open Settings") { openVoxClipSettings(pane: "voiceLab") }
             }
             if generation.phase != .failed && !generation.problem.isEmpty { InlineNotice(text: generation.problem) }
+            if generation.quotePreparationFailed || generation.phase == .failed {
+                Button("Retry") { generation.requestQuote() }.disabled(!generation.canGenerate)
+            }
             if generation.quote != nil, case .confirm(let copy) = generation.cost {
                 Text(copy).font(.system(size: 11)).fixedSize(horizontal: false, vertical: true).accessibilityLabel("Cost confirmation. " + copy)
             }
             if generation.selected?.fits == false { lengthChoice }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .task(id: (generation.selectedVoiceID ?? "") + ":" + (generation.selectedModelID ?? "")) {
-            if generation.needsPreparation { await session.prepareTakes() }
-        }
-        .onChange(of: generation.announcement) { _, message in
-            guard !message.isEmpty else { return }
-            NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
-                userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
-        }
-        .task(id: generation.bestID) { await generation.autoplayBest() }
     }
     private var takeListHeight: CGFloat {
         let count: CGFloat = CGFloat(generation.rows.count)
@@ -98,8 +114,8 @@ import VoxClipCore
             VStack(alignment: .leading, spacing: 1) {
                 Label("Take \(row.index + 1) didn't pass the speech check.", systemImage: "exclamationmark.triangle")
                     .font(.system(size: 10)).foregroundStyle(DesignValues.color("status.warning"))
-                Button(VoiceLabCostPresentation.buttonTitle("Try Another", takes: 3, kind: generation.cost ?? .confirm("")), action: generate)
-                    .font(.system(size: 10)).disabled(!generation.canGenerate)
+                Button(generation.generationButtonTitle("Try Another", takes: 3), action: generate)
+                    .font(.system(size: 10)).disabled(!generation.canExecute)
             }.accessibilityLabel("Take \(row.index + 1) didn't pass the speech check")
         }
     }

@@ -106,19 +106,20 @@ struct RewriteConnector {
             scratchRoot: editor.app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true))
         let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { [weak self] start in
             try await MainActor.run {
-                guard self?.generationIsCurrent(region: region) == true else { throw VoiceLabError.consentRequired }
+                guard self?.generationIsCurrent(region: region) == true,
+                      self?.generation?.dispatchIsCurrent == true else { throw VoiceLabError.consentRequired }
                 try start()
             }
         }) { [weak self] in
             await self?.generationIsCurrent(region: region) ?? false
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
+        generation?.prepareQuote = { [weak self] in await self?.prepareTakes() }
     }
     func reportGenerationProblem(_ error: any Error) { problem = Self.refusal(error) }
     func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
         current && !isProposing && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
-            editor.app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue &&
-            (generation?.input == nil || generation?.inputsMatchCurrentSelection == true)
+            editor.app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue
     }
     private var shownQuoteID: UUID?
     @ObservationIgnored private let service: VoiceRewriteService?
@@ -183,7 +184,7 @@ struct RewriteConnector {
         return diff.hunks.contains { $0.kind == .textOnly } ? "Apply Correction" : "Apply Cuts"
     }
     func setInstruction(_ text: String) {
-        invalidate()
+        invalidate(preservingTakes: true)
         instruction = text
         problem = ""
         schedulePreparation()
@@ -233,6 +234,7 @@ struct RewriteConnector {
         let runs = editor.llmRuns
         let expected = revision
         isProposing = true; shownQuoteID = nil; problem = ""
+        generation?.inputsChanged()
         let task = Task { [self] () -> Bool in
             defer { runs.release(lease); isProposing = false }
             do {
@@ -256,6 +258,7 @@ struct RewriteConnector {
         }
         sending = task
         let result = await task.value
+        generation?.requestQuote()
         if current && revision == expected {
             quote = nil; estimate = nil; request = nil
             await prepare(revision: expected)
@@ -264,11 +267,11 @@ struct RewriteConnector {
     }
     func edit(_ text: String) {
         guard isOpen else { return }
-        invalidate(); newWords = text; problem = ""; refreshReview()
+        invalidate(preservingTakes: true); newWords = text; problem = ""; refreshReview()
         schedulePreparation()
     }
-    private func invalidate() {
-        generation?.invalidate()
+    private func invalidate(preservingTakes: Bool = false) {
+        if preservingTakes { generation?.inputsChanged() } else { generation?.invalidate() }
         revision += 1; preparing?.cancel(); sending?.cancel()
         quote = nil; estimate = nil; shownQuoteID = nil; request = nil
     }

@@ -60,7 +60,7 @@ import VoxClipCore
             if session.review?.voiceHunks.isEmpty == false {
                 Divider()
                 if let generation = session.generation { RewriteTakesView(session: session, generation: generation, generate: generate) }
-                else { Button("Choose Voice…") { approvalTask = Task { await session.discoverVoices(); await session.prepareTakes() } } }
+                else { Button("Choose Voice…") { approvalTask = Task { await session.discoverVoices() } } }
             }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -151,8 +151,7 @@ import VoxClipCore
     }
     private func generate() {
         approvalTask = Task {
-            if session.generation?.quote == nil { await session.prepareTakes(); return }
-            guard let generation = session.generation, generation.canGenerate, let quote = generation.quote else { return }
+            guard let generation = session.generation, generation.canExecute, let quote = generation.quote else { return }
             if case .confirm(let copy) = generation.cost {
                 guard let window = session.editor.window,
                       await RewriteApprovalSheet(title: "Generate Takes", copy: copy, parent: window).confirm() else { return }
