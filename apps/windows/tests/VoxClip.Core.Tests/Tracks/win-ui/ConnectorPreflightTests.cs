@@ -58,6 +58,15 @@ public sealed class ConnectorPreflightTests
     }
 
     [Fact]
+    public void ConnectionTestCopyShowsTheActualModelFallbackAndMismatch()
+    {
+        Assert.Equal("Works · chosen · 1.2 s", ConnectorTestPresentation.Text(new(true, "chosen", false, 1.234)));
+        Assert.Equal("Works · answered by fallback", ConnectorTestPresentation.Text(new(true, "fallback", true, 1)));
+        Assert.Equal("The model answered, but not as expected. It may not follow instructions well.", ConnectorTestPresentation.Text(new(false, "chosen", false, 1)));
+        Assert.StartsWith("Failed: ", ConnectorTestPresentation.Failure(new IOException()));
+    }
+
+    [Fact]
     public async Task NotReadyNeverPromptsAndCancelledConsentNeverAuthorizes()
     {
         var ct = TestContext.Current.CancellationToken;

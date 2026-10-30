@@ -242,9 +242,20 @@ public sealed partial class SettingsWindow : Window
                 var connectorStatus = await ProviderCatalog.ProbeAsync(entry, selectedConnector, lifetime.Token);
                 status.Text = ProviderCatalog.Status(connectorStatus);
                 if (connectorStatus is not ConnectorStatus.Ready) return;
-                var result = await ProviderCatalog.TestAsync(entry, model.Text.Trim(),
-                    token => ProviderCatalog.ConsentAsync(entry, Root.XamlRoot, ConnectorConsentAction.Test, 0, selectedConnector, connectorStatus, token), lifetime.Token);
-                if (result is not null) status.Text = result.Passed ? "Works." : "The model answered, but not as expected. Try another model.";
+                try
+                {
+                    var result = await ProviderCatalog.TestAsync(entry, model.Text.Trim(),
+                        token => ProviderCatalog.ConsentAsync(entry, Root.XamlRoot, ConnectorConsentAction.Test, 0, selectedConnector, connectorStatus, token), lifetime.Token);
+                    if (result is null) return;
+                    status.Text = ConnectorTestPresentation.Text(result);
+                    status.Foreground = Ui.ThemeBrush(status, result.Passed ? "VcStatusSuccessBrush" : "VcStatusWarningBrush");
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception error) when (error is not OutOfMemoryException)
+                {
+                    status.Text = ConnectorTestPresentation.Failure(error);
+                    status.Foreground = Ui.ThemeBrush(status, "VcStatusWarningBrush");
+                }
             }, "Connection test")));
         }
         else panel.Children.Add(Ui.Button("Test", () => _ = Ui.RunAsync(notice, async () =>
