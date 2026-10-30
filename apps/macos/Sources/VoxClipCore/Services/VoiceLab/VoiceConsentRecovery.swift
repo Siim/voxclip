@@ -58,7 +58,7 @@ extension VoiceConsentRecord {
     package func assigningVoice(_ voiceID: String, requiresVerification: Bool) -> Self {
         Self(schema: schema, recordId: recordId, provider: provider, type: type, voiceId: voiceID, voiceName: voiceName,
              status: requiresVerification ? .verificationRequired : .active, createdAt: createdAt, deletedAt: nil,
-             statement: statement, attestations: attestations, samples: samples, speaker: speaker, app: app, region: region, creatorKeyFingerprint: creatorKeyFingerprint)
+             statement: statement, attestations: attestations, samples: samples, speaker: speaker, app: app, region: region, creator: creator)
     }
 }
 
@@ -121,7 +121,7 @@ extension VoiceConsentStore {
         var value = VoiceOperation(id: requestID, kind: .create, recordID: record.id, region: region, at: date)
         value.audit = try VoiceConsentAudit(record: record)
         value.expectedVoiceName = record.voiceName + " (VoxClip)"
-        value.creatorKeyFingerprint = record.creatorKeyFingerprint
+        value.creatorKeyFingerprint = record.creator?.keyFingerprint
         try writeOperation(value, checkpoint: .creationIntent)
         claimedOperations.insert(value.id)
         return value
@@ -196,10 +196,10 @@ extension VoiceConsentStore {
             return existing
         }
         let record = try load(id)
-        guard (record.region ?? .default) == region else { throw VoiceConsentError.creatorMismatch }
+        guard record.recordedRegion == region else { throw VoiceConsentError.creatorMismatch }
         var value = VoiceOperation(id: UUID(), kind: .delete, recordID: id, region: region, at: date, remoteVoiceID: record.voiceId)
         value.audit = try VoiceConsentAudit(record: record)
-        value.creatorKeyFingerprint = record.creatorKeyFingerprint
+        value.creatorKeyFingerprint = record.creator?.keyFingerprint
         try writeOperation(value, checkpoint: .deletionIntent)
         return value
     }
@@ -216,7 +216,7 @@ extension VoiceConsentStore {
             _ = try transition(value.id, to: .withdrawing, at: date, remoteVoiceID: remoteVoiceID)
         } else if let voiceID = remoteVoiceID {
             var value = VoiceOperation(id: UUID(), kind: .create, recordID: recordID, region: region, at: date, remoteVoiceID: voiceID)
-            value.creatorKeyFingerprint = (try? load(recordID))?.creatorKeyFingerprint
+            value.creatorKeyFingerprint = (try? load(recordID))?.creator?.keyFingerprint
             value.state = .withdrawing; value.wasDispatched = true
             try writeOperation(value, checkpoint: .withdrawing)
         }
@@ -284,7 +284,7 @@ extension VoiceConsentStore {
     }
     public func removeFromVoxClipOnly(_ id: String, at date: Date = Date()) throws {
         let record = try load(id)
-        var value = try beginDeletion(id, region: record.region ?? .default, at: date)
+        var value = try beginDeletion(id, region: record.recordedRegion, at: date)
         value.remoteStateUnknown = true
         try writeOperation(value, checkpoint: .deletionIntent)
         try finishLocalRemoval(value)

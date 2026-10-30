@@ -226,7 +226,7 @@ public actor ElevenLabsVoiceLab {
     public func prepareConsentDeletion(_ record: VoiceConsentRecord, requestID: UUID) async throws -> VoiceLabQuote {
         try record.validate()
         let fingerprint = try await creatorKeyFingerprint()
-        guard (record.region ?? .default) == region, record.creatorKeyFingerprint == nil || record.creatorKeyFingerprint == fingerprint else { throw VoiceConsentError.creatorMismatch }
+        guard record.recordedRegion == region, record.creator == nil || record.creator?.keyFingerprint == fingerprint else { throw VoiceConsentError.creatorMismatch }
         guard record.status != .deleted else { throw VoiceConsentError.inactive }
         discoveredVoices[record.voiceId] = VoiceLabVoice(id: record.voiceId, name: record.voiceName, category: "cloned", isOwner: true,
                                                       requiresVerification: record.status == .verificationRequired, isVerified: record.status == .active)

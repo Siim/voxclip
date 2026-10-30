@@ -68,6 +68,7 @@ def main(argv):
     ]) + [ROOT / "shared" / "catalog" / "voice-lab.json",
           ROOT / "shared" / "voice-lab" / "statements.json",
           fixtures / "voice-lab" / "consent-record.json",
+          fixtures / "voice-lab" / "consent-record-creator.json",
           ROOT / "shared" / "catalog" / "voice-lab-models.json"]
     if not files:
         print("no files to validate", file=sys.stderr)

@@ -160,10 +160,16 @@ struct VoiceConsentTests {
         let file = root.appendingPathComponent("record.json")
         try JSONEncoder().encode(record).write(to: file)
         try SchemaPython.validate([file, FixtureLoader.sharedRoot().appendingPathComponent("voice-lab/statements.json")])
-        var bound = record; bound.region = .eu; bound.creatorKeyFingerprint = "0123456789abcdef"
+        var bound = record; bound.creator = .init(region: .eu, keyFingerprint: "0123456789abcdef")
         try JSONEncoder().encode(bound).write(to: file)
         try SchemaPython.validate([file])
-        bound.region = nil
+        let json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        let creator = try #require(json["creator"] as? [String: String])
+        #expect(creator == ["region": "eu", "keyFingerprint": "0123456789abcdef"])
+        #expect(json["region"] == nil && json["creatorKeyFingerprint"] == nil)
+        #expect(try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: file)) == bound)
+        #expect(record.creator == nil && record.recordedRegion == .default)
+        bound.creator = .init(region: .eu, keyFingerprint: "0123456789ABCDEF")
         #expect(throws: VoiceConsentError.invalidRecord) { try bound.validate() }
     }
     @Test func storeRefusesAlteredAudio() async throws {
@@ -334,7 +340,9 @@ struct VoiceConsentTests {
         let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
         #expect(record.status == (verificationRequired ? .verificationRequired : .active))
         let fingerprint = try await client.creatorKeyFingerprint()
-        #expect(record.region == client.region && record.creatorKeyFingerprint == fingerprint)
+        #expect(record.creator == .init(region: client.region, keyFingerprint: fingerprint))
+        let operations = try await store.operations()
+        #expect(operations.allSatisfy { $0.creatorKeyFingerprint == fingerprint })
         #expect(!String(decoding: try JSONEncoder().encode(record), as: UTF8.self).contains("synthetic-consent-key"))
         #expect(try await store.load(id) == record); #expect(record.samples.count == 4)
         #expect(try await store.activeVoices().count == (verificationRequired ? 0 : 1))
@@ -596,10 +604,10 @@ struct VoiceConsentTests {
     @Test func deletionRejectsAnotherCreatorAndLocalRemovalKeepsUnknownTombstone() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = storage(root); var record = try fixtureRecord(wav: wav)
-        record.region = .default; record.creatorKeyFingerprint = "0123456789abcdef"
+        record.creator = .init(region: .default, keyFingerprint: "0123456789abcdef")
         try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
         let calls = ConsentRequestLog(); let client = client(calls)
-        #expect(try await client.creatorKeyFingerprint() != record.creatorKeyFingerprint)
+        #expect(try await client.creatorKeyFingerprint() != record.creator?.keyFingerprint)
         let enrollment = enroll(store: store, client: client, check: .unavailable, raw: try await raw())
         await #expect(throws: VoiceConsentError.creatorMismatch) { try await enrollment.delete(recordID: record.id, approved: true, enabled: true) }
         #expect(calls.value.withLock { $0.isEmpty })
@@ -623,8 +631,8 @@ struct VoiceConsentTests {
     @Test func matchingCreator404ConfirmsDeletion() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = storage(root); let calls = ConsentRequestLog(); let client = client(calls, deletionStatus: 404)
-        var record = try fixtureRecord(wav: wav); record.region = client.region
-        record.creatorKeyFingerprint = try await client.creatorKeyFingerprint()
+        var record = try fixtureRecord(wav: wav)
+        record.creator = .init(region: client.region, keyFingerprint: try await client.creatorKeyFingerprint())
         try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
         try await enroll(store: store, client: client, check: .unavailable, raw: raw()).delete(recordID: record.id, approved: true, enabled: true)
         #expect(try await store.load(record.id).status == .deleted)
@@ -637,8 +645,8 @@ struct VoiceConsentTests {
             return (404, [:], Data())
         }
         let client = ElevenLabsVoiceLab(keys: keys, session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), region: .default)
-        var record = try fixtureRecord(wav: wav); record.region = client.region
-        record.creatorKeyFingerprint = try await client.creatorKeyFingerprint()
+        var record = try fixtureRecord(wav: wav)
+        record.creator = .init(region: client.region, keyFingerprint: try await client.creatorKeyFingerprint())
         let quote = try await client.prepareConsentDeletion(record, requestID: UUID())
         keys.value.withLock { $0 = "synthetic-another-key" }
         let policy = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)

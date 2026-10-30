@@ -135,7 +135,7 @@ public actor VoiceEnrollment {
                                         createdAt: VoiceConsentRecord.timestamp(draft.request.createdAt), deletedAt: nil,
                                         statement: .init(language: statement.language, text: statement.text, nonce: statement.nonce, audioFile: "statement.wav", audioSha256: draft.verified.hash, stt: draft.verified.match),
                                         attestations: draft.verified.attestations, samples: draft.samples,
-                                        speaker: .init(model: embedder.modelID, threshold: threshold, embedding: VoiceConsentRecord.encodeEmbedding(draft.embedding)), app: .init(version: appVersion, platform: "macos"), region: client.region, creatorKeyFingerprint: creatorFingerprint)
+                                        speaker: .init(model: embedder.modelID, threshold: threshold, embedding: VoiceConsentRecord.encodeEmbedding(draft.embedding)), app: .init(version: appVersion, platform: "macos"), creator: .init(region: client.region, keyFingerprint: creatorFingerprint))
         let operation = try await store.beginClaimedCreation(record: template, requestID: quote.requestID, region: client.region, at: Date())
         let record: VoiceConsentRecord
         do {

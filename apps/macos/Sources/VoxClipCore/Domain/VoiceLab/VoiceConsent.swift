@@ -108,9 +108,17 @@ public struct VoiceStatementMatch: Codable, Sendable, Equatable {
 }
 
 public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
-    package init(schema: String, recordId: String, provider: String, type: String, voiceId: String, voiceName: String, status: Status, createdAt: String, deletedAt: String?, statement: Statement, attestations: Attestations, samples: [Sample], speaker: Speaker, app: App, region: ElevenLabsRegion? = nil, creatorKeyFingerprint: String? = nil) {
+    package init(schema: String, recordId: String, provider: String, type: String, voiceId: String, voiceName: String, status: Status, createdAt: String, deletedAt: String?, statement: Statement, attestations: Attestations, samples: [Sample], speaker: Speaker, app: App, region: ElevenLabsRegion? = nil, creator: Creator? = nil) {
         self.schema = schema; self.recordId = recordId; self.provider = provider; self.type = type; self.voiceId = voiceId; self.voiceName = voiceName; self.status = status; self.createdAt = createdAt; self.deletedAt = deletedAt; self.statement = statement; self.attestations = attestations; self.samples = samples; self.speaker = speaker; self.app = app
-        self.region = region; self.creatorKeyFingerprint = creatorKeyFingerprint
+        self.region = region; self.creator = creator
+    }
+
+    public struct Creator: Codable, Sendable, Equatable {
+        public let region: ElevenLabsRegion
+        public let keyFingerprint: String
+        public init(region: ElevenLabsRegion, keyFingerprint: String) {
+            self.region = region; self.keyFingerprint = keyFingerprint
+        }
     }
 
     public enum Status: String, Codable, Sendable { case active, verificationRequired, deleted }
@@ -177,9 +185,10 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
     public let speaker: Speaker
     public let app: App
     public var region: ElevenLabsRegion?
-    public var creatorKeyFingerprint: String?
+    public var creator: Creator?
+    public var recordedRegion: ElevenLabsRegion { creator?.region ?? region ?? .default }
     public var id: String { recordId }
-    private enum CodingKeys: String, CodingKey { case schema, recordId, provider, type, voiceId, voiceName, status, createdAt, deletedAt, statement, attestations, samples, speaker, app, region, creatorKeyFingerprint }
+    private enum CodingKeys: String, CodingKey { case schema, recordId, provider, type, voiceId, voiceName, status, createdAt, deletedAt, statement, attestations, samples, speaker, app, region, creator }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(schema, forKey: .schema); try values.encode(recordId, forKey: .recordId)
@@ -189,12 +198,12 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
         try values.encode(deletedAt, forKey: .deletedAt); try values.encode(statement, forKey: .statement)
         try values.encode(attestations, forKey: .attestations); try values.encode(samples, forKey: .samples)
         try values.encode(speaker, forKey: .speaker); try values.encode(app, forKey: .app)
-        try values.encodeIfPresent(region, forKey: .region); try values.encodeIfPresent(creatorKeyFingerprint, forKey: .creatorKeyFingerprint)
+        try values.encodeIfPresent(region, forKey: .region); try values.encodeIfPresent(creator, forKey: .creator)
     }
     public static func timestamp(_ date: Date) -> String { ISO8601DateFormatter().string(from: date) }
     public func validate() throws {
-        guard creatorKeyFingerprint.map({ $0.count == 16 && $0.allSatisfy { "0123456789abcdef".contains($0) } }) ?? true,
-              creatorKeyFingerprint == nil || region != nil else { throw VoiceConsentError.invalidRecord }
+        guard creator.map({ $0.keyFingerprint.count == 16 && $0.keyFingerprint.allSatisfy { "0123456789abcdef".contains($0) } }) ?? true,
+              creator == nil || region == nil || creator?.region == region else { throw VoiceConsentError.invalidRecord }
         guard schema == "voxclip-consent/1", UUID(uuidString: recordId) != nil, provider == "elevenlabs", type == "ivc",
               !voiceId.isEmpty, voiceId.count <= 128, voiceId.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }),
               (1...70).contains(voiceName.unicodeScalars.count), ISO8601DateFormatter().date(from: createdAt) != nil,

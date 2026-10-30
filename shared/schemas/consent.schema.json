@@ -19,7 +19,15 @@
   ],
   "properties": {
     "region": { "enum": ["default", "us", "eu", "in", "sg"] },
-    "creatorKeyFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+    "creator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["region", "keyFingerprint"],
+      "properties": {
+        "region": { "enum": ["default", "us", "eu", "in", "sg"] },
+        "keyFingerprint": { "type": "string", "pattern": "^[0-9a-f]{16}$" }
+      }
+    },
     "schema": {
       "const": "voxclip-consent/1"
     },
@@ -233,10 +241,6 @@
     }
   },
   "allOf": [
-    {
-      "if": { "required": ["creatorKeyFingerprint"] },
-      "then": { "required": ["region"] }
-    },
     {
       "if": {
         "properties": {
