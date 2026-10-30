@@ -306,7 +306,8 @@ extension HeavyMediaTests {
                 }
                 #expect(listed.isEmpty)
                 let files = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(projectId).path)
-                #expect(files.allSatisfy { $0 == "candidate.wav" })
+                #expect(files.allSatisfy { $0 == "candidate.wav" || $0 == ".candidate.wav.ownership.json" })
+                #expect(files.contains("candidate.wav") == files.contains(".candidate.wav.ownership.json"))
                 if files.contains("candidate.wav") {
                     let expected = VoiceLabAssetStore.wavHeader(frames: pcm.count / 2, sampleRate: 24_000) + pcm
                     #expect(try Data(contentsOf: root.appendingPathComponent(projectId).appendingPathComponent("candidate.wav")) == expected)
@@ -314,7 +315,7 @@ extension HeavyMediaTests {
             }
         }
     }
-    @Test func startupRecoveryDeletesOnlyOwnedOldPartialsAndNeverCompleteAudio() throws {
+    @Test func startupRecoveryDeletesOnlyJournalledDeadPartialsAndNeverCompleteAudio() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -336,11 +337,50 @@ extension HeavyMediaTests {
         defer { Darwin.close(descriptor) }
         let lock = try VoiceLabAssetRecovery.lock(descriptor)
         defer { Darwin.close(lock) }
-        #expect(try VoiceLabAssetRecovery.recover(descriptor, before: boundary) == 1)
-        #expect(try VoiceLabAssetRecovery.recover(descriptor, before: boundary) == 0)
+        let project = Darwin.open(directory.path, O_RDONLY | O_DIRECTORY)
+        let partial = Darwin.open(old.path, O_RDWR)
+        defer { Darwin.close(project); Darwin.close(partial) }
+        _ = try VoiceLabAssetRecovery.recordPartial(project, name: old.lastPathComponent, descriptor: partial,
+            owner: .init(pid: 123, seconds: 100, microseconds: 0))
+        #expect(try VoiceLabAssetRecovery.recover(descriptor, status: { _ in .gone }) == 1)
+        #expect(try VoiceLabAssetRecovery.recover(descriptor, status: { _ in .gone }) == 0)
         #expect(!FileManager.default.fileExists(atPath: old.path))
         for path in [current, unknown, complete, link] { #expect(FileManager.default.fileExists(atPath: path.path)) }
         #expect(try Data(contentsOf: complete) == Data([1, 2, 3]))
+    }
+    @Test(arguments: ["replacement", "live", "dead", "reused", "unknown"])
+    func partialRecoveryRequiresAbandonmentAndOriginalIdentity(scenario: String) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let directory = root.appendingPathComponent(projectId)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rootFD = try VoiceLabPaidRoot.open(root)
+        let projectFD = Darwin.open(directory.path, O_RDONLY | O_DIRECTORY)
+        let name = ".paid.wav.\(UUID().uuidString.lowercased()).partial"
+        let fd = openat(projectFD, name, O_RDWR | O_CREAT | O_EXCL, 0o600)
+        defer { Darwin.close(fd); Darwin.close(projectFD); Darwin.close(rootFD) }
+        guard case .running(let owner) = VoiceLabAssetRecovery.ownerStatus(getppid()) else {
+            Issue.record("Cannot read the live second process start time"); return
+        }
+        _ = try VoiceLabAssetRecovery.recordPartial(projectFD, name: name, descriptor: fd, owner: owner)
+        let file = directory.appendingPathComponent(name)
+        if scenario == "replacement" {
+            try FileManager.default.removeItem(at: file)
+            try Data("replacement user file".utf8).write(to: file)
+        }
+        let removed = try VoiceLabAssetRecovery.recover(rootFD, status: { pid in
+            #expect(pid == owner.pid)
+            switch scenario {
+            case "live": return VoiceLabAssetRecovery.ownerStatus(pid)
+            case "reused": return .running(.init(pid: pid, seconds: owner.seconds + 1, microseconds: owner.microseconds))
+            case "unknown": return .unknown
+            default: return .gone
+            }
+        })
+        let abandoned = scenario == "dead" || scenario == "reused"
+        #expect(removed == (abandoned ? 1 : 0))
+        #expect(FileManager.default.fileExists(atPath: file.path) == !abandoned)
+        if scenario == "replacement" { #expect(try Data(contentsOf: file) == Data("replacement user file".utf8)) }
     }
     @Test func writerHoldsRecoveryLockUntilPublicationCompletes() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

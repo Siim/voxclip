@@ -30,9 +30,12 @@ public enum VoiceLabAssetRetention {
         let size: Int64
         let modifiedSeconds: Int
         let modifiedNanos: Int
+        let birthSeconds: Int
+        let birthNanos: Int
         func matches(_ info: stat) -> Bool {
             device == info.st_dev && inode == info.st_ino && size == info.st_size &&
-                modifiedSeconds == info.st_mtimespec.tv_sec && modifiedNanos == info.st_mtimespec.tv_nsec
+                modifiedSeconds == info.st_mtimespec.tv_sec && modifiedNanos == info.st_mtimespec.tv_nsec &&
+                birthSeconds == info.st_birthtimespec.tv_sec && birthNanos == info.st_birthtimespec.tv_nsec
         }
     }
     private struct Ledger: Codable {
@@ -54,6 +57,8 @@ public enum VoiceLabAssetRetention {
         defer { close(root) }
         let lock = try VoiceLabAssetRecovery.lock(root)
         defer { close(lock) }
+        let exclusive = allowDeletion ? try VoiceLabAssetActivity.exclusive(root) : nil
+        defer { if let exclusive { close(exclusive) } }
         let directory = openat(root, projectId, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
         if directory < 0, errno == ENOENT { return [] }
         guard directory >= 0 else { throw VoiceLabAssetStoreError.unsafePath(projectId) }
@@ -83,17 +88,21 @@ public enum VoiceLabAssetRetention {
             var info = stat()
             guard fstatat(directory, name, &info, AT_SYMLINK_NOFOLLOW) == 0,
                   info.st_mode & S_IFMT == S_IFREG, info.st_uid == getuid() else { continue }
+            guard VoiceLabAssetRecovery.ownsComplete(directory, name: name, info: info) else {
+                ledger.protected.insert(relative); ledger.unreferenced.removeValue(forKey: name); continue
+            }
             if var entry = ledger.unreferenced[name], entry.matches(info) {
                 let elapsed = observation.monotonicSeconds - entry.monotonicSeconds
                 let jumped = now.timeIntervalSince(entry.lastObservedAt) - elapsed > 24 * 60 * 60
                 if backward || entry.observation != observation.session || elapsed < 0 || jumped { entry.discovered = now }
                 entry.lastObservedAt = now; entry.observation = observation.session; entry.monotonicSeconds = observation.monotonicSeconds
                 ledger.unreferenced[name] = entry
-                if allowDeletion && now.timeIntervalSince(entry.discovered) >= 7 * 24 * 60 * 60 { eligible.append(name) }
+                if exclusive != nil && now.timeIntervalSince(entry.discovered) >= 7 * 24 * 60 * 60 { eligible.append(name) }
             } else {
                 ledger.unreferenced[name] = Entry(discovered: now, lastObservedAt: now,
                     observation: observation.session, monotonicSeconds: observation.monotonicSeconds, device: info.st_dev, inode: info.st_ino,
-                    size: info.st_size, modifiedSeconds: info.st_mtimespec.tv_sec, modifiedNanos: info.st_mtimespec.tv_nsec)
+                    size: info.st_size, modifiedSeconds: info.st_mtimespec.tv_sec, modifiedNanos: info.st_mtimespec.tv_nsec,
+                    birthSeconds: info.st_birthtimespec.tv_sec, birthNanos: info.st_birthtimespec.tv_nsec)
             }
         }
         try persist(ledger, name: ledgerName, directory: directory)
@@ -103,7 +112,8 @@ public enum VoiceLabAssetRetention {
             var info = stat()
             guard let entry = ledger.unreferenced[name], !ledger.protected.contains("\(projectId)/\(name)"),
                   fstatat(directory, name, &info, AT_SYMLINK_NOFOLLOW) == 0,
-                  info.st_mode & S_IFMT == S_IFREG, entry.matches(info) else { continue }
+                  info.st_mode & S_IFMT == S_IFREG, entry.matches(info),
+                  VoiceLabAssetRecovery.ownsComplete(directory, name: name, info: info) else { continue }
             guard unlinkat(directory, name, 0) == 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
             removed.append("\(projectId)/\(name)"); ledger.unreferenced.removeValue(forKey: name)
         }
@@ -128,7 +138,12 @@ public enum VoiceLabAssetRetention {
         let temporary = ".asset-retention.\(UUID().uuidString.lowercased()).partial"
         let descriptor = openat(directory, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard descriptor >= 0 else { throw VoiceLabAssetStoreError.unwritable(name) }
-        defer { close(descriptor); unlinkat(directory, temporary, 0) }
+        defer { close(descriptor) }
+        let journal = try VoiceLabAssetRecovery.recordPartial(directory, name: temporary, descriptor: descriptor)
+        defer {
+            VoiceLabAssetRecovery.removeIfMatching(directory, name: temporary, identity: journal.partial.identity)
+            VoiceLabAssetRecovery.removeIfMatching(directory, name: journal.name, identity: journal.identity)
+        }
         let data = try JSONEncoder().encode(ledger)
         try data.withUnsafeBytes { buffer in
             var offset = 0

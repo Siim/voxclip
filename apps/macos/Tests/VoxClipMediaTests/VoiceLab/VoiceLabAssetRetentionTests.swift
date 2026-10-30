@@ -4,6 +4,33 @@ import VoxClipCore
 @testable import VoxClipMedia
 
 @Suite struct VoiceLabAssetRetentionTests {
+    @Test(arguments: ["replacement", "live-instance", "late-reference"])
+    func deletionRequiresOwnedIdentityAndNoActiveDocuments(scenario: String) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let project = UUID().uuidString.lowercased(), now = Date(timeIntervalSince1970: 1_800_000_000)
+        let asset = try VoiceLabAssetStore.write(pcm16: Data([0, 1]), sampleRate: 24000, projectId: project,
+            assetId: "candidate", paidRoot: root, createdAt: now)
+        try VoiceLabAssetRetention.closeProject(projectId: project, paidRoot: root, references: [], now: now,
+            observation: .init(session: "test", monotonicSeconds: 0))
+        let activity = scenario == "live-instance" ? try VoiceLabAssetActivity(paidRoot: root) : nil
+        var rechecked = false
+        let result = try withExtendedLifetime(activity) {
+            try VoiceLabAssetRetention.closeProject(projectId: project, paidRoot: root, references: [],
+                now: now.addingTimeInterval(7 * 86400), observation: .init(session: "test", monotonicSeconds: 7 * 86400),
+                recheckReferences: {
+                    rechecked = true
+                    if scenario == "replacement" {
+                        try Data("replacement user file".utf8).write(to: root.appendingPathComponent(asset.file), options: .atomic)
+                    }
+                    return scenario == "late-reference" ? [asset.file] : []
+                })
+        }
+        #expect(result.isEmpty && FileManager.default.fileExists(atPath: root.appendingPathComponent(asset.file).path))
+        #expect(rechecked == (scenario != "live-instance"))
+        if scenario == "replacement" { #expect(try Data(contentsOf: root.appendingPathComponent(asset.file)) == Data("replacement user file".utf8)) }
+    }
     @Test func observedCandidatesRespectSevenDaysAndReferencesNeverExpire() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -22,7 +49,8 @@ import VoxClipCore
         #expect(try VoiceLabAssetRetention.closeProject(projectId: project, paidRoot: root, references: [], now: date.addingTimeInterval(7 * 86400 - 1),
             observation: .init(session: "test", monotonicSeconds: 7 * 86400 - 1)).isEmpty)
         #expect(try VoiceLabAssetRetention.closeProject(projectId: project, paidRoot: root, references: [], now: date.addingTimeInterval(7 * 86400),
-            observation: .init(session: "test", monotonicSeconds: 7 * 86400)) == [orphan.file, video].sorted())
+            observation: .init(session: "test", monotonicSeconds: 7 * 86400)) == [orphan.file])
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(video).path))
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(historical.file).path))
         #expect(try VoiceLabAssetRetention.closeProject(projectId: project, paidRoot: root, references: [], now: date.addingTimeInterval(100 * 86400)).isEmpty)
     }

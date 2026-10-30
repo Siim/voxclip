@@ -30,7 +30,7 @@ import VoxClipCore
     private func hex(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
     private func entries(_ directory: URL) throws -> [String] {
-        try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
+        try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { !$0.hasSuffix(".ownership.json") }.sorted()
     }
 
     @Test func canonicalHeaderAndFileForThreeFramesAt24kHz() throws {
@@ -57,6 +57,8 @@ import VoxClipCore
         #expect(directoryStatus == 0 && directory.st_mode & 0o777 == 0o700)
         #expect(fileStatus == 0 && written.st_mode & 0o777 == 0o600)
         #expect(try entries(paid.appendingPathComponent(projectId)) == ["take-1.wav"])
+        let receipt = paid.appendingPathComponent(projectId).appendingPathComponent(".take-1.wav.ownership.json")
+        #expect(FileManager.default.fileExists(atPath: receipt.path))
     }
 
     @Test func derivedSamplesRoundHalfToEvenAndClamp() throws {

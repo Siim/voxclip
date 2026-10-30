@@ -268,6 +268,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var renderedActiveClipID: String?
 
     init(document: VoxClipDocument, app: AppModel, preview: (any PreviewEngine)? = nil, exporter: any Exporter = ExportQueue()) {
+        document.beginVoiceLabActivity(paidRoot: app.locations.root.appendingPathComponent("VoiceLab"))
         self.document = document
         self.app = app
         self.exporter = exporter

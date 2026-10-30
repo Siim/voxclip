@@ -48,7 +48,7 @@ public enum VoiceLabAssetStore {
         defer { Darwin.close(root) }
         let lock = try VoiceLabAssetRecovery.lock(root)
         defer { Darwin.close(lock) }
-        return try VoiceLabAssetRecovery.recover(root, before: VoiceLabAssetRecovery.processStartedAt)
+        return try VoiceLabAssetRecovery.recover(root)
     }
     enum WriteBoundary: String, CaseIterable { case directories, temporary, header, pcm, fileSync, rename, directorySync, verification }
     /// The RIFF size field is 32 bits and counts 36 header bytes plus 2 bytes per frame. That is tighter than §10.4's
@@ -145,7 +145,7 @@ public enum VoiceLabAssetStore {
         defer { Darwin.close(rootFD) }
         let lock = try VoiceLabAssetRecovery.lock(rootFD)
         defer { Darwin.close(lock) }
-        _ = try VoiceLabAssetRecovery.recover(rootFD, before: VoiceLabAssetRecovery.processStartedAt)
+        _ = try VoiceLabAssetRecovery.recover(rootFD)
         let projectFD = try directory(parts[0], in: rootFD, file: file)
         defer { Darwin.close(projectFD) }
         try checkpoint?(.directories)
@@ -158,8 +158,16 @@ public enum VoiceLabAssetStore {
         let temporary = ".\(name).\(UUID().uuidString.lowercased()).partial"
         let fd = Darwin.openat(projectFD, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw VoiceLabAssetStoreError.unwritable(file) }
+        let journal: VoiceLabAssetRecovery.Journal
+        do { journal = try VoiceLabAssetRecovery.recordPartial(projectFD, name: temporary, descriptor: fd) }
+        catch { Darwin.close(fd); throw error }
         var published = false
-        defer { if !published { _ = Darwin.unlinkat(projectFD, temporary, 0) } }
+        defer {
+            if !published {
+                VoiceLabAssetRecovery.removeIfMatching(projectFD, name: temporary, identity: journal.partial.identity)
+                VoiceLabAssetRecovery.removeIfMatching(projectFD, name: journal.name, identity: journal.identity)
+            }
+        }
         var hash = SHA256()
         let stride = channels * (bits / 8)
         do {
@@ -196,6 +204,9 @@ public enum VoiceLabAssetStore {
         }
         // From here the paid file exists under its final name and is kept, whatever happens next.
         published = true
+        guard renameatx_np(projectFD, journal.name, projectFD, ".\(name).ownership.json", UInt32(RENAME_EXCL)) == 0 else {
+            throw VoiceLabAssetStoreError.publishedUnverified(file)
+        }
         try checkpoint?(.rename)
         afterPublish?()
         guard VoiceLabPaidRoot.fullSync(projectFD) else { throw VoiceLabAssetStoreError.publishedUnverified(file) }
