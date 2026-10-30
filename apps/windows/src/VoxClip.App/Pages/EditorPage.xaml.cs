@@ -31,6 +31,9 @@ public sealed partial class EditorPage : Page
     private CaptionsPanel? captions;
     private Controls.RightColumn? rightContent;
     private RewriteSession? rewrite;
+#if DEBUG
+    private ElevenLabsRegion? rewriteGenerationRegion;
+#endif
     private long rewriteOpenRevision;
     private MediaInfo? media;
     private EditorMediaState mediaState;
@@ -358,6 +361,15 @@ public sealed partial class EditorPage : Page
         if (ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition"))))
             _ = RunAsync(UpdatePreviewAsync, "Preview label position");
         rewriteOpenRevision++;
+#if DEBUG
+        if (rewrite is { IsOpen: true, Generation: { } previous } session &&
+            rewriteGenerationRegion != ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log))
+        {
+            var rediscover = previous.HasStartedDiscovery;
+            ConfigureRewriteGeneration(session);
+            if (rediscover) _ = RediscoverRewriteAsync(session, previous, session.Generation!);
+        }
+#endif
         rewrite?.SettingsChanged(App.Services.Get("voiceLab.enabled", false));
         Transcript.ApplySettings();
         SelectionChanged(this, EventArgs.Empty);
@@ -530,9 +542,6 @@ public sealed partial class EditorPage : Page
             App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel), entry.ShortName,
             entry.Cloud ? "apiKey" : entry.Cli ? "cli" : "local", entry.Id == VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode ? "Claude plan" : "ChatGPT plan");
         var connectorWireId = App.Services.Get("llm.connector", "");
-#if DEBUG
-        var generationRegion = ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log);
-#endif
         if (opening != rewriteOpenRevision || !passage.IsCurrent || disposed || ViewModel.IsLeaving ||
             ViewModel.IsReadOnly || ViewModel.Busy || !App.Services.Get("voiceLab.enabled", false)) return;
         rewrite = new(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
@@ -541,11 +550,7 @@ public sealed partial class EditorPage : Page
                 ViewModel.Words.Skip(passage.First).Take(passage.Last - passage.First + 1).Count(word => word.Kind == WordKind.Word),
                 selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token),
             connectorIsCurrent: () => App.Services.Get("llm.connector", "") == connectorWireId &&
-                (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model)
-#if DEBUG
-                && ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log) == generationRegion
-#endif
-            );
+                (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model));
 #if DEBUG
         ConfigureRewriteGeneration(rewrite);
 #endif
@@ -563,9 +568,15 @@ public sealed partial class EditorPage : Page
         await rewrite.SetInstructionAsync("");
     }
 #if DEBUG
+    private static async Task RediscoverRewriteAsync(RewriteSession session, RewriteGeneration previous, RewriteGeneration next)
+    {
+        await previous.Cleanup;
+        if (session.IsOpen && ReferenceEquals(session.Generation, next)) await next.DiscoverAsync();
+    }
     private void ConfigureRewriteGeneration(RewriteSession session)
     {
         var region = ElevenLabsRegions.FromSettings(App.Services.Settings, App.Services.Log);
+        rewriteGenerationRegion = region;
         var consenting = false;
         Task OnUi(Action action)
         {
@@ -600,9 +611,17 @@ public sealed partial class EditorPage : Page
             finally { consenting = false; }
         }
         RewriteGeneration? generation = null;
+        FileSystemWatcher? keyChanges = null;
         void ConsentRecordsChanged(object? sender, EventArgs args)
         {
-            if (generation is { IsRequestingConsent: false } && session.IsOpen) _ = generation.InputsChangedAsync();
+            if (generation is { IsRequestingConsent: false } && session.IsOpen) _ = generation.DiscoveryInputsChangedAsync();
+        }
+        void KeyChanged(object? sender, FileSystemEventArgs args)
+        {
+            _ = OnUi(() =>
+            {
+                if (session.IsOpen && ReferenceEquals(session.Generation, generation)) _ = generation!.DiscoveryInputsChangedAsync();
+            });
         }
         generation = new RewriteGeneration(runner,
             ct => fake is null ? backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct) : fake.DiscoverAsync(ct),
@@ -619,10 +638,22 @@ public sealed partial class EditorPage : Page
             }, () => Current() && !consenting, OnUi, () =>
             {
                 App.Services.VoiceLab.Changed -= ConsentRecordsChanged;
+                keyChanges?.Dispose();
                 backend.Dispose(); fake?.Dispose();
             });
         App.Services.VoiceLab.Changed += ConsentRecordsChanged;
         session.ConfigureGeneration(generation);
+        if (fake is null && Directory.Exists(App.Services.Data.Root))
+        {
+            keyChanges = new(App.Services.Data.Root, "elevenlabs-api-key.bin")
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime
+            };
+            keyChanges.Changed += KeyChanged; keyChanges.Created += KeyChanged;
+            keyChanges.Deleted += KeyChanged; keyChanges.Renamed += KeyChanged;
+            keyChanges.EnableRaisingEvents = true;
+        }
     }
 #endif
     private void CutSelectionClicked(object sender, RoutedEventArgs args) => ViewModel.CutSelection();

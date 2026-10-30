@@ -90,13 +90,23 @@ public sealed class RewriteGenerationTests
         internal bool Current = true;
         internal bool Consented = true;
         internal int ConsentCalls;
+        internal int DiscoveryCalls;
+        internal Func<CancellationToken, Task>? BeforeDiscovery;
+        internal Func<string>? ReadText;
+        internal string DiscoveryLabel = "initial";
         internal string Text = "clearer words";
         internal Harness()
         {
             Runner = new(Fixture, Clock);
-            Generation = new(Runner, _ => Task.FromResult(new RewriteGenerationChoices([new("voice-a", "A"), new("voice-b", "B")],
-                [new("model-a", "A", ["en"], true, false, 5000, 1), new("model-b", "B", ["en"], true, false, 5000, 1)])),
-                (voice, model, seed, _) => Task.FromResult<VoiceLabTakeInput?>(Input(voice, model, seed) with { Text = Text, ProviderConsent = Consented }),
+            Generation = new(Runner, async ct =>
+                {
+                    DiscoveryCalls++;
+                    var label = DiscoveryLabel;
+                    if (BeforeDiscovery is { } pause) await pause(ct);
+                    return new RewriteGenerationChoices([new("voice-a", label), new("voice-b", "B")],
+                        [new("model-a", "A", ["en"], true, false, 5000, 1), new("model-b", "B", ["en"], true, false, 5000, 1)]);
+                },
+                (voice, model, seed, _) => Task.FromResult<VoiceLabTakeInput?>(Input(voice, model, seed) with { Text = ReadText?.Invoke() ?? Text, ProviderConsent = Consented }),
                 _ => { ConsentCalls++; return Task.FromResult(Consented); }, _ => Task.FromResult(Cap), () => Current, timeProvider: Clock);
         }
         internal async Task ReadyAsync()
@@ -170,6 +180,85 @@ public sealed class RewriteGenerationTests
         await test.Generation.GenerateAsync((copy, _) => { prompts.Add(copy); return Task.FromResult(true); });
         Assert.Contains("This takes you past your $1 limit for ElevenLabs this month.", Assert.Single(prompts));
         Assert.Equal(1, test.Runner.PaidRequests);
+    }
+    [Theory]
+    [InlineData("words")]
+    [InlineData("instruction")]
+    public async Task EditingDuringInitialDiscoveryQuotesTheLatestInputWithoutAnotherConsentPrompt(string field)
+    {
+        using var owner = new RewriteSession(Editor(), 10, 12, Envelope(), null);
+        await using var test = new Harness(); owner.ConfigureGeneration(test.Generation);
+        test.ReadText = () => owner.NewWords;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.BeforeDiscovery = async ct => { entered.SetResult(); await finish.Task.WaitAsync(ct); };
+        var pending = test.Generation.DiscoverAsync(); await entered.Task;
+        if (field == "words") owner.Edit("the latest proposed words");
+        else await owner.SetInstructionAsync("the latest instruction");
+        await test.Generation.PendingUpdate;
+        Assert.Equal(0, test.Runner.Preparations);
+        finish.SetResult(); await pending; await test.Generation.PendingUpdate;
+        Assert.True(test.Generation.HasDiscovered); Assert.NotNull(test.Generation.Quote);
+        Assert.Equal(owner.NewWords, Assert.Single(test.Runner.PreparedInputs).Text);
+        Assert.Equal(1, test.DiscoveryCalls); Assert.Equal(1, test.ConsentCalls);
+        test.Generation.MarkEstimateShown(test.Generation.Quote!);
+        Assert.True(test.Generation.CanExecute); Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Theory]
+    [InlineData("language")]
+    [InlineData("region")]
+    [InlineData("key")]
+    public async Task InvalidatedDiscoveryRestartsAndIgnoresAnUncancellableStaleResult(string dependency)
+    {
+        await using var test = new Harness();
+        var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.BeforeDiscovery = _ => test.DiscoveryCalls == 1 ? finish.Task : Task.CompletedTask;
+        var pending = test.Generation.DiscoverAsync();
+        Assert.Equal(1, test.DiscoveryCalls);
+        test.DiscoveryLabel = dependency + "-latest";
+        var restarted = test.Generation.DiscoveryInputsChangedAsync();
+        test.Text = "latest text after " + dependency;
+        await test.Generation.InputsChangedAsync();
+        finish.SetResult(); await pending; await restarted;
+        Assert.Equal(2, test.DiscoveryCalls); Assert.Equal(1, test.ConsentCalls);
+        Assert.Equal(dependency + "-latest", test.Generation.Voices[0].Label);
+        Assert.Equal(test.Text, Assert.Single(test.Runner.PreparedInputs).Text);
+        Assert.True(test.Generation.HasDiscovered); Assert.NotNull(test.Generation.Quote);
+        Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task DiscoveryChangesDoNotStartProviderAccessBeforeTheUserChoosesVoice()
+    {
+        await using var test = new Harness();
+        await test.Generation.DiscoveryInputsChangedAsync();
+        Assert.Equal(0, test.ConsentCalls); Assert.Equal(0, test.DiscoveryCalls);
+        await test.ReadyAsync();
+        await test.Generation.DiscoveryInputsChangedAsync();
+        Assert.Equal(2, test.DiscoveryCalls); Assert.NotNull(test.Generation.Quote);
+        Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task ClosingDuringDiscoveryCannotRestartOrQuoteItsLateResult()
+    {
+        await using var test = new Harness();
+        var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        test.BeforeDiscovery = _ => finish.Task;
+        var pending = test.Generation.DiscoverAsync();
+        test.Generation.Dispose(); finish.SetResult(); await pending; await test.Generation.Cleanup;
+        Assert.False(test.Generation.HasDiscovered); Assert.Equal(0, test.Runner.Preparations);
+        Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public void ProviderIdentityChangesRestartDiscoveryWithoutReadingKeyBytes()
+    {
+        var page = Source("Pages/EditorPage.xaml.cs");
+        Assert.Contains("var rediscover = previous.HasStartedDiscovery", page);
+        Assert.Contains("if (rediscover) _ = RediscoverRewriteAsync(session, previous, session.Generation!)", page);
+        Assert.Contains("await previous.Cleanup", page);
+        Assert.Contains("keyChanges.Renamed += KeyChanged", page);
+        Assert.Contains("keyChanges?.Dispose()", page);
+        Assert.Contains("generation!.DiscoveryInputsChangedAsync()", page);
+        Assert.DoesNotContain("GetKeyAsync", page[page.IndexOf("private void ConfigureRewriteGeneration", StringComparison.Ordinal)..page.IndexOf("private void CutSelectionClicked", StringComparison.Ordinal)]);
     }
     [Theory]
     [InlineData(0.49, 0)]

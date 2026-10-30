@@ -26,6 +26,7 @@ internal sealed class RewriteGeneration : IDisposable
     private readonly CancellationTokenSource lifetime = new();
     private CancellationTokenSource? updating;
     private CancellationTokenSource? executing;
+    private CancellationTokenSource? discoveringInputs;
     private VoiceLabTakeRunQuote? shownQuote;
     private VoiceLabTakeInput? pendingInput;
     private bool closed;
@@ -33,6 +34,7 @@ internal sealed class RewriteGeneration : IDisposable
     private bool confirming;
     private Task discovery = Task.CompletedTask;
     private long revision;
+    private long discoveryRevision;
     private uint seed = (uint)Random.Shared.NextInt64(0, 1L << 32);
     internal RewriteGenerationPhase Phase { get; private set; }
     internal IReadOnlyList<RewriteVoice> Voices { get; private set; } = [];
@@ -44,6 +46,7 @@ internal sealed class RewriteGeneration : IDisposable
     internal bool IsRunning => executing is not null;
     internal bool IsPreparing { get; private set; }
     internal bool HasDiscovered { get; private set; }
+    internal bool HasStartedDiscovery { get; private set; }
     internal bool IsRequestingConsent { get; private set; }
     internal VoiceLabTakeRunQuote? Quote => core.PendingQuote;
     internal VoiceLabCostPresentationResult? Cost => core.Cost;
@@ -88,8 +91,19 @@ internal sealed class RewriteGeneration : IDisposable
 
     internal Task DiscoverAsync()
     {
-        if (closed || discovering || !current()) return Task.CompletedTask;
+        if (closed || !current()) return Task.CompletedTask;
+        if (discovering) return discovery;
+        HasStartedDiscovery = true;
         return discovery = DiscoverCurrentAsync();
+    }
+    internal Task DiscoveryInputsChangedAsync()
+    {
+        if (closed) return Task.CompletedTask;
+        discoveryRevision++;
+        Cancel(discoveringInputs);
+        HasDiscovered = false; Voices = []; Models = []; VoiceId = null; ModelId = null;
+        var update = InputsChangedAsync();
+        return HasStartedDiscovery ? DiscoverAsync() : update;
     }
     private async Task DiscoverCurrentAsync()
     {
@@ -97,19 +111,32 @@ internal sealed class RewriteGeneration : IDisposable
         discovering = true;
         Problem = ""; Announcement = "";
         Notify();
-        var version = revision;
         try
         {
             IsRequestingConsent = true;
             var allowed = await consent(lifetime.Token);
             IsRequestingConsent = false;
             if (!allowed || closed || !current()) return;
-            var choices = await discover(lifetime.Token);
-            if (closed || version != revision || !current()) return;
-            Voices = choices.Voices; Models = choices.Models;
-            if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = Voices.FirstOrDefault()?.Id;
-            if (!Models.Any(model => model.Id == ModelId)) ModelId = Models.FirstOrDefault()?.Id;
-            HasDiscovered = true;
+            while (!closed && current())
+            {
+                var version = discoveryRevision;
+                using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+                discoveringInputs = cancellation;
+                try
+                {
+                    var choices = await discover(cancellation.Token);
+                    cancellation.Token.ThrowIfCancellationRequested();
+                    if (closed || !current()) return;
+                    if (version != discoveryRevision) continue;
+                    Voices = choices.Voices; Models = choices.Models;
+                    if (!Voices.Any(voice => voice.Id == VoiceId)) VoiceId = Voices.FirstOrDefault()?.Id;
+                    if (!Models.Any(model => model.Id == ModelId)) ModelId = Models.FirstOrDefault()?.Id;
+                    HasDiscovered = true;
+                    break;
+                }
+                catch (OperationCanceledException) when (!closed && version != discoveryRevision) { }
+                finally { if (ReferenceEquals(discoveringInputs, cancellation)) discoveringInputs = null; }
+            }
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is not OutOfMemoryException) { if (!closed) Fail(error); }
@@ -138,7 +165,7 @@ internal sealed class RewriteGeneration : IDisposable
         Problem = ""; Announcement = "";
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         updating = cancellation;
-        IsPreparing = VoiceId is not null && ModelId is not null && current();
+        IsPreparing = !discovering && VoiceId is not null && ModelId is not null && current();
         if (Rows.Count == 0) Phase = IsPreparing ? RewriteGenerationPhase.Preparing : RewriteGenerationPhase.Idle;
         Notify();
         return PendingUpdate = PrepareAsync(revision, cancellation);
@@ -301,7 +328,7 @@ internal sealed class RewriteGeneration : IDisposable
     {
         if (closed) return;
         StopQuoteExpiry();
-        closed = true; revision++; Cancel(updating); Cancel(executing); lifetime.Cancel(); shownQuote = null;
+        closed = true; revision++; Cancel(updating); Cancel(executing); Cancel(discoveringInputs); lifetime.Cancel(); shownQuote = null;
         Cleanup = RetireAsync();
     }
     private async Task RetireAsync()

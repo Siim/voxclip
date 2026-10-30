@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-10-30 - Windows Rewrite discovery revision recovery
+
+- Voice/model discovery has a separate invalidation revision from the generation inputs. Editing instruction or proposed words while the first discovery is suspended retains its valid choices and automatically quotes the latest input; no second consent prompt or Generate click is required. Explicit discovery-input invalidation cancels and restarts the free discovery loop, discarding even a late result from a provider that ignored cancellation. The loop reuses its already-completed provider-consent check.
+- Provider identity/consent-list changes invalidate discovery rather than merely re-quoting old voices. An owned key-file notification watcher observes only filesystem events, not key bytes, and is disposed with the generation owner; DEBUG fixtures never install it. Region changes replace the region-bound backend and automatically rediscover if discovery was previously requested, preserving the Rewrite text. Project/language replacement still invalidates the entire Rewrite owner. No discovery or consent request is initiated before the user first chooses Voice.
+- The separate quote-expiry timer and render recovery remain in force. No discovery restart or text edit dispatches paid transport. Native key/region-change callbacks, layout and Narrator validation remain owed with the Windows VM unavailable. R11 waits for the Settings audition/take-row track; it is not included here.
+
 ### 2026-10-30 - Windows Rewrite quote expiry recovery
 
 - R10 re-prepares an expired quote independently of Generate: a one-shot timer uses the injected TimeProvider and the quote's expiry, and the native panel's ButtonTitle render path checks freshness again. A later render still recovers if Core has already cleared PendingQuote. Preparation shows the plain disabled title; the new quote requires its own rendered-estimate acknowledgement. Failure exposes the existing inline provider error and Retry. Expiry sends no paid request and timers retire with the panel.
