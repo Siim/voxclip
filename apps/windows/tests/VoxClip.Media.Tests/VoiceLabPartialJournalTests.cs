@@ -257,8 +257,12 @@ public sealed class VoiceLabPartialJournalTests
         var target = Path.Combine(targetDirectory, "target.wav");
         File.WriteAllText(target, "keep");
         await VoiceLabTestStorage.JunctionAsync(partial, targetDirectory);
-        Assert.True((File.GetAttributes(partial) & FileAttributes.ReparsePoint) != 0);
-        Assert.Throws<IOException>(() => VoiceLabPartialFiles.Open(partial, delete: true));
+        try
+        {
+            Assert.True((File.GetAttributes(partial) & FileAttributes.ReparsePoint) != 0);
+            Assert.Throws<IOException>(() => VoiceLabPartialFiles.Open(partial, delete: true));
+        }
+        finally { Directory.Delete(partial); }
         Assert.Equal("keep", File.ReadAllText(target));
         VoiceLabTestStorage.NativePassed(nameof(NativeWindowsIdentityAndHandleDeleteRefuseReparsePoints));
     }
