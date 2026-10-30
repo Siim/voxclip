@@ -727,6 +727,38 @@ public sealed class RewritePanelTests
         Assert.Contains("model?.RewriteCaretChanged()", File.ReadAllText(Path.Combine(app, "Controls", "TranscriptView.cs")));
     }
 
+    [Fact]
+    public async Task ASourceTooLongForTakesIsRefusedBeforeThePaidProposalAndBeforeDecoding()
+    {
+        static EditorViewModel Long(double seconds, int rate = 48_000)
+        {
+            var project = Editor().Project;
+            return new(project with { Media = project.Media with { Source = project.Media.Source with { DurationSeconds = seconds, Audio = new(rate, 1) } } },
+                now: () => new DateTimeOffset(2026, 10, 28, 0, 0, 0, TimeSpan.Zero));
+        }
+        // A take run reads at most 30,000,000 source frames: 10 min 25 s at 48 kHz.
+        Assert.Null(RewriteSourceLimit.Refusal(Long(625).Project));
+        Assert.Equal(30_000_000, RewriteSourceLimit.Frames(Long(625).Project));
+        Assert.Equal("Rewriting speech works only in videos up to 11 minutes long. Your edits are saved.",
+            RewriteSourceLimit.Refusal(Long(3_600, 44_100).Project));
+        var fake = new RecordingConnector();
+        using var session = new RewriteSession(Long(626), 10, 12, Envelope(), new(fake, "chosen", "Test", "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        Assert.Equal("Rewriting speech works only in videos up to 10 minutes long. Your edits are saved.", session.Problem);
+        Assert.Null(session.Prepared);
+        Assert.False(session.CanPropose);
+        Assert.Empty(fake.Calls);
+        session.Edit("much clearer words");
+        Assert.NotEmpty(session.Review!.VoiceHunks);
+        var error = await Assert.ThrowsAsync<RewriteGenerationException>(() => session.GenerationInputAsync("voice", "model", 1, true,
+            _ => throw new InvalidOperationException("Must refuse before decoding."), CancellationToken.None));
+        Assert.Equal("Rewriting speech works only in videos up to 10 minutes long. Your edits are saved.", error.Message);
+        Assert.Empty(fake.Calls);
+        Assert.Contains("RewriteSourceLimit.Frames(session.Project)", AppSource("Pages", "EditorPage.xaml.cs"));
+        Assert.Contains("frames is <= 0 or > RewriteSourceLimit.MaxFrames", File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!,
+            "apps", "windows", "src", "VoxClip.App", "Services", "RewriteGenerationBackend.cs")));
+    }
+
     private sealed class RecordingConnector : ILlmConnector
     {
         internal List<string> Calls { get; } = [];

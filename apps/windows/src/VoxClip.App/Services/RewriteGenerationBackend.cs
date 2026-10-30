@@ -56,7 +56,7 @@ internal sealed class RewriteGenerationBackend : IDisposable
     internal static async Task<float[]> ReadSourceAsync(string path, long frames, int rate, CancellationToken ct,
         Func<string, long, long, double, CancellationToken, Task<byte[]>>? conversion = null)
     {
-        if (frames is <= 0 or > 30_000_000 || rate is < 8_000 or > 96_000)
+        if (frames is <= 0 or > RewriteSourceLimit.MaxFrames || rate is < 8_000 or > 96_000)
             throw new VoiceLabSourceAudioException(VoiceLabSourceAudioErrorCode.TooLarge);
         var samples = new float[checked((int)frames)];
         var convert = conversion ?? VoiceLabSourceAudio.ConversionInputAsync;
