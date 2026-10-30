@@ -23,7 +23,7 @@ public sealed record VoiceConsentAudit(string RecordId, string StatementSha256, 
     {
         record.Validate();
         return new(record.RecordId, record.Statement.AudioSha256, record.Samples.Select(sample => sample.Sha256).ToArray(),
-            record.CreatedAt, record.Attestations.AcceptedAt, record.Statement.Language, record.VoiceId == "pending" ? null : record.VoiceId, record.DeletedAt, record.Creator);
+            record.CreatedAt, record.Attestations.AcceptedAt, record.Statement.Language, record.VoiceId == "pending" ? null : record.VoiceId, record.DeletedAt, record.CreatorIdentity);
     }
     internal void Validate(string recordId)
     {
@@ -159,6 +159,7 @@ public sealed class VoiceConsentStore
         lock (State.Sync)
         {
             record.Validate();
+            record = record.CanonicalCreator();
             if (record.Status != VoiceConsentStatus.Deleted && Hash(Statement(record.RecordId)) != record.Statement.AudioSha256) throw Invalid();
             Write(JsonSerializer.SerializeToUtf8Bytes(record, VoiceConsentJson.Default.VoiceConsentRecord), FileIn(DirectoryFor(record.RecordId, true), "record.json"), "saveRecord");
         }
@@ -228,7 +229,7 @@ public sealed class VoiceConsentStore
             var record = Load(recordId);
             if (record.Status == VoiceConsentStatus.Deleted || record.VoiceId == "pending") throw Invalid();
             return new(recordId, record.VoiceId, true, true, true, true, true)
-                { Creator = record.Creator ?? new(ElevenLabsRegion.Default, null) };
+                { Creator = record.CreatorIdentity };
         }
     }
     internal VoiceDispatchPermit CreationPermit(string recordId, Guid requestId, string statementHash) => new(this, recordId, requestId, () =>
@@ -333,7 +334,8 @@ public sealed class VoiceConsentStore
     {
         lock (State.Sync)
         {
-            if (record.Creator is { } creator && creator.Region != region) throw new VoiceCreatorMismatchException();
+            if ((record.Creator is not null || record.Region.HasValue) && record.CreatorIdentity.Region != region) throw new VoiceCreatorMismatchException();
+            if (record.Creator is null && record.Region is null && region != ElevenLabsRegion.Default) record = record with { Region = region };
             if (requestId == Guid.Empty || State.Claimed.Contains(requestId) || State.Revoked.Contains(record.RecordId) ||
                 Operations().Any(value => value.Id == requestId || value.BlocksCreation(now) || !value.Finished && value.RecordId == record.RecordId))
                 throw new VoiceConsentException(VoiceConsentError.CreationPending);
@@ -410,7 +412,7 @@ public sealed class VoiceConsentStore
             var existing = Operations().FirstOrDefault(value => value.RecordId == recordId && !value.Finished);
             if (existing is not null) return existing.Kind == VoiceOperationKind.Create ? Transition(existing.Id, VoiceOperationState.Withdrawing, now) : existing;
             var record = Load(recordId);
-            if ((record.Creator?.Region ?? ElevenLabsRegion.Default) != region) throw new VoiceCreatorMismatchException();
+            if (record.CreatorIdentity.Region != region) throw new VoiceCreatorMismatchException();
             if (record.Status == VoiceConsentStatus.Deleted || record.VoiceId == "pending") throw Invalid();
             return WriteOperation(NewOperation(Guid.NewGuid(), VoiceOperationKind.Delete, recordId, region, now) with
                 { RemoteVoiceId = record.VoiceId, Audit = VoiceConsentAudit.From(record), CreatorKeyFingerprint = record.Creator?.KeyFingerprint }, "deletionIntent");
@@ -422,7 +424,7 @@ public sealed class VoiceConsentStore
         lock (State.Sync)
         {
             var record = Load(recordId);
-            var operation = BeginDeletion(recordId, record.Creator?.Region ?? ElevenLabsRegion.Default, now);
+            var operation = BeginDeletion(recordId, record.CreatorIdentity.Region, now);
             if (operation.Kind != VoiceOperationKind.Delete) throw Invalid();
             return WriteOperation(operation with { RemoteStateUnknown = true }, "localRemovalIntent");
         }

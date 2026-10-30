@@ -109,7 +109,7 @@ public sealed class VoiceLabRequestGoldenTests
         }
         return new(Text("displayName"), Text("language"), samples,
             DateTimeOffset.Parse(Text("createdAt"), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-            (input["removeBackgroundNoise"] ?? defaults["removeBackgroundNoise"])!.GetValue<bool>());
+            (input["removeBackgroundNoise"] ?? defaults["removeBackgroundNoise"])!.GetValue<bool>(), input["recoveryNonce"]?.GetValue<string>());
     }
 
     private abstract record Call;
@@ -200,19 +200,6 @@ public sealed class VoiceLabRequestGoldenTests
             cursor += 2;
         }
     }
-    private static byte[] LegacyFileFieldBody(byte[] body)
-    {
-        using var output = new MemoryStream();
-        var remaining = body.AsSpan();
-        while (remaining.IndexOf("name=\"files\""u8) is var offset && offset >= 0)
-        {
-            output.Write(remaining[..offset]);
-            output.Write("name=\"files[]\""u8);
-            remaining = remaining[(offset + "name=\"files\""u8.Length)..];
-        }
-        output.Write(remaining);
-        return output.ToArray();
-    }
     private static void Compare(PaidRequest paid, JsonNode expected, string boundary)
     {
         Assert.Equal(expected["method"]!.GetValue<string>(), paid.Method);
@@ -227,27 +214,19 @@ public sealed class VoiceLabRequestGoldenTests
         }
         if (expected["json"] is { } json)
         {
-            json = json.DeepClone();
-            if (json["model_id"]?.GetValue<string>() == "eleven_v3")
-            {
-                json.AsObject().Remove("previous_text");
-                json.AsObject().Remove("next_text");
-            }
             Assert.True(JsonNode.DeepEquals(json, JsonNode.Parse(paid.Body)), "JSON body differs: " + Encoding.UTF8.GetString(paid.Body));
             return;
         }
         // The whole body must match byte for byte; the parts show where a difference is.
-        var legacyFiles = expected["multipart"]!.AsArray().Any(part => part!["headers"]!.AsArray().Any(header => header!.GetValue<string>().Contains("name=\"files[]\"", StringComparison.Ordinal)));
-        var hashBody = legacyFiles ? LegacyFileFieldBody(paid.Body) : paid.Body;
-        Assert.Equal(expected["bodyLength"]!.GetValue<int>(), hashBody.Length);
-        Assert.Equal(expected["bodySha256"]!.GetValue<string>(), Convert.ToHexStringLower(SHA256.HashData(hashBody)));
+        Assert.Equal(expected["bodyLength"]!.GetValue<int>(), paid.Body.Length);
+        Assert.Equal(expected["bodySha256"]!.GetValue<string>(), Convert.ToHexStringLower(SHA256.HashData(paid.Body)));
         var parts = Parts(paid.Body, boundary);
         var wanted = expected["multipart"]!.AsArray();
         Assert.Equal(wanted.Count, parts.Count);
         for (var i = 0; i < parts.Count; i++)
         {
             var want = wanted[i]!;
-            Assert.Equal(want["headers"]!.AsArray().Select(line => line!.GetValue<string>().Replace("name=\"files[]\"", "name=\"files\"", StringComparison.Ordinal)), parts[i].Headers);
+            Assert.Equal(want["headers"]!.AsArray().Select(line => line!.GetValue<string>()), parts[i].Headers);
             if (want["value"] is { } text) Assert.Equal(Encoding.UTF8.GetBytes(text.GetValue<string>()), parts[i].Body);
             else Assert.Equal(want["sha256"]!.GetValue<string>(), Convert.ToHexStringLower(SHA256.HashData(parts[i].Body)));
         }
@@ -258,7 +237,7 @@ public sealed class VoiceLabRequestGoldenTests
     {
         var root = Cases();
         var cases = root["cases"]!.AsArray();
-        Assert.Equal(21, cases.Count);
+        Assert.Equal(24, cases.Count);
         await ForEachRow(cases, async row =>
         {
             using var handler = new PaidRecorder(root["discovery"]!);
@@ -276,7 +255,7 @@ public sealed class VoiceLabRequestGoldenTests
     {
         var root = Cases();
         var rows = root["quoteMutations"]!.AsArray();
-        Assert.Equal(18, rows.Count);
+        Assert.Equal(20, rows.Count);
         await ForEachRow(rows, async row =>
         {
             var baseCase = root["cases"]!.AsArray().Single(item => item!["case"]!.GetValue<string>() == row["base"]!.GetValue<string>())!;
@@ -288,8 +267,7 @@ public sealed class VoiceLabRequestGoldenTests
             var approval = lab.Approve(Prepare(lab, MakeCall(operation, baseCase["input"]!), id), true);
             var send = Dispatch(lab, MakeCall(operation, baseCase["input"]!, row), approval, id);
             var refusal = row["error"]?.GetValue<string>() == "invalidInput" ? VoiceLabErrorKind.InvalidInput : VoiceLabErrorKind.ConsentRequired;
-            var allowed = row["allowed"]!.GetValue<bool>() || baseCase["input"]!["modelId"]?.GetValue<string>() == "eleven_v3" &&
-                row["field"]!.GetValue<string>() is "previousText" or "nextText";
+            var allowed = row["allowed"]!.GetValue<bool>();
             if (allowed) await send;
             else Assert.Equal(refusal, (await Assert.ThrowsAsync<VoiceLabException>(() => send)).Kind);
             Assert.Equal(allowed ? 1 : 0, handler.Requests.Count);

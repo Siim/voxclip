@@ -116,11 +116,17 @@ public sealed class VoiceCreatorMismatchException() : Exception(Explanation)
 public sealed record VoiceConsentRecord(string Schema, string RecordId, string Provider, string Type, string VoiceId, string VoiceName,
     VoiceConsentStatus Status, DateTimeOffset CreatedAt, DateTimeOffset? DeletedAt, VoiceConsentStatementRecord Statement,
     VoiceConsentAttestations Attestations, VoiceConsentSample[] Samples, VoiceConsentSpeaker Speaker, VoiceConsentApp App,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceConsentCreator? Creator = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceConsentCreator? Creator = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ElevenLabsRegion? Region = null)
 {
+    [JsonIgnore] public VoiceConsentCreator CreatorIdentity => Creator ?? new(Region ?? ElevenLabsRegion.Default, null);
+    internal VoiceConsentRecord CanonicalCreator() => Creator is { KeyFingerprint: null } legacy
+        ? this with { Creator = null, Region = legacy.Region } : this;
     public void Validate()
     {
         Creator?.Validate();
+        if (Region is { } region && (!Enum.IsDefined(region) || Creator is { } creator && creator.Region != region))
+            throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
         if (Schema != "voxclip-consent/1" || !Guid.TryParseExact(RecordId, "D", out _) || Provider != "elevenlabs" || Type != "ivc" ||
             !SafeId(VoiceId) || VoiceName.EnumerateRunes().Count() is < 1 or > 70 || !Enum.IsDefined(Status) || !Attestations.Complete ||
             Statement.AudioFile != "statement.wav" || Statement.Language is not ("en" or "et") || Statement.Text.Length == 0 ||

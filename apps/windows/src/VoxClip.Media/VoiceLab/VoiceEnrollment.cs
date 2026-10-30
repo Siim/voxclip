@@ -180,7 +180,7 @@ public sealed class VoiceEnrollment
         try
         {
             ct.ThrowIfCancellationRequested();
-            await client.ValidateCreatorAsync(store.Load(recordId).Creator, ct).ConfigureAwait(false);
+            await client.ValidateCreatorAsync(store.Load(recordId).CreatorIdentity, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             var operation = store.BeginDeletion(recordId, client.Region, clock.GetUtcNow());
             await reconciler.ReconcileAsync(operation.Id, true, ct).ConfigureAwait(false);

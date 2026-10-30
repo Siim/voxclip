@@ -392,6 +392,142 @@ public sealed class VoiceConsentTests
         Assert.Equal("own", voice.Id);
         Assert.Equal("nonce", voice.ConsentRecordId);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LegacyRegionOnlyRecordsKeepTheirRegionAndNeverWriteNullCreatorFingerprints(bool oldWindowsShape)
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store, voice: "legacy-eu");
+        record = oldWindowsShape ? record with { Creator = new(ElevenLabsRegion.Eu, null) }
+            : record with { Region = ElevenLabsRegion.Eu };
+        store.Save(record);
+        var saved = store.Load(record.RecordId);
+        var json = JsonSerializer.SerializeToElement(saved, VoiceConsentJson.Default.VoiceConsentRecord);
+        Assert.False(json.TryGetProperty("creator", out _));
+        Assert.Equal("eu", json.GetProperty("region").GetString());
+        Assert.Equal(new VoiceConsentCreator(ElevenLabsRegion.Eu, null), saved.CreatorIdentity);
+        Assert.Throws<VoiceCreatorMismatchException>(() => store.BeginDeletion(record.RecordId, ElevenLabsRegion.Default, Now));
+        var operation = store.BeginDeletion(record.RecordId, ElevenLabsRegion.Eu, Now);
+        Assert.Equal(ElevenLabsRegion.Eu, operation.Region);
+        Assert.Null(operation.CreatorKeyFingerprint);
+        Assert.Equal(ElevenLabsRegion.Eu, operation.Audit!.Creator!.Region);
+        using var remote = new Remote((_, _) => Task.FromResult(Json(404, "{}")));
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys("different-synthetic-key"), remote, ElevenLabsRegion.Eu);
+        await new VoiceOperationReconciler(store, _ => client).ReconcileAsync(ct: Token);
+        Assert.Equal(1, remote.Calls);
+        Assert.Equal(VoiceConsentStatus.Deleted, store.Load(record.RecordId).Status);
+    }
+    [Fact]
+    public void CreatorRecordReplaysTheMergedMacFixtureWithoutChangingItsShape()
+    {
+        using var document = JsonDocument.Parse(FixtureLoader.ReadText("fixtures/voice-lab/consent-record-creator.json"));
+        var record = document.RootElement.Deserialize(VoiceConsentJson.Default.VoiceConsentRecord)!;
+        record.Validate();
+        var actual = JsonSerializer.SerializeToElement(record, VoiceConsentJson.Default.VoiceConsentRecord);
+        Assert.True(JsonElement.DeepEquals(document.RootElement.GetProperty("creator"), actual.GetProperty("creator")));
+        Assert.Equal(ElevenLabsRegion.Eu, record.CreatorIdentity.Region);
+    }
+    [Theory]
+    [InlineData(ElevenLabsRegion.Default, "default")]
+    [InlineData(ElevenLabsRegion.Us, "us")]
+    [InlineData(ElevenLabsRegion.Eu, "eu")]
+    [InlineData(ElevenLabsRegion.In, "in")]
+    [InlineData(ElevenLabsRegion.Sg, "sg")]
+    public void LegacyTopLevelRegionMigratesNumbersAndBindsDeletion(ElevenLabsRegion region, string raw)
+    {
+        using var storage = new Storage();
+        var store = new VoiceConsentStore(storage.Locations);
+        var record = Draft(store, voice: "legacy-voice");
+        store.Save(record);
+        var recordPath = Path.Combine(store.Root, record.RecordId, "record.json");
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllBytes(recordPath))!;
+        node["region"] = (int)region;
+        File.WriteAllText(recordPath, node.ToJsonString());
+        var loaded = store.Load(record.RecordId);
+        Assert.Equal(region, loaded.CreatorIdentity.Region);
+        store.Save(loaded);
+        using var saved = JsonDocument.Parse(File.ReadAllBytes(recordPath));
+        Assert.Equal(raw, saved.RootElement.GetProperty("region").GetString());
+        Assert.False(saved.RootElement.TryGetProperty("creator", out _));
+        Assert.Equal(region, store.BeginDeletion(record.RecordId, region, Now).Region);
+    }
+    [Fact]
+    public void ConflictingLegacyAndCreatorRegionsAreRefusedLikeMac()
+    {
+        var record = Fixture() with { Region = ElevenLabsRegion.Us, Creator = new(ElevenLabsRegion.Eu, "0123456789abcdef") };
+        Assert.Throws<VoiceConsentException>(record.Validate);
+    }
+    [Fact]
+    public async Task DiscoveryUsesBoundedPagesAndEscapesTheProviderCursor()
+    {
+        var page = 0;
+        using var remote = new Remote((request, _) =>
+        {
+            Assert.Equal("/v2/voices", request.RequestUri!.AbsolutePath);
+            page++;
+            if (page == 1)
+            {
+                Assert.Equal("?page_size=100", request.RequestUri.Query);
+                return Task.FromResult(Json(200, "{\"voices\":[{\"voice_id\":\"own\",\"name\":\"Mine\",\"category\":\"cloned\",\"is_owner\":true},{\"name\":\"Incomplete\"}],\"has_more\":true,\"next_page_token\":\"token +/?\"}"));
+            }
+            Assert.Equal("?page_size=100&next_page_token=token%20%2B%2F%3F", request.RequestUri.Query);
+            return Task.FromResult(Json(200, "{\"voices\":[{\"voice_id\":\"stock\",\"name\":\"Stock\",\"category\":\"premade\"},{\"category\":\"cloned\"}],\"has_more\":false}"));
+        });
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), remote, ElevenLabsRegion.Default);
+        Assert.Equal("own", Assert.Single(await client.ListOwnClonesAsync(Token)).Id);
+        Assert.Equal(2, page);
+    }
+    [Theory]
+    [InlineData("../unsafe")]
+    [InlineData("two words")]
+    [InlineData("a?b")]
+    [InlineData("")]
+    public async Task DiscoveryRejectsUnsafeVoiceIds(string id)
+    {
+        using var remote = new Remote((_, _) => Task.FromResult(Json(200, JsonSerializer.Serialize(new
+        {
+            voices = new[] { new { voice_id = id, name = "Mine", category = "cloned", is_owner = true } }, has_more = false
+        }))));
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), remote, ElevenLabsRegion.Default);
+        Assert.Equal(VoiceLabErrorKind.MalformedResponse, (await Assert.ThrowsAsync<VoiceLabException>(() => client.ListOwnClonesAsync(Token))).Kind);
+    }
+    [Theory]
+    [InlineData(-1, "missing", true, false)]
+    [InlineData(0, "missing", true, true)]
+    [InlineData(86400, "missing", true, true)]
+    [InlineData(86401, "missing", true, false)]
+    [InlineData(1, "missing", false, false)]
+    [InlineData(-1, "same", false, true)]
+    [InlineData(1, "different", true, false)]
+    public async Task RecoveryUsesNonceOrExactNameWithinTheFlooredCreationWindow(int offset, string label, bool sameName, bool deleted)
+    {
+        using var storage = new Storage();
+        var start = DateTimeOffset.FromUnixTimeSeconds(Now.ToUnixTimeSeconds()).AddMilliseconds(750);
+        var clock = new Clock { Now = start.AddHours(30) };
+        var store = new VoiceConsentStore(storage.Locations, clock);
+        var record = Draft(store);
+        var operation = store.BeginClaimedCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, start);
+        store.Transition(operation.Id, VoiceOperationState.Dispatched, start);
+        store.Release(operation.Id);
+        var deletions = 0;
+        using var remote = new Remote((request, _) =>
+        {
+            if (request.Method == HttpMethod.Delete) { deletions++; return Task.FromResult(Json(404, "{}")); }
+            return Task.FromResult(Json(200, JsonSerializer.Serialize(new
+            {
+                voices = new[] { new { voice_id = "remote", name = sameName ? record.VoiceName : "Not the expected name", category = "cloned", is_owner = true,
+                    created_at_unix = start.ToUnixTimeSeconds() + offset,
+                    labels = label == "missing" ? null : new { voxclip_record_id = label == "same" ? operation.ProviderNonce : "different-request" } } },
+                has_more = false
+            })));
+        });
+        using var client = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), remote, ElevenLabsRegion.Default);
+        await new VoiceOperationReconciler(store, _ => client, clock).ReconcileAsync(force: true, ct: Token);
+        Assert.Equal(deleted ? 1 : 0, deletions);
+        if (label == "different") Assert.True(store.Operation(operation.Id).RecoveryNeedsReview);
+    }
     [Fact]
     public void SharedRecordAndScribeReplay()
     {
