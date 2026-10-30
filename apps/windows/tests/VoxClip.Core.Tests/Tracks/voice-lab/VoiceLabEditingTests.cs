@@ -105,6 +105,17 @@ public sealed class VoiceLabEditingTests
         Assert.Throws<ArgumentOutOfRangeException>(() => history.Apply(new VoiceLabEditCommand.Delete("accepted-test"), history.Present.ModifiedAt.AddTicks(-1)));
     }
     [Fact]
+    public void AcceptRejectsDuplicateNewAssetsButAllowsExistingAssetReuse()
+    {
+        var fixture = new Fixture();
+        Assert.Throws<VoiceLabProjectException>(() => new VoiceLabEditCommand.Accept(fixture.Segment(),
+            [.. fixture.Published.Assets, .. fixture.Published.Assets], fixture.Voice).ApplyingTo(fixture.Empty));
+        var accepted = new VoiceLabEditCommand.Accept(fixture.Segment(), fixture.Published.Assets, fixture.Voice).ApplyingTo(fixture.Empty);
+        var next = fixture.Segment() with { Id = "next", Enabled = false };
+        Assert.Single(new VoiceLabEditCommand.Accept(next, [.. fixture.Published.Assets, .. fixture.Published.Assets], fixture.Voice)
+            .ApplyingTo(accepted).VoiceLab.Assets!);
+    }
+    [Fact]
     public void CommandsUseExactProjectSnapshotsAndSingleUndoSteps()
     {
         var fixture = new Fixture(true);
@@ -129,10 +140,10 @@ public sealed class VoiceLabEditingTests
         Assert.Empty(disabled.Undo().Apply(new VoiceLabEditCommand.Delete("accepted-test")).RedoStack);
     }
     [Fact]
-    public void AcceptDeduplicatesAssetsAndRejectsConflictsAtomically()
+    public void AcceptReusesExistingAssetsAndRejectsConflictsAtomically()
     {
         var fixture = new Fixture();
-        var accepted = new VoiceLabEditCommand.Accept(fixture.Segment(), [.. fixture.Published.Assets, .. fixture.Published.Assets], fixture.Voice).ApplyingTo(fixture.Empty);
+        var accepted = new VoiceLabEditCommand.Accept(fixture.Segment(), fixture.Published.Assets, fixture.Voice).ApplyingTo(fixture.Empty);
         Assert.Single(accepted.VoiceLab.Assets!);
         var next = fixture.Segment() with { Id = "next", Enabled = false };
         Assert.Single(new VoiceLabEditCommand.Accept(next, fixture.Published.Assets, fixture.Voice).ApplyingTo(accepted).VoiceLab.Assets!);

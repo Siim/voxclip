@@ -36,13 +36,15 @@ public abstract record VoiceLabEditCommand
         if (voice is null) upgraded = VoiceLabProject.AddVoiceReference(upgraded, command.Voice);
         var assets = upgraded.VoiceLab.Assets!.ToDictionary(asset => asset.Id, StringComparer.Ordinal);
         var added = new List<VoiceLabAsset>();
+        var introduced = new HashSet<string>(StringComparer.Ordinal);
         foreach (var asset in command.Assets)
         {
+            if (introduced.Contains(asset.Id)) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidAsset);
             if (assets.TryGetValue(asset.Id, out var existing))
             {
                 if (existing != asset) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidAsset);
             }
-            else { assets.Add(asset.Id, asset); added.Add(asset); }
+            else { introduced.Add(asset.Id); assets.Add(asset.Id, asset); added.Add(asset); }
         }
         return VoiceLabProject.Accept(upgraded, added, command.Segment);
     }
