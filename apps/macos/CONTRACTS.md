@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-vl-followups — recording availability before attestations
+
+- The Create Your Voice sheet shows `speakerMessage` before the attestations, while Record statement stays disabled by `canRecord`. Unavailable model, unsupported selected language and missing calibration all show `The speaker check isn't available yet. Your voice can't be created until it is.` without waiting for a name or any checkbox.
+- No new gate: `VoiceLabSession.speakerReady` reuses `VoiceLabGate.canCheckOwnVoice`, the installed-model flag and `SpeakerModel.calibratedThreshold(language: enrollmentLanguage)`. Calibration verifies its model/preprocessing/threshold evidence; only English is supported, with finite calibrated τ. The same predicate guards statement recording, verify/create preparation and paid approval before services or credentials.
+- The headless UI regression failed before the reason moved above attestations. Eight deterministic session cases cover missing model, Estonian, French and withheld calibration, with zero/all attestations, and fail if credentials are requested. Existing valid-model attestation and gate-matrix tests remain unchanged.
+
 ### 2026-10-30 — sol-mac-vl-followups — Silent microphone takes
 
 - The recorder observes the original microphone channels before the mono mixer. Exactly two consecutive seconds of digital zero on every channel latch `Silent`; any nonzero sample on any channel resets the interval. Both interleaved and planar Float32/Int16/Int32 buffers are checked at their actual input rate. Mono cancellation is not silence. The next meter check, or an earlier explicit Stop, discards the take and removes both audio taps exactly once; a new take clears the failure.

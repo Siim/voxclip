@@ -182,6 +182,45 @@ import Testing
             #expect(!VoiceLabGate.canCheckOwnVoice(speakerAvailable: true, calibratedThreshold: threshold, language: "en"))
         }
     }
+    @Test(arguments: ["missing-model", "et", "fr", "uncalibrated"], [false, true])
+    func unavailableSpeakerReasonDoesNotWaitForAttestationsOrPaidSteps(condition: String, attested: Bool) async throws {
+        let app = AppModel()
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        let model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        if condition == "uncalibrated" {
+            var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(model)) as? [String: Any])
+            object["threshold"] = NSNull()
+            app.speakerModelLibrary.model = try JSONDecoder().decode(SpeakerModel.self, from: JSONSerialization.data(withJSONObject: object))
+        } else { app.speakerModelLibrary.model = model }
+        app.speakerModelLibrary.installed = condition != "missing-model"
+        let session = VoiceLabSession(app: app)
+        session.displayName = "Example"
+        session.ownVoice = attested; session.adult = attested; session.ownVideosOnly = attested
+        let language = ["et", "fr"].contains(condition) ? condition : "en"
+        let statement = VoiceConsentStatement(language: language, text: "Offline statement fixture", nonce: [])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [VoiceLabAppHTTP.self]
+        let client = ElevenLabsVoiceLab(keys: VoiceLabNoPaidKeys(), session: URLSession(configuration: configuration))
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
+        session.stageVerificationForTests(statement: statement, wav: wav, client: client)
+        let reason = VoiceConsentError.speakerUnavailable.localizedDescription
+        #expect(!session.speakerReady && !session.canRecord && !session.canCreate)
+        #expect(session.speakerMessage == reason)
+        await session.beginStatement()
+        #expect(!session.recorder.recording && session.message == reason)
+        for action: VoiceLabSession.Request in [.verify, .create] {
+            session.stageVerificationForTests(statement: statement, wav: wav, client: client)
+            let task = session.request(action)
+            #expect(task == nil && session.confirmation == nil)
+            await task?.value
+            await session.approve(action)
+            #expect(session.message == reason && !session.busy)
+            #expect(!app.bool("voiceLab.providerConsent.elevenlabs"))
+        }
+        await session.prepareCreation()
+        #expect(session.confirmation == nil && session.message == reason)
+        session.stopRecovery()
+    }
     @Test func startupAndSettingsFlushDoNotAwaitRemoteRecovery() async {
         let app = AppModel(), barrier = SessionRecoveryBarrier()
         app.voiceRecoveryForTests = { await barrier.pause() }
@@ -342,6 +381,12 @@ import Testing
 
 private struct VoiceLabAppKeys: KeyProvider {
     func key(for provider: String) async throws -> String? { "synthetic-journal-ui-key" }
+}
+private struct VoiceLabNoPaidKeys: KeyProvider {
+    func key(for provider: String) async throws -> String? {
+        Issue.record("Unavailable speaker checks must not reach credentials or provider calls")
+        return nil
+    }
 }
 private final class VoiceLabAppHTTP: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }

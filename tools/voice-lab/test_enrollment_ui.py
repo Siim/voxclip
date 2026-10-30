@@ -3,6 +3,17 @@ import unittest
 
 
 class EnrollmentUITests(unittest.TestCase):
+    def test_speaker_unavailability_reason_precedes_attestations(self):
+        root = pathlib.Path(__file__).resolve().parents[2]
+        source = (root / 'apps/macos/Sources/VoxClip/VoiceLabSettings.swift').read_text()
+        sheet = source[source.index('private struct CreateVoiceSheet'):]
+        self.assertLess(sheet.index('Text(session.speakerMessage)'), sheet.index('                    attestations'))
+        self.assertIn('.disabled(!session.canRecord)', sheet)
+        session = (root / 'apps/macos/Sources/VoxClip/VoiceLabSession.swift').read_text()
+        self.assertIn('VoiceLabGate.canCheckOwnVoice(speakerAvailable: app.speakerModelLibrary.installed,', session)
+        self.assertIn('calibratedThreshold: app.speakerModelLibrary.model?.calibratedThreshold(language: enrollmentLanguage), language: enrollmentLanguage)', session)
+        self.assertIn('var canRecord: Bool { enabled && speakerReady', session)
+
     def test_silent_state_offers_microphone_privacy_settings(self):
         root = pathlib.Path(__file__).resolve().parents[2]
         source = (root / 'apps/macos/Sources/VoxClip/VoiceLabSettings.swift').read_text()

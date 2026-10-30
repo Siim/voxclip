@@ -260,6 +260,7 @@ import VoxClipMedia
                 VStack(alignment: .leading, spacing: 14) {
                     Text(VoiceLabSession.noticeCopy)
                     HStack { Link("ElevenLabs terms", destination: URL(string: "https://elevenlabs.io/terms-of-use")!); Link("Prohibited Use Policy", destination: URL(string: "https://elevenlabs.io/use-policy")!) }
+                    Text(session.speakerMessage).font(.caption)
                     attestations
                     if let statement = session.statement {
                         Text(session.verified ? "Training read-aloud · about 90 seconds" : "Read this aloud").font(.headline)
@@ -275,7 +276,6 @@ import VoxClipMedia
                     if session.recorder.failure == .silent {
                         Button("Open Settings") { NSWorkspace.shared.open(MicrophoneError.privacySettingsURL) }
                     }
-                    Text(session.speakerMessage).font(.caption)
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack {
