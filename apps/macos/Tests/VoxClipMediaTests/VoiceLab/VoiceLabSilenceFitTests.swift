@@ -388,7 +388,10 @@ extension HeavyMediaTests {
         try Data([1, 2]).write(to: file)
         var info = stat()
         #expect(fstat(operation.descriptor, &info) == 0 && info.st_mode & 0o777 == 0o700)
-        if scenario == "unjournalled" { try FileManager.default.removeItem(at: staged.appendingPathComponent(".operation.json")) }
+        if scenario == "unjournalled" {
+            try FileManager.default.removeItem(at: directory.appendingPathComponent(VoiceLabAssetRecovery.intentName(operation.name)))
+            try FileManager.default.removeItem(at: staged.appendingPathComponent(".operation.json"))
+        }
         if scenario == "replacement" {
             let journal = try Data(contentsOf: staged.appendingPathComponent(".operation.json"))
             try FileManager.default.moveItem(at: staged, to: directory.appendingPathComponent("kept-original"))
@@ -456,9 +459,9 @@ extension HeavyMediaTests {
                 #expect(descriptor >= 0 && flock(descriptor, LOCK_EX | LOCK_NB) == -1)
                 let directory = root.appendingPathComponent(projectId)
                 let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
-                #expect(names.count == 1)
-                let operation = try #require(names.first)
-                #expect(operation.hasPrefix(".voxclip-operation-"))
+                #expect(names.count == 2)
+                let operation = try #require(names.first(where: { $0.hasPrefix("op-") }))
+                #expect(names.contains(VoiceLabAssetRecovery.intentName(operation)))
                 let entries = try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent(operation).path)
                 #expect(entries.contains(".operation.json"))
                 #expect(entries.filter { $0.hasSuffix(".partial") }.count == 1)
@@ -468,6 +471,68 @@ extension HeavyMediaTests {
         #expect(checked)
         #expect(try VoiceLabAssetStore.recoverStalePartials(paidRoot: root) == 0)
         #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent(asset.file).path))
+    }
+    @Test(arguments: ["before-mkdir", "after-mkdir", "during-identity"])
+    func intentRecoveryClosesDirectoryCreationCrashGaps(point: String) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let project = root.appendingPathComponent(projectId)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rootFD = try VoiceLabPaidRoot.open(root), parent = Darwin.open(project.path, O_RDONLY | O_DIRECTORY)
+        defer { Darwin.close(parent); Darwin.close(rootFD) }
+        let name = "op-\(UUID().uuidString.lowercased())"
+        let intent = VoiceLabAssetRecovery.DirectoryRecord(name: name, owner: .init(pid: 123, seconds: 100, microseconds: 0), identity: nil)
+        _ = try VoiceLabAssetRecovery.writeRecord(intent, directory: parent, filename: VoiceLabAssetRecovery.intentName(name))
+        if point != "before-mkdir" {
+            #expect(mkdirat(parent, name, 0o700) == 0)
+            if point == "during-identity" { try Data("{incomplete".utf8).write(to: project.appendingPathComponent(name).appendingPathComponent(".operation.json")) }
+        }
+        #expect(try VoiceLabAssetRecovery.recover(rootFD, status: { _ in .gone }) == (point == "before-mkdir" ? 0 : 1))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: project.path).isEmpty)
+        #expect(try VoiceLabAssetRecovery.recover(rootFD, status: { _ in .gone }) == 0)
+    }
+    @Test(arguments: ["intent", "directory"])
+    func initializationFailureImmediatelyRemovesItsOwnedDirectory(point: String) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let parent = Darwin.open(root.path, O_RDONLY | O_DIRECTORY)
+        defer { Darwin.close(parent) }
+        #expect(throws: VoiceLabAssetStoreError.self) {
+            _ = try VoiceLabAssetRecovery.Operation(parent: parent, checkpoint: { stage in
+                if stage == point { throw VoiceLabAssetStoreError.unwritable("injected") }
+            })
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: root.path).isEmpty)
+    }
+    @Test(arguments: ["live", "unknown", "symlink", "foreign-entry", "noncanonical-name", "reused-pid"])
+    func identitylessIntentRecoveryRequiresDeadOwnerAndStrictDirectory(scenario: String) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let project = root.appendingPathComponent(projectId)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rootFD = try VoiceLabPaidRoot.open(root), parent = Darwin.open(project.path, O_RDONLY | O_DIRECTORY)
+        defer { Darwin.close(parent); Darwin.close(rootFD) }
+        let name = scenario == "noncanonical-name" ? "op-not-a-uuid" : "op-\(UUID().uuidString.lowercased())"
+        let owner = VoiceLabAssetRecovery.Owner(pid: 123, seconds: 100, microseconds: 0)
+        _ = try VoiceLabAssetRecovery.writeRecord(.init(name: name, owner: owner, identity: nil), directory: parent,
+            filename: VoiceLabAssetRecovery.intentName(name))
+        let path = project.appendingPathComponent(name)
+        let target = root.appendingPathComponent("user-files")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: false)
+        try Data("keep".utf8).write(to: target.appendingPathComponent("user.txt"))
+        if scenario == "symlink" { try FileManager.default.createSymbolicLink(at: path, withDestinationURL: target) }
+        else { #expect(mkdirat(parent, name, 0o700) == 0) }
+        if scenario == "foreign-entry" { try Data("keep".utf8).write(to: path.appendingPathComponent("user.txt")) }
+        let removed = try VoiceLabAssetRecovery.recover(rootFD, status: { _ in
+            if scenario == "live" { return .running(owner) }
+            if scenario == "unknown" { return .unknown }
+            if scenario == "reused-pid" { return .running(.init(pid: owner.pid, seconds: 101, microseconds: 0)) }
+            return .gone
+        })
+        #expect(removed == (scenario == "reused-pid" ? 1 : 0))
+        #expect(FileManager.default.fileExists(atPath: path.path) == (scenario != "reused-pid"))
+        #expect(try Data(contentsOf: target.appendingPathComponent("user.txt")) == Data("keep".utf8))
     }
     @Test func pcm24OddFramePaddingIsCanonicalAndVerified() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
