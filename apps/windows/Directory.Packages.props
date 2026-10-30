@@ -2,6 +2,13 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <!-- Windows App SDK 2.5.1 components that VoxClip.App excludes entirely (ExcludeAssets="all"); the versions are the ones
+         Microsoft.WindowsAppSDK 2.5.1 resolves. Windows ML would otherwise ship its own onnxruntime.dll over the pinned one above. -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK.ML" Version="2.1.94" />
+    <PackageVersion Include="Microsoft.Windows.AI.MachineLearning" Version="2.1.74" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.AI" Version="2.5.5" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Search" Version="2.5.5" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Widgets" Version="2.0.5" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageVersion Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />

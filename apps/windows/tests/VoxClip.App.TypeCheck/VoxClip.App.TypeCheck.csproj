@@ -27,6 +27,12 @@
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Segmented" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" />
     <PackageReference Include="Velopack" />
+    <!-- The same Windows App SDK component exclusions as VoxClip.App, so App code cannot compile against them. -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Search" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" ExcludeAssets="all" />
   </ItemGroup>
   <Target Name="GenerateXamlMemberStubs" BeforeTargets="BeforeCompile">
     <MakeDir Directories="$(IntermediateOutputPath)" />

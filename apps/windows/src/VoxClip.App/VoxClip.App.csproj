@@ -29,6 +29,17 @@
     <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" />
     <PackageReference Include="Velopack" />
   </ItemGroup>
+  <!-- Microsoft.WindowsAppSDK 2.5.1 (also required by CommunityToolkit.WinUI) depends on the Windows ML, AI, Search and Widgets
+       components. VoxClip uses none of them, and Windows ML's newer onnxruntime.dll would replace the pinned Microsoft.ML.OnnxRuntime
+       native library. Excluding all of their assets keeps their references, build targets, runtime files and WinRT registrations out
+       of the app. build/Assert-OnnxRuntimePin.ps1 checks the result in CI. Keep this list in step with VoxClip.App.TypeCheck. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK.ML" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.Windows.AI.MachineLearning" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.AI" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Search" ExcludeAssets="all" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Widgets" ExcludeAssets="all" />
+  </ItemGroup>
   <ItemGroup>
     <Content Include="$(MSBuildThisFileDirectory)..\..\..\..\shared\**\*"
              Exclude="$(MSBuildThisFileDirectory)..\..\..\..\shared\fixtures\**"

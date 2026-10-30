@@ -11,6 +11,56 @@
       "latestListedStableInRequiredLine": "2.5.1"
     },
     {
+      "id": "Microsoft.WindowsAppSDK.ML",
+      "version": "2.1.94",
+      "listed": true,
+      "published": "2026-09-16T22:42:38.49+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/microsoft.windowsappsdk.ml/2.1.94.json",
+      "latestListedStableInRequiredLine": "2.1.94",
+      "checkedOn": "2026-10-31",
+      "assets": "excluded: ExcludeAssets=\"all\" in VoxClip.App; resolved by Microsoft.WindowsAppSDK 2.5.1, nothing ships"
+    },
+    {
+      "id": "Microsoft.Windows.AI.MachineLearning",
+      "version": "2.1.74",
+      "listed": true,
+      "published": "2026-07-13T22:57:44.137+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/microsoft.windows.ai.machinelearning/2.1.74.json",
+      "latestListedStableInRequiredLine": "2.1.74",
+      "checkedOn": "2026-10-31",
+      "assets": "excluded: ExcludeAssets=\"all\" in VoxClip.App; resolved by Microsoft.WindowsAppSDK 2.5.1, nothing ships"
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.AI",
+      "version": "2.5.5",
+      "listed": true,
+      "published": "2026-09-16T22:42:34.61+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/microsoft.windowsappsdk.ai/2.5.5.json",
+      "latestListedStableInRequiredLine": "2.5.5",
+      "checkedOn": "2026-10-31",
+      "assets": "excluded: ExcludeAssets=\"all\" in VoxClip.App; resolved by Microsoft.WindowsAppSDK 2.5.1, nothing ships"
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.Search",
+      "version": "2.5.5",
+      "listed": true,
+      "published": "2026-09-16T22:42:42.833+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/microsoft.windowsappsdk.search/2.5.5.json",
+      "latestListedStableInRequiredLine": "2.5.5",
+      "checkedOn": "2026-10-31",
+      "assets": "excluded: ExcludeAssets=\"all\" in VoxClip.App; resolved by Microsoft.WindowsAppSDK 2.5.1, nothing ships"
+    },
+    {
+      "id": "Microsoft.WindowsAppSDK.Widgets",
+      "version": "2.0.5",
+      "listed": true,
+      "published": "2026-05-21T22:48:43.953+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/microsoft.windowsappsdk.widgets/2.0.5.json",
+      "latestListedStableInRequiredLine": "2.0.5",
+      "checkedOn": "2026-10-31",
+      "assets": "excluded: ExcludeAssets=\"all\" in VoxClip.App; resolved by Microsoft.WindowsAppSDK 2.5.1, nothing ships"
+    },
+    {
       "id": "Microsoft.Windows.SDK.BuildTools",
       "version": "10.0.28000.2705",
       "listed": true,
