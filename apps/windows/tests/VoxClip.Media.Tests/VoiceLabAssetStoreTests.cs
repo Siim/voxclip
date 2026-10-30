@@ -91,7 +91,8 @@ public sealed class VoiceLabAssetStoreTests
         using var cancellation = new CancellationTokenSource();
         Assert.Throws<OperationCanceledException>(() => VoiceLabAssetStore.Write([1, 0], 24_000, storage.ProjectId,
             "cancelled", storage.PaidRoot, CreatedAt, cancellation.Token, cancellation.Cancel, null));
-        Assert.Empty(Directory.GetFileSystemEntries(directory));
+        Assert.Empty(Directory.GetFiles(directory));
+        Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(directory, VoiceLabPartialJournal.Folder)));
         var raced = Path.Combine(directory, "race.wav");
         Refuses(VoiceLabAssetStoreErrorCode.AlreadyExists, () => VoiceLabAssetStore.Write([1, 0], 24_000, storage.ProjectId,
             "race", storage.PaidRoot, CreatedAt, default, () => File.WriteAllBytes(raced, [42]), null));

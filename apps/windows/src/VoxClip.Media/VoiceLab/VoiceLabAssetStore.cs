@@ -69,26 +69,10 @@ public static class VoiceLabAssetStore
         var root = OpenRoot(paidRoot, label);
         var directory = Path.Combine(root, projectId);
         if (!Directory.Exists(directory)) return 0;
+        using var rootLease = HoldDirectory(root, label, followLinks: true);
         RequireDirectory(directory, label, false);
-        var removed = 0;
-        foreach (var path in Directory.EnumerateFiles(directory))
-        {
-            var name = Path.GetFileName(path);
-            if (!name.StartsWith('.') || !name.EndsWith(".partial", StringComparison.Ordinal)) continue;
-            var body = name[1..^8];
-            var separator = body.LastIndexOf('.');
-            if (separator < 0 || !Guid.TryParseExact(body[(separator + 1)..], "N", out _)) continue;
-            var target = body[..separator];
-            if (!target.EndsWith(".wav", StringComparison.Ordinal)) continue;
-            try { if (Path.GetFileName(VoiceLabAssetNaming.File(projectId, target[..^4], "wav")) != target) continue; }
-            catch (ArgumentException) { continue; }
-            if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0 || File.GetLastWriteTimeUtc(path) >= processStart.UtcDateTime) continue;
-            using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            VoiceLabAssets.RequireWithinRoot(root, path, file.SafeFileHandle, label);
-            File.Delete(path);
-            removed++;
-        }
-        return removed;
+        using var projectLease = HoldDirectory(directory, label);
+        return VoiceLabPartialJournal.Sweep(directory);
     }
     public static VoiceLabAsset WriteWave(ReadOnlySpan<byte> pcm, int sampleRate, int channels, int bits, bool floating,
         string projectId, string assetId, string paidRoot, DateTimeOffset createdAt, CancellationToken ct = default)
@@ -131,7 +115,7 @@ public static class VoiceLabAssetStore
         Validate(frames, sampleRate, file);
         cancellationToken.ThrowIfCancellationRequested();
         string? temporary = null;
-        var temporaryCreated = false;
+        VoiceLabPartialJournal? partialJournal = null;
         var published = false;
         Exception? primaryError = null;
         try
@@ -149,13 +133,13 @@ public static class VoiceLabAssetStore
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             var options = new FileStreamOptions
             {
-                Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None,
+                Mode = FileMode.CreateNew, Access = FileAccess.ReadWrite, Share = FileShare.None,
                 Options = FileOptions.WriteThrough, BufferSize = 131_072
             };
             if (!OperatingSystem.IsWindows()) options.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
             using (var output = new FileStream(temporary, options))
             {
-                temporaryCreated = true;
+                partialJournal = VoiceLabPartialJournal.Register(temporary, output.SafeFileHandle);
                 VoiceLabAssets.RequireWithinRoot(root, temporary, output.SafeFileHandle, file);
                 var header = wave?.Header() ?? WavHeader(frames, sampleRate);
                 output.Write(header); hash.AppendData(header);
@@ -206,9 +190,9 @@ public static class VoiceLabAssetStore
         catch (Exception error) { primaryError = error; throw; }
         finally
         {
-            if (temporaryCreated && !published && temporary is not null)
+            if (partialJournal is not null && temporary is not null)
             {
-                try { System.IO.File.Delete(temporary); }
+                try { partialJournal.Complete(deletePartial: !published); }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException)
                 {
                     if (primaryError is VoiceLabAssetStoreException failure) failure.OrphanedTemporaryPath = temporary;
@@ -239,7 +223,7 @@ public static class VoiceLabAssetStore
         return root;
     }
 
-    private static void RequireDirectory(string path, string file, bool create)
+    internal static void RequireDirectory(string path, string file, bool create)
     {
         if (!EntryExists(path) && create)
         {
@@ -257,7 +241,7 @@ public static class VoiceLabAssetStore
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return false; }
     }
 
-    private static SafeFileHandle? HoldDirectory(string path, string file, bool followLinks = false)
+    internal static SafeFileHandle? HoldDirectory(string path, string file, bool followLinks = false)
     {
         if (!OperatingSystem.IsWindows()) return null;
         var handle = CreateFileW(path, 0x80000000, FileShare.Read | FileShare.Write, IntPtr.Zero, FileMode.Open,
@@ -277,7 +261,7 @@ public static class VoiceLabAssetStore
     private static extern SafeFileHandle CreateFileW(string name, uint access, FileShare share, IntPtr security,
         FileMode disposition, uint flags, IntPtr template);
 
-    private static void MoveExclusive(string temporary, string final, string file)
+    internal static void MoveExclusive(string temporary, string final, string file)
     {
         if (OperatingSystem.IsWindows())
         {

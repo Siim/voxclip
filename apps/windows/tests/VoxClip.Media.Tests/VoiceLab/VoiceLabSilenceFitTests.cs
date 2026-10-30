@@ -186,8 +186,8 @@ public sealed class VoiceLabSilenceFitTests
         foreach (var path in new[] { stale, current, foreign }) File.WriteAllText(path, "synthetic");
         File.SetLastWriteTimeUtc(stale, DateTime.UnixEpoch);
         File.SetLastWriteTimeUtc(foreign, DateTime.UnixEpoch);
-        Assert.Equal(1, VoiceLabAssetStore.CleanupStalePartials(storage.Root, Project, DateTimeOffset.UtcNow.AddMinutes(-1)));
-        Assert.False(File.Exists(stale));
+        Assert.Equal(0, VoiceLabAssetStore.CleanupStalePartials(storage.Root, Project, DateTimeOffset.UtcNow.AddMinutes(-1)));
+        Assert.True(File.Exists(stale));
         Assert.True(File.Exists(current));
         Assert.True(File.Exists(foreign));
         Assert.True(File.Exists(Path.Combine(storage.Root, fitted.PaidAsset.File)));
