@@ -275,7 +275,7 @@ public sealed partial class LlmConnector
                 var requestId = requestIdHeader is not null && response.Headers.TryGetValues(requestIdHeader, out var values) ? values.FirstOrDefault() : null;
                 WriteAttempt(model, canonical, attempt, status, stopwatch.Elapsed, parsed, requestId, key);
                 recorded = true;
-                if (response.IsSuccessStatusCode && !(Id == ConnectorId.OpenAI && parsed["status"]?.GetValue<string>() == "failed")) return (parsed, requestId);
+                if (response.IsSuccessStatusCode) return (parsed, requestId);
                 var message = parsed["error"] is JsonValue value ? value.GetValue<string>() : parsed["error"]?["message"]?.GetValue<string>() ?? "The provider rejected the request.";
                 if (feature != LlmFeature.VoiceRewrite && Id == ConnectorId.Anthropic && status == 400 && body?.ContainsKey("fallbacks") == true && message.Contains("anthropic-beta", StringComparison.OrdinalIgnoreCase) && message.Contains("unexpected", StringComparison.OrdinalIgnoreCase))
                 { betaUnsupported = true; body.Remove("fallbacks"); attempt--; continue; }
@@ -415,6 +415,18 @@ public sealed partial class LlmConnector
         }
         else if (Id == ConnectorId.OpenAI)
         {
+            if (body["status"]?.GetValue<string>() == "failed")
+            {
+                var code = body["error"]?["code"]?.GetValue<string>();
+                throw code switch
+                {
+                    "rate_limit_exceeded" => Error(LlmErrorKind.RateLimited, model, request.Feature),
+                    "invalid_prompt" or "bio_policy" or "misalignment_policy_violation" or "image_content_policy_violation" => Error(LlmErrorKind.Refused, model, request.Feature, detail: code),
+                    "data_residency_mismatch" => Error(LlmErrorKind.Unavailable, model, request.Feature, detail: "OpenAI can't serve this request in the configured data region."),
+                    "invalid_image" or "invalid_image_format" or "invalid_base64_image" or "invalid_image_url" or "image_too_large" or "image_too_small" or "image_parse_error" or "invalid_image_mode" or "image_file_too_large" or "unsupported_image_media_type" or "empty_image_file" or "failed_to_download_image" or "image_file_not_found" => Error(LlmErrorKind.BadRequest, model, request.Feature, status: 400, detail: "OpenAI couldn't process an image in the request."),
+                    _ => Error(LlmErrorKind.Server, model, request.Feature, status: 500)
+                };
+            }
             if (body["status"]?.GetValue<string>() == "incomplete") stop = body["incomplete_details"]?["reason"]?.GetValue<string>() == "content_filter" ? new StopKind.Refused("content_filter") : new StopKind.Truncated();
             foreach (var item in body["output"] as JsonArray ?? [])
             {

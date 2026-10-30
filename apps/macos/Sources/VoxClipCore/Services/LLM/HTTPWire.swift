@@ -97,11 +97,16 @@ extension HTTPConnector {
             }
             if value[ai: "status"].aiString == "failed" {
                 let code = value[ai: "error"][ai: "code"].aiString ?? ""
-                if code == "model_not_found" { throw LLMError.modelNotFound(requestedModel) }
-                if code == "context_length_exceeded" { throw LLMError.contextTooLong }
-                if code == "insufficient_quota" { throw LLMError.quotaExceeded }
-                if code == "rate_limit_exceeded" { throw LLMError.rateLimited(retryAfter: nil) }
-                throw LLMError.server(status: 500)
+                switch code {
+                case "rate_limit_exceeded": throw LLMError.rateLimited(retryAfter: nil)
+                case "invalid_prompt", "bio_policy", "misalignment_policy_violation", "image_content_policy_violation":
+                    throw LLMError.refused(category: code)
+                case "data_residency_mismatch":
+                    throw LLMError.unavailable(reason: "OpenAI can't serve this request in the configured data region.")
+                case "invalid_image", "invalid_image_format", "invalid_base64_image", "invalid_image_url", "image_too_large", "image_too_small", "image_parse_error", "invalid_image_mode", "image_file_too_large", "unsupported_image_media_type", "empty_image_file", "failed_to_download_image", "image_file_not_found":
+                    throw LLMError.badRequest(status: 400, message: "OpenAI couldn't process an image in the request.")
+                default: throw LLMError.server(status: 500)
+                }
             }
             for item in value[ai: "output"].aiArray where item[ai: "type"].aiString == "message" {
                 for content in item[ai: "content"].aiArray {

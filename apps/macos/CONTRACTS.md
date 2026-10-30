@@ -1,5 +1,9 @@
 # macOS implementation contracts
 
+### 2026-10-30 — OpenAI failed Responses
+
+- Both Cores use the same documented `Response.error.code` table for HTTP-200 failed envelopes: rate limits, policy refusals, region unavailability, invalid-image requests and server failures. HTTP-only error codes are not reinterpreted here. Tests cover all 21 documented codes, unknown codes and HTTP-only codes; failed envelopes never trigger a transport or corrective retry.
+
 ### 2026-10-30 — Anthropic context exhaustion
 
 - `model_context_window_exceeded` maps to the same truncated stop as `max_tokens` (ai.md §4.6; Anthropic stop-reasons reference). Both Cores reject partial JSON without a paid corrective retry; stub runner tests assert one request.
