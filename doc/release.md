@@ -16,7 +16,7 @@ Provenance: Superscribe's `apps/macos/bundle.sh`, `apps/windows/build-windows.sh
 |---|---|
 | Product | VoxClip |
 | Version | `0.1.0` (semver). macOS: `CFBundleShortVersionString` in `apps/macos/Sources/VoxClip/Info.plist`. Windows: `<Version>` in `apps/windows/Directory.Build.props`. Nowhere else |
-| Build number (macOS) | `CFBundleVersion`, a positive integer that increases with every release (0.1.0 = `1`) |
+| Build number (macOS) | `CFBundleVersion`, a positive integer that increases with every release (0.1.0 = `1`); `set-version.sh` raises it only when the version changes |
 | Tag | `v<version>`, annotated, on the release commit |
 | Bundle ID | `com.voxconvo.voxclip` |
 | CLI signing identifier | `com.voxconvo.voxclip.cli`; its designated requirement must differ from the app's |
@@ -118,67 +118,9 @@ Not uploaded: `RELEASES-*` (legacy Squirrel feeds), `assets.*.json` (local build
 </plist>
 ```
 
-`Sources/VoxClip/Info.plist` (embedded into both executables with `-sectcreate`, and copied into the bundle):
+`Sources/VoxClip/Info.plist` is the single source of truth for app metadata, document types, usage descriptions and the bundle version. The package embeds it into both executables with `-sectcreate`; `bundle.sh` copies it unchanged into the bundle. Inspect that file rather than maintaining a second XML template here. The speech usage description is also explained in the transcription spec; it is not unique to this document.
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleDisplayName</key><string>VoxClip</string>
-  <key>CFBundleName</key><string>VoxClip</string>
-  <key>CFBundleExecutable</key><string>VoxClip</string>
-  <key>CFBundleIconFile</key><string>AppIcon</string>
-  <key>CFBundleIdentifier</key><string>com.voxconvo.voxclip</string>
-  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSApplicationCategoryType</key><string>public.app-category.video</string>
-  <key>LSMinimumSystemVersion</key><string>26.0</string>
-  <key>LSArchitecturePriority</key><array><string>arm64</string></array>
-  <key>NSPrincipalClass</key><string>NSApplication</string>
-  <key>NSHighResolutionCapable</key><true/>
-  <key>NSAccentColorName</key><string>AccentColor</string>
-  <key>NSHumanReadableCopyright</key><string>(c) Haugas Development OU. MIT License.</string>
-  <key>NSCameraUsageDescription</key><string>VoxClip uses the camera when you record a new video.</string>
-  <key>NSMicrophoneUsageDescription</key><string>VoxClip uses the microphone when you record a new video.</string>
-  <key>NSSpeechRecognitionUsageDescription</key><string>VoxClip transcribes your videos on this Mac with Apple's on-device speech recognition. Audio stays on this Mac.</string>
-  <key>CFBundleDocumentTypes</key>
-  <array>
-    <dict>
-      <key>CFBundleTypeName</key><string>VoxClip Project</string>
-      <key>CFBundleTypeRole</key><string>Editor</string>
-      <key>LSHandlerRank</key><string>Owner</string>
-      <key>LSItemContentTypes</key><array><string>com.voxconvo.voxclip.project</string></array>
-    </dict>
-    <dict>
-      <key>CFBundleTypeName</key><string>Video</string>
-      <key>CFBundleTypeRole</key><string>Viewer</string>
-      <key>LSHandlerRank</key><string>Alternate</string>
-      <key>LSItemContentTypes</key>
-      <array><string>public.movie</string><string>public.mpeg-4</string><string>com.apple.quicktime-movie</string></array>
-    </dict>
-  </array>
-  <key>UTExportedTypeDeclarations</key>
-  <array>
-    <dict>
-      <key>UTTypeIdentifier</key><string>com.voxconvo.voxclip.project</string>
-      <key>UTTypeDescription</key><string>VoxClip Project</string>
-      <key>UTTypeConformsTo</key><array><string>public.json</string><string>public.data</string></array>
-      <key>UTTypeTagSpecification</key>
-      <dict>
-        <key>public.filename-extension</key><array><string>voxclip</string></array>
-        <key>public.mime-type</key><string>application/vnd.voxconvo.voxclip+json</string>
-      </dict>
-    </dict>
-  </array>
-</dict>
-</plist>
-```
-
-Also: `dmg-background.png` (600×400) in `apps/macos`. From the repository root: `shared/brand/macos/AppIcon.icns`, the single `THIRD_PARTY_NOTICES.md` (fonts, Unicode data, whisper.cpp, swift-argument-parser, models' attribution, and the Windows components) and `LICENSE`. The `NSSpeechRecognitionUsageDescription` string above is the only copy; the transcription spec refers to it.
+Also: `dmg-background.png` (600×400) in `apps/macos`. From the repository root: `shared/brand/macos/AppIcon.icns`, the single `THIRD_PARTY_NOTICES.md` (fonts, Unicode data, whisper.cpp, swift-argument-parser, models' attribution, and the Windows components) and `LICENSE`.
 
 ### 2.3 `bundle.sh` (lives at `apps/macos/bundle.sh`)
 
@@ -206,8 +148,8 @@ Production releases and uploads require a clean tree (excluding ignored `dist/` 
 The pipeline, step by step:
 
 1. **SDK pin check.** Read the selected SDK version from `SDKSettings`, pass `-platform_version macos <min> <sdk>` to Swift's linker, and verify both `LC_BUILD_VERSION sdk` and `minos` on both executables with Xcode's real `otool`. The package and plist minimum macOS versions must agree. A stale SDK stamp makes macOS draw pre-Liquid-Glass controls.
-2. **Licence gate.** Fail closed if any shipped Mach-O cannot be inspected, or contains espeak/espeak-ng, x264, x265 or FFmpeg C symbols or linked libraries. Write `nm -a` and `otool -L` output to temporary files in the work directory and grep those files (excluding the otool filename header), never a multi-megabyte producer pipeline that can mask a match through SIGPIPE under `pipefail`.
-3. **Resources.** Copy only Git-tracked runtime files in `shared/{caption-styles,catalog,data,design,fonts,prompts,schemas}`, excluding nested `fixtures/`; untracked/ignored files, ingest data, brand sources and tools never ship. Copy and byte-compare with the same NUL-delimited tracked manifests, not a scan of untracked files. List ignored files with `git ls-files -z`, rejecting listing errors and ignored files in shipped shared directories even with `--allow-dirty`, printing offending paths first. Ignore `.DS_Store` basenames everywhere in this gate, including non-ASCII, quoted or newline-containing paths, because untracked files never ship. Copy root `THIRD_PARTY_NOTICES.md`, `LICENSE` and the icon from `shared/brand`; compile the token-owned `apps/macos/Resources/Assets.xcassets` (the `AccentColor` generated from the `accent.default` token) and the App-owned `apps/macos/Resources/Transport.xcassets` (custom three-second SF Symbols) together into `Contents/Resources/Assets.car` with `actool --accent-color`, failing unless its partial Info.plist names the same `NSAccentColorName` as the app's Info.plist, because actool only warns about a missing colour; strip dSYMs and thin embedded code to arm64.
+2. **Licence gate.** Fail closed if any shipped Mach-O cannot be inspected, or contains espeak/espeak-ng, x264, x265 or FFmpeg C symbols or linked libraries. Write `nm -a` and `otool -L` output to temporary files in the work directory and grep those files (excluding the otool filename header), never a multi-megabyte producer pipeline that can mask a match through SIGPIPE under `pipefail`. CI runs this gate, the asset-catalogue compile and the framework notice gate on an ad-hoc debug bundle (architecture section 12).
+3. **Resources.** Copy only Git-tracked runtime files in `shared/{caption-styles,catalog,data,design,fonts,prompts,schemas}`, excluding nested `fixtures/`; untracked/ignored files, ingest data, brand sources and tools never ship. Copy and byte-compare with the same NUL-delimited tracked manifests, not a scan of untracked files. List ignored files with `git ls-files -z`, rejecting listing errors and ignored files in shipped shared directories even with `--allow-dirty`, printing offending paths first. Ignore `.DS_Store` basenames everywhere in this gate, including non-ASCII, quoted or newline-containing paths, because untracked files never ship. Copy root `THIRD_PARTY_NOTICES.md`, `LICENSE` and the icon from `shared/brand`; compile the token-owned `apps/macos/Resources/Assets.xcassets` (the `AccentColor` generated from the `accent.default` token) into `Contents/Resources/Assets.car` with `actool --accent-color`, failing unless its partial Info.plist names the same `NSAccentColorName` as the app's Info.plist, because actool only warns about a missing colour; strip dSYMs and thin embedded code to arm64.
 4. **Nested-first signing with `--timestamp`.** Sign embedded Mach-O files and framework wrappers, then `voxclip-cli`, then the main executable and bundle. The CLI has no entitlements and is signed with `--identifier com.voxconvo.voxclip.cli`; verify that identifier and require its designated requirement to differ from the app's `com.voxconvo.voxclip` requirement. Signed local app rebuilds retain the production app requirement. Require the same Team ID, hardened runtime and secure timestamp on every Developer ID Mach-O; no `disable-library-validation` or other runtime exceptions.
 5. **Entitlements and notices.** The signed bundle must carry exactly camera + audio-input. Every embedded framework and dylib (including `Contents/Frameworks/*.dylib`) must match the same known-notice table and its exact copyright marker in the bundled notices file; unknown names fail closed. The current known names are `whisper.framework` and `libwhisper.dylib` (ggml authors).
 6. **Notarize the zip.** Check the screen lock state before the release build and again before every notarization submission (section 5). The current `--upload-only` flow never notarizes; any future upload path that submits must use the same gate. Require a successful `notarytool` command, JSON `status=Accepted` and a valid submission ID; otherwise print stderr/JSON and fetch the submission log when an ID is available. Map `No Keychain password item found for profile` to the same locked-screen diagnostic, not advice to recreate credentials. Retain diagnostics in `dist/notarization/`; never retry submissions automatically. Staple/validate the app and re-zip it so the zip carries the ticket; assess with `spctl --assess --type execute`.
@@ -224,10 +166,10 @@ The Windows VM (ARM64 Windows 11 under UTM on the release Mac) has signtool and 
 ### 3.1 VM prerequisites (one-time)
 
 - OpenSSH Server enabled, key-based login from the release Mac (`ssh <user>@<vm-host>` without a password prompt).
-- .NET 10 SDK (`dotnet --list-sdks` shows 10.0.1xx). Windows 11 SDK (for `signtool.exe`, 10.0.26100 or newer). Long paths enabled (`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1`).
+- .NET 10 SDK. `apps/windows/global.json` asks for 10.0.100 with `rollForward: latestFeature`, so the newest installed 10.0 feature band builds the release (the VM has 10.0.402, `apps/windows/README.md`). `vm-release.ps1` refuses an SDK that is not 10.x and records the one it used as `sdk` in the verification receipt. A `signtool.exe`: the Windows 11 SDK's x64 tool, 10.0.26100 or newer, or the pinned AzureTrustedSignTool 1.3.13 bundle in the user-profile tool store (section 3.6). Long paths enabled (`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1`).
 - `Azure.CodeSigning.Dlib.dll` from the `Microsoft.Trusted.Signing.Client` NuGet package, extracted (e.g. `C:\trusted-signing-client\bin\x64\`). **The dlib and signtool must be the same architecture**: on the ARM64 VM use the x64 signtool with the x64 dlib (both run under emulation), as the existing Superscribe setup does.
 - `tar.exe` (built into Windows 11) and Windows PowerShell 5.1 (`powershell.exe`). Scripts run under 5.1 must be **ASCII only** (an em dash broke Superscribe's script).
-- `vpk` comes from the repo's local tool manifest `apps/windows/.config/dotnet-tools.json` (pinned version), restored with `dotnet tool restore`; nothing global.
+- `vpk` is the Velopack version pinned in `apps/windows/Directory.Packages.props` (1.2.161). There is no repository tool manifest: when `vpk.exe` is missing from `<VOXCLIP_WIN_BUILD_DIR>\win-release\tools\<version>`, `vm-release.ps1` installs it there with `dotnet tool install vpk --tool-path … --version <version>`, so the first release on a fresh VM needs NuGet access. Nothing is installed globally. Before packing, the release hashes the tool's six Windows vendor inputs against the pinned archive (section 3.7).
 - Velopack's `--signTemplate` calls `apps/windows/build/Sign-Artifacts.ps1` (section 3.5).
 
 ### 3.2 Credentials (never on a command line, never on the VM disk, never in the repo)
@@ -295,6 +237,8 @@ ADR-030 records the narrow dependency-policy allowance for the official pinned W
 
 The win-x64 and win-arm64 self-contained publish inventories match 148 and 144 files respectively to Windows App SDK, Windows ML and WebView2 packages; no supported self-contained property has been found to prune the selected AI/ML files. The exact `Microsoft.WindowsAppSDK` 2.5.1 and `Microsoft.Windows.AI.MachineLearning` 2.1.74 package licences are in the root `THIRD_PARTY_NOTICES.md`. Both Section 3(a)(i) texts permit redistribution of files binplaced by the Windows App SDK, including self-contained deployments. Both Section 3(b)(ii) texts also require distributors and external end users to agree to terms that protect the Microsoft code and Microsoft at least as much as the package agreement. The complete notices in the installed folder provide the terms but do not record agreement. Section 3(b)(iii) places an indemnity duty on the application distributor, with an exception for claims based solely on unmodified distributable code. Both package notice files include Intel MKL simplified terms with a reverse-engineering restriction; the publish inventory has no file named `mkl`, which does not establish that MKL code is absent. Preserve the Section 4(b) exception for reverse engineering required by third-party open-source component terms and the explicit LGPL debugging exception in the SDK and ML notices. Any downstream agreement must apply only to Microsoft runtime components; VoxClip source stays MIT and the dynamically linked FFmpeg libraries retain their LGPL rights.
 
+The App also ships the Windows SDK .NET projection from the SDK-selected `Microsoft.Windows.SDK.NET.Ref` runtime pack: `Microsoft.Windows.SDK.NET.dll` and the C#/WinRT runtime `WinRT.Runtime.dll` (pack 10.0.26100.57 when restored with .NET SDK 10.0.102; `WindowsSdkPackageVersion` is not pinned, so the release SDK may select a different pack). The plain `net10.0` CLI does not get them. The pack has no licence file; its NuGet metadata requires licence acceptance and names only `https://aka.ms/WinSDKLicenseURL`. The root notices carry the cached Windows SDK `sdk_license.txt` with its provenance (`doc/dependency-notices-audit.md`). That text permits distribution of Distributable Code listed in REDIST.TXT files, and its distribution requirements include requiring distributors and external end users to agree to terms that protect it at least as much as the agreement. ADR-R23's first-launch agreement covers only the two hashed runtime texts. Before public release, confirm that the licence URL serves the bundled text (the cached file is the August 2018 Windows 10 SDK licence), whether both projection files are Distributable Code, and whether the agreement must add these terms, which would change the receipt hash.
+
 Pinned `vpk` 1.2.161 has `--instLicense`, but its Windows packer passes that input only to the optional `--msi` WiX licence dialog. `Pack-Velopack.ps1` ships Velopack Setup.exe, not MSI. Its Setup source accepts `--silent` ("hides all dialogs and answers 'yes' to all prompts") and has no licence agreement option or dialog. The MSI checkbox is part of the full UI sequence; quiet MSI installs skip that sequence. Adding `--instLicense` to the present Setup command would therefore create no agreement gate. The source is Velopack commit `92d6a1c91716729d449034df5c50307dcce39493`, recorded in the pinned `vpk` NuGet package; see `WindowsPackCommand.cs`, `WindowsPackCommandRunner.cs`, `MsiBuilder.cs`, `MsiTemplate.hbs`, `src/bins/src/setup.rs` and `LicenseAgreementDlg.wxs` in that commit.
 
 ADR-R23 selects the runtime agreement path while retaining Setup.exe. Installation, including silent Setup, leaves acceptance unset. On first normal app launch a WinUI dialog shows the two exact bundled Microsoft runtime terms and requires **Accept and continue**; Quit, Escape and closing it stop before normal features. The bundled CLI supports `--runtime-terms` and `--accept-runtime-terms <SHA-256>`; other work fails with `runtimeTermsRequired` exit 7 until the current terms are accepted. Direct extraction has the same gate. An atomic per-user hash-only receipt persists across updates with unchanged terms and becomes invalid when the terms change. Redistributors must preserve this requirement or provide an equivalent agreement limited to those Microsoft components. The receipt does not modify VoxClip's MIT source licence or FFmpeg's LGPL rights.
@@ -310,10 +254,11 @@ The installed CLI smoke test sets `VOXCLIP_DATA_DIR` to a fresh directory under 
 ## 4. Version bump and release procedure
 
 1. Pick the version `X.Y.Z` or `X.Y.Z-beta.N` (numeric components only; no other suffixes or build metadata). macOS rejects any other version format. Numbered beta drafts are created with `gh release create --prerelease` (also printed in dry runs), never "latest"; an existing draft's `isPrerelease` must agree with the version. Use the full chosen version, including `-beta.N`, everywhere `X.Y.Z` appears below.
-2. Run `tools/release/set-version.sh X.Y.Z`. It sets `CFBundleShortVersionString` to `X.Y.Z`, increments `CFBundleVersion` by 1 in `apps/macos/Sources/VoxClip/Info.plist`, and sets `<Version>` in `apps/windows/Directory.Build.props`. `tools/release/check-version.sh` (also run in CI) fails if the two disagree.
+2. Run `tools/release/set-version.sh X.Y.Z`. It sets `CFBundleShortVersionString` to `X.Y.Z` in `apps/macos/Sources/VoxClip/Info.plist`, increments `CFBundleVersion` by 1 when `X.Y.Z` differs from the current version, and sets `<Version>` in `apps/windows/Directory.Build.props`. Setting the version the files already carry keeps the build number, so 0.1.0 stays build `1` and a rerun never bumps it twice. `tools/release/check-version.sh` (also run in CI) fails if the two disagree.
 3. Add a `## X.Y.Z - YYYY-MM-DD` section at the top of `CHANGELOG.md` (user-facing changes, one line each).
 3a. **Subscription connector check** (ADR-R20). Confirm that `enabled` for `claude-code` and `codex` in `shared/catalog/llm-providers.json` matches the lead's current decision (0.1.0: both enabled, decided 2026-10-25). If a vendor has objected since (ai.md section 14 item 8), set that connector to `false` for this release. The switch is bundled data, so this is the only point where it can withdraw a connector.
 3b. **Notices.** Every component added since the last release has its section in `THIRD_PARTY_NOTICES.md` with the exact licence text from the pinned package (not a placeholder).
+3c. **Pre-0.1.0 acceptance evidence.** Before finalizing defaults or publishing, the lead records results for transcription §16.4 quality acceptance and §17 open verification, AI §13.9 key/sign-in checks, and AI §14 items 1–7 and 9 in those specs, or records an explicit scoped waiver there. AI §14 item 8 remains non-gating under ADR-R20. These require author-owned audio, real services or signed-in installations and are not established by fixture or mocked tests. As of 2026-10-30, these results are not recorded; they remain owed, not passed.
 4. Commit `Release X.Y.Z`, create the annotated tag `git tag -a vX.Y.Z -m "VoxClip X.Y.Z"`, push the commit and the tag. CI must be green on that commit.
 5. macOS: unlock the Mac, then `cd apps/macos && ./bundle.sh --release` (creates or updates draft `vX.Y.Z` and uploads `VoxClip-macOS.dmg`, `VoxClip-macOS.zip`, `SHA256SUMS-macOS.txt`). The script refuses a locked screen before building and before each notarization (section 5). To separate packaging from upload, use `--release --no-upload`, inspect with `--upload-only --dry-run`, then use `--upload-only`. A missing release is created only on `release not found`; transient query errors stop without creating a draft. Never publish automatically.
 6. Windows: start the VM, then `VOXCLIP_WIN_HOST=… VOXCLIP_SIGNING_ENV=… apps/windows/build/release-windows.sh` (uploads both Setup.exe files, the feeds, the packages and `SHA256SUMS-windows.txt` to the same draft).

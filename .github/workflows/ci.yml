@@ -28,7 +28,7 @@ jobs:
     name: macOS (Swift app, .NET core on macOS)
     runs-on: macos-26
     # Every step after setup has its own budget; the job limit is their sum plus about five minutes of setup.
-    timeout-minutes: 175
+    timeout-minutes: 195
     steps:
       - uses: actions/checkout@v5
 
@@ -256,6 +256,25 @@ jobs:
         run: |
           swift build --package-path tools/media/sckrec --jobs 2 -Xswiftc -Xfrontend -Xswiftc -warn-long-expression-type-checking=300
           swift test --package-path tools/media/sckrec --jobs 2
+
+      - name: Release script safety tests (mocked signing, notarization and upload)
+        if: ${{ !cancelled() && steps.detect.outputs.swift == 'true' }}
+        timeout-minutes: 5
+        shell: bash
+        run: python3 apps/macos/scripts/test_release.py
+
+      - name: Ad-hoc app bundle with the release licence gates
+        if: ${{ !cancelled() && steps.swift_build.outcome == 'success' }}
+        timeout-minutes: 15
+        working-directory: apps/macos
+        shell: bash
+        run: |
+          ./bundle.sh
+          frameworks="$PWD/dist/VoxClip.app/Contents/Frameworks"
+          [ -n "$(find "$frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -print -quit 2>/dev/null)" ] \
+            || { echo "::error::The ad-hoc bundle embeds no framework or dylib for the notice gate"; exit 1; }
+          APP_BUNDLE="$PWD/dist/VoxClip.app" /bin/bash -c 'source scripts/release-common.sh && framework_notice_gate'
+          echo "Framework notice gate passed"
 
   hevc-fixture:
     name: Test-only Windows Main 10 fixture

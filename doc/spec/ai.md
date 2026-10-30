@@ -1671,6 +1671,8 @@ For each HTTP connector, a fixed `LLMRequest` (the F1 transcript, preset `best`,
 
 ### 13.9 Manual release checks (not in CI; they need keys and sign-ins)
 
+**Release evidence (2026-10-30): pending.** Results for these checks and §14 items 1–7 and 9 are not recorded. The lead must record results or scoped waivers before publishing (release.md §4 step 3c). Item 8 retains its explicit non-gating status.
+
 - **Test** passes for each API connector with a real key and for each CLI when signed in.
 - Each CLI shows "Not signed in" correctly when signed out.
 - Find clips on the bundled fixture take returns suggestions on Anthropic, OpenAI, Gemini, one local model and both CLIs.

@@ -1331,6 +1331,8 @@ Apple: a recorded list of `(result, runs, ranges, confidence)` converts to the e
 
 ### 16.4 Quality acceptance before the 0.1.0 defaults are final
 
+**Release evidence (2026-10-30): pending.** No measurements for this quality gate or the §17 open verification are recorded here. The lead must record the results or a scoped waiver before publishing (release.md §4 step 3c); synthetic fixture passes do not establish these thresholds.
+
 Build a 10-minute bilingual test set from the author's own takes: Estonian with English terms, plus English only. Annotate the word boundaries and fillers by hand. Then measure:
 
 | Candidate | Measure |

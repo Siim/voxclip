@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-10-30 — sol-mac-polish — release tool safety gates
+
+- Setting the same version preserves CFBundleVersion; a different version increments it once. Regression tests cover reruns, stable and beta versions. Release prerequisites now match the SDK roll-forward, private pinned vpk tool store and signing-tool selection implemented by the Windows scripts.
+- CI runs the offline release script tests and ad-hoc debug bundle licence, entitlement, resource, SDK and framework-notice gates without signing credentials. Transport symbols are runtime system artwork, not shipped catalogue exports.
+- Add the observed Windows SDK projection files and exact cached SDK licence text to the shipped notices with source hashes. The live licence URL equivalence, REDIST coverage, release SDK-selected pack and any additional agreement requirements remain public-release blockers. Windows build-script draft 5 is not applied and remains owned by the Windows track.
+
 ### 2026-10-30 — sol-mac-polish — factual documentation reconciliation
 
 - Correct the menu inventory, kept/suggested selection semantics, export ledger keys and render fingerprint, connector onboarding, token generation and integrated app/CLI READMEs against the current code. Caption word timings affect export fingerprints; project bookkeeping timestamps do not.

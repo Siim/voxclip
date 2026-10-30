@@ -98,7 +98,9 @@ def main():
     build = plist.get("CFBundleVersion")
     if not isinstance(build, str) or re.fullmatch(r"[0-9]+", build) is None:
         raise ValueError("CFBundleVersion must be a non-negative integer string")
-    updated_plist = dict(plist, CFBundleShortVersionString=arguments.version, CFBundleVersion=str(int(build) + 1))
+    same_version = arguments.version == macos_version
+    updated_plist = dict(plist, CFBundleShortVersionString=arguments.version,
+                         CFBundleVersion=build if same_version else str(int(build) + 1))
     if plist_bytes.startswith(b"bplist"):
         updated_bytes = plistlib.dumps(updated_plist, fmt=plistlib.FMT_BINARY, sort_keys=False)
     else:
@@ -126,7 +128,8 @@ def main():
     finally:
         for temporary, _ in staged:
             temporary.unlink(missing_ok=True)
-    print(f"set version {arguments.version}, macOS build {updated_plist['CFBundleVersion']}")
+    kept = " (unchanged for the same version)" if same_version else ""
+    print(f"set version {arguments.version}, macOS build {updated_plist['CFBundleVersion']}{kept}")
 
 
 if __name__ == "__main__":

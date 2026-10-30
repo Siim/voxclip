@@ -152,14 +152,16 @@ printf '%s\n' '{"issues":[{"message":"test failure detail"}]}'
         self.environment["OTOOL"] = str(self.write_command("mock-otool", '#!/bin/bash\nprintf "%s\\n" "$MOCK_DEPENDENCIES"\n'))
         for symbol in ("_espeak_Initialize", "_espeak_ng_Initialize", "_x264_encoder_open_164", "_x265_encoder_open",
                        "_avcodec_open2", "_avformat_open_input", "_avfilter_init_str", "_avutil_version",
-                       "_swresample_version", "_swscale_version", "00000000 T _avcodec_open2"):
+                       "_swresample_version", "_swscale_version", "_av_malloc", "_swr_convert", "_sws_scale",
+                       "_avdevice_register_all", "_postproc_version", "_pp_postprocess", "00000000 T _avcodec_open2",
+                       "00000000 T _av_free", "00000000 T _swr_init", "00000000 T _sws_getContext"):
             with self.subTest(symbol=symbol):
                 self.environment["MOCK_SYMBOLS"] = symbol
                 self.assert_failed(self.run_function('license_gate fake-binary'), "Licence gate")
         self.environment.update({"MOCK_SYMBOLS": "_allowed_symbol\n_$sactiveSpeaker\n_activeSpeaker\n_ESPEAK_test\n_wrapped_x264_open",
                                  "MOCK_DEPENDENCIES": "/tmp/libavcodec.fixture:\n\t/usr/lib/libSystem.B.dylib"})
         self.assertEqual(self.run_function('license_gate fake-binary').returncode, 0)
-        for library in ("espeak", "espeak-ng", "x264", "x265", "avcodec", "avformat", "avfilter", "avutil", "swresample", "swscale"):
+        for library in ("espeak", "espeak-ng", "x264", "x265", "avcodec", "avformat", "avfilter", "avutil", "avdevice", "swresample", "swscale", "postproc"):
             with self.subTest(library=library):
                 self.environment["MOCK_DEPENDENCIES"] = f"fake-binary:\n\t@rpath/lib{library}.dylib"
                 self.assert_failed(self.run_function('license_gate fake-binary'), "Licence gate")

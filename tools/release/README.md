@@ -12,7 +12,10 @@ tools/release/check-version.sh
 ```
 
 The setter changes `CFBundleShortVersionString`, increments the integer-string
-`CFBundleVersion` once, and changes `<Version>` in `Directory.Build.props`.
+`CFBundleVersion` once when the version changes, and changes `<Version>` in
+`Directory.Build.props`. Setting the version already in Info.plist keeps the
+build number, so 0.1.0 stays build 1 and rerunning a release step never bumps
+it twice.
 Both files are validated and staged before replacement; XML formatting and
 unrelated values are preserved. Binary plists are also supported. Versions are
 `X.Y.Z` or `X.Y.Z-beta.N`, without leading zeroes in numeric components. The
