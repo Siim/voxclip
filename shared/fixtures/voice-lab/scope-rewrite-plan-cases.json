@@ -6,7 +6,7 @@
   "maxWordTextLength": 100,
   "maxChars": 5000
  },
- "caseCount": 17,
+ "caseCount": 28,
  "cases": [
   {
    "name": "clip-cuts-corrections",
@@ -470,17 +470,17 @@
        "w13",
        "w14"
       ],
-      "minChars": 18,
-      "maxChars": 20,
+      "minChars": 24,
+      "maxChars": 26,
       "rangeSource": "window",
-      "note": "seams hard/gap, target 1.7650000000000001 s, bridge 0"
+      "note": "seams hard/gap, target 1.7650000000000001 s, bridge 0, labels 6"
      }
     ]
    }
   },
   {
    "name": "full-take",
-   "note": "Full take: cut items left out, a correction ending a sentence, an event-only line (1 to 1) and a line whose window is refused because the cut filler touches it (advisory span).",
+   "note": "Full take: cut items left out, a correction ending a sentence, an event-only line (its label's length on both bounds) and a line whose window is refused because the cut filler touches it (advisory span).",
    "input": {
     "sampleRate": 48000,
     "durationSeconds": 9.6,
@@ -986,18 +986,18 @@
        "w13",
        "w14"
       ],
-      "minChars": 23,
-      "maxChars": 25,
+      "minChars": 29,
+      "maxChars": 31,
       "rangeSource": "window",
-      "note": "seams hard/gap, target 2.1749999999999994 s, bridge 0"
+      "note": "seams hard/gap, target 2.1749999999999994 s, bridge 0, labels 6"
      },
      {
       "line": "[15-15]",
       "itemIds": [
        "e15"
       ],
-      "minChars": 1,
-      "maxChars": 1,
+      "minChars": 8,
+      "maxChars": 8,
       "rangeSource": "noSpeech"
      },
      {
@@ -2300,8 +2300,8 @@
       "itemIds": [
        "e15"
       ],
-      "minChars": 1,
-      "maxChars": 1,
+      "minChars": 8,
+      "maxChars": 8,
       "rangeSource": "noSpeech"
      },
      {
@@ -2321,7 +2321,7 @@
   },
   {
    "name": "no-envelope",
-   "note": "Without the source envelope no window is placed: every line with words takes its advisory span.",
+   "note": "Without the source envelope no window is placed: every line with words takes its advisory span. The line that starts with \"(laughs)\" adds its 6 letters to both bounds, because the model echoes the label.",
    "input": {
     "sampleRate": 48000,
     "durationSeconds": 9.6,
@@ -2667,18 +2667,18 @@
        "w13",
        "w14"
       ],
-      "minChars": 15,
-      "maxChars": 17,
+      "minChars": 21,
+      "maxChars": 23,
       "rangeSource": "lineSpan",
-      "note": "refused: noEnvelope"
+      "note": "refused: noEnvelope, labels 6"
      },
      {
       "line": "[15-15]",
       "itemIds": [
        "e15"
       ],
-      "minChars": 1,
-      "maxChars": 1,
+      "minChars": 8,
+      "maxChars": 8,
       "rangeSource": "noSpeech"
      },
      {
@@ -4029,6 +4029,3325 @@
    }
   },
   {
+   "name": "replacement-inside-line",
+   "note": "\"cuts\" was re-voiced in clip-mid. The clip leaves it out, so its line runs from \"It\" to \"fast.\" on both sides of the replacement: that window overlaps r1 and takes the advisory span.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-mid"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 3.625,
+      "end": 3.975,
+      "firstWordId": "w11",
+      "lastWordId": "w11",
+      "inSeam": {
+       "kind": "hard",
+       "fadeSamples": 576
+      },
+      "outSeam": {
+       "kind": "hard",
+       "fadeSamples": 576
+      }
+     }
+    ]
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 3,
+      "text": "we",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "index": 4,
+      "text": "ship",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "index": 5,
+      "text": "the",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "index": 7,
+      "text": "new",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "index": 8,
+      "text": "editor.",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "index": 9,
+      "text": "(laughs)",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "index": 10,
+      "text": "It",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "index": 12,
+      "text": "\u2026",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "index": 13,
+      "text": "words,",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "index": 14,
+      "text": "fast.",
+      "start": 4.65,
+      "end": 5.0
+     }
+    ],
+    "utf8Bytes": 52,
+    "lines": [
+     {
+      "line": "[3-8]",
+      "itemIds": [
+       "w3",
+       "w4",
+       "w5",
+       "w7",
+       "w8"
+      ],
+      "minChars": 18,
+      "maxChars": 20,
+      "rangeSource": "window",
+      "note": "seams gap/hard, target 1.7349999999999997 s, bridge 0"
+     },
+     {
+      "line": "[9-14]",
+      "itemIds": [
+       "e9",
+       "w10",
+       "u12",
+       "w13",
+       "w14"
+      ],
+      "minChars": 21,
+      "maxChars": 23,
+      "rangeSource": "lineSpan",
+      "note": "refused: overlapsReplacement r1, labels 6"
+     }
+    ]
+   }
+  },
+  {
+   "name": "replacement-disabled",
+   "note": "The same replacement turned off renders source again: the plan is clip-cuts-corrections.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-mid"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": false,
+      "start": 3.625,
+      "end": 3.975,
+      "firstWordId": "w11",
+      "lastWordId": "w11",
+      "inSeam": {
+       "kind": "hard",
+       "fadeSamples": 576
+      },
+      "outSeam": {
+       "kind": "hard",
+       "fadeSamples": 576
+      }
+     }
+    ]
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 3,
+      "text": "we",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "index": 4,
+      "text": "ship",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "index": 5,
+      "text": "the",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "index": 7,
+      "text": "new",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "index": 8,
+      "text": "editor.",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "index": 9,
+      "text": "(laughs)",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "index": 10,
+      "text": "It",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "index": 11,
+      "text": "cuts",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "index": 12,
+      "text": "\u2026",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "index": 13,
+      "text": "words,",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "index": 14,
+      "text": "fast.",
+      "start": 4.65,
+      "end": 5.0
+     }
+    ],
+    "utf8Bytes": 57,
+    "lines": [
+     {
+      "line": "[3-8]",
+      "itemIds": [
+       "w3",
+       "w4",
+       "w5",
+       "w7",
+       "w8"
+      ],
+      "minChars": 18,
+      "maxChars": 20,
+      "rangeSource": "window",
+      "note": "seams gap/hard, target 1.7349999999999997 s, bridge 0"
+     },
+     {
+      "line": "[9-14]",
+      "itemIds": [
+       "e9",
+       "w10",
+       "w11",
+       "u12",
+       "w13",
+       "w14"
+      ],
+      "minChars": 24,
+      "maxChars": 26,
+      "rangeSource": "window",
+      "note": "seams hard/gap, target 1.7650000000000001 s, bridge 0, labels 6"
+     }
+    ]
+   }
+  },
+  {
+   "name": "replacement-beside-lines",
+   "note": "\"we ship the the new editor.\" was re-voiced in Full take, its window reaching back over \"we ship\" as bridges. That line is gone; the lines before and after it are placed beside r1.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 1.125,
+      "end": 2.9299999999999997,
+      "firstWordId": "w3",
+      "lastWordId": "w8",
+      "inSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      },
+      "outSeam": {
+       "kind": "hard",
+       "fadeSamples": 576
+      }
+     }
+    ]
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 0,
+      "text": "So",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "index": 2,
+      "text": "today.",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "index": 9,
+      "text": "(laughs)",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "index": 10,
+      "text": "It",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "index": 11,
+      "text": "cuts",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "index": 12,
+      "text": "\u2026",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "index": 13,
+      "text": "words,",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "index": 14,
+      "text": "fast.",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "index": 15,
+      "text": "(applause)",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "index": 17,
+      "text": "Thanks",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "index": 18,
+      "text": "for",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "index": 19,
+      "text": "watching!",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "utf8Bytes": 75,
+    "lines": [
+     {
+      "line": "[0-2]",
+      "itemIds": [
+       "w0",
+       "w2"
+      ],
+      "minChars": 10,
+      "maxChars": 12,
+      "rangeSource": "window",
+      "note": "seams none/gap, target 1.085 s, bridge 0"
+     },
+     {
+      "line": "[9-14]",
+      "itemIds": [
+       "e9",
+       "w10",
+       "w11",
+       "u12",
+       "w13",
+       "w14"
+      ],
+      "minChars": 29,
+      "maxChars": 31,
+      "rangeSource": "window",
+      "note": "seams hard/gap, target 2.1749999999999994 s, bridge 0, labels 6"
+     },
+     {
+      "line": "[15-15]",
+      "itemIds": [
+       "e15"
+      ],
+      "minChars": 8,
+      "maxChars": 8,
+      "rangeSource": "noSpeech"
+     },
+     {
+      "line": "[17-19]",
+      "itemIds": [
+       "w17",
+       "w18",
+       "w19"
+      ],
+      "minChars": 10,
+      "maxChars": 12,
+      "rangeSource": "lineSpan",
+      "note": "refused: seamFadeCrossesCut"
+     }
+    ]
+   }
+  },
+  {
+   "name": "clip-crosses-replacement",
+   "note": "That Full take replacement starts in the pause before \"we\", before clip-mid's clipTimes head: the clip boundary crosses it, so clip-mid does not render (section 10.2) and the plan is invalid input.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-mid"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 1.125,
+      "end": 2.9299999999999997,
+      "firstWordId": "w3",
+      "lastWordId": "w8",
+      "inSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      },
+      "outSeam": {
+       "kind": "hard",
+       "fadeSamples": 576
+      }
+     }
+    ]
+   },
+   "expected": {
+    "error": "invalidInput"
+   }
+  },
+  {
+   "name": "clip-crosses-replacement-no-envelope",
+   "note": "The scope is read without an envelope too.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-mid"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 1.125,
+      "end": 2.9299999999999997,
+      "firstWordId": "w3",
+      "lastWordId": "w8",
+      "inSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      },
+      "outSeam": {
+       "kind": "hard",
+       "fadeSamples": 576
+      }
+     }
+    ]
+   },
+   "expected": {
+    "error": "invalidInput"
+   }
+  },
+  {
+   "name": "scope-does-not-render",
+   "note": "An edit after acceptance left r1's fade without kept source: place names r1 with invalidInput, and the whole plan is invalid input, never a line fallback.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.4,
+    "words": [
+     {
+      "id": "w1",
+      "text": "w1",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.5
+     },
+     {
+      "id": "w2",
+      "text": "w2",
+      "kind": "word",
+      "start": 0.8,
+      "end": 1.1
+     },
+     {
+      "id": "w3",
+      "text": "w3",
+      "kind": "word",
+      "start": 1.24,
+      "end": 1.5
+     },
+     {
+      "id": "w4",
+      "text": "w4",
+      "kind": "word",
+      "start": 1.705,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "w5",
+      "kind": "word",
+      "start": 2.4,
+      "end": 2.7
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w3",
+      "w4"
+     ],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 0.8,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       20
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       30
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       14
+      ],
+      [
+       0.25,
+       26
+      ],
+      [
+       0.0078125,
+       20
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       60
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       70
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 0.645,
+      "end": 1.165,
+      "firstWordId": "w2",
+      "lastWordId": "w2",
+      "inSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      },
+      "outSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      }
+     }
+    ]
+   },
+   "expected": {
+    "error": "invalidInput"
+   }
+  },
+  {
+   "name": "all-revoiced",
+   "note": "A scope whose every item is already re-voiced keeps nothing.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.0,
+    "words": [
+     {
+      "id": "a",
+      "text": "Hello.",
+      "kind": "word",
+      "start": 0.5,
+      "end": 1.0
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       50
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       100
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 0.0,
+      "end": 2.0,
+      "firstWordId": "a",
+      "lastWordId": "a",
+      "inSeam": {
+       "kind": "none",
+       "fadeSamples": 0
+      },
+      "outSeam": {
+       "kind": "none",
+       "fadeSamples": 0
+      }
+     }
+    ]
+   },
+   "expected": {
+    "error": "empty"
+   }
+  },
+  {
+   "name": "stored-candidate-rate",
+   "note": "clip-cuts-corrections with a stored candidate for the key: the candidate rate sets every range.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-mid"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "rateCandidates": [
+     {
+      "text": "We ship the new editor.",
+      "firstCharStart": 0.12,
+      "lastCharEnd": 2.62
+     }
+    ]
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 3,
+      "text": "we",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "index": 4,
+      "text": "ship",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "index": 5,
+      "text": "the",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "index": 7,
+      "text": "new",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "index": 8,
+      "text": "editor.",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "index": 9,
+      "text": "(laughs)",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "index": 10,
+      "text": "It",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "index": 11,
+      "text": "cuts",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "index": 12,
+      "text": "\u2026",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "index": 13,
+      "text": "words,",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "index": 14,
+      "text": "fast.",
+      "start": 4.65,
+      "end": 5.0
+     }
+    ],
+    "utf8Bytes": 57,
+    "lines": [
+     {
+      "line": "[3-8]",
+      "itemIds": [
+       "w3",
+       "w4",
+       "w5",
+       "w7",
+       "w8"
+      ],
+      "minChars": 10,
+      "maxChars": 12,
+      "rangeSource": "window",
+      "note": "seams gap/hard, target 1.7349999999999997 s, bridge 0"
+     },
+     {
+      "line": "[9-14]",
+      "itemIds": [
+       "e9",
+       "w10",
+       "w11",
+       "u12",
+       "w13",
+       "w14"
+      ],
+      "minChars": 17,
+      "maxChars": 18,
+      "rangeSource": "window",
+      "note": "seams hard/gap, target 1.7650000000000001 s, bridge 0, labels 6"
+     }
+    ]
+   }
+  },
+  {
+   "name": "malformed-rate-candidate",
+   "note": "A candidate span that ends where it starts is invalid input, never a silent fallback.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-mid"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "rateCandidates": [
+     {
+      "text": "We ship.",
+      "firstCharStart": 0.5,
+      "lastCharEnd": 0.5
+     }
+    ]
+   },
+   "expected": {
+    "error": "invalidInput"
+   }
+  },
+  {
+   "name": "event-at-line-end",
+   "note": "A line that ends with an event: its window budget plus the label's length.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 4.0,
+    "words": [
+     {
+      "id": "a",
+      "text": "We",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.4
+     },
+     {
+      "id": "b",
+      "text": "did",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.7
+     },
+     {
+      "id": "c",
+      "text": "it",
+      "kind": "word",
+      "start": 0.75,
+      "end": 1.0
+     },
+     {
+      "id": "d",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 1.05,
+      "end": 1.5
+     },
+     {
+      "id": "e",
+      "text": "Right.",
+      "kind": "word",
+      "start": 3.0,
+      "end": 3.4
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       20
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       150
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       60
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 0,
+      "text": "We",
+      "start": 0.2,
+      "end": 0.4
+     },
+     {
+      "index": 1,
+      "text": "did",
+      "start": 0.45,
+      "end": 0.7
+     },
+     {
+      "index": 2,
+      "text": "it",
+      "start": 0.75,
+      "end": 1.0
+     },
+     {
+      "index": 3,
+      "text": "(laughs)",
+      "start": 1.05,
+      "end": 1.5
+     },
+     {
+      "index": 4,
+      "text": "Right.",
+      "start": 3.0,
+      "end": 3.4
+     }
+    ],
+    "utf8Bytes": 25,
+    "lines": [
+     {
+      "line": "[0-3]",
+      "itemIds": [
+       "a",
+       "b",
+       "c",
+       "d"
+      ],
+      "minChars": 12,
+      "maxChars": 14,
+      "rangeSource": "window",
+      "note": "seams none/hard, target 0.8549999999999999 s, bridge 0, labels 6"
+     },
+     {
+      "line": "[4-4]",
+      "itemIds": [
+       "e"
+      ],
+      "minChars": 10,
+      "maxChars": 11,
+      "rangeSource": "window",
+      "note": "seams gap/none, target 1.2149999999999999 s, bridge 0"
+     }
+    ]
+   }
+  },
+  {
    "name": "long-text-cut-to-100-units",
    "note": "Entry text is cut to 100 UTF-16 units without splitting a surrogate pair.",
    "input": {
@@ -5324,7 +8643,7 @@
     "language": "en"
    },
    "expected": {
-    "error": "tooLarge",
+    "error": "tooManyEntries",
     "count": 3001
    }
   },
@@ -6250,7 +9569,7 @@
   },
   {
    "name": "bytes-over-limit",
-   "note": "A correction adding one letter makes 20,001 bytes, which refuse with the entry count.",
+   "note": "A correction adding one letter makes 20,001 bytes, which refuse as too much text with the byte count.",
    "input": {
     "sampleRate": 48000,
     "durationSeconds": 170.0,
@@ -6278,8 +9597,40 @@
     "language": "en"
    },
    "expected": {
-    "error": "tooLarge",
-    "count": 339
+    "error": "tooMuchText",
+    "bytes": 20001
+   }
+  },
+  {
+   "name": "entries-and-bytes-over-limit",
+   "note": "Over both limits, the entry count is reported.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 1501.0,
+    "wordsRepeat": {
+     "token": "abcdef",
+     "count": 3001,
+     "idPrefix": "q",
+     "timingStep": 0.5
+    },
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "error": "tooManyEntries",
+    "count": 3001
    }
   }
  ]
