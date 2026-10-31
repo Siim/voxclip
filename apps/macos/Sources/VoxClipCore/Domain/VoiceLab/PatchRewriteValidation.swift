@@ -59,17 +59,21 @@ enum PatchRewriteValidator {
         }
 
         /// True when NFC `text` holds a digit run, a URL, or a capitalised token not at a sentence start, that no source has.
-        func flags(_ text: String) -> Bool {
-            let normal = EditingPrimitives.nfc(text)
-            if Self.digitRuns(normal).contains(where: { !digitRuns.contains($0) }) { return true }
-            let tokens = EditingPrimitives.splitWords(normal)
-            for (index, token) in tokens.enumerated() {
+        func flags(_ text: String) -> Bool { flaggedTokens(text).contains(true) }
+
+        /// The rule of `flags` for each `splitWords` token of NFC `text`, in order: the token holds a digit run no source has,
+        /// or is a URL or a capitalised token not at a sentence start that does not appear. A digit run never spans white
+        /// space, so `flags` is true exactly when one token is. `ScopeRewriteDiff` gives each hunk the flags of its own tokens.
+        func flaggedTokens(_ text: String) -> [Bool] {
+            let tokens = EditingPrimitives.splitWords(EditingPrimitives.nfc(text))
+            return tokens.indices.map { (index: Int) -> Bool in
+                let token = tokens[index]
+                if Self.digitRuns(token).contains(where: { !digitRuns.contains($0) }) { return true }
                 let key = Self.key(token)
                 if Self.isURL(token), !keys.contains(key) { return true }
                 let atStart = index == 0 || tokens[index - 1].range(of: Self.sentenceEnd, options: .regularExpression) != nil
-                if !atStart, Self.isCapitalised(token), !keys.contains(key) { return true }
+                return !atStart && Self.isCapitalised(token) && !keys.contains(key)
             }
-            return false
         }
 
         /// normalizeForMatch (editing §4.7) without its lowercase step: equal keys mean equal normalizeForMatch, and case counts.

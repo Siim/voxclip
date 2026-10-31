@@ -11,8 +11,10 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Burn captions in 19 styles and export MP4 at the source size, 16:9, 9:16 or 1:1, with an optional SRT file.
 - Share after export: show the file, copy a caption, or open X or LinkedIn with your text.
 - Save and reopen projects. A command-line tool, voxclip-cli, is included.
-- Voice Lab (beta, off until you turn it on in Settings): rewrite a passage with your AI and re-voice it in your own cloned voice with your ElevenLabs key. Each paid step shows its cost and asks first.
-- Create your voice from the open project's audio, or from a 90-second read-aloud. You always record a short consent statement live, and a local speaker check makes sure the training audio sounds like the voice in it.
+- Rewrite a clip, the full take or a few words with the AI you choose, from the bar above the transcript. The changes show in the transcript, and you can edit or leave out each one before anything is applied. Cuts and text fixes work without Voice Lab.
+- Rewrite starts at once when it costs you nothing extra: Claude Code or Codex signed in on your plan, a local model, or Apple's on-device model. With an API key, VoxClip asks before every send.
+- Voice Lab (beta, off until you turn it on): say the new words in your own cloned voice with your ElevenLabs key. Each paid step shows its cost and asks first.
+- Make your voice from the clip you are rewriting, or from a 90-second read-aloud. You always record a short consent statement live. A speaker check on your computer runs before anything is sent, then one click checks your statement and creates the voice. Nothing is created if a check fails.
 - The speaker check is calibrated for English only, so your voice works in English projects in this release.
 - Every export that contains generated speech is marked AI MODIFIED on screen, and the mark is also embedded in the file's metadata and a provenance sidecar. You can move the label but not turn it off.
 - Share text for such an export ends with a line saying it contains AI-modified speech, and VoxClip asks before you share without it.
