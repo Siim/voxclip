@@ -133,5 +133,30 @@ private final class FullScreenStandIn: NSWindow {
         work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
         #expect(work.timelineToggle.isEnabled && work.timelineItem.canCollapse)
     }
+
+    /// ⇧⌘K in the transcript and ⋯ › Find Clips… both ask for the popover at ⋯. The Clip
+    /// menu's item (tag 34) is DebugMenus' check; the popover itself is DebugShell's.
+    @Test func findClipsFromTheTranscriptAndFromOverflowAnchorsAtOverflow() throws {
+        _ = NSApplication.shared
+        let app = AppModel()
+        let model = try editor(app)
+        defer { model.close() }
+        let text = TranscriptNSTextView(usingTextLayoutManager: true)
+        text.model = model
+        let key = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift], timestamp: 0, windowNumber: 0, context: nil,
+                                                characters: "K", charactersIgnoringModifiers: "K", isARepeat: false, keyCode: 40))
+        text.keyDown(with: key)
+        #expect(model.showFindClips && model.findClipsAnchor == .overflow)
+        model.showFindClips = false
+
+        let work = EditorWorkController(model: model, shell: WorkspaceShell(app: app))
+        defer { work.tearDown() }
+        let menu = work.overflowMenu()
+        let index = try #require(menu.items.firstIndex { $0.title == "Find Clips…" })
+        #expect(menu.items[index].isEnabled)
+        menu.performActionForItem(at: index)
+        #expect(model.showFindClips && model.findClipsAnchor == .overflow)
+        model.showFindClips = false
+    }
 }
 #endif

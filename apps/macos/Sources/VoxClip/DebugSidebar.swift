@@ -742,8 +742,8 @@ import VoxClipCore
         check("the right column starts at 444 at 1440 and 404 at 1280, within 300-560, narrowed to 360 at 1180 so the transcript keeps 596 beside the Explorer",
               WorkspaceLayout.rightColumnWidth(windowWidth: 1440) == 444 && WorkspaceLayout.rightColumnWidth(windowWidth: 1280) == 404 && WorkspaceLayout.rightColumnWidth(windowWidth: 1180) == 360
               && WorkspaceLayout.rightColumnWidth(windowWidth: 1024) == 300 && WorkspaceLayout.rightColumnWidth(windowWidth: 2400) == 560)
-        check("the transcript measure is 680 at 1440, about 580 at 1280, 480 at the 596 minimum and never wider than the pane after its gutter",
-              TranscriptNSTextView.measure(forPane: 1440 - 252 - 360) == 680 && abs(TranscriptNSTextView.measure(forPane: 1280 - 252 - 320) - 592) < 1
+        check("beside a 224 Explorer and the starting right column the transcript measure is 656 at 1440 and 536 at 1280, 480 at the 596 minimum and never wider than the pane after its gutter",
+              TranscriptNSTextView.measure(forPane: 1440 - 224 - 444) == 656 && TranscriptNSTextView.measure(forPane: 1280 - 224 - 404) == 536
               && TranscriptNSTextView.measure(forPane: 596) == 480 && TranscriptNSTextView.measure(forPane: 500) == 416)
         let rule = WorkspaceShell(app: app)
         rule.windowWidth = 1440

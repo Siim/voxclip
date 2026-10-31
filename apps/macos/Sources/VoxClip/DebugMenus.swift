@@ -122,7 +122,7 @@ import VoxClipCore
         guard let first = editor.words.first, let kept = editor.keptClips.first, let suggestion = editor.suggestedClips.first else { throw CocoaError(.coderInvalidValue) }
         editor.selectedWordIDs = [first.id]
         invoke("Clip", "Find Clips…")
-        check("Shift-Command-K routes to the existing Find Clips popover", editor.showFindClips)
+        check("Clip › Find Clips… (⇧⌘K, tag 34) opens Find Clips at ⋯", editor.showFindClips && editor.findClipsAnchor == .overflow)
         editor.showFindClips = false
         app.set("voiceLab.enabled", .bool(false))
         let editMenu = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu

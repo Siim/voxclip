@@ -1,9 +1,23 @@
+import Foundation
 import Testing
-import VoxClipCore
+@testable import VoxClipCore
 @testable import VoxClip
 
+#if DEBUG
+/// Settings for a launch in a temporary data folder: the stored values, and every save.
+private actor LaunchSettings: SettingsStore {
+    let values: [String: JSONValue]
+    private(set) var saved: [SettingsDocument] = []
+    init(values: [String: JSONValue]) { self.values = values }
+    func load() async throws -> SettingsDocument { SettingsDocument(values: values) }
+    func save(_ settings: SettingsDocument) async throws { saved.append(settings) }
+    func flush() async throws {}
+}
+#endif
+
 /// The v2 shell's layout (ux/v2 notes.md §1, impl-plan V1a and item 18). Settings stay in
-/// memory: the app is never started, so nothing is written.
+/// memory, except for the launch, which uses a temporary data folder and a settings store
+/// that keeps its saves in memory.
 @Suite("v2 shell layout")
 @MainActor struct WorkspaceLayoutTests {
     @Test func theRightColumnFollowsTheV2Formula() {
@@ -23,17 +37,38 @@ import VoxClipCore
         #expect(shell.layout.explorerVisible && shell.layout.rightVisible && shell.layout.timelineVisible)
     }
 
-    @Test func theOldRightColumnWidthIsIgnoredAndRetired() {
+    @Test func theOldRightColumnWidthIsIgnored() {
         let app = AppModel()
         app.settings.values[WorkspaceLayout.retiredRightWidthKey] = .number(500)
         let shell = WorkspaceShell(app: app)
         shell.windowWidth = 1280
         #expect(shell.rightWidth == 404)
-        var values = app.settings.values
-        #expect(WorkspaceLayout.retireLegacyKeys(&values))
-        #expect(values[WorkspaceLayout.retiredRightWidthKey] == nil)
-        #expect(!WorkspaceLayout.retireLegacyKeys(&values))
     }
+
+    #if DEBUG
+    /// Launch (`AppModel.start`) drops the pre-v2 width from the loaded settings, keeps the
+    /// rest, and the settings are saved without it.
+    @Test func launchRetiresTheOldRightColumnWidth() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-shell-launch-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = LaunchSettings(values: [
+            "update.autoCheck": .bool(false), "export.folder": .string(root.appendingPathComponent("Exports").path),
+            WorkspaceLayout.retiredRightWidthKey: .number(500), WorkspaceLayout.rightWidthKey: .number(420)
+        ])
+        let app = AppModel(settingsStore: store, locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        app.voiceRecoveryForTests = {}
+        app.cacheEviction = CacheEvictionScheduler(store: CacheStore(locations: app.locations), log: app.log, limitBytes: { .max }, sleep: { _ in throw CancellationError() })
+        await app.start()
+        #expect(app.settingsLoaded)
+        #expect(app.settings.values[WorkspaceLayout.retiredRightWidthKey] == nil)
+        #expect(app.settings.values[WorkspaceLayout.rightWidthKey] == .number(420))
+        await app.flushSettings()
+        let saved = try #require(await store.saved.last)
+        #expect(saved.values[WorkspaceLayout.retiredRightWidthKey] == nil)
+        #expect(saved.values[WorkspaceLayout.rightWidthKey] == .number(420))
+    }
+    #endif
 
     @Test func draggedSizesAreKeptForEveryWindowAndClamped() {
         let app = AppModel()

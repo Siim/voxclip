@@ -18,9 +18,8 @@ import VoxClipCore
         defer { for (key, value) in zip(keys, saved) { app.settings.values[key] = value } }
         for key in keys { app.settings.values[key] = nil }
         // A width saved by the pre-v2 layout must not reach the new right column.
+        // Launch retires it (WorkspaceLayoutTests); here it is still in memory.
         app.settings.values[WorkspaceLayout.retiredRightWidthKey] = .number(500)
-        var retired: [String: JSONValue] = [WorkspaceLayout.retiredRightWidthKey: .number(500), "general.appearance": .string("dark")]
-        check("loading settings retires ui.rightColumnWidth and keeps the rest", WorkspaceLayout.retireLegacyKeys(&retired) && retired == ["general.appearance": .string("dark")] && !WorkspaceLayout.retireLegacyKeys(&retired))
 
         let shell = WorkspaceShell(app: app)
         await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
@@ -93,13 +92,19 @@ import VoxClipCore
         }
         check("a click in the clip-bar row does not move the window", (hit(CGPoint(x: 600, y: 55)) as? ShellBand)?.movesWindow == false)
 
-        // Find Clips from the menus (tag 34 and ⇧⌘K call this), from ⋯, and the popover at ⋯.
+        // Find Clips from ⇧⌘K in the transcript and from ⋯ opens its popover at ⋯. The Clip
+        // menu's Find Clips… (tag 34) is DebugMenus' check.
         func popoverShown() -> Bool { NSApp.windows.contains { $0.isVisible && String(describing: type(of: $0)).contains("Popover") } }
         let work = view("voxclip.shell.work", in: root)?.nextResponder as? EditorWorkController
         check("the work area is the editor's split controller", work != nil)
-        editor.requestFindClips(from: .overflow)
+        let transcript = firstView(TranscriptNSTextView.self, in: root)
+        check("the transcript text view is in the editor column", transcript != nil)
+        if let transcript, let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                      windowNumber: window.windowNumber, context: nil, characters: "K", charactersIgnoringModifiers: "K", isARepeat: false, keyCode: 40) {
+            transcript.keyDown(with: key)
+        }
         for _ in 0..<40 where !popoverShown() { try await Task.sleep(for: .milliseconds(25)) }
-        check("Find Clips from the menus opens its popover at ⋯", editor.showFindClips && editor.findClipsAnchor == .overflow && work?.findClipsPopover?.isShown == true && popoverShown())
+        check("⇧⌘K in the transcript opens Find Clips in its popover at ⋯", editor.showFindClips && editor.findClipsAnchor == .overflow && work?.findClipsPopover?.isShown == true && popoverShown())
         editor.showFindClips = false
         for _ in 0..<40 where work?.findClipsPopover?.isShown == true { try await Task.sleep(for: .milliseconds(25)) }
         check("closing Find Clips closes the popover", work?.findClipsPopover?.isShown != true)
@@ -184,6 +189,11 @@ import VoxClipCore
     static func view(_ identifier: String, in root: NSView) -> NSView? {
         if root.identifier?.rawValue == identifier { return root }
         return root.subviews.lazy.compactMap { view(identifier, in: $0) }.first
+    }
+    /// The first view under `root` of `type`.
+    static func firstView<T: NSView>(_ type: T.Type, in root: NSView) -> T? {
+        if let match = root as? T { return match }
+        return root.subviews.lazy.compactMap { firstView(type, in: $0) }.first
     }
 
     private static func matches(_ frame: CGRect?, _ reference: CGRect) -> Bool {
