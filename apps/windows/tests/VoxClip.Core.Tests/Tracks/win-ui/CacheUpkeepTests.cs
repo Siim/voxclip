@@ -107,9 +107,9 @@ public sealed class CacheUpkeepTests
         third.Hold(relinked);
         third.Hold(relinked);
         Assert.Equal(relinked, third.Key);
-        Assert.False(index.Keys.IsLeased(other));
         // Marking an entry used leases it for a moment; let the editors' marks finish first.
         await Task.WhenAll(first.Touches, second.Touches, third.Touches);
+        Assert.False(index.Keys.IsLeased(other));
         await new CacheEvictionScheduler(index, () => 0).ClearEverythingAsync();
         Assert.True(Directory.Exists(Path.Combine(folder.Root, shared)));
         Assert.True(Directory.Exists(Path.Combine(folder.Root, relinked)));
