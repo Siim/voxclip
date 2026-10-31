@@ -88,6 +88,8 @@ VoxClip source remains MIT. This exception does not impose Microsoft runtime res
 
 **ADR-R17 status:** Superseded by ADR-R33 (user decision, 2026-10-27). The original row above is retained verbatim.
 
+**ADR-R23 status:** Amended 2026-10-31 (see the ADR-030 and ADR-R23 amendment under the locked decisions): the agreement covers only the Windows App SDK 2.5.1 terms, with receipt format 2. The original row above is retained verbatim.
+
 **ADR-R22 measurement (M3 Max hardware VideoToolbox, 2026-10-25).** The writer boundary observer samples after the shared `FrameCompositor` at frames 9, 15 and 30 (0.3, 0.5 and 1.0 s), all eight bars and three interior points per bar (72 pairs). The permanent observer is internal, read-only and absent by default; it retains only RGB values and PTS from successful video appends. Independently decoded YUV from that same export differs from the independently calculated BT.709 limited transform by a maximum of Y/U/V = 0/1/1. A companion export using the CLI case's source, identity plan and output settings provides that writer observation; the black-box CLI export is separately checked against the witness, with its own decoded pixels and format description. The CLI's submitted pixels are not directly observed. Both outputs passed all 72 positions locally. The decoded RGB comparison against inverse YUV uses ±2 for decoder conversion and rounding: the largest measured channel difference was 1.415, and one YUV code can represent more than one RGB code under the limited-range inverse. This is not a decoded-to-canonical tolerance. Hosted CI acceptance remains pending.
 
 | Frame/bar/point | Canonical RGB | Submitted BGRA RGB | Independent Y/U/V | Decoded Y/U/V | Decoded RGB |

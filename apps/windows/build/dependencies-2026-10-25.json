@@ -3,6 +3,15 @@
   "source": "NuGet v3 registration, exact pinned packages",
   "packages": [
     {
+      "id": "Microsoft.ML.OnnxRuntime",
+      "version": "1.19.2",
+      "listed": true,
+      "published": "2024-09-03T21:15:02.13+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/microsoft.ml.onnxruntime/1.19.2.json",
+      "latestListedStableInRequiredLine": "1.19.2",
+      "checkedOn": "2026-10-31"
+    },
+    {
       "id": "Microsoft.WindowsAppSDK",
       "version": "2.5.1",
       "listed": true,
@@ -83,6 +92,24 @@
       "published": "2025-12-20T01:06:28.65+00:00",
       "registration": "https://api.nuget.org/v3/registration5-gz-semver2/communitytoolkit.winui.controls.settingscontrols/8.2.251219.json",
       "latestListedStableInRequiredLine": "8.2.251219"
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Controls.Segmented",
+      "version": "8.2.251219",
+      "listed": true,
+      "published": "2025-12-20T01:06:28.257+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/communitytoolkit.winui.controls.segmented/8.2.251219.json",
+      "latestListedStableInRequiredLine": "8.2.251219",
+      "checkedOn": "2026-10-31"
+    },
+    {
+      "id": "CommunityToolkit.WinUI.Controls.Sizers",
+      "version": "8.2.251219",
+      "listed": true,
+      "published": "2025-12-20T01:06:29.097+00:00",
+      "registration": "https://api.nuget.org/v3/registration5-gz-semver2/communitytoolkit.winui.controls.sizers/8.2.251219.json",
+      "latestListedStableInRequiredLine": "8.2.251219",
+      "checkedOn": "2026-10-31"
     },
     {
       "id": "SkiaSharp",
