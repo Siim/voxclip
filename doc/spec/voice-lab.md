@@ -3,7 +3,7 @@
 Status:
 
 - **§4 Clean audio**: normative for M2.
-- **§5 to §12 Voice Lab beta**: target design for rewriting a passage or full take in the user's own voice, voice changing and lip sync. The Mac and Windows Core service foundation is described in §2.6. Both apps carry passage Rewrite with re-voiced takes and Create Your Voice behind the beta switch (§5); on Windows, voice creation waits for the speaker check (§6.6). Full-take rewriting, the voice changer and lip sync have no UI yet, and the release gates remain open.
+- **§5 to §12 Voice Lab beta**: target design for rewriting a passage or full take in the user's own voice, voice changing and lip sync. The Mac and Windows Core service foundation is described in §2.6. The clip-first Rewrite of 2026-10-31 (§3.1, §5, §6.4 to §6.7, §8.1, §8.4, §8.6, §8.12 and `doc/design.md` §6.3) is specified ahead of the apps. Until the Phase 0 packages land, both apps carry passage Rewrite with re-voiced takes and Create Your Voice behind the beta switch (§5); on Windows, voice creation waits for the speaker check (§6.6). Full-take rewriting, the voice changer and lip sync have no UI yet, and the release gates remain open.
 - **§13**: later capabilities and integration limits.
 
 Voice Lab is every VoxClip feature that sends the user's voice to an AI service and gets new audio or video back. It is separate from transcription (`doc/spec/transcription.md`) and from AI tighten (`doc/spec/ai.md` §12). AI tighten only proposes cuts, never makes synthetic media, and never reuses anything defined here.
@@ -403,7 +403,8 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 - Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default in release builds; development builds turn it on (below). Turning it on shows a one-time sheet:
   - "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
   - Buttons [Turn on] and [Cancel].
-- With Voice Lab on, **Rewrite…** appears on transcript selections, **Change Voice…** is in the Edit menu, **My voice** is in Settings → Voice Lab, and **Lip sync** is offered inside Rewrite when the length changes (`doc/design.md` §6.3–§6.4). Each panel shows its cost, what it sends, and the label that export will add.
+- **Rewrite** (the scope bar, the sidebar row's Rewrite, the selection bar and the menus; `doc/design.md` §6.3) does not need Voice Lab. It proposes cuts, text fixes and phrases in your voice. Cuts and fixes apply with Voice Lab off. Phrases in your voice, making your voice, takes, **Insert Words…**, **Change Voice…** and lip sync need `voiceLab.enabled` and `voiceLab.betaNoticeAccepted`. With Voice Lab off, voice changes stay visible but excluded, with "Needs Voice Lab (beta)", and the panel offers **Turn On Voice Lab…**, which shows this one-time sheet.
+- Your voice is made inside Rewrite (§6.5.2). Settings → Voice Lab lists and deletes voices; it no longer creates them.
 - Settings → Voice Lab also shows:
   - the ElevenLabs, fal.ai and sync.so key rows (§2);
   - **My voices**: the consent records, with their voice name, creation date, ElevenLabs voice id, and [Delete voice];
@@ -414,9 +415,9 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 
 Settings persist the switch as `voiceLab.enabled` (default false), the acknowledged one-time notice as `voiceLab.betaNoticeAccepted` (default false), the label position as `voiceLab.labelPosition` (`top-right` by default; `top-left`, `bottom-right`, `bottom-left` are the other values), and the Clean-audio-only C2PA preference as `voiceLab.c2pa` (default true). Keys and consent records are not settings values. Per-provider caps retain the keys and decimal-string format in §3.1.
 
-Release builds always list the Voice Lab pane. Rewrite needs both `voiceLab.enabled` and `voiceLab.betaNoticeAccepted`.
+Release builds always list the Voice Lab pane.
 
-Development builds turn Voice Lab on by default, because the app is under active development. While the settings file has no `voiceLab.enabled` or no `voiceLab.betaNoticeAccepted`, a development build reads that key as true. The app never writes this value. A value the user sets, true or false, always wins, so turning Voice Lab off sticks. Development builds also let Rewrite skip the beta notice.
+Development builds turn Voice Lab on by default, because the app is under active development. While the settings file has no `voiceLab.enabled` or no `voiceLab.betaNoticeAccepted`, a development build reads that key as true. The app never writes this value. A value the user sets, true or false, always wins, so turning Voice Lab off sticks. Development builds also let Rewrite's Voice Lab parts skip the beta notice.
 
 - **macOS.** A development build is a DEBUG build: `./bundle.sh` with no mode option. `--release` and `--sign-only` make Release builds. Only the app's own settings file gets the overlay; harness sessions and injected test stores keep the shipped default.
 - **Windows.** A development build defines `VOXCLIP_DEVELOPMENT`. Debug defines it by default, and a Release-config test copy opts in with `-p:VoxClipDevelopmentBuild=true`. On Windows, MSBuild ignores an environment variable of that name in any letter case; on macOS and Linux it ignores only the exact name. Self-checks, demo captures and native probes keep the shipped default, and so do test stores.
@@ -478,10 +479,10 @@ A new statement is generated for each attempt:
 
 ### 6.5 Training samples
 
-The consent statement is always recorded live and verified (§6.2–§6.4); it is what keeps cloning to the user's own voice. Only the training samples have a choice of source, offered after verification:
+The consent statement is always recorded live and verified (§6.2–§6.4); it is what keeps cloning to the user's own voice. The source is chosen automatically: (a) when §6.5.1 selects at least 30 s that pass §6.6; otherwise (b).
 
-- **(a) This project's audio.** Spans of the take in the project open in the editor. Other projects are not offered yet. Spans are read from the source media, so words cut in the edit still count and edits never change the selection. This is the default when the sheet opens with a project that has a transcript, including from the Rewrite panel's **Create Your Voice…**. §6.5.1 chooses the spans: at most 120 s of clear speech, and at least 30 s before the speaker match. Below that, the sheet falls back to (b).
-- **(b) A fresh read-aloud.** A 90 s script from `shared/voice-lab/scripts-<lang>.txt` (created with M3), recorded like §6.3. It is uploaded in spans of 5 to 30 s, preferring spans between pauses. It is the only source when no project is open, and the alternative to (a) otherwise.
+- **(a) This project's audio.** Spans of the take in the project open in the editor. Other projects are not offered yet. Spans are read from the source media, so words cut in the edit still count and edits never change the selection. This is the default for a project that has a transcript, including from Rewrite's **Make Your Voice**, which passes the rewrite scope's clip as `preferRange`. §6.5.1 chooses the spans: at most 120 s of clear speech, and at least 30 s before the speaker match. Below that, the steps fall back to (b). The copy says "video", not "project".
+- **(b) A fresh read-aloud.** A 90 s script from `shared/voice-lab/scripts-<lang>.txt` (created with M3), recorded like §6.3. It is uploaded in spans of 5 to 30 s, preferring spans between pauses. It is used whenever (a) is unavailable or fails §6.6.
 
 Then process the samples:
 
@@ -503,6 +504,7 @@ Inputs:
 - **Excluded ranges.** Source `[start, end]` ranges that must never be used: the `replace` range of every Voice Lab segment, enabled or not, passage or full take. VoxClip never trains on generated audio.
 - **Frame levels.** The take's 10 ms levels in dBFS, on the placed source timeline described below. Frame `i` covers mono samples `floor(i × rate / 100)` up to, not including, `floor((i + 1) × rate / 100)`, in integer arithmetic, and the take has `floor(samples × 100 / rate)` frames. A frame's level is `20 × log10(max(rms, 1e-9))`, with `rms` the root mean square of its samples in binary64.
 - **Duration.** The take's source duration in seconds.
+- **Preferred range** (optional). `preferRange` is a source `[startMs, endMs]`, the scope clip's range from `clipTimes` converted by `ms(t)`. Absent, the selection is unchanged.
 
 Every time is first converted to whole milliseconds, `ms(t) = floor(t × 1000 + 0.5)` in binary64. Everything after that is integer arithmetic, except the SNR.
 
@@ -525,29 +527,33 @@ Every time is first converted to whole milliseconds, `ms(t) = floor(t × 1000 + 
 3. **Split.** A piece longer than `TRAIN_SPAN_MAX` is split between two of its consecutive words. Each side runs from its first word's start to its largest word end. A boundary is valid when both sides last at least `TRAIN_SPAN_MIN`. Choose the valid boundary with the longest gap (the right side's start minus the left side's end). Break ties by the smallest `|leftEnd + rightStart − pieceStart − pieceEnd|`, the gap nearest the middle, then by the earlier boundary. Split the left side, then the right, again until no piece is longer than `TRAIN_SPAN_MAX`. A long piece with no valid boundary is rejected as `unsplittable`. A piece shorter than `TRAIN_SPAN_MIN` is rejected as `short`.
 4. **SNR.** The take's floor is its 10th-percentile frame: sort all `n` levels ascending and take index `floor(n / 10)`. A piece covers frames `floor((startMs + 5) / 10)` up to, not including, `floor((endMs + 5) / 10)`, clamped to `0…n`. Sort its voiced frames ascending and take index `floor(m / 2)` of the `m` frames. `snrDb` is that level minus the floor, in binary64. With no voiced frame, or no frames at all, `snrDb` is null. A piece qualifies when `snrDb ≥ TRAIN_MIN_SNR`; otherwise it is rejected as `lowSnr`.
 5. **Minimum.** `availableMs` is the total duration of the qualifying spans. Below `TRAIN_TOTAL_MIN` the status is `belowMinimum` and nothing is selected.
-6. **Pick.** Rank the qualifying spans by `snrDb` descending, then duration descending, then start ascending. Walk the ranking and select each span that keeps the selected total at or below `TRAIN_TOTAL_MAX`. A span that does not fit is skipped, and a later, shorter one may still fit. `selectedMs` is the selected total.
+6. **Pick.** Partition the qualifying spans into *preferred* (`startMs < preferRange.end` and `endMs > preferRange.start`) and *other*. Rank each group by `snrDb` descending, then duration descending, then start ascending. Walk the preferred ranking, then the other ranking, and select each span that keeps the total at or below `TRAIN_TOTAL_MAX`. A span that does not fit is skipped, and a later, shorter one may still fit. `selectedMs` is the selected total. The result adds `preferredMs`: the sum, over the selected spans, of each span's overlap with `preferRange`, in milliseconds (0 when absent).
 
-The result has `status` (`ok` or `belowMinimum`), `availableMs`, `selectedMs` and the selected spans in source order, each with `startMs`, `endMs` and `snrDb`. For tests and diagnostics it also lists the qualifying spans and the rejected pieces in source order, each rejected piece with its `reason` (`short`, `unsplittable` or `lowSnr`) and `snrDb`.
+The result has `status` (`ok` or `belowMinimum`), `availableMs`, `selectedMs`, `preferredMs` and the selected spans in source order, each with `startMs`, `endMs` and `snrDb`. For tests and diagnostics it also lists the qualifying spans and the rejected pieces in source order, each rejected piece with its `reason` (`short`, `unsplittable` or `lowSnr`) and `snrDb`.
 
-For the analysis, Media decodes the take once and streams it into the frame levels; it never holds the whole take in memory. The analysis runs on device when the sheet opens from a project, needs no network and is free. Media then cuts each selected span from the same mono mix, at samples `floor((startMs × rate + 500) / 1000)` up to, not including, `floor((endMs × rate + 500) / 1000)` in integer arithmetic. A cut therefore lasts 5 to 30 s in samples, and its WAV records `seconds` as its sample count over the rate.
+The vectors in `training-spans.json` must cover `preferRange`: no preference (the existing cases, unchanged); preferred spans alone filling the 120 s cap; preferred spans below the cap, filled from the other spans; a preferred span that partly overlaps the range; a preferred range with no qualifying span (`preferredMs` 0); and ties across the groups.
+
+For the analysis, Media decodes the take once and streams it into the frame levels; it never holds the whole take in memory. The analysis runs on device when a Rewrite proposal needs a voice (§6.5.2), needs no network and is free. Media then cuts each selected span from the same mono mix, at samples `floor((startMs × rate + 500) / 1000)` up to, not including, `floor((endMs × rate + 500) / 1000)` in integer arithmetic. A cut therefore lasts 5 to 30 s in samples, and its WAV records `seconds` as its sample count over the rate.
 
 The levels and the cuts use the same placed source timeline, the one transcript times use. Each decoded frame is placed by the §7.2 extraction rule, with its origin: the first at `round_half_up(position)`, a later one at `previousEnd` when it is within one tick of it. The mono stream starts at source sample 0. Silence fills the time before a late first frame and any timestamp gap, and overlap, including samples before source zero, is skipped. The media's duration bounds the stream: a frame placed at or after sample `ceil(duration × rate)` is dropped, so a corrupt timestamp cannot stretch the take, and the take's Duration is the smaller of the placed length and the media's duration, each floored to whole milliseconds. So mono sample `s` of the levels is mono sample `s` of every cut, and audio that starts late or has a gap stays aligned with its transcript. Unlike a voice-changer chunk, a cut does not refuse a gap: it holds the silence the levels measured.
 
-#### 6.5.2 Choosing the source in the sheet
+#### 6.5.2 Making your voice inside Rewrite
 
-- **Opened with an editor project that has a transcript.** The analysis starts at once and the project option reads "Finding clear speech in {project name}…" until it finishes. After verification, the sheet shows two choices:
-  - **Use this project's audio (recommended)**, with "{n} s of clear speech found in {project name}", where `n = floor(availableMs / 1000)`. It is selected by default.
-  - **Record a read-aloud (about 90 s)**.
-- **Too little speech.** With `belowMinimum`, the project option is disabled and the read-aloud is selected, with "This project has only {n} s of clear speech. Record a read-aloud instead." When `n` is 0: "This project has no clear speech to use. Record a read-aloud instead."
-- **Unreadable audio.** When the source media is missing, cannot be decoded or has an unsupported rate, the project option is disabled with "VoxClip can't read this project's audio. Record a read-aloud instead."
-- **Media labelled AI modified.** A re-imported export keeps no Voice Lab segments, so its generated speech cannot be excluded. When the source's XMP names a trained-algorithmic `DigitalSourceType` (`trainedAlgorithmicMedia` or `compositeWithTrainedAlgorithmicMedia`, §11.7), in the top-level XMP UUID box or in QuickTime's `moov/udta/XMP_`, the project option is disabled with "This project's media is labelled AI modified, so it can't train your voice. Record a read-aloud instead." The label is read before any decoding.
-- **No project.** Opened from Settings with no project open, the sheet offers only the read-aloud, with "Open a project to use its audio instead." With a project that has no transcript: "Transcribe this project to use its audio instead."
-- **After verification.** The status reads "Statement verified. Choose your training audio next." while the project option can be chosen (including while it is still being analysed), and otherwise "Statement verified. Record your training read-aloud next."
-- **Speaker match.** **Create voice…** runs §6.6 on every selected span on device, before any request. When fewer than 30 s remain, the sheet blocks with "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead." and **Record a Read-Aloud** switches to (b). The verified statement is kept, so it is not recorded again. The project option stays disabled until the sheet closes, whether the user switches with the button or the read-aloud choice, and the line under it then shows the same sentence.
-- **Confirmation.** With project audio, the create confirmation reads "Checks your plan, then sends the consent recording and {m} s of speech from {project name} to create your own voice. No video is sent. {cost}", where `m` is the whole seconds of the spans that passed §6.6. With a read-aloud it keeps "…the consent recording and training audio…".
-- **Entry points.** The Rewrite panel's button reads **Create Your Voice…**: it always has a transcribed project, so its audio can be used. Settings keeps **Create Your Voice…**.
-- **Projects in an uncalibrated language.** Rewrite lists only voices whose statement language is the project's transcript language, and the statement falls back to English (§6.2). In a project whose language has no calibrated speaker check, the Rewrite panel's voice row therefore reads "Your voice can't be used in this project's language yet. It works in English projects." with no **Create Your Voice…**, so it never invites a voice it could not list. Settings still offers **Create Your Voice…**, and that project's audio can train it.
-- **Windows.** The flow and copy are the same. Until the Windows speaker check is enabled (§6.6), the sheet keeps the speaker-unavailable copy and refuses Record, as today.
+Voices are made only from Rewrite, when a proposal has phrases in your voice and no consented voice exists for the project's language. The steps and copy are `doc/design.md` §6.3.7 "Your voice, from this clip": add a key (if missing), agree (the notice, three attestations, the name and the plan check), read the statement aloud, the on-device check, then **Create My Voice**.
+
+- The analysis starts with the proposal, using `preferRange` = the rewrite's clip (Full take: none; a selection: the clip containing it, if any).
+- Below 30 s, unreadable media, or media labelled AI modified switches to the read-aloud with the copy in design.md.
+- A speaker mismatch keeps the recorded statement and offers **Record a Read-Aloud**.
+- In a project whose language has no calibrated speaker check, voice changes show "Your voice works in English projects only for now." and the voice steps are not offered.
+- **Windows.** The flow and copy are the same. Until the Windows speaker check is enabled (§6.6), V1 shows the not-ready callout and offers only the free changes.
+
+The guards of the old sheet carry over unchanged:
+
+- **Amounts.** The speech row's `{t}` is `selectedMs` and `{c}` is `preferredMs` (§6.5.1). Below 30 s, `{n}` is `floor(availableMs / 1000)` whole seconds. The `{m}` that V4 and V5 send and the quote binds is the training audio that passed §6.6.
+- **Unreadable media.** The source media is missing, cannot be decoded or has a rate outside 8–96 kHz.
+- **Media labelled AI modified.** A re-imported export keeps no Voice Lab segments, so its generated speech cannot be excluded. When the source's XMP names a trained-algorithmic `DigitalSourceType` (`trainedAlgorithmicMedia` or `compositeWithTrainedAlgorithmicMedia`, §11.7), in the top-level XMP UUID box or in QuickTime's `moov/udta/XMP_`, project audio is not used. The label is read before any decoding.
+- **Speaker mismatch.** §6.6 runs on every selected span right after the statement is recorded, before any request (§6.4 item 1). When fewer than 30 s pass, the steps block with the mismatch copy, and **Record a Read-Aloud** switches to (b). The recorded statement is kept, so it is not recorded again. Project audio is not offered again in that enrollment.
+- **Which voices a project lists.** Rewrite lists only voices whose statement language is the project's transcript language, and the statement falls back to English while only English is calibrated (§6.2). A voice made from a project in an uncalibrated language could never be listed there, so the steps are not offered in it.
 
 ### 6.6 Speaker match (on device)
 
@@ -771,92 +777,101 @@ The parts are framed as in §6.7.
 
 ### 8.1 Entry points
 
-All three open the Rewrite panel (`doc/design.md` §6.3). Until the generation stage lands (implementation checklist 16b), the panel is review-only and reachable only in DEBUG builds on both platforms: it shows the diff, budgets and fit meters, and applies cut-only and text-only changes as one undo step. Consent, the shared run lease and request rules follow `ai.md` §4.7–§4.8.
+All of these end in the Rewrite review (`doc/design.md` §6.3): tracked changes in the transcript and a checklist in the panel.
 
-1. **Select words, then "Rewrite…".** The user types the new words. An empty field means "delete": that becomes a cut, and no AI is involved.
-2. **Caret between two words, then "Insert Words…".** This is an insertion.
-3. **"Rewrite…" with an instruction** in the panel's "What should change?" field (internally "Fix with AI"). The user's LLM (`doc/spec/ai.md` connectors) proposes line edits for the instruction, for example "I said 2024; it's 2025".
+1. **Rewrite a scope.** The scope is the selected kept or suggested clip, or Full take. The scope bar's field supplies the instruction, or "Fix slips and repeats. Keep my words and my voice; change as little as possible." when it is empty. This is "Fix with AI" over the scope through `PatchRewriteService`:
+   - `entries` are the scope's kept items (ai.md §11.2 rules: corrections applied, cut words excluded), in source order.
+   - `ranges` come from `VoiceLabLengthBudget`, with each `formatTranscript` line as one replace hunk.
+   - The request limits are unchanged (1 to 3,000 entries; 20,000 bytes); above them the panel says "Rewrite works on up to 3,000 words at a time."
+   - Each returned line edit becomes new text for that line. `VoiceLabWordDiff` runs per line against that line's kept items, and §8.2 step 6 then merges hunks across line boundaries. The prompt file, schema, validation and `checkThis` below are unchanged.
+2. **Rewrite a selection.** A word selection uses `VoiceRewriteService` (passage) with the field's instruction, as before.
+3. **Type New Words…** on a selection. The user types the new words in the edit popover; an empty field means "delete" and becomes a cut. No AI is involved.
+4. **Insert Words…** at a caret between two words. This is an insertion.
 
-   Fix with AI has its own prompt file, `shared/prompts/patch-rewrite.json` (`promptVersion` 1), and its own schema name, `patch_edits`. It never reuses `tighten_edits` (`ai.md` §12.8). Its schema:
+Several voice hunks may be included in one review. `VoiceLabWindowPlanner.placeAll` (§8.4) places them together. Takes for all of them run under one approval (§8.6), and **Use Takes** accepts them as one undo step (§8.12). Consent, the shared run lease and the request rules follow `ai.md` §4.7–§4.8.
 
-   ```json
-   { "type": "object", "additionalProperties": false, "required": ["edits"],
-     "properties": { "edits": { "type": "array", "items": {
-       "type": "object", "additionalProperties": false, "required": ["line", "text", "reason"],
-       "properties": { "line": { "type": "string" }, "text": { "type": "string" }, "reason": { "type": "string" } } } } } }
-   ```
+**Fix with AI over a scope (item 1).** The user's LLM (`doc/spec/ai.md` connectors) proposes line edits for the instruction, for example "I said 2024; it's 2025".
 
-   The transcript block uses the clip finder's line format (`ai.md` §11.3). The system prompt tells the model:
-   - every added word is spoken by an AI copy of the speaker's voice and labelled, so it must change as little as possible;
-   - deleting is preferred;
-   - keep the speaker's register;
-   - never add facts, numbers, names or claims that are not in the transcript or the instruction;
-   - keep each edited line inside its character range; deleting a whole line is allowed, with empty text;
-   - return an empty list when nothing should change.
+Fix with AI has its own prompt file, `shared/prompts/patch-rewrite.json` (`promptVersion` 1), and its own schema name, `patch_edits`. It never reuses `tighten_edits` (`ai.md` §12.8). Its schema:
 
-   Each line's character range comes from the length budget (§8.9.1), with the line's words treated as one replace hunk: the same `LENGTH_AIM_MIN` to `LENGTH_AIM_MAX` aim and the same `minChars` and `maxChars` formulas. The caller computes the ranges and Core takes them as given. The request states the range for every line.
+```json
+{ "type": "object", "additionalProperties": false, "required": ["edits"],
+  "properties": { "edits": { "type": "array", "items": {
+    "type": "object", "additionalProperties": false, "required": ["line", "text", "reason"],
+    "properties": { "line": { "type": "string" }, "text": { "type": "string" }, "reason": { "type": "string" } } } } } }
+```
 
-   **Request.** Each Core's `PatchRewriteService` (`Services/VoiceLab/`) has the shape of `VoiceRewriteService`: prepare a quote, approve it, then propose. A `PatchRewriteRequest` holds:
-   - `entries`: the in-scope transcript items `{index, text, start, end}` (`ai.md` §11.2). There are 1 to 3,000 of them, with indices of 0 or more in strictly increasing order, finite times with 0 ≤ `start` ≤ `end`, and text that is not empty after `jsTrim` (`editing.md` §4.5). Their text joined with spaces is at most 20,000 UTF-8 bytes.
-   - `ranges`: one `{line, minChars, maxChars}` for each line `formatTranscript` makes of the entries, in line order. `line` is that line's `[a-b]`, and 1 ≤ `minChars` ≤ `maxChars` ≤ 5,000.
-   - `instruction`: not empty after `jsTrim`, and at most 1,000 UTF-8 bytes.
-   - `language`: a tag of the form `[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*`.
+The transcript block uses the clip finder's line format (`ai.md` §11.3). The system prompt tells the model:
+- every added word is spoken by an AI copy of the speaker's voice and labelled, so it must change as little as possible;
+- deleting is preferred;
+- keep the speaker's register;
+- never add facts, numbers, names or claims that are not in the transcript or the instruction;
+- keep each edited line inside its character range; deleting a whole line is allowed, with empty text;
+- return an empty list when nothing should change.
 
-   Any other value fails with the service's invalid-input error (`VoiceLabError.invalidInput`, `VoiceLabErrorKind.InvalidInput`) before a quote or a send. The quote binds the entries with their times, the ranges, the instruction, the language, the connector, the model and the prompt file, so any change needs a new quote and approval. Both Cores bind the prompt file as the SHA-256 of its bytes after CRLF→LF: any edit to the file refuses an earlier quote, but a checkout's line endings do not. A declined approval or a used quote sends nothing.
+Each line's character range comes from the length budget (§8.9.1), with the line's words treated as one replace hunk: the same `LENGTH_AIM_MIN` to `LENGTH_AIM_MAX` aim and the same `minChars` and `maxChars` formulas. The caller computes the ranges and Core takes them as given. The request states the range for every line.
 
-   The quote's estimate is `est()` (`ai.md` §11.5) of the whole rendered request, `system + cachedBlock + instruction`, in the unit `token`, with basis `unknown` and no price or credits. Both Cores check the request before they estimate it.
+**Request.** Each Core's `PatchRewriteService` (`Services/VoiceLab/`) has the shape of `VoiceRewriteService`: prepare a quote, approve it, then propose. A `PatchRewriteRequest` holds:
+- `entries`: the in-scope transcript items `{index, text, start, end}` (`ai.md` §11.2). There are 1 to 3,000 of them, with indices of 0 or more in strictly increasing order, finite times with 0 ≤ `start` ≤ `end`, and text that is not empty after `jsTrim` (`editing.md` §4.5). Their text joined with spaces is at most 20,000 UTF-8 bytes.
+- `ranges`: one `{line, minChars, maxChars}` for each line `formatTranscript` makes of the entries, in line order. `line` is that line's `[a-b]`, and 1 ≤ `minChars` ≤ `maxChars` ≤ 5,000.
+- `instruction`: not empty after `jsTrim`, and at most 1,000 UTF-8 bytes.
+- `language`: a tag of the form `[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*`.
 
-   **Rendering.** All request text comes from the prompt file.
-   - `cachedBlock` is `transcriptBlock.prefix + rendered + transcriptBlock.suffix`, where `rendered` is `formatTranscript` of the entries (`ai.md` §11.3).
-   - `instruction` is `request.rangesLine`, then one `request.rangeLine` per line in line order, each on its own line, with `{line}` and with `{minChars}` and `{maxChars}` as decimal integers. A blank line follows, then `request.instructionLine` with `{instruction}`, the instruction after `jsTrim`.
+Any other value fails with the service's invalid-input error (`VoiceLabError.invalidInput`, `VoiceLabErrorKind.InvalidInput`) before a quote or a send. The quote binds the entries with their times, the ranges, the instruction, the language, the connector, the model and the prompt file, so any change needs a new quote and approval. Both Cores bind the prompt file as the SHA-256 of its bytes after CRLF→LF: any edit to the file refuses an earlier quote, but a checkout's line endings do not. A declined approval or a used quote sends nothing.
 
-   For three lines it reads:
+The quote's estimate is `est()` (`ai.md` §11.5) of the whole rendered request, `system + cachedBlock + instruction`, in the unit `token`, with basis `unknown` and no price or credits. Both Cores check the request before they estimate it.
 
-   ```text
-   Letters and digits allowed in the new text of each line, not counting spaces and punctuation:
-   [40-48] 27 to 31
-   [49-53] 17 to 21
-   [54-57] 12 to 15
+**Rendering.** All request text comes from the prompt file.
+- `cachedBlock` is `transcriptBlock.prefix + rendered + transcriptBlock.suffix`, where `rendered` is `formatTranscript` of the entries (`ai.md` §11.3).
+- `instruction` is `request.rangesLine`, then one `request.rangeLine` per line in line order, each on its own line, with `{line}` and with `{minChars}` and `{maxChars}` as decimal integers. A blank line follows, then `request.instructionLine` with `{instruction}`, the instruction after `jsTrim`.
 
-   Instruction: I said 2024; it's 2025.
-   ```
+For three lines it reads:
 
-   The send is a `voiceRewrite` request (`ai.md` §2.1) with medium effort, the schema `patch_edits` and the tag `patch-rewrite`, so, as for the passage rewrite, the connector makes one attempt, never resends it and names no fallback model (`ai.md` §12.8). Both suites send the 5 cases of `shared/fixtures/llm/patch-rewrite-requests.json` through `PatchRewriteService`, compare `system`, `cachedBlock` and `instruction` byte for byte, compare the quote's estimate with `expected.estimate`, and check the preflight of `ai.md` §12.8 with `expected.preflight`.
+```text
+Letters and digits allowed in the new text of each line, not counting spaces and punctuation:
+[40-48] 27 to 31
+[49-53] 17 to 21
+[54-57] 12 to 15
 
-   **Answer.** The answering model must be the quoted one, by the rule of `ai.md` §12.8, where a Claude Code alias accepts the model it names. A reply from any other model fails with the invalid-output error (`LLMError.invalidOutput`, `LlmErrorKind.InvalidOutput`). Then a truncated reply fails with the truncated error, and a refusal with the refused error (`LLMError.refused`, `LlmErrorKind.Refused`), which keeps the passage rewrite's copy: "The model declined to rewrite this recording."
+Instruction: I said 2024; it's 2025.
+```
 
-   **Strict JSON.** Both Cores read the reply by the strict JSON rule of `ai.md` §4.5, so a reply that one rejects the other rejects too, as a typed invalid-output error and never a crash.
+The send is a `voiceRewrite` request (`ai.md` §2.1) with medium effort, the schema `patch_edits` and the tag `patch-rewrite`, so, as for the passage rewrite, the connector makes one attempt, never resends it and names no fallback model (`ai.md` §12.8). Both suites send the 5 cases of `shared/fixtures/llm/patch-rewrite-requests.json` through `PatchRewriteService`, compare `system`, `cachedBlock` and `instruction` byte for byte, compare the quote's estimate with `expected.estimate`, and check the preflight of `ai.md` §12.8 with `expected.preflight`.
 
-   **Validation.** The reply then passes the structural validation of `ai.md` §2.3.
-   - A reply with no JSON object, or with no `edits` array, fails with the invalid-output error.
-   - An item is malformed when it lacks a string `line`, `text` or `reason`, when its `text` or `reason` holds a control character (Cc) other than tab, or when its `text` is over 2,000 UTF-8 bytes. A malformed item is dropped and counted in `malformedItems`; it never fails the reply.
-   - Keys outside the schema are ignored.
+**Answer.** The answering model must be the quoted one, by the rule of `ai.md` §12.8, where a Claude Code alias accepts the model it names. A reply from any other model fails with the invalid-output error (`LLMError.invalidOutput`, `LlmErrorKind.InvalidOutput`). Then a truncated reply fails with the truncated error, and a refusal with the refused error (`LLMError.refused`, `LlmErrorKind.Refused`), which keeps the passage rewrite's copy: "The model declined to rewrite this recording."
 
-   Each remaining item is then checked in order:
-   - `line`, after `jsTrim`, must match an emitted `[a-b]`, compared as scalar sequences. Otherwise the item is dropped and counted in `unknownLines`.
-   - Duplicates are dropped. Only the first item for a line is kept, and each later one is counted in `duplicateLines`.
-   - Core counts each edit's letters and digits itself: `length` is the `VoiceLabTextLength` of `text`, and `inRange` says whether it lies in the line's range. An edit outside its line's range is kept and shown as it is, with the fit meter (§8.9.1).
-   - A `text` that is empty after `jsTrim` deletes the whole line. Such an edit has `isDeletion` true, `length` 0 and `inRange` true. A text of punctuation alone deletes nothing; its length is 0, so it is out of range.
-   - `checkThis` marks an edit that adds something found nowhere in the transcript or the instruction (the rules below). Such an edit gets a warning badge with the copy in `messages.checkThis`: "Check this: it adds something you didn't say."
-   - An empty `edits` list is a valid result: nothing needs to change.
+**Strict JSON.** Both Cores read the reply by the strict JSON rule of `ai.md` §4.5, so a reply that one rejects the other rejects too, as a typed invalid-output error and never a crash.
 
-   The whole reply keeps the 20,000-byte rule: the kept edits' `text` values may hold at most 20,000 UTF-8 bytes together. A reply with more fails with the invalid-output error.
+**Validation.** The reply then passes the structural validation of `ai.md` §2.3.
+- A reply with no JSON object, or with no `edits` array, fails with the invalid-output error.
+- An item is malformed when it lacks a string `line`, `text` or `reason`, when its `text` or `reason` holds a control character (Cc) other than tab, or when its `text` is over 2,000 UTF-8 bytes. A malformed item is dropped and counted in `malformedItems`; it never fails the reply.
+- Keys outside the schema are ignored.
 
-   The `checkThis` rules:
-   - Texts are compared after NFC. The sources are the entry texts and the instruction.
-   - A *digit run* is a maximal run of Nd scalars. An edit adds one when its text holds a run that no source holds: `2025` is new next to `2024`, and so is `٢٠٢٥` next to `2025`.
-   - Tokens come from `splitWords` (`editing.md` §4.5). A token's *key* is its text without the scalars that are not letters (L*) or numbers (N*). This is `normalizeForMatch` (`editing.md` §4.7) without its lowercase step, so case counts. A token *appears* when some source token has the same key. Keys and digit runs compare as scalar sequences, never by canonical equivalence: a key that keeps two conjoining jamo differs from the precomposed Hangul syllable they spell.
-   - A token is a *URL* when it contains `://`, or when it starts with `www.` in any ASCII case once its leading scalars that are not letters or numbers are skipped.
-   - A token is *capitalised* when its first letter is Lu or Lt. It is *at a sentence start* when it is the edit's first token, or when the token before it ends a sentence by the `ai.md` §11.3 rule (`.`, `!`, `?`, `。`, `！` or `？`, followed only by `"`, `'`, `”`, `’` or `)`).
-   - `checkThis` is set when the edit adds a digit run, or holds a URL or a capitalised token not at a sentence start that does not appear.
+Each remaining item is then checked in order:
+- `line`, after `jsTrim`, must match an emitted `[a-b]`, compared as scalar sequences. Otherwise the item is dropped and counted in `unknownLines`.
+- Duplicates are dropped. Only the first item for a line is kept, and each later one is counted in `duplicateLines`.
+- Core counts each edit's letters and digits itself: `length` is the `VoiceLabTextLength` of `text`, and `inRange` says whether it lies in the line's range. An edit outside its line's range is kept and shown as it is, with the fit meter (§8.9.1).
+- A `text` that is empty after `jsTrim` deletes the whole line. Such an edit has `isDeletion` true, `length` 0 and `inRange` true. A text of punctuation alone deletes nothing; its length is 0, so it is out of range.
+- `checkThis` marks an edit that adds something found nowhere in the transcript or the instruction (the rules below). Such an edit gets a warning badge with the copy in `messages.checkThis`: "Check this: it adds something you didn't say."
+- An empty `edits` list is a valid result: nothing needs to change.
 
-   These rules are a heuristic. They can badge an edit that adds no fact, for example a word capitalised after a colon that the transcript has in lower case, and they miss a new fact written in lower case. The badge only asks the user to look; it blocks nothing.
+The whole reply keeps the 20,000-byte rule: the kept edits' `text` values may hold at most 20,000 UTF-8 bytes together. A reply with more fails with the invalid-output error.
 
-   `PatchRewriteProposal` lists the edits in arrival order. Each edit carries `line`, `text` exactly as returned, `reason`, `length`, `inRange`, `checkThis` and `isDeletion`. The proposal also carries `unknownLines`, `duplicateLines`, `malformedItems`, the badge copy, and `model`, the model that answered. It is review data only: it changes no project and starts no generation.
+The `checkThis` rules:
+- Texts are compared after NFC. The sources are the entry texts and the instruction.
+- A *digit run* is a maximal run of Nd scalars. An edit adds one when its text holds a run that no source holds: `2025` is new next to `2024`, and so is `٢٠٢٥` next to `2025`.
+- Tokens come from `splitWords` (`editing.md` §4.5). A token's *key* is its text without the scalars that are not letters (L*) or numbers (N*). This is `normalizeForMatch` (`editing.md` §4.7) without its lowercase step, so case counts. A token *appears* when some source token has the same key. Keys and digit runs compare as scalar sequences, never by canonical equivalence: a key that keeps two conjoining jamo differs from the precomposed Hangul syllable they spell.
+- A token is a *URL* when it contains `://`, or when it starts with `www.` in any ASCII case once its leading scalars that are not letters or numbers are skipped.
+- A token is *capitalised* when its first letter is Lu or Lt. It is *at a sentence start* when it is the edit's first token, or when the token before it ends a sentence by the `ai.md` §11.3 rule (`.`, `!`, `?`, `。`, `！` or `？`, followed only by `"`, `'`, `”`, `’` or `)`).
+- `checkThis` is set when the edit adds a digit run, or holds a URL or a capitalised token not at a sentence start that does not appear.
 
-   There is no automatic retry (S15). Asking again, including Shorter or Longer, is a new send with its own quote and approval. Both suites replay the 72 cases of `shared/fixtures/voice-lab/patch-rewrite-cases.json`, written by `tools/fixtures/voice-lab/generate_patch_rewrite.py` from canned replies. 35 of them also go through `VoiceRewriteService`, so both services read the same replies alike.
+These rules are a heuristic. They can badge an edit that adds no fact, for example a word capitalised after a colon that the transcript has in lower case, and they miss a new fact written in lower case. The badge only asks the user to look; it blocks nothing.
 
-All three paths end in the word diff (§8.2).
+`PatchRewriteProposal` lists the edits in arrival order. Each edit carries `line`, `text` exactly as returned, `reason`, `length`, `inRange`, `checkThis` and `isDeletion`. The proposal also carries `unknownLines`, `duplicateLines`, `malformedItems`, the badge copy, and `model`, the model that answered. It is review data only: it changes no project and starts no generation.
+
+There is no automatic retry (S15). Asking again, including Shorter or Longer, is a new send with its own quote and approval. Both suites replay the 72 cases of `shared/fixtures/voice-lab/patch-rewrite-cases.json`, written by `tools/fixtures/voice-lab/generate_patch_rewrite.py` from canned replies. 35 of them also go through `VoiceRewriteService`, so both services read the same replies alike.
+
+Every path ends in the word diff (§8.2).
 
 ### 8.2 Word diff (LCS)
 
@@ -871,7 +886,7 @@ For each edited line, or each selected range plus its new text:
    - **textOnly**: the whole region's normalised token arrays are equal but the surface differs (case or punctuation). Its `correctedTexts` supplies one full corrected text per source word item in source-ID order, joining that item's new surface tokens positionally with single spaces. It becomes `edits.corrections`. No AI.
    - **voice**: anything else. It needs TTS; a partial deletion such as a timed item `hello world` becoming `hello` re-voices the whole item with its kept words.
 6. **Merge voice hunks** separated only by `equal` operations when there are at most 2 equal source `word` items (not tokens), **or** at most 0.35 s of source time between the hunks. The time is the later hunk's first source word start minus the earlier hunk's last source word end, not the duration of the intervening equal words. An insert-only hunk uses its anchor: the next source token's start, or the final source token's end for an end insertion, or 0 for an empty source. Use binary64 subtraction and an inclusive `<= 0.35` comparison, without an epsilon. Merge transitively in source order. A cut between voice hunks prevents merging. The intervening equal words become bridge words and are re-voiced: their new-side surface tokens join the patch text in order, and their IDs join both the hunk's covered source IDs and its distinct bridge IDs. A text-only correction among these equal words is absorbed, with its new surface retained, not returned as a second overlapping hunk. Never merge across an `event` or `unlabeledSpeech` item between the hunks, regardless of word count or time; insert-only hunks use their anchor position in source order. A single user-edit voice hunk whose own source words straddle non-word items keeps its shape and reports their IDs, strictly between its first and last source word, in `absorbedItemIds`. Accepting it replaces those items with the new voice (§8.4 step 4); the App shows each absorbed item as removed in the read-only diff line. Cuts and textOnly corrections affect only their word IDs and never non-word items.
-7. **Display.** The Rewrite panel shows the diff under New words (`doc/design.md` §6.3): removed words struck in `cut.stroke`, new words in `accent.text` with a solid underline, re-voiced bridge words with a dashed `accent.text` underline, and absorbed events or unlabeled speech (`absorbedItemIds`) as struck labels. The transcript outlines the passage and leaves its words unchanged. Take selection and **Use Take** replace per-hunk Accept and Reject; the New words field is where text is edited. A cut-only or text-only diff turns the button into **Apply Cuts** or **Apply Correction**: one undo step, no AI. Voice hunks need an active My voice; without one, the Voice row reads "No voice yet" with **Create Your Voice… (2 min)**.
+7. **Display.** The review shows each hunk as a tracked change in the transcript (`doc/design.md` §6.3.5): its removed words, its new words, its re-voiced bridge words, and the events or unlabeled speech it absorbs (`absorbedItemIds`), each marked as such. It also shows one checklist row per hunk. A cut-only or text-only review applies with **Apply {c} Changes**: one undo step, no AI. Voice hunks need an active voice; without one, the panel offers **Make Your Voice**.
 8. **Header.** A live summary: "3 cuts · 2 re-voiced phrases (4.1 s of AI voice) · ≈ $0.02". `VoiceLabDiffSummary` returns the distinct cut word count, merged voice-hunk count, sum of the per-hunk duration estimates and TTS cost estimate, plus this copy (singular `cut` and `re-voiced phrase` for 1). The estimate is summed once per hunk, not once per candidate. Inject `VoiceLabPricing`'s catalog, selected model, candidate count and optional credit multiplier; price the total Unicode scalars of each complete patch text, including spaces, punctuation and bridges, with no separator charged between separate hunks. This is billing length, not `VoiceLabTextLength`. The cost uses the existing pricing and presentation rules (§3.2); omit the amount when the catalog is absent or its price is unknown, and return nil cost when there are no voice hunks. Nothing is sent. Each voice hunk also shows the fit meter (§8.9.1). Supply an optional complete patch text for each voice hunk in order: left window bridge + new words + right window bridge (§8.4 step 4). Price only when every hunk has complete text. Any missing text (including no placed window or a refused window) returns nil cost and omits the amount suffix; never fall back to hunk tokens. A supplied text count different from the voice-hunk count is typed `invalidInput`.
 
 **Patch budget.** Re-voicing is for small fixes. Count the new-side tokens of **every voice hunk after merging, including the bridge words**, because all of them will be spoken by the AI voice. Let `wordItems` be the number of items of kind `word` in the whole transcript, not the selection; events and unlabeled speech never enlarge that denominator. Disable voice hunks exactly when `count × 100 > 15 × wordItems` or `count > 60`, using integer arithmetic. Both boundaries are inclusive for acceptance: exactly 15% and exactly 60 tokens pass. `VoiceLabPatchBudget` returns the typed flag `allowed` or `reRecordInstead`, counts and optional copy. The disabled copy is "That's a lot to re-voice. Re-record these sentences instead." Cuts and text-only corrections remain available.
@@ -938,6 +953,12 @@ For each accepted voice hunk replacing source words `[a..b]`, or inserting betwe
    - `place` never emits `synthToSynth` seams, because changing the recipe of an accepted, paid segment is out of scope. A later UX can offer to re-voice touching passages together.
 
 When several rules fail, the first in this order is reported: `invalidInput` for the window's own samples, `overlapsReplacement`, `windowCrossesWord` (a crossing item, then a lost word), `seamFadeOutsideTake`, then for the incoming side `adjacentReplacement` (or `invalidInput` naming that replacement) and `seamFadeCrossesCut`, then the same for the outgoing side, `windowTooShort`, and finally each replacement in source order, its incoming seam, outgoing seam and then the kept piece after it, with `adjacentReplacement` or `invalidInput` and its ID.
+
+**Several hunks.** `placeAll(project:scope:envelope:hunks:)` places a review's voice hunks in source order. Each placed window counts as a replacement for the later hunks, under the same `overlapsReplacement`, `adjacentReplacement` and fade rules.
+
+When a window would overlap or touch an earlier window of the same review, the two hunks are merged into one: the words between them become bridges, re-voiced. The merge is kept only if the merged hunk still passes this section and the §8.2 patch budget. Otherwise the later hunk is refused with `collidesWithChange(index)`, copy "Too close to the change before it to voice separately. Edit them together or leave one out." `place` itself is unchanged.
+
+Its vectors go in `window-cases.json`, and both Cores replay them.
 
 ### 8.5 TTS request
 
@@ -1016,6 +1037,8 @@ A field that is empty after this is omitted. The quote binds the seed and the tr
 - Show the best candidate. The user can audition every take ("Take 1 · 2 · 3") and pick one.
 - If every take is rejected: "These takes didn't sound right. Try different wording or re-record."
 - Another run (Generate Again, Try Another) needs a new user action and its own quote; no take is generated automatically. The estimate shown before a run covers all `CANDIDATES` takes (§3.2), and the spend ledger records only the takes that were sent (§3.1).
+
+With several hunks, all per-take quotes for all hunks are prepared before the run. One affirmative approval covers the union of the bounded sets and their summed TTS plus Scribe QA cap. The run takes one hunk at a time, in source order, with early stop per hunk. Try Another on one phrase is a new approval for that phrase's set.
 
 ### 8.7 Trim, level, room tone
 
@@ -1235,6 +1258,8 @@ Accepting stores the segment (`kind: "tts"`) with its assets, words, provenance 
 - While the segment is enabled, the source words inside `[firstWordId, lastWordId]` are covered (§10.2).
 - [Turn off] keeps the segment but plays the source.
 - [Delete] removes it.
+
+`VoiceLabEditCommand.acceptAll(segments:assets:voice:)` validates the set (no overlaps, each recipe valid in the output scope) and applies it, with the review's cut and correction commands, as one undo step named "Rewrite clip {n}" (or "Rewrite {w} words", "Rewrite full take").
 
 ---
 
@@ -1830,7 +1855,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - Handles are present, and the rendered edited WAV and decoded MP4 put markers at the planned body and seam positions.
     - The recipe has a fit factor of 1, `outDuration` equal to the window (or the window plus `residualSeconds` after a partial fit), and chunks that name the paid asset's ID and SHA-256; v3 validation accepts it.
     - The existing unity passage, full-take and touching suites still pass, and both preflights still refuse a fit factor other than 1.
-20. **Training spans (§6.5.1).** Both Core suites replay every case in `training-spans.json` and match its status, totals and span lists exactly. With a fake speaker check, spans below τ are dropped before any request, fewer than 30 s left blocks with the §6.5.2 copy and no provider call, and the request sends the statement first and the kept spans in source order.
+20. **Training spans (§6.5.1).** Both Core suites replay every case in `training-spans.json` and match its status, totals (including `preferredMs`) and span lists exactly. With a fake speaker check, spans below τ are dropped before any request, fewer than 30 s left blocks with the §6.5.2 copy and no provider call, and the request sends the statement first and the kept spans in source order.
 
 Manual QA with real keys runs locally, never in CI:
 
