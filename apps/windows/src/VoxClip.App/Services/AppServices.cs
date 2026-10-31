@@ -161,7 +161,6 @@ internal sealed class AppServices : IAsyncDisposable
             if (!key.StartsWith("ui.", StringComparison.Ordinal)) SettingsChanged?.Invoke(this, EventArgs.Empty);
             if (key is "voiceLab.enabled" or "voiceLab.betaNoticeAccepted")
                 _ = VoiceLab.RefreshEnabledStateAsync();
-            CacheUpkeep.SettingChanged(key);
         };
         Keys = new(Data.Secrets, Log);
         Downloads = new ModelStore(Models, Data.Root);
@@ -171,6 +170,8 @@ internal sealed class AppServices : IAsyncDisposable
         Cache = new(Data.Cache);
         CacheUpkeep = new(new CacheEvictionScheduler(Cache, () => CacheUpkeep.LimitBytes(Settings), message => Log.Write(LogLevel.Warn, "cache", message)),
             () => Settings);
+        // A lower cache limit is enforced at once (architecture §8.2).
+        settingsWrites.Changed += key => CacheUpkeep.SettingChanged(key);
         ExportLedger = new(Path.Combine(Data.Root, "exports.json"));
     }
 
