@@ -490,6 +490,13 @@ attribute VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceSource @ System.Text.Json.Se
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceStatus :: field public Active @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("active")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceStatus :: field public Deleted @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("deleted")
 attribute VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceStatus @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceStatus], System.Text.Json")
+attribute VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason :: field public LowSnr @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("lowSnr")
+attribute VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason :: field public Short @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("short")
+attribute VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason :: field public Unsplittable @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("unsplittable")
+attribute VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason], System.Text.Json")
+attribute VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus :: field public BelowMinimum @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("belowMinimum")
+attribute VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus :: field public Ok @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("ok")
+attribute VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus @ System.Text.Json.Serialization.JsonConverterAttribute("System.Text.Json.Serialization.JsonStringEnumConverter`1[VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus], System.Text.Json")
 attribute VoxClip.Core.Services.LLM.ConnectorId :: field public Anthropic @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("anthropic")
 attribute VoxClip.Core.Services.LLM.ConnectorId :: field public AppleFoundation @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("apple-foundation")
 attribute VoxClip.Core.Services.LLM.ConnectorId :: field public ClaudeCode @ System.Text.Json.Serialization.JsonStringEnumMemberNameAttribute("claude-code")
@@ -4951,14 +4958,18 @@ member VoxClip.Core.Domain.VoiceLab.RenderTimeline+VoiceLab :: method public op_
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline+VoiceLab :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.RenderTimeline+VoiceLab,VoxClip.Core.Domain.VoiceLab.RenderTimeline+VoiceLab)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline+VoiceLab :: method public set_Plan(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPlan)
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: field public HopSize
+member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: field public PartWindows
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: field public Version
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: field public WindowSize
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method private MelBank()
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method private Mismatch()
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method private Power(double[])
+member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method private Sum(System.Collections.Generic.IReadOnlyList`1<float[]>,int,int)
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method public Cosine(System.Collections.Generic.IReadOnlyList`1<float>,System.Collections.Generic.IReadOnlyList`1<float>)
+member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method public Embedding(System.Collections.Generic.IReadOnlyList`1<float[]>)
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method public Features(float[])
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method public Normalized(System.Collections.Generic.IReadOnlyList`1<float>)
+member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method public PartEmbeddings(System.Collections.Generic.IReadOnlyList`1<float[]>)
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method public Select(float[],System.Collections.Generic.IReadOnlyList`1<System.ValueTuple`2<int,int>>)
 member VoxClip.Core.Domain.VoiceLab.SpeakerAudio :: method public Windows(float[])
 member VoxClip.Core.Domain.VoiceLab.VoiceConsentApp :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceConsentApp)
@@ -5293,6 +5304,9 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization :: method public get_E
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization :: method public get_Review()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization,VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization,VoxClip.Core.Domain.VoiceLab.VoiceLabAuthorization)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabBeta :: field private None
+member VoxClip.Core.Domain.VoiceLab.VoiceLabBeta :: method private .cctor()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabBeta :: method public DevelopmentDefaults(bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabBeta :: method public IsAvailable(bool,bool,bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabBiquad :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabBiquad :: method public .ctor(double,double,double,double,double)
@@ -7898,6 +7912,137 @@ member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method public op_Equa
 member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch,VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch)
 member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method public set_TranscriptionId(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method public set_Wer(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange>&)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public get_Excluded()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public get_Items()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs,VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs,VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public set_Excluded(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs :: method public set_Items(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public .ctor(VoxClip.Core.Domain.Shared.WordKind,double,double,System.Nullable`1<double>,string,bool)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public Deconstruct(VoxClip.Core.Domain.Shared.WordKind&,double&,double&,System.Nullable`1<double>&,string&,bool&)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public get_Conf()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public get_End()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public get_Kind()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public get_Speaker()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public get_Start()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public get_Synthetic()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem,VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem,VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public set_Conf(System.Nullable`1<double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public set_End(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public set_Kind(VoxClip.Core.Domain.Shared.WordKind)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public set_Speaker(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public set_Start(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem :: method public set_Synthetic(bool)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public .ctor(double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public Deconstruct(double&,double&)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public get_End()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public get_Start()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange,VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange,VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public set_End(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange :: method public set_Start(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public .ctor(long,long,VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason,System.Nullable`1<double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public Deconstruct(long&,long&,VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason&,System.Nullable`1<double>&)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public get_EndMs()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public get_Reason()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public get_SnrDb()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public get_StartMs()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection,VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection,VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public set_EndMs(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public set_Reason(VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public set_SnrDb(System.Nullable`1<double>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection :: method public set_StartMs(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason :: field public LowSnr
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason :: field public Short
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason :: field public Unsplittable
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason :: field public value__
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public .ctor(long,long,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public Deconstruct(long&,long&,double&)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public get_EndMs()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public get_SnrDb()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public get_StartMs()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan,VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan,VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public set_EndMs(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public set_SnrDb(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan :: method public set_StartMs(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus,long,long,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public Deconstruct(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus&,long&,long&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection>&)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public get_AvailableMs()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public get_Qualifying()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public get_Rejected()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public get_Selected()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public get_SelectedMs()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public get_Status()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection,VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection,VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public set_AvailableMs(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public set_Qualifying(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public set_Rejected(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public set_Selected(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public set_SelectedMs(long)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection :: method public set_Status(VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus :: field public BelowMinimum
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus :: field public Ok
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus :: field public value__
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: field private MaxMs
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: field public MaxGapMs
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: field public MinConf
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: field public MinSnrDb
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: field public SpanMaxMs
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: field public SpanMinMs
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: field public TotalMaxMs
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: field public TotalMinMs
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: field public VoicedDb
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: method private Invalid()
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: method private Ms(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: method private Split(System.Collections.Generic.List`1<System.ValueTuple`2<long,long>>,int,int,System.Collections.Generic.List`1<System.ValueTuple`3<long,long,System.Nullable`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason>>>)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: method public Inputs(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans :: method public Select(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange>,System.Collections.Generic.IReadOnlyList`1<double>,double)
 member VoxClip.Core.Services.AppVersion :: method internal Resolve(string)
 member VoxClip.Core.Services.AppVersion :: method internal ResolveProjectWriter(string)
 member VoxClip.Core.Services.AppVersion :: method public get_Current()
@@ -9433,8 +9578,7 @@ member VoxClip.Core.Services.Project.SharedResources :: method private Valid(str
 member VoxClip.Core.Services.Project.SharedResources :: method public ResolveRoot(string)
 member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private AppSdkHeading
 member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private AppSdkSha256
-member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private MachineLearningHeading
-member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private MachineLearningSha256
+member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private ReceiptFormat
 member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private files
 member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private noticesPath
 member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: field private stampPath
@@ -9451,20 +9595,18 @@ member VoxClip.Core.Services.Project.WindowsRuntimeAgreement :: method public Lo
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method private .ctor(VoxClip.Core.Services.Project.WindowsRuntimeTerms)
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method private get_EqualityContract()
-member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public .ctor(string,string,string)
-member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public Deconstruct(string&,string&,string&)
+member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public .ctor(string,string)
+member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public Deconstruct(string&,string&)
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public Equals(VoxClip.Core.Services.Project.WindowsRuntimeTerms)
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public Equals(object)
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public GetHashCode()
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public ToString()
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public get_AppSdk()
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public get_DisplayText()
-member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public get_MachineLearning()
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public get_Sha256()
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public op_Equality(VoxClip.Core.Services.Project.WindowsRuntimeTerms,VoxClip.Core.Services.Project.WindowsRuntimeTerms)
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public op_Inequality(VoxClip.Core.Services.Project.WindowsRuntimeTerms,VoxClip.Core.Services.Project.WindowsRuntimeTerms)
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public set_AppSdk(string)
-member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public set_MachineLearning(string)
 member VoxClip.Core.Services.Project.WindowsRuntimeTerms :: method public set_Sha256(string)
 member VoxClip.Core.Services.ServiceStub :: method internal Missing(string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.ServiceStub :: method internal Missing`1(string,System.Threading.CancellationToken)
@@ -9491,6 +9633,7 @@ member VoxClip.Core.Services.Settings.AppSettings :: method public Set(string,Sy
 member VoxClip.Core.Services.Settings.AppSettings :: method public SetVoiceLabMonthlyCap(string,System.Nullable`1<System.Decimal>)
 member VoxClip.Core.Services.Settings.AppSettings :: method public ToString()
 member VoxClip.Core.Services.Settings.AppSettings :: method public TryParseVoiceLabMonthlyCap(string,System.Decimal&)
+member VoxClip.Core.Services.Settings.AppSettings :: method public With(string,System.Text.Json.JsonElement)
 member VoxClip.Core.Services.Settings.AppSettings :: method public get_Defaults()
 member VoxClip.Core.Services.Settings.AppSettings :: method public get_Schema()
 member VoxClip.Core.Services.Settings.AppSettings :: method public get_Values()
@@ -9519,6 +9662,7 @@ member VoxClip.Core.Services.Settings.SettingsStore :: field private path
 member VoxClip.Core.Services.Settings.SettingsStore :: field private pending
 member VoxClip.Core.Services.Settings.SettingsStore :: field private revision
 member VoxClip.Core.Services.Settings.SettingsStore :: field private sync
+member VoxClip.Core.Services.Settings.SettingsStore :: field private unsetDefaults
 member VoxClip.Core.Services.Settings.SettingsStore :: field private writer
 member VoxClip.Core.Services.Settings.SettingsStore :: method internal .ctor(string,System.Action`1<string>,VoxClip.Core.Services.Project.AtomicFileOperations)
 member VoxClip.Core.Services.Settings.SettingsStore :: method private DamagedPath()
@@ -9535,6 +9679,8 @@ member VoxClip.Core.Services.Settings.SettingsStore :: method public LoadAsync(S
 member VoxClip.Core.Services.Settings.SettingsStore :: method public SaveAsync(VoxClip.Core.Services.Settings.AppSettings,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Settings.SettingsStore :: method public get_LastLoadError()
 member VoxClip.Core.Services.Settings.SettingsStore :: method public get_LastWriteError()
+member VoxClip.Core.Services.Settings.SettingsStore :: method public get_UnsetDefaults()
+member VoxClip.Core.Services.Settings.SettingsStore :: method public set_UnsetDefaults(System.Collections.Generic.IReadOnlyDictionary`2<string,System.Text.Json.JsonElement>)
 member VoxClip.Core.Services.Settings.SettingsValidation :: field private KnownKeys
 member VoxClip.Core.Services.Settings.SettingsValidation :: method internal Defaults()
 member VoxClip.Core.Services.Settings.SettingsValidation :: method internal KnownKey(string)
@@ -9680,8 +9826,6 @@ member VoxClip.Core.Services.Speech.ImportProgress :: method public Overall(VoxC
 member VoxClip.Core.Services.Speech.LanguageRouter :: method internal Plan(VoxClip.Core.Services.Models.TranscriptionModel,VoxClip.Core.Domain.Transcript.LanguageChoice)
 member VoxClip.Core.Services.Speech.LanguageRouter :: method internal SelectInstalled(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.Models.TranscriptionModel>,string,System.Collections.Generic.IReadOnlySet`1<string>)
 member VoxClip.Core.Services.Speech.LanguageRouter :: method public Route(VoxClip.Core.Domain.Transcript.LanguageChoice,VoxClip.Core.Domain.Transcript.TranscriptEngine,System.Collections.Generic.IReadOnlyList`1<string>)
-member VoxClip.Core.Services.Speech.RoutingDecision :: method internal get_Alternative()
-member VoxClip.Core.Services.Speech.RoutingDecision :: method internal set_Alternative(VoxClip.Core.Services.Speech.RoutingDecision)
 member VoxClip.Core.Services.Speech.RoutingDecision :: method private .ctor(VoxClip.Core.Services.Speech.RoutingDecision)
 member VoxClip.Core.Services.Speech.RoutingDecision :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.Speech.RoutingDecision :: method private get_EqualityContract()
@@ -9691,12 +9835,14 @@ member VoxClip.Core.Services.Speech.RoutingDecision :: method public Equals(VoxC
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public Equals(object)
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public GetHashCode()
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public ToString()
+member VoxClip.Core.Services.Speech.RoutingDecision :: method public get_Alternative()
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public get_OfferCloud()
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public get_Plan()
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public get_Prompt()
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public get_Readiness()
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public op_Equality(VoxClip.Core.Services.Speech.RoutingDecision,VoxClip.Core.Services.Speech.RoutingDecision)
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public op_Inequality(VoxClip.Core.Services.Speech.RoutingDecision,VoxClip.Core.Services.Speech.RoutingDecision)
+member VoxClip.Core.Services.Speech.RoutingDecision :: method public set_Alternative(VoxClip.Core.Services.Speech.RoutingDecision)
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public set_OfferCloud(bool)
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public set_Plan(VoxClip.Core.Domain.Transcript.TranscriptionPlan)
 member VoxClip.Core.Services.Speech.RoutingDecision :: method public set_Prompt(string)
@@ -9749,8 +9895,8 @@ member VoxClip.Core.Services.Speech.SpeechTransport :: method internal Retryable
 member VoxClip.Core.Services.Speech.SpeechTransport :: method internal TryCacheWriteAsync(System.Func`1<System.Threading.Tasks.Task>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Speech.SpeechTransport :: method internal get_Client()
 member VoxClip.Core.Services.Speech.SpeechTransport :: method private .cctor()
-member VoxClip.Core.Services.Speech.TranscriptionRouter :: method internal RouteAsync(string,VoxClip.Core.Domain.Transcript.LanguageChoice,long,bool,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Nullable`1<System.ValueTuple`2<string,double>>>>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Speech.TranscriptionRouter :: method public .ctor(VoxClip.Core.Services.Models.ModelCatalog,VoxClip.Core.Services.Models.IModelDownloader)
+member VoxClip.Core.Services.Speech.TranscriptionRouter :: method public RouteAsync(string,VoxClip.Core.Domain.Transcript.LanguageChoice,long,bool,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<System.Nullable`1<System.ValueTuple`2<string,double>>>>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Speech.TranscriptionService :: field private PendingPaidResponses
 member VoxClip.Core.Services.Speech.TranscriptionService :: field private catalog
 member VoxClip.Core.Services.Speech.TranscriptionService :: field private engines
@@ -10007,9 +10153,11 @@ member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: field private gate
 member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: field private model
 member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: field private session
 member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: field private vad
+member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: method private WindowEmbeddingsAsync(float[],System.Threading.CancellationToken)
 member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: method public .ctor(string)
 member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: method public Dispose()
 member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: method public EmbeddingAsync(float[],System.Threading.CancellationToken)
+member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: method public PartEmbeddingsAsync(float[],System.Threading.CancellationToken)
 member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: method public SpeakerCheck(string)
 member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: method public ValidateAvailability()
 member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: method public VoicedRangesAsync(float[],System.Threading.CancellationToken)
@@ -10394,6 +10542,7 @@ member VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck :: method internal Creat
 member VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck :: method private .cctor()
 member VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck :: method private .ctor(VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder,VoxClip.Core.Services.VoiceLab.SpeakerModel,string)
 member VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck :: method public EmbeddingAsync(float[],System.Threading.CancellationToken)
+member VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck :: method public PartEmbeddingsAsync(float[],System.Threading.CancellationToken)
 member VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck :: method public Supports(string)
 member VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck :: method public ValidateAvailability()
 member VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck :: method public get_Available()
@@ -10887,6 +11036,15 @@ type VoxClip.Core.Domain.VoiceLab.VoiceRewriteProposal
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope
 type VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch
+type VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs
+type VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem
+type VoxClip.Core.Domain.VoiceLab.VoiceTrainingRange
+type VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejection
+type VoxClip.Core.Domain.VoiceLab.VoiceTrainingRejectionReason
+type VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpan
+type VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanSelection
+type VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpanStatus
+type VoxClip.Core.Domain.VoiceLab.VoiceTrainingSpans
 type VoxClip.Core.Services.AppVersion
 type VoxClip.Core.Services.Captions.CaptionDataLoader
 type VoxClip.Core.Services.LLM.CliDetectionInfo
