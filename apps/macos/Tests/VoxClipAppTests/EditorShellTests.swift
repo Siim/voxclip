@@ -219,6 +219,8 @@ private final class FullScreenStandIn: NSWindow {
         editor.focusedPane = .sidebar
         shell.movePaneFocus(backward: false)
         #expect(editor.focusedPane == .tabs && window.firstResponder === work.overflow)
+        // F6 starts from the stop that holds focus; with none, from the editor's last pane.
+        window.makeFirstResponder(nil)
         editor.focusedPane = .timeline
         shell.movePaneFocus(backward: false)
         #expect(editor.focusedPane == .status && window.firstResponder === controller.statusBar)
@@ -229,6 +231,10 @@ private final class FullScreenStandIn: NSWindow {
         editor.focusedPane = .sidebar
         shell.movePaneFocus(backward: true)
         #expect(editor.focusedPane == .timeline)
+        // Moving to a SwiftUI pane lets go of the AppKit stop, so the next F6 starts from that pane.
+        #expect(window.firstResponder !== controller.statusBar && controller.paneHoldingFocus() == nil)
+        shell.movePaneFocus(backward: false)
+        #expect(editor.focusedPane == .status)
         window.makeFirstResponder(work.overflow)
         editor.focusedPane = .panel
         shell.movePaneFocus(backward: false)

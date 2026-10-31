@@ -29,7 +29,8 @@ enum EditorPane: CaseIterable {
 @MainActor protocol ShellChromeFocus: AnyObject {
     /// The pane that holds keyboard focus when it is one of these stops.
     func paneHoldingFocus() -> EditorPane?
-    /// Puts keyboard focus in one of these stops. False when it cannot take it.
+    /// Puts keyboard focus in one of these stops. For a SwiftUI pane it only lets go of
+    /// an AppKit stop, so the next F6 starts from that pane; it returns false.
     @discardableResult func focus(_ pane: EditorPane) -> Bool
 }
 
@@ -69,10 +70,7 @@ extension WorkspaceShell {
         guard let editor, !showsHome else { return }
         if let holding = chromeFocus?.paneHoldingFocus() { editor.focusedPane = holding }
         editor.movePaneFocus(backward: backward, through: paneOrder)
-        switch editor.focusedPane {
-        case .tabs, .transcript, .status:
-            if chromeFocus?.focus(editor.focusedPane) != true, editor.focusedPane == .transcript { _ = focusTranscript(in: windowController?.window ?? editor.window) }
-        case .sidebar, .viewer, .panel, .timeline: break
-        }
+        let pane = editor.focusedPane
+        if chromeFocus?.focus(pane) != true, pane == .transcript { _ = focusTranscript(in: windowController?.window ?? editor.window) }
     }
 }

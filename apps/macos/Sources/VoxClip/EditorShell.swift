@@ -767,7 +767,10 @@ struct EditorShellState: Equatable {
         case .tabs: return editorWork.map { window.makeFirstResponder($0.overflow) } ?? false
         case .transcript: return focusTranscript(in: window)
         case .status: return statusBar?.takeFocus() ?? false
-        case .sidebar, .viewer, .panel, .timeline: return false
+        case .sidebar, .viewer, .panel, .timeline:
+            // EditorPaneFocus focuses these a moment later; the stop lets go now.
+            if paneHoldingFocus() != nil { window.makeFirstResponder(nil) }
+            return false
         }
     }
 
