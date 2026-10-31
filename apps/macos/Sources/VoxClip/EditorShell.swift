@@ -153,7 +153,7 @@ extension NSView {
 /// A row of the shell: its token fill, an optional bottom hairline, and controls at its
 /// start and end, centred on the window buttons' line. A title row also moves the window
 /// on a drag of its empty space and runs the system double-click action; its controls
-/// get their own clicks.
+/// get their own clicks. A hidden control takes no room.
 @MainActor final class ShellBand: NSView {
     private let fill: String
     private let bottomLine: Bool
@@ -161,6 +161,8 @@ extension NSView {
     var leadingInset: CGFloat = 0 { didSet { needsLayout = true } }
     var trailingInset: CGFloat = 8 { didSet { needsLayout = true } }
     var spacing: CGFloat = 4 { didSet { needsLayout = true } }
+    /// The leading control that takes the room left before the trailing ones (the tabs).
+    var fillsLeading: NSView? { didSet { needsLayout = true } }
     private(set) var leading: [NSView] = []
     private(set) var trailing: [NSView] = []
     init(fill: String, bottomLine: Bool, movesWindow: Bool, region: String) {
@@ -184,18 +186,19 @@ extension NSView {
     override func layout() {
         super.layout()
         let center = min(ShellMetrics.controlCenter, bounds.height / 2)
-        var x = leadingInset
-        for view in leading where view.superview === self {
-            let size = Self.size(of: view)
-            view.frame = NSRect(x: x, y: (center - size.height / 2).rounded(), width: size.width, height: size.height)
-            x += size.width + spacing
-        }
         var end = bounds.width - trailingInset
-        for view in trailing.reversed() where view.superview === self {
+        for view in trailing.reversed() where view.superview === self && !view.isHidden {
             let size = Self.size(of: view)
             end -= size.width
             view.frame = NSRect(x: end, y: (center - size.height / 2).rounded(), width: size.width, height: size.height)
             end -= spacing
+        }
+        var x = leadingInset
+        for view in leading where view.superview === self && !view.isHidden {
+            var size = Self.size(of: view)
+            if view === fillsLeading { size.width = max(0, end - x) }
+            view.frame = NSRect(x: x, y: (center - size.height / 2).rounded(), width: size.width, height: size.height)
+            x += size.width + spacing
         }
     }
     private static func size(of view: NSView) -> NSSize {
@@ -306,61 +309,6 @@ extension NSView {
     }
     override func drawFocusRingMask() { outline.fill() }
     override var focusRingMaskBounds: NSRect { bounds }
-}
-
-/// The tab row's one tab until V3a (notes.md `.tab.on`): the scope's name on the editor
-/// surface with a text.tertiary line on top and a hairline after it. Clicks fall
-/// through to the title row, which moves the window.
-@MainActor final class ShellScopeTab: NSView {
-    private let icon = NSImageView()
-    let label = NSTextField(labelWithString: "Full Take")
-    init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 140, height: ShellMetrics.titleRow))
-        identifier = NSUserInterfaceItemIdentifier("voxclip.shell.scopeTab")
-        icon.contentTintColor = DesignValues.nsColor("text.secondary")
-        icon.setAccessibilityElement(false)
-        label.font = VCType.body.nsFont()
-        label.textColor = DesignValues.nsColor("text.primary")
-        label.lineBreakMode = .byTruncatingTail
-        label.setAccessibilityIdentifier("voxclip.shell.scopeTab.label")
-        addSubview(icon); addSubview(label)
-        show(name: "Full Take", clip: false)
-    }
-    required init?(coder: NSCoder) { nil }
-    override var isFlipped: Bool { true }
-    func show(name: String, clip: Bool) {
-        label.stringValue = name
-        icon.image = NSImage(systemSymbolName: clip ? "rectangle.on.rectangle" : "film", accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
-        invalidateIntrinsicContentSize()
-        superview?.needsLayout = true
-        needsLayout = true
-    }
-    /// Before the name: 12 + the 14 pt icon + 7. After it: 7 + the 16 pt close slot + 10 (notes.md `.tab`).
-    private static let leadingRoom: CGFloat = 33
-    private static let trailingRoom: CGFloat = 33
-    override var intrinsicContentSize: NSSize {
-        let name: CGFloat = label.intrinsicContentSize.width
-        let width: CGFloat = Self.leadingRoom + name + Self.trailingRoom
-        return NSSize(width: width.rounded(.up), height: ShellMetrics.titleRow)
-    }
-    override func layout() {
-        super.layout()
-        let iconSide: CGFloat = 14
-        icon.frame = NSRect(x: 12, y: (bounds.height - iconSide) / 2, width: iconSide, height: iconSide)
-        let text = label.intrinsicContentSize
-        let top: CGFloat = ((bounds.height - text.height) / 2).rounded()
-        let width: CGFloat = max(0, bounds.width - Self.leadingRoom - Self.trailingRoom)
-        label.frame = NSRect(x: Self.leadingRoom, y: top, width: width, height: text.height)
-    }
-    override func draw(_ dirtyRect: NSRect) {
-        DesignValues.nsColor("bg.surface").setFill()
-        bounds.fill()
-        DesignValues.nsColor("text.tertiary").setFill()
-        NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
-        DesignValues.nsColor("line.default").setFill()
-        NSRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height).fill()
-    }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// The Home title row's project search (it was the toolbar's search field).
@@ -793,12 +741,12 @@ struct EditorShellState: Equatable {
         if let work = editorWork, responder.isDescendant(of: work.tabRow) || responder.isDescendant(of: work.clipBar) { return .tabs }
         return nil
     }
-    /// The tab and clip-bar rows take focus at ⋯ until V3a's tabs; the transcript is found
-    /// in this window's tree; the status bar takes it itself.
+    /// The tab and clip-bar rows take focus at the active tab (impl-plan V3a); the
+    /// transcript is found in this window's tree; the status bar takes it itself.
     @discardableResult func focus(_ pane: EditorPane) -> Bool {
         guard let window = view.window else { return false }
         switch pane {
-        case .tabs: return editorWork.map { window.makeFirstResponder($0.overflow) } ?? false
+        case .tabs: return editorWork?.tabBar.focusActiveTab() ?? false
         case .transcript: return focusTranscript(in: window)
         case .status: return statusBar?.takeFocus() ?? false
         case .sidebar, .viewer, .panel, .timeline:
@@ -832,7 +780,10 @@ struct EditorShellState: Equatable {
     let tabRow = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "tabBar")
     let clipBar = ShellBand(fill: "bg.surface", bottomLine: true, movesWindow: false, region: "clipBar")
     private let rightTitle = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "rightTitle")
-    private let scopeTab = ShellScopeTab()
+    /// The editor's tabs (impl-plan V3a), filling the tab row up to its trailing controls.
+    let tabBar: EditorTabBarView
+    /// Show cuts' place at the tab row's end (notes.md §1), hidden until V8b gives it the toggle.
+    let showCutsSlot = NSView(frame: NSRect(x: 0, y: 0, width: 0, height: ShellMetrics.iconButton))
     let overflow = ShellIconButton(symbol: "ellipsis", size: 14, identifier: "voxclip.shell.more")
     let export = ShellExportButton()
     let timelineToggle = ShellIconButton(symbol: "rectangle.bottomthird.inset.filled", identifier: "voxclip.shell.toggleTimeline")
@@ -865,6 +816,7 @@ struct EditorShellState: Equatable {
     init(model: EditorModel, shell: WorkspaceShell) {
         self.model = model
         self.shell = shell
+        tabBar = EditorTabBarView(shell: shell, model: model)
         super.init(vertical: false, identifier: "voxclip.shell.work", dividerToken: "line.edge")
         build()
     }
@@ -931,6 +883,9 @@ struct EditorShellState: Equatable {
         rightTitle.trailingInset = 8
         rightTitle.spacing = 6
         tabRow.trailingInset = 8
+        tabRow.fillsLeading = tabBar
+        showCutsSlot.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.showCuts")
+        showCutsSlot.isHidden = true
         overflow.describe(EditorIconAction.moreCommands.name)
         overflow.target = self
         overflow.action = #selector(showOverflow(_:))
@@ -941,7 +896,6 @@ struct EditorShellState: Equatable {
         export.handler = { [weak self] in self?.model.presentExport() }
         placeTabRow(explorerToggle: nil)
         observations = [
-            ShellObservation { [weak self] in self?.renderScope() },
             ShellObservation { [weak self] in self?.renderExport() },
             ShellObservation { [weak self] in self?.renderFindClips() },
             ShellObservation { [weak self] in self?.followSizes() }
@@ -951,6 +905,7 @@ struct EditorShellState: Equatable {
     func tearDown() {
         observations.forEach { $0.cancel() }
         observations = []
+        tabBar.tearDown()
         findClipsPopover?.close()
         showRightOverlay(false, refocus: false)
     }
@@ -996,21 +951,14 @@ struct EditorShellState: Equatable {
         }
     }
 
-    /// The tab row: the Explorer toggle while the Explorer is hidden, the scope tab, then ⋯,
-    /// and the right column's controls while it is hidden.
+    /// The tab row: the Explorer toggle while the Explorer is hidden, the tabs, Show cuts'
+    /// slot and ⋯, and the right column's controls while it is hidden.
     func placeTabRow(explorerToggle: NSView?) {
         self.explorerToggle = explorerToggle
         let cluster: [NSView] = [export, timelineToggle, rightToggle]
         let rightShows = rightItem.map { !$0.isCollapsed } ?? true
-        tabRow.set(leading: [explorerToggle, scopeTab].compactMap { $0 }, trailing: rightShows ? [overflow] : [overflow] + cluster)
+        tabRow.set(leading: [explorerToggle, tabBar].compactMap { $0 }, trailing: rightShows ? [showCutsSlot, overflow] : [showCutsSlot, overflow] + cluster)
         rightTitle.set(leading: [], trailing: rightShows ? cluster : [])
-    }
-
-    private func renderScope() {
-        _ = model.projectRevision
-        if let clip = model.activeClip, let number = model.clipNumber(clip.id) { scopeTab.show(name: "Clip \(number)", clip: true) }
-        else { scopeTab.show(name: "Full Take", clip: false) }
-        tabRow.needsLayout = true
     }
 
     private func renderExport() {

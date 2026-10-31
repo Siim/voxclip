@@ -330,8 +330,8 @@ private final class FullScreenStandIn: NSWindow {
         #expect(!(explorer.accessibilityChildren() ?? []).isEmpty)
     }
 
-    /// F6 reaches the AppKit stops: ⋯ for the tab and clip-bar rows, and the status bar,
-    /// and starts again from the stop that holds focus (impl-plan §3.2).
+    /// F6 reaches the AppKit stops: the active tab for the tab and clip-bar rows (V3a), and
+    /// the status bar, and starts again from the stop that holds focus (impl-plan §3.2).
     @Test func f6ReachesTheTabRowAndTheStatusBar() async throws {
         let (shell, controller, window) = try await openShell()
         defer { controller.tearDown(); shell.editor?.close() }
@@ -339,7 +339,7 @@ private final class FullScreenStandIn: NSWindow {
         let work = try #require(controller.editorWork)
         editor.focusedPane = .sidebar
         shell.movePaneFocus(backward: false)
-        #expect(editor.focusedPane == .tabs && window.firstResponder === work.overflow)
+        #expect(editor.focusedPane == .tabs && work.tabBar.activeItem != nil && window.firstResponder === work.tabBar.activeItem)
         // F6 starts from the stop that holds focus; with none, from the editor's last pane.
         window.makeFirstResponder(nil)
         editor.focusedPane = .timeline
