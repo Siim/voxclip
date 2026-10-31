@@ -65,9 +65,11 @@ public enum VoiceLabSourceAudio {
     /// The complete mono PCM16 WAV of source frames `[startSample, endSample)` that §7.3 uploads, at the source rate
     /// with no resampling. The track the renderer uses is decoded as Float32 at its native rate, which must equal
     /// `sourceSampleRate`, then downmixed by the arithmetic mean of its channels and written with the paid-asset
-    /// writer's float rule and header. Rate and length limits are refused before the source is opened.
+    /// writer's float rule and header. Rate and length limits are refused before the source is opened. A timestamp gap
+    /// inside the range is `rangeOutsideMedia`, or with `silenceGaps` the silence that own-voice training levels read
+    /// there (§6.5.1).
     public static func conversionInput(source: URL, startSample: Int64, endSample: Int64,
-                                       sourceSampleRate: Double) async throws -> Data {
+                                       sourceSampleRate: Double, silenceGaps: Bool = false) async throws -> Data {
         let (rate, frames) = try conversionChunk(startSample: startSample, endSample: endSample,
                                                  sourceSampleRate: sourceSampleRate)
         do {
@@ -83,7 +85,7 @@ public enum VoiceLabSourceAudio {
                 throw VoiceLabSourceAudioError.rangeOutsideMedia
             }
             return try await decode(asset: asset, track: track, rate: rate, channels: Int(native.mChannelsPerFrame),
-                                    startSample: startSample, endSample: endSample, frames: frames)
+                                    startSample: startSample, endSample: endSample, frames: frames, silenceGaps: silenceGaps)
         } catch {
             if error is VoiceLabSourceAudioError || error is CancellationError { throw error }
             throw VoiceLabSourceAudioError.unreadable
@@ -258,7 +260,7 @@ public enum VoiceLabSourceAudio {
     }
 
     private static func decode(asset: AVURLAsset, track: AVAssetTrack, rate: Int, channels: Int,
-                               startSample: Int64, endSample: Int64, frames: Int) async throws -> Data {
+                               startSample: Int64, endSample: Int64, frames: Int, silenceGaps: Bool) async throws -> Data {
         let reader = try AVAssetReader(asset: asset)
         let scale = CMTimeScale(rate)
         reader.timeRange = CMTimeRange(start: CMTime(value: startSample, timescale: scale),
@@ -268,7 +270,7 @@ public enum VoiceLabSourceAudio {
         let provider = reader.outputProvider(for: output)
         guard reader.startReading() else { throw VoiceLabSourceAudioError.unreadable }
         var accumulator = ConversionAccumulator(rate: rate, channels: channels, startSample: startSample,
-                                              endSample: endSample, frames: frames, origin: 0.0)
+                                              endSample: endSample, frames: frames, origin: 0.0, silenceGaps: silenceGaps)
         do {
             while !accumulator.isComplete, let sample = try await MediaSupport.nextSample(provider) {
                 try Task.checkCancellation()
@@ -291,18 +293,22 @@ public enum VoiceLabSourceAudio {
         private let startSample: Int64
         private let endSample: Int64
         private let origin: Double
+        /// A gap leaves zeros in the (zero-filled) WAV instead of refusing the chunk.
+        private let silenceGaps: Bool
         private var previousEnd: Int64?
         private var values: [Float] = []
         private(set) var next: Int64
         private(set) var wav: Data
         var isComplete: Bool { next == endSample }
 
-        init(rate: Int, channels: Int, startSample: Int64, endSample: Int64, frames: Int, origin: Double = 0.0) {
+        init(rate: Int, channels: Int, startSample: Int64, endSample: Int64, frames: Int, origin: Double = 0.0,
+             silenceGaps: Bool = false) {
             self.rate = rate
             self.channels = channels
             self.startSample = startSample
             self.endSample = endSample
             self.origin = origin
+            self.silenceGaps = silenceGaps
             next = startSample
             wav = VoiceLabAssetStore.wavHeader(frames: frames, sampleRate: rate)
             wav.append(Data(count: 2 * frames))
@@ -316,7 +322,11 @@ public enum VoiceLabSourceAudio {
                                                                  rate: rate, previousEnd: previousEnd, origin: origin)
             let decodedEnd: Int64 = first + Int64(count)
             previousEnd = decodedEnd
-            guard first <= next else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
+            if first > next {
+                guard silenceGaps else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
+                next = min(first, endSample)
+                guard !isComplete else { return }
+            }
             guard decodedEnd > next else { return }
             let overlap: Int64 = next - first
             let remaining: Int64 = endSample - next

@@ -111,6 +111,119 @@ struct VoiceTrainingTests {
             try await VoiceTrainingAudio.projectSamples(source: url, sampleRate: rate, spans: [VoiceTrainingSpan(startMs: 7_000, endMs: 12_400, snrDb: 30)])
         }
     }
+    /// Stereo buffer `index` at `time`, with different content in each channel, and its mean mix.
+    private func block(_ index: Int, count: Int, rate: Int, at time: CMTime) throws -> (buffer: CMReadySampleBuffer<CMSampleBuffer.DynamicContent>, mono: [Float]) {
+        var content: [Float] = [], mono: [Float] = []
+        for sample in 0..<count {
+            let leftStep: Int = (index * 977 + sample * 7_919) % 4_001 - 2_000
+            let rightStep: Int = (index * 331 + sample * 104_729) % 3_001 - 1_500
+            let left: Float = Float(leftStep) / 4_000, right: Float = Float(rightStep) / 6_000
+            content.append(left); content.append(right)
+            mono.append(Float((Double(left) + Double(right)) / 2))
+        }
+        return (try VoiceLabSourceAudioTests.floatBuffer(content, rate: rate, channels: 2, time: time), mono)
+    }
+    @Test func levelsPlaceEachBufferByItsTimestampAsTheCutsDo() throws {
+        let rate = 8_000
+        func at(_ sample: Int64) -> CMTime { CMTime(value: sample, timescale: CMTimeScale(rate)) }
+        // Presentation time, decoded samples and the placed first sample; at 8 kHz a frame is 80 samples.
+        let buffers: [(time: CMTime, count: Int, first: Int?)] = [
+            (at(120), 100, 120),                            // a late start: silence before it
+            (CMTime(value: 28, timescale: 1_000), 100, 220), // 224 is within one 8-sample tick of 220: sequential
+            (at(300), 100, 300),                            // 20 samples of overlap are skipped
+            (CMTime.invalid, 100, 400),                     // a missing timestamp continues at the decoded end
+            (at(200), 100, 200),                            // wholly placed already, but it moves the decoded end
+            (at(2_000), 81, 2_000),                         // a timestamp gap: silence across it
+            (at(5_000), 50, nil),                           // at the media's duration: dropped
+        ]
+        var timeline = VoiceTrainingTimeline(rate: rate, channels: 2, limit: 5_000)
+        var expected: [Float] = []
+        for (index, row) in buffers.enumerated() {
+            let (buffer, mono) = try block(index, count: row.count, rate: rate, at: row.time)
+            try timeline.append(buffer)
+            guard let first = row.first else { continue }
+            if first > expected.count { expected.append(contentsOf: repeatElement(Float(0), count: first - expected.count)) }
+            let skip: Int = expected.count - first
+            if skip < row.count { expected.append(contentsOf: mono[skip...]) }
+        }
+        var reference = VoiceTrainingMeter(rate: rate)
+        for value in expected { reference.add(value) }
+        let levels: [Double] = timeline.meter.frameDb
+        #expect(expected.count == 2_081)
+        #expect(timeline.meter.samples == 2_081)
+        #expect(reference.frameDb.count == 26)
+        #expect(levels == reference.frameDb)
+        #expect(levels[0] < -179)
+        #expect(levels[1] > -60)
+        #expect(levels[7...24].allSatisfy { (level: Double) -> Bool in level < -179 })
+        #expect(levels[25] > -60)
+        // Samples before source zero are skipped, and the first buffer needs a timestamp.
+        var early = VoiceTrainingTimeline(rate: rate, channels: 2, limit: 5_000)
+        let (before, mono) = try block(9, count: 200, rate: rate, at: at(-40))
+        try early.append(before)
+        var direct = VoiceTrainingMeter(rate: rate)
+        for value in mono.dropFirst(40) { direct.add(value) }
+        #expect(early.meter.samples == 160)
+        #expect(direct.frameDb.count == 2)
+        #expect(early.meter.frameDb == direct.frameDb)
+        let missing = try block(0, count: 10, rate: rate, at: .invalid).buffer
+        var anchorless = VoiceTrainingTimeline(rate: rate, channels: 2, limit: 5_000)
+        #expect(throws: VoiceLabSourceAudioError.unreadable) { try anchorless.append(missing) }
+    }
+    /// The `take` placed 1.5 s into the asset with a 0.75 s gap 4 s into the audio, both empty edits as an exported
+    /// composition stores them, and the mean mix on that asset timeline, which preview, export and the cuts use.
+    /// AVAssetReader fills empty edits with silence itself; timestamps that jump are covered by the timeline test.
+    private func lateTake(rate: Int, in folder: URL) async throws -> (url: URL, mono: [Float]) {
+        let (source, decoded) = try take(rate: rate, seconds: 10, in: folder)
+        let asset = AVURLAsset(url: source)
+        let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let composition = AVMutableComposition()
+        let audio = try #require(composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid))
+        func time(_ sample: Int) -> CMTime { CMTime(value: Int64(sample), timescale: CMTimeScale(rate)) }
+        let late: Int = rate * 3 / 2, split: Int = rate * 4, resume: Int = rate * 25 / 4
+        try audio.insertTimeRange(CMTimeRange(start: .zero, duration: time(split)), of: track, at: time(late))
+        try audio.insertTimeRange(CMTimeRange(start: time(split), duration: time(decoded.count - split)), of: track, at: time(resume))
+        let url = folder.appendingPathComponent("late-\(rate).mov")
+        let session = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
+        try await session.export(to: url, as: .mov)
+        withExtendedLifetime(asset) {}
+        var mono = [Float](repeating: 0, count: late)
+        mono.append(contentsOf: decoded[..<split])
+        mono.append(contentsOf: repeatElement(Float(0), count: resume - late - split))
+        mono.append(contentsOf: decoded[split...])
+        return (url, mono)
+    }
+    @Test func lateAndGappedAudioIsMeasuredAndCutOnTheAssetTimeline() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-training-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let rate = 48_000
+        let (url, mono) = try await lateTake(rate: rate, in: folder)
+        #expect(mono.count == 588_000)
+        let levels = try await VoiceTrainingAudio.levels(source: url)
+        var reference = VoiceTrainingMeter(rate: rate)
+        for value in mono { reference.add(value) }
+        #expect(levels.sampleRate == rate)
+        #expect(levels.duration == 12.25)
+        #expect(levels.frameDb.count == 1_225)
+        #expect(levels.frameDb == reference.frameDb)
+        // Silence before the late start and across the gap; the take opens on a tone and resumes on its quiet floor.
+        let silent = { (level: Double) -> Bool in level < -179 }
+        #expect(levels.frameDb[..<150].allSatisfy(silent))
+        #expect(levels.frameDb[150] > -40)
+        #expect(levels.frameDb[549] > -40)
+        #expect(levels.frameDb[550..<625].allSatisfy(silent))
+        #expect(levels.frameDb[625] > -100)
+        let spans = [VoiceTrainingSpan(startMs: 1_000, endMs: 7_000, snrDb: 30), VoiceTrainingSpan(startMs: 6_500, endMs: 12_250, snrDb: 30)]
+        let samples = try await VoiceTrainingAudio.projectSamples(source: url, sampleRate: rate, spans: spans)
+        #expect(samples.count == spans.count)
+        for (sample, span) in zip(samples, spans) {
+            let first: Int = (span.startMs * rate + 500) / 1_000, last: Int = (span.endMs * rate + 500) / 1_000
+            let cut: [Float] = mono[first..<last].map { (value: Float) -> Float in Float(VoiceLabAssetStore.pcm16(value)) / 32_768 }
+            let expected = try VoiceTrainingAudio.wav(cut, rate: rate)
+            #expect(sample.wav == expected)
+        }
+    }
     @Test func missingMediaAndUnsupportedRatesAreUnreadableSources() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-training-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

@@ -489,7 +489,7 @@ Inputs:
 
 - **Items.** The project transcript's items in stored order, each with `kind`, `start`, `end`, `conf`, `speaker` and `synthetic`. Times are source seconds, not edited times. `synthetic` is true for every item from `firstWordId` to `lastWordId` of any Voice Lab segment.
 - **Excluded ranges.** Source `[start, end]` ranges that must never be used: the `replace` range of every Voice Lab segment, enabled or not, passage or full take. VoxClip never trains on generated audio.
-- **Frame levels.** The take's 10 ms levels in dBFS. Frame `i` covers mono samples `floor(i × rate / 100)` up to, not including, `floor((i + 1) × rate / 100)`, in integer arithmetic, and the take has `floor(samples × 100 / rate)` frames. A frame's level is `20 × log10(max(rms, 1e-9))`, with `rms` the root mean square of its samples in binary64.
+- **Frame levels.** The take's 10 ms levels in dBFS, on the placed source timeline described below. Frame `i` covers mono samples `floor(i × rate / 100)` up to, not including, `floor((i + 1) × rate / 100)`, in integer arithmetic, and the take has `floor(samples × 100 / rate)` frames. A frame's level is `20 × log10(max(rms, 1e-9))`, with `rms` the root mean square of its samples in binary64.
 - **Duration.** The take's source duration in seconds.
 
 Every time is first converted to whole milliseconds, `ms(t) = floor(t × 1000 + 0.5)` in binary64. Everything after that is integer arithmetic, except the SNR.
@@ -518,6 +518,8 @@ Every time is first converted to whole milliseconds, `ms(t) = floor(t × 1000 + 
 The result has `status` (`ok` or `belowMinimum`), `availableMs`, `selectedMs` and the selected spans in source order, each with `startMs`, `endMs` and `snrDb`. For tests and diagnostics it also lists the qualifying spans and the rejected pieces in source order, each rejected piece with its `reason` (`short`, `unsplittable` or `lowSnr`) and `snrDb`.
 
 For the analysis, Media decodes the take once and streams it into the frame levels; it never holds the whole take in memory. The analysis runs on device when the sheet opens from a project, needs no network and is free. Media then cuts each selected span from the same mono mix, at samples `floor((startMs × rate + 500) / 1000)` up to, not including, `floor((endMs × rate + 500) / 1000)` in integer arithmetic. A cut therefore lasts 5 to 30 s in samples, and its WAV records `seconds` as its sample count over the rate.
+
+The levels and the cuts use the same placed source timeline, the one transcript times use. Each decoded frame is placed by the §7.2 extraction rule, with its origin: the first at `round_half_up(position)`, a later one at `previousEnd` when it is within one tick of it. The mono stream starts at source sample 0. Silence fills the time before a late first frame and any timestamp gap, and overlap, including samples before source zero, is skipped. So mono sample `s` of the levels is mono sample `s` of every cut, and audio that starts late or has a gap stays aligned with its transcript. Unlike a voice-changer chunk, a cut does not refuse a gap: it holds the silence the levels measured.
 
 #### 6.5.2 Choosing the source in the sheet
 
