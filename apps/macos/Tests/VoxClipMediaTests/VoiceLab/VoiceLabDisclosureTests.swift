@@ -137,6 +137,7 @@ import VoxClipCore
         #expect(result.sidecarFilename == "render.mp4.provenance.json")
         let bytes = try Data(contentsOf: stage)
         #expect(result.sha256 == SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
+        #expect(VoiceLabDisclosureWriter.isLabelled(stage) && !VoiceLabDisclosureWriter.isLabelled(native))
         let packet = try extractTopLevelXMP(bytes)
         let xml = try XMLDocument(data: packet)
         #expect(try xml.nodes(forXPath: "//*[local-name()='Description']/@*[local-name()='DigitalSourceType']").first?.stringValue == VoiceLabDisclosureWriter.digitalSourceType)
@@ -189,6 +190,7 @@ import VoxClipCore
                 project: project, prepared: prepared, appVersion: "0.1.0")
         }
         #expect(try Data(contentsOf: paid) == paidBytes)
+        #expect(!VoiceLabDisclosureWriter.isLabelled(paid) && !VoiceLabDisclosureWriter.isLabelled(sizeZero))
         #expect(!FileManager.default.fileExists(atPath: failed.path))
         #expect(try Data(contentsOf: destination) == Data("prior destination".utf8))
         #expect(FileManager.default.fileExists(atPath: native.path))
@@ -204,6 +206,34 @@ import VoxClipCore
             } catch { return false }
         }.value
         #expect(cancelled)
+    }
+
+    /// voice-lab.md §6.5.1: own-voice training refuses media whose XMP names a trained-algorithmic source, in the
+    /// top-level UUID box or in QuickTime's `moov/udta/XMP_`, and ignores other boxes.
+    @Test func trainedAlgorithmicXMPLabelsAFileInEitherPlace() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-label-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        func box(_ kind: String, _ body: Data) -> Data {
+            var data = Data(withUnsafeBytes(of: UInt32(8 + body.count).bigEndian, Array.init)); data.append(Data(kind.utf8)); data.append(body); return data
+        }
+        let xmpUUID = Data([0xbe, 0x7a, 0xcf, 0xcb, 0x97, 0xa9, 0x42, 0xe8, 0x9c, 0x71, 0x99, 0x94, 0x91, 0xe3, 0xaf, 0xac])
+        let generated = VoiceLabDisclosureWriter.xmpPacket()
+        let camera = Data(String(decoding: generated, as: UTF8.self).replacingOccurrences(of: "compositeWithTrainedAlgorithmicMedia", with: "digitalCapture").utf8)
+        let head = box("ftyp", Data("isom".utf8) + Data(count: 4))
+        let cases: [(Data, Bool)] = [
+            (head + box("moov", box("trak", Data(count: 8))) + box("mdat", Data(count: 16)) + box("uuid", xmpUUID + generated), true),
+            (head + box("moov", box("udta", box("XMP_", generated))) + box("mdat", Data(count: 16)), true),
+            (head + box("moov", Data()) + box("uuid", xmpUUID + camera), false),
+            (head + box("moov", Data()) + box("uuid", Data(count: 16) + generated), false),
+            (head + box("free", generated), false),
+        ]
+        for (index, (bytes, labelled)) in cases.enumerated() {
+            let url = root.appendingPathComponent("case-\(index).mp4")
+            try bytes.write(to: url)
+            #expect(VoiceLabDisclosureWriter.isLabelled(url) == labelled)
+        }
+        #expect(!VoiceLabDisclosureWriter.isLabelled(root.appendingPathComponent("missing.mp4")))
     }
 
     @Test(arguments: [false, true])

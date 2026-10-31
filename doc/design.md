@@ -1032,7 +1032,7 @@ From the top:
    - Its accessible description reads "one becomes on Sunday, seven becomes five, …".
    - Under the diff, one fit meter line per voice hunk in 11 `text.secondary`: "about 4.3 s for a 4.1 s gap: fits" or "about 4.3 s for a 4.1 s gap: will change length" (voice-lab.md §8.9.1). With more than one hunk, each line starts with that hunk's new words in quotes, for example "“on Sunday” · about 1.2 s for a 1.1 s gap: fits". It updates as the user types, and nothing is sent.
    - The transcript does not render proposed words; only accepted replacements appear there.
-4. **Voice.** A pop-up (macOS) or `ComboBox` (Windows) reading "My voice · consent Oct 12", with the date in `text.secondary`. With no active consented voice, it reads "No voice yet" with **Create Your Voice… (2 min)**, which opens the voice-lab.md §6 flow, and Generate is disabled.
+4. **Voice.** A pop-up (macOS) or `ComboBox` (Windows) reading "My voice · consent Oct 12", with the date in `text.secondary`. With no active consented voice, it reads "No voice yet" with **Create Your Voice…**, which opens the voice-lab.md §6 flow with this project's audio as the default training source (§6.5), and Generate is disabled.
 5. **Takes.**
    - **Header:** "Takes", with a text button **Generate Takes · ≈ $0.02** before any takes exist, or **Generate Again · ≈ $0.02** after. Its tooltip and accessible name are "Generate up to 3 new takes, about $0.02". Under it, in 11 `text.secondary`: "Sends the new words and a short audio check to ElevenLabs with your key. No video." The QA re-transcription in voice-lab.md §8.11 sends audio.
    - **The list:** single choice (macOS `List` with selection; Windows `ListView` with `SelectionMode="Single"`). The best take is preselected and plays once.
@@ -1482,7 +1482,8 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Rewrite: no take passed | Rewrite panel | "These takes didn't sound right. Try different wording or re-record." [Generate Again · ≈ {cost}] |
 | Rewrite: failed take | Rewrite panel row | "Take {i} didn't pass the speech check." [Try Another · ≈ {cost}] |
 | Rewrite: length changed | Rewrite panel | "Take {i} runs {s} s longer than the words it replaces. Choose how the video keeps up." For a shorter take: "Take {i} runs {s} s shorter than the words it replaces. Choose how the video keeps up." Options as §6.3 |
-| Rewrite: no voice | Rewrite panel, Voice row | "No voice yet" [Create Your Voice… (2 min)] |
+| Rewrite: no voice | Rewrite panel, Voice row | "No voice yet" [Create Your Voice…] |
+| Rewrite: no voice for this language | Rewrite panel, Voice row | "Your voice can't be used in this project's language yet. It works in English projects." No button (voice-lab.md §6.5.2) |
 | Rewrite: too much | Rewrite panel | "That's a lot to re-voice. Re-record these sentences instead." |
 | Rewrite: no room tone | Rewrite panel | "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead." Generate is disabled. [Clean Audio…] replaces the last two sentences once Clean audio (M2) ships |
 | Rewrite: too close to the take edge | Rewrite panel | "This change is too close to the {start/end} of the take to blend in. Re-record this sentence instead." Generate is disabled |
@@ -1501,6 +1502,13 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Voice Lab: silent microphone | Create Your Voice, Warning | macOS: "The microphone sent only silence. Check that it isn't muted, and that System Settings → Privacy & Security → Microphone allows VoxClip." Windows: "The microphone sent only silence. Check that it isn't muted, and that Settings → Privacy & security → Microphone lets desktop apps use it." [Open Settings] |
 | Voice Lab: waiting for the microphone (Windows) | Create Your Voice | "Waiting for the microphone…" after 1 s, informational, with Cancel enabled and no timeout |
 | Voice Lab: recording the statement | Create Your Voice | Teleprompter "Read this aloud", with the caption "If you use a screen reader, wear headphones so it isn't recorded." Windows announces "Recording. Read the statement aloud." before capture starts, announces nothing during the take, and shows "Microphone: {device name}" (display only, never logged) |
+| Voice Lab: training source | Create Your Voice, after verification | Two choices: "Use this project's audio (recommended)" with "{n} s of clear speech found in {project name}", and "Record a read-aloud (about 90 s)" (voice-lab.md §6.5.2). While the project is analysed: "Finding clear speech in {project name}…" |
+| Voice Lab: too little project speech | Create Your Voice, under the project choice | "This project has only {n} s of clear speech. Record a read-aloud instead." With none: "This project has no clear speech to use. Record a read-aloud instead." |
+| Voice Lab: project audio unreadable | Create Your Voice, under the project choice | "VoxClip can't read this project's audio. Record a read-aloud instead." |
+| Voice Lab: project media labelled AI modified | Create Your Voice, under the project choice | "This project's media is labelled AI modified, so it can't train your voice. Record a read-aloud instead." |
+| Voice Lab: statement verified | Create Your Voice | "Statement verified. Choose your training audio next." when the project option can be chosen, otherwise "Statement verified. Record your training read-aloud next." |
+| Voice Lab: no project audio | Create Your Voice | No project open: "Open a project to use its audio instead." No transcript: "Transcribe this project to use its audio instead." |
+| Voice Lab: project audio doesn't match | Create Your Voice, Warning | "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead." [Record a Read-Aloud]. After the switch the same sentence stays under the disabled project choice |
 | Voice Lab: leaving while recording (Windows) | dialog | "Stop creating your voice? The recording is deleted from this PC." [Stop] [Keep going]; Keep going is the default and Esc keeps going |
 
 ---

@@ -8,6 +8,7 @@ import Testing
 private final class ConsentRequestLog: Sendable { let value = Mutex<[String]>([]) }
 private final class ConsentTranscriptionCount: Sendable { let value = Mutex(0) }
 private final class SpeakerAvailability: Sendable { let value = Mutex(true) }
+private final class ConsentUpload: Sendable { let value = Mutex<Data?>(nil) }
 private final class ConsentMutableKeys: KeyProvider, Sendable {
     let value = Mutex("synthetic-creator-key")
     func key(for provider: String) async throws -> String? { value.withLock { $0 } }
@@ -60,7 +61,7 @@ struct VoiceConsentTests {
         let adapter = ElevenLabsTranscriber(keys: SpeechTestKeys(value: nil), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog())
         return try await adapter.mapResponse(FixtureLoader.data("fixtures/voice-lab/consent-scribe.json"), diarize: false)
     }
-    private func client(_ calls: ConsentRequestLog, deletionStatus: Int = 200, verificationRequired: Bool = false, enforceCapabilities: Bool = true) -> ElevenLabsVoiceLab {
+    private func client(_ calls: ConsentRequestLog, deletionStatus: Int = 200, verificationRequired: Bool = false, enforceCapabilities: Bool = true, upload: ConsentUpload? = nil) -> ElevenLabsVoiceLab {
         let base = SpeechStubHTTP.register { request in
             let path = request.url?.path ?? ""
             calls.value.withLock { $0.append((request.httpMethod ?? "") + " " + path) }
@@ -70,6 +71,7 @@ struct VoiceConsentTests {
                 #expect(request.httpMethod == "POST")
                 #expect(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data") == true)
                 let body = try VoiceLabRequestFixtures.body(request)
+                upload?.value.withLock { $0 = body }
                 let text = String(decoding: body, as: UTF8.self)
                 #expect(text.contains("consent-statement.wav")); #expect(text.contains("VoxClip own-voice clone. Consent sha256:"))
                 return (200, [:], Data("{\"voice_id\":\"fixtureOwnVoice\",\"requires_verification\":\(verificationRequired)}".utf8))
@@ -288,6 +290,119 @@ struct VoiceConsentTests {
             #expect(record.samples.count == 1)
             #expect(record.samples[0].seconds == 10)
         }
+    }
+    private func span(seconds: Int, fill: Int, snrDb: Double = 30) -> VoiceTrainingSample {
+        .init(wav: VoiceLabRequestFixtures.wav(rate: 16_000, frames: seconds * 16_000, fill: fill), speech16k: [], seconds: Double(seconds), source: "project", snrDb: snrDb)
+    }
+    /// §15 test 20: project spans below τ are dropped before any request, and the rest follow the statement in source order.
+    @Test func projectSpansFollowTheStatementInSourceOrderAfterTheSpeakerMatch() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let upload = ConsentUpload(); let store = storage(root); let client = client(calls, upload: upload)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        // A low SNR would ask for noise removal on a read-aloud; project spans always pass 20 dB and send false (§6.5 step 5).
+        let spans = [span(seconds: 15, fill: 1_000, snrDb: 15), span(seconds: 10, fill: -1_000), span(seconds: 10, fill: 2_000), span(seconds: 8, fill: 3_000)]
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: spans, enabled: true)
+        #expect(await service.trainingSeconds(quote: quote) == 33)
+        #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
+        let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+        #expect(record.samples.map(\.source) == ["project", "project", "project"])
+        #expect(record.samples.map(\.seconds) == [15, 10, 8])
+        #expect(record.samples.map(\.sha256) == [spans[0], spans[2], spans[3]].map { VoiceLabFingerprint.bytes($0.wav) })
+        #expect(record.samples.allSatisfy { $0.speakerScore >= 0.8 })
+        let body = try #require(upload.value.withLock { $0 })
+        let positions = try [wav, spans[0].wav, spans[2].wav, spans[3].wav].map { try #require(body.range(of: $0)).lowerBound }
+        #expect(positions == positions.sorted())
+        #expect(body.range(of: spans[1].wav) == nil)
+        #expect(String(decoding: body, as: UTF8.self).contains("name=\"remove_background_noise\"\r\n\r\nfalse\r\n"))
+    }
+    /// §6.6: project spans keep at least 30 s after the speaker match, or nothing is sent and nothing is refilled.
+    @Test(arguments: [29, 30]) func projectSpansNeedThirtySecondsAfterTheSpeakerMatch(keptSeconds: Int) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let spans = [span(seconds: 15, fill: 1_000), span(seconds: 20, fill: -1_000), span(seconds: keptSeconds - 15, fill: 2_000)]
+        if keptSeconds < 30 {
+            await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.prepare(recordID: id, displayName: "Example", samples: spans, enabled: true) }
+        } else {
+            let quote = try await service.prepare(recordID: id, displayName: "Example", samples: spans, enabled: true)
+            #expect(await service.trainingSeconds(quote: quote) == 30)
+        }
+        #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
+    }
+    /// §6.6: a project span whose mean passes but whose 12–18 s part is another voice is dropped; a read-aloud of the
+    /// same audio is still scored on its mean.
+    @Test func projectSpansMustMatchInEveryPart() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let upload = ConsentUpload(); let store = storage(root); let client = client(calls, upload: upload)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        // 30 s at 16 kHz: the user (positive) for 12 s, another voice (negative) for 6 s, then the user again.
+        var mixed = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 480_000, fill: 1_000)
+        for frame in 192_000..<288_000 { mixed.replaceSubrange((44 + frame * 2)..<(46 + frame * 2), with: [0x18, 0xfc]) }
+        let owner = try await check.embedding(VoiceConsentAudio.pcm16k(wav))
+        let mean = try VoiceSpeakerCheck.cosine(owner, try await check.embedding(VoiceConsentAudio.pcm16k(mixed)))
+        #expect(mean >= 0.8)
+        let mixedSpan = VoiceTrainingSample(wav: mixed, speech16k: [], seconds: 30, source: "project", snrDb: 30)
+        await #expect(throws: VoiceConsentError.speakerMismatch) {
+            try await service.prepare(recordID: id, displayName: "Example", samples: [mixedSpan, span(seconds: 25, fill: 2_000)], enabled: true)
+        }
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: [mixedSpan, span(seconds: 15, fill: 2_000), span(seconds: 15, fill: 3_000)], enabled: true)
+        #expect(await service.trainingSeconds(quote: quote) == 30)
+        let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+        #expect(record.samples.map(\.seconds) == [15, 15])
+        let body = try #require(upload.value.withLock { $0 })
+        #expect(body.range(of: mixed) == nil)
+    }
+    /// Cuts of 7,001, 7,001, 7,001 and 8,997 ms at 44.1 kHz last 29.99997 s in samples; their milliseconds add to 30 s,
+    /// as the §6.5.1 selection counted them.
+    @Test func projectTotalsAddTheWholeMillisecondsOfEachCut() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let spans = [308_744, 308_744, 308_744, 396_767].map { frames in
+            VoiceTrainingSample(wav: VoiceLabRequestFixtures.wav(rate: 44_100, frames: frames, fill: 1_000), speech16k: [], seconds: Double(frames) / 44_100, source: "project", snrDb: 30)
+        }
+        #expect(spans.reduce(0) { $0 + $1.seconds } < 30)
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: spans, enabled: true)
+        #expect(await service.trainingSeconds(quote: quote) == 30)
+    }
+    @Test func trainingSamplesShareOneSourceAndItsLimits() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        let readAloud = VoiceTrainingSample(wav: VoiceLabRequestFixtures.wav(rate: 16_000, frames: 240_000, fill: 4_000), speech16k: [], seconds: 15, source: "readAloud", snrDb: 25)
+        let refused: [[VoiceTrainingSample]] = [
+            [span(seconds: 30, fill: 1_000), span(seconds: 30, fill: 1_000), readAloud],
+            [readAloud, readAloud, readAloud, span(seconds: 15, fill: 1_000)],
+            [span(seconds: 29, fill: 1_000)],
+            (0..<5).map { _ in span(seconds: 25, fill: 1_000) },
+            [span(seconds: 30, fill: 1_000), span(seconds: 4, fill: 1_000)],
+            [readAloud, readAloud],
+            [VoiceTrainingSample(wav: readAloud.wav, speech16k: [], seconds: 15, source: "upload", snrDb: 25)] + [readAloud, readAloud, readAloud],
+        ]
+        for samples in refused {
+            await #expect(throws: VoiceLabError.invalidInput) { try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true) }
+        }
+        #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
     }
     @Test func cachedGuardStillRequiresInstalledModel() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }

@@ -13,19 +13,45 @@ public enum SpeakerAudio {
     public static let windowSize = 48_000
     public static let hopSize = 24_000
 
+    public static let partWindows = 3
+
     public static func embedding(_ pcm16k: [Float], using embedder: any SpeakerEmbedder) async throws -> [Float] {
+        let embedded = try await windowEmbeddings(pcm16k, using: embedder)
+        return try normalized(sum(embedded[...], dimension: embedder.dimension))
+    }
+
+    /// voice-lab.md §6.6 for project spans: the span's embedding and one per part of `partWindows` consecutive windows,
+    /// about the six seconds each S6 calibration clip held. A last part of a single window joins the part before it.
+    public static func partEmbeddings(_ pcm16k: [Float], using embedder: any SpeakerEmbedder) async throws -> (whole: [Float], parts: [[Float]]) {
+        let embedded = try await windowEmbeddings(pcm16k, using: embedder)
+        var starts = Array(stride(from: 0, to: embedded.count, by: partWindows))
+        if starts.count > 1, embedded.count - starts[starts.count - 1] == 1 { starts.removeLast() }
+        let parts = try starts.indices.map { index in
+            let end = index + 1 < starts.count ? starts[index + 1] : embedded.count
+            return try normalized(sum(embedded[starts[index]..<end], dimension: embedder.dimension))
+        }
+        return (try normalized(sum(embedded[...], dimension: embedder.dimension)), parts)
+    }
+
+    private static func windowEmbeddings(_ pcm16k: [Float], using embedder: any SpeakerEmbedder) async throws -> [[Float]] {
         try await embedder.validateAvailability()
         guard pcm16k.count >= windowSize, pcm16k.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
         let voiced = try await embedder.voicedSamples(pcm16k)
         guard voiced.count >= windowSize, (1...16_384).contains(embedder.dimension) else { throw VoiceConsentError.speakerMismatch }
-        var mean = [Float](repeating: 0, count: embedder.dimension)
+        var embedded: [[Float]] = []
         for window in try windows(voiced) {
             try Task.checkCancellation()
             let result = try await embedder.embed(window)
-            guard result.count == mean.count, result.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
-            for index in mean.indices { mean[index] += result[index] }
+            guard result.count == embedder.dimension, result.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+            embedded.append(result)
         }
-        return try normalized(mean)
+        return embedded
+    }
+
+    private static func sum(_ embedded: ArraySlice<[Float]>, dimension: Int) -> [Float] {
+        var mean = [Float](repeating: 0, count: dimension)
+        for result in embedded { for index in mean.indices { mean[index] += result[index] } }
+        return mean
     }
 
     public static func windows(_ speech: [Float]) throws -> [[Float]] {

@@ -5,6 +5,8 @@ import VoxClipCore
     @Bindable var session: RewriteSession
     @Bindable var generation: RewriteGenerationSession
     let generate: () -> Void
+    /// The no-voice entry (design §6.3 item 4): it opens voice-lab.md §6 with this project's audio as the default source.
+    static let createVoiceTitle = "Create Your Voice…"
     var body: some View {
         consentObservedContent
             .onChange(of: generation.announcement) { _, message in
@@ -31,11 +33,14 @@ import VoxClipCore
     private var content: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Voice").font(.system(size: 12, weight: .semibold))
-            if generation.voices.isEmpty {
+            if generation.voices.isEmpty, session.editor.app.voiceLabSession.voicesUnavailable(projectLanguage: session.project.transcript?.language) {
+                // A voice made from here would be bound to English and never listed for this project (voice-lab.md §6.5.2).
+                Text(VoiceLabSession.languageUnavailableCopy).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else if generation.voices.isEmpty {
                 Text("No voice yet").foregroundStyle(.secondary)
-                Button("Create Your Voice… (2 min)") {
+                Button(Self.createVoiceTitle) {
                     openVoxClipSettings(pane: "voiceLab")
-                    session.editor.app.voiceLabSession.showEnrollment = true
+                    session.editor.app.voiceLabSession.openEnrollment()
                 }
                 Button("Refresh voices") { Task { await generation.discover(language: session.project.transcript?.language ?? "en") } }
             } else {
@@ -124,7 +129,7 @@ import VoxClipCore
         VStack(alignment: .leading, spacing: 12) {
             Text("Voice").font(.system(size: 12, weight: .semibold))
             Text(generation.voices.first?.voiceName ?? "No voice yet").font(.system(size: 12))
-            if generation.voices.isEmpty { Text("Create Your Voice… (2 min)").foregroundStyle(DesignValues.color("accent.text")) }
+            if generation.voices.isEmpty { Text(Self.createVoiceTitle).foregroundStyle(DesignValues.color("accent.text")) }
             Text("Takes").font(.system(size: 12, weight: .semibold))
             Text(generation.buttonTitle).font(.system(size: 12, weight: .medium))
             Text("Sends the new words and a short audio check to ElevenLabs with your key. No video.")

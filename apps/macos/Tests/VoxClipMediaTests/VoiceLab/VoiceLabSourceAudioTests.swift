@@ -358,6 +358,29 @@ import VoxClipCore
         #expect(Array(samples(accumulator.wav).prefix(1_840)) == expected)
     }
 
+    @Test func trainingCutsLeaveSilenceForALateStartAndAGap() throws {
+        let content: [Float] = (0..<960).map { (frame: Int) -> Float in Self.left(frame) }
+        let pcm: [Int16] = content.map { (sample: Float) -> Int16 in VoiceLabAssetStore.pcm16(sample) }
+        func silence(_ count: Int) -> [Int16] { [Int16](repeating: 0, count: count) }
+        var accumulator = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 1, startSample: 4_800,
+                                                                   endSample: 9_600, frames: 4_800, silenceGaps: true)
+        try accumulator.append(Self.floatBuffer(content, time: CMTime(value: 5_000, timescale: 48_000)))
+        #expect(accumulator.next == 5_960)
+        try accumulator.append(Self.floatBuffer(content, time: CMTime(value: 9_000, timescale: 48_000)))
+        #expect(accumulator.isComplete)
+        var expected: [Int16] = silence(200)
+        expected.append(contentsOf: pcm)
+        expected.append(contentsOf: silence(3_040))
+        expected.append(contentsOf: pcm.prefix(600))
+        #expect(samples(accumulator.wav) == expected)
+        // A frame placed past the end leaves the rest of the cut silent.
+        var tail = VoiceLabSourceAudio.ConversionAccumulator(rate: 48_000, channels: 1, startSample: 0,
+                                                             endSample: 960, frames: 960, silenceGaps: true)
+        try tail.append(Self.floatBuffer(content, time: CMTime(value: 2_000, timescale: 48_000)))
+        #expect(tail.isComplete)
+        #expect(samples(tail.wav) == silence(960))
+    }
+
     @Test func accumulatorReadsStereoPCMAndWritesEqualWeightMono() throws {
         var content: [Float] = []
         for frame in 0..<960 { content.append(Self.left(frame)); content.append(Self.right(frame)) }

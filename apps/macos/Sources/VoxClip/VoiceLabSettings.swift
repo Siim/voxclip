@@ -100,7 +100,7 @@ import VoxClipMedia
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(context)
             }
-            Button("Create Your Voice…") { session.showEnrollment = true }.disabled(session.busy || session.planMessage != nil || session.unsavedRecord != nil || !session.pendingCreations.isEmpty)
+            Button("Create Your Voice…") { session.openEnrollment() }.disabled(session.busy || session.planMessage != nil || session.unsavedRecord != nil || !session.pendingCreations.isEmpty)
             Text(session.speakerMessage).font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -227,7 +227,7 @@ import VoxClipMedia
             switch action {
             case .subscription: Text("Reads your subscription, plan, available voice slots and pending voice verification status. No audio, video or transcript is sent. This check is free.")
             case .verify: Text("Sends only the statement recording to ElevenLabs Scribe v2. No video is sent. \(session.verificationCost)")
-            case .create: Text("Checks your plan, then sends the consent recording and training audio to create your own voice. No video is sent. \(session.creationCost)")
+            case .create: Text(session.creationCopy)
             case .delete: Text("Deletes this voice from ElevenLabs, removes the local statement recording, and marks the local consent record deleted. Existing rendered takes stay playable and labelled. This action is free.")
             case .removeLocal: Text("Removes the local consent statement and records that the remote state is unknown. The voice may stay in your ElevenLabs account. This action is free.")
             case .stopLooking: Text("Stops recovery without deleting any voice from ElevenLabs. Records that the remote state is unknown; the voice may stay in your ElevenLabs account. This action is free.")
@@ -263,8 +263,11 @@ import VoxClipMedia
                     Text(session.speakerMessage).font(.caption)
                     attestations
                     if let statement = session.statement {
-                        Text(session.verified ? "Training read-aloud · about 90 seconds" : "Read this aloud").font(.headline)
-                        Text(session.verified ? session.script : statement.text).textSelection(.enabled).accessibilityIdentifier("voice-consent-teleprompter")
+                        if session.verified { trainingChoice }
+                        if !session.verified || session.trainingSource == .readAloud {
+                            Text(session.verified ? "Training read-aloud · about 90 seconds" : "Read this aloud").font(.headline)
+                            Text(session.verified ? session.script : statement.text).textSelection(.enabled).accessibilityIdentifier("voice-consent-teleprompter")
+                        }
                         if statement.language == "et" { Text("Estonian draft — pending the user's review.").font(.caption) }
                     }
                     Text("If you use a screen reader, wear headphones so it isn't recorded.").font(.caption).foregroundStyle(.secondary)
@@ -275,6 +278,9 @@ import VoxClipMedia
                     if let message = session.message { Text(message).textSelection(.enabled) }
                     if session.recorder.failure == .silent {
                         Button("Open Settings") { NSWorkspace.shared.open(MicrophoneError.privacySettingsURL) }
+                    }
+                    if session.projectMismatch && session.trainingSource == .project {
+                        Button("Record a Read-Aloud") { session.useReadAloud() }.disabled(session.busy)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -308,13 +314,25 @@ import VoxClipMedia
             Toggle("I will use it only on videos of myself.", isOn: $session.ownVideosOnly)
         }.disabled(session.statement != nil || session.busy || session.recorder.recording)
     }
+    /// §6.5.2: after verification, this project's audio or a read-aloud.
+    @ViewBuilder private var trainingChoice: some View {
+        if session.offersProjectAudio {
+            Picker("Training audio", selection: Binding(get: { session.trainingSource }, set: { session.chooseTrainingSource($0) })) {
+                Text(VoiceLabSession.projectChoice).tag(VoiceLabSession.TrainingSource.project).disabled(!session.projectChoiceEnabled)
+                Text(VoiceLabSession.readAloudChoice).tag(VoiceLabSession.TrainingSource.readAloud)
+            }.pickerStyle(.radioGroup).labelsHidden().accessibilityLabel("Training audio").disabled(session.busy || session.recorder.recording)
+        }
+        Text(session.projectAudioLine).font(.caption).foregroundStyle(.secondary)
+    }
     @ViewBuilder private var recordingControls: some View {
         if session.recorder.recording {
             ProgressView(value: session.recorder.level).accessibilityLabel("Microphone level")
             Text(String(format: "%.1f seconds", session.recorder.seconds)).monospacedDigit()
             Button("Stop recording") { Task { await session.stopRecording() } }
         } else if session.verified {
-            Button(session.trainingReady ? "Record training again" : "Record training read-aloud") { Task { await session.beginTraining() } }.disabled(session.busy)
+            if session.trainingSource == .readAloud {
+                Button(session.trainingReady ? "Record training again" : "Record training read-aloud") { Task { await session.beginTraining() } }.disabled(session.busy)
+            }
         } else {
             HStack {
                 Button(session.statement == nil ? "Record statement" : "Record statement again") { Task { await session.beginStatement() } }.disabled(!session.canRecord)

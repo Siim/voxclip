@@ -38,6 +38,7 @@ public actor VoiceEnrollment {
         let policy: OwnVoicePolicy
         let verified: Verified
         let samples: [VoiceConsentRecord.Sample]
+        let trainingSeconds: Double
         let embedding: [Float]
     }
     public init(store: VoiceConsentStore, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck = .unavailable, reconciler: VoiceOperationReconciler? = nil) {
@@ -84,9 +85,17 @@ public actor VoiceEnrollment {
         guard speaker.available, let threshold = speaker.threshold else { throw VoiceConsentError.speakerUnavailable }
         guard let verification = verified[recordID] else { throw VoiceLabError.consentRequired }
         guard speaker.supports(language: verification.statement.language) else { throw VoiceConsentError.speakerUnavailable }
-        guard samples.count <= 24, !samples.isEmpty,
-              samples.allSatisfy({ $0.seconds.isFinite && (5...30).contains($0.seconds) && ["readAloud", "project"].contains($0.source) && $0.snrDb.isFinite }),
-              (60...120).contains(samples.reduce(0) { $0 + $1.seconds }) else { throw VoiceLabError.invalidInput }
+        // §6.5–§6.6: one source per clone. A read-aloud lasts 60–120 s and keeps 10 s; project spans (§6.5.1) total
+        // 30–120 s and must keep 30 s after the speaker match, with no refill from unselected spans. Project totals add
+        // whole milliseconds, as the selection does, so a cut's sub-millisecond rounding cannot move a set across 30 s.
+        let source = samples.first?.source
+        let project = source == "project"
+        func total(_ list: [VoiceTrainingSample]) -> Double {
+            project ? Double(list.reduce(0) { $0 + Int(($1.seconds * 1_000 + 0.5).rounded(.down)) }) / 1_000 : list.reduce(0) { $0 + $1.seconds }
+        }
+        guard samples.count <= 24, !samples.isEmpty, source == "readAloud" || project,
+              samples.allSatisfy({ $0.seconds.isFinite && (5...30).contains($0.seconds) && $0.source == source && $0.snrDb.isFinite }),
+              (project ? 30...120 : 60...120).contains(total(samples)) else { throw VoiceLabError.invalidInput }
         busy = true; defer { busy = false }
         let statementWAV = try await store.statement(recordID: recordID)
         guard VoiceLabFingerprint.bytes(statementWAV) == verification.hash else { throw VoiceConsentError.invalidRecord }
@@ -96,30 +105,36 @@ public actor VoiceEnrollment {
         for sample in samples {
             let format = try ElevenLabsVoiceLab.validateWAV(sample.wav, maxBytes: 16 * 1_024 * 1_024)
             guard abs(Double(format.frames) / Double(format.rate) - sample.seconds) < 0.001 else { throw VoiceLabError.invalidAudio }
-            let candidate: [Float]
-            do { candidate = try await speaker.embedding(VoiceConsentAudio.pcm16k(sample.wav)) }
-            catch VoiceConsentError.speakerMismatch { continue }
-            let score = try VoiceSpeakerCheck.cosine(owner, candidate)
+            let candidate: (whole: [Float], parts: [[Float]])
+            do {
+                let pcm = try VoiceConsentAudio.pcm16k(sample.wav)
+                candidate = project ? try await speaker.partEmbeddings(pcm) : (try await speaker.embedding(pcm), [])
+            } catch VoiceConsentError.speakerMismatch { continue }
+            // Without speaker labels a project span can hold another voice beside the user's, and the mean of its windows
+            // can still pass. Each part must pass on its own, and the span scores as its lowest part.
+            let score = try candidate.parts.reduce(VoiceSpeakerCheck.cosine(owner, candidate.whole)) { try min($0, VoiceSpeakerCheck.cosine(owner, $1)) }
             if score >= threshold {
                 accepted.append(sample)
                 hashes.append(.init(sha256: VoiceLabFingerprint.bytes(sample.wav), seconds: sample.seconds, source: sample.source, speakerScore: score))
             }
         }
-        guard !accepted.isEmpty, accepted.reduce(0.0, { $0 + $1.seconds }) >= 10 else { throw VoiceConsentError.speakerMismatch }
+        guard !accepted.isEmpty, total(accepted) >= (project ? 30 : 10) else { throw VoiceConsentError.speakerMismatch }
         let name = try VoiceConsentText.displayName(displayName)
         let prefix = try VoiceConsentText(shared: SharedResources.locate()).statementOpening(name: name, language: verification.statement.language)
         guard verification.statement.text.hasPrefix(prefix) else { throw VoiceLabError.consentRequired }
         let request = VoiceLabCloneRequest(displayName: name, language: verification.statement.language,
                                           samples: [.init(role: .consentStatement, wav: statementWAV)] + accepted.map { .init(role: .training, wav: $0.wav) },
-                                          createdAt: now, removeBackgroundNoise: accepted.contains { $0.snrDb < 20 }, recoveryNonce: recordID)
+                                          createdAt: now, removeBackgroundNoise: !project && accepted.contains { $0.snrDb < 20 }, recoveryNonce: recordID)
         let policy = OwnVoicePolicy(recordID: recordID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         let quote = try await client.prepareClone(request, policy: policy, requestID: UUID())
         let proof = try await speaker.enrollmentMatch(store: store, recordID: recordID, language: verification.statement.language, statement: statementWAV, sample: accepted[0].wav)
         let authorization = try policy.authorized(for: quote, proof: proof)
         pending.removeAll()
-        pending[quote.id] = Pending(request: request, policy: authorization, verified: verification, samples: hashes, embedding: owner)
+        pending[quote.id] = Pending(request: request, policy: authorization, verified: verification, samples: hashes, trainingSeconds: total(accepted), embedding: owner)
         return quote
     }
+    /// The training seconds a prepared quote sends, after the speaker match: the §6.5.2 confirmation's `m`.
+    public func trainingSeconds(quote: VoiceLabQuote) -> Double? { pending[quote.id]?.trainingSeconds }
     public func create(quote: VoiceLabQuote, approved: Bool, enabled: Bool, appVersion: String) async throws -> VoiceConsentRecord {
         guard enabled, approved else { throw VoiceLabError.consentRequired }
         guard speaker.available, let threshold = speaker.threshold, let embedder = speaker.embedder else { throw VoiceConsentError.speakerUnavailable }
