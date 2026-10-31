@@ -4,10 +4,20 @@ using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
 internal sealed record RewriteConnector(ILlmConnector Connector, string Model, string Name, string Group, string Plan);
+
+/// <summary>What a take run reads from the source track (voice-lab.md §8.7–8.9): a track of <paramref name="Frames"/> frames at
+/// <paramref name="SampleRate"/>, the window, its §8.9.2 lendable silences, which the fit can borrow, and the transcript the
+/// room-tone search reads. <see cref="VoiceLabSourceAudio.RewriteSourceAsync"/> answers it at any length.</summary>
+internal sealed record RewriteSourceRequest(long Frames, int SampleRate, VoiceLabWindow Window, double? IncomingSilence, double? OutgoingSilence,
+    IReadOnlyList<TimedWord> Items);
+
+/// <summary>Reads a <see cref="RewriteSourceRequest"/>: the regions a take run reads, at absolute frames, and the whole track's envelope.</summary>
+internal delegate Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceReader(RewriteSourceRequest request, CancellationToken ct);
 
 internal sealed class RewriteSession : IDisposable
 {
@@ -81,25 +91,28 @@ internal sealed class RewriteSession : IDisposable
     {
         if (Generation is { } generation) _ = generation.SelectionChangedAsync($"source:{Editor.SelectionStart}:{Editor.SelectionEnd}");
     }
-    internal async Task<VoiceLabTakeInput?> GenerationInputAsync(string recordId, string modelId, uint seed,
-        bool providerConsent, Func<CancellationToken, Task<float[]>> source, CancellationToken ct)
+    /// <summary>The take run's input for the one reviewed voice hunk. <paramref name="source"/> reads only the regions the run
+    /// needs (<see cref="RewriteSourceRequest"/>), so a source of any length works, as on the Mac.</summary>
+    internal async Task<VoiceLabTakeInput?> GenerationInputAsync(string recordId, string modelId, uint seed, bool providerConsent,
+        RewriteSourceReader source, CancellationToken ct)
     {
         if (!GenerationIsCurrent || Review is not { } review || review.Budget.Copy is not null || review.VoiceHunks.Count == 0) return null;
-        // Only new takes read the source audio; a proposal, Apply Cuts and Apply Correction work at any length (RewriteSourceLimit).
-        if (RewriteSourceLimit.Refusal(Project) is { } tooLong) throw new RewriteGenerationException(tooLong);
         if (review.VoiceHunks.Count != 1)
             throw new RewriteGenerationException("Rewrite one passage at a time. Keep one changed passage, then generate takes.");
         var hunk = review.VoiceHunks[0];
         if (hunk.Window is not { } window || hunk.PatchText is not { } text)
             throw new RewriteGenerationException(hunk.Refusal ?? "This change can't be placed in this take. Your edits are saved.");
+        var rate = Project.Media.Source.Audio?.SampleRate ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+        var frames = checked((long)Math.Floor(Project.Media.Source.DurationSeconds * rate + 0.5));
+        // The fit can borrow this silence, so the decoded source must reach past it.
+        var silence = VoiceLabWindowPlanner.LendableSilence(Project, Scope, window);
         var version = revision;
-        var samples = await source(ct);
+        var read = await source(new(frames, rate, window, silence.Incoming, silence.Outgoing, Transcript), ct);
         ct.ThrowIfCancellationRequested();
         if (!GenerationIsCurrent || revision != version) throw new OperationCanceledException(ct);
-        var silence = VoiceLabWindowPlanner.LendableSilence(Project, Scope, window);
         return new(text, modelId, recordId, Project.Transcript?.Language ?? "en", seed, Project.Media.Source.ContentKey,
-            samples, Project.Media.Source.Audio?.SampleRate ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio),
-            Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window, silence.Incoming, silence.Outgoing, false, providerConsent);
+            read.Excerpt, read.Envelope, rate, Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window,
+            silence.Incoming, silence.Outgoing, false, providerConsent);
     }
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
@@ -306,6 +319,7 @@ internal sealed class RewriteSession : IDisposable
             VoiceLabAudioMathException { Code: VoiceLabAudioMathErrorCode.NoVoicedAudio } =>
             "There isn't enough timed speech to estimate this change. Your edits are saved.",
         RewriteGenerationException problem => problem.Message,
+        VoiceLabSourceAudioException source => source.Message + " Your edits are saved.",
         VoiceLabGeometryException => "This change can't be placed in this take. Your edits are saved.",
         VoiceLabLengthBudgetException => "There isn't enough timed speech to estimate this change. Your edits are saved.",
         _ => UiError.Message(exception, "Rewrite")

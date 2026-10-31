@@ -4,7 +4,6 @@ using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
 using Xunit;
 #if DEBUG
-using System.Buffers.Binary;
 using VoxClip.App.Services;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
@@ -45,6 +44,17 @@ public sealed class RewriteGenerationTests
             RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.RoomToneUnavailable)));
         foreach (var error in new Exception[] { new VoiceLabGeometryException(VoiceLabGeometryErrorCode.NoVoicedAudio), new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.NoVoicedAudio) })
             Assert.Equal("There isn't enough timed speech to estimate this change. Your edits are saved.", RewriteSession.Refusal(error));
+    }
+    [Fact]
+    public void SourceAudioRefusalsSayWhatWentWrong()
+    {
+        // As on the Mac (RewriteSession.refusal): the source-audio error's own text, not "Rewrite stopped…".
+        Assert.Equal("The audio cannot be read. Check that the file is still available. Your edits are saved.",
+            RewriteSession.Refusal(new VoxClip.Media.VoiceLab.VoiceLabSourceAudioException(VoxClip.Media.VoiceLab.VoiceLabSourceAudioErrorCode.Unreadable)));
+        Assert.Equal("The source audio's sample rate differs from the project. Reopen the original source. Your edits are saved.",
+            RewriteSession.Refusal(new VoxClip.Media.VoiceLab.VoiceLabSourceAudioException(VoxClip.Media.VoiceLab.VoiceLabSourceAudioErrorCode.RateMismatch)));
+        Assert.Equal("This audio's sample rate is outside the range Voice Lab supports. Your edits are saved.",
+            RewriteSession.Refusal(new VoxClip.Media.VoiceLab.VoiceLabSourceAudioException(VoxClip.Media.VoiceLab.VoiceLabSourceAudioErrorCode.UnsupportedRate)));
     }
 #if DEBUG
     private static string Fixture => Path.Combine(SharedResources.ResolveRoot(), "fixtures", "voice-lab", "take-run-cases.json");
@@ -604,33 +614,26 @@ public sealed class RewriteGenerationTests
         using var owner = new RewriteSession(Editor(), 10, 12, Envelope(), null);
         owner.Edit("much clearer words");
         var hunk = Assert.Single(owner.Review!.VoiceHunks);
-        var input = await owner.GenerationInputAsync("voice", "model", 42, true, _ => Task.FromResult(new float[] { 0.1f, 0.2f }), CancellationToken.None);
+        RewriteSourceRequest? request = null;
+        var read = (VoiceLabSourceExcerpt.Whole(new float[] { 0.1f, 0.2f }), VoiceLabTakeProcessing.Envelope([0.1f, 0.2f], 48_000));
+        var input = await owner.GenerationInputAsync("voice", "model", 42, true, (value, _) => { request = value; return Task.FromResult(read); }, CancellationToken.None);
         Assert.NotNull(input); Assert.Equal(hunk.PatchText, input.Text); Assert.Equal(hunk.Window, input.Window);
+        // The reader gets what the take run reads around: the window, its lendable silence and the transcript, on the whole track.
+        Assert.NotNull(request); Assert.Equal(4_800_000, request.Frames); Assert.Equal(48_000, request.SampleRate); Assert.Equal(hunk.Window, request.Window);
+        Assert.Equal((request.IncomingSilence, request.OutgoingSilence), (input.IncomingSilence, input.OutgoingSilence)); Assert.Same(owner.Transcript, request.Items);
+        Assert.Same(read.Item1, input.Source); Assert.Same(read.Item2, input.SourceEnvelope);
         Assert.Equal("voice", input.RecordId); Assert.Equal("model", input.ModelId); Assert.Equal(42u, input.Seed);
         Assert.Equal(48_000, input.SourceSampleRate); Assert.Equal(owner.Transcript, input.Items); Assert.False(input.CleanAudioOn); Assert.True(input.ProviderConsent);
         using var multiple = new RewriteSession(Editor(), 10, 18, Envelope(), null);
         multiple.Edit("Sunday word11 word12 word13 word14 word15 word16 word17 five");
         Assert.Equal(2, multiple.Review!.VoiceHunks.Count);
         var error = await Assert.ThrowsAsync<RewriteGenerationException>(() => multiple.GenerationInputAsync("voice", "model", 1, true,
-            _ => throw new InvalidOperationException("Must refuse before decoding."), CancellationToken.None));
+            (_, _) => throw new InvalidOperationException("Must refuse before decoding."), CancellationToken.None));
         Assert.Equal("Rewrite one passage at a time. Keep one changed passage, then generate takes.", error.Message);
     }
     [Fact]
-    public async Task SourceChunksMatchMacNativeRatePcm16AndTinyTrailingChunkRule()
-    {
-        var spans = new List<(long Start, long End)>();
-        var samples = await RewriteGenerationBackend.ReadSourceAsync("owned-fixture", 280L * 8_000 + 100, 8_000, CancellationToken.None,
-            (_, start, end, rate, _) =>
-            {
-                Assert.Equal(8_000, rate); spans.Add((start, end));
-                var bytes = new byte[44 + checked((int)(end - start) * 2)];
-                for (var offset = 44; offset < bytes.Length; offset += 2) BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(offset, 2), -16384);
-                return Task.FromResult(bytes);
-            });
-        Assert.Equal((0L, 280L * 8_000 + 100), Assert.Single(spans));
-        Assert.True(samples.All(sample => sample == -0.5f));
+    public void VoiceLabelNamesTheVoiceAndItsConsentDate() =>
         Assert.Equal("My voice · consent Oct 12", RewriteGenerationBackend.VoiceLabel("My voice", new(2026, 10, 12, 0, 0, 0, TimeSpan.Zero)));
-    }
     private static EditorViewModel Editor()
     {
         var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "fixtures", "projects", "interview-take.voxclip")));

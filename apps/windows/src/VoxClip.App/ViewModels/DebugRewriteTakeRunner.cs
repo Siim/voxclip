@@ -1,6 +1,7 @@
 #if DEBUG
 using System.Reflection;
 using System.Text.Json;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Speech;
 using VoxClip.Media.VoiceLab;
@@ -110,5 +111,15 @@ internal sealed class DebugRewriteTakeRunner : IVoiceLabTakeRunner, IDisposable
     public Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => Task.FromResult(cap is null ? null : cap with { Spent = Spend });
     public Task<decimal?> ReadMonthlySpendAsync(VoiceLabMonthlyCap? fallback, CancellationToken ct = default) => Task.FromResult<decimal?>(Spend);
     public void Dispose() => fixtures.Dispose();
+}
+
+/// <summary>The source the fixture take runs read: the whole track as silence, at the request's length and rate.</summary>
+internal static class RewriteSourceFixture
+{
+    internal static (VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope) Silent(RewriteSourceRequest request)
+    {
+        var samples = new float[checked((int)request.Frames)];
+        return (VoiceLabSourceExcerpt.Whole(samples), VoiceLabTakeProcessing.Envelope(samples, request.SampleRate));
+    }
 }
 #endif
