@@ -2,7 +2,7 @@
 
 ### 2026-10-31 - Scope rewrite plan, Swift first (track/p0-scope, C1)
 
-- No Windows code, test or Release allowlist changed. The Swift Core gained `ScopeRewritePlan` (Mac entry of the same date), and voice-lab.md §8.1 item 1 now fixes how each line's range is made: the line's window, else the advisory span of its words, 1 to 1 for a line without words, capped at 5,000. The new shared `scope-rewrite-plan-cases.json` is replayed only by the Swift suite until the C# twin (W1) adds `ScopeRewritePlan.cs` and replays it byte for byte, including the up-front take and envelope check and the `tooLarge` entry count.
+- No Windows code, test or Release allowlist changed. The Swift Core gained `ScopeRewritePlan` (Mac entry of the same date), and voice-lab.md §8.1 item 1 now fixes the plan: entries leave out cut items and items an enabled replacement already re-voices; a line's range is its window's budget, else the advisory span of its words, plus the length of its event labels (that length, at least 1, for a line without words), capped at 5,000, at the stored-candidate rate when the caller passes candidates; a take, envelope or scope the window planner cannot read, or a scope that does not render, is invalid input; the two limits are separate errors, too many entries with the count and too much text with the byte count. The new shared `scope-rewrite-plan-cases.json` is replayed only by the Swift suite until the C# twin (W1) adds `ScopeRewritePlan.cs` and replays it byte for byte, replacements and rate candidates included.
 
 ### 2026-10-31 - Clip-first Rewrite spec merge (track/p0-scope, D0)
 
