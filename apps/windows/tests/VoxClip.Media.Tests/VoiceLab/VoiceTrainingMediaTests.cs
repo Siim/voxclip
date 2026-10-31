@@ -2,6 +2,8 @@ using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Speech;
 using VoxClip.Core.Services.VoiceLab;
+using VoxClip.Media.Ffmpeg;
+using VoxClip.Media.Pipeline;
 using VoxClip.Media.VoiceLab;
 using Xunit;
 
@@ -80,6 +82,67 @@ public sealed class VoiceTrainingMediaTests
         Assert.Empty(silent.Finish().FrameDb);
         silent.Append(new float[221]);
         Assert.Equal(new[] { -180.0, -180.0 }, silent.Finish().FrameDb);
+    }
+
+    [Fact]
+    public void TimelineFillsLateStartsAndGapsWithSilenceAndDropsOverlaps()
+    {
+        var blocks = new List<(long First, float[] Samples)>();
+        var timeline = new VoiceTrainingTimeline((samples, first) => blocks.Add((first, samples.ToArray())));
+        timeline.Append([1, 2, 3], -2);
+        timeline.Append([4, 5], 3);
+        timeline.Append([6, 7, 8], 4);
+        timeline.Append([9], 2);
+        timeline.Append([10, 11], 7);
+        timeline.Append([12, 12, 12], 70_009);
+        Assert.Equal(70_012, timeline.Next);
+        var expected = new float[70_012];
+        new float[] { 3, 0, 0, 4, 5, 7, 8, 10, 11 }.CopyTo(expected, 0);
+        expected.AsSpan(70_009).Fill(12);
+        Assert.Equal(expected, blocks.SelectMany(block => block.Samples));
+        long next = 0;
+        foreach (var block in blocks)
+        {
+            Assert.Equal(next, block.First); Assert.InRange(block.Samples.Length, 1, 65_536);
+            next += block.Samples.Length;
+        }
+    }
+
+    [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
+    public async Task LateAndGappedAudioIsPlacedOnTheTimelineTranscriptionExtractionUses()
+    {
+        await NativeTest.RequireAsync(windows: true);
+        // Stereo f32 audio that starts 1.5 s after the video, with a 0.75 s timestamp gap 4 s into the audio (generate-fixtures.sh).
+        var path = NativeTest.Fixture("late-audio.mkv");
+        const int rate = 48_000;
+        var info = await new FfmpegMediaProbe().ProbeAsync(path, Token);
+        Assert.Equal(1.5, info.AudioTimelineStart, 3);
+        var take = await VoiceTrainingAudio.AnalyzeAsync(path, rate, Token);
+        Assert.InRange(take.Samples, 588_000 - 48, 588_000 + 48);
+        // AudioDecoder lays out the transcription audio, so its mono mix is the timeline transcript times refer to.
+        using var reference = new AudioDecoder(path);
+        var values = new float[take.Samples * reference.Channels];
+        Assert.Equal(take.Samples, reference.Read(values, (int)take.Samples, Token));
+        var mono = new float[take.Samples];
+        for (var index = 0; index < mono.Length; index++)
+        {
+            double sum = 0;
+            for (var channel = 0; channel < reference.Channels; channel++) sum += values[index * reference.Channels + channel];
+            mono[index] = (float)(sum / reference.Channels);
+        }
+        var expected = new VoiceTrainingLevels(rate);
+        expected.Append(mono);
+        Assert.Equal(expected.Finish().FrameDb, take.FrameDb);
+        Assert.All(take.FrameDb.Take(150), level => Assert.True(level < -170));
+        Assert.True(take.FrameDb[151] > -40);
+        Assert.All(take.FrameDb.Skip(555).Take(65), level => Assert.True(level < -170));
+        VoiceTrainingSpan[] spans = [new(1_000, 7_000, 30), new(6_500, 12_000, 30)];
+        var samples = await VoiceTrainingAudio.ProjectSpansAsync(path, rate, spans, Token);
+        for (var index = 0; index < spans.Length; index++)
+        {
+            var (first, last) = VoiceTrainingAudio.SpanSamples(spans[index], rate);
+            Assert.Equal(VoiceTrainingAudio.Wav(mono[(int)first..(int)last], rate), samples[index].Wav);
+        }
     }
 
     [Theory]

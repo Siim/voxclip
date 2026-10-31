@@ -13,6 +13,7 @@ internal sealed partial class RewritePanel : Grid
 {
     private readonly RewriteSession session;
     private readonly Func<bool> correctionOpen;
+    private readonly MainWindow? window;
     private readonly TextBox instruction = new() { Header = "What should change?", AcceptsReturn = false, MaxLength = 1000 };
     private readonly TextBox words = new() { AcceptsReturn = false, TextWrapping = TextWrapping.Wrap };
     private readonly Button propose = new() { Content = "Rewrite", HorizontalAlignment = HorizontalAlignment.Right };
@@ -41,10 +42,12 @@ internal sealed partial class RewritePanel : Grid
     internal bool ReturnFocusOnClose { get; private set; }
     internal event EventHandler? Closed;
 
-    internal RewritePanel(RewriteSession session, Func<bool>? correctionOpen = null)
+    /// <param name="window">The editor's window, whose project Create Your Voice offers as training audio (voice-lab.md §6.5.2).</param>
+    internal RewritePanel(RewriteSession session, Func<bool>? correctionOpen = null, MainWindow? window = null)
     {
         this.session = session;
         this.correctionOpen = correctionOpen ?? (() => false);
+        this.window = window;
         AutomationProperties.SetAutomationId(instruction, "Rewrite.Instruction");
         AutomationProperties.SetAutomationId(words, "Rewrite.Words");
         AutomationProperties.SetAutomationId(propose, "Rewrite.Propose");
@@ -237,7 +240,7 @@ internal sealed partial class RewritePanel : Grid
         var create = Ui.Button("Create Your Voice…", () =>
         {
             App.OpenSettings("Voice Lab");
-            App.Settings?.ShowCreateVoice();
+            App.Settings?.ShowCreateVoice(window);
         });
         AutomationProperties.SetAutomationId(create, "Rewrite.CreateVoice");
         noVoice.Children.Add(Small("No voice yet")); noVoice.Children.Add(create);

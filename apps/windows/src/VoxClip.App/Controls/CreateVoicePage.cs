@@ -57,10 +57,13 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
     internal bool DialogOpen { get; private set; }
     internal bool IsBusyForRestart => session.IsBusyForRestart || DialogOpen;
 
-    internal CreateVoicePage(SettingsWindow owner, CreateVoiceSession session)
+    internal CreateVoicePage(SettingsWindow owner, CreateVoiceSession session, MainWindow? from = null)
     {
         this.owner = owner; this.session = session;
-        var window = App.Windows.FirstOrDefault(window => window.VoiceTrainingProject is not null) ?? App.Windows.FirstOrDefault();
+        // The window that opened the sheet (the Rewrite panel's) gives the project and statement language; from Settings, the first
+        // window with an editor project.
+        var window = (from is not null && App.Windows.Contains(from) ? from : null)
+            ?? App.Windows.FirstOrDefault(window => window.VoiceTrainingProject is not null) ?? App.Windows.FirstOrDefault();
         language = window?.VoiceEnrollmentLanguage ?? "en";
         Content = body;
         var back = Ui.Button("Back to Voice Lab", () => owner.ReturnFromCreateVoice(VoiceCreationLeaveTrigger.Back));
@@ -163,7 +166,7 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         AutomationProperties.SetName(teleprompter, session.Verified ? "Training read-aloud · about 90 seconds" : "Read this aloud");
         foreach (var part in new FrameworkElement[] { readHeading, teleprompter, headphones }) part.Visibility = fromProject ? Visibility.Collapsed : Visibility.Visible;
         var picking = session.Verified && session.UnsavedRecord is null && !session.ReturnToPane;
-        source.Visibility = picking ? Visibility.Visible : Visibility.Collapsed;
+        source.Visibility = picking && session.ProjectOffered ? Visibility.Visible : Visibility.Collapsed;
         projectLine.Text = session.ProjectLine; AutomationProperties.SetHelpText(projectChoice, session.ProjectLine);
         projectChoice.IsEnabled = session.CanSelectProject && session.CanChooseSource;
         readAloudChoice.IsEnabled = session.CanChooseSource;
@@ -247,8 +250,9 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         if (!App.Services.VoiceLabEnabled)
         {
             var previous = lifetime; lifetime = new(); previous.Cancel(); previous.Dispose();
-            await session.GateChangedAsync();
         }
+        // Abandons when Voice Lab is off; otherwise starts the project analysis if the gate has opened.
+        await session.GateChangedAsync();
         Refresh();
     }
     internal Task<bool> PrepareForRestartAsync() => DialogOpen ? Task.FromResult(true) : session.InterruptForRestartAsync();

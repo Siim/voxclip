@@ -92,6 +92,25 @@ public sealed class VoiceTrainingSpansTests
     }
 
     [Fact]
+    public void PiecesStartingOnTheSameMillisecondKeepTheOrderTheRunsProduceThem()
+    {
+        // Overlapping speakers can start two runs on one millisecond. Source order then follows the runs, as Swift's select does:
+        // the selected spans keep their qualifying order, not their ranking, and a lowSnr piece is not moved behind a later short one.
+        VoiceTrainingItem Word(double start, double end, string speaker) => new(WordKind.Word, start, end, null, speaker, false);
+        double[] Frames(params (int Count, double Db)[] runs) => runs.SelectMany(run => Enumerable.Repeat(run.Db, run.Count)).ToArray();
+        var ranked = VoiceTrainingSpans.Select([Word(10, 16, "A"), Word(10, 17, "B"), Word(20, 45, "C")], [],
+            Frames((1_000, -60), (600, -30), (100, -10), (300, -60), (2_500, -20), (500, -60)), 50);
+        VoiceTrainingSpan[] spans = [new(10_000, 16_000, 30), new(10_000, 17_000, 30), new(20_000, 45_000, 40)];
+        Assert.Equal(VoiceTrainingSpanStatus.Ok, ranked.Status);
+        Assert.Equal(38_000, ranked.AvailableMs); Assert.Equal(38_000, ranked.SelectedMs);
+        Assert.Equal(spans, ranked.Qualifying); Assert.Equal(spans, ranked.Selected); Assert.Empty(ranked.Rejected);
+        var rejected = VoiceTrainingSpans.Select([Word(10, 16, "A"), Word(10, 12, "B")], [], Frames((2_000, -60)), 20);
+        Assert.Equal(VoiceTrainingSpanStatus.BelowMinimum, rejected.Status); Assert.Empty(rejected.Qualifying);
+        Assert.Equal([new(10_000, 16_000, VoiceTrainingRejectionReason.LowSnr, null), new(10_000, 12_000, VoiceTrainingRejectionReason.Short, null)],
+            rejected.Rejected);
+    }
+
+    [Fact]
     public void ProjectInputsMarkEverySegmentsWordsSyntheticAndExcludeItsRangeEnabledOrNot()
     {
         var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/passage-render-v3.voxclip"));

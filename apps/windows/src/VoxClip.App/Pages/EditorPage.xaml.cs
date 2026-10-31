@@ -545,7 +545,7 @@ public sealed partial class EditorPage : Page
             connectorIsCurrent: () => App.Services.VoiceLabEnabled && App.Services.Get("llm.connector", "") == connectorWireId &&
                 (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model));
         ConfigureRewriteGeneration(rewrite);
-        var panel = new RewritePanel(rewrite, () => Transcript.CorrectionOpen);
+        var panel = new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner);
         panel.Closed += (_, _) =>
         {
             var insidePanel = InputState.DescendsFrom(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, panel);

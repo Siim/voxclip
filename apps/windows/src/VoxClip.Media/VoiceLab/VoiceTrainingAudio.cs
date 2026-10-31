@@ -60,8 +60,9 @@ public static class VoiceTrainingAudio
         }
         return result;
     }
-    /// <summary>The take's §6.5.1 frame levels: one streamed decode of the first audio track's mono mix, never the whole take in
-    /// memory. Missing media, a decode failure or a rate outside 8–96 kHz throws <see cref="VoiceLabSourceAudioException"/>.</summary>
+    /// <summary>The take's §6.5.1 frame levels: one streamed decode of the first audio track's mono mix on the source timeline that
+    /// transcript times use, never the whole take in memory. Missing media, a decode failure or a rate outside 8–96 kHz throws
+    /// <see cref="VoiceLabSourceAudioException"/>.</summary>
     public static async Task<VoiceTrainingTake> AnalyzeAsync(string source, int rate, CancellationToken ct = default)
     {
         var levels = new VoiceTrainingLevels(rate);
@@ -112,11 +113,32 @@ public static class VoiceTrainingAudio
     private static VoiceLabException Invalid() => new(VoiceLabErrorKind.InvalidAudio);
 }
 
-/// <summary>A take's 10 ms levels in dBFS and its decoded length (§6.5.1).</summary>
+/// <summary>A take's 10 ms levels in dBFS and its length on the source timeline (§6.5.1).</summary>
 public sealed record VoiceTrainingTake(int Rate, long Samples, IReadOnlyList<double> FrameDb)
 {
-    /// <summary>The decoded length floored to whole milliseconds, so every selected span ends inside the decoded samples.</summary>
+    /// <summary>The placed length floored to whole milliseconds, so every selected span ends inside the decoded samples.</summary>
     public double Duration => Samples * 1000 / Rate / 1000.0;
+}
+
+/// <summary>Turns decoded blocks at their source-grid positions into one gapless stream from sample 0, the way transcription
+/// extraction (AudioDecoder) lays them out, so the levels and cuts match transcript times: silence before a late start and across a
+/// timestamp gap, and samples before 0 or already placed are dropped.</summary>
+internal sealed class VoiceTrainingTimeline(VoiceLabSourceAudio.SampleBlock consume)
+{
+    private static readonly float[] Silence = new float[65_536];
+    /// <summary>The next sample index of the stream: everything before it has been placed.</summary>
+    internal long Next { get; private set; }
+    internal void Append(ReadOnlySpan<float> block, long first)
+    {
+        if (first + block.Length <= Next) return;
+        while (Next < first)
+        {
+            var count = (int)Math.Min(first - Next, Silence.Length);
+            consume(Silence.AsSpan(0, count), Next); Next += count;
+        }
+        var skip = (int)(Next - first);
+        consume(block[skip..], Next); Next += block.Length - skip;
+    }
 }
 
 /// <summary>Streaming §6.5.1 levels: frame i covers mono samples floor(i × rate / 100) up to floor((i + 1) × rate / 100), its level is

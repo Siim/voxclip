@@ -110,6 +110,8 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
     internal Task RecordAsync()
     {
         if (!CanRecord) return Task.CompletedTask;
+        // Recording needs the open gate, so a project analysis the closed gate held back starts now at the latest.
+        StartProjectAnalysis();
         operation?.Dispose(); operation = new();
         work = RecordCoreAsync(operation.Token);
         return work;
@@ -202,7 +204,7 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
             await Task.Run(() => backend.VerifyAsync(recordId!, Statement!, attestations, ct), ct);
             ct.ThrowIfCancellationRequested();
             if (BlockedReason is not null) throw new OperationCanceledException(ct);
-            await dispatch(() => { Verified = true; Say(TrainingSource == VoiceTrainingSource.Project ? "Statement verified." : "Statement verified. Record your training read-aloud next."); });
+            await dispatch(() => { Verified = true; Say(ProjectOffered ? "Statement verified. Choose your training audio next." : "Statement verified. Record your training read-aloud next."); });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested || !backend.Enabled) { await CleanupAfterFailureAsync(); }
         catch (Exception error)

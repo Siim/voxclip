@@ -145,9 +145,11 @@ public static class VoiceLabSourceAudio
 
     internal delegate void SampleBlock(ReadOnlySpan<float> samples, long first);
 
-    /// <summary>The first audio track's mono mix (the mean of its channels) at the source rate, from sample 0 in decode order, for
-    /// own-voice training (§6.5.1): one streamed pass that stops once <paramref name="more"/> refuses the next sample index. The
-    /// decoded rate must equal <paramref name="rate"/> (8–96 kHz), and it is returned; missing media and decode failures are refused.</summary>
+    /// <summary>The first audio track's mono mix (the mean of its channels) at the source rate, for own-voice training (§6.5.1), on
+    /// the source timeline that transcript times use: from sample 0 at the decode session's origin, each frame placed by its
+    /// timestamp as transcription extraction places it (<see cref="VoiceTrainingTimeline"/>). One streamed pass that stops once
+    /// <paramref name="more"/> refuses the next sample index. The decoded rate must equal <paramref name="rate"/> (8–96 kHz), and it
+    /// is returned; missing media and decode failures are refused.</summary>
     internal static Task<int> TrainingMixAsync(string source, int rate, SampleBlock consume, Func<long, bool>? more, CancellationToken ct)
         => MediaThread.Run("voice-training-audio", () =>
         {
@@ -155,7 +157,8 @@ public static class VoiceLabSourceAudio
             try
             {
                 FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult();
-                return Decode(source, rate, 0, null, consume, ct, more);
+                var timeline = new VoiceTrainingTimeline(consume);
+                return Decode(source, rate, 0, null, timeline.Append, ct, more is null ? null : _ => more(timeline.Next), placed: true);
             }
             catch (VoxClipException failure) when (failure.Code == VoxClipErrorCode.NoAudioTrack)
             { throw Failure(VoiceLabSourceAudioErrorCode.NoAudioTrack); }
@@ -163,8 +166,11 @@ public static class VoiceLabSourceAudio
             { throw Failure(VoiceLabSourceAudioErrorCode.Unreadable); }
         }, ct);
 
+    /// <summary>With <paramref name="end"/>, exactly [start, end) on the source grid. Without it, the whole track from sample 0: in decode
+    /// order, or with <paramref name="placed"/> as frames at their source-grid positions, which may overlap, leave gaps or start
+    /// before 0.</summary>
     private static unsafe int Decode(string path, int? expectedRate, long start, long? end, SampleBlock consume, CancellationToken ct,
-        Func<long, bool>? more = null)
+        Func<long, bool>? more = null, bool placed = false)
     {
         using var decoder = OpenDecoder(path, end.HasValue);
         var rate = decoder.Codec->sample_rate;
@@ -194,7 +200,7 @@ public static class VoiceLabSourceAudio
                     throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedFormat);
                 if (frame->nb_samples == 0) continue;
                 if (frame->nb_samples > Array.MaxLength / channels) throw Failure(VoiceLabSourceAudioErrorCode.TooLarge);
-                var first = end.HasValue
+                var first = end.HasValue || placed
                     ? SourceFrame(frame->best_effort_timestamp, decoder.Origin, previousEnd, rate, decoder.Stream->time_base.num, decoder.Stream->time_base.den)
                     : next;
                 if (converter is null)
@@ -217,12 +223,13 @@ public static class VoiceLabSourceAudio
                     Native.Check(count, "Decode Voice Lab samples");
                     if (count != frame->nb_samples) throw Failure(VoiceLabSourceAudioErrorCode.Unreadable);
                 }
+                if (end.HasValue || placed) previousEnd = first + frame->nb_samples;
                 if (end.HasValue)
                 {
-                    previousEnd = first + frame->nb_samples;
                     if (first > next) throw Failure(VoiceLabSourceAudioErrorCode.RangeOutsideMedia);
                     if (first + frame->nb_samples <= next) continue;
                 }
+                else if (placed) next = first;
                 var skip = checked((int)(next - first));
                 var take = (int)Math.Min(frame->nb_samples - skip, end.HasValue ? end.Value - next : frame->nb_samples);
                 if (!end.HasValue && (next + take > MaxDecodedFrames || next + take > Array.MaxLength))

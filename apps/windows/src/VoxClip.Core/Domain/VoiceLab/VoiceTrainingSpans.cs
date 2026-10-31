@@ -70,8 +70,8 @@ public static class VoiceTrainingSpans
             frameDb.Any(level => !double.IsFinite(level)) || !double.IsFinite(duration) || duration < 0) throw Invalid();
         var end = Ms(duration);
         var ranges = excluded.Select(range => (Start: Ms(range.Start), End: Ms(range.End))).ToArray();
-        var pieces = new List<(long Start, long End)>();
-        var rejected = new List<VoiceTrainingRejection>();
+        // Kept and rejected pieces in the order the runs and splits produce them; equal starts keep this order, as in Swift.
+        var pieces = new List<(long Start, long End, VoiceTrainingRejectionReason? Reason)>();
         var run = new List<(long Start, long End)>();
         string? speaker = null;
         long runEnd = 0;
@@ -87,18 +87,20 @@ public static class VoiceTrainingSpans
                 run.Add((start, stop)); runEnd = Math.Max(runEnd, stop);
                 continue;
             }
-            Split(run, 0, run.Count - 1, pieces, rejected);
+            Split(run, 0, run.Count - 1, pieces);
             run.Clear();
             if (!usable) continue;
             run.Add((start, stop)); speaker = item.Speaker; runEnd = stop;
         }
-        Split(run, 0, run.Count - 1, pieces, rejected);
+        Split(run, 0, run.Count - 1, pieces);
         var levels = frameDb.ToArray();
         var sorted = levels.Order().ToArray();
         double? floor = sorted.Length == 0 ? null : sorted[sorted.Length / 10];
         var qualifying = new List<VoiceTrainingSpan>();
+        var rejected = new List<VoiceTrainingRejection>();
         foreach (var piece in pieces)
         {
+            if (piece.Reason is { } reason) { rejected.Add(new(piece.Start, piece.End, reason, null)); continue; }
             // The numerators clamp to 0 whenever they are negative, so truncating division gives the same frames as floor.
             var lo = (int)Math.Clamp((piece.Start + 5) / 10, 0, levels.Length);
             var hi = (int)Math.Clamp((piece.End + 5) / 10, 0, levels.Length);
@@ -108,17 +110,20 @@ public static class VoiceTrainingSpans
             else rejected.Add(new(piece.Start, piece.End, VoiceTrainingRejectionReason.LowSnr, snr));
         }
         var available = qualifying.Sum(span => span.EndMs - span.StartMs);
+        // OrderBy is stable, so source order breaks start ties by production order.
         var inOrder = qualifying.OrderBy(span => span.StartMs).ToArray();
         var rejections = rejected.OrderBy(rejection => rejection.StartMs).ToArray();
         if (available < TotalMinMs) return new(VoiceTrainingSpanStatus.BelowMinimum, available, 0, [], inOrder, rejections);
-        var selected = new List<VoiceTrainingSpan>();
+        // Best SNR, then longest, then earliest: the source-order index is the start with production-order ties.
+        var chosen = new bool[inOrder.Length];
         long total = 0;
-        foreach (var span in qualifying.OrderByDescending(span => span.SnrDb).ThenByDescending(span => span.EndMs - span.StartMs).ThenBy(span => span.StartMs))
+        foreach (var index in Enumerable.Range(0, inOrder.Length).OrderByDescending(index => inOrder[index].SnrDb)
+            .ThenByDescending(index => inOrder[index].EndMs - inOrder[index].StartMs).ThenBy(index => index))
         {
-            if (total + span.EndMs - span.StartMs > TotalMaxMs) continue;
-            selected.Add(span); total += span.EndMs - span.StartMs;
+            if (total + inOrder[index].EndMs - inOrder[index].StartMs > TotalMaxMs) continue;
+            chosen[index] = true; total += inOrder[index].EndMs - inOrder[index].StartMs;
         }
-        return new(VoiceTrainingSpanStatus.Ok, available, total, selected.OrderBy(span => span.StartMs).ToArray(), inOrder, rejections);
+        return new(VoiceTrainingSpanStatus.Ok, available, total, inOrder.Where((_, index) => chosen[index]).ToArray(), inOrder, rejections);
     }
 
     /// <summary>ms(t) = floor(t × 1000 + 0.5) in binary64.</summary>
@@ -131,13 +136,13 @@ public static class VoiceTrainingSpans
 
     /// <summary>Words a..b of one run: keep 5–30 s pieces, reject shorter ones, and split longer ones at the valid boundary with the
     /// longest gap, then the gap nearest the middle, then the earliest boundary; left side first.</summary>
-    static void Split(List<(long Start, long End)> words, int a, int b, List<(long Start, long End)> pieces, List<VoiceTrainingRejection> rejected)
+    static void Split(List<(long Start, long End)> words, int a, int b, List<(long Start, long End, VoiceTrainingRejectionReason? Reason)> pieces)
     {
         if (b < a) return;
         var start = words[a].Start;
         var end = words.Skip(a).Take(b - a + 1).Max(word => word.End);
-        if (end - start < SpanMinMs) { rejected.Add(new(start, end, VoiceTrainingRejectionReason.Short, null)); return; }
-        if (end - start <= SpanMaxMs) { pieces.Add((start, end)); return; }
+        if (end - start < SpanMinMs) { pieces.Add((start, end, VoiceTrainingRejectionReason.Short)); return; }
+        if (end - start <= SpanMaxMs) { pieces.Add((start, end, null)); return; }
         var rightEnds = new long[b - a + 2];
         rightEnds[b - a + 1] = long.MinValue;
         for (var index = b; index >= a; index--) rightEnds[index - a] = Math.Max(rightEnds[index - a + 1], words[index].End);
@@ -153,9 +158,9 @@ public static class VoiceTrainingSpans
             if (best >= 0 && (gap < bestGap || gap == bestGap && middle >= bestMiddle)) continue;
             best = boundary; bestGap = gap; bestMiddle = middle;
         }
-        if (best < 0) { rejected.Add(new(start, end, VoiceTrainingRejectionReason.Unsplittable, null)); return; }
-        Split(words, a, best, pieces, rejected);
-        Split(words, best + 1, b, pieces, rejected);
+        if (best < 0) { pieces.Add((start, end, VoiceTrainingRejectionReason.Unsplittable)); return; }
+        Split(words, a, best, pieces);
+        Split(words, best + 1, b, pieces);
     }
 
     static VoiceLabException Invalid() => new(VoiceLabErrorKind.InvalidInput);

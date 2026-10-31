@@ -130,7 +130,7 @@ public sealed class RewritePanelTests
         Assert.Contains("apply.IsEnabled && ShortcutPolicy.EditorMayHandle", panel);
         Assert.Contains("InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen()", panel);
         Assert.Contains("apply.IsEnabled = session.LocalAction is not null && !session.Editor.Busy", panel);
-        Assert.Contains("new RewritePanel(rewrite, () => Transcript.CorrectionOpen)", AppSource("Pages", "EditorPage.xaml.cs"));
+        Assert.Contains("new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner)", AppSource("Pages", "EditorPage.xaml.cs"));
     }
 
     [Theory]

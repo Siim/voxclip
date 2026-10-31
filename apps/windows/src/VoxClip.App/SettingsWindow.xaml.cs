@@ -125,7 +125,10 @@ public sealed partial class SettingsWindow : Window
         }
         finally { navigating = false; Navigation.IsEnabled = !preparing; }
     }
-    internal void ShowCreateVoice() => RunSensitive(async () =>
+    internal void ShowCreateVoice() => ShowCreateVoice(null);
+    /// <summary>Opens Create Your Voice. <paramref name="from"/> is the window that asked, whose editor project the sheet offers as
+    /// training audio (voice-lab.md §6.5.2); without it, the first window with an editor project.</summary>
+    internal void ShowCreateVoice(MainWindow? from) => RunSensitive(async () =>
     {
         if (preparing || navigating || createVoicePage is not null || !App.Services.VoiceLabEnabled) return;
         navigating = true; Navigation.IsEnabled = false;
@@ -134,7 +137,7 @@ public sealed partial class SettingsWindow : Window
             foreach (var commit in textCommits) if (!await commit.CommitAsync()) return;
             var session = await App.Services.CreateVoiceEnrollmentAsync(lifetime.Token);
             textCommits.Clear(); voiceLabPane = null; Body.Children.Clear(); Body.Children.Add(notice);
-            createVoicePage = new(this, session); Body.Children.Add(createVoicePage);
+            createVoicePage = new(this, session, from); Body.Children.Add(createVoicePage);
         }
         finally { navigating = false; Navigation.IsEnabled = !preparing; }
     }, "Create Your Voice");

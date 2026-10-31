@@ -262,7 +262,7 @@ public sealed class VoiceCreationFlowTests
         Assert.Equal("Finding clear speech in Demo take…", setup.Session.ProjectLine);
         await WaitForAsync(() => setup.Backend.Analyses == 1); Assert.True(setup.Session.ProjectOffered);
         await setup.VerifyAsync();
-        Assert.Equal("Statement verified.", setup.Session.Message);
+        Assert.Equal("Statement verified. Choose your training audio next.", setup.Session.Message);
         Assert.True(setup.Session.CanSelectProject); Assert.False(setup.Session.CanCreate); Assert.False(setup.Session.CanRecordTraining);
         setup.Backend.Analysis.SetResult(Selection(47_900));
         await WaitForAsync(() => setup.Session.ProjectAudio == VoiceProjectAudioState.Ready);
@@ -310,7 +310,7 @@ public sealed class VoiceCreationFlowTests
         await setup.VerifyAsync();
         Assert.Equal(copy, setup.Session.ProjectLine); Assert.True(setup.Session.ProjectOffered);
         Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource);
-        Assert.False(setup.Session.CanSelectProject); Assert.Equal("Statement verified. Record your training read-aloud next.", setup.Session.Message);
+        Assert.False(setup.Session.CanSelectProject); Assert.Equal("Statement verified. Choose your training audio next.", setup.Session.Message);
         setup.Session.SelectTrainingSource(VoiceTrainingSource.Project);
         Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource); Assert.True(setup.Session.CanRecordTraining);
     }
@@ -390,6 +390,34 @@ public sealed class VoiceCreationFlowTests
         Assert.False(Directory.Exists(root));
     }
 
+    [Fact]
+    public async Task AnalysisHeldBackByTheGateStartsWhenTheGateOpensOrAStatementIsRecorded()
+    {
+        await using var announced = new Setup(Project(), open: false);
+        announced.Backend.SpeakerAvailable = false;
+        announced.Session.OpenProject(Project());
+        await announced.Session.GateChangedAsync(); Assert.Equal(0, announced.Backend.Analyses);
+        announced.Backend.SpeakerAvailable = true;
+        await announced.Session.GateChangedAsync();
+        await WaitForAsync(() => announced.Backend.Analyses == 1);
+        announced.Backend.Analysis.SetResult(Selection(45_000));
+        await WaitForAsync(() => announced.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        await announced.Session.GateChangedAsync(); Assert.Equal(1, announced.Backend.Analyses);
+        await using var unannounced = new Setup(Project(), open: false);
+        unannounced.Backend.SpeakerAvailable = false;
+        unannounced.Session.OpenProject(Project());
+        unannounced.Backend.SpeakerAvailable = true;
+        Assert.Equal(0, unannounced.Backend.Analyses);
+        await unannounced.VerifyAsync();
+        await WaitForAsync(() => unannounced.Backend.Analyses == 1);
+        unannounced.Backend.Analysis.SetResult(Selection(45_000));
+        await WaitForAsync(() => unannounced.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        Assert.Equal(VoiceTrainingSource.Project, unannounced.Session.TrainingSource); Assert.True(unannounced.Session.CanCreate);
+        // The page forwards every announced change to the session, not only Voice Lab turning off.
+        var page = AppFile("Controls/CreateVoicePage.cs").ReplaceLineEndings("\n");
+        Assert.Contains("        }\n        // Abandons when Voice Lab is off; otherwise starts the project analysis if the gate has opened.\n        await session.GateChangedAsync();\n        Refresh();", page);
+    }
+
     [Theory]
     [InlineData("et", "", "en")]
     [InlineData("et", "et", "et")]
@@ -428,6 +456,11 @@ public sealed class VoiceCreationFlowTests
         Assert.Equal("Record a read-aloud (about 90 s)", VoiceLabCopy.ReadAloudChoice);
         Assert.Equal("Record a Read-Aloud", VoiceLabCopy.RecordReadAloud);
         Assert.Contains("VoiceTrainingProject => editor is", AppFile("MainWindow.xaml.cs"));
+        // The window that opened the sheet gives its project; with none offered, the picker is hidden and only its line shows.
+        Assert.Contains("var window = (from is not null && App.Windows.Contains(from) ? from : null)", page);
+        Assert.Contains("source.Visibility = picking && session.ProjectOffered ? Visibility.Visible : Visibility.Collapsed;", page);
+        Assert.Contains("sourceLine.Visibility = picking && !session.ProjectOffered ? Visibility.Visible : Visibility.Collapsed;", page);
+        Assert.Contains("createVoicePage = new(this, session, from);", AppFile("SettingsWindow.xaml.cs"));
         var backend = AppFile("Services/VoiceStatementBackend.cs");
         Assert.Contains("VoiceTrainingAudio.AnalyzeAsync", backend); Assert.Contains("VoiceTrainingSpans.Inputs(project.Project)", backend);
         Assert.Contains("VoiceTrainingAudio.ProjectSpansAsync", backend);
