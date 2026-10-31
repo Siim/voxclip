@@ -337,6 +337,33 @@ struct VoiceConsentTests {
         }
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
     }
+    /// §6.6: a project span whose mean passes but whose 12–18 s part is another voice is dropped; a read-aloud of the
+    /// same audio is still scored on its mean.
+    @Test func projectSpansMustMatchInEveryPart() async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = ConsentRequestLog(); let upload = ConsentUpload(); let store = storage(root); let client = client(calls, upload: upload)
+        _ = try await client.plan()
+        let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
+        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let id = UUID().uuidString
+        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
+        // 30 s at 16 kHz: the user (positive) for 12 s, another voice (negative) for 6 s, then the user again.
+        var mixed = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 480_000, fill: 1_000)
+        for frame in 192_000..<288_000 { mixed.replaceSubrange((44 + frame * 2)..<(46 + frame * 2), with: [0x18, 0xfc]) }
+        let owner = try await check.embedding(VoiceConsentAudio.pcm16k(wav))
+        let mean = try VoiceSpeakerCheck.cosine(owner, try await check.embedding(VoiceConsentAudio.pcm16k(mixed)))
+        #expect(mean >= 0.8)
+        let mixedSpan = VoiceTrainingSample(wav: mixed, speech16k: [], seconds: 30, source: "project", snrDb: 30)
+        await #expect(throws: VoiceConsentError.speakerMismatch) {
+            try await service.prepare(recordID: id, displayName: "Example", samples: [mixedSpan, span(seconds: 25, fill: 2_000)], enabled: true)
+        }
+        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: [mixedSpan, span(seconds: 15, fill: 2_000), span(seconds: 15, fill: 3_000)], enabled: true)
+        #expect(await service.trainingSeconds(quote: quote) == 30)
+        let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+        #expect(record.samples.map(\.seconds) == [15, 15])
+        let body = try #require(upload.value.withLock { $0 })
+        #expect(body.range(of: mixed) == nil)
+    }
     /// Cuts of 7,001, 7,001, 7,001 and 8,997 ms at 44.1 kHz last 29.99997 s in samples; their milliseconds add to 30 s,
     /// as the §6.5.1 selection counted them.
     @Test func projectTotalsAddTheWholeMillisecondsOfEachCut() async throws {

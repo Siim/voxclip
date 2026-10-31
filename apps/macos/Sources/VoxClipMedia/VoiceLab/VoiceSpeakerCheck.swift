@@ -94,6 +94,10 @@ public final class VoiceSpeakerCheck: Sendable {
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
         return try await SpeakerAudio.embedding(pcm16k, using: embedder)
     }
+    public func partEmbeddings(_ pcm16k: [Float]) async throws -> (whole: [Float], parts: [[Float]]) {
+        guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
+        return try await SpeakerAudio.partEmbeddings(pcm16k, using: embedder)
+    }
     public static func cosine(_ left: [Float], _ right: [Float]) throws -> Double { try SpeakerAudio.cosine(left, right) }
 }
 

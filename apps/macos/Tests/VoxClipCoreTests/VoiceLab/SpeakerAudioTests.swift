@@ -15,6 +15,21 @@ struct SpeakerAudioTests {
         #expect(try SpeakerAudio.windows(Array(samples.prefix(71_999))).count == 1)
         #expect(throws: VoiceConsentError.speakerMismatch) { try SpeakerAudio.windows([Float](repeating: 0, count: 47_999)) }
     }
+    /// Each window embeds as the one-hot vector of its index, so a part's mean shows which windows it holds.
+    private struct IndexEmbedding: SpeakerEmbedder {
+        let modelID = "fixture-index"
+        let dimension = 32
+        func embed(_ pcm16k: [Float]) async throws -> [Float] { (0..<32).map { $0 == Int(pcm16k[0]) / 24_000 ? 1 : 0 } }
+        func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] { pcm16k }
+    }
+    @Test(arguments: [(1, [[0]]), (3, [[0, 1, 2]]), (4, [[0, 1, 2, 3]]), (5, [[0, 1, 2], [3, 4]]), (7, [[0, 1, 2], [3, 4, 5, 6]]), (8, [[0, 1, 2], [3, 4, 5], [6, 7]])])
+    func partsTakeThreeWindowsAndALoneLastWindowJoinsThePartBefore(windows: Int, expected: [[Int]]) async throws {
+        let samples = (0..<(48_000 + (windows - 1) * 24_000)).map { Float($0) }
+        let embedded = try await SpeakerAudio.partEmbeddings(samples, using: IndexEmbedding())
+        #expect(embedded.parts.map { part in part.indices.filter { part[$0] > 0 } } == expected)
+        #expect(embedded.whole == (try await SpeakerAudio.embedding(samples, using: IndexEmbedding())))
+        #expect(embedded.whole.filter { $0 > 0 }.count == windows)
+    }
     @Test func selectsOnlyOrderedVoicedRanges() throws {
         let samples: [Float] = [0, 1, 2, 3, 4, 5]
         #expect(try SpeakerAudio.select(samples, ranges: [1..<3, 4..<6]) == [1, 2, 4, 5])

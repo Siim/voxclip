@@ -105,10 +105,14 @@ public actor VoiceEnrollment {
         for sample in samples {
             let format = try ElevenLabsVoiceLab.validateWAV(sample.wav, maxBytes: 16 * 1_024 * 1_024)
             guard abs(Double(format.frames) / Double(format.rate) - sample.seconds) < 0.001 else { throw VoiceLabError.invalidAudio }
-            let candidate: [Float]
-            do { candidate = try await speaker.embedding(VoiceConsentAudio.pcm16k(sample.wav)) }
-            catch VoiceConsentError.speakerMismatch { continue }
-            let score = try VoiceSpeakerCheck.cosine(owner, candidate)
+            let candidate: (whole: [Float], parts: [[Float]])
+            do {
+                let pcm = try VoiceConsentAudio.pcm16k(sample.wav)
+                candidate = project ? try await speaker.partEmbeddings(pcm) : (try await speaker.embedding(pcm), [])
+            } catch VoiceConsentError.speakerMismatch { continue }
+            // Without speaker labels a project span can hold another voice beside the user's, and the mean of its windows
+            // can still pass. Each part must pass on its own, and the span scores as its lowest part.
+            let score = try candidate.parts.reduce(VoiceSpeakerCheck.cosine(owner, candidate.whole)) { try min($0, VoiceSpeakerCheck.cosine(owner, $1)) }
             if score >= threshold {
                 accepted.append(sample)
                 hashes.append(.init(sha256: VoiceLabFingerprint.bytes(sample.wav), seconds: sample.seconds, source: sample.source, speakerScore: score))
