@@ -55,14 +55,16 @@ public sealed class VoiceLabLlmSendCostTests
         Assert.Equal(required.Count, cases.Length);
     }
 
-    /// <summary>The plan's risk: a CLI on an API-key sign-in must never pass as "no extra cost".</summary>
+    /// <summary>The plan's risk: a CLI on an API-key sign-in must never pass as "no extra cost". Nor may an unassigned
+    /// <c>default(CliSignIn)</c>, which is why no member is zero.</summary>
     [Fact]
     public void OnlyAPlanSignInLetsACliSendWithoutAsking()
     {
+        Assert.False(Enum.IsDefined(default(CliSignIn)));
         foreach (var connector in new[] { ConnectorId.ClaudeCode, ConnectorId.Codex })
         {
             Assert.Equal(new VoiceLabCostPresentationResult(VoiceLabCostPresentationKind.Inline, ""), VoiceLabCostPresentation.KindForLlmSend(connector, CliSignIn.Plan, "Anthropic"));
-            foreach (var signIn in new CliSignIn?[] { CliSignIn.ApiKey, null })
+            foreach (var signIn in new CliSignIn?[] { CliSignIn.ApiKey, null, default(CliSignIn) })
                 Assert.Equal(new VoiceLabCostPresentationResult(VoiceLabCostPresentationKind.Confirm, "VoxClip can't tell what this costs. Check Anthropic's pricing."),
                     VoiceLabCostPresentation.KindForLlmSend(connector, signIn, "Anthropic"));
         }
