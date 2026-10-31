@@ -62,7 +62,9 @@ checkout path. Each record is classified by where it is declared:
   body-less nested type of a type that has `obj/` XAML output. A field of a
   hand-written type is toolchain output only when System.Text.Json or CsWinRT
   generated code alone uses it. Body-less nested interfaces implemented only by
-  toolchain types are toolchain output too.
+  toolchain types are toolchain output too. Code whose every sequence point is
+  `#line`-mapped to a non-C# file (such as a `.xaml` file) counts as XAML output
+  only in a type that has `obj/` XAML output; elsewhere it is unrecognised.
 - **Unrecognised documents** (outside `--repo-root` and the NuGet root, for
   example after `-p:PathMap` or with a symlink spelling of the root) are treated
   as hand-written and fail the identity check, as does an assembly with no
@@ -134,7 +136,8 @@ Windows App SDK output must need no entries. Each other variant must fail:
 type, `Observable` adds one with CommunityToolkit.Mvvm's `[ObservableProperty]`,
 `GeneratedTag` adds hooks tagged `GeneratedCode`, `DebugLiteral` adds a
 `VOXCLIP_DEBUG_*` read, `LowerCase` reads debug and stand-in names in other cases
-and checks a `/switch`, `Seams` adds a constructor seam, switch-like strings, a
+and checks a `/switch`, `Mapped` adds `#line`-mapped code outside XAML output,
+`Seams` adds a constructor seam, switch-like strings, a
 friend assembly and a `[Conditional("DEBUG")]` member, and `DebugBuild` is a
 Debug compilation. `App` and `AppPathMap` compile the clean sources as an x64
 `VoxClip.dll`: the shipping check must pass `App` with the real root and fail it

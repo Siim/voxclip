@@ -30,6 +30,9 @@
   <!-- Toolchain output is compiled from obj/, like the WinUI XAML compiler's .g.cs files. -->
   <Target Name="EmitToolchainOutput" BeforeTargets="CoreCompile">
     <Copy SourceFiles="Toolchain.generated.txt" DestinationFiles="$(IntermediateOutputPath)Toolchain.g.cs" SkipUnchangedFiles="true" />
+    <!-- The XAML file that the generated code's #line directives map to. -->
+    <WriteLinesToFile File="$(IntermediateOutputPath)RewritePanel.xaml" Lines="&lt;UserControl x:Class=&quot;VoxClip.App.Controls.RewritePanel&quot; /&gt;"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" />
     <ItemGroup>
       <Compile Include="$(IntermediateOutputPath)Toolchain.g.cs" />
     </ItemGroup>

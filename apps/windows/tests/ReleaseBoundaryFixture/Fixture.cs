@@ -18,6 +18,13 @@ namespace VoxClip.App.Services
     {
         private readonly string sharedDirectory = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR") ?? "shared";
 
+#if BOUNDARY_MAPPED
+        /// <summary>Hand-written code #line-mapped to a non-C# file in a type without obj/ XAML output.</summary>
+#line 1 "Toolchain.generated.txt"
+        internal static string Template(string passage) => passage.Trim();
+#line default
+#endif
+
 #if BOUNDARY_GENERATEDTAG
         /// <summary>A XAML compiler tag on a type that has no obj/ XAML output proves nothing.</summary>
         [System.CodeDom.Compiler.GeneratedCode("Microsoft.UI.Xaml.Markup.Compiler", "1")]

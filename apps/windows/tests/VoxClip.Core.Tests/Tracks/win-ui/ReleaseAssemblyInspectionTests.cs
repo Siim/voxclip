@@ -58,6 +58,7 @@ public sealed class ReleaseAssemblyInspectionTests
                      "type VoxClip.App.ViewModels.RewriteGeneration+RewriteGeneration_obj1_Bindings",
                      "type VoxClip.App.Controls.RewritePanel+IRewritePanel_BindingsScopeConnector",
                      "member VoxClip.App.Controls.RewritePanel :: method public InitializeComponent()",
+                     "member VoxClip.App.Controls.RewritePanel :: method public Connect(int,object)",
                      "type VoxClip.App.ViewModels.RewriteGeneration+RewriteGeneration_obj1_Bindings+InvokeFunctionDelegate",
                      "type VoxClip.App.ReleaseBoundaryFixture_XamlTypeInfo.Activator",
                      "type Microsoft.Windows.Foundation.UndockedRegFreeWinRTCS.NativeMethods",
@@ -312,6 +313,21 @@ public sealed class ReleaseAssemblyInspectionTests
         Assert.Contains("Allowlist entry can never be approved: literal \"VoxClip_Debug_Rewrite\"", everything.Forbidden);
         Assert.True(Rules.IsSwitchLike("voxclip_rewrite"));
         Assert.True(Rules.IsSwitchLike("rewrite_stand_in"));
+    }
+
+    [Fact]
+    public void LineMappedCodeCountsAsXamlOutputOnlyInATypeWithXamlOutput()
+    {
+        // The XAML compiler's #line-mapped code sits in a type with obj/ XAML output, so it is toolchain output.
+        var clean = Read("Clean");
+        Assert.Contains("#line-mapped document", Assert.Single(clean.Entries, entry => entry.Key == "member VoxClip.App.Controls.RewritePanel :: method public Connect(int,object)").Evidence);
+        Assert.Empty(clean.UnrecognizedDocuments);
+        // Anywhere else #line-mapped code is unrecognised: it needs approval and fails the identity check.
+        var mapped = Read("Mapped");
+        Assert.Equal(new[] { "member VoxClip.App.Services.RewriteGenerationBackend :: method internal Template(string)" },
+            mapped.Check(Allowlist.Read(FixtureAllowlist)).Unapproved);
+        Assert.Contains(mapped.UnrecognizedDocuments, path => path.EndsWith("ReleaseBoundaryFixture/Toolchain.generated.txt", StringComparison.Ordinal));
+        Assert.Contains(AssemblyInspector.IdentityErrors(mapped, "ReleaseBoundaryFixture", null, true), line => line.Contains("Toolchain.generated.txt", StringComparison.Ordinal));
     }
 
     [Fact]

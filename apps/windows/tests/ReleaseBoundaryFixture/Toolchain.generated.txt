@@ -52,6 +52,12 @@ namespace VoxClip.App.Controls
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         public void InitializeComponent() { }
 
+        // Generated code whose every sequence point is #line-mapped to a XAML file (EmitToolchainOutput writes it beside this one).
+#line 12 "RewritePanel.xaml"
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        public void Connect(int connectionId, object target) { if (connectionId == 2) global::System.GC.KeepAlive(target); }
+#line default
+
         [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
         private interface IRewritePanel_Bindings
         {

@@ -303,8 +303,9 @@ public static class AssemblyInspector
 
         private sealed record TypeFacts(string Name, bool CompilerGenerated, EntryOrigin Origin, string Evidence);
 
-        /// <summary>The origin decided by a set of PDB documents. <see cref="Kind"/> is the deciding document kind.</summary>
-        private sealed record Decision(EntryOrigin Origin, string Evidence, DocumentKind Kind, string Generator);
+        /// <summary>The origin decided by a set of PDB documents. <see cref="Kind"/> is the deciding document kind;
+        /// <see cref="Detail"/> names the generator of a generator document or the path of a mapped document.</summary>
+        private sealed record Decision(EntryOrigin Origin, string Evidence, DocumentKind Kind, string Detail);
 
         internal void Run()
         {
@@ -347,7 +348,8 @@ public static class AssemblyInspector
         }
 
         /// <summary>Hand-written (or unrecognised) documents make a record hand-written. Otherwise a non-exempt source generator
-        /// document, then any toolchain document decides. Mapped (#line) documents never decide when other documents exist.</summary>
+        /// document, then any toolchain document decides. Mapped (#line) documents never decide when other documents exist; a
+        /// record with only mapped documents is resolved by <see cref="Mapped"/>.</summary>
         private Decision? Decide(IEnumerable<DocumentFacts> seen)
         {
             DocumentFacts? handWritten = null, unrecognized = null, generator = null, toolchain = null, mapped = null;
@@ -364,10 +366,7 @@ public static class AssemblyInspector
             }
             if (handWritten is { } source) return new(EntryOrigin.Source, Relative(source.Path), DocumentKind.HandWritten, "");
             if (unrecognized is null && generator is null && toolchain is null && mapped is { } lonely)
-            {
-                Unrecognized.Add(lonely.Path);
-                unrecognized = lonely;
-            }
+                return new(EntryOrigin.Source, "#line-mapped document " + lonely.Path, DocumentKind.Mapped, lonely.Path);
             if (unrecognized is { } unknown)
                 return new(EntryOrigin.Source, "unrecognised document " + unknown.Path + " (outside --repo-root and the NuGet root): treated as hand-written",
                     DocumentKind.Unrecognized, "");
@@ -376,6 +375,17 @@ public static class AssemblyInspector
             if (toolchain is { } output)
                 return new(EntryOrigin.Generated, "generated document " + Relative(output.Path), output.Kind, output.Generator);
             return null;
+        }
+
+        /// <summary>Code whose every sequence point is #line-mapped to a non-C# file (for example a .xaml file, possibly by a
+        /// relative path) is XAML compiler output only inside a type that has obj/ XAML output. Anywhere else it is unrecognised:
+        /// treated as hand-written, and it fails the identity check.</summary>
+        private Decision Mapped(Decision decision, TypeDefinitionHandle owner)
+        {
+            if (!owner.IsNil && HasBuildOutput(owner))
+                return new(EntryOrigin.Generated, decision.Evidence + " in a type with obj/ XAML output", DocumentKind.BuildOutput, "");
+            Unrecognized.Add(decision.Detail);
+            return new(EntryOrigin.Source, "unrecognised " + decision.Evidence + ": treated as hand-written", DocumentKind.Unrecognized, "");
         }
 
         private TypeFacts Type(TypeDefinitionHandle handle)
@@ -387,7 +397,9 @@ public static class AssemblyInspector
             var parent = declaring.IsNil ? null : Type(declaring);
             var compilerGenerated = Rules.IsSynthesizedTypeName(reader.GetString(type.Name)) || parent?.CompilerGenerated == true;
             TypeFacts facts;
-            if (Decide(OwnDocuments(handle)) is { } decision)
+            var own = Decide(OwnDocuments(handle));
+            if (own is { Kind: DocumentKind.Mapped } mapped) own = Mapped(mapped, declaring);
+            if (own is { } decision)
                 facts = new(name, compilerGenerated, decision.Origin, decision.Kind == DocumentKind.Generator
                     ? "declared entirely by " + decision.Evidence : decision.Evidence);
             else if (!declaring.IsNil && GeneratedCodeTool(type.GetCustomAttributes()) == Rules.XamlCompiler && HasBuildOutput(declaring))
@@ -454,7 +466,12 @@ public static class AssemblyInspector
 
         private Decision? MethodDecision(MethodDefinitionHandle handle)
         {
-            if (!methodDecisions.TryGetValue(handle, out var known)) methodDecisions[handle] = known = Decide(MethodDocuments(handle));
+            if (!methodDecisions.TryGetValue(handle, out var known))
+            {
+                known = Decide(MethodDocuments(handle));
+                if (known is { Kind: DocumentKind.Mapped } mapped) known = Mapped(mapped, reader.GetMethodDefinition(handle).GetDeclaringType());
+                methodDecisions[handle] = known;
+            }
             return known;
         }
 
@@ -482,7 +499,7 @@ public static class AssemblyInspector
             {
                 var decisions = uses.Select(MethodDecision).ToArray();
                 if (decisions.All(decision => decision is { Kind: DocumentKind.ToolchainGenerator }))
-                    return (EntryOrigin.Generated, "used only by " + decisions[0]!.Generator + " output " + MethodOwner(uses[0]));
+                    return (EntryOrigin.Generated, "used only by " + decisions[0]!.Detail + " output " + MethodOwner(uses[0]));
             }
             return (owner.Origin, owner.Evidence);
         }
