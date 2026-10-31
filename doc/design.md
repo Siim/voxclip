@@ -1409,7 +1409,7 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 - One row per phrase:
   - a play button and the quoted new words;
   - then "Take {k} · {d} s · fits", or "· pauses +{x} s".
-  - With more than one take: a 1·2·3 segmented control, the duration and a "Best match" tag. The focused row adds the link **Try Another · {amount}**: {amount} is that phrase's own take-set estimate, written by voice-lab.md §3.1 `format` ("≈ $0.02", "< $0.01"). It reads **Try Another…** with no amount when that estimate confirms (voice-lab.md §3.1).
+  - With more than one take: a 1·2·3 segmented control, the duration and a "Best match" tag. The focused row adds the link **Try Another · {amount}**: {amount} is that phrase's own take-set estimate, written by voice-lab.md §3.1 `format`. It reads **Try Another…** with no amount when that estimate confirms (voice-lab.md §3.1).
 - Below the list: **Play Clip {n} with New Voice**, which previews the clip with the selected takes, and the line "Made {t} takes · ≈ ${x} on your ElevenLabs account."
 - Footer: an info glyph with "Exports show AI MODIFIED on the video and in the post.", and the primary **Use Takes**.
 
