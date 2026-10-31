@@ -73,15 +73,26 @@ private actor LaunchSettings: SettingsStore {
     }
     #endif
 
+    /// A dragged size is stored rounded and clamped, and every window starts with it. Where
+    /// the editor would drop under its minimum beside the Explorer, the right column narrows,
+    /// and a wider window gives the dragged width back (V1b, impl-plan §3.5).
     @Test func draggedSizesAreKeptForEveryWindowAndClamped() {
         let app = AppModel()
         let layout = WorkspaceLayout(app: app)
+        layout.windowWidth = 1440
         layout.rememberRightWidth(420.4)
         layout.rememberExplorerWidth(400)
         layout.rememberTimelineHeight(10)
         #expect(app.settings.values[WorkspaceLayout.rightWidthKey] == .number(420))
         #expect(layout.rightWidth == 420 && layout.explorerWidth == 320 && layout.timelineHeight == 72)
-        #expect(WorkspaceLayout(app: app).rightWidth == 420)
+        let other = WorkspaceLayout(app: app)
+        other.windowWidth = 1440
+        #expect(other.rightWidth == 420)
+        // At 1280 beside the 320 Explorer the editor keeps 604: 1280 − 320 − 604 = 356.
+        other.windowWidth = 1280
+        #expect(other.rightWidth == 356)
+        other.explorerVisible = false
+        #expect(other.rightWidth == 420)
     }
 
     @Test func togglesAndTheWidthRuleStoreNoSize() {
