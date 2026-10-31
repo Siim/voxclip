@@ -83,7 +83,7 @@
 - The caption gallery audit keeps main's eager rows and measured convergence; W11's run-loop layout turn replaces `Task.yield()` while the gallery is not ready.
 - design.md §13 now carries the shipped room-tone refusal ("… Clean audio is not available in this build. Re-record this sentence instead."); [Clean Audio…] returns when Clean audio (M2) ships.
 - Push gates: hosted CI on the merged head and the native window gates (appSelfTest, documentScene, demoWindow, voiceRecipeWorkflow, settingsLifecycle, saveBoundary) on an idle, unlocked console.
-- Owed to 0.1.0: the Windows Voice Lab App (track sol-win-voicelab-ui and its editor-side track), native Windows evidence (ORT parity, then the A8 flip), and the Mac screen-reader headphones caption that Windows R4 introduces.
+- Owed to 0.1.0 (updated 2026-10-31): native Windows evidence, including ORT parity on the shipped folder for both RIDs and then the A8 flip. The Windows CONTRACTS entry "Windows Voice Lab UI merged" lists the rest of the Windows work. The Windows Voice Lab App merged at 03742539, and the Mac screen-reader headphones caption at 14617a38 (sol-mac-vl-followups).
 
 ### 2026-10-30 — sol-mac-voicelab — W11 hosted gallery audit
 
