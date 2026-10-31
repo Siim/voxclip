@@ -151,6 +151,17 @@ class RewriteSpecTests(unittest.TestCase):
         for action, mac, *_ in rows:
             self.assertNotRegex(mac, r'(?<!⌃)F6', action)
 
+    def test_take_buttons_show_their_phrase_estimate(self):
+        rewrite = section(self.design, '### 6.3')
+        copy = '\n'.join('|'.join(row) for row in table_rows(section(self.design, '## 13.'), '| Situation | Where | Copy / UI |')
+                         if row[0].split(':')[0] in {'Rewrite', 'Your voice', 'Takes'})
+        names = between(section(self.design, '## 15.'), '- **Rewrite names**', '- **Rewrite announcements:**')
+        for name, text in [('§6.3', rewrite), ('§13', copy), ('§15', names)]:
+            self.assertNotRegex(text, r'≈ \$\d', name)
+            self.assertNotIn('about 1 cent', text, name)
+        for button in ['Try Another', 'Try Again']:
+            self.assertIn(f'[{button} · {{amount}}] or [{button}…]', copy)
+
 
 if __name__ == '__main__':
     unittest.main()
