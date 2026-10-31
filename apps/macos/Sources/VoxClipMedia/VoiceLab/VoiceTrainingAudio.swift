@@ -103,26 +103,36 @@ public enum VoiceTrainingAudio {
             output.alwaysCopiesSampleData = false
             let provider = reader.outputProvider(for: output)
             guard reader.startReading() else { throw VoiceLabSourceAudioError.unreadable }
-            let limit = CMTimeConvertScale(length, timescale: CMTimeScale(rate), method: .roundTowardPositiveInfinity).value
-            var timeline = VoiceTrainingTimeline(rate: rate, channels: channels, limit: limit)
+            let levels: VoiceTrainingLevels
             do {
-                while let sample = try await MediaSupport.nextSample(provider) {
-                    try Task.checkCancellation()
-                    try timeline.append(sample)
-                }
+                levels = try await Self.levels(rate: rate, channels: channels, length: length) { try await MediaSupport.nextSample(provider) }
             } catch {
                 reader.cancelReading()
                 throw error
             }
-            let meter = timeline.meter
-            guard reader.status == .completed, meter.samples > 0 else { throw VoiceLabSourceAudioError.unreadable }
-            let milliseconds = min(meter.samples * 1_000 / Int64(rate),
-                                   CMTimeConvertScale(length, timescale: 1_000, method: .roundTowardNegativeInfinity).value)
-            return VoiceTrainingLevels(sampleRate: rate, frameDb: meter.frameDb, duration: Double(milliseconds) / 1_000)
+            guard reader.status == .completed else { throw VoiceLabSourceAudioError.unreadable }
+            return levels
         } catch {
             if error is VoiceLabSourceAudioError || error is CancellationError { throw error }
             throw VoiceLabSourceAudioError.unreadable
         }
+    }
+    /// The levels of the decoded buffers `next` returns, placed by `VoiceTrainingTimeline` up to the media's numeric
+    /// `length`, with the take's duration the smaller of the placed and media lengths in whole milliseconds. A take with
+    /// no placed sample is `unreadable`.
+    static func levels(rate: Int, channels: Int, length: CMTime,
+                       next: () async throws -> CMReadySampleBuffer<CMSampleBuffer.DynamicContent>?) async throws -> VoiceTrainingLevels {
+        let limit = CMTimeConvertScale(length, timescale: CMTimeScale(rate), method: .roundTowardPositiveInfinity).value
+        var timeline = VoiceTrainingTimeline(rate: rate, channels: channels, limit: limit)
+        while let sample = try await next() {
+            try Task.checkCancellation()
+            try timeline.append(sample)
+        }
+        let meter = timeline.meter
+        guard meter.samples > 0 else { throw VoiceLabSourceAudioError.unreadable }
+        let milliseconds = min(meter.samples * 1_000 / Int64(rate),
+                               CMTimeConvertScale(length, timescale: 1_000, method: .roundTowardNegativeInfinity).value)
+        return VoiceTrainingLevels(sampleRate: rate, frameDb: meter.frameDb, duration: Double(milliseconds) / 1_000)
     }
     /// The §6.5.1 cut of each selected span, in the caller's (source) order: mono samples `floor((startMs × rate + 500) / 1000)`
     /// up to `floor((endMs × rate + 500) / 1000)` from the same mix as `levels`, normalised by `wav`. The cut is placed on

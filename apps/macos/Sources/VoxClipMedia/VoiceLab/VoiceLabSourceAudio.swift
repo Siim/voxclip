@@ -67,7 +67,8 @@ public enum VoiceLabSourceAudio {
     /// `sourceSampleRate`, then downmixed by the arithmetic mean of its channels and written with the paid-asset
     /// writer's float rule and header. Rate and length limits are refused before the source is opened. A timestamp gap
     /// inside the range is `rangeOutsideMedia`, or with `silenceGaps` the silence that own-voice training levels read
-    /// there (§6.5.1).
+    /// there (§6.5.1). With `silenceGaps` the read runs on towards the media's end, so a gap that reaches past `endSample`
+    /// is that silence too.
     public static func conversionInput(source: URL, startSample: Int64, endSample: Int64,
                                        sourceSampleRate: Double, silenceGaps: Bool = false) async throws -> Data {
         let (rate, frames) = try conversionChunk(startSample: startSample, endSample: endSample,
@@ -84,8 +85,11 @@ public enum VoiceLabSourceAudio {
             guard duration.isNumeric, CMTime(value: endSample, timescale: CMTimeScale(rate)) <= duration else {
                 throw VoiceLabSourceAudioError.rangeOutsideMedia
             }
+            // A training cut reads past endSample to the frame after a gap; the loop stops once the cut is complete.
+            let readEnd = silenceGaps ? duration : CMTime(value: endSample, timescale: CMTimeScale(rate))
             return try await decode(asset: asset, track: track, rate: rate, channels: Int(native.mChannelsPerFrame),
-                                    startSample: startSample, endSample: endSample, frames: frames, silenceGaps: silenceGaps)
+                                    startSample: startSample, endSample: endSample, readEnd: readEnd, frames: frames,
+                                    silenceGaps: silenceGaps)
         } catch {
             if error is VoiceLabSourceAudioError || error is CancellationError { throw error }
             throw VoiceLabSourceAudioError.unreadable
@@ -260,11 +264,10 @@ public enum VoiceLabSourceAudio {
     }
 
     private static func decode(asset: AVURLAsset, track: AVAssetTrack, rate: Int, channels: Int,
-                               startSample: Int64, endSample: Int64, frames: Int, silenceGaps: Bool) async throws -> Data {
+                               startSample: Int64, endSample: Int64, readEnd: CMTime, frames: Int,
+                               silenceGaps: Bool) async throws -> Data {
         let reader = try AVAssetReader(asset: asset)
-        let scale = CMTimeScale(rate)
-        reader.timeRange = CMTimeRange(start: CMTime(value: startSample, timescale: scale),
-                                       end: CMTime(value: endSample, timescale: scale))
+        reader.timeRange = CMTimeRange(start: CMTime(value: startSample, timescale: CMTimeScale(rate)), end: readEnd)
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: MediaSupport.pcm(rate: Double(rate), channels: channels))
         output.alwaysCopiesSampleData = false
         let provider = reader.outputProvider(for: output)

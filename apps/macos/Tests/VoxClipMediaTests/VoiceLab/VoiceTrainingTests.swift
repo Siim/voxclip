@@ -170,6 +170,51 @@ struct VoiceTrainingTests {
         var anchorless = VoiceTrainingTimeline(rate: rate, channels: 2, limit: 5_000)
         #expect(throws: VoiceLabSourceAudioError.unreadable) { try anchorless.append(missing) }
     }
+    @Test func levelsMeasureTheReaderOutputOnThePlacedTimelineUpToTheMediaDuration() async throws {
+        let rate = 8_000
+        func at(_ sample: Int64) -> CMTime { CMTime(value: sample, timescale: CMTimeScale(rate)) }
+        // 2,001 / 16,000 s is 1,000.5 samples: buffers placed from sample 1,001 on are dropped, and the duration is 125 ms.
+        let length = CMTime(value: 2_001, timescale: 16_000)
+        let rows: [(time: CMTime, count: Int, first: Int?)] = [
+            (at(0), 100, 0),
+            (at(400), 100, 400),     // a timestamp gap: silence across it
+            (at(1_000), 50, 1_000),  // placed before the limit, so kept whole
+            (at(1_050), 50, nil),    // sequential, but at the limit or after it: dropped
+            (at(800_000), 50, nil),  // a corrupt far timestamp: dropped, with no silence up to it
+        ]
+        var queue: [CMReadySampleBuffer<CMSampleBuffer.DynamicContent>] = []
+        var expected: [Float] = []
+        for (index, row) in rows.enumerated() {
+            let (buffer, mono) = try block(index, count: row.count, rate: rate, at: row.time)
+            queue.append(buffer)
+            guard let first = row.first else { continue }
+            expected.append(contentsOf: repeatElement(Float(0), count: first - expected.count))
+            expected.append(contentsOf: mono)
+        }
+        var reference = VoiceTrainingMeter(rate: rate)
+        for value in expected { reference.add(value) }
+        var pending = queue[...]
+        let levels: VoiceTrainingLevels = try await VoiceTrainingAudio.levels(rate: rate, channels: 2, length: length) { pending.popFirst() }
+        #expect(pending.isEmpty)
+        #expect(expected.count == 1_050)
+        #expect(levels.sampleRate == rate)
+        #expect(levels.frameDb.count == 13)
+        #expect(levels.frameDb == reference.frameDb)
+        #expect(levels.duration == 0.125)
+        // A placed take shorter than the media sets the duration, and a take with nothing placed is unreadable.
+        var head = queue.prefix(1)
+        let second = CMTime(value: 1, timescale: 1)
+        let partial: VoiceTrainingLevels = try await VoiceTrainingAudio.levels(rate: rate, channels: 2, length: second) { head.popFirst() }
+        #expect(partial.frameDb == Array(reference.frameDb.prefix(1)))
+        #expect(partial.duration == 0.012)
+        var far = queue.suffix(1)
+        do {
+            _ = try await VoiceTrainingAudio.levels(rate: rate, channels: 2, length: length) { far.popFirst() }
+            Issue.record("A take with nothing placed was measured")
+        } catch {
+            #expect(error as? VoiceLabSourceAudioError == .unreadable)
+        }
+    }
     /// The `take` placed 1.5 s into the asset with a 0.75 s gap 4 s into the audio, both empty edits as an exported
     /// composition stores them, and the mean mix on that asset timeline, which preview, export and the cuts use.
     /// AVAssetReader fills empty edits with silence itself; timestamps that jump are covered by the timeline test.
