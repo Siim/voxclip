@@ -33,3 +33,32 @@ The lead-approved rule is `tau = ceil-to-0.01(P99.9(clean calibration impostors)
 The report includes the full 0.001-grid calibration and overall curves plus the percentile, rounding rule, exact margin candidate, model/VAD/CLI hashes, decoder version, source archives and selected WAV hashes. The 2026-10-29 end-to-end production rerun gives P99.9 = 0.44653703263815736 and publishes **tau = 0.45**. Every corpus/rate passes: worst FAR 0.113960% (test-clean), worst same-speaker pass 98.989899% (test-other). Pooled results are 30/47,088 false accepts and 874/876 same-speaker passes, not independent trials. The fixture README and §6.6 contain the full condition table. The catalogue's `outcome: passed` permits English only with installed, hash-verified model/VAD assets; English evidence never authorizes Estonian enrollment. The user's own-voice microphone check remains owed before release; spoof resistance and field validation remain separate gates.
 
 CI runs `python3 -m unittest discover -s tools/voice-lab -p 'test_*.py'` and `python3 tools/voice-lab/check.py` without NumPy, ONNX, a corpus or network. They check percentile interpolation, decimal ceiling, drift/floor policy, failed-condition refusal, asset hashes, complete pair coverage, distinct/disjoint speaker/source identities, rates, counts, curves and catalogue evidence. Swift's real-model parity test runs only with a local `VOXCLIP_SPEAKER_MODEL_DIR`; otherwise it explicitly skips. Local verification uses real Swift CPU ONNX at all three fixture rates and checks that only verified English obtains tau 0.45, never Estonian or a caller-forged calibration. Do not download models inside tests.
+
+## Estonian et-v1 (Riigikogu)
+
+Estonian uses the same τ rule, gates and production CLI hook, and the corpus adapter `riigikogu.py`. The predeclared policy is `shared/fixtures/voice-lab/speaker/policy-et-v1.md`, which covers name normalisation, the transcript-only 30-session pool, the hash-split groups `rk-cal-a`, `rk-val-a`, `rk-cal-b` and `rk-val-b`, the replacement rule and the 40-speaker target / 17-speaker minimum. Group roles are explicit (`riigikogu.ROLES`, and `ROLES` for English), so no substring test decides which data fits τ.
+
+`speaker.py` still never downloads. Only `riigikogu.py transcripts` and `riigikogu.py excerpt` use the network: they read the pinned Hugging Face revision over HTTPS.
+- `transcripts` verifies every `.trs` against its Git blob ID.
+- `select` reads transcripts only and writes a local selection file that contains names. Keep that file out of the repository and delete it afterwards.
+- `excerpt` streams each pool FLAC once. It checks the LFS SHA-256 and the STREAMINFO MD5, and keeps only the six-second 16 kHz excerpts. The manifest it writes uses `rkNNN` keys.
+
+Fitting and validation are separate runs. Commit the frozen report between them.
+
+```sh
+python3 tools/voice-lab/riigikogu.py transcripts --output /tmp/voxclip-et-calibration/data/trs
+python3 tools/voice-lab/riigikogu.py select --transcripts /tmp/voxclip-et-calibration/data/trs --output /tmp/voxclip-et-calibration/data/selection.json
+nice -n 10 python3 tools/voice-lab/riigikogu.py excerpt --selection /tmp/voxclip-et-calibration/data/selection.json \
+  --output /tmp/voxclip-et-calibration/data --ffmpeg /opt/homebrew/bin/ffmpeg
+nice -n 10 python3 tools/voice-lab/speaker.py calibrate --language et --phase fit --date 2026-10-31 \
+  --excerpts /tmp/voxclip-et-calibration/data/excerpts.json --model /tmp/model/voxceleb_resnet34_LM.onnx \
+  --vad /tmp/model/ggml-silero-v6.2.0.bin --cli apps/macos/.build/debug/voxclip-cli \
+  --work /tmp/voxclip-et-calibration/work --ffmpeg /opt/homebrew/bin/ffmpeg
+# commit calibration-et.json (status frozen-before-validation) and calibration-pairs-et.json, then:
+nice -n 10 python3 tools/voice-lab/speaker.py calibrate --language et --phase validate --date 2026-10-31 \
+  --excerpts /tmp/voxclip-et-calibration/data/excerpts.json --model /tmp/model/voxceleb_resnet34_LM.onnx \
+  --vad /tmp/model/ggml-silero-v6.2.0.bin --cli apps/macos/.build/debug/voxclip-cli \
+  --work /tmp/voxclip-et-calibration/work --ffmpeg /opt/homebrew/bin/ffmpeg
+```
+
+`--phase fit` renders and scores only the calibration groups. It writes `status: frozen-before-validation` with `threshold: null`. `--phase validate` refuses to run unless the frozen report matches its own calibration pairs and the same model, VAD, CLI and decoder. It never refits or lowers the candidate, and it exits 2 when a gate fails. Estonian never updates the catalogue: adoption is a separate change. `check.py` verifies either state of `calibration-et.json` offline, and `test_riigikogu.py` covers name normalisation, merging, pool and speaker selection, replacement, minimums and excerpt slicing using synthetic names only.
