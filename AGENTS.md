@@ -48,6 +48,7 @@ swift build
 swift test
 swift run voxclip-cli version
 ./bundle.sh                 # ad-hoc signed VoxClip.app in dist/ (anyone)
+./bundle.sh profile         # optimized, with the DEBUG self-tests; performance gates run on this build
 ./bundle.sh --sign-only     # maintainers: Developer ID signed, keeps camera/mic and Keychain grants
 ```
 
