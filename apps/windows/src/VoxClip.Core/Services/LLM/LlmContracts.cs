@@ -227,6 +227,16 @@ public sealed partial class LlmRunner
 public sealed record LlmConnectionTestResult(bool Passed, string Model, bool UsedFallback, double Seconds);
 /// <summary>Safe installed CLI metadata for status and consent; never contains credentials.</summary>
 public sealed record CliDetectionInfo(string Path, string Version, string? AuthMethod, bool UsesApiKey);
+/// <summary>Who pays for an installed CLI's sends, as its sign-in check reports it: Claude Code's <c>authMethod</c> (AI §6.8) or
+/// whether <c>codex login status</c> says "API key" (AI §6.9). A method the app does not recognise has no value; it never
+/// counts as a plan.</summary>
+public enum CliSignIn
+{
+    /// <summary>A Claude or ChatGPT plan: a send counts toward the plan and costs nothing extra.</summary>
+    Plan,
+    /// <summary>An API key: a send is billed to the key the CLI is signed in with.</summary>
+    ApiKey
+}
 /// <summary>HTTP or standalone CLI provider adapter; AI §6.</summary>
 public sealed partial class LlmConnector : ILlmConnector
 {

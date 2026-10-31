@@ -5557,10 +5557,12 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method internal 
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method internal CapText(System.Decimal)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method private .cctor()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method private Cents(System.Decimal)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method private UnknownPrice(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method public ButtonTitle(string,System.Nullable`1<int>,VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentationResult)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method public CapWarning(System.Decimal,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method public Format(System.Decimal)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method public Kind(VoxClip.Core.Services.LLM.CostEstimate,bool,string,VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation :: method public KindForLlmSend(VoxClip.Core.Services.LLM.ConnectorId,System.Nullable`1<VoxClip.Core.Services.LLM.CliSignIn>,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentationKind :: field public Confirm
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentationKind :: field public Inline
 member VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentationKind :: field public value__
@@ -8147,6 +8149,9 @@ member VoxClip.Core.Services.LLM.CliLlmAdapter+Utf8KeyComparer :: field internal
 member VoxClip.Core.Services.LLM.CliLlmAdapter+Utf8KeyComparer :: method private .cctor()
 member VoxClip.Core.Services.LLM.CliLlmAdapter+Utf8KeyComparer :: method public .ctor()
 member VoxClip.Core.Services.LLM.CliLlmAdapter+Utf8KeyComparer :: method public Compare(byte[],byte[])
+member VoxClip.Core.Services.LLM.CliSignIn :: field public ApiKey
+member VoxClip.Core.Services.LLM.CliSignIn :: field public Plan
+member VoxClip.Core.Services.LLM.CliSignIn :: field public value__
 member VoxClip.Core.Services.LLM.CliWorkspace :: field private onDiagnostic
 member VoxClip.Core.Services.LLM.CliWorkspace :: field private root
 member VoxClip.Core.Services.LLM.CliWorkspace :: method internal .ctor(System.Action`1<string>)
@@ -11052,6 +11057,7 @@ type VoxClip.Core.Services.LLM.CliLlmAdapter
 type VoxClip.Core.Services.LLM.CliLlmAdapter+CliTooOldException
 type VoxClip.Core.Services.LLM.CliLlmAdapter+Detection
 type VoxClip.Core.Services.LLM.CliLlmAdapter+Utf8KeyComparer
+type VoxClip.Core.Services.LLM.CliSignIn
 type VoxClip.Core.Services.LLM.CliWorkspace
 type VoxClip.Core.Services.LLM.ClipFinder
 type VoxClip.Core.Services.LLM.ClipFinderGateException
