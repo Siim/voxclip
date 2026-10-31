@@ -2,7 +2,7 @@
 
 Status: normative for 0.1.0 (M1), with M2/M3 surfaces marked. Date: 2026-10-26.
 
-This spec covers information architecture, the single-window layouts for macOS and Windows, the transcript editor, the viewer and timeline, the clip list, captions, Voice Lab in context, Home, export and share, onboarding, settings, keyboard shortcuts, states and their exact copy, materials, accessibility, the token system and the design skills used to build it. Tokens live in [`shared/design/tokens.json`](../shared/design/tokens.json); this document explains how to use them. Module placement and threading are in [architecture.md](architecture.md).
+This spec covers information architecture, the single-window layouts for macOS and Windows, the transcript editor, the viewer and timeline, the clip list, captions, Rewrite and Voice Lab in context, Home, export and share, onboarding, settings, keyboard shortcuts, states and their exact copy, materials, accessibility, the token system and the design skills used to build it. Tokens live in [`shared/design/tokens.json`](../shared/design/tokens.json); this document explains how to use them. Module placement and threading are in [architecture.md](architecture.md).
 
 Provenance: VoxConvo's web clipper (`vox-web` VoiceRecorder, ClipsPanel, SubtitleOverlay, WordChip, theme), Superscribe's native apps, Apple HIG and WWDC25/26 Liquid Glass sessions, Microsoft Learn WinUI 3 guidance and the skills in section 18, as collected in the planning research (`design.md`).
 
@@ -31,7 +31,7 @@ There are no Transcript and Clips modes and no inspector tabs.
 5. Find clips. Choose **Find Clips** (⇧⌘K / Ctrl+Shift+K) and pick a preset. The results appear in the sidebar under **Suggested**, each with Keep and Dismiss.
 6. Shape a clip. Select its row. The transcript marks it, the viewer plays only that clip, and the timeline zooms to it. Choose a Frame (9:16) and a caption style.
 7. Export. **Export Clip…** (⌘E / Ctrl+E) opens the export sheet with that clip already chosen.
-8. Optional, with Voice Lab on: choose **Rewrite…** on a selection. A panel replaces Captions in the right column. Pick a take and choose **Use Take 1**. The new words show inline in the transcript with an AI marker.
+8. Rewrite a clip. Select its row and choose **Rewrite** (⇧⌘R / Ctrl+R), with or without an instruction in the bar above the transcript. The proposed changes show in the transcript and in a panel that replaces Captions. Apply the cuts and fixes at once, or, with Voice Lab on, make your voice from the clip and use takes for the new phrases (§6.3). The new words show inline in the transcript with an AI marker.
 9. Choose Home (⌘1 / Ctrl+1) to see the library. The open project stays in the sidebar. Opening another project saves the open one and replaces it in place.
 
 **What stays the same.**
@@ -68,7 +68,7 @@ Where a mockup and this specification disagree, the specification wins. Some moc
 
 - The current style reads **Box highlight · Edited** with the summary **Paper · As said · 3 words** on both platforms.
 - **Frame order** is 9:16 · 1:1 · 16:9 · Original on both platforms.
-- **The Rewrite diff** sits in the panel on both platforms. The transcript only marks the passage being rewritten.
+- **The Rewrite diff** sat in the panel on both platforms. Superseded on 2026-10-31: the transcript shows the proposal as tracked changes and the panel lists them (§6.3).
 - **Provider lines in Rewrite.** Each "Sends…" line sits under its own action.
 - **The 9:16 stage** keeps its 180×320 cap on both platforms, and the gallery scrolls below it.
 - **The Windows transcript selection** uses the grey `selection.transcript` wash (the colour macOS derives from the Ink accent) with `text.primary`, never the ink or paper of the playing word. A selected word and the playing word must not look the same.
@@ -128,8 +128,9 @@ Main window (macOS: exactly one. Windows: one per process window; Ctrl+N opens a
 │  └─ Editor (Full take, a clip or a suggestion selected)
 │     ├─ Toolbar (macOS) / command row (Windows): title + edit summary · Cut Fillers ·
 │     │     Tighten Pauses · Restore Cuts · Find Clips · Export Video… / Export Clip… · viewer toggle
-│     ├─ Transcript page (centre) + selection bar: Make Clip · Cut · Restore · Rewrite…
-│     ├─ Right column: Viewer (stage, viewer bar, Frame) over Captions, or the Rewrite panel
+│     ├─ Scope bar (above the transcript): scope label · instruction field · Rewrite · AI picker  (§6.3.1)
+│     ├─ Transcript page (centre) + selection bar: Make Clip · Cut · Restore · Rewrite
+│     ├─ Right column: Viewer (stage, viewer bar, Frame) over Captions, or the Rewrite panel while a task is open (§6.3.4)
 │     └─ Timeline strip (bottom, under the centre and right columns)
 ├─ Transient: Find Clips popover/flyout · Import sheet (§7.1) · Export sheet (§8) ·
 │     Voice Lab consent and cost confirmations · Keyboard shortcuts
@@ -333,6 +334,15 @@ How it is built:
 
 Export statuses come from an app-local export ledger (§6.2), not from the project file.
 
+**Rewrite on a row** (§6.3).
+
+- The selected kept clip's row shows a **Rewrite** button after its meta line. Other kept rows, suggestion rows and Full take show it while the pointer is over them. No row shows it while a task is open. Its target is at least 24 pt (§15), and its accessible name is "Rewrite clip {n}" ("Rewrite full take" on Full take).
+- Clicking it selects the row if needed, then runs Rewrite with the scope bar's field text, or with Fix mistakes when the field is empty.
+- On a suggestion row, Rewrite first keeps the clip, as its own undo step (Keep, §2), and announces "Clip {n} kept".
+- A kept clip's context menu starts with **Rewrite Clip {n}** (⇧⌘R) and a separator (§6.2).
+- After an accepted rewrite with voice changes, the meta reads "{m:ss} · AI modified" (the AI modified status above). After cuts and fixes only, the meta is unchanged.
+- Windows: a hover `Button` in the `SidebarItems` template, and the `ContextFlyout` item "Rewrite clip {n}".
+
 **Badges.**
 
 - **Neutral, the default:** 16×16 (macOS) or 16×16 overlaid (Windows). Radius 4. Numeral in SF Mono 11/600 or Cascadia Mono 11/600, `text.secondary`, on `clip.badgeBackground`.
@@ -394,7 +404,7 @@ At window widths below 1100 the capsule is icon-only: the scissors with the coun
   - `AppBarSeparator`.
   - **Find clips** (Ctrl+Shift+K).
   - **Viewer**, an `AppBarToggleButton` (Ctrl+Shift+I). Its checked state is restyled to the subtle fill, so it is not a second accent block.
-  - **⋯** with: Rewrite… (Ctrl+R, Voice Lab on), Make clip (Ctrl+K), Show cut words (Ctrl+Shift+H), Show pauses, Find (Ctrl+F), Undo (Ctrl+Z), Redo (Ctrl+Y), Save project as…, Show project file, Transcribe again…, Keyboard shortcuts (F1).
+  - **⋯** with: Rewrite {scope} (Ctrl+R; "Rewrite selection", "Rewrite clip {n}" or "Rewrite full take", with "…" when the send asks first; §6.3), Make clip (Ctrl+K), Show cut words (Ctrl+Shift+H), Show pauses, Find (Ctrl+F), Undo (Ctrl+Z), Redo (Ctrl+Y), Save project as…, Show project file, Transcribe again…, Keyboard shortcuts (F1).
 - **Export** is a separate `AccentButtonStyle` button outside the `CommandBar`: 40 high, padding 0,16, radius 6. It reads "Export video…" or "Export clip…" (Ctrl+E). Its accessible name adds ", contains AI-modified speech" when the scope does. It is disabled with the tooltip "Keep at least one word before exporting." when nothing can be exported, and with "Keep this clip to export it." when a suggestion is selected.
 
 ### 3.6 Right column
@@ -403,11 +413,11 @@ From the top:
 
 1. **The viewer** (§5.1): the stage, the viewer bar and the Frame row.
 2. **A hairline.**
-3. **Captions** (§6.1), which fills the rest of the column and scrolls. While Rewrite is open, the Rewrite panel (§6.3) replaces Captions.
+3. **Captions** (§6.1), which fills the rest of the column and scrolls. While a task is open, the Rewrite panel (§6.3.4) replaces Captions, and Captions return when it closes.
 
 The column background is the page (`bg.surface` on Windows). On macOS it is the window background behind the split, with no card and no inset. Pane padding is 16.
 
-**Fit.** The column lays its content out at exactly its own width, anywhere from 300 to 560. Nothing in it may run past the column or the window edge, and nothing is clipped to make it fit. A row that doesn't fit switches to its stacked form: the viewer bar and the Frame row (§5.1), the Captions header and the Fine Tune rows (§6.1), and the Rewrite header and New words label (§6.3). The switch is chosen from the content's measured width, not from a fixed breakpoint.
+**Fit.** The column lays its content out at exactly its own width, anywhere from 300 to 560. Nothing in it may run past the column or the window edge, and nothing is clipped to make it fit. A row that doesn't fit switches to its stacked form: the viewer bar and the Frame row (§5.1), the Captions header and the Fine Tune rows (§6.1), and the Rewrite panel's rows (§6.3.4). The switch is chosen from the content's measured width, not from a fixed breakpoint.
 
 ### 3.7 Narrow widths
 
@@ -462,6 +472,8 @@ Word states (each shown by more than colour):
 | AI words (accepted) | an "AI" chip at the start (§6.3) and a 1 px dashed `accent.text` underline. Description adds ", AI modified" |
 | Outside the selected clip | `text.secondary` (7.34:1 dark, 6.56:1 light), **no opacity**. Cut words there keep `word.cut` and the strike; timecodes stay `text.tertiary`; other clips stay neutral |
 
+Rewrite (§6.3) adds tracked changes to the transcript, and §6.3.5 lists what each state must show. The visual redesign sets their treatments, together with new ones for the selected clip and a selection. It replaces the "Selected", "Rewrite passage" and "Outside the selected clip" rows above, and the Windows overlay's Rewrite outline.
+
 Live transcript while recording (M2): partial words in `text.muted` italic; a "Jump to live ↓" pill appears when the user scrolls up.
 
 ### 4.2 Interaction
@@ -475,7 +487,7 @@ Live transcript while recording (M2): partial words in `text.muted` italic; a "J
 | ⌫ / Delete on a selection | **Cut.** If the whole selection is already cut, **restore** it (toggle, like VoxConvo's tap to cut, tap again to restore) |
 | ⇧⌫ / Shift+Backspace | Restore the selection |
 | ⌥-click / Alt-click | Play from that word |
-| Right-click | Context menu: Make Clip (⌘K) · Cut · Restore · Rewrite… (Voice Lab on) · Correct Spelling… · Play from Here · Preview This Cut (P) · Copy Text. With a caret between words and Voice Lab on: Insert Words… |
+| Right-click | Context menu: Rewrite (⇧⌘R) · Type New Words… · Make Clip (⌘K) · Cut · Restore · Correct Spelling… · Play from Here · Preview This Cut (P) · Copy Text. With a caret between words and Voice Lab on: Insert Words… (§6.3.6) |
 | Drop a file on the window | The whole-window overlay (§7). With a project open, it is saved first, then the new video opens in its place |
 
 After every cut the edit summary updates (§3.5) and VoiceOver or Narrator announces "Cut 'um'". Undo groups by command: one Cut Fillers is one undo step.
@@ -494,9 +506,9 @@ When the user selects one or more whole words with the pointer or the keyboard a
 | | macOS | Windows |
 |---|---|---|
 | Control | custom glass bar: an overlay in the `NSScrollView` document view's coordinates with `.glassEffect(.regular, in: .rect(cornerRadius: 10))`, 36 high | `CommandBarFlyout` on Acrylic, radius 10, 40 high |
-| Items | **Make Clip** ⌘K (default, highlighted with the neutral fill of an unfocused sidebar selection) · **Cut** ⌫ · **Restore** ⇧⌫ · divider · **Rewrite…** ⇧⌘R (Voice Lab on). Labels 13 with SF Mono 11 key hints in `text.secondary` | **Make clip** (labelled) · **Cut** and **Restore** (icon only, tooltips "Cut (Delete)" and "Restore (Shift+Backspace)") · separator · **Rewrite…** (labelled, Ctrl+R; Voice Lab on). The flyout is restyled so the two primary commands keep their labels |
+| Items | **Make Clip** ⌘K (default, highlighted with the neutral fill of an unfocused sidebar selection) · **Cut** ⌫ · **Restore** ⇧⌫ · divider · **Rewrite** ⇧⌘R. Labels 13 with SF Mono 11 key hints in `text.secondary` | **Make clip** (labelled) · **Cut** and **Restore** (icon only, tooltips "Cut (Delete)" and "Restore (Shift+Backspace)") · separator · **Rewrite** (labelled, Ctrl+R). The flyout is restyled so the two primary commands keep their labels |
 
-Restore is disabled when nothing in the selection is cut. When the selection already equals a clip, Make Clip's tooltip reads "Clip 2 already covers these words", and choosing it selects that clip (§6.2).
+Rewrite shows whenever the editor allows AI actions (`capabilities.ai`, the same gate as Find Clips), with Voice Lab on or off; it rewrites the selection (§6.3). Restore is disabled when nothing in the selection is cut. When the selection already equals a clip, Make Clip's tooltip reads "Clip 2 already covers these words", and choosing it selects that clip (§6.2).
 
 **Placement.**
 
@@ -867,7 +879,7 @@ The inspector and its Captions, Clips and AI tabs are gone. The commands ⌘1–
 
 - **Clips** live in the sidebar (§3.4, §6.2).
 - **Captions** live in the right column (§6.1).
-- **Voice Lab** opens in context, in the right column (§6.3).
+- **Rewrite**, and the Voice Lab steps inside it, open in context: the scope bar above the transcript and the Rewrite panel in the right column (§6.3).
 - **M2 AI commands** live in the toolbar and the menus (§6.4).
 
 ### 6.1 Captions (right column)
@@ -951,6 +963,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 **Row actions.**
 
 - **Kept clip context menu** (macOS `.contextMenu`, Windows `ContextFlyout`):
+  - Rewrite Clip {n} (⇧⌘R; §6.3), then a separator;
   - Export Clip…;
   - Rename… (macOS: Return on the focused row edits the title inline; Windows: F2);
   - Copy Text;
@@ -995,91 +1008,469 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
   - **Exporting / Export failed:** taken from the live export queue.
 - Clearing app data removes the statuses, never the project.
 
-### 6.3 Voice Lab in context (M3 beta)
+### 6.3 Rewrite (clip-first) and your voice
 
-Voice Lab appears only when Settings → Voice Lab → Show Voice Lab (beta) is on (voice-lab.md §5).
+Status: specified 2026-10-31 for Phase 0. It replaces the passage Rewrite panel and the separate Create Your Voice sheet. The apps still ship those until the Phase 0 packages land; each package records its step in `apps/macos/CONTRACTS.md` or `apps/windows/CONTRACTS.md`. This section sets behaviour, copy, keys and accessibility. The sizes, type, colours and drawing of the scope bar, the panel, the transcript marks and the timeline marks come with the visual redesign, which is merged separately. Until then §3, §4.1 and §5.2 keep today's metrics and marks.
 
-- **When it is off:**
-  - the selection bar has no Rewrite… and no divider;
-  - Edit > Rewrite… (macOS) and ⋯ > Rewrite… (Windows) still exist, and open the one-time "Turn on Voice Lab" sheet from voice-lab.md §5.
-- **When it is on:**
-  - the selection bar shows **Rewrite…** (⇧⌘R / Ctrl+R);
-  - the transcript context menu adds Rewrite… and, with a caret between words, **Insert Words…**.
-  - Both open the Rewrite panel. Rewrite combines voice-lab.md §8.1 entry points 1 (re-voice the selection) and 3 (fix with AI); Insert Words is entry point 2.
+**The clip is the unit of work.** Rewrite acts on a *scope*: a kept clip, a suggested clip, Full take, or a word selection. The selected sidebar row sets the scope (§2), and a word selection inside it narrows it. No text selection is needed.
 
-**Rewrite panel.** It replaces Captions in the right column. It is flush, with no card, no inset and no radius. A hairline sits above it and above its footer. Sections are separated by 12 of spacing and their labels, not by hairlines. The column scrolls when it has to. While it is open:
+- **One composer per scope.** The scope bar (§6.3.1) holds the scope's name, one instruction field, one verb (**Rewrite**) and the AI picker. An empty field means the default task, Fix mistakes. The selected sidebar row repeats **Rewrite** (§3.4).
+- **One result surface.** While a task is open, the Rewrite panel replaces Captions in the right column (§3.6). Captions return when it closes. The panel only shows work and results.
+- **The text change is the hero.** The result shows as tracked changes in the transcript and as a checklist in the panel, with the same ordinals. Each change can be edited before anything is paid for.
+- **The voice comes from the clip.** When a change needs a voice and none exists, the panel continues into "Make your voice from this clip" (§6.3.7). There is no separate sheet and no Settings detour. Settings → Voice Lab only manages voices.
+- **One primary action per state.** Each state has a headline, at most one note, at most one secondary link and exactly one primary button. A control that cannot act is not shown. A hint appears once. The send line sits next to the button that sends. AI MODIFIED is stated once, at Use.
+- **Free work is not beta.** Cuts and text fixes from Rewrite need no voice and work with Voice Lab off. Only phrases in your voice, making your voice and takes carry the Beta tag and need Voice Lab (voice-lab.md §5).
+- **No outlines in the transcript.** A clip, a selection and a proposed change are never drawn as boxes.
 
-- the passage being rewritten shows in the transcript with an `accent.soft` fill and a 1 px `accent.text` outline (radius 4);
-- the timeline shows the same as a band;
-- the stage may compact (§5.1).
+**Vocabulary.**
+
+- **AI**: the selected connector (`llm.connector`) and its model. Names are plain text, never logos (ai.md §7.1 rule 6). Menus keep "Claude Code (installed CLI)" and "Codex (installed CLI)"; the bar and the panel use the short name.
+- **Change kinds** (voice-lab.md §8.2 classes): *cut* (`cut`, free); *fix* (`textOnly`, text only and free); *voice* (`voice`: it needs your voice and takes, so it is paid).
+- **Proposal**: the result before anything changes the project, a `ChangeSet` of `ProposalItem`s (§6.5).
+
+**Scope words.** The copy in this section is written for a clip. The other scopes substitute their own words:
+
+| Scope | Title and undo name | "clip {n}" in a sentence | "the {w} words of clip {n}" | "this clip" |
+|---|---|---|---|---|
+| Kept or suggested clip | "Rewrite clip {n}" | clip {n} | the {w} words of clip {n} | this clip |
+| Full take | "Rewrite full take" | the full take | the {w} words of this video | this video |
+| Selection | "Rewrite {w} words" | these words | these {w} words | this clip when the selection lies in a clip, otherwise this video |
+
+`{AI}` is the AI's short name, `{CLI}` is "Claude Code" or "Codex", `{provider}` is the API-key provider's name and `{host}` is a remote local server's host. `{Mac/PC}` is "Mac" on macOS and "PC" on Windows, as in §13.
+
+#### 6.3.1 Scope bar
+
+A row pinned above the transcript. It replaces nothing: the toolbar keeps its commands.
+
+| Part | Content |
+|---|---|
+| Label | Kept clip: its badge (§3.4), "Clip {n}" and its edited length `{m:ss}`. Suggested clip: its badge and "Suggested clip {n}". Full take: "Full take" and `{m:ss}`. Selection: "Selection" and "{w} words" |
+| Field | Placeholders: a clip "What should change in clip {n}?" (a suggested clip the same); Full take "What should change in this video?"; a selection "What should change in these words?". Return runs Rewrite. A trailing chevron opens the suggestions |
+| Verb | **Rewrite** (⇧⌘R / Ctrl+R). With an API-key connector, or a CLI signed in with an API key, it reads **Rewrite…**, because that send asks first (voice-lab.md §3.1) |
+| AI picker | A status dot, the AI's short name ("Claude Code", "Codex", "Ollama", "LM Studio", "Apple on-device", "Anthropic", "OpenAI"…) and a chevron. The dot has three states: ready; asks before each send; unavailable (signed out or not running). The accessible name carries the state in words (§15). With no connector set, it reads "Choose AI" |
+
+**Suggestions.** They appear when the field is focused and empty, or from its chevron. Choosing one fills the field and does not send.
+
+| Suggestion | Instruction sent |
+|---|---|
+| Fix mistakes (the default for an empty field) | "Fix slips and repeats. Keep my words and my voice; change as little as possible." |
+| Make it clearer | "Make it clearer. Keep my words where they work; change as little as possible." |
+| Make it shorter | "Make it shorter, mostly by cutting. Keep my words and my voice." |
+| Fix grammar and punctuation only | "Fix grammar, punctuation and capitals only. Don't add or change words unless a word is wrong." |
+| Recent: "{text}" | The project's last three distinct instructions, most recent first. They are app-local state, never written to the project file |
+
+The instruction is bound into the quote like any instruction (`PatchRewriteRequest.instruction`, at most 1,000 UTF-8 bytes; voice-lab.md §8.1).
+
+**States.**
+
+- *Idle*: as above.
+- *Running*: the field is read-only and shows what was asked. The verb is replaced by a spinner and "Rewriting…", which is status, not a button. An indeterminate progress line runs along the bar, static under Reduce Motion. Stop lives in the panel.
+- *Proposal open*: the field keeps the asked text and stays editable. **Rewrite** sends again and replaces the proposal. When any change was edited, or takes exist, it first asks "Discard these {c} changes?" with **Keep Working** (the default) and **Discard Changes**.
+- *Another AI run holds the lease* (Find Clips, AI tighten; ai.md §4.7): the verb is replaced by the status "Finding clips…" or "Tightening…".
+- *Untranscribed project, or no editable scope*: the bar is hidden.
+
+Narrow-width rules for the bar come with the visual redesign (§3.7).
+
+**Windows.** A `Grid` row in `EditorPage.xaml`:
+
+- the label is a `TextBlock`;
+- the field is an `AutoSuggestBox` with `QueryIcon` hidden, its suggestions in `ItemsSource`, and `QuerySubmitted` running Rewrite;
+- the verb is a `Button` with `AccentButtonStyle`, with Ctrl+R in its tooltip;
+- the picker is a `DropDownButton` with a `MenuFlyout` of `RadioMenuFlyoutItem`s, `MenuFlyoutSeparator`s, and group headers as disabled `MenuFlyoutItem`s.
+
+#### 6.3.2 AI picker menu
+
+Each entry shows its billing on the trailing side. Choosing an entry writes `llm.connector`, the same value Settings → AI shows (ai.md §10.1). It also changes the AI for Find Clips and Tighten with AI, so the menu's header reads "Used for Rewrite, Find Clips and Tighten with AI."
+
+```text
+Installed apps · your own sign-in
+  ✓ Claude Code (installed CLI)          {model} · no extra cost      (API-key sign-in: "{model} · billed to its API key")
+    Codex (installed CLI)                {model} · no extra cost      (signed out: "Not signed in")
+On this {Mac/PC}
+    Ollama                               {model} · free               (not running: "Not running")
+    Apple on-device                      free · English               (macOS only)
+Your API key
+    Anthropic                            asks before each send        (no key: "Add Key…")
+    OpenAI                               Add Key…
+─────
+    Model                                {model} ▸
+    AI Settings…                         ⌘, / Ctrl+,
+```
+
+- A remote local server, one that is not loopback (ai.md §8.2), shows "on {host} · free".
+- Detection runs only when the menu opens (ai.md §7.1 rule 5).
+- Choosing a signed-out CLI, a stopped local server or a key-less provider selects it. The next Rewrite then shows the fix inline in the panel (R1x).
+
+#### 6.3.3 Sidebar
+
+The sidebar's Rewrite button, its hover rule and the row menus are in §3.4 and §6.2.
+
+#### 6.3.4 Rewrite panel
+
+The panel replaces Captions in the right column while a task is open, and Captions return when it closes (§3.6). If the right column is collapsed, opening a task shows it, as Show Viewer does.
 
 From the top:
 
-1. **Header**, one row: a `waveform` glyph, "Rewrite" 13/600, a "Beta" tag (11, `text.secondary`, 1 px `line.strong` outline), "{n} words at {m:ss.d}" in 11 `text.secondary`, and a close button named "Close Rewrite" (Esc). When the row doesn't fit, "{n} words at {m:ss.d}" moves to a second line under the title and the close button.
-2. **What should change?** A one-line field, focused when the panel opens, with a bordered **Rewrite · {cost}** button, for example "Rewrite · < $0.01". It sends the passage and the instruction to the selected LLM connector (`VoiceRewriteService`, voice-lab.md §2.6) and fills New words with the proposal. Under it, the line for that send in 11 `text.secondary`:
-   - API key: "Sends these {n} words to {connector} with your key."
-   - CLI: "Sends these {n} words to {CLI} with your sign-in. Counts toward your {plan}."
-   - Local: "Runs on this {Mac/PC}. Nothing leaves it."
-   - A configured non-loopback local-server connector: "Sends these {count} words to {host}." Only loopback servers may use the nothing-leaves wording.
-3. **New words.**
-   - The label, with the summary on the trailing side: "{i} new, {r} removed · about {s} s". When they don't fit, the summary moves under the label.
-   - An editable plain-text field holding only the new text, prefilled with the passage.
-   - Under it, a read-only diff line from the voice-lab.md §8.2 LCS:
-     - removed words in `text.secondary` with a 1.5 px `cut.stroke` strike;
-     - inserted words in `accent.text` with a 1.5 px solid underline;
-     - re-voiced bridge words in `text.primary` with a 1 px dashed `accent.text` underline;
-     - an event or unlabeled speech that a re-voiced change spans (voice-lab.md §8.2 `absorbedItemIds`) as a removed item: its transcript label in `text.secondary` with the same strike, because the new voice replaces it.
-   - Its accessible description reads "one becomes on Sunday, seven becomes five, …".
-   - Under the diff, one fit meter line per voice hunk in 11 `text.secondary`: "about 4.3 s for a 4.1 s gap: fits" or "about 4.3 s for a 4.1 s gap: will change length" (voice-lab.md §8.9.1). With more than one hunk, each line starts with that hunk's new words in quotes, for example "“on Sunday” · about 1.2 s for a 1.1 s gap: fits". It updates as the user types, and nothing is sent.
-   - The transcript does not render proposed words; only accepted replacements appear there.
-4. **Voice.** A pop-up (macOS) or `ComboBox` (Windows) reading "My voice · consent Oct 12", with the date in `text.secondary`. With no active consented voice, it reads "No voice yet" with **Create Your Voice…**, which opens the voice-lab.md §6 flow with this project's audio as the default training source (§6.5), and Generate is disabled.
-5. **Takes.**
-   - **Header:** "Takes", with a text button **Generate Takes · ≈ $0.02** before any takes exist, or **Generate Again · ≈ $0.02** after. Its tooltip and accessible name are "Generate up to 3 new takes, about $0.02". Under it, in 11 `text.secondary`: "Sends the new words and a short audio check to ElevenLabs with your key. No video." The QA re-transcription in voice-lab.md §8.11 sends audio.
-   - **The list:** single choice (macOS `List` with selection; Windows `ListView` with `SelectionMode="Single"`). The best take is preselected and plays once.
-   - **Rows:** 36 high on macOS, 40 on Windows: a 24 or 32 neutral play/pause button, "Take 1", the duration in mono, a "Best match" outline tag or a pause-fit note such as "pauses +0.4 s" in `text.secondary` (voiced speech is never time-stretched; only silences are fitted), and a 24 or 32 ✕ (Reject, named "Reject take 2"). Rows fill only while selected or playing.
-   - **A failed take** gets its own row: a warning glyph, "Take 3 didn't pass the speech check." and **Try Another · ≈ $0.01**.
-6. **Footer** (above a hairline):
-   - the disclosure in 11 `text.secondary` with an info glyph: "Exports show AI MODIFIED on the video and in the post.";
-   - one default button, **Use Take 1** (Return). It stays disabled until a take passes QA and any required video choice has been made.
-   - Accepting is one undo step (voice-lab.md §8.12). The panel closes, Captions comes back, and focus returns to the words.
+1. **Header.**
+   - The title: "Rewrite clip {n}", "Rewrite {w} words" or "Rewrite full take". In voice steps, a back button named "Back to rewrite" and the title "Your voice" instead.
+   - A "Beta" tag, only in voice steps, on takes, and in any state that shows voice rows while Voice Lab is on.
+   - In voice steps only, the step counter "Step {i} of 3" ("Step {i} of 4" when a read-aloud is needed).
+   - A close button named "Close Rewrite" (Esc).
+2. **Context line.** The AI's short name, " · {model}", then " · {state}". The state is one of:
+   - "no extra cost": a CLI signed in on a plan, a local server (loopback or remote), or Apple on-device;
+   - "billed to your key": an API key, or a CLI signed in with an API key;
+   - "answered in {t} s", after a reply.
 
-**After accepting.**
+   The line is read-only; the picker lives in the bar.
+3. **Headline**, with an optional sub-line. Every state has one.
+4. **Body**: the state's content.
+5. **Footer**, pinned: at most one note, at most one secondary link, and exactly one primary button (the default button). The note sits above the button row, with the link at the leading end and the primary at the trailing end.
 
-- The passage shows inline in the transcript with an "AI" chip at its start: SF Mono 10/600 or Cascadia Mono 10/600, `accent.text` on `accent.soft`, 1 px `accent.text` outline, radius 4. The replacement words have a 1 px dashed `accent.text` underline, and their accessible description adds ", AI modified".
-- The sidebar meta of every scope that contains the passage reads "AI modified".
-- The viewer bar shows the AI modified tag.
-- The stage and Export accessible names add ", contains AI-modified speech".
+Rules:
 
-**Rewrite states** (copy in §13):
+- No disabled buttons.
+- Spinner rows keep a fixed width.
+- The body scrolls; the footer never scrolls.
+- Rows wrap rather than truncate. The exception is a change row's second line, which may truncate and carries its full text as its accessible description.
+- The panel is built on the Director task model (§6.5): a `DirectorTask` with `ActivityStep`s, a `ChangeSet` of `ProposalItem`s, and `PanelCard`s for the steps that need the user. Rewrite has no view model of its own.
 
-- **Generating.** "Generating take 2 of 3…" with a spinner and **Cancel** in place of the remaining rows. Announce "Take 1 ready." as each take arrives. At the end of a run in which no take fits, announce "Three takes ready." or, only when some failed, "Three takes ready, one failed the speech check."
-- **Take fits** (voice-lab.md §8.6). When a take passes the speech check and fits its gap, generation stops: the spinner row reads "Take 2 fits." and it is announced. No further take is generated. Only when an earlier take failed does it add "One failed the speech check."
-- **Provider error.** A callout on `status.dangerBackground`: "ElevenLabs rejected the key (401). Your edits are saved." [Open Settings] [Retry]. Windows uses `InfoBar Severity="Error"`.
-- **No take passed.** "These takes didn't sound right. Try different wording or re-record." [Generate Again · ≈ $0.02].
-- **Length changed** (ADR-R28). "Take 1 runs 1.4 s longer than the words it replaces. Choose how the video keeps up." For a take that is too short: "Take 1 runs 0.6 s shorter than the words it replaces. Choose how the video keeps up." The seconds are what remains after the silence fit (voice-lab.md §8.9). It offers a required radio choice:
-  - **Lip sync:** "Sends 9 s of video around the change to {provider} with your key. About $0.60, confirmed before it runs."
-  - **Retimed source video:** "Slows these 9 s of video to 0.86× and crops in slightly around your face. Nothing is sent." For a shorter take: "Speeds these 9 s of video up to 1.07× and crops in slightly around your face. Nothing is sent."
+Windows: `Controls/DirectorPanel.cs`, hosted by `RightColumn` and built from `Grid`, `InfoBar`, `ListView`, `ProgressRing` and `ProgressBar`. The primary is a `Button` with `AccentButtonStyle`.
 
-  Neither is preselected. An unavailable option shows why. Use Take stays disabled until one is chosen. The choice is never remembered.
-- **Cut-only or text-only diff** (voice-lab.md §8.2 classes cut and textOnly). Voice and Takes hide, and the footer button reads **Apply Cuts** or **Apply Correction**. No AI is used and nothing is sent.
-- **Patch budget exceeded.** "That's a lot to re-voice. Re-record these sentences instead." Generate is disabled.
-- **No room tone** (voice-lab.md §8.7). "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead." Generate is disabled. When Clean audio (M2) ships, the last two sentences give way to [Clean Audio…], which opens the Clean audio panel.
-- **Too close to the take edge** (voice-lab.md §8.4). "This change is too close to the {start/end} of the take to blend in. Re-record this sentence instead." Generate is disabled.
-- **Cost of $0.50 or more, or unknown.** The cost confirmation from voice-lab.md §3.1 appears before the action runs.
+#### 6.3.5 The proposal in the transcript
 
-Keyboard: opening the panel focuses "What should change?". Esc closes it and returns focus to the selected words. F6 order is in §15.
+The transcript shows a proposal as tracked changes. The panel's change list and the transcript use the same ordinal for each change ("Change 1 of 6"), so they can be matched without sight. The transcript must show, each by more than colour:
+
+| State | What it shows |
+|---|---|
+| Proposed change | The removed words, marked as removed. Words already cut inside the change are shown as removed too: they are silent in the result either way. The new words follow them as display-only text. Re-voiced neighbours (bridges) are marked as re-voiced. Pause tokens inside keep their own mark |
+| Focused change | A mark beside the change's lines, a shape and not only a tint |
+| Excluded change (its row unchecked) | The original words. The change's slot keeps a mark, so it can still be focused and included again |
+| Voiced, not yet used (takes exist) | The new words only, marked as voiced |
+| AI words (accepted) | Unchanged from §4.1 |
+
+The treatments of these states, and of the selected clip and a selection, come with the visual redesign. Their contrast pairs join `tools/design/contrast.mjs` then, and every text pair keeps at least 4.5:1 (§15).
+
+**Inserted words** are display-only runs that map to no word ID.
+
+- macOS: an inserted-range table beside the word-to-character map, rebuilt per affected paragraph.
+- Windows: extra `Run`s with no word ID.
+
+Selection snapping skips them. Hit-testing an inserted run focuses its change.
+
+**Edit popover.** Click a change, or press Return on a focused change or change row. On Windows, F2 also opens it.
+
+- It is anchored under the change, with the correction popover's anchoring.
+- Content:
+  - a label, "New words for change {i}";
+  - a field prefilled with the new words;
+  - the fit meter line (voice-lab.md §8.9.1): "about {s} s for a {g} s gap: fits", or "about {s} s for a {g} s gap: will change length";
+  - "Return saves · Esc cancels";
+  - **Reject Change**.
+- Saving reruns the local diff, the fit meter and the cost; nothing is sent. Emptying the field turns a voice change into a cut.
+
+**Timeline.** Proposed voice windows and accepted AI spans are marked on the timeline strip. Their marks come with the visual redesign (§5.2).
+
+#### 6.3.6 Rewrite flow
+
+"Announce" means an accessibility announcement: macOS `.announcementRequested`, Windows `RaiseNotificationEvent`.
+
+**Start.**
+
+| Trigger | Result |
+|---|---|
+| **Rewrite** in the scope bar, Return in its field, ⇧⌘R / Ctrl+R, the sidebar row's **Rewrite**, or "Rewrite Clip {n}" in a menu | Runs Rewrite on the current scope with the field's text, or Fix mistakes when it is empty. The panel opens in R1 |
+| The selection bar's **Rewrite** (⇧⌘R / Ctrl+R) or the transcript context menu's Rewrite | The same, with the selection as the scope |
+| **Type New Words…** (transcript context menu, a selection) | Opens the edit popover over the selection with its words. No AI. Saving opens the panel in R2 with one change |
+| **Insert Words…** (a caret between words, Voice Lab on) | The same as Type New Words, with an empty field anchored at the caret. Hidden until Core can place an insertion (§13) |
+
+- The connector consent (ai.md §4.8) appears before the first send per connector, worded for Rewrite. It is unchanged.
+- A send on an API key, or on a CLI signed in with an API key, asks every time (R0b). Every other send starts at once (voice-lab.md §3.1).
+
+**R0. No AI chosen** (`llm.connector` is unset)
+
+- Headline: "Who should rewrite clip {n}?"
+- A radio list of the connectors detected now, each with a status line:
+  - "Claude Code (installed CLI)": "Signed in · Claude plan · no extra cost", or "Signed in · billed to the API key Claude Code uses", or "Not signed in. Run `claude` in Terminal and sign in."
+  - "Codex (installed CLI)": "Signed in · ChatGPT plan · no extra cost", or "Not signed in. Run `codex login` in Terminal."
+  - "Ollama": "{model} on this {Mac/PC} · free", or "Not running. Start Ollama, then choose Check Again."
+  - "Apple on-device" (macOS): "free · English"
+  - "Anthropic": "your API key · asks before each send". With no key, a secure field "Paste your Anthropic API key" and **Save Key** appear under the row.
+- Note: "Change it any time from the menu above the transcript."
+- Link: **Check Again**, which runs detection again. Primary: **Use {name}**.
+- With nothing detected: headline "No AI is set up yet". Body: "Rewrite needs an AI: an installed Claude Code or Codex, a local model, Apple on-device, or an API key." Link **AI Settings…**. Primary: **Check Again**.
+
+**R0b. A send that asks first** (an API-key connector, or a CLI signed in with an API key; every send)
+
+- A sheet titled "Rewrite clip {n}?" with:
+  - "Sends the {w} words of clip {n} to {provider} with your key." For a CLI on an API key: "Sends the {w} words of clip {n} to Claude Code, billed to the API key it is signed in with." (Codex likewise.)
+  - "VoxClip can't tell what this costs. Check {provider}'s pricing."
+- Buttons **Cancel** and **Rewrite** (the default).
+
+**R1. Running**
+
+- Header "Rewrite clip {n}". Context line "{AI} · {model} · no extra cost" (or "· billed to your key").
+- A quote line: "Asked: **Fix mistakes**, fix slips and repeats, keep my words, change as little as possible." For a typed instruction: "Asked: “{instruction}”".
+- Headline: a spinner, "Rewriting clip {n}…", the elapsed `m:ss`, then **Stop**.
+- Steps, each done, running or waiting, with a detail under each:
+  1. "Read clip {n}" · "{w} words · {m:ss}"
+  2. "Sent to {AI}" · "Text only. No audio or video." On a loopback local server or Apple: "Running on this {Mac/PC}" · "Nothing leaves it."
+  3. "Waiting for {AI}…" · "Changes appear in the transcript when it answers."
+  4. "Check that each change fits"
+- Footer note by connector:
+  - a CLI with a plan: "Sends the {w} words of clip {n} to {CLI} with your sign-in. Counts toward your {Claude plan | ChatGPT plan}."
+  - a CLI with an API key: "Sends the {w} words of clip {n} to {CLI}, billed to the API key it is signed in with."
+  - an API key: "Sends the {w} words of clip {n} to {provider} with your key."
+  - a loopback local server or Apple: "Runs on this {Mac/PC}. Nothing leaves it."
+  - a remote local server: "Sends the {w} words of clip {n} to {host}."
+- **Stop**, ⌘. or Esc (Windows: Stop or Esc) cancels without changing anything and closes the panel. Cancelling is silent.
+- Announce "Rewriting clip {n}" at the start.
+
+Phase 0 connectors return one answer, so nothing streams: R1 waits until the reply arrives.
+
+**R1x. Errors.** Headline "Couldn't rewrite clip {n}".
+
+- Body: the `LLMError` user message (ai.md §5), then "Your edits are saved." Primary: **Try Again**, or **Try Again…** when the send asks first.
+- Fixes that replace the body:
+  - Signed out: "{CLI} isn't signed in. Run `claude` (or `codex login`) in Terminal and sign in, then choose Try Again."
+  - No key: a secure field "{provider} API key" with **Save Key and Try Again**.
+  - Not running: "Ollama isn't running. Start it, then choose Try Again." (LM Studio likewise.)
+- Refused: "The model declined to rewrite this recording." Primary: **Ask for Something Else**, which focuses the field.
+- Too large (more than 3,000 entries or 20,000 bytes; voice-lab.md §8.1): headline "{Full take | Clip {n}} is too long to rewrite at once". Body: "Rewrite works on up to 3,000 words at a time. This {video | clip} has {n}. Choose a clip or select a passage." Primary on Full take: **Find Clips**; otherwise none, and the close button closes.
+
+**R2. Proposal**
+
+- Context line "{AI} · {model} · answered in {t} s".
+- Headline "{c} changes" ("1 change"). Sub-line "{x} cuts · {y} fixes · {z} phrases in your voice". Zero parts are left out, and singulars are used where needed.
+- The change list, in transcript order, one row per change. A row has a checkbox (checked means included), a kind glyph (waveform, pencil or scissors) and two lines:
+
+  | Kind | Line 1 | Line 2 |
+  |---|---|---|
+  | voice | "“{new words}”" | "Your voice · replaces “{removed words}”"; an insertion reads "Your voice · new words" |
+  | fix | "{Commas \| Spelling \| Capitals \| Punctuation} in “{text}”" | "Fix · text only, free" |
+  | cut | "Cut “{removed words}”" | "Cut · free" |
+  | voice, `checkThis` | as voice | "Check this: it adds something you didn't say.", as a warning with a warning glyph |
+  | voice, refused by placement | as voice; no checkbox; excluded | The refusal copy (§13). Too close to a take edge reads "Too close to the {start/end} of the take to blend in. Re-record this sentence instead." |
+  | voice, colliding with the change before it | as voice; no checkbox; excluded | "Too close to the change before it to voice separately. Edit them together or leave one out." |
+  | voice, Voice Lab off or language uncalibrated | as voice; no checkbox; excluded | "Needs Voice Lab (beta)", or "Your voice works in English projects only for now.", as a warning |
+
+- Unchecking a row restores the original words in the transcript (§6.3.5). Checking it applies the change again.
+- Meta line: "AI voice: {v} of {limit} words · about {s} s", with "Takes ≈ ${x}" on the trailing side when Voice Lab is on and the price is known. The limit is min(60, 15% of the take's words), as in voice-lab.md §8.2.
+- Voice row, when a consented voice exists: "Your voice is ready" · "{name} · made {date}", plus " from clip {n}" when it was made from this project. With more than one consented voice for the project's language, it is a pop-up, "Voice: {name}".
+- Hint, once per app run and only while the edit popover is closed: "Click a change in the transcript to edit it. Nothing is paid for yet."
+- Footer:
+
+  | Case | Note | Secondary link | Primary |
+  |---|---|---|---|
+  | Voice changes included, no voice yet | "Next: make your voice from this clip. Once." | Apply free changes only | **Make Your Voice** |
+  | Voice changes included, voice ready | "Sends the {z} new phrases and a short audio check to ElevenLabs with your key. No video." | Apply free changes only | **Make Takes · ≈ ${x}**, or **Make Takes…** when it confirms (at least $0.50, an unknown price, or crossing the monthly cap; voice-lab.md §3.1) |
+  | Voice changes, Voice Lab off | "{z} phrases need your voice. Voice Lab (beta) makes it from this clip." | Turn On Voice Lab… | **Apply {k} Free Changes** |
+  | Over the voice budget | A warning callout: "These changes re-voice {v} words; a rewrite can re-voice {limit}. Uncheck a phrase or two, or re-record these sentences." Note: "Make Takes appears when the phrases fit." | — | **Apply {k} Free Changes** |
+  | Only cuts and fixes included | "No AI voice needed. Nothing is sent." | — | **Apply {c} Changes** |
+  | Nothing included | "Check a change to apply it." | — | none; the close button closes |
+  | No changes | Headline "No changes needed"; body "{AI} found nothing to change in clip {n}." | — | **Ask for Something Else** (focuses the field) |
+
+- **Apply…** is one undo step named "Rewrite clip {n}". It announces "Applied {c} changes", closes the panel and moves focus to the first changed word.
+- **Turn On Voice Lab…** opens the one-time beta sheet (voice-lab.md §5). On **Turn on**, the excluded voice rows gain their checkboxes, checked.
+- Announce "{c} changes proposed. {z} need your voice." when R2 appears, and move focus to the first change row.
+
+**R3. The scope changed while the panel was open**
+
+- An edit to any word inside the scope moves the panel to:
+  - the headline "Clip {n} changed";
+  - the body "You edited clip {n}, so these changes may no longer fit. Nothing was applied, and no takes were paid for." When takes exist, it adds "Your takes are kept until you close this.";
+  - the link **Close**;
+  - the primary **Rewrite Again**, with the send line as the note.
+- Undoing back to the proposal's revision returns the panel to R2 with every inclusion and take intact.
+- Edits outside the scope don't affect the proposal.
+
+**Request shapes** (detail in voice-lab.md §8.1):
+
+- A clip or Full take uses `PatchRewriteService`:
+  - the entries are the scope's kept items (ai.md §11.2 clip words, with corrections applied and cut words excluded);
+  - the lines come from `formatTranscript`;
+  - each line's character range comes from `VoiceLabLengthBudget`, with the whole line as one replace hunk.
+- A selection uses `VoiceRewriteService`, as before.
+- Both end in per-change hunks, `placeAll` (voice-lab.md §8.4) and the R2 list.
+
+#### 6.3.7 Your voice, from this clip
+
+The steps run inside the panel, and the proposal stays in the transcript. The title is "Your voice", with Beta and "Step {i} of 3" ("of 4" when a read-aloud is needed), plus the back button "Back to rewrite".
+
+The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set to the scope's clip; on device and free; voice-lab.md §6.5.1) starts when R2 appears with voice changes and no voice. V1 therefore usually knows the result already.
+
+**V0. No ElevenLabs key** (replaces V1's body)
+
+- Headline "Add your ElevenLabs key". Text: "Your voice is made and spoken by ElevenLabs, with your own key. Create a key just for VoxClip with a monthly credit limit."
+- A secure field, "ElevenLabs API key".
+- Link **Make a restricted key**: a popover with the permission-list guidance of voice-lab.md §2.2.
+- Primary **Save Key**.
+- Note:
+  - macOS: "Saved in the macOS Keychain and used only by VoxClip for Voice Lab. Never passed to Claude Code, Codex or any other AI app. Saving makes no request."
+  - Windows: "Saved for your Windows account and used only by VoxClip for Voice Lab. Never passed to Claude Code, Codex or any other AI app. Saving makes no request."
+
+**V1. Agree** (Step 1 of 3)
+
+- Headline "Make your voice from this clip". Sub-line: "Your new words are spoken in your own voice. You do this once."
+- The speech row, by the state of the analysis:
+  - running: a spinner and "Finding your clear speech in this video…";
+  - ok: "{t} of your clear speech found", with the detail "{c} from clip {n}, the rest from this video. Picked on this {Mac/PC}. English only for now." Variants: "All from clip {n}." when everything came from the clip; "From the rest of this video; clip {n} has none clear enough." when `preferredMs` is 0. Below it, a strip of the whole take shows the selected spans and the clip's range;
+  - below 30 s: a callout, "This video has only {n} s of your clear speech, so you'll read a short passage instead.", or "This video has no clear speech to use, so you'll read a short passage instead.";
+  - unreadable: "VoxClip can't read this video's audio, so you'll read a short passage instead.";
+  - labelled AI modified: "This video is labelled AI modified, so it can't train your voice. You'll read a short passage instead."
+- When `voiceLab.providerConsent.elevenlabs` is not stored yet, the voice-lab.md §2.5 provider copy comes first, exactly.
+- Then the voice-lab.md §6.1 notice, exactly, with the links **Terms** and **Use policy**.
+- Three checkboxes, exactly: "This is my own voice." · "I am 18 or older." · "I will use it only on videos of myself."
+- A field, "Your name, as you'll say it". It is prefilled from the account's full name and validated by voice-lab.md §6.1. Its error reads "Use 1 to 60 characters, with no line breaks."
+- Rows that appear only when a requirement is unmet:
+  - The own-voice check is missing: "Download the own-voice check (27 MB)" · "Runs on this {Mac/PC}. Licence CC BY 4.0." with **Download**. The third-party download confirmation (§10) comes first, then "Downloading… {p}%" with **Cancel**.
+  - Plan: "Instant voice cloning needs an ElevenLabs Starter plan or higher." or "Your ElevenLabs account has no free voice slots.", with the link **Open ElevenLabs**.
+- Note "Checks your ElevenLabs plan. Free; no audio is sent." Primary **Continue**.
+  - Continue stores the provider consent if it was shown, then runs the plan check (`GET /v1/user/subscription`, voice-lab.md §2.3).
+  - Pressed with a box unticked, Continue focuses that box and shows "Tick all three to continue." Nothing is disabled.
+- **Windows, until its speaker check is enabled** (voice-lab.md §6.6): an informational `InfoBar`, "Making a voice isn't available on Windows yet: the on-device check that it's your voice isn't ready. Your free changes still work." The only primary is **Apply {k} Free Changes**.
+
+**V2. Read aloud** (Step 2 of 3)
+
+- Rows:
+  - the speech row, done, as in V1;
+  - "You agreed: my own voice · 18 or older · only my videos", done, with **Change**, which returns to V1.
+- Headline "Read this aloud, in one take".
+- The teleprompter shows the voice-lab.md §6.2 statement, generated per attempt, with the four nonce words emphasised.
+- The recorder:
+  - idle: **Record** (Space);
+  - recording: "Recording {m:ss}", a level meter and **Stop** (Space).
+  - With VoiceOver or Narrator running, a note reads: "Using a screen reader? Wear headphones so it isn't recorded."
+- Note: "Stop after the last word (5 to 30 s). Nothing leaves this {Mac/PC} until you choose Create My Voice."
+- Errors show inline while the recorder stays:
+  - under 5 s: "That was under 5 seconds. Read the whole statement, then stop.";
+  - the 30 s cap: "Recording stopped at 30 seconds. Read a little faster and record again.";
+  - silent input, a lost device or an unavailable microphone: the recorder copy in §13;
+  - permission denied: "VoxClip needs the microphone to record your statement." with **Open Privacy Settings** (Windows: **Open Microphone Settings**).
+
+**V3. Checking it's you** (on device and free; it runs right after Stop)
+
+- Headline: a spinner and "Checking it's you…". Note: "Comparing {k} stretches of this video with your statement. On this {Mac/PC}; nothing is sent." A determinate bar with "{i} of {k} · about {s} s left".
+- **Mismatch**, when fewer than 30 s remain after voice-lab.md §6.6:
+  - a callout, "Some of this video's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead.";
+  - a done row, "Statement recorded and kept" · "You won't need to read it again.";
+  - primary **Record a Read-Aloud**;
+  - note "Nothing was sent. The check ran on this {Mac/PC}."
+- **Read-aloud** (too little speech, or a mismatch), Step 3 of 4: the headline "Read this aloud, about 90 s", the `scripts-en.txt` text and the same recorder, validated at 60 to 120 s. Then V3 runs again against the read-aloud, with the voice-lab.md §6.6 floor of 10 s. Below that floor: "Some of these recordings don't sound like the voice in your consent statement.", nothing is sent, and the primary is **Record a Read-Aloud** again.
+
+**V4. Ready to create** (Step 3 of 3)
+
+- Headline "Ready to create your voice". A done row: "It's you" · "{m} of this video matches your statement." For a read-aloud: "Your read-aloud matches your statement."
+- Body: "Checks your plan, then sends your statement and {m} of your speech to ElevenLabs to create your voice. No video is sent."
+- Primary **Create My Voice · < $0.01**. The Scribe check costs under a cent and Instant Voice Clone costs $0. One approval covers the statement check and the creation (voice-lab.md §6.4).
+
+**V5. Creating**
+
+- Headline: a spinner and "Creating your voice…". Steps:
+  - done: "Statement recorded" · "{m:ss} · kept on this {Mac/PC}";
+  - done: "It's you" · "{m} matches your statement, checked on this {Mac/PC}. {d} short stretches didn't match and were left out.", with the strip showing the left-out spans;
+  - done or running: "Statement read correctly" · "Checked by ElevenLabs";
+  - running: "Creating “{name} (VoxClip)” in your ElevenLabs account", with an indeterminate bar;
+  - waiting: "Back to clip {n}" · "{z} phrases to voice".
+- Footer note: "Sending your statement and {m} of your speech to ElevenLabs with your key. No video. < $0.01". There is no Cancel after dispatch; the journal owns recovery (voice-lab.md §6.8).
+- The statement doesn't match (WER or nonce): "That didn't match the statement. Read it again, clearly, in one take." The panel returns to V2 with a new statement, and nothing is created. After three tries in 10 minutes: "That's three tries in 10 minutes. Try again at {time}."
+- `requires_verification`: "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.", with **Open elevenlabs.io** and **Check Again**.
+- A local save failure, and recovery: the existing copy and actions (voice-lab.md §6.8), including **Remove This Voice**.
+
+**V6. Done.**
+
+- The panel returns to R2. The voice row reads "Your voice is ready", and the primary becomes **Make Takes · ≈ ${x}**. Takes never start by themselves.
+- Announce "Your voice is ready."
+
+#### 6.3.8 Takes and Use
+
+**T1. Approval.** It is the R2 primary.
+
+- One approval covers every included phrase's bounded take set (up to `CANDIDATES` = 3 each) and its Scribe QA, as one summed cap (voice-lab.md §8.6).
+- The use-time guard (voice-lab.md §6.9) runs first, on device, and is cached per (contentKey, recordId).
+- If the guard fails:
+  - a danger callout, "This doesn't sound like the voice owner. Voice Lab is only for your own videos.";
+  - the note "Checked on this {Mac/PC} against 10 s of speech near each change. Nothing was sent or charged.";
+  - primary **Apply {k} Free Changes**. There is no override.
+
+**T2. Generating.**
+
+- Headline: a spinner and "Making takes… phrase {i} of {z}", with **Stop**.
+- Rows fill as takes arrive. Generation for a phrase stops at the first take that fits.
+- Announce "Phrase {i} fits."
+
+**T3. Ready.**
+
+- Voice line: "Voice: {name} · made {date}", plus " from clip {n}" when it was made from this project.
+- Headline "{z} phrases in your voice". Sub-line "Listen, pick a take, then use them."
+- One row per phrase:
+  - a play button and the quoted new words;
+  - then "Take {k} · {d} s · fits", or "· pauses +{x} s".
+  - With more than one take: a 1·2·3 segmented control, the duration and a "Best match" tag. The focused row adds the link **Try Another · ≈ $0.01**.
+- Below the list: **Play Clip {n} with New Voice**, which previews the clip with the selected takes, and the line "Made {t} takes · ≈ ${x} on your ElevenLabs account."
+- Footer: an info glyph with "Exports show AI MODIFIED on the video and in the post.", and the primary **Use Takes**.
+
+**Edge cases.**
+
+- **A phrase with no passing take.** The row's sub-line reads "These takes didn't sound right. Edit the words or try again.", with **Try Again · ≈ $0.01** and **Edit Words**.
+  - The phrase is left out of Use: the primary reads "Use {z−1} Takes", and the row says "Left out until a take fits."
+- **Length changed.** Retime and lip sync are not rendered in Phase 0. The row says "Take {k} runs {s} s longer than the words it replaces. Shorten the words or try another take." For a shorter take: "Take {k} runs {s} s shorter than the words it replaces. Edit the words or try another take."
+  - When rendering lands, the length choice (ADR-R28, voice-lab.md §8.9) returns as an info callout with two radio rows, neither preselected and never remembered: **Lip sync**, "Sends {s} s of video around the change to {provider} with your key. About ${x}, confirmed before it runs."; and **Retimed source video**, "Slows these {s} s of video to {r}× and crops in slightly around your face. Nothing is sent." (a shorter take: "Speeds these {s} s of video up to {r}× and crops in slightly around your face. Nothing is sent.").
+  - The Lip sync sheet: "Lip sync this change?" / "This will cost about ${x} on your {provider} account." / "Sends {s} s of video around the change to {provider} with your key." with **Cancel** and **Continue**.
+- **Provider error.** A callout: "ElevenLabs rejected the key (401). Your edits are saved." It comes with an inline key field, **Save Key** and **Retry**. There is no Settings detour.
+- **Closing with unused paid takes.** A sheet: "Discard {t} takes?" / "You paid about ${x} for them. Your edits are saved." with **Keep Working** (the default) and **Discard Takes**.
+
+**T4. Use and done.**
+
+- **Use Takes** applies every included change as one undo step, "Rewrite clip {n}": the voice segments (`acceptAll`, voice-lab.md §8.12), the cuts and the fixes. The panel closes, Captions return, and focus moves to the first changed word.
+- A toast for 6 s: "Clip {n} rewritten: {z} phrases in your voice, {x} cuts, {y} fix." with **Undo** (⌘Z / Ctrl+Z). The same sentence is announced.
+- The accepted words show as AI words (§4.1). The sidebar meta reads "AI modified", the viewer bar shows the AI modified tag, and the stage shows the preview label at the configured position. Export's accessible name adds ", contains AI-modified speech". The share disclosure is unchanged (voice-lab.md §11.3).
+
+#### 6.3.9 Edge states
+
+| State | Where | Copy and action |
+|---|---|---|
+| No ElevenLabs key | V0 | §6.3.7 V0 |
+| No AI chosen | R0 | §6.3.6 R0 |
+| Not enough clean speech | V1, then the read-aloud | §6.3.7 V1, below 30 s |
+| Speaker mismatch | V3 | §6.3.7 V3, mismatch |
+| A paid step of $0.50 or more, an unknown price, or crossing the monthly cap | sheet | voice-lab.md §3.1 copy |
+| AI on an API key | sheet R0b | §6.3.6 R0b |
+| Too much to re-voice | R2 | the over-budget footer in §6.3.6 R2 |
+| Not the voice owner | T1 | §6.3.8 T1 |
+| Voice Lab off (release) | R2 | the §6.3.6 R2 footer |
+| The scope edited meanwhile | R3 | §6.3.6 R3 |
+| Scope too large | R1x | §6.3.6 R1x |
+| Windows before speaker-check parity | V1 | §6.3.7 V1, Windows |
+
+#### 6.3.10 Removed
+
+Each item goes in the same change that replaces it, on both platforms:
+
+1. The right column's Voice block: "Voice", "No voice yet", **Create Your Voice…** and **Refresh voices**.
+2. The disabled **Generate Takes** button, and the send line shown before takes are possible.
+3. "Rewrite one passage at a time. Keep one changed passage, then generate takes.", shown twice, and the code path that refuses more than one voice hunk.
+4. **Open Settings**, the disabled **Retry** under the connector status, and "Choose a connector in Settings → AI.". Fixes are inline, and Retry appears only in an error state.
+5. The disabled **Use Take 1** and the duplicated AI MODIFIED note.
+6. **Choose Voice…** and the separate "Use ElevenLabs?" alert before voice discovery, which fold into V1.
+7. The panel's "What should change?" field, the plain-text **New words** field and the read-only diff line. The scope bar's field and the edit popover replace them.
+8. The separate voice-creation sheet: `CreateVoiceSheet` (macOS), `CreateVoicePage` and `VoiceCreationDialog` (Windows). Their session logic moves into the panel steps; the views are deleted, not kept beside the new ones.
+9. The separate **Verify statement · < $0.01** and **Check ElevenLabs account** buttons, merged into Continue and Create My Voice.
+10. The training-source radio group. Project audio is automatic, and the read-aloud appears only when needed.
+11. "Download the own-voice check model in Settings → Voice Lab before creating a voice." The download is inline in V1.
+12. Outlined boxes per line for selections, Rewrite passages and changes in the transcript.
+13. **Create Your Voice…** in Settings → Voice Lab.
 
 ### 6.4 Other AI features (M2) and Voice Lab rows
 
 | Feature | Where |
 |---|---|
 | Tighten with AI (M2) | Edit > Tighten with AI… and the toolbar capsule's menu, macOS overflow or Windows ⋯. Suggestions show as filler-style dotted underlines. The edit summary area offers **Cut All Suggestions** |
-| Clean audio (M2) | Edit > Clean Audio… and ⋯. It opens a right-column panel shaped like Rewrite: what it sends, the cost button "Clean Audio · ≈ $0.36", progress and Use |
+| Clean audio (M2) | Edit > Clean Audio… and ⋯. It opens a right-column panel shaped like Rewrite (§6.3.4): what it sends, the cost button "Clean Audio · ≈ $0.36", progress and Use |
 | Voice changer (M3) | Edit > Change Voice… (scope: the selected clip or the full take). It opens a right-column panel: Voice, Takes, disclosure, Use |
-| My voice (consent and clone) | Settings → Voice Lab → My voices, and the Rewrite panel's **Create Your Voice…** |
-| Lip sync | only as the length-changed choice in Rewrite |
+| My voice (consent and clone) | Inside Rewrite (**Make Your Voice**, §6.3.7). Settings → Voice Lab manages voices |
+| Lip sync | only as the length-changed choice in Rewrite, once rendering lands (§6.3.8) |
 
-When rewritten speech requires a different video duration, show Lip sync and Retimed source video together and let the user choose for that rewrite (ADR-R28, Voice Lab §8.9), as specified above. The current capability guards for unsupported video remain until those paths are implemented and verified.
+When rewritten speech requires a different video duration, show Lip sync and Retimed source video together and let the user choose for that rewrite (ADR-R28, Voice Lab §8.9), as specified in §6.3.8. The current capability guards for unsupported video remain until those paths are implemented and verified.
 
 For already reviewed, saved v3 recipes with unity audio fit and equal-length source video, the editor uses the existing viewer, timeline and Export controls:
 
@@ -1088,6 +1479,18 @@ For already reviewed, saved v3 recipes with unity audio fit and equal-length sou
 - **Captions.** They show the replacement words. Captions Off keeps the mandatory AI MODIFIED chip and the export provenance.
 - **Missing or changed asset.** A missing or changed generated asset clears the preview and explains how to restore it.
 - **Unsupported cases.** Unsupported video treatments, duration fit and unreviewed recipes stop with an inline explanation, keeping the video and edits.
+
+### 6.5 Director (Phases 1–2, reserved)
+
+The Director will run an AI session that proposes cuts, clips, rewrites and captions with VoxClip's own tools. Its behaviour, copy and the rules for agentic use are specified with `doc/spec/harness.md` in Phase 1, not here. Phase 0 fixes only the shapes that the Director reuses, so the Rewrite surfaces don't need rebuilding:
+
+- **Composer.** The scope bar's field (§6.3.1) becomes the Director's composer, and the AI picker becomes its picker. There is no second field and no second picker.
+- **Task model.** The Rewrite panel (§6.3.4) is a one-turn task on the shared model:
+  - `DirectorTask` holds the scope; its state (choosing an AI, running with `ActivityStep`s, a proposal, voice steps, takes, changed, or an error); the context line; and the footer (note, link, primary);
+  - a proposal is a `ChangeSet` of `ProposalItem`s;
+  - a step that needs the user is a `PanelCard`.
+
+  Phase 1 feeds session events into the same model. Phase 0 adds no Rewrite-only view model.
 
 ---
 
@@ -1313,10 +1716,10 @@ macOS                                                    Windows
 |---|---|
 | **General** | Appearance: System · Light · Dark (`general.appearance`). Transcript text size (`general.transcriptTextSize`). Pause breath: Tight 0.05 s · Natural 0.15 s · Relaxed 0.30 s (`editing.pauseBreath`). Show low-confidence words (`general.showLowConfidence`). Default caption style (`captions.defaultStyleId`). Open last project on launch (Windows only, `general.openLastProject`). Check for updates automatically (`update.autoCheck`). Show transcript words on placeholders, on by default (`general.showPlaceholderWords`; help "When off, placeholders show the project title instead of its first words."; §5.4.2). Cache size limit 2 · 5 · 10 · 20 GB (`cache.limitGB`) + Clear cache, which keeps each video's waveform envelope and its saved transcription results, and Clear everything, which removes those too (architecture.md §8.2). The filler rule and the pause threshold are not settings in 0.1.0 (editing spec sections 5.0 and 12). |
 | **Transcription** | Engine: On this {Mac/PC} · ElevenLabs Scribe · Apple on-device (macOS) · Ask each time (`transcription.engineMode`). Language: Auto or a list (`transcription.language`). ElevenLabs key row (SecureField / PasswordBox → Save · Test · Forget); footnote "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm before the first upload."; Advanced → Region (`transcription.elevenlabs.region`). Models list (row pattern below). Footer: "Models download on first use and never ship inside the app. Each runs entirely on this {Mac/PC}." Storage location and total size, Reveal in Finder/Explorer. |
-| **AI** | Normative content in AI spec section 10.1: connector picker grouped as *Your API key* / *On this computer* / *Installed CLI (your own sign-in)*; model picker `{name} ({tier})` + **Custom…** + **Refresh models**; per kind: key row, local server URL and status line, Apple availability and supported languages, CLI status line ("Found claude 2.1.309 at ~/.local/bin/claude · Signed in") with **Choose…** and **Sign-in help**; **Test**; "Snap clip edges to sentence boundaries". Footnote per group on what is sent. Layout follows this document (grouped form rows, no cards). |
+| **AI** | Normative content in AI spec section 10.1: connector picker grouped as *Your API key* / *On this computer* / *Installed CLI (your own sign-in)*; model picker `{name} ({tier})` + **Custom…** + **Refresh models**; per kind: key row, local server URL and status line, Apple availability and supported languages, CLI status line ("Found claude 2.1.309 at ~/.local/bin/claude · Signed in") with **Choose…** and **Sign-in help**; **Test**; "Snap clip edges to sentence boundaries". Footnote per group on what is sent. Layout follows this document (grouped form rows, no cards). Under the connector picker, one line: "The AI menu above the transcript changes this too." (§6.3.2) |
 | **Export** | Defaults for new projects: aspect (`export.defaultAspect`), Quality: Standard · High (`export.quality`), Captions: Burn in · Burn in + .srt (`export.srt`). File name pattern (`export.fileNamePattern`). Default folder (`export.folder`). Open folder after export (`export.openFolderAfter`). Windows: Encoder (read-only, from the probe) + "Re-check encoders". |
 | **Accounts** (M2) | VoxConvo: "Not connected" / "@handle" with **Connect** (device flow, publishing.md) / Disconnect. Footnote: "Posting is optional. VoxClip never posts without your click." |
-| **Voice Lab** (M3, beta) | Show Voice Lab. ElevenLabs and lip-sync provider keys. Consent records. |
+| **Voice Lab** (M3, beta) | Management only; voices are made inside Rewrite (§6.3.7). **Show Voice Lab (beta)**, with its one-time notice (voice-lab.md §5). **Keys**: the ElevenLabs, fal.ai and sync.so rows. **My voices**, one record each: its name; "Made {date} · consent {date} · English"; the ElevenLabs voice ID (selectable); **Delete Voice…** and **Remove from VoxClip Only**. Unfinished operations keep their state line and **Retry** (voice-lab.md §6.8). Empty state: "No voice yet. You make it from a clip the first time a rewrite needs your voice." **Own-voice check**: the model row with its installed state, size and licence, and **Download…** or **Remove**, so it can be fetched ahead of time. **Spending**: "Warn me above $__ a month" per provider. **Exports**: the label position and Content Credentials. **Storage**. There is no **Create Your Voice…** and no voice-creation sheet. |
 | **About** | Version, Check for updates, licences (the bundled `THIRD_PARTY_NOTICES.md`: models, fonts OFL, Unicode data, libraries), GitHub link, "What leaves this device", Reset onboarding, Reveal logs. Windows also shows "This software uses libraries from the FFmpeg project under the LGPL" with a link to the `VoxClip-win-ffmpeg-source.tar.xz` asset of the running version (release.md section 1.1). |
 
 Every row's settings key, type and default are in `shared/schemas/settings.schema.json`.
@@ -1363,7 +1766,14 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Find / next / previous | ⌘F / ⌘G / ⇧⌘G | Ctrl+F / F3 / Shift+F3 | "Cut all N" in the find bar |
 | Make clip from selection | ⌘K | Ctrl+K | Also the selection bar's default |
 | Find clips | ⇧⌘K | Ctrl+Shift+K | Opens the Find Clips popover or flyout |
-| Rewrite… (Voice Lab on) | ⇧⌘R | Ctrl+R | |
+| Rewrite the scope | ⇧⌘R | Ctrl+R | The selection, else the selected clip, else Full take (§6.3). Needs no Voice Lab |
+| Stop a running Rewrite | ⌘. or Esc | Esc | Also the panel's **Stop** |
+| Close the Rewrite panel | Esc, when nothing runs | Esc | Focus returns to the scope's first word |
+| Rewrite panel's primary action | ⌘Return anywhere in the panel; Return when focus is not in a text field | Ctrl+Enter in the panel | |
+| Edit a proposed change | Return on a focused change or change row | Enter or F2 | Click also opens it (§6.3.5) |
+| Include or exclude a change | Space on its row | Space | |
+| Compare takes | Space plays the focused phrase; ← → switch its take | Space; ← → | |
+| Write a Rewrite instruction | Click the field, or F6 to the scope bar, then Tab | Click, or F6, then Tab | |
 | Keep / dismiss suggestion | Return / ⌫ on the focused suggestion row | Ctrl+Enter / Delete on the focused row | Plain Enter on Windows selects and previews |
 | Rename clip | Return on a focused kept clip row | F2 | |
 | Remove clip | ⌫ on a focused kept clip row | Delete | One undo step |
@@ -1389,7 +1799,7 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 
 - **VoxClip:** About VoxClip, Check for Updates…, Settings…, Hide, Quit.
 - **File:** New Project from Video… (⌘N), New Recording (M2, ⌥⌘N), Open… (⌘O; projects and movies, opening in the main window), Open Recent, Close Project (⌘W), Save (⌘S), Save As… (⇧⌘S), Duplicate, Rename…, Move To…, Revert to Saved…, Export… (⌘E), Reveal Media in Finder.
-- **Edit:** Undo, Redo, Cut, Copy, Paste, Select All, Cut Selection, Restore Selection, Correct Word, Rewrite… (⇧⌘R, subject to the Voice Lab beta entry policy in §6.3), Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again…; later: Insert Words… (hidden until Core can place an insertion, §6.3); M2: Tighten with AI…, Clean Audio…; M3: Change Voice….
+- **Edit:** Undo, Redo, Cut, Copy, Paste, Select All, Cut Selection, Restore Selection, Correct Word, Rewrite {scope} (⇧⌘R; the title follows the scope: "Rewrite Selection", "Rewrite Clip {n}" or "Rewrite Full Take", and gains "…" when the send asks first; §6.3), Type New Words…, Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again…; Insert Words… (Voice Lab on; hidden until Core can place an insertion, §6.3); M2: Tighten with AI…, Clean Audio…; M3: Change Voice….
 - **View:** Show/Hide Sidebar (⌃⌘S), Show/Hide Viewer (⌥⌘I), Home (⌘1), Full Take (⌘2), Show/Hide Cut Words (⇧⌘H), Show/Hide Pauses, Source/Edited Timeline, Bigger/Smaller/Actual Size, Enter Full Screen. Each Show/Hide title describes the current action.
 - **Playback:** Play/Pause, Play from Selection, Preview Cut, Back 3 Seconds (J), Forward 3 Seconds, Shuttle Back/Stop/Forward, Go to Start/End.
 - **Clip:** Make Clip from Selection (⌘K), Find Clips… (⇧⌘K), Cancel Finding Clips (⌘., only while finding), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Export Clip….
@@ -1475,41 +1885,66 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Transcribe again | confirmation | "Transcribe again? This replaces the transcript and removes {n} cuts, {m} corrections, {k} clips and the AI suggestions." [Transcribe Again] [Cancel] |
 | ElevenLabs first upload | sheet / ContentDialog | Title "Transcribe with ElevenLabs?" Body "ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent." [Continue] [Cancel] (transcription.md section 8.5) |
 | Project saved outside the video folder (Windows) | InfoBar (Informational) | "Saved in VoxClip's folder. Use Save project as… to keep it with the video." |
-| Rewrite: fit meter | Rewrite panel, New words | One line per voice hunk: "about {s} s for a {g} s gap: fits" or "about {s} s for a {g} s gap: will change length". With more than one hunk, each line starts with the hunk's new words in quotes |
-| Rewrite: generating | Rewrite panel | "Generating take {i} of {n}…" [Cancel]; announcements "Take {i} ready." and, after a run in which no take fits, "{n} takes ready." or, only when some failed, "{n} takes ready, {k} failed the speech check." |
-| Rewrite: take fits | Rewrite panel | "Take {i} fits." Generation stops. Only when an earlier take failed does it add "{k} failed the speech check." |
-| Rewrite: provider error | Rewrite panel | "{provider} rejected the key ({status}). Your edits are saved." [Open Settings] [Retry] (Error) |
-| Rewrite: no take passed | Rewrite panel | "These takes didn't sound right. Try different wording or re-record." [Generate Again · ≈ {cost}] |
-| Rewrite: failed take | Rewrite panel row | "Take {i} didn't pass the speech check." [Try Another · ≈ {cost}] |
-| Rewrite: length changed | Rewrite panel | "Take {i} runs {s} s longer than the words it replaces. Choose how the video keeps up." For a shorter take: "Take {i} runs {s} s shorter than the words it replaces. Choose how the video keeps up." Options as §6.3 |
-| Rewrite: no voice | Rewrite panel, Voice row | "No voice yet" [Create Your Voice…] |
-| Rewrite: no voice for this language | Rewrite panel, Voice row | "Your voice can't be used in this project's language yet. It works in English projects." No button (voice-lab.md §6.5.2) |
-| Rewrite: too much | Rewrite panel | "That's a lot to re-voice. Re-record these sentences instead." |
-| Rewrite: no room tone | Rewrite panel | "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead." Generate is disabled. [Clean Audio…] replaces the last two sentences once Clean audio (M2) ships |
-| Rewrite: too close to the take edge | Rewrite panel | "This change is too close to the {start/end} of the take to blend in. Re-record this sentence instead." Generate is disabled |
-| Rewrite: disclosure | Rewrite footer | "Exports show AI MODIFIED on the video and in the post." |
+| Rewrite: scope bar | scope bar | Field placeholders: "What should change in clip {n}?" (a suggested clip the same), "What should change in this video?" (Full take), "What should change in these words?" (a selection). Suggestions: Fix mistakes · Make it clearer · Make it shorter · Fix grammar and punctuation only · Recent: "{text}" (instructions in §6.3.1). Verb **Rewrite**, or **Rewrite…** when the send asks first. Status instead of the verb: "Rewriting…", "Finding clips…", "Tightening…". With no connector the picker reads "Choose AI" |
+| Rewrite: menu titles | Edit menu, ⋯, sidebar and selection menus | Edit > "Rewrite Selection", "Rewrite Clip {n}" or "Rewrite Full Take", with "…" when the send asks first; the kept clip's menu "Rewrite Clip {n}"; the transcript menu "Rewrite", "Type New Words…" and "Insert Words…". Windows: "Rewrite selection", "Rewrite clip {n}", "Rewrite full take", "Type new words…", "Insert words…" |
+| Rewrite: send again over edits | scope bar, confirmation | "Discard these {c} changes?" [Keep Working] [Discard Changes] |
+| Rewrite: AI picker | AI menu | Header "Used for Rewrite, Find Clips and Tighten with AI." Groups "Installed apps · your own sign-in", "On this {Mac/PC}", "Your API key". Trailing billing: "{model} · no extra cost", "{model} · billed to its API key", "Not signed in", "{model} · free", "on {host} · free", "Not running", "free · English", "asks before each send", "Add Key…". Then "Model" and "AI Settings…" |
+| Rewrite: panel header and context line | Rewrite panel | Titles "Rewrite clip {n}", "Rewrite {w} words", "Rewrite full take"; in voice steps "Your voice" with "Step {i} of 3" ("Step {i} of 4" with a read-aloud), "Beta" and "Back to rewrite". Context line "{AI} · {model} · no extra cost", "{AI} · {model} · billed to your key" or "{AI} · {model} · answered in {t} s". Other scopes substitute their words (§6.3) |
+| Rewrite: no AI chosen | Rewrite panel, R0 | "Who should rewrite clip {n}?" Rows: "Claude Code (installed CLI)" with "Signed in · Claude plan · no extra cost", "Signed in · billed to the API key Claude Code uses" or "Not signed in. Run `claude` in Terminal and sign in."; "Codex (installed CLI)" with "Signed in · ChatGPT plan · no extra cost" or "Not signed in. Run `codex login` in Terminal."; "Ollama" with "{model} on this {Mac/PC} · free" or "Not running. Start Ollama, then choose Check Again."; "Apple on-device" with "free · English"; "Anthropic" with "your API key · asks before each send", and with no key the field "Paste your Anthropic API key" [Save Key]. Note "Change it any time from the menu above the transcript." [Check Again] [Use {name}] |
+| Rewrite: no AI set up | Rewrite panel, R0 | "No AI is set up yet" / "Rewrite needs an AI: an installed Claude Code or Codex, a local model, Apple on-device, or an API key." [AI Settings…] [Check Again] |
+| Rewrite: a send that asks first | sheet, R0b | Title "Rewrite clip {n}?" Body "Sends the {w} words of clip {n} to {provider} with your key." (a CLI on an API key: "Sends the {w} words of clip {n} to Claude Code, billed to the API key it is signed in with.") and "VoxClip can't tell what this costs. Check {provider}'s pricing." [Cancel] [Rewrite] |
+| Rewrite: running | Rewrite panel, R1 | Quote "Asked: **Fix mistakes**, fix slips and repeats, keep my words, change as little as possible." or "Asked: “{instruction}”". Headline "Rewriting clip {n}…" with the elapsed time and [Stop]. Steps "Read clip {n}" · "{w} words · {m:ss}"; "Sent to {AI}" · "Text only. No audio or video." (a loopback server or Apple: "Running on this {Mac/PC}" · "Nothing leaves it."); "Waiting for {AI}…" · "Changes appear in the transcript when it answers."; "Check that each change fits". Announce "Rewriting clip {n}". Stop is silent |
+| Rewrite: send line | Rewrite panel footer | A CLI on a plan: "Sends the {w} words of clip {n} to {CLI} with your sign-in. Counts toward your {Claude plan \| ChatGPT plan}." A CLI on an API key: "Sends the {w} words of clip {n} to {CLI}, billed to the API key it is signed in with." An API key: "Sends the {w} words of clip {n} to {provider} with your key." A loopback server or Apple: "Runs on this {Mac/PC}. Nothing leaves it." A remote local server: "Sends the {w} words of clip {n} to {host}." |
+| Rewrite: couldn't rewrite | Rewrite panel, R1x | "Couldn't rewrite clip {n}", then the AI spec section 5 message and "Your edits are saved." [Try Again] ([Try Again…] when the send asks first). Signed out: "{CLI} isn't signed in. Run `claude` (or `codex login`) in Terminal and sign in, then choose Try Again." No key: the field "{provider} API key" [Save Key and Try Again]. Not running: "Ollama isn't running. Start it, then choose Try Again." Refused: "The model declined to rewrite this recording." [Ask for Something Else] |
+| Rewrite: too large | Rewrite panel, R1x | "{Full take \| Clip {n}} is too long to rewrite at once" / "Rewrite works on up to 3,000 words at a time. This {video \| clip} has {n}. Choose a clip or select a passage." [Find Clips] on Full take |
+| Rewrite: proposal | Rewrite panel, R2 | Context line "{AI} · {model} · answered in {t} s". Headline "{c} changes" ("1 change"), sub-line "{x} cuts · {y} fixes · {z} phrases in your voice". Announce "{c} changes proposed. {z} need your voice." |
+| Rewrite: change rows | Rewrite panel, R2 | Voice: "“{new words}”" / "Your voice · replaces “{removed words}”", or "Your voice · new words". Fix: "{Commas \| Spelling \| Capitals \| Punctuation} in “{text}”" / "Fix · text only, free". Cut: "Cut “{removed words}”" / "Cut · free". `checkThis` (Warning): "Check this: it adds something you didn't say." Colliding, no checkbox: "Too close to the change before it to voice separately. Edit them together or leave one out." Voice Lab off, no checkbox (Warning): "Needs Voice Lab (beta)". Uncalibrated language, no checkbox (Warning): "Your voice works in English projects only for now." A row refused by placement shows its refusal copy below |
+| Rewrite: meta, voice row and hint | Rewrite panel, R2 | "AI voice: {v} of {limit} words · about {s} s", with "Takes ≈ ${x}". "Your voice is ready" · "{name} · made {date}", plus " from clip {n}"; with several voices, the pop-up "Voice: {name}". Hint, once per app run: "Click a change in the transcript to edit it. Nothing is paid for yet." |
+| Rewrite: proposal footers | Rewrite panel, R2 | No voice yet: "Next: make your voice from this clip. Once." [Apply free changes only] [Make Your Voice]. Voice ready: "Sends the {z} new phrases and a short audio check to ElevenLabs with your key. No video." [Apply free changes only] [Make Takes · ≈ ${x}] or [Make Takes…]. Voice Lab off: "{z} phrases need your voice. Voice Lab (beta) makes it from this clip." [Turn On Voice Lab…] [Apply {k} Free Changes]. Over the voice budget (Warning): "These changes re-voice {v} words; a rewrite can re-voice {limit}. Uncheck a phrase or two, or re-record these sentences." and the note "Make Takes appears when the phrases fit." [Apply {k} Free Changes]. Cuts and fixes only: "No AI voice needed. Nothing is sent." [Apply {c} Changes]. Nothing included: "Check a change to apply it." No changes: "No changes needed" / "{AI} found nothing to change in clip {n}." [Ask for Something Else] |
+| Rewrite: applied | announcement; Edit > Undo | "Applied {c} changes". The undo step is "Rewrite clip {n}" ("Rewrite {w} words", "Rewrite full take") |
+| Rewrite: scope changed | Rewrite panel, R3 | "Clip {n} changed" / "You edited clip {n}, so these changes may no longer fit. Nothing was applied, and no takes were paid for." With takes it adds "Your takes are kept until you close this." [Close] [Rewrite Again] |
+| Rewrite: edit popover | transcript, under a change | "New words for change {i}", the field, the fit meter line ("about {s} s for a {g} s gap: fits" or "about {s} s for a {g} s gap: will change length"), "Return saves · Esc cancels" [Reject Change] |
+| Rewrite: no speech rate | edit popover; change row | "There isn't enough timed speech to estimate this change. Your edits are saved." The fit meter and the amount are hidden |
+| Rewrite: too close to the take edge | Rewrite panel, change row (no checkbox) | "Too close to the {start/end} of the take to blend in. Re-record this sentence instead." |
+| Rewrite: no room tone | Rewrite panel, change row (no checkbox) | "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead." [Clean Audio…] replaces the last two sentences once Clean audio (M2) ships |
+| Rewrite: can't place | Rewrite panel, change row (no checkbox) | "This change can't be placed in this take. Your edits are saved." |
 | Rewrite: video missing | Rewrite panel | "Find the original video before rewriting speech. Your edits are saved." [Locate…] |
-| Rewrite: can't place | Rewrite panel, under the hunk | "This change can't be placed in this take. Your edits are saved." Generate is disabled for that hunk |
-| Rewrite: no speech rate | Rewrite panel, New words | "There isn't enough timed speech to estimate this change. Your edits are saved." The fit meter and the header amount are hidden |
-| Rewrite: no connector | Rewrite panel, under What should change? | "Choose a connector in Settings → AI." [Open Settings]; the Rewrite button is disabled |
-| Rewrite: local connector cost | the Rewrite button | **Rewrite · No charge** with a local connector. An installed CLI shows **Rewrite** with no amount, and its send line names the plan |
 | Rewrite: insertion not available | Rewrite panel | Insert Words… stays hidden while Core cannot place an insertion. Development builds that open it show "Inserting words isn't available yet. Your edits are saved." |
-| Voice Lab off, Rewrite chosen | sheet | voice-lab.md §5 one-time sheet |
-| Voice Lab: microphone access off | Create Your Voice, Warning | macOS: "Microphone access is off. Allow VoxClip in System Settings → Privacy & Security → Microphone to record your consent." Windows: "Microphone access is off. Turn on Microphone access and Let desktop apps access your microphone in Settings → Privacy & security → Microphone to record your consent." [Open Settings] |
-| Voice Lab: no microphone (Windows) | Create Your Voice, Warning | "No microphone found. Connect one and try again." |
-| Voice Lab: microphone unavailable | Create Your Voice, Warning | "The microphone isn't available. Check your input device and try again." |
-| Voice Lab: microphone lost | Create Your Voice, Warning | "The microphone stopped sending audio. This take was discarded. Check your input device and record again." |
-| Voice Lab: silent microphone | Create Your Voice, Warning | macOS: "The microphone sent only silence. Check that it isn't muted, and that System Settings → Privacy & Security → Microphone allows VoxClip." Windows: "The microphone sent only silence. Check that it isn't muted, and that Settings → Privacy & security → Microphone lets desktop apps use it." [Open Settings] |
-| Voice Lab: waiting for the microphone (Windows) | Create Your Voice | "Waiting for the microphone…" after 1 s, informational, with Cancel enabled and no timeout |
-| Voice Lab: recording the statement | Create Your Voice | Teleprompter "Read this aloud", with the caption "If you use a screen reader, wear headphones so it isn't recorded." Windows announces "Recording. Read the statement aloud." before capture starts, announces nothing during the take, and shows "Microphone: {device name}" (display only, never logged) |
-| Voice Lab: training source | Create Your Voice, after verification | Two choices: "Use this project's audio (recommended)" with "{n} s of clear speech found in {project name}", and "Record a read-aloud (about 90 s)" (voice-lab.md §6.5.2). While the project is analysed: "Finding clear speech in {project name}…" |
-| Voice Lab: too little project speech | Create Your Voice, under the project choice | "This project has only {n} s of clear speech. Record a read-aloud instead." With none: "This project has no clear speech to use. Record a read-aloud instead." |
-| Voice Lab: project audio unreadable | Create Your Voice, under the project choice | "VoxClip can't read this project's audio. Record a read-aloud instead." |
-| Voice Lab: project media labelled AI modified | Create Your Voice, under the project choice | "This project's media is labelled AI modified, so it can't train your voice. Record a read-aloud instead." |
-| Voice Lab: statement verified | Create Your Voice | "Statement verified. Choose your training audio next." when the project option can be chosen, otherwise "Statement verified. Record your training read-aloud next." |
-| Voice Lab: no project audio | Create Your Voice | No project open: "Open a project to use its audio instead." No transcript: "Transcribe this project to use its audio instead." |
-| Voice Lab: project audio doesn't match | Create Your Voice, Warning | "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead." [Record a Read-Aloud]. After the switch the same sentence stays under the disabled project choice |
+| Rewrite: Voice Lab off | Rewrite panel, R2 link | [Turn On Voice Lab…] opens the voice-lab.md §5 one-time sheet |
+| Rewrite: disclosure | Rewrite footer, T3 | "Exports show AI MODIFIED on the video and in the post." |
+| Your voice: no ElevenLabs key | Rewrite panel, V0 | "Add your ElevenLabs key" / "Your voice is made and spoken by ElevenLabs, with your own key. Create a key just for VoxClip with a monthly credit limit." Field "ElevenLabs API key". [Make a restricted key] [Save Key]. Note, macOS: "Saved in the macOS Keychain and used only by VoxClip for Voice Lab. Never passed to Claude Code, Codex or any other AI app. Saving makes no request." Windows: "Saved for your Windows account and used only by VoxClip for Voice Lab. Never passed to Claude Code, Codex or any other AI app. Saving makes no request." |
+| Your voice: agree | Rewrite panel, V1 | "Make your voice from this clip" / "Your new words are spoken in your own voice. You do this once." Then the voice-lab.md §2.5 provider copy (first time only) and the §6.1 notice [Terms] [Use policy]. Checkboxes "This is my own voice." · "I am 18 or older." · "I will use it only on videos of myself." Field "Your name, as you'll say it", error "Use 1 to 60 characters, with no line breaks." Unticked: "Tick all three to continue." Note "Checks your ElevenLabs plan. Free; no audio is sent." [Continue] |
+| Your voice: speech found | Rewrite panel, V1 | Running: "Finding your clear speech in this video…". Found: "{t} of your clear speech found" with "{c} from clip {n}, the rest from this video. Picked on this {Mac/PC}. English only for now.", "All from clip {n}." or "From the rest of this video; clip {n} has none clear enough." |
+| Your voice: a read-aloud instead | Rewrite panel, V1 callout | "This video has only {n} s of your clear speech, so you'll read a short passage instead." With none: "This video has no clear speech to use, so you'll read a short passage instead." Unreadable: "VoxClip can't read this video's audio, so you'll read a short passage instead." Labelled: "This video is labelled AI modified, so it can't train your voice. You'll read a short passage instead." |
+| Your voice: unmet requirements | Rewrite panel, V1 | "Download the own-voice check (27 MB)" · "Runs on this {Mac/PC}. Licence CC BY 4.0." [Download], then "Downloading… {p}%" [Cancel]. "Instant voice cloning needs an ElevenLabs Starter plan or higher." or "Your ElevenLabs account has no free voice slots." [Open ElevenLabs] |
+| Your voice: Windows before speaker-check parity | Rewrite panel, V1 (Informational) | "Making a voice isn't available on Windows yet: the on-device check that it's your voice isn't ready. Your free changes still work." [Apply {k} Free Changes] |
+| Your voice: read the statement | Rewrite panel, V2 | "You agreed: my own voice · 18 or older · only my videos" [Change]. "Read this aloud, in one take", the statement, [Record], then "Recording {m:ss}" [Stop]. Note "Stop after the last word (5 to 30 s). Nothing leaves this {Mac/PC} until you choose Create My Voice." With VoiceOver or Narrator running: "Using a screen reader? Wear headphones so it isn't recorded." Windows announces "Recording. Read the statement aloud." before capture starts, announces nothing during the take, and shows "Microphone: {device name}" (display only, never logged) |
+| Your voice: statement length | Rewrite panel, V2 (Warning) | "That was under 5 seconds. Read the whole statement, then stop." / "Recording stopped at 30 seconds. Read a little faster and record again." |
+| Your voice: microphone permission | Rewrite panel, V2 (Warning) | "VoxClip needs the microphone to record your statement." [Open Privacy Settings] (Windows: [Open Microphone Settings]) |
+| Voice Lab: no microphone (Windows) | Rewrite panel, V2 (Warning) | "No microphone found. Connect one and try again." |
+| Voice Lab: microphone unavailable | Rewrite panel, V2 (Warning) | "The microphone isn't available. Check your input device and try again." |
+| Voice Lab: microphone lost | Rewrite panel, V2 (Warning) | "The microphone stopped sending audio. This take was discarded. Check your input device and record again." |
+| Voice Lab: silent microphone | Rewrite panel, V2 (Warning) | macOS: "The microphone sent only silence. Check that it isn't muted, and that System Settings → Privacy & Security → Microphone allows VoxClip." Windows: "The microphone sent only silence. Check that it isn't muted, and that Settings → Privacy & security → Microphone lets desktop apps use it." [Open Settings] |
+| Voice Lab: waiting for the microphone (Windows) | Rewrite panel, V2 | "Waiting for the microphone…" after 1 s, informational, with Cancel enabled and no timeout |
 | Voice Lab: leaving while recording (Windows) | dialog | "Stop creating your voice? The recording is deleted from this PC." [Stop] [Keep going]; Keep going is the default and Esc keeps going |
+| Your voice: checking it's you | Rewrite panel, V3 | "Checking it's you…" / "Comparing {k} stretches of this video with your statement. On this {Mac/PC}; nothing is sent." / "{i} of {k} · about {s} s left" |
+| Your voice: speaker mismatch | Rewrite panel, V3 (Warning) | "Some of this video's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead." Row "Statement recorded and kept" · "You won't need to read it again." [Record a Read-Aloud]. Note "Nothing was sent. The check ran on this {Mac/PC}." |
+| Your voice: read-aloud | Rewrite panel, V3, Step 3 of 4 | "Read this aloud, about 90 s", the script and the recorder (60 to 120 s). Below the 10 s floor (Warning): "Some of these recordings don't sound like the voice in your consent statement." [Record a Read-Aloud] |
+| Your voice: ready to create | Rewrite panel, V4 | "Ready to create your voice" / "It's you" · "{m} of this video matches your statement." (a read-aloud: "Your read-aloud matches your statement.") / "Checks your plan, then sends your statement and {m} of your speech to ElevenLabs to create your voice. No video is sent." [Create My Voice · < $0.01] |
+| Your voice: creating | Rewrite panel, V5 | "Creating your voice…" Steps "Statement recorded" · "{m:ss} · kept on this {Mac/PC}"; "It's you" · "{m} matches your statement, checked on this {Mac/PC}. {d} short stretches didn't match and were left out."; "Statement read correctly" · "Checked by ElevenLabs"; "Creating “{name} (VoxClip)” in your ElevenLabs account"; "Back to clip {n}" · "{z} phrases to voice". Note "Sending your statement and {m} of your speech to ElevenLabs with your key. No video. < $0.01" |
+| Your voice: statement doesn't match | Rewrite panel, V5, then V2 | "That didn't match the statement. Read it again, clearly, in one take." After three tries in 10 minutes: "That's three tries in 10 minutes. Try again at {time}." |
+| Your voice: verification required | Rewrite panel, V5 | "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back." [Open elevenlabs.io] [Check Again] |
+| Your voice: ready | announcement, V6 | "Your voice is ready." |
+| Takes: not the voice owner | Rewrite panel, T1 (Error) | "This doesn't sound like the voice owner. Voice Lab is only for your own videos." Note "Checked on this {Mac/PC} against 10 s of speech near each change. Nothing was sent or charged." [Apply {k} Free Changes] |
+| Takes: generating | Rewrite panel, T2 | "Making takes… phrase {i} of {z}" [Stop]. Announce "Phrase {i} fits." |
+| Takes: ready | Rewrite panel, T3 | "Voice: {name} · made {date}", plus " from clip {n}". "{z} phrases in your voice" / "Listen, pick a take, then use them." Rows "Take {k} · {d} s · fits" or "Take {k} · {d} s · pauses +{x} s", "Best match", [Try Another · ≈ $0.01]. [Play Clip {n} with New Voice]. "Made {t} takes · ≈ ${x} on your ElevenLabs account." [Use Takes] |
+| Takes: no take passed | Rewrite panel, T3 row | "These takes didn't sound right. Edit the words or try again." [Try Again · ≈ $0.01] [Edit Words]. The row says "Left out until a take fits.", and the primary reads "Use {z−1} Takes" |
+| Takes: length changed | Rewrite panel, T3 row | "Take {k} runs {s} s longer than the words it replaces. Shorten the words or try another take." For a shorter take: "Take {k} runs {s} s shorter than the words it replaces. Edit the words or try another take." |
+| Takes: lip sync | sheet, once rendering lands | "Lip sync this change?" / "This will cost about ${x} on your {provider} account." / "Sends {s} s of video around the change to {provider} with your key." [Cancel] [Continue] |
+| Takes: provider error | Rewrite panel (Error) | "ElevenLabs rejected the key (401). Your edits are saved." ({provider} and {status} vary), with a key field [Save Key] [Retry] |
+| Takes: unused paid takes | sheet, on close | "Discard {t} takes?" / "You paid about ${x} for them. Your edits are saved." [Keep Working] [Discard Takes] |
+| Takes: used | toast (6 s) and announcement | "Clip {n} rewritten: {z} phrases in your voice, {x} cuts, {y} fix." [Undo]. The sidebar meta then reads "AI modified", and Export's accessible name adds ", contains AI-modified speech" |
+| Voice Lab: My voices | Settings → Voice Lab | "Made {date} · consent {date} · English" [Delete Voice…] [Remove from VoxClip Only]. Empty: "No voice yet. You make it from a clip the first time a rewrite needs your voice." |
 
 ---
 
@@ -1537,16 +1972,26 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 
 ## 15. Accessibility
 
-- **Screen readers.** The transcript is text (NSTextView / RichTextBlock), so VoiceOver and Narrator read it by word, line and paragraph. Each word's accessible description adds its state: "um, cut", "pause 1.4 seconds", "pause 1.6 seconds, cut", "cadence, playing", "it isn't a clip yet, AI modified". macOS: custom rotors (`accessibilityCustomRotors`) for Cuts, Pauses, Suggested fillers, Clips and AI words, and custom actions on the focused word (Cut, Restore, Correct, Play from here). Every command posts an announcement ("Cut 3 words", "Restored all cuts, corrections kept") via `NSAccessibility.post(element:notification: .announcementRequested, …)` or UIA `RaiseNotificationEvent`.
+- **Screen readers.** The transcript is text (NSTextView / RichTextBlock), so VoiceOver and Narrator read it by word, line and paragraph. Each word's accessible description adds its state: "um, cut", "pause 1.4 seconds", "pause 1.6 seconds, cut", "cadence, playing", "it isn't a clip yet, AI modified". macOS: custom rotors (`accessibilityCustomRotors`) for Cuts, Pauses, Suggested fillers, Clips and AI words, plus Proposed changes while a Rewrite proposal is open (§6.3.5), and custom actions on the focused word (Cut, Restore, Correct, Play from here). Every command posts an announcement ("Cut 3 words", "Restored all cuts, corrections kept") via `NSAccessibility.post(element:notification: .announcementRequested, …)` or UIA `RaiseNotificationEvent`.
 - **Timeline** is a slider: "Playhead, 42 seconds of 2 minutes 15 after cuts, 12 cuts" in Edited, or "Playhead, 42 seconds of 3 minutes 10 source, 12 cuts" in Source. Times are spoken whole seconds ("42 seconds", "1 minute 05", "2 minutes 15"), never `m:ss.d`. Arrow keys step by word.
 - **Caption gallery** is a single-choice picker named "Caption style"; each option is named "{name}: {description}".
-- **Keyboard.** The whole loop (import → cut → captions → clips → export → share) works without a pointer. Focus and F6 / ⌃F6 order: sidebar → toolbar or `CommandBar` → transcript → viewer → Captions or Rewrite panel → timeline. On macOS the selection bar, while it shows, comes right after the transcript (§4.3). On Windows Shift+F6 goes back, from any focused descendant. On macOS, Full Keyboard Access reaches every control with Tab. Icon-only buttons have explicit names: Back 3 seconds, Play (Pause while playing; the Space shortcut goes in the tooltip, not the name), Forward 3 seconds, Close Rewrite, Reject take 2, Keep suggested clip 5, Dismiss suggested clip 5, Hide Viewer. The Windows splitter is focusable: ← and → resize by 16 within 300–560, and Enter collapses or expands the column. It is named "Resize viewer". The macOS divider relies on View > Show/Hide Viewer and the `AXSplitter` increment and decrement actions. System focus rings / focus visuals; custom rings are 2 `focus.ring`, offset 2.
-- **Sidebar and panel focus.** Choosing a sidebar row keeps focus on the row; Enter on Windows invokes it. F6 from the pane lands on the `CommandBar`. After Keep, Dismiss or Remove, focus moves to the next row, or to Full take. Opening Rewrite focuses "What should change?", and Esc returns to the words. Alt+Left from the editor selects Home. A recent project's accessible name is its visible title. A missing one adds ", video not found", and the other media states add theirs (§5.4.9).
-- **Colour independence.** Cut = strike + dimming; timeline cuts = hatching; clips = brackets and numbers; fillers = dotted underline + tooltip. No state depends on red versus green. The selected clip is shown by an accent badge plus the row selection, and the selected Frame by a semibold label; suggestions by dashes and the Suggested header; AI words by the AI chip and a dashed underline; exported state by a glyph and a word.
+- **Keyboard.** The whole loop (import → cut → captions → clips → export → share) works without a pointer. Focus and F6 / ⌃F6 order: sidebar → toolbar or `CommandBar` → scope bar (§6.3.1) → transcript → viewer → Captions or Rewrite panel → timeline. On macOS the selection bar, while it shows, comes right after the transcript (§4.3). On Windows Shift+F6 goes back, from any focused descendant. On macOS, Full Keyboard Access reaches every control with Tab. Icon-only buttons have explicit names: Back 3 seconds, Play (Pause while playing; the Space shortcut goes in the tooltip, not the name), Forward 3 seconds, Close Rewrite, Stop rewriting, Back to rewrite, Play phrase 2, Keep suggested clip 5, Dismiss suggested clip 5, Hide Viewer. The Windows splitter is focusable: ← and → resize by 16 within 300–560, and Enter collapses or expands the column. It is named "Resize viewer". The macOS divider relies on View > Show/Hide Viewer and the `AXSplitter` increment and decrement actions. System focus rings / focus visuals; custom rings are 2 `focus.ring`, offset 2.
+- **Sidebar and panel focus.** Choosing a sidebar row keeps focus on the row; Enter on Windows invokes it. F6 from the pane lands on the `CommandBar`. After Keep, Dismiss or Remove, focus moves to the next row, or to Full take. Starting a Rewrite keeps focus where it was and announces it. When the proposal arrives, focus moves to the first change row. Esc from the panel returns focus to the scope's first word, and after Apply or Use, focus moves to the first changed word (§6.3). Alt+Left from the editor selects Home. A recent project's accessible name is its visible title. A missing one adds ", video not found", and the other media states add theirs (§5.4.9).
+- **Rewrite names** (VoiceOver label, or Narrator `AutomationProperties.Name`; §6.3):
+  - **Scope bar:** the group "Clip 1 tools"; the label "Clip 1, 43 seconds"; the field "What should change in clip 1"; the button "Rewrite clip 1"; the picker "AI: Claude Code (installed CLI), Opus 5.5, ready", where "ready" becomes "asks before each send" or "not signed in".
+  - **Sidebar:** the row button "Rewrite clip 1".
+  - **Panel:** the heading "Rewrite clip 1", or "Your voice, step 2 of 3, beta"; "Close Rewrite", "Stop rewriting" and "Back to rewrite"; step rows "Done: Read clip 1, 118 words" and "In progress: Waiting for Claude Code", which update as they change (macOS `.updatesFrequently`, Windows `LiveSetting="Polite"`).
+  - **Change rows:** a checkbox named "Change 1 of 6, your voice: ‘to, to the’ becomes ‘your source directory in the’. Included." Custom actions on macOS, or the context menu on Windows: "Edit words", "Show in transcript", "Play original".
+  - **Transcript:** each proposed change's description, "Proposed change 1 of 6: removed to, to the; inserted your, in the". The focus mark is decorative.
+  - **Voice steps:** "Statement to read: …"; "Record consent statement" and "Stop recording"; "Microphone level", with the value in dB; the strip, "Speech found: 1 minute 52 seconds, 38 seconds from clip 1".
+  - **Takes:** "Phrase 2 of 3, is an interesting way to. Take 2 of 3 selected, 1.4 seconds, best match"; the segmented control "Take for phrase 2"; "Play phrase 2"; "Try another take for phrase 2, about 1 cent"; "Play clip 1 with new voice"; "Use takes".
+- **Rewrite announcements:** "Rewriting clip 1"; "6 changes proposed. 3 need your voice."; "Applied 3 changes"; "Clip 2 kept"; "Your voice is ready."; "Phrase 1 fits."; "Clip 1 rewritten: 3 phrases in your voice, 2 cuts, 1 fix."
+- **Rewrite without a pointer** (macOS): ] selects clip 1 → ⇧⌘R → ↓ through the changes, Space to exclude, Return to edit → ⌘Return **Make Your Voice** → Tab through the three boxes, Space each → ⌘Return **Continue** → Space records, Space stops → ⌘Return **Create My Voice** → ⌘Return **Make Takes** → ↓ through the phrases, Space plays, ← → switch takes → ⌘Return **Use Takes**. On Windows the path is the same with Ctrl+R, Ctrl+Enter and F2.
+- **Colour independence.** Cut = strike + dimming; timeline cuts = hatching; clips = brackets and numbers; fillers = dotted underline + tooltip. No state depends on red versus green. The selected clip is shown by an accent badge plus the row selection, and the selected Frame by a semibold label; suggestions by dashes and the Suggested header; AI words by the AI chip and a dashed underline; exported state by a glyph and a word. A proposed change's kind is a glyph plus a word, its inclusion a checkmark, and the focused change a shape, not only a tint (§6.3.5).
 - **Contrast** (WCAG 2.x, Ink palette): every text pair is at least 4.5:1 and every UI boundary at least 3:1, in light and dark, on macOS and Windows, including on-accent text. `npm --prefix tools/design test` enforces this through `tools/design/contrast.mjs`, which prints the measured table and fails on any colour token that is neither checked nor exempted; see §16 for the values. Cut words stay at least 4.5:1 because they are still content, and pause-token text uses `text.muted`, struck through in `cut.stroke` when cut. Re-check when a surface token changes.
-- **Motion.** Under Reduce Motion (macOS `accessibilityDisplayShouldReduceMotion`, Windows `UISettings.AnimationsEnabled`): sidebar selection jump-scrolls the transcript; the timeline zoom switches without animating; the selection bar and the Rewrite panel appear without slide or scale (a crossfade of 150 ms or less); gallery tiles are static; the strike draw-in, the playing-word slide and the M2 countdown scaling are off. Media stand-ins drop their sheen, crossfade, moving dots and stage ring, and the word rhythm and audiogram page instead of scrolling (§5.4.9).
+- **Motion.** Under Reduce Motion (macOS `accessibilityDisplayShouldReduceMotion`, Windows `UISettings.AnimationsEnabled`): sidebar selection jump-scrolls the transcript; the timeline zoom switches without animating; the selection bar and the Rewrite panel appear without slide or scale (a crossfade of 150 ms or less); indeterminate progress becomes the static text "Working…", and the scope bar's progress line is static; gallery tiles are static; the strike draw-in, the playing-word slide and the M2 countdown scaling are off. Media stand-ins drop their sheen, crossfade, moving dots and stage ring, and the word rhythm and audiogram page instead of scrolling (§5.4.9).
 - **Reduced transparency.** Under Reduce Transparency or Increase Contrast (Windows: Transparency effects off or a contrast theme), the sidebar's custom parts and the selection bar become opaque `bg.elevated` with a 1 px `line.strong` edge. Media chips switch to their opaque tokens (§5.4.8).
-- **Targets.** macOS controls are at least 24 pt in the sidebar and selection bar and 22 pt elsewhere; words get 2 pt vertical hit slop. Windows targets are at least 32×32 epx. The timeline track's whole 30 high band is the scrub target. Trim handles have 24 wide hit regions.
+- **Targets.** macOS controls are at least 24 pt in the sidebar, the selection bar and the scope bar, and 22 pt elsewhere; words get 2 pt vertical hit slop. Windows targets are at least 32×32 epx. The timeline track's whole 30 high band is the scrub target. Trim handles have 24 wide hit regions.
 - **Text size.** Transcript zoom 13–28. Windows honours the system text-size setting through the Fluent type ramp.
 - **Captions as accessibility.** `.srt` sidecar export; default styles are readable on any frame (the bold styles have a stroke).
 - **Localization.** Strings in String Catalogs (`.xcstrings`) and `.resw`. Layouts tolerate 30% text growth and right-to-left languages. M1 ships English UI; Estonian UI may follow.
@@ -1618,7 +2063,10 @@ Typography uses the system font: the transcript at 19/32 (SF Pro; Segoe UI Varia
 | Gallery | `LazyVGrid` with a `Picker` accessibility representation | `GridView` over a grouped `CollectionViewSource` |
 | Timeline | `Canvas` + `Slider` accessibility representation | `Canvas` shapes or Composition visuals with a `RangeValue` peer |
 | Find Clips | `.popover` | `Flyout` |
-| Rewrite takes | `List` with single selection | `ListView` (`SelectionMode="Single"`) |
+| Rewrite scope bar field | `TextField` with `textInputSuggestions` | `AutoSuggestBox` |
+| AI picker | `Menu` | `DropDownButton` with a `MenuFlyout` of `RadioMenuFlyoutItem`s |
+| Rewrite change list | rows with `Toggle(.checkbox)` | `ListView` with `CheckBox` templates |
+| Rewrite takes per phrase | `Picker(.segmented)` | `Segmented` (CommunityToolkit) |
 | Status / errors | inline callout row | `InfoBar` |
 | Home | `.dropDestination(for: URL.self)`, `.searchable(placement: .toolbar)`, `LazyVGrid(.adaptive)` | `AllowDrop`, `AutoSuggestBox`, `GridView` |
 | Export | `.sheet` | `ContentDialog` |
