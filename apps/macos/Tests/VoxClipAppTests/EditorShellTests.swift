@@ -165,6 +165,20 @@ private final class FullScreenStandIn: NSWindow {
         drag(false)
     }
 
+    /// While the Explorer shows over the editor, its toggle reads Hide Sidebar, as the menu does.
+    @Test func theExplorerToggleNamesTheOverlay() async throws {
+        let (shell, controller, _) = try await openShell(width: 960)
+        defer { controller.tearDown(); shell.editor?.close() }
+        #expect(!shell.layout.explorerVisible && controller.explorerToggle.accessibilityLabel() == EditorIconAction.showSidebar.name)
+        shell.toggleSidebar()
+        controller.apply(EditorShellState(shell: shell))
+        #expect(shell.sidebarOverlay && controller.explorerToggle.accessibilityLabel() == EditorIconAction.hideSidebar.name)
+        #expect(controller.explorerToggle.toolTip == "\(EditorIconAction.hideSidebar.name) (⌃⌘S)")
+        shell.toggleSidebar()
+        controller.apply(EditorShellState(shell: shell))
+        #expect(!shell.sidebarOverlay && controller.explorerToggle.accessibilityLabel() == EditorIconAction.showSidebar.name)
+    }
+
     /// A hidden timeline panel is no F6 stop. Until V4 the panel stays while the right column
     /// is hidden: its toggle is unavailable and its edge does not collapse it.
     @Test func aHiddenTimelineIsNoF6StopAndStaysWhileTheRightColumnIsHidden() throws {

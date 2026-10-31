@@ -525,6 +525,7 @@ struct EditorShellState: Equatable {
     var editor: ObjectIdentifier?
     var showsHome: Bool
     var explorerVisible: Bool
+    var sidebarOverlay: Bool
     var rightVisible: Bool
     var rightOverlay: Bool
     var timelineVisible: Bool
@@ -533,6 +534,7 @@ struct EditorShellState: Equatable {
         editor = shell.editor.map(ObjectIdentifier.init)
         showsHome = shell.showsHome
         explorerVisible = shell.layout.explorerVisible
+        sidebarOverlay = shell.sidebarOverlay
         rightVisible = shell.layout.rightVisible
         rightOverlay = shell.rightOverlay
         timelineVisible = shell.layout.timelineVisible
@@ -705,7 +707,8 @@ struct EditorShellState: Equatable {
         let explorerShows = applied?.explorerVisible ?? true
         let titleRow = editorWork?.tabRow ?? homeBand
         let fullScreen = view.window?.styleMask.contains(.fullScreen) == true
-        explorerToggle.describe((explorerShows ? EditorIconAction.hideSidebar : .showSidebar).name, shortcut: "⌃⌘S")
+        // Named for what the toggle does: it hides the Explorer shown over the editor too.
+        explorerToggle.describe((explorerShows || applied?.sidebarOverlay == true ? EditorIconAction.hideSidebar : .showSidebar).name, shortcut: "⌃⌘S")
         if explorerShows {
             explorerHeader.set(leading: [], trailing: [explorerToggle])
             titleRow?.leadingInset = 0
