@@ -96,7 +96,7 @@ struct EditorRenderSnapshot {
                     guard let self, let provider else { return false }
                     return await self.rewriteConsent(provider: provider, signature: signature, snapshot: snapshot)
                 }, connectorIsCurrent: { [weak self] in self?.rewriteConnectorSignature == signature })
-            if app.shell.editor === self, !app.shell.layout.rightVisible { app.shell.toggleViewer() }
+            if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
             transcriptRevision += 1
         }
     }
