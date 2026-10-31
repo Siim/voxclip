@@ -6,6 +6,26 @@ public static class SpeakerAudio
     public const string Version = "sinc32-blackman94-silero-6.2.0-kaldi80-v2";
     public const int WindowSize = 48000;
     public const int HopSize = 24000;
+    public const int PartWindows = 3;
+    /// <summary>A sample's embedding: the normalised sum of its window embeddings, added in window order.</summary>
+    public static float[] Embedding(IReadOnlyList<float[]> windows) => Normalized(Sum(windows, 0, windows.Count));
+    /// <summary>voice-lab.md §6.6 for project spans: the span's embedding and one per part of <see cref="PartWindows"/> consecutive
+    /// windows, about the six seconds each S6 calibration clip held. A last part of a single window joins the part before it.</summary>
+    public static (float[] Whole, float[][] Parts) PartEmbeddings(IReadOnlyList<float[]> windows)
+    {
+        var starts = Enumerable.Range(0, (windows.Count + PartWindows - 1) / PartWindows).Select(part => part * PartWindows).ToList();
+        if (starts.Count > 1 && windows.Count - starts[^1] == 1) starts.RemoveAt(starts.Count - 1);
+        var parts = starts.Select((start, index) => Normalized(Sum(windows, start, index + 1 < starts.Count ? starts[index + 1] : windows.Count))).ToArray();
+        return (Embedding(windows), parts);
+    }
+    private static float[] Sum(IReadOnlyList<float[]> windows, int start, int end)
+    {
+        if (windows.Count == 0 || windows.Any(window => window.Length != windows[0].Length)) throw Mismatch();
+        var sum = new float[windows[0].Length];
+        for (var window = start; window < end; window++)
+            for (var index = 0; index < sum.Length; index++) sum[index] += windows[window][index];
+        return sum;
+    }
     public static float[] Normalized(IReadOnlyList<float> vector)
     {
         if (vector.Count == 0 || vector.Any(value => !float.IsFinite(value))) throw Mismatch();

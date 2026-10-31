@@ -1,17 +1,30 @@
+using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Media.Audio;
 using VoxClip.Media.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
-internal sealed record VoiceCreationQuote(VoiceLabCostPresentationResult Cost, object Ticket);
+/// <summary>With project audio, the confirmation names the project and the whole seconds that passed the speaker match.</summary>
+internal sealed record VoiceCreationProject(string Name, long Seconds);
+internal sealed record VoiceCreationQuote(VoiceLabCostPresentationResult Cost, object Ticket, VoiceCreationProject? Project = null);
 internal sealed class VoiceCreationExpiredException : Exception;
+/// <summary>Voice Lab §6.5: (a) spans of the open project's audio, or (b) a fresh read-aloud.</summary>
+internal enum VoiceTrainingSource { Project, ReadAloud }
+internal enum VoiceProjectAudioState { NoProject, NoTranscript, Finding, Ready, TooLittle, Unreadable }
+/// <summary>The editor's open project, offered as training audio; times are read from its source media, never the edit.</summary>
+internal sealed record VoiceTrainingProject(string Name, Project Project, string? MediaPath);
+/// <summary>An analysed project take: the media and rate to cut from and the §6.5.1 selection.</summary>
+internal sealed record VoiceProjectAudio(string Name, string MediaPath, int Rate, VoiceTrainingSpanSelection Selection);
 
 internal interface IVoiceCreationBackend : IVoiceStatementBackend
 {
     bool CreationPending { get; }
     Task SaveTrainingAsync(MicrophoneTake take, CancellationToken ct);
-    Task<VoiceCreationQuote> PrepareCreationAsync(string recordId, string name, CancellationToken ct);
+    /// <summary>On-device and free: one streamed decode of the take and the §6.5.1 selection. Throws when the audio can't be read.</summary>
+    Task<VoiceProjectAudio> AnalyzeProjectAsync(VoiceTrainingProject project, CancellationToken ct);
+    /// <summary>Prepares the clone from the read-aloud, or from the project's selected spans when <paramref name="project"/> is set.</summary>
+    Task<VoiceCreationQuote> PrepareCreationAsync(string recordId, string name, VoiceProjectAudio? project, CancellationToken ct);
     bool QuoteIsFresh(VoiceCreationQuote quote);
     Task<VoiceConsentRecord> CreateAsync(VoiceCreationQuote quote, CancellationToken ct);
     Task SaveCreationRecordAsync(VoiceConsentRecord record, CancellationToken ct);
@@ -31,12 +44,89 @@ internal sealed partial class CreateVoiceSession
     internal VoiceCreationQuote? CreationConfirmation { get; private set; }
     internal bool CanTrain => backend is IVoiceCreationBackend { CreationPending: false } && !disposed && Verified &&
         !Busy && !Recording && !Activating && !leaving && !cleanupPending && !ReturnToPane && UnsavedRecord is null && CreationConfirmation is null && BlockedReason is null;
-    internal bool CanCreate => CanTrain && TrainingReady;
+    internal bool CanRecordTraining => CanTrain && TrainingSource == VoiceTrainingSource.ReadAloud;
+    internal bool CanCreate => CanTrain && (TrainingSource == VoiceTrainingSource.Project ? CanUseProject : TrainingReady);
     internal string TrainingScript => File.ReadAllText(Path.Combine(VoxClip.Core.Services.Project.SharedResources.ResolveRoot(), "voice-lab", "scripts-" + language + ".txt"));
+    internal VoiceTrainingSource TrainingSource { get; private set; } = VoiceTrainingSource.ReadAloud;
+    internal VoiceProjectAudioState ProjectAudio { get; private set; }
+    internal VoiceProjectAudio? ProjectAnalysis { get; private set; }
+    /// <summary>The project's spans failed the speaker match against this statement; only a read-aloud remains.</summary>
+    internal bool ProjectMismatch { get; private set; }
+    internal bool ProjectOffered => ProjectAudio is not (VoiceProjectAudioState.NoProject or VoiceProjectAudioState.NoTranscript);
+    internal bool CanUseProject => ProjectAudio == VoiceProjectAudioState.Ready && !ProjectMismatch;
+    internal bool CanSelectProject => ProjectAudio is VoiceProjectAudioState.Finding or VoiceProjectAudioState.Ready && !ProjectMismatch;
+    internal string ProjectLine => ProjectAudio switch
+    {
+        VoiceProjectAudioState.NoProject => VoiceLabCopy.NoProject,
+        VoiceProjectAudioState.NoTranscript => VoiceLabCopy.NoTranscript,
+        VoiceProjectAudioState.Finding => VoiceLabCopy.ProjectFinding(project!.Name),
+        VoiceProjectAudioState.Ready => VoiceLabCopy.ProjectFound(ProjectAnalysis!.Selection.AvailableMs / 1000, ProjectAnalysis.Name),
+        VoiceProjectAudioState.TooLittle => VoiceLabCopy.ProjectTooLittle(ProjectAnalysis!.Selection.AvailableMs / 1000),
+        _ => VoiceLabCopy.ProjectUnreadable
+    };
+
+    /// <summary>Opens the sheet with the editor's project, or none. A project with a transcript is the default source (§6.5.2), and its
+    /// on-device analysis starts at once unless Voice Lab or the speaker check is closed.</summary>
+    internal void OpenProject(VoiceTrainingProject? opened)
+    {
+        if (project is not null || disposed) return;
+        project = opened;
+        ProjectAudio = opened is null ? VoiceProjectAudioState.NoProject
+            : opened.Project.Transcript is null ? VoiceProjectAudioState.NoTranscript : VoiceProjectAudioState.Finding;
+        TrainingSource = ProjectAudio == VoiceProjectAudioState.Finding ? VoiceTrainingSource.Project : VoiceTrainingSource.ReadAloud;
+        StartProjectAnalysis();
+        Notify();
+    }
+    private void StartProjectAnalysis()
+    {
+        if (ProjectAudio != VoiceProjectAudioState.Finding || analysis is not null || disposed || !backend.Enabled || !backend.SpeakerAvailable ||
+            backend is not IVoiceCreationBackend creation) return;
+        analysis = new();
+        analyzing = AnalyzeProjectCoreAsync(creation, project!, analysis.Token);
+    }
+    private async Task AnalyzeProjectCoreAsync(IVoiceCreationBackend creation, VoiceTrainingProject opened, CancellationToken ct)
+    {
+        VoiceProjectAudio? result = null;
+        try { result = await Task.Run(() => creation.AnalyzeProjectAsync(opened, ct), ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+        catch (Exception) { }
+        if (ct.IsCancellationRequested) return;
+        await dispatch(() =>
+        {
+            ProjectAnalysis = result;
+            ProjectAudio = result is null ? VoiceProjectAudioState.Unreadable
+                : result.Selection.Status == VoiceTrainingSpanStatus.Ok ? VoiceProjectAudioState.Ready : VoiceProjectAudioState.TooLittle;
+            if (ProjectAudio != VoiceProjectAudioState.Ready && TrainingSource == VoiceTrainingSource.Project) TrainingSource = VoiceTrainingSource.ReadAloud;
+            Notify();
+        });
+    }
+    internal bool CanChooseSource => CanTrain;
+    /// <summary>The source picker and the speaker block's Record a Read-Aloud; the verified statement is kept.</summary>
+    internal void SelectTrainingSource(VoiceTrainingSource source)
+    {
+        if (CanChooseSource && source != TrainingSource && (source == VoiceTrainingSource.ReadAloud || CanSelectProject))
+        {
+            TrainingSource = source;
+            if (ProjectMismatch) { Message = null; HasFailure = false; }
+        }
+        Notify();
+    }
+    private void ResetTrainingSource()
+    {
+        ProjectMismatch = false;
+        if (ProjectAudio is VoiceProjectAudioState.Finding or VoiceProjectAudioState.Ready) TrainingSource = VoiceTrainingSource.Project;
+    }
+    private async Task StopProjectAnalysisAsync()
+    {
+        analysis?.Cancel();
+        try { await analyzing; }
+        catch (OperationCanceledException) { }
+        analysis?.Dispose();
+    }
 
     internal Task RecordTrainingAsync()
     {
-        if (!CanTrain) return Task.CompletedTask;
+        if (!CanRecordTraining) return Task.CompletedTask;
         operation?.Dispose(); operation = new();
         work = RecordTrainingCoreAsync((IVoiceCreationBackend)backend, operation.Token);
         return work;
@@ -81,14 +171,27 @@ internal sealed partial class CreateVoiceSession
     }
     private async Task PrepareCreationCoreAsync(IVoiceCreationBackend creation, CancellationToken ct)
     {
+        var selected = TrainingSource == VoiceTrainingSource.Project ? ProjectAnalysis : null;
         Busy = true; HasFailure = false; Message = null; Notify();
         try
         {
-            var quote = await Task.Run(() => creation.PrepareCreationAsync(recordId!, displayName, ct), ct);
+            var quote = await Task.Run(() => creation.PrepareCreationAsync(recordId!, displayName, selected, ct), ct);
             ct.ThrowIfCancellationRequested();
             await dispatch(() => { if (BlockedReason is null && !creation.CreationPending) CreationConfirmation = quote; });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested || !backend.Enabled) { }
+        catch (VoiceConsentException error) when (selected is not null && error.Kind == VoiceConsentError.SpeakerMismatch)
+        {
+            await dispatch(() => { ProjectMismatch = true; HasFailure = true; Say(VoiceLabCopy.ProjectMismatch); });
+        }
+        catch (VoiceLabSourceAudioException) when (selected is not null)
+        {
+            await dispatch(() =>
+            {
+                ProjectAudio = VoiceProjectAudioState.Unreadable; TrainingSource = VoiceTrainingSource.ReadAloud;
+                HasFailure = true; Say(VoiceLabCopy.ProjectUnreadable);
+            });
+        }
         catch (Exception error) { await dispatch(() => CreationError(error)); }
         finally { await dispatch(() => { Busy = false; Notify(); }); }
     }

@@ -24,7 +24,7 @@ public sealed class VoiceEnrollment
     private readonly Dictionary<VoiceLabPreparedAction, Pending> pending = [];
     private int busy;
     private sealed record Verified(VoiceConsentStatement Statement, VoiceStatementMatch Match, string Hash, VoiceConsentAttestations Attestations);
-    private sealed record Pending(VoiceLabCloneRequest Request, OwnVoicePolicy Policy, Verified Verified, VoiceConsentSample[] Samples, float[] Embedding);
+    private sealed record Pending(VoiceLabCloneRequest Request, OwnVoicePolicy Policy, Verified Verified, VoiceConsentSample[] Samples, float[] Embedding, long TrainingMs);
     public VoiceEnrollment(VoiceConsentStore store, ElevenLabsVoiceLab client, Func<byte[], string, CancellationToken, Task<RawTranscript>> scribe,
         VoiceSpeakerCheck? speaker = null, VoiceOperationReconciler? reconciler = null, TimeProvider? clock = null)
     {
@@ -78,45 +78,85 @@ public sealed class VoiceEnrollment
             if (!speaker.Available || speaker.Threshold is not { } threshold || speaker.ModelId is null) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
             if (!verified.TryGetValue(recordId, out var verification)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (!speaker.Supports(verification.Statement.Language)) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-            if (inputs.Length is < 1 or > 24 || inputs.Sum(sample => sample.Seconds) is < 60 or > 120 ||
-                inputs.Any(sample => !double.IsFinite(sample.Seconds) || sample.Seconds is < 5 or > 30 || !double.IsFinite(sample.SnrDb)))
-                throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+            TrainingSource(inputs);
             var statementWav = store.Statement(recordId);
             if (VoiceConsentStore.Hash(statementWav) != verification.Hash) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
-            var owner = await speaker.EmbeddingAsync(VoiceConsentAudio.Pcm16k(statementWav), ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            var accepted = new List<VoiceTrainingSample>();
-            var hashes = new List<VoiceConsentSample>();
-            foreach (var sample in inputs)
-            {
-                ct.ThrowIfCancellationRequested();
-                var format = VoiceConsentAudio.ValidateWav(sample.Wav);
-                if (Math.Abs(format.Frames / (double)format.Rate - sample.Seconds) >= 0.001) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
-                float[] candidate;
-                try { candidate = await speaker.EmbeddingAsync(VoiceConsentAudio.Pcm16k(sample.Wav), ct).ConfigureAwait(false); }
-                catch (VoiceConsentException error) when (error.Kind == VoiceConsentError.SpeakerMismatch) { continue; }
-                ct.ThrowIfCancellationRequested();
-                var score = SpeakerAudio.Cosine(owner, candidate);
-                if (score < threshold) continue;
-                accepted.Add(sample);
-                hashes.Add(new(VoiceConsentStore.Hash(sample.Wav), sample.Seconds, sample.Source, score));
-            }
-            if (accepted.Count == 0 || accepted.Sum(sample => sample.Seconds) < 10) throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
-            var name = VoiceConsentText.DisplayName(displayName);
-            var prefix = verification.Statement.Language == "et" ? "Minu nimi on " + name + ". Täna on " : "My name is " + name + ". Today is ";
-            if (!verification.Statement.Text.StartsWith(prefix, StringComparison.Ordinal)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            var request = new VoiceLabCloneRequest(name, verification.Statement.Language,
-                new[] { new VoiceLabCloneSample(VoiceLabCloneSampleRole.ConsentStatement, statementWav) }
-                    .Concat(accepted.Select(sample => new VoiceLabCloneSample(VoiceLabCloneSampleRole.Training, sample.Wav.ToArray()))).ToArray(),
-                clock.GetUtcNow(), accepted.Any(sample => sample.SnrDb < 20 && !sample.CleanAudioApplied), recordId);
-            var policy = new OwnVoicePolicy(recordId, null, true, true, true, true, true);
-            var quote = client.PrepareClone(request, policy, Guid.NewGuid());
+            var training = await PrepareTrainingAsync(client, recordId, displayName, verification.Statement, statementWav, inputs, threshold,
+                speaker.EmbeddingAsync, speaker.PartEmbeddingsAsync, clock.GetUtcNow(), ct).ConfigureAwait(false);
             pending.Clear();
-            pending.Add(quote, new(request, policy, verification, hashes.ToArray(), owner));
-            return quote;
+            pending.Add(training.Quote, new(training.Request, training.Policy, verification, training.Samples, training.Owner, training.TrainingMs));
+            return training.Quote;
         }
         finally { Release(); }
     }
+    /// <summary>Whole milliseconds of training audio a prepared quote sends after the speaker match, for the confirmation.</summary>
+    public long TrainingMilliseconds(VoiceLabPreparedAction quote)
+    {
+        Reserve();
+        try { return pending.TryGetValue(quote, out var draft) ? draft.TrainingMs : throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired); }
+        finally { Release(); }
+    }
+    internal sealed record PreparedTraining(VoiceLabPreparedAction Quote, VoiceLabCloneRequest Request, OwnVoicePolicy Policy,
+        VoiceConsentSample[] Samples, float[] Owner, long TrainingMs);
+    /// <summary>All samples share one source (§6.5). A read-aloud lasts 60–120 s; project spans number 1–24 and last 30–120 s,
+    /// counted in whole milliseconds so they match the §6.5.1 selection exactly.</summary>
+    internal static string TrainingSource(IReadOnlyList<VoiceTrainingSample> inputs)
+    {
+        var source = inputs.Count is >= 1 and <= 24 ? inputs[0].Source : null;
+        if (source is not ("readAloud" or "project") || inputs.Any(sample => sample.Source != source || !double.IsFinite(sample.Seconds) ||
+            sample.Seconds is < 5 or > 30 || !double.IsFinite(sample.SnrDb)) ||
+            (source == "readAloud" ? inputs.Sum(sample => sample.Seconds) is < 60 or > 120 : Milliseconds(inputs) is < VoiceTrainingSpans.TotalMinMs or > VoiceTrainingSpans.TotalMaxMs))
+            throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+        return source;
+    }
+    /// <summary>The §6.6 speaker match on every sample, on device and before any request: a sample whose embedding fails or scores
+    /// below τ is dropped and never replaced. A read-aloud scores on its mean; a project span scores as the lowest of its mean and
+    /// its parts (<see cref="SpeakerAudio.PartEmbeddings"/>). Fewer than 10 s of read-aloud or 30 s of project spans left is a
+    /// speaker mismatch. The quote sends the consent statement first, then the kept samples in caller order.</summary>
+    internal static async Task<PreparedTraining> PrepareTrainingAsync(ElevenLabsVoiceLab client, string recordId, string displayName,
+        VoiceConsentStatement statement, byte[] statementWav, IReadOnlyList<VoiceTrainingSample> inputs, double threshold,
+        Func<float[], CancellationToken, Task<float[]>> embed, Func<float[], CancellationToken, Task<(float[] Whole, float[][] Parts)>> parts,
+        DateTimeOffset created, CancellationToken ct)
+    {
+        var source = TrainingSource(inputs);
+        var owner = await embed(VoiceConsentAudio.Pcm16k(statementWav), ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        var accepted = new List<VoiceTrainingSample>();
+        var hashes = new List<VoiceConsentSample>();
+        foreach (var sample in inputs)
+        {
+            ct.ThrowIfCancellationRequested();
+            var format = VoiceConsentAudio.ValidateWav(sample.Wav);
+            if (Math.Abs(format.Frames / (double)format.Rate - sample.Seconds) >= 0.001) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+            (float[] Whole, float[][] Parts) candidate;
+            try
+            {
+                var pcm = VoiceConsentAudio.Pcm16k(sample.Wav);
+                candidate = source == "project" ? await parts(pcm, ct).ConfigureAwait(false) : (await embed(pcm, ct).ConfigureAwait(false), []);
+            }
+            catch (VoiceConsentException error) when (error.Kind == VoiceConsentError.SpeakerMismatch) { continue; }
+            ct.ThrowIfCancellationRequested();
+            // Without speaker labels a project span can hold another voice beside the user's, and the mean of its windows can
+            // still pass. Each part must pass on its own, and the span scores as its lowest part.
+            var score = candidate.Parts.Aggregate(SpeakerAudio.Cosine(owner, candidate.Whole), (lowest, part) => Math.Min(lowest, SpeakerAudio.Cosine(owner, part)));
+            if (score < threshold) continue;
+            accepted.Add(sample);
+            hashes.Add(new(VoiceConsentStore.Hash(sample.Wav), sample.Seconds, sample.Source, score));
+        }
+        if (source == "readAloud" ? accepted.Count == 0 || accepted.Sum(sample => sample.Seconds) < 10 : Milliseconds(accepted) < VoiceTrainingSpans.TotalMinMs)
+            throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
+        var name = VoiceConsentText.DisplayName(displayName);
+        var prefix = statement.Language == "et" ? "Minu nimi on " + name + ". Täna on " : "My name is " + name + ". Today is ";
+        if (!statement.Text.StartsWith(prefix, StringComparison.Ordinal)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        var request = new VoiceLabCloneRequest(name, statement.Language,
+            new[] { new VoiceLabCloneSample(VoiceLabCloneSampleRole.ConsentStatement, statementWav) }
+                .Concat(accepted.Select(sample => new VoiceLabCloneSample(VoiceLabCloneSampleRole.Training, sample.Wav.ToArray()))).ToArray(),
+            created, source == "readAloud" && accepted.Any(sample => sample.SnrDb < 20 && !sample.CleanAudioApplied), recordId);
+        var policy = new OwnVoicePolicy(recordId, null, true, true, true, true, true);
+        return new(client.PrepareClone(request, policy, Guid.NewGuid()), request, policy, hashes.ToArray(), owner, Milliseconds(accepted));
+    }
+    private static long Milliseconds(IEnumerable<VoiceTrainingSample> samples) =>
+        samples.Sum(sample => (long)Math.Round(sample.Seconds * 1000, MidpointRounding.AwayFromZero));
     public async Task<VoiceConsentRecord> CreateAsync(VoiceLabPreparedAction quote, bool approved, bool enabled, string appVersion, CancellationToken ct = default)
     {
         RequireApproval(approved, enabled);

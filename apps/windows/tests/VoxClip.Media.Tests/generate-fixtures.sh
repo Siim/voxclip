@@ -28,6 +28,10 @@ ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=30:du
   -f lavfi -i 'aevalsrc=0.4*sin(2*PI*(300*t+400*t*t))|0.3*sin(2*PI*(500*t+200*t*t)):s=48000:d=1' \
   -c:v mpeg4 -c:a pcm_f32le stereo-varying.mkv
 ffmpeg -hide_banner -loglevel error -y -i stereo-varying.mkv -map 0 -c:v copy -ar 44100 -c:a pcm_f32le stereo-varying-44100.mkv
+# Audio that starts 1.5 s after the video, with a 0.75 s timestamp gap 4 s into it: own-voice training must place it as extraction does.
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=10:duration=12' \
+  -itsoffset 1.5 -f lavfi -i "aevalsrc=0.3*sin(2*PI*(300*t+90*t*t))|0.2*sin(2*PI*510*t):s=48000:n=1024:d=10,asetpts='PTS+gte(T,4)*0.75/TB'" \
+  -map 0:v -map 1:a -c:v mpeg4 -c:a pcm_f32le late-audio.mkv
 ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=10:duration=0.6' \
   -f lavfi -i 'sine=frequency=440:sample_rate=48000:duration=0.6' -c:v mpeg4 -c:a pcm_s16le start-zero.avi
 ffmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=size=160x90:rate=10:duration=0.6' \

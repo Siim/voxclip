@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text.Json;
-using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.LLM;
@@ -102,21 +101,6 @@ public sealed class VoiceConsentMediaTests
         Assert.Throws<VoiceLabException>(() => VoiceTrainingAudio.ReadAloud(new float[48000 * 59]));
     }
     [Fact]
-    public void ProjectTrainingRejectsEventsLowConfidenceUnknownSpeakersAndNoise()
-    {
-        var pcm = Tone(16000, 6);
-        TimedWord Word(string id, double start, string? speaker = "speaker-1") =>
-            new(id, "word", WordKind.Word, start, start + 1, null, null, 0.99, speaker, TimingSource.Native);
-        Assert.Throws<VoiceLabException>(() => VoiceTrainingAudio.ProjectSpan(pcm, 16000, 0, 6, [Word("one", 1)], true));
-        pcm.AsSpan(0, 16000).Clear();
-        var sample = VoiceTrainingAudio.ProjectSpan(pcm, 16000, 0, 6, [Word("one", 1), Word("two", 3)], true, true);
-        Assert.True(sample.CleanAudioApplied);
-        Assert.True(sample.SnrDb >= 20);
-        foreach (var invalid in new[] { Word("one", 1) with { Kind = WordKind.Event }, Word("one", 1) with { Conf = 0.79 }, Word("one", 1, null) })
-            Assert.Throws<VoiceLabException>(() => VoiceTrainingAudio.ProjectSpan(pcm, 16000, 0, 6, [invalid], true));
-        Assert.Throws<VoiceLabException>(() => VoiceTrainingAudio.ProjectSpan(pcm, 16000, 0, 6, [Word("one", 1), Word("two", 3, "speaker-2")], true));
-    }
-    [Fact]
     public async Task EnrollmentReservesBeforeScribeAwaitAndHonorsCancellation()
     {
         using var storage = new Storage();
@@ -189,6 +173,11 @@ public sealed class VoiceConsentMediaTests
             Assert.Equal(expected.Length, actual.Length);
             for (var index = 0; index < expected.Length; index++)
                 Assert.InRange(Math.Abs(actual[index] - expected[index]), 0, root.GetProperty("embeddingAbsoluteTolerance").GetDouble());
+            // A project span's whole embedding is the same mean; a 6 s clip holds at most three windows, so one part.
+            var (whole, parts) = await embedder.PartEmbeddingsAsync(pcm, Token);
+            Assert.Equal(whole, Assert.Single(parts));
+            for (var index = 0; index < expected.Length; index++)
+                Assert.InRange(Math.Abs(whole[index] - expected[index]), 0, root.GetProperty("embeddingAbsoluteTolerance").GetDouble());
             vectors.Add(id, actual);
         }
         Assert.Equal(8, vectors.Count);

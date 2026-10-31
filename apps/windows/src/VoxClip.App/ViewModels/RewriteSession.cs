@@ -60,6 +60,10 @@ internal sealed class RewriteSession : IDisposable
     };
     internal event EventHandler? Changed;
     internal RewriteGeneration? Generation { get; private set; }
+    /// <summary>voice-lab.md §6.5.2: the speaker check is calibrated, but not for this project's language, so no voice made from here
+    /// could be listed in it (<see cref="VoiceLabSession.VoicesUnavailable"/>). With no voice listed, the voice row explains instead
+    /// of offering Create Your Voice… or voice discovery.</summary>
+    internal bool VoicesUnavailable { get; }
     internal bool GenerationIsCurrent => IsOpen && ReferenceEquals(Project, Editor.Project) && !IsProposing &&
         !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && connectorIsCurrent();
     internal void ConfigureGeneration(RewriteGeneration generation)
@@ -100,7 +104,7 @@ internal sealed class RewriteSession : IDisposable
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
         int? insertionAfter = null, VoiceLabPriceCatalog? prices = null, string? synthesisModel = null,
-        Func<CancellationToken, Task<bool>>? consent = null, Func<bool>? connectorIsCurrent = null)
+        Func<CancellationToken, Task<bool>>? consent = null, Func<bool>? connectorIsCurrent = null, Func<string, bool>? speakerCalibrated = null)
     {
         Editor = editor;
         Project = editor.Project;
@@ -114,6 +118,7 @@ internal sealed class RewriteSession : IDisposable
         this.synthesisModel = synthesisModel;
         this.consent = consent;
         this.connectorIsCurrent = connectorIsCurrent ?? (() => true);
+        VoicesUnavailable = VoiceLabSession.VoicesUnavailable(Project.Transcript?.Language, speakerCalibrated ?? VoiceLabSession.SpeakerCalibrated);
         NewWords = string.Join(" ", Source.Where(word => word.Kind == WordKind.Word).Select(word => word.Text));
         var start = insertionAfter is { } after ? Transcript[after].End : Source.FirstOrDefault()?.Start ?? 0;
         Header = $"{Source.Count(word => word.Kind == WordKind.Word)} words at {EditorViewModel.Timecode(start)}";

@@ -27,8 +27,11 @@ public sealed class RewriteGenerationTests
         Assert.Contains("generationError.ActionButton = settings; generationError.Content = retry", panel);
         Assert.Contains("generation.MarkEstimateShown(quote)", panel);
         Assert.Contains("Ui.ConfirmAsync(XamlRoot, \"Generate Takes\", copy, \"Continue\", token)", panel);
-        Assert.Contains("App.Settings?.ShowCreateVoice()", panel);
-        Assert.Contains("Create Your Voice… (2 min)", panel);
+        // The sheet offers this editor's project, not the first window's (voice-lab.md §6.5.2).
+        Assert.Contains("App.Settings?.ShowCreateVoice(window)", panel);
+        Assert.Contains("new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner)", Source("Pages/EditorPage.xaml.cs"));
+        Assert.Contains("Ui.Button(\"Create Your Voice…\", () =>", panel);
+        Assert.DoesNotContain("(2 min)", panel);
         Assert.DoesNotContain("Clean Audio", panel);
         Assert.Contains("prices: VoiceLabPrices.Load(), synthesisModel: \"eleven_multilingual_v2\"", Source("Pages/EditorPage.xaml.cs"));
         Assert.Contains("panel.DebugFitStatesAsync", Source("Pages/EditorPage.NativeProbe.cs"));

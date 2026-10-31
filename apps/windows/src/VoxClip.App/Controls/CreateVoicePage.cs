@@ -23,7 +23,14 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
     private readonly CheckBox adult = new() { Content = "I am 18 or older." };
     private readonly CheckBox ownVideos = new() { Content = "I will use it only on videos of myself." };
     private readonly TextBlock gate = Ui.Text("", "HelperText");
+    private readonly TextBlock readHeading = Ui.Text("Read this aloud", "SubtitleTextBlockStyle");
     private readonly TextBox teleprompter = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock headphones = Ui.Text("If you use a screen reader, wear headphones so it isn't recorded.", "HelperText");
+    private readonly RadioButtons source = new() { Header = VoiceLabCopy.TrainingAudio, MaxColumns = 1 };
+    private readonly RadioButton projectChoice = new();
+    private readonly TextBlock projectLine = Ui.Text("", "HelperText");
+    private readonly RadioButton readAloudChoice = new() { Content = VoiceLabCopy.ReadAloudChoice };
+    private readonly TextBlock sourceLine = Ui.Text("", "HelperText");
     private readonly InfoBar message = Ui.Notice();
     private readonly ProgressBar level = new() { Minimum = 0, Maximum = 1 };
     private readonly TextBlock seconds = Ui.Text("0.0 seconds");
@@ -35,6 +42,7 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
     private readonly Button openSettings;
     private readonly Button retryCleanup;
     private readonly Button training;
+    private readonly Button switchToReadAloud;
     private readonly Button create;
     private readonly Button retrySave;
     private readonly Button removeUnsaved;
@@ -45,13 +53,18 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromMilliseconds(100) };
     private bool wasRecording;
     private bool hadStatement;
+    private bool choosing;
     internal bool DialogOpen { get; private set; }
     internal bool IsBusyForRestart => session.IsBusyForRestart || DialogOpen;
 
-    internal CreateVoicePage(SettingsWindow owner, CreateVoiceSession session)
+    internal CreateVoicePage(SettingsWindow owner, CreateVoiceSession session, MainWindow? from = null)
     {
         this.owner = owner; this.session = session;
-        language = App.Windows.FirstOrDefault()?.VoiceEnrollmentLanguage ?? "en";
+        // The window that opened the sheet (the Rewrite panel's) gives the project and statement language; from Settings, the first
+        // window with an editor project.
+        var window = (from is not null && App.Windows.Contains(from) ? from : null)
+            ?? App.Windows.FirstOrDefault(window => window.VoiceTrainingProject is not null) ?? App.Windows.FirstOrDefault();
+        language = window?.VoiceEnrollmentLanguage ?? "en";
         Content = body;
         var back = Ui.Button("Back to Voice Lab", () => owner.ReturnFromCreateVoice(VoiceCreationLeaveTrigger.Back));
         AutomationProperties.SetName(back, "Back to Voice Lab"); AutomationProperties.SetAutomationId(back, "voice-create-back");
@@ -68,10 +81,9 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         AutomationProperties.SetAutomationId(ownVoice, "voice-attest-own"); AutomationProperties.SetAutomationId(adult, "voice-attest-adult"); AutomationProperties.SetAutomationId(ownVideos, "voice-attest-videos");
         name.TextChanged += (_, _) => InputsChanged();
         foreach (var check in new[] { ownVoice, adult, ownVideos }) { check.Checked += (_, _) => InputsChanged(); check.Unchecked += (_, _) => InputsChanged(); }
-        body.Children.Add(Ui.Text("Read this aloud", "SubtitleTextBlockStyle"));
+        body.Children.Add(readHeading);
         AutomationProperties.SetAutomationId(teleprompter, "voice-consent-teleprompter");
         AutomationProperties.SetName(teleprompter, "Read this aloud"); body.Children.Add(teleprompter);
-        var headphones = Ui.Text("If you use a screen reader, wear headphones so it isn't recorded.", "HelperText");
         headphones.IsTextSelectionEnabled = true;
         AutomationProperties.SetAutomationId(headphones, "voice-consent-headphones"); body.Children.Add(headphones);
         record = Ui.Button("Record statement", () => owner.RunSensitive(session.RecordAsync, "Record statement"));
@@ -83,6 +95,21 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         AutomationProperties.SetAutomationId(cancel, "voice-create-cancel"); body.Children.Add(cancel);
         verify = Ui.Button("Verify statement · < $0.01", () => owner.RunSensitive(VerifyAsync, "Verify statement"));
         AutomationProperties.SetAutomationId(verify, "voice-verify-statement"); body.Children.Add(verify);
+        session.OpenProject(window?.VoiceTrainingProject);
+        var projectText = Ui.Stack(2);
+        projectText.Children.Add(Ui.Text(VoiceLabCopy.ProjectChoice)); projectText.Children.Add(projectLine);
+        projectChoice.Content = projectText; AutomationProperties.SetName(projectChoice, VoiceLabCopy.ProjectChoice);
+        AutomationProperties.SetAutomationId(projectChoice, "voice-training-project"); AutomationProperties.SetAutomationId(readAloudChoice, "voice-training-read-aloud");
+        AutomationProperties.SetName(source, VoiceLabCopy.TrainingAudio); AutomationProperties.SetAutomationId(source, "voice-training-source");
+        if (session.ProjectOffered) source.Items.Add(projectChoice);
+        source.Items.Add(readAloudChoice);
+        source.SelectionChanged += (_, _) =>
+        {
+            if (!choosing && source.SelectedIndex >= 0)
+                session.SelectTrainingSource(ReferenceEquals(source.Items[source.SelectedIndex], projectChoice) ? VoiceTrainingSource.Project : VoiceTrainingSource.ReadAloud);
+        };
+        body.Children.Add(source);
+        AutomationProperties.SetAutomationId(sourceLine, "voice-training-source-line"); body.Children.Add(sourceLine);
         training = Ui.Button("Record training read-aloud", () => owner.RunSensitive(session.RecordTrainingAsync, "Record training read-aloud"));
         AutomationProperties.SetAutomationId(training, "voice-record-training"); body.Children.Add(training);
         create = Ui.Button("Create voice…", () => owner.RunSensitive(CreateAsync, "Create voice"));
@@ -94,6 +121,12 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         AutomationProperties.SetAutomationId(retrySave, "voice-create-retry-save"); body.Children.Add(retrySave);
         AutomationProperties.SetName(working, "Working"); AutomationProperties.SetAutomationId(working, "voice-create-working"); body.Children.Add(working);
         AutomationProperties.SetAutomationId(message, "voice-create-message"); body.Children.Add(message);
+        switchToReadAloud = Ui.Button(VoiceLabCopy.RecordReadAloud, () =>
+        {
+            session.SelectTrainingSource(VoiceTrainingSource.ReadAloud);
+            DispatcherQueue.TryEnqueue(() => training.Focus(FocusState.Programmatic));
+        });
+        AutomationProperties.SetAutomationId(switchToReadAloud, "voice-training-switch-read-aloud"); body.Children.Add(switchToReadAloud);
         retryCleanup = Ui.Button("Try removing the recording again", () => owner.RunSensitive(session.RetryCleanupAsync, "Remove recording"));
         AutomationProperties.SetAutomationId(retryCleanup, "voice-retry-recording-cleanup"); body.Children.Add(retryCleanup);
         openSettings = Ui.Button(VoiceLabCopy.MicrophoneOpenSettings, () => owner.RunSensitive(OpenMicrophoneSettingsAsync, VoiceLabCopy.MicrophoneOpenSettings));
@@ -124,18 +157,32 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
     private void Refresh()
     {
         body.Transitions = Ui.EffectPolicy.Animations ? new TransitionCollection { new EntranceThemeTransition() } : new TransitionCollection();
-        foreach (var helper in new[] { gate, seconds, device }) helper.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush");
+        foreach (var helper in new[] { gate, seconds, device, projectLine, sourceLine }) helper.Foreground = Ui.ThemeBrush(this, "VcTextSecondaryBrush");
         gate.Text = string.Join("\n", session.GateMessages);
         gate.Visibility = session.BlockedReason is null ? Visibility.Collapsed : Visibility.Visible;
         foreach (var input in new Control[] { name, ownVoice, adult, ownVideos }) input.IsEnabled = session.InputsEditable && session.BlockedReason is null;
-        teleprompter.Text = session.Verified ? session.TrainingScript : session.Statement?.Text ?? "";
+        var fromProject = session.Verified && session.TrainingSource == VoiceTrainingSource.Project;
+        teleprompter.Text = fromProject ? "" : session.Verified ? session.TrainingScript : session.Statement?.Text ?? "";
         AutomationProperties.SetName(teleprompter, session.Verified ? "Training read-aloud · about 90 seconds" : "Read this aloud");
+        foreach (var part in new FrameworkElement[] { readHeading, teleprompter, headphones }) part.Visibility = fromProject ? Visibility.Collapsed : Visibility.Visible;
+        var picking = session.Verified && session.UnsavedRecord is null && !session.ReturnToPane;
+        source.Visibility = picking && session.ProjectOffered ? Visibility.Visible : Visibility.Collapsed;
+        projectLine.Text = session.ProjectLine; AutomationProperties.SetHelpText(projectChoice, session.ProjectLine);
+        projectChoice.IsEnabled = session.CanSelectProject && session.CanChooseSource;
+        readAloudChoice.IsEnabled = session.CanChooseSource;
+        choosing = true;
+        source.SelectedIndex = source.Items.IndexOf(session.TrainingSource == VoiceTrainingSource.Project && session.ProjectOffered ? projectChoice : readAloudChoice);
+        choosing = false;
+        sourceLine.Text = session.ProjectOffered ? "" : session.ProjectLine;
+        sourceLine.Visibility = picking && !session.ProjectOffered ? Visibility.Visible : Visibility.Collapsed;
+        switchToReadAloud.Visibility = session.ProjectMismatch && session.TrainingSource == VoiceTrainingSource.Project ? Visibility.Visible : Visibility.Collapsed;
+        switchToReadAloud.IsEnabled = session.CanChooseSource;
         record.IsEnabled = session.CanRecord; record.Content = session.HasStatementRecording ? "Record statement again" : "Record statement";
         record.Visibility = session.Verified ? Visibility.Collapsed : Visibility.Visible;
         verify.IsEnabled = session.CanVerify;
         verify.Visibility = session.Verified ? Visibility.Collapsed : Visibility.Visible;
-        training.IsEnabled = session.CanTrain; training.Content = session.TrainingReady ? "Record training again" : "Record training read-aloud";
-        training.Visibility = session.Verified ? Visibility.Visible : Visibility.Collapsed;
+        training.IsEnabled = session.CanRecordTraining; training.Content = session.TrainingReady ? "Record training again" : "Record training read-aloud";
+        training.Visibility = session.Verified && session.TrainingSource == VoiceTrainingSource.ReadAloud ? Visibility.Visible : Visibility.Collapsed;
         create.IsEnabled = session.CanCreate; create.Visibility = session.UnsavedRecord is null ? Visibility.Visible : Visibility.Collapsed;
         cancel.Visibility = session.UnsavedRecord is null ? Visibility.Visible : Visibility.Collapsed;
         removeUnsaved.Visibility = retrySave.Visibility = session.UnsavedRecord is null ? Visibility.Collapsed : Visibility.Visible;
@@ -203,8 +250,9 @@ internal sealed class CreateVoicePage : UserControl, IAsyncDisposable
         if (!App.Services.VoiceLabEnabled)
         {
             var previous = lifetime; lifetime = new(); previous.Cancel(); previous.Dispose();
-            await session.GateChangedAsync();
         }
+        // Abandons when Voice Lab is off; otherwise starts the project analysis if the gate has opened.
+        await session.GateChangedAsync();
         Refresh();
     }
     internal Task<bool> PrepareForRestartAsync() => DialogOpen ? Task.FromResult(true) : session.InterruptForRestartAsync();

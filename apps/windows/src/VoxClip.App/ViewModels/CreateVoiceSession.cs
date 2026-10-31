@@ -8,6 +8,8 @@ internal interface IVoiceStatementBackend : IDisposable
 {
     bool Enabled { get; }
     bool SpeakerAvailable { get; }
+    /// <summary>The speaker check has a calibrated threshold for this statement language.</summary>
+    bool SpeakerCalibrated(string language);
     string? PlanMessage { get; }
     string VerificationCost { get; }
     VoiceConsentStatement Statement(string name, string language, DateOnly date);
@@ -36,6 +38,9 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
     private readonly SemaphoreSlim disposal = new(1, 1);
     private CancellationTokenSource? operation;
     private Task work = Task.CompletedTask;
+    private CancellationTokenSource? analysis;
+    private Task analyzing = Task.CompletedTask;
+    private VoiceTrainingProject? project;
     private bool leaving;
     private bool disposed;
     private bool cleanupPending;
@@ -88,16 +93,25 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
     internal void SetInputs(string name, string selectedLanguage, bool own, bool isAdult, bool ownVideosOnly)
     {
         if (!InputsEditable) return;
-        displayName = name; language = selectedLanguage == "et" ? "et" : "en";
+        displayName = name; language = StatementLanguage(selectedLanguage, backend.SpeakerCalibrated);
         ownVoice = own; adult = isAdult; ownVideos = ownVideosOnly;
         Statement = ValidName() ? backend.Statement(displayName, language, DateOnly.FromDateTime(clock.GetLocalNow().DateTime)) : null;
         Message = ValidName() || name.Length == 0 ? null : "Enter a name with 1 to 60 Unicode scalars and no control characters.";
         HasFailure = Message is not null;
         Notify();
     }
+    /// <summary>§6.2: the transcript language's primary subtag ("en-GB" is "en"), only when it has a statement and a calibrated
+    /// speaker check; otherwise English. Training audio may be in any language.</summary>
+    internal static string StatementLanguage(string? transcriptLanguage, Func<string, bool> calibrated)
+    {
+        var primary = transcriptLanguage?.Split('-', '_')[0].Trim().ToLowerInvariant();
+        return primary is "en" or "et" && calibrated(primary) ? primary : "en";
+    }
     internal Task RecordAsync()
     {
         if (!CanRecord) return Task.CompletedTask;
+        // Recording needs the open gate, so a project analysis the closed gate held back starts now at the latest.
+        StartProjectAnalysis();
         operation?.Dispose(); operation = new();
         work = RecordCoreAsync(operation.Token);
         return work;
@@ -190,7 +204,7 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
             await Task.Run(() => backend.VerifyAsync(recordId!, Statement!, attestations, ct), ct);
             ct.ThrowIfCancellationRequested();
             if (BlockedReason is not null) throw new OperationCanceledException(ct);
-            await dispatch(() => { Verified = true; Say("Statement verified. Record your training read-aloud next."); });
+            await dispatch(() => { Verified = true; Say(ProjectOffered ? "Statement verified. Choose your training audio next." : "Statement verified. Record your training read-aloud next."); });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested || !backend.Enabled) { await CleanupAfterFailureAsync(); }
         catch (Exception error)
@@ -209,7 +223,7 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
         try
         {
             if (recordId is not null) await Task.Run(() => backend.AbandonAsync(recordId));
-            await dispatch(() => { recordId = null; HasStatementRecording = false; Verified = false; TrainingReady = false; CreationConfirmation = null; cleanupPending = false; });
+            await dispatch(() => { recordId = null; HasStatementRecording = false; Verified = false; TrainingReady = false; CreationConfirmation = null; cleanupPending = false; ResetTrainingSource(); });
         }
         finally { cleanup.Release(); }
     }
@@ -258,6 +272,7 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
     internal async Task GateChangedAsync()
     {
         if (!backend.Enabled) await AbandonAsync();
+        else StartProjectAnalysis();
         Notify();
     }
     internal async Task<bool> InterruptForRestartAsync()
@@ -274,6 +289,7 @@ internal sealed partial class CreateVoiceSession(IVoiceStatementBackend backend,
             if (disposed) return;
             if (!await AbandonAsync()) throw new IOException("The statement recording could not be removed.");
             disposed = true; operation?.Dispose();
+            await StopProjectAnalysisAsync();
             await capture.DisposeAsync(); backend.Dispose();
         }
         finally { disposal.Release(); }

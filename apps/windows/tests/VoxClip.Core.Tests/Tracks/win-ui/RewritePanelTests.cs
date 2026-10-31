@@ -130,7 +130,7 @@ public sealed class RewritePanelTests
         Assert.Contains("apply.IsEnabled && ShortcutPolicy.EditorMayHandle", panel);
         Assert.Contains("InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen()", panel);
         Assert.Contains("apply.IsEnabled = session.LocalAction is not null && !session.Editor.Busy", panel);
-        Assert.Contains("new RewritePanel(rewrite, () => Transcript.CorrectionOpen)", AppSource("Pages", "EditorPage.xaml.cs"));
+        Assert.Contains("new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner)", AppSource("Pages", "EditorPage.xaml.cs"));
     }
 
     [Theory]
@@ -151,6 +151,32 @@ public sealed class RewritePanelTests
         Assert.Contains("args.Key == VirtualKey.Enter", panel);
         Assert.Contains("PreviewKeyDown += Escape", panel);
         Assert.Contains("session.LocalAction is not null && !session.Editor.Busy", panel);
+    }
+
+    /// <summary>voice-lab.md §6.5.2: with the speaker check calibrated only for English, an Estonian project's voice row explains why no
+    /// voice can be used, with no Create Your Voice… and no voice discovery, while no voice is listed.</summary>
+    [Theory]
+    [InlineData("et", true)]
+    [InlineData("en", false)]
+    public void VoiceRowExplainsWhenNoVoiceCouldBeListedInTheProjectLanguage(string language, bool unavailable)
+    {
+        EditorViewModel Project()
+        {
+            var project = Editor().Project;
+            return new(project with { Transcript = project.Transcript! with { Language = language } });
+        }
+        using (var session = new RewriteSession(Project(), 10, 12, Envelope(), null, speakerCalibrated: calibrated => calibrated == "en"))
+            Assert.Equal(unavailable, session.VoicesUnavailable);
+        // A8 keeps the Windows check closed, so production counts no language as calibrated and keeps Create Your Voice….
+        using (var production = new RewriteSession(Project(), 10, 12, Envelope(), null)) Assert.False(production.VoicesUnavailable);
+        var panel = AppSource("Controls", "RewritePanel.cs");
+        Assert.Contains("var unavailable = generation.Voices.Count == 0 && session.VoicesUnavailable;", panel);
+        Assert.Contains("discover.Visibility = unavailable ? Visibility.Collapsed : Visibility.Visible;", panel);
+        Assert.Contains("noVoice.Visibility = !unavailable && generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;", panel);
+        Assert.Contains("languageUnavailable.Visibility = unavailable ? Visibility.Visible : Visibility.Collapsed;", panel);
+        Assert.Contains("var unavailable = Small(VoiceLabCopy.LanguageUnavailable);", panel);
+        Assert.Contains("AutomationProperties.SetAutomationId(unavailable, \"Rewrite.LanguageUnavailable\");", panel);
+        Assert.Contains("SetName(unavailable, VoiceLabCopy.LanguageUnavailable);", panel);
     }
 
     private static string AppSource(string directory, string name) => File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", directory, name));

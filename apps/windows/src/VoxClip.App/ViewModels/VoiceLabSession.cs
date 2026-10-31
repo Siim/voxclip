@@ -55,6 +55,24 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
         : Subscription.VoiceSlotsUsed >= Subscription.VoiceLimit ? "Your ElevenLabs account has no free voice slots." : null;
     internal string SpeakerMessage => VoiceLabCopy.SpeakerUnavailable;
     internal string CreateBlockedReason => VoiceLabCopy.SpeakerUnavailable;
+    /// <summary>The speaker check would run with a calibrated threshold for this statement language. The Rewrite voice row and the
+    /// Create Your Voice statement language both read it. Always false while A8 keeps
+    /// <see cref="VoiceSpeakerCheck.WindowsNativeParityVerified"/> closed, as on a Mac without the speaker model.</summary>
+    internal static bool SpeakerCalibrated(string language)
+    {
+        if (!VoiceSpeakerCheck.WindowsNativeParityVerified) return false;
+        try { return new SpeakerModelCatalog().Entry.CalibratedThreshold(language) is not null; }
+        catch (Exception error) when (error is not OutOfMemoryException) { return false; }
+    }
+    /// <summary>voice-lab.md §6.5.2: a voice is bound to its statement language, and Rewrite lists only voices in the project's
+    /// transcript language (<c>RewriteGenerationBackend.DiscoverAsync</c>). With a calibrated speaker check but none for that
+    /// language, the statement falls back to English, so no voice made here can be listed there.</summary>
+    internal static bool VoicesUnavailable(string? projectLanguage, Func<string, bool> calibrated)
+    {
+        if (!calibrated("en")) return false;
+        var language = projectLanguage ?? "en";
+        return CreateVoiceSession.StatementLanguage(language, calibrated) != language;
+    }
     internal static string CardName(VoiceConsentRecord record)
     {
         return VoiceLabActionNames.Created(record.VoiceName, record.CreatedAt);

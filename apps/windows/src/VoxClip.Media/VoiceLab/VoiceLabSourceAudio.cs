@@ -42,7 +42,7 @@ public static class VoiceLabSourceAudio
 {
     internal const int UploadLimit = 50_000_000;
     private const long MaxBytes = 8L * 1024 * 1024 * 1024;
-    private const long MaxDecodedFrames = 192_000L * 86_400;
+    internal const long MaxDecodedFrames = 192_000L * 86_400;
 
     /// <summary>Complete mono PCM16 WAV for exactly [startSample, endSample), without resampling.</summary>
     public static async Task<byte[]> ConversionInputAsync(string source, long startSample, long endSample,
@@ -143,9 +143,46 @@ public static class VoiceLabSourceAudio
         return builder.Finish();
     }
 
-    private delegate void SampleBlock(ReadOnlySpan<float> samples, long first);
+    internal delegate void SampleBlock(ReadOnlySpan<float> samples, long first);
 
-    private static unsafe int Decode(string path, int? expectedRate, long start, long? end, SampleBlock consume, CancellationToken ct)
+    /// <summary>The first audio track's mono mix (the mean of its channels) at the source rate, for own-voice training (§6.5.1), on
+    /// the source timeline that transcript times use: from sample 0 at the decode session's origin, each frame placed by its
+    /// timestamp as transcription extraction places it, up to the media's duration (<see cref="VoiceTrainingTimeline"/>). One
+    /// streamed pass that stops once <paramref name="more"/> refuses the next sample index. The decoded rate must equal
+    /// <paramref name="rate"/> (8–96 kHz). Returns the media's duration floored to whole milliseconds; missing media, an unknown
+    /// duration, decode failures and a take with no sample placed are refused.</summary>
+    internal static Task<long> TrainingMixAsync(string source, int rate, SampleBlock consume, Func<long, bool>? more, CancellationToken ct)
+        => MediaThread.Run("voice-training-audio", () =>
+        {
+            if (rate is < 8_000 or > 96_000) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedRate);
+            try
+            {
+                FfmpegLoader.InitializeAsync(ct).GetAwaiter().GetResult();
+                VoiceTrainingTimeline? timeline = null;
+                long milliseconds = 0;
+                Decode(source, rate, 0, null, (samples, first) => timeline!.Append(samples, first), ct,
+                    more is null ? null : _ => more(timeline!.Next), duration =>
+                    {
+                        // The container duration from the session origin, as the Mac reads the asset's duration.
+                        if (duration <= 0) throw Failure(VoiceLabSourceAudioErrorCode.Unreadable);
+                        timeline = new(consume, VoiceTrainingTimeline.Limit(duration, rate));
+                        milliseconds = duration / 1_000;
+                    });
+                if (timeline is not { Next: > 0 }) throw Failure(VoiceLabSourceAudioErrorCode.Unreadable);
+                return milliseconds;
+            }
+            catch (VoxClipException failure) when (failure.Code == VoxClipErrorCode.NoAudioTrack)
+            { throw Failure(VoiceLabSourceAudioErrorCode.NoAudioTrack); }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or VoxClipException)
+            { throw Failure(VoiceLabSourceAudioErrorCode.Unreadable); }
+        }, ct);
+
+    /// <summary>With <paramref name="end"/>, exactly [start, end) on the source grid. Without it, the whole track from sample 0: in decode
+    /// order, or with <paramref name="placed"/> as frames at their source-grid positions, which may overlap, leave gaps or start
+    /// before 0. <paramref name="placed"/> first receives the container duration in AV_TIME_BASE units (negative when unknown), and
+    /// the placed stream's size bound is then the consumer's (<see cref="VoiceTrainingTimeline"/>).</summary>
+    private static unsafe int Decode(string path, int? expectedRate, long start, long? end, SampleBlock consume, CancellationToken ct,
+        Func<long, bool>? more = null, Action<long>? placed = null)
     {
         using var decoder = OpenDecoder(path, end.HasValue);
         var rate = decoder.Codec->sample_rate;
@@ -153,6 +190,7 @@ public static class VoiceLabSourceAudio
         if (expectedRate is { } expected && rate != expected) throw Failure(VoiceLabSourceAudioErrorCode.RateMismatch);
         if (rate is < 8_000 or > 192_000) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedRate);
         if (channels < 1 || !end.HasValue && channels > 8) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedFormat);
+        placed?.Invoke(decoder.Format->duration);
         if (end.HasValue && decoder.Format->duration >= 0)
         {
             var sourceFrames = decoder.Format->duration * (double)rate / ffmpeg.AV_TIME_BASE;
@@ -166,7 +204,7 @@ public static class VoiceLabSourceAudio
         var layout = new AVChannelLayout();
         try
         {
-            while ((!end.HasValue || next < end.Value) && decoder.Next(ct))
+            while ((!end.HasValue || next < end.Value) && (more is null || more(next)) && decoder.Next(ct))
             {
                 ct.ThrowIfCancellationRequested();
                 var frame = decoder.Frame;
@@ -175,7 +213,7 @@ public static class VoiceLabSourceAudio
                     throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedFormat);
                 if (frame->nb_samples == 0) continue;
                 if (frame->nb_samples > Array.MaxLength / channels) throw Failure(VoiceLabSourceAudioErrorCode.TooLarge);
-                var first = end.HasValue
+                var first = end.HasValue || placed is not null
                     ? SourceFrame(frame->best_effort_timestamp, decoder.Origin, previousEnd, rate, decoder.Stream->time_base.num, decoder.Stream->time_base.den)
                     : next;
                 if (converter is null)
@@ -198,15 +236,16 @@ public static class VoiceLabSourceAudio
                     Native.Check(count, "Decode Voice Lab samples");
                     if (count != frame->nb_samples) throw Failure(VoiceLabSourceAudioErrorCode.Unreadable);
                 }
+                if (end.HasValue || placed is not null) previousEnd = first + frame->nb_samples;
                 if (end.HasValue)
                 {
-                    previousEnd = first + frame->nb_samples;
                     if (first > next) throw Failure(VoiceLabSourceAudioErrorCode.RangeOutsideMedia);
                     if (first + frame->nb_samples <= next) continue;
                 }
+                else if (placed is not null) next = first;
                 var skip = checked((int)(next - first));
                 var take = (int)Math.Min(frame->nb_samples - skip, end.HasValue ? end.Value - next : frame->nb_samples);
-                if (!end.HasValue && (next + take > MaxDecodedFrames || next + take > Array.MaxLength))
+                if (!end.HasValue && placed is null && (next + take > MaxDecodedFrames || next + take > Array.MaxLength))
                     throw Failure(VoiceLabSourceAudioErrorCode.TooLarge);
                 var mono = new float[take];
                 for (var index = 0; index < take; index++)

@@ -55,6 +55,10 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
 
     public bool Enabled => enabled();
     public bool SpeakerAvailable => speakerAvailable();
+    /// <summary>The same predicate as the Rewrite voice row (<see cref="VoiceLabSession.VoicesUnavailable"/>), as the Mac reads its
+    /// model catalogue in both places, so Rewrite never offers a voice whose statement could not be in the project's language. The
+    /// enrollment still refuses a check bound to another language at preparation and creation.</summary>
+    public bool SpeakerCalibrated(string language) => VoiceLabSession.SpeakerCalibrated(language);
     public string? PlanMessage => plan();
     public string VerificationCost => VoiceLabCostPresentation.Kind(VoiceLabPricing.Estimate(
         VoiceLabPricedOperation.ElevenLabsSpeechToText, "scribe_v2", seconds, 1, null, prices), false, "ElevenLabs").Text;
@@ -140,11 +144,24 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
         finally { Array.Clear(samples); }
         return Task.CompletedTask;
     }
-    public async Task<VoiceCreationQuote> PrepareCreationAsync(string recordId, string name, CancellationToken ct)
+    public async Task<VoiceProjectAudio> AnalyzeProjectAsync(VoiceTrainingProject project, CancellationToken ct)
+    {
+        if (project.MediaPath is not { } path || project.Project.Media.Source.Audio is not { } audio)
+            throw new VoiceLabSourceAudioException(VoiceLabSourceAudioErrorCode.NoAudioTrack);
+        var take = await VoiceTrainingAudio.AnalyzeAsync(path, audio.SampleRate, ct).ConfigureAwait(false);
+        var inputs = VoiceTrainingSpans.Inputs(project.Project);
+        return new(project.Name, path, audio.SampleRate, VoiceTrainingSpans.Select(inputs.Items, inputs.Excluded, take.FrameDb, take.Duration));
+    }
+    public async Task<VoiceCreationQuote> PrepareCreationAsync(string recordId, string name, VoiceProjectAudio? project, CancellationToken ct)
     {
         Require(ct);
-        var quote = await enrollment.PrepareAsync(recordId, name, training, Enabled, ct).ConfigureAwait(false);
-        return new(VoiceLabCostPresentation.Kind(quote.Estimate.ToCostEstimate(), false, "ElevenLabs"), quote);
+        // Project spans are cut again from the source for each preparation and dropped with it; the read-aloud stays until abandoned.
+        var samples = project is null ? training
+            : await VoiceTrainingAudio.ProjectSpansAsync(project.MediaPath, project.Rate, project.Selection.Selected, ct).ConfigureAwait(false);
+        Require(ct);
+        var quote = await enrollment.PrepareAsync(recordId, name, samples, Enabled, ct).ConfigureAwait(false);
+        var cost = VoiceLabCostPresentation.Kind(quote.Estimate.ToCostEstimate(), false, "ElevenLabs");
+        return project is null ? new(cost, quote) : new(cost, quote, new(project.Name, enrollment.TrainingMilliseconds(quote) / 1000));
     }
     public bool QuoteIsFresh(VoiceCreationQuote quote) => quote.Ticket is VoiceLabPreparedAction action && client.QuotesAreFresh([action]);
     public async Task<VoiceConsentRecord> CreateAsync(VoiceCreationQuote quote, CancellationToken ct)

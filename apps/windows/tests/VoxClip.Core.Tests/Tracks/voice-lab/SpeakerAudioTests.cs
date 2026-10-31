@@ -65,6 +65,26 @@ public sealed class SpeakerAudioTests
         Assert.Throws<VoiceConsentException>(() => SpeakerAudio.Cosine([float.NaN], [1]));
         Assert.Throws<VoiceConsentException>(() => SpeakerAudio.Cosine([1], [1, 2]));
     }
+    /// <summary>Each window embeds as the one-hot vector of its index, so a part's mean shows which windows it holds.</summary>
+    private static float[] IndexEmbedding(float[] window) => Enumerable.Range(0, 32).Select(index => index == (int)window[0] / SpeakerAudio.HopSize ? 1f : 0f).ToArray();
+    public static TheoryData<int, int[][]> PartCases => new()
+    {
+        { 1, [[0]] }, { 3, [[0, 1, 2]] }, { 4, [[0, 1, 2, 3]] }, { 5, [[0, 1, 2], [3, 4]] }, { 7, [[0, 1, 2], [3, 4, 5, 6]] }, { 8, [[0, 1, 2], [3, 4, 5], [6, 7]] }
+    };
+    [Theory]
+    [MemberData(nameof(PartCases))]
+    public void PartsTakeThreeWindowsAndALoneLastWindowJoinsThePartBefore(int windows, int[][] expected)
+    {
+        var samples = Enumerable.Range(0, SpeakerAudio.WindowSize + (windows - 1) * SpeakerAudio.HopSize).Select(index => (float)index).ToArray();
+        var embedded = SpeakerAudio.Windows(samples).Select(IndexEmbedding).ToArray();
+        var (whole, parts) = SpeakerAudio.PartEmbeddings(embedded);
+        Assert.Equal(expected, parts.Select(part => Enumerable.Range(0, part.Length).Where(index => part[index] > 0).ToArray()));
+        Assert.Equal(SpeakerAudio.Embedding(embedded), whole);
+        Assert.Equal(windows, whole.Count(value => value > 0));
+        Assert.All(parts, part => Assert.Equal(1, Math.Sqrt(part.Sum(value => (double)value * value)), 6));
+        Assert.Throws<VoiceConsentException>(() => SpeakerAudio.PartEmbeddings([]));
+        Assert.Throws<VoiceConsentException>(() => SpeakerAudio.PartEmbeddings([.. embedded, [1f]]));
+    }
     [Fact]
     public void FeaturesReplayIndependentNumpyVectorAndZeroMean()
     {

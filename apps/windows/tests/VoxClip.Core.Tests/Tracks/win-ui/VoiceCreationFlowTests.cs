@@ -2,6 +2,7 @@
 using System.Text.Json;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
 using VoxClip.Core.Services.LLM;
@@ -243,13 +244,270 @@ public sealed class VoiceCreationFlowTests
     }
 #endif
 
+    private static VoiceTrainingProject Project(bool transcript = true, string? media = "take.mov")
+    {
+        var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "fixtures/voice-lab/passage-project.voxclip")));
+        return new("Demo take", transcript ? project : project with { Transcript = null }, media);
+    }
+    private static VoiceTrainingSpanSelection Selection(long availableMs) => availableMs < 30_000
+        ? new(VoiceTrainingSpanStatus.BelowMinimum, availableMs, 0, [], [], [])
+        : new(VoiceTrainingSpanStatus.Ok, availableMs, Math.Min(availableMs, 30_000), [new(1_000, 31_000, 40)], [new(1_000, 31_000, 40)], []);
+
+    [Fact]
+    public async Task ProjectWithATranscriptIsTheDefaultSourceAndNeedsNoRecording()
+    {
+        await using var setup = new Setup(Project());
+        Assert.Equal(VoiceTrainingSource.Project, setup.Session.TrainingSource);
+        Assert.Equal(VoiceProjectAudioState.Finding, setup.Session.ProjectAudio);
+        Assert.Equal("Finding clear speech in Demo take…", setup.Session.ProjectLine);
+        await WaitForAsync(() => setup.Backend.Analyses == 1); Assert.True(setup.Session.ProjectOffered);
+        await setup.VerifyAsync();
+        Assert.Equal("Statement verified. Choose your training audio next.", setup.Session.Message);
+        Assert.True(setup.Session.CanSelectProject); Assert.False(setup.Session.CanCreate); Assert.False(setup.Session.CanRecordTraining);
+        setup.Backend.Analysis.SetResult(Selection(47_900));
+        await WaitForAsync(() => setup.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        Assert.Equal("47 s of clear speech found in Demo take", setup.Session.ProjectLine);
+        Assert.True(setup.Session.CanCreate); Assert.False(setup.Session.TrainingReady);
+        await setup.Session.PrepareCreationAsync();
+        Assert.Same(setup.Session.ProjectAnalysis, setup.Backend.PreparedProject);
+        var dialog = VoiceCreationDialog.Create(setup.Session.CreationConfirmation!);
+        Assert.EndsWith("\n\nChecks your plan, then sends the consent recording and 31 s of speech from Demo take to create your own voice. No video is sent. This action is free.", dialog.Message);
+        await setup.Session.ApproveCreationAsync(true);
+        Assert.Equal(1, setup.Backend.Creates); Assert.Equal(CreateVoiceSession.ReadyCopy, setup.Session.Message);
+        Assert.Equal(0, setup.Backend.TrainingSeconds);
+    }
+
+    [Fact]
+    public async Task ReadAloudStaysTheAlternativeAndUsesItsOwnRecording()
+    {
+        await using var setup = new Setup(Project());
+        setup.Backend.Analysis.SetResult(Selection(60_000));
+        await WaitForAsync(() => setup.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        setup.Session.SelectTrainingSource(VoiceTrainingSource.ReadAloud);
+        Assert.Equal(VoiceTrainingSource.Project, setup.Session.TrainingSource);
+        await setup.VerifyAsync();
+        setup.Session.SelectTrainingSource(VoiceTrainingSource.ReadAloud);
+        Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource);
+        Assert.True(setup.Session.CanRecordTraining); Assert.False(setup.Session.CanCreate);
+        await setup.TrainAsync(); Assert.True(setup.Session.CanCreate);
+        await setup.Session.PrepareCreationAsync();
+        Assert.Null(setup.Backend.PreparedProject); Assert.Null(setup.Session.CreationConfirmation!.Project);
+        Assert.Contains("sends the consent recording and training audio to create your own voice. No video is sent.", VoiceCreationDialog.Create(setup.Session.CreationConfirmation).Message);
+        await setup.Session.ApproveCreationAsync(false);
+        setup.Session.SelectTrainingSource(VoiceTrainingSource.Project);
+        Assert.Equal(VoiceTrainingSource.Project, setup.Session.TrainingSource); Assert.True(setup.Session.CanCreate);
+    }
+
+    [Theory]
+    [InlineData(29_999, "This project has only 29 s of clear speech. Record a read-aloud instead.")]
+    [InlineData(999, "This project has no clear speech to use. Record a read-aloud instead.")]
+    [InlineData(0, "This project has no clear speech to use. Record a read-aloud instead.")]
+    public async Task TooLittleClearSpeechDisablesTheProjectChoice(long availableMs, string copy)
+    {
+        await using var setup = new Setup(Project());
+        setup.Backend.Analysis.SetResult(Selection(availableMs));
+        await WaitForAsync(() => setup.Session.ProjectAudio == VoiceProjectAudioState.TooLittle);
+        await setup.VerifyAsync();
+        Assert.Equal(copy, setup.Session.ProjectLine); Assert.True(setup.Session.ProjectOffered);
+        Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource);
+        Assert.False(setup.Session.CanSelectProject); Assert.Equal("Statement verified. Choose your training audio next.", setup.Session.Message);
+        setup.Session.SelectTrainingSource(VoiceTrainingSource.Project);
+        Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource); Assert.True(setup.Session.CanRecordTraining);
+    }
+
+    [Fact]
+    public async Task UnreadableProjectAudioFallsBackToTheReadAloud()
+    {
+        await using var setup = new Setup(Project(media: null));
+        await WaitForAsync(() => setup.Session.ProjectAudio == VoiceProjectAudioState.Unreadable);
+        Assert.Equal("VoxClip can't read this project's audio. Record a read-aloud instead.", setup.Session.ProjectLine);
+        Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource); Assert.False(setup.Session.CanSelectProject);
+        await using var cut = new Setup(Project());
+        cut.Backend.Analysis.SetResult(Selection(45_000)); cut.Backend.ProjectFailure = new VoxClip.Media.VoiceLab.VoiceLabSourceAudioException(VoxClip.Media.VoiceLab.VoiceLabSourceAudioErrorCode.Unreadable);
+        await WaitForAsync(() => cut.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        await cut.VerifyAsync(); await cut.Session.PrepareCreationAsync();
+        Assert.Equal("VoxClip can't read this project's audio. Record a read-aloud instead.", cut.Session.Message);
+        Assert.Equal(VoiceTrainingSource.ReadAloud, cut.Session.TrainingSource); Assert.Null(cut.Session.CreationConfirmation);
+        Assert.True(cut.Session.Verified); Assert.Equal(0, cut.Backend.Creates);
+    }
+
+    [Theory]
+    [InlineData(false, "Open a project to use its audio instead.")]
+    [InlineData(true, "Transcribe this project to use its audio instead.")]
+    public async Task WithoutAProjectTranscriptOnlyTheReadAloudIsOffered(bool open, string copy)
+    {
+        await using var setup = new Setup(open ? Project(transcript: false) : null);
+        Assert.Equal(open ? VoiceProjectAudioState.NoTranscript : VoiceProjectAudioState.NoProject, setup.Session.ProjectAudio);
+        Assert.Equal(copy, setup.Session.ProjectLine);
+        Assert.False(setup.Session.ProjectOffered); Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource);
+        Assert.Equal(0, setup.Backend.Analyses);
+        await setup.VerifyAsync(); Assert.Equal("Statement verified. Record your training read-aloud next.", setup.Session.Message);
+        setup.Session.SelectTrainingSource(VoiceTrainingSource.Project);
+        Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource);
+    }
+
+    [Fact]
+    public async Task ProjectSpeakerMismatchBlocksAndSwitchesToAReadAloudWithTheSameStatement()
+    {
+        await using var setup = new Setup(Project());
+        setup.Backend.Analysis.SetResult(Selection(90_000));
+        await WaitForAsync(() => setup.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        await setup.VerifyAsync(); setup.Backend.PrepareFailure = VoiceConsentError.SpeakerMismatch;
+        await setup.Session.PrepareCreationAsync();
+        Assert.Equal("Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead.", setup.Session.Message);
+        Assert.True(setup.Session.HasFailure); Assert.True(setup.Session.ProjectMismatch); Assert.Null(setup.Session.CreationConfirmation);
+        Assert.False(setup.Session.CanCreate); Assert.False(setup.Session.CanSelectProject); Assert.Equal(0, setup.Backend.Creates);
+        setup.Session.SelectTrainingSource(VoiceTrainingSource.ReadAloud);
+        Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource); Assert.Null(setup.Session.Message);
+        Assert.True(setup.Session.Verified); Assert.True(setup.Session.CanRecordTraining);
+        setup.Session.SelectTrainingSource(VoiceTrainingSource.Project); Assert.Equal(VoiceTrainingSource.ReadAloud, setup.Session.TrainingSource);
+        setup.Backend.PrepareFailure = null; await setup.TrainAsync();
+        await setup.Session.PrepareCreationAsync(); await setup.Session.ApproveCreationAsync(true);
+        Assert.Null(setup.Backend.PreparedProject); Assert.Equal(1, setup.Backend.Creates); Assert.Equal(0, setup.Backend.Abandons);
+    }
+
+    [Fact]
+    public async Task ClosedWindowsSpeakerGateKeepsTheUnavailableCopyAndNeverAnalyses()
+    {
+        Assert.False(VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified);
+        await using var setup = new Setup(Project());
+        await WaitForAsync(() => setup.Backend.Analyses == 1);
+        await using var closed = new Setup(Project(), open: false);
+        closed.Backend.SpeakerAvailable = false;
+        closed.Session.OpenProject(Project());
+        closed.Session.SetInputs("Example", "en", true, true, true);
+        Assert.Equal(VoiceLabCopy.SpeakerUnavailable, closed.Session.BlockedReason);
+        Assert.Equal("The speaker check is not ready on Windows yet. Creating a voice is unavailable.", closed.Session.BlockedReason);
+        Assert.False(closed.Session.CanRecord); await closed.Session.RecordAsync();
+        Assert.False(closed.Session.HasStatementRecording); Assert.Equal(0, closed.Capture.Maximum);
+        Assert.Equal(0, closed.Backend.Analyses); Assert.Equal(VoiceTrainingSource.Project, closed.Session.TrainingSource);
+        Assert.False(closed.Session.CanCreate); Assert.False(closed.Session.CanChooseSource);
+        await Task.Delay(50, Token); Assert.Equal(0, closed.Backend.Analyses);
+        var root = Path.Combine(Path.GetTempPath(), "voxclip-gate-" + Guid.NewGuid().ToString("N"));
+        var data = new DataLocations(root, Path.Combine(root, "settings.json"), Path.Combine(root, "models"), Path.Combine(root, "cache"), Path.Combine(root, "autosave"), Path.Combine(root, "secrets"), Path.Combine(root, "logs"));
+        using var production = new VoiceStatementBackend(data, new NoKeys(), new QuietLog(), ElevenLabsRegion.Default, () => true, () => null, _ => Task.CompletedTask);
+        Assert.False(production.SpeakerAvailable); Assert.False(production.SpeakerCalibrated("en")); Assert.False(production.SpeakerCalibrated("et"));
+        Assert.False(Directory.Exists(root));
+    }
+
+    [Fact]
+    public async Task AnalysisHeldBackByTheGateStartsWhenTheGateOpensOrAStatementIsRecorded()
+    {
+        await using var announced = new Setup(Project(), open: false);
+        announced.Backend.SpeakerAvailable = false;
+        announced.Session.OpenProject(Project());
+        await announced.Session.GateChangedAsync(); Assert.Equal(0, announced.Backend.Analyses);
+        announced.Backend.SpeakerAvailable = true;
+        await announced.Session.GateChangedAsync();
+        await WaitForAsync(() => announced.Backend.Analyses == 1);
+        announced.Backend.Analysis.SetResult(Selection(45_000));
+        await WaitForAsync(() => announced.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        await announced.Session.GateChangedAsync(); Assert.Equal(1, announced.Backend.Analyses);
+        await using var unannounced = new Setup(Project(), open: false);
+        unannounced.Backend.SpeakerAvailable = false;
+        unannounced.Session.OpenProject(Project());
+        unannounced.Backend.SpeakerAvailable = true;
+        Assert.Equal(0, unannounced.Backend.Analyses);
+        await unannounced.VerifyAsync();
+        await WaitForAsync(() => unannounced.Backend.Analyses == 1);
+        unannounced.Backend.Analysis.SetResult(Selection(45_000));
+        await WaitForAsync(() => unannounced.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        Assert.Equal(VoiceTrainingSource.Project, unannounced.Session.TrainingSource); Assert.True(unannounced.Session.CanCreate);
+        // The page forwards every announced change to the session, not only Voice Lab turning off.
+        var page = AppFile("Controls/CreateVoicePage.cs").ReplaceLineEndings("\n");
+        Assert.Contains("        }\n        // Abandons when Voice Lab is off; otherwise starts the project analysis if the gate has opened.\n        await session.GateChangedAsync();\n        Refresh();", page);
+    }
+
+    [Theory]
+    [InlineData("et", "", "en")]
+    [InlineData("et", "et", "et")]
+    [InlineData("ET-ee", "et", "et")]
+    [InlineData("et", "en", "en")]
+    [InlineData("en-GB", "en", "en")]
+    [InlineData("en", "", "en")]
+    [InlineData("fr", "fr", "en")]
+    [InlineData(null, "et", "en")]
+    [InlineData("", "", "en")]
+    public void StatementUsesTheTranscriptLanguageOnlyWhenItsSpeakerCheckIsCalibrated(string? transcript, string calibrated, string expected)
+        => Assert.Equal(expected, CreateVoiceSession.StatementLanguage(transcript, language => language == calibrated));
+
+    [Fact]
+    public async Task CalibratedEstonianWouldStillWaitForTheReviewedStatement()
+    {
+        await using var setup = new Setup();
+        setup.Backend.Calibrated = language => language == "et";
+        setup.Session.SetInputs("Example", "et", true, true, true);
+        Assert.Equal("et", setup.Session.Statement!.Language);
+        Assert.Equal("Estonian draft — pending the user's review.", setup.Session.BlockedReason);
+        await setup.Session.RecordAsync(); Assert.Equal(0, setup.Capture.Maximum);
+        setup.Backend.Calibrated = _ => false;
+        setup.Session.SetInputs("Example", "et", true, true, true);
+        Assert.Equal("en", setup.Session.Statement!.Language); Assert.Null(setup.Session.BlockedReason);
+    }
+
+    /// <summary>§6.5.2: in a project whose language has no calibrated speaker check, Rewrite explains instead of offering a voice, but
+    /// Create Your Voice from Settings still defaults to that project's audio, with an English statement.</summary>
+    [Fact]
+    public async Task ProjectInAnUncalibratedLanguageStillTrainsFromSettings()
+    {
+        var opened = Project();
+        await using var setup = new Setup(opened with { Project = opened.Project with { Transcript = opened.Project.Transcript! with { Language = "et" } } });
+        setup.Backend.Calibrated = language => language == "en";
+        Assert.True(VoiceLabSession.VoicesUnavailable("et", setup.Backend.Calibrated));
+        Assert.Equal(VoiceTrainingSource.Project, setup.Session.TrainingSource); Assert.True(setup.Session.ProjectOffered);
+        await WaitForAsync(() => setup.Backend.Analyses == 1);
+        setup.Session.SetInputs("Example", "et", true, true, true);
+        Assert.Equal("en", setup.Session.Statement!.Language); Assert.Null(setup.Session.BlockedReason);
+        setup.Backend.Analysis.SetResult(Selection(47_900));
+        await WaitForAsync(() => setup.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        Assert.Equal(VoiceTrainingSource.Project, setup.Session.TrainingSource);
+        Assert.Contains("?? App.Windows.FirstOrDefault(window => window.VoiceTrainingProject is not null)", AppFile("Controls/CreateVoicePage.cs"));
+        // In production the sheet's statement language and the Rewrite voice row read one predicate, as the Mac reads its catalogue.
+        Assert.Contains("public bool SpeakerCalibrated(string language) => VoiceLabSession.SpeakerCalibrated(language);", AppFile("Services/VoiceStatementBackend.cs"));
+        Assert.Contains("speakerCalibrated ?? VoiceLabSession.SpeakerCalibrated", AppFile("ViewModels/RewriteSession.cs"));
+    }
+
+    [Fact]
+    public void PageOffersBothSourcesWithTheirExactCopy()
+    {
+        var page = AppFile("Controls/CreateVoicePage.cs");
+        foreach (var text in new[] { "session.OpenProject(window?.VoiceTrainingProject)", "VoiceLabCopy.ProjectChoice", "VoiceLabCopy.ReadAloudChoice", "VoiceLabCopy.RecordReadAloud",
+            "session.ProjectLine", "projectChoice.IsEnabled = session.CanSelectProject", "training.IsEnabled = session.CanRecordTraining", "voice-training-source" })
+            Assert.Contains(text, page);
+        Assert.Equal("Use this project's audio (recommended)", VoiceLabCopy.ProjectChoice);
+        Assert.Equal("Record a read-aloud (about 90 s)", VoiceLabCopy.ReadAloudChoice);
+        Assert.Equal("Record a Read-Aloud", VoiceLabCopy.RecordReadAloud);
+        Assert.Contains("VoiceTrainingProject => editor is", AppFile("MainWindow.xaml.cs"));
+        // The window that opened the sheet gives its project; with none offered, the picker is hidden and only its line shows.
+        Assert.Contains("var window = (from is not null && App.Windows.Contains(from) ? from : null)", page);
+        Assert.Contains("source.Visibility = picking && session.ProjectOffered ? Visibility.Visible : Visibility.Collapsed;", page);
+        Assert.Contains("sourceLine.Visibility = picking && !session.ProjectOffered ? Visibility.Visible : Visibility.Collapsed;", page);
+        Assert.Contains("createVoicePage = new(this, session, from);", AppFile("SettingsWindow.xaml.cs"));
+        var backend = AppFile("Services/VoiceStatementBackend.cs");
+        Assert.Contains("VoiceTrainingAudio.AnalyzeAsync", backend); Assert.Contains("VoiceTrainingSpans.Inputs(project.Project)", backend);
+        Assert.Contains("VoiceTrainingAudio.ProjectSpansAsync", backend);
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        for (var attempt = 0; !condition(); attempt++)
+        {
+            Assert.True(attempt < 500, "The project analysis did not finish.");
+            await Task.Delay(10, Token);
+        }
+    }
+
     private sealed class Setup : IAsyncDisposable
     {
         internal readonly FlowBackend Backend = new();
         internal readonly FlowCapture Capture = new();
         internal readonly VoiceSessionClock Clock = new();
         internal readonly CreateVoiceSession Session;
-        internal Setup() => Session = new(Backend, Capture, Dispatch, Clock);
+        internal Setup(VoiceTrainingProject? project = null, bool open = true)
+        {
+            Session = new(Backend, Capture, Dispatch, Clock);
+            if (open) Session.OpenProject(project);
+        }
         private Task Recording()
         {
             var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -275,13 +533,19 @@ public sealed class VoiceCreationFlowTests
     {
         public bool Enabled { get; set; } = true;
         public bool SpeakerAvailable { get; set; } = true;
+        public bool SpeakerCalibrated(string language) => Calibrated(language);
         public string? PlanMessage { get; set; }
         public string VerificationCost => "< $0.01";
         public bool CreationPending { get; set; }
         internal bool Fresh = true, SaveFailure, RetryFailure, Uncertain, VerificationRequired, ServicesAvailable = true;
         internal VoiceConsentError? PrepareFailure;
-        internal int Creates, PlanChecks, Abandons, Saves, TrainingSeconds;
+        internal Exception? ProjectFailure;
+        internal int Creates, PlanChecks, Abandons, Saves, TrainingSeconds, Analyses, Prepares;
         internal VoiceConsentRecord? LastRecord;
+        internal Func<string, bool> Calibrated = _ => false;
+        internal TaskCompletionSource<VoiceTrainingSpanSelection> Analysis = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal VoiceProjectAudio? PreparedProject;
+        internal long KeptSeconds = 31;
         private string? id;
         public VoiceConsentStatement Statement(string name, string language, DateOnly date) => new(language, "Synthetic statement", ["alpha", "beta", "gamma", "delta"]);
         public Task SaveStatementAsync(string recordId, MicrophoneTake take, CancellationToken ct) { id = recordId; return Task.CompletedTask; }
@@ -293,10 +557,18 @@ public sealed class VoiceCreationFlowTests
             if (take.Mono.Length < 60 * take.Rate || take.Mono.Length > 120 * take.Rate) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
             return Task.CompletedTask;
         }
-        public Task<VoiceCreationQuote> PrepareCreationAsync(string recordId, string name, CancellationToken ct)
+        public async Task<VoiceProjectAudio> AnalyzeProjectAsync(VoiceTrainingProject project, CancellationToken ct)
         {
+            Analyses++;
+            if (project.MediaPath is not { } media) throw new IOException("Missing media");
+            return new(project.Name, media, 48000, await Analysis.Task.WaitAsync(ct));
+        }
+        public Task<VoiceCreationQuote> PrepareCreationAsync(string recordId, string name, VoiceProjectAudio? project, CancellationToken ct)
+        {
+            Prepares++; PreparedProject = project;
+            if (project is not null && ProjectFailure is { } failure) throw failure;
             if (PrepareFailure is { } error) throw new VoiceConsentException(error);
-            return Task.FromResult(new VoiceCreationQuote(new(VoiceLabCostPresentationKind.Inline, ""), new object()));
+            return Task.FromResult(new VoiceCreationQuote(new(VoiceLabCostPresentationKind.Inline, ""), new object(), project is null ? null : new(project.Name, KeptSeconds)));
         }
         public bool QuoteIsFresh(VoiceCreationQuote quote) => Fresh;
         public Task<VoiceConsentRecord> CreateAsync(VoiceCreationQuote quote, CancellationToken ct)
