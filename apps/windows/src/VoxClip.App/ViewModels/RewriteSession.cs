@@ -81,6 +81,7 @@ internal sealed class RewriteSession : IDisposable
         bool providerConsent, Func<CancellationToken, Task<float[]>> source, CancellationToken ct)
     {
         if (!GenerationIsCurrent || Review is not { } review || review.Budget.Copy is not null || review.VoiceHunks.Count == 0) return null;
+        // Only new takes read the source audio; a proposal, Apply Cuts and Apply Correction work at any length (RewriteSourceLimit).
         if (RewriteSourceLimit.Refusal(Project) is { } tooLong) throw new RewriteGenerationException(tooLong);
         if (review.VoiceHunks.Count != 1)
             throw new RewriteGenerationException("Rewrite one passage at a time. Keep one changed passage, then generate takes.");
@@ -135,8 +136,6 @@ internal sealed class RewriteSession : IDisposable
         var current = revision;
         try
         {
-            // A source too long for take generation is refused before the paid AI proposal (RewriteSourceLimit).
-            if (RewriteSourceLimit.Refusal(Project) is { } tooLong) { proposalProblem = tooLong; return; }
             if (Connector is null) return;
             var words = Source.Where(word => word.Kind == WordKind.Word).ToArray();
             if (words.Length == 0 || Envelope is null)
