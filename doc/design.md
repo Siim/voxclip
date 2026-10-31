@@ -1483,6 +1483,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Rewrite: failed take | Rewrite panel row | "Take {i} didn't pass the speech check." [Try Another · ≈ {cost}] |
 | Rewrite: length changed | Rewrite panel | "Take {i} runs {s} s longer than the words it replaces. Choose how the video keeps up." For a shorter take: "Take {i} runs {s} s shorter than the words it replaces. Choose how the video keeps up." Options as §6.3 |
 | Rewrite: no voice | Rewrite panel, Voice row | "No voice yet" [Create Your Voice…] |
+| Rewrite: no voice for this language | Rewrite panel, Voice row | "Your voice can't be used in this project's language yet. It works in English projects." No button (voice-lab.md §6.5.2) |
 | Rewrite: too much | Rewrite panel | "That's a lot to re-voice. Re-record these sentences instead." |
 | Rewrite: no room tone | Rewrite panel | "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead." Generate is disabled. [Clean Audio…] replaces the last two sentences once Clean audio (M2) ships |
 | Rewrite: too close to the take edge | Rewrite panel | "This change is too close to the {start/end} of the take to blend in. Re-record this sentence instead." Generate is disabled |
@@ -1504,8 +1505,10 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Voice Lab: training source | Create Your Voice, after verification | Two choices: "Use this project's audio (recommended)" with "{n} s of clear speech found in {project name}", and "Record a read-aloud (about 90 s)" (voice-lab.md §6.5.2). While the project is analysed: "Finding clear speech in {project name}…" |
 | Voice Lab: too little project speech | Create Your Voice, under the project choice | "This project has only {n} s of clear speech. Record a read-aloud instead." With none: "This project has no clear speech to use. Record a read-aloud instead." |
 | Voice Lab: project audio unreadable | Create Your Voice, under the project choice | "VoxClip can't read this project's audio. Record a read-aloud instead." |
+| Voice Lab: project media labelled AI modified | Create Your Voice, under the project choice | "This project's media is labelled AI modified, so it can't train your voice. Record a read-aloud instead." |
+| Voice Lab: statement verified | Create Your Voice | "Statement verified. Choose your training audio next." when the project option can be chosen, otherwise "Statement verified. Record your training read-aloud next." |
 | Voice Lab: no project audio | Create Your Voice | No project open: "Open a project to use its audio instead." No transcript: "Transcribe this project to use its audio instead." |
-| Voice Lab: project audio doesn't match | Create Your Voice, Warning | "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead." [Record a Read-Aloud] |
+| Voice Lab: project audio doesn't match | Create Your Voice, Warning | "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead." [Record a Read-Aloud]. After the switch the same sentence stays under the disabled project choice |
 | Voice Lab: leaving while recording (Windows) | dialog | "Stop creating your voice? The recording is deleted from this PC." [Stop] [Keep going]; Keep going is the default and Esc keeps going |
 
 ---

@@ -279,7 +279,7 @@ import VoxClipMedia
                     if session.recorder.failure == .silent {
                         Button("Open Settings") { NSWorkspace.shared.open(MicrophoneError.privacySettingsURL) }
                     }
-                    if session.projectMismatch {
+                    if session.projectMismatch && session.trainingSource == .project {
                         Button("Record a Read-Aloud") { session.useReadAloud() }.disabled(session.busy)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)

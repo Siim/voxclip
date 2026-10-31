@@ -33,7 +33,10 @@ import VoxClipCore
     private var content: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Voice").font(.system(size: 12, weight: .semibold))
-            if generation.voices.isEmpty {
+            if generation.voices.isEmpty, session.editor.app.voiceLabSession.voicesUnavailable(projectLanguage: session.project.transcript?.language) {
+                // A voice made from here would be bound to English and never listed for this project (voice-lab.md §6.5.2).
+                Text(VoiceLabSession.languageUnavailableCopy).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else if generation.voices.isEmpty {
                 Text("No voice yet").foregroundStyle(.secondary)
                 Button(Self.createVoiceTitle) {
                     openVoxClipSettings(pane: "voiceLab")

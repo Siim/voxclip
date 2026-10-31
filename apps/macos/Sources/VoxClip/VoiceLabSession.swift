@@ -18,6 +18,11 @@ import VoxClipMedia
     static let readAloudChoice = "Record a read-aloud (about 90 s)"
     static let projectMismatchCopy = "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead."
     static let projectUnreadableCopy = "VoxClip can't read this project's audio. Record a read-aloud instead."
+    static let projectGeneratedCopy = "This project's media is labelled AI modified, so it can't train your voice. Record a read-aloud instead."
+    static let chooseTrainingCopy = "Statement verified. Choose your training audio next."
+    static let readAloudNextCopy = "Statement verified. Record your training read-aloud next."
+    /// The Rewrite panel's voice row in a project whose language has no calibrated speaker check (§6.5.2).
+    static let languageUnavailableCopy = "Your voice can't be used in this project's language yet. It works in English projects."
     static let noticeCopy = "Your voice clone is created in your ElevenLabs account and stays there. ElevenLabs' terms let it use uploaded content, including your voice, to improve its services; you can opt out of training in your ElevenLabs account, but the opt-out is not retroactive. You can delete the voice at any time from VoxClip or ElevenLabs. ElevenLabs' Prohibited Use Policy applies, including its rules on political content."
     var confirmation: Request?
     var records: [VoiceConsentRecord] = []
@@ -48,7 +53,8 @@ import VoxClipMedia
     enum TrainingSource: String, Hashable { case project, readAloud }
     /// §6.5.2: the editor's project as the sheet found it.
     enum ProjectAudio: Equatable {
-        case noProject, untranscribed, finding, unreadable
+        /// `generated`: the media carries the AI-modified XMP label, so it may hold generated speech (§6.5.2).
+        case noProject, untranscribed, finding, unreadable, generated
         case found(VoiceTrainingSpanSelection)
     }
     /// The project the sheet was opened with; `source` is nil when its media is not available.
@@ -60,7 +66,7 @@ import VoxClipMedia
     var trainingSource = TrainingSource.readAloud
     var projectAudio = ProjectAudio.noProject
     var projectName = ""
-    /// The project's spans failed the §6.6 speaker match; only a read-aloud can continue.
+    /// The project's spans failed the §6.6 speaker match; only a read-aloud can continue until the sheet closes.
     var projectMismatch = false
     @ObservationIgnored private(set) var analysis: Task<Void, Never>?
     @ObservationIgnored private var analysisID = UUID()
@@ -118,6 +124,13 @@ import VoxClipMedia
         guard let primary = candidate?.split(whereSeparator: { $0 == "-" || $0 == "_" }).first?.lowercased(), !primary.isEmpty, calibrated(primary) else { return "en" }
         return primary
     }
+    /// A voice is bound to its statement language, and Rewrite lists only voices in the project's language
+    /// (`VoiceLabTakeRun.discover`). Without a calibrated check for that language, no voice made here can be listed there.
+    func voicesUnavailable(projectLanguage: String?) -> Bool {
+        guard let model = app.speakerModelLibrary.model, model.calibratedThreshold() != nil else { return false }
+        let language = projectLanguage ?? "en"
+        return Self.statementLanguage(language) { model.calibratedThreshold(language: $0) != nil } != language
+    }
     var speakerReady: Bool {
         VoiceLabGate.canCheckOwnVoice(speakerAvailable: app.speakerModelLibrary.installed,
             calibratedThreshold: app.speakerModelLibrary.model?.calibratedThreshold(language: enrollmentLanguage), language: enrollmentLanguage)
@@ -131,13 +144,17 @@ import VoxClipMedia
         if case .found(let selection) = projectAudio { selection.status == .ok } else { false }
     }
     var projectChoiceEnabled: Bool { (projectAudioUsable || projectAudio == .finding) && !projectMismatch }
-    /// The §6.5.2 line under the training choice.
+    /// After verification: a choice only when the project option can be taken.
+    var verifiedCopy: String { projectChoiceEnabled ? Self.chooseTrainingCopy : Self.readAloudNextCopy }
+    /// The §6.5.2 line under the training choice. After a speaker mismatch it says why the project option stays off.
     var projectAudioLine: String {
+        if projectMismatch, trainingSource == .readAloud { return Self.projectMismatchCopy }
         switch projectAudio {
         case .noProject: return "Open a project to use its audio instead."
         case .untranscribed: return "Transcribe this project to use its audio instead."
         case .finding: return "Finding clear speech in \(projectName)…"
         case .unreadable: return Self.projectUnreadableCopy
+        case .generated: return Self.projectGeneratedCopy
         case .found(let selection):
             let seconds = selection.availableMs / 1_000
             if selection.status == .ok { return "\(seconds) s of clear speech found in \(projectName)" }
@@ -248,7 +265,7 @@ import VoxClipMedia
                 let attestations = VoiceConsentRecord.Attestations(ownVoice: ownVoice, adult: adult, ownVideosOnly: ownVideosOnly, acceptedAt: acceptedAt)
                 try await enrollment.verify(recordID: recordID, statement: statement, wav: statementWAV, attestations: attestations, approved: true, enabled: enabled, verificationQuote: verificationQuote)
                 verified = true; recorder.discard()
-                message = offersProjectAudio ? "Statement verified. Choose your training audio next." : "Statement verified. Record your training read-aloud next."
+                message = verifiedCopy
             case .create:
                 guard let quote else { throw VoiceConsentError.speakerUnavailable }
                 subscription = try await client.plan()
@@ -354,7 +371,8 @@ import VoxClipMedia
                 // Span WAVs stay in memory: the enrollment keeps the prepared request until it is sent or cancelled.
                 do { samples = try await VoiceTrainingAudio.projectSamples(source: source, sampleRate: rate, spans: selection.selected) }
                 catch is CancellationError { return }
-                catch { projectAudio = .unreadable; trainingSource = .readAloud; message = Self.projectUnreadableCopy; return }
+                // The line under the training choice now says so; the message stays empty to avoid repeating it.
+                catch { projectAudio = .unreadable; trainingSource = .readAloud; return }
             }
             let prepared = try await enrollment.prepare(recordID: recordID, displayName: displayName, samples: samples, enabled: enabled)
             quote = prepared
@@ -368,10 +386,11 @@ import VoxClipMedia
             projectMismatch = true; message = Self.projectMismatchCopy
         } else { message = await errorMessage(error) }
     }
-    /// Record a Read-Aloud: switches to §6.5 (b) and keeps the verified statement.
+    /// Record a Read-Aloud: switches to §6.5 (b) and keeps the verified statement. The project option stays off: its
+    /// spans would fail the same match again.
     func useReadAloud() {
         guard !busy, !recorder.recording else { return }
-        trainingSource = .readAloud; projectMismatch = false; message = nil
+        trainingSource = .readAloud; message = nil
     }
     func chooseTrainingSource(_ source: TrainingSource) {
         guard !busy, !recorder.recording, source == .readAloud || projectChoiceEnabled else { return }
@@ -379,12 +398,12 @@ import VoxClipMedia
     }
     /// Opens the sheet with the editor's project as the §6.5 (a) default.
     func openEnrollment() {
-        var project: TrainingProject?
-        if let editor = app.shell.editor {
-            let readable = editor.mediaResolved && !editor.mediaUnreadable && !editor.document.demo
-            project = TrainingProject(project: editor.project, name: app.shell.projectTitle, source: readable ? editor.sourceURL : nil)
-        }
-        openEnrollment(project: project)
+        openEnrollment(project: app.shell.editor.map { Self.trainingProject(editor: $0, name: app.shell.projectTitle) })
+    }
+    /// The editor's project; its media is offered only when the editor reads it, never for a demo.
+    static func trainingProject(editor: EditorModel, name: String) -> TrainingProject {
+        let readable = editor.mediaResolved && !editor.mediaUnreadable && !editor.document.demo
+        return TrainingProject(project: editor.project, name: name, source: readable ? editor.sourceURL : nil)
     }
     /// §6.5.2: a project with a transcript makes its audio the default and starts the on-device analysis at once.
     func openEnrollment(project: TrainingProject?) {
@@ -399,25 +418,24 @@ import VoxClipMedia
         projectAudio = .finding; trainingSource = .project
         let inputs = VoiceTrainingSpans.inputs(project: project.project), id = analysisID
         analysis = Task.detached(priority: .userInitiated) { [weak self] in
-            let outcome: Result<(Int, VoiceTrainingSpanSelection), any Error>
-            do {
-                let levels = try await VoiceTrainingAudio.levels(source: source)
-                outcome = .success((levels.sampleRate, try VoiceTrainingSpans.select(items: inputs.items, excluded: inputs.excluded, frameDb: levels.frameDb, duration: levels.duration)))
-            } catch { outcome = .failure(error) }
+            var rate: Int?, outcome = ProjectAudio.unreadable
+            // VoxClip never trains on generated audio: a re-imported export labelled AI modified has no Voice Lab
+            // segments left to exclude, so none of its speech is used.
+            if VoiceLabDisclosureWriter.isLabelled(source) { outcome = .generated }
+            else if let levels = try? await VoiceTrainingAudio.levels(source: source),
+                    let selection = try? VoiceTrainingSpans.select(items: inputs.items, excluded: inputs.excluded, frameDb: levels.frameDb, duration: levels.duration) {
+                rate = levels.sampleRate; outcome = .found(selection)
+            }
             guard !Task.isCancelled else { return }
-            await self?.finishAnalysis(outcome, id: id)
+            await self?.finishAnalysis(outcome, rate: rate, id: id)
         }
     }
-    private func finishAnalysis(_ outcome: Result<(Int, VoiceTrainingSpanSelection), any Error>, id: UUID) {
+    private func finishAnalysis(_ outcome: ProjectAudio, rate: Int?, id: UUID) {
         guard id == analysisID, showEnrollment, projectAudio == .finding else { return }
-        switch outcome {
-        case .success(let (rate, selection)):
-            projectRate = rate; projectAudio = .found(selection)
-            if selection.status != .ok, trainingSource == .project { trainingSource = .readAloud }
-        case .failure:
-            projectAudio = .unreadable
-            if trainingSource == .project { trainingSource = .readAloud }
-        }
+        projectRate = rate; projectAudio = outcome
+        guard !projectAudioUsable else { return }
+        if trainingSource == .project { trainingSource = .readAloud }
+        if message == Self.chooseTrainingCopy { message = Self.readAloudNextCopy }
     }
     private func closeProjectAudio() {
         analysis?.cancel(); analysis = nil; analysisID = UUID()

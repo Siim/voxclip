@@ -467,21 +467,120 @@ import Testing
             #expect(!session.projectChoiceEnabled)
         }
     }
-    @Test func speakerMismatchBlocksProjectAudioAndKeepsTheVerifiedStatement() async throws {
+    @Test(arguments: [false, true]) func speakerMismatchBlocksProjectAudioAndKeepsTheVerifiedStatement(radio: Bool) async throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let (_, session) = try session()
         session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: try take(in: root)))
         await session.analysis?.value
         let statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
         session.statement = statement; session.verified = true
+        let mismatch = "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead."
         await session.creationFailed(VoiceConsentError.speakerMismatch)
-        #expect(session.projectMismatch && session.message == "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead.")
-        #expect(!session.projectChoiceEnabled && !session.canCreate)
-        session.useReadAloud()
-        #expect(session.trainingSource == .readAloud && !session.projectMismatch && session.message == nil)
-        #expect(session.verified && session.statement == statement)
+        #expect(session.projectMismatch && session.message == mismatch && session.projectAudioLine == "32 s of clear speech found in Interview")
+        #expect(!session.projectChoiceEnabled && !session.canCreate && session.verifiedCopy == VoiceLabSession.readAloudNextCopy)
+        // Record a Read-Aloud and the read-aloud radio leave the same state: the project option stays off and says why.
+        if radio { session.chooseTrainingSource(.readAloud) } else { session.useReadAloud() }
+        #expect(session.trainingSource == .readAloud && session.projectMismatch && session.message == nil)
+        #expect(!session.projectChoiceEnabled && session.projectAudioLine == mismatch)
+        session.chooseTrainingSource(.project)
+        #expect(session.trainingSource == .readAloud && session.verified && session.statement == statement)
         await session.creationFailed(VoiceConsentError.speakerMismatch)
-        #expect(!session.projectMismatch && session.message == VoiceConsentError.speakerMismatch.localizedDescription)
+        #expect(session.message == VoiceConsentError.speakerMismatch.localizedDescription)
+        session.finishCreation()
+        #expect(!session.projectMismatch)
+    }
+    /// §6.5.2: the status after verification offers a choice only when the project option can be taken.
+    @Test func verifiedStatusNamesAChoiceOnlyWhenThereIsOne() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let (_, session) = try session()
+        let url = try take(in: root)
+        session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: url))
+        #expect(session.verifiedCopy == "Statement verified. Choose your training audio next.")
+        await session.analysis?.value
+        #expect(session.verifiedCopy == VoiceLabSession.chooseTrainingCopy)
+        for project: VoiceLabSession.TrainingProject? in [nil, .init(project: try project(bursts: 2), name: "Interview", source: url),
+                                                          .init(project: try project(bursts: 4), name: "Interview", source: nil)] {
+            session.showEnrollment = false
+            session.openEnrollment(project: project)
+            session.message = VoiceLabSession.chooseTrainingCopy
+            await session.analysis?.value
+            #expect(session.verifiedCopy == "Statement verified. Record your training read-aloud next.")
+            if project?.source != nil { #expect(session.message == VoiceLabSession.readAloudNextCopy) }
+        }
+    }
+    /// A failed cut falls back to the read-aloud with the line under the choice, not the same sentence twice.
+    @Test func unreadableCutFallsBackToTheReadAloudOnce() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let (_, session) = try session()
+        let url = try take(in: root)
+        session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: url))
+        await session.analysis?.value
+        session.statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
+        session.verified = true
+        #expect(session.canCreate)
+        try FileManager.default.removeItem(at: url)
+        await session.prepareCreation()
+        #expect(session.projectAudio == .unreadable && session.trainingSource == .readAloud && session.confirmation == nil)
+        #expect(session.message == nil && session.projectAudioLine == VoiceLabSession.projectUnreadableCopy && !session.projectChoiceEnabled)
+        session.stopRecovery()
+    }
+    @Test func cancellingDuringTheAnalysisIgnoresItsResult() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let (_, session) = try session()
+        session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: try take(in: root)))
+        let first = session.analysis
+        #expect(session.projectAudio == .finding && first != nil)
+        await session.cancelEnrollment()
+        #expect(!session.showEnrollment && session.projectAudio == .noProject && session.analysis == nil && session.projectName.isEmpty)
+        var untranscribed = try project(bursts: 4); untranscribed.transcript = nil
+        session.openEnrollment(project: .init(project: untranscribed, name: "Other", source: nil))
+        await first?.value
+        #expect(session.projectAudio == .untranscribed && session.trainingSource == .readAloud && session.projectName == "Other")
+        session.stopRecovery()
+    }
+    /// The editor's media is offered only when the editor reads it; a demo never trains a voice.
+    @Test func editorProjectOffersItsMediaOnlyWhenReadable() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let (app, session) = try session()
+        let url = try take(in: root)
+        var value = try project(bursts: 4); value.media.source.absolutePath = url.path
+        let demo = EditorModel(document: VoxClipDocument(project: value, demo: true), app: app, preview: DemoPreviewEngine())
+        demo.mediaResolved = true
+        #expect(VoiceLabSession.trainingProject(editor: demo, name: "Interview").source == nil)
+        let editor = EditorModel(document: VoxClipDocument(project: value), app: app, preview: DemoPreviewEngine())
+        #expect(VoiceLabSession.trainingProject(editor: editor, name: "Interview").source == nil)
+        editor.mediaResolved = true
+        let resolved = VoiceLabSession.trainingProject(editor: editor, name: "Interview")
+        #expect(resolved.source?.path == url.path && resolved.name == "Interview" && resolved.project.transcript?.language == "et")
+        session.openEnrollment(project: resolved)
+        await session.analysis?.value
+        #expect(session.projectAudioUsable && session.trainingSource == .project)
+        editor.mediaUnreadable = true
+        #expect(VoiceLabSession.trainingProject(editor: editor, name: "Interview").source == nil)
+    }
+    /// VoxClip never trains on generated audio: an export labelled AI modified offers only the read-aloud.
+    @Test func mediaLabelledAIModifiedIsNotTrainingAudio() async throws {
+        let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
+        let (_, session) = try session()
+        func box(_ kind: String, _ body: Data) -> Data {
+            var data = Data(withUnsafeBytes(of: UInt32(8 + body.count).bigEndian, Array.init)); data.append(Data(kind.utf8)); data.append(body); return data
+        }
+        let uuid = Data([0xbe, 0x7a, 0xcf, 0xcb, 0x97, 0xa9, 0x42, 0xe8, 0x9c, 0x71, 0x99, 0x94, 0x91, 0xe3, 0xaf, 0xac])
+        let export = root.appendingPathComponent("export.mp4")
+        try (box("ftyp", Data("isom".utf8) + Data(count: 4)) + box("moov", Data()) + box("uuid", uuid + VoiceLabDisclosureWriter.xmpPacket())).write(to: export)
+        session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: export))
+        await session.analysis?.value
+        #expect(session.projectAudio == .generated && session.trainingSource == .readAloud && !session.projectChoiceEnabled && session.offersProjectAudio)
+        #expect(session.projectAudioLine == "This project's media is labelled AI modified, so it can't train your voice. Record a read-aloud instead.")
+    }
+    /// A voice is bound to its statement language, so an Estonian project's Rewrite panel explains instead of offering one.
+    @Test func rewriteExplainsWhenTheProjectLanguageHasNoSpeakerCheck() throws {
+        let (app, session) = try session()
+        #expect(session.voicesUnavailable(projectLanguage: "et") && session.voicesUnavailable(projectLanguage: "fr"))
+        #expect(!session.voicesUnavailable(projectLanguage: "en") && !session.voicesUnavailable(projectLanguage: nil))
+        #expect(VoiceLabSession.languageUnavailableCopy == "Your voice can't be used in this project's language yet. It works in English projects.")
+        app.speakerModelLibrary.model = nil
+        #expect(!session.voicesUnavailable(projectLanguage: "et"))
     }
     @Test func confirmationNamesTheProjectSpeechAndTheRewriteEntryDropsTheEstimate() {
         #expect(VoiceLabSession.creationCopy(projectName: "Interview", keptSeconds: 47.99, cost: "≈ $0.00") ==

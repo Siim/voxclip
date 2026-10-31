@@ -92,6 +92,46 @@ public enum VoiceLabDisclosureWriter {
         }
     }
 
+    /// Whether a media file carries an AI-modified XMP label: a trained-algorithmic `DigitalSourceType` in the
+    /// top-level XMP UUID box this writer adds, or in a QuickTime `moov/udta/XMP_` box. A file that is not ISO BMFF,
+    /// or cannot be read, has no label.
+    public static func isLabelled(_ file: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return false }
+        defer { try? handle.close() }
+        let sourceTypes = ["digitalsourcetype/trainedAlgorithmicMedia", "digitalsourcetype/compositeWithTrainedAlgorithmicMedia"].map { Data($0.utf8) }
+        func names(_ start: UInt64, _ end: UInt64) throws -> Bool {
+            try handle.seek(toOffset: start)
+            let packet = try handle.read(upToCount: Int(min(end - start, 1 << 20))) ?? Data()
+            return sourceTypes.contains { packet.range(of: $0) != nil }
+        }
+        func scan(_ start: UInt64, _ end: UInt64, depth: Int) throws -> Bool {
+            var cursor = start
+            while depth <= 4, end - cursor >= 8 {
+                try handle.seek(toOffset: cursor)
+                let header = try handle.read(upToCount: 16) ?? Data()
+                guard header.count >= 8 else { return false }
+                let size32 = header.prefix(4).reduce(UInt64(0)) { $0 * 256 + UInt64($1) }
+                let headerSize: UInt64 = size32 == 1 ? 16 : 8
+                guard header.count >= Int(headerSize) else { return false }
+                let boxSize = size32 == 0 ? end - cursor : size32 == 1 ? header[8..<16].reduce(UInt64(0)) { $0 * 256 + UInt64($1) } : size32
+                guard boxSize >= headerSize, boxSize <= end - cursor else { return false }
+                let body = cursor + headerSize, bodyEnd = cursor + boxSize
+                switch String(decoding: header[4..<8], as: UTF8.self) {
+                case "uuid":
+                    try handle.seek(toOffset: body)
+                    if bodyEnd - body >= 16, Array(try handle.read(upToCount: 16) ?? Data()) == xmpUUID, try names(body + 16, bodyEnd) { return true }
+                case "XMP_": if try names(body, bodyEnd) { return true }
+                case "moov", "udta": if try scan(body, bodyEnd, depth: depth + 1) { return true }
+                default: break
+                }
+                cursor = bodyEnd
+            }
+            return false
+        }
+        guard let length = try? handle.seekToEnd() else { return false }
+        return (try? scan(0, length, depth: 0)) ?? false
+    }
+
     private static func validateMP4(_ file: FileHandle) throws {
         let length = try file.seekToEnd()
         func scan(_ start: UInt64, _ end: UInt64, depth: Int) throws -> Set<String> {
