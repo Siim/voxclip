@@ -320,6 +320,13 @@ public enum VoiceLabWindowPlanner {
         return selected
     }
 
+    /// The take and envelope checks `place` makes before it looks at any word, so a caller placing many windows can tell a
+    /// take it cannot read from one window's refusal.
+    static func checkTake(_ project: Project, envelope: AudioEnvelope) throws {
+        let take = try Take(project)
+        try VoiceLabGeometry.check(rate: take.rate, totalSamples: take.total, envelope: envelope, items: take.words)
+    }
+
     public static func place(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope,
                              afterWordId: String) throws -> VoiceLabWindow {
         throw VoiceLabGeometryError.insertionUnsupported
