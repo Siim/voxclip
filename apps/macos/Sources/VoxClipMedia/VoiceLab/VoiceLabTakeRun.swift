@@ -48,6 +48,8 @@ public actor VoiceLabTakeRun {
     #if DEBUG
     private var executeHook: (@Sendable (String) async -> Void)?
     package func useExecuteHook(_ hook: @escaping @Sendable (String) async -> Void) { executeHook = hook }
+    /// The ID of the set `prepare(_:)` holds for `execute`, so tests can see a batch's rollback.
+    package var preparedSetID: UUID? { pending?.quote.id }
     #endif
     public init(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck,
                 storage: VoiceLabTakeStorage,
