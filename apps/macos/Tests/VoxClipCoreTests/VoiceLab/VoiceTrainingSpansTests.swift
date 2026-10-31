@@ -13,10 +13,13 @@ import Testing
         struct Span: Decodable { let startMs: Int; let endMs: Int; let snrDb: Double }
         struct Rejection: Decodable { let startMs: Int; let endMs: Int; let reason: String; let snrDb: Double? }
         struct Expected: Decodable {
-            let status: String; let availableMs: Int; let selectedMs: Int
+            let status: String; let availableMs: Int; let selectedMs: Int; let preferredMs: Int
             let selected: [Span]; let qualifying: [Span]; let rejected: [Rejection]
         }
-        struct Case: Decodable { let id: String; let duration: Double; let items: [Item]; let excluded: [[Double]]; let frames: [[Double]]; let expected: Expected }
+        struct Case: Decodable {
+            let id: String; let duration: Double; let items: [Item]; let excluded: [[Double]]; let preferRange: [Double]?
+            let frames: [[Double]]; let expected: Expected
+        }
         let schema: String
         let constants: Constants
         let cases: [Case]
@@ -32,7 +35,11 @@ import Testing
             spanMinMs: VoiceTrainingSpans.TRAIN_SPAN_MIN, spanMaxMs: VoiceTrainingSpans.TRAIN_SPAN_MAX, voicedDb: VoiceTrainingSpans.TRAIN_VOICED,
             minSnrDb: VoiceTrainingSpans.TRAIN_MIN_SNR, totalMinMs: VoiceTrainingSpans.TRAIN_TOTAL_MIN, totalMaxMs: VoiceTrainingSpans.TRAIN_TOTAL_MAX))
         #expect(vectors.cases.map(\.id) == ["happy-path", "low-confidence-split", "event-inside", "two-speakers", "synthetic-excluded", "low-snr-rejected",
-            "long-run-split-at-pauses", "unsplittable-run-and-30-second-span", "cap-120-seconds", "below-minimum", "snr-percentiles", "empty-transcript"])
+            "long-run-split-at-pauses", "unsplittable-run-and-30-second-span", "cap-120-seconds", "below-minimum", "snr-percentiles", "empty-transcript",
+            "prefer-fills-cap", "prefer-below-cap-filled-from-other", "prefer-partial-overlap", "prefer-no-qualifying-span", "prefer-ties-across-groups",
+            "prefer-below-minimum"])
+        // The original twelve cases have no preferRange: their selection is the unpreferred one.
+        #expect(vectors.cases.filter { $0.preferRange == nil }.count == 12)
     }
 
     @Test func everySharedCaseMatchesExactly() throws {
@@ -42,19 +49,43 @@ import Testing
                 try #require(pair.count == 2, Comment(rawValue: vector.id))
                 return VoiceTrainingRange(start: pair[0], end: pair[1])
             }
+            let preferRange = try vector.preferRange.map { pair in
+                try #require(pair.count == 2, Comment(rawValue: vector.id))
+                return VoiceTrainingRange(start: pair[0], end: pair[1])
+            }
             var frames: [Double] = []
             for pair in vector.frames { frames.append(contentsOf: repeatElement(pair[1], count: Int(pair[0]))) }
-            let result = try VoiceTrainingSpans.select(items: items, excluded: excluded, frameDb: frames, duration: vector.duration)
+            let result = try VoiceTrainingSpans.select(items: items, excluded: excluded, frameDb: frames, duration: vector.duration, preferRange: preferRange)
             let expected = vector.expected
             let comment = Comment(rawValue: vector.id)
             #expect(result.status.rawValue == expected.status, comment)
             #expect(result.availableMs == expected.availableMs, comment)
             #expect(result.selectedMs == expected.selectedMs, comment)
+            #expect(result.preferredMs == expected.preferredMs, comment)
             #expect(result.selected == expected.selected.map { VoiceTrainingSpan(startMs: $0.startMs, endMs: $0.endMs, snrDb: $0.snrDb) }, comment)
             #expect(result.qualifying == expected.qualifying.map { VoiceTrainingSpan(startMs: $0.startMs, endMs: $0.endMs, snrDb: $0.snrDb) }, comment)
             #expect(result.rejected.map(\.reason.rawValue) == expected.rejected.map(\.reason), comment)
             #expect(result.rejected.map { [$0.startMs, $0.endMs] } == expected.rejected.map { [$0.startMs, $0.endMs] }, comment)
             #expect(result.rejected.map(\.snrDb) == expected.rejected.map(\.snrDb), comment)
+        }
+    }
+
+    @Test func aRangeOverTheWholeTakeOrOutsideEverySpanPicksWhatNoRangePicks() throws {
+        for vector in try vectors().cases {
+            let items = vector.items.map { VoiceTrainingItem(kind: $0.kind, start: $0.start, end: $0.end, conf: $0.conf, speaker: $0.speaker, synthetic: $0.synthetic) }
+            let excluded = vector.excluded.map { VoiceTrainingRange(start: $0[0], end: $0[1]) }
+            var frames: [Double] = []
+            for pair in vector.frames { frames.append(contentsOf: repeatElement(pair[1], count: Int(pair[0]))) }
+            func select(_ range: VoiceTrainingRange?) throws -> VoiceTrainingSpanSelection {
+                try VoiceTrainingSpans.select(items: items, excluded: excluded, frameDb: frames, duration: vector.duration, preferRange: range)
+            }
+            let comment = Comment(rawValue: vector.id)
+            let plain = try select(nil)
+            var whole = try select(VoiceTrainingRange(start: 0, end: vector.duration))
+            #expect(whole.preferredMs == plain.selectedMs, comment)
+            whole.preferredMs = 0
+            #expect(whole == plain, comment)
+            #expect(try select(VoiceTrainingRange(start: vector.duration, end: vector.duration)) == plain, comment)
         }
     }
 
@@ -79,6 +110,13 @@ import Testing
             }
         }
         #expect(throws: Never.self) { try VoiceTrainingSpans.select(items: [word], excluded: [VoiceTrainingRange(start: 2, end: 2)], frameDb: [], duration: 0) }
+        let preferRanges = [VoiceTrainingRange(start: .nan, end: 2), VoiceTrainingRange(start: 1, end: .infinity), VoiceTrainingRange(start: -.infinity, end: 2),
+                            VoiceTrainingRange(start: 3, end: 2), VoiceTrainingRange(start: 1, end: 1e300)]
+        for (index, range) in preferRanges.enumerated() {
+            #expect(throws: VoiceLabError.invalidInput, Comment(rawValue: "preferRange \(index)")) {
+                try VoiceTrainingSpans.select(items: [word], excluded: [], frameDb: frames, duration: 10, preferRange: range)
+            }
+        }
     }
 
     @Test func projectInputsMarkEveryVoiceLabRangeAndKeepSourceTimes() throws {

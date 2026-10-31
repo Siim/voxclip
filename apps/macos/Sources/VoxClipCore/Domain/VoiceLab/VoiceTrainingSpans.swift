@@ -44,14 +44,17 @@ public struct VoiceTrainingSpanSelection: Sendable, Equatable {
     public var status: Status
     public var availableMs: Int
     public var selectedMs: Int
+    /// How much of `selectedMs` lies inside `preferRange`: each selected span's overlap with it, summed. 0 without one.
+    public var preferredMs: Int
     /// Source order.
     public var selected: [VoiceTrainingSpan]
     /// Source order, for tests and diagnostics.
     public var qualifying: [VoiceTrainingSpan]
     /// Source order, for tests and diagnostics.
     public var rejected: [VoiceTrainingRejection]
-    public init(status: Status, availableMs: Int, selectedMs: Int, selected: [VoiceTrainingSpan], qualifying: [VoiceTrainingSpan], rejected: [VoiceTrainingRejection]) {
-        self.status = status; self.availableMs = availableMs; self.selectedMs = selectedMs
+    public init(status: Status, availableMs: Int, selectedMs: Int, preferredMs: Int, selected: [VoiceTrainingSpan], qualifying: [VoiceTrainingSpan],
+                rejected: [VoiceTrainingRejection]) {
+        self.status = status; self.availableMs = availableMs; self.selectedMs = selectedMs; self.preferredMs = preferredMs
         self.selected = selected; self.qualifying = qualifying; self.rejected = rejected
     }
 }
@@ -72,14 +75,15 @@ public enum VoiceTrainingSpans {
     private enum Outcome { case kept(Int, Int), rejected(VoiceTrainingRejection) }
 
     /// Every time is first converted to whole milliseconds; everything after that is integer arithmetic, except the SNR.
-    /// A non-finite number, an excluded range ending before it starts or a negative duration is `invalidInput`.
-    public static func select(items: [VoiceTrainingItem], excluded: [VoiceTrainingRange], frameDb: [Double], duration: Double) throws -> VoiceTrainingSpanSelection {
+    /// `preferRange` is the source range the selection prefers, in seconds like `excluded` (Rewrite passes the scope clip's
+    /// range): the qualifying spans that overlap it are picked first. Nil leaves the selection unchanged.
+    /// A non-finite number, an excluded or preferred range ending before it starts or a negative duration is `invalidInput`.
+    public static func select(items: [VoiceTrainingItem], excluded: [VoiceTrainingRange], frameDb: [Double], duration: Double,
+                              preferRange: VoiceTrainingRange? = nil) throws -> VoiceTrainingSpanSelection {
         guard duration.isFinite, duration >= 0, frameDb.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidInput }
         let total = try ms(duration)
-        let ranges: [(start: Int, end: Int)] = try excluded.map { range in
-            guard range.start.isFinite, range.end.isFinite, range.end >= range.start else { throw VoiceLabError.invalidInput }
-            return (try ms(range.start), try ms(range.end))
-        }
+        let ranges: [(start: Int, end: Int)] = try excluded.map(milliseconds)
+        let prefer = try preferRange.map(milliseconds)
         // Steps 1 and 2: any item that is not a usable word ends the run; a speaker change, a gap over TRAIN_MAX_GAP or an
         // excluded range inside the gap starts a new one.
         var runs: [[Word]] = [], run: [Word] = [], runSpeaker: String?, runEnd = 0
@@ -146,11 +150,15 @@ public enum VoiceTrainingSpans {
         let spans = qualifying.map(\.span)
         let available = spans.reduce(0) { $0 + $1.durationMs }
         guard available >= TRAIN_TOTAL_MIN else {
-            return .init(status: .belowMinimum, availableMs: available, selectedMs: 0, selected: [], qualifying: spans, rejected: rejected.map(\.rejection))
+            return .init(status: .belowMinimum, availableMs: available, selectedMs: 0, preferredMs: 0, selected: [], qualifying: spans,
+                         rejected: rejected.map(\.rejection))
         }
-        // Steps 5 and 6: best SNR, then longest, then earliest; a span that would pass TRAIN_TOTAL_MAX is skipped.
+        // Steps 5 and 6: the spans overlapping preferRange, then the others; each group by best SNR, then longest, then earliest.
+        // A span that would pass TRAIN_TOTAL_MAX is skipped.
+        let preferred = spans.map { span in prefer.map { span.startMs < $0.end && span.endMs > $0.start } ?? false }
         let ranked = spans.indices.sorted { left, right in
             let a = spans[left], b = spans[right]
+            if preferred[left] != preferred[right] { return preferred[left] }
             if a.snrDb != b.snrDb { return a.snrDb > b.snrDb }
             if a.durationMs != b.durationMs { return a.durationMs > b.durationMs }
             return a.startMs == b.startMs ? left < right : a.startMs < b.startMs
@@ -159,7 +167,12 @@ public enum VoiceTrainingSpans {
         for index in ranked where selected + spans[index].durationMs <= TRAIN_TOTAL_MAX {
             chosen.append(index); selected += spans[index].durationMs
         }
-        return .init(status: .ok, availableMs: available, selectedMs: selected, selected: chosen.sorted().map { spans[$0] },
+        let picked = chosen.sorted().map { spans[$0] }
+        var preferredMs = 0
+        if let prefer {
+            for span in picked { preferredMs += max(0, min(span.endMs, prefer.end) - max(span.startMs, prefer.start)) }
+        }
+        return .init(status: .ok, availableMs: available, selectedMs: selected, preferredMs: preferredMs, selected: picked,
                      qualifying: spans, rejected: rejected.map(\.rejection))
     }
 
@@ -179,6 +192,11 @@ public enum VoiceTrainingSpans {
             VoiceTrainingItem(kind: word.kind, start: word.start, end: word.end, conf: word.conf, speaker: word.speaker, synthetic: synthetic[position])
         }
         return (items, project.voiceLab.segments.map { VoiceTrainingRange(start: $0.replace.start, end: $0.replace.end) })
+    }
+
+    private static func milliseconds(_ range: VoiceTrainingRange) throws -> (start: Int, end: Int) {
+        guard range.start.isFinite, range.end.isFinite, range.end >= range.start else { throw VoiceLabError.invalidInput }
+        return (try ms(range.start), try ms(range.end))
     }
 
     /// `ms(t) = floor(t × 1000 + 0.5)` in binary64. A time beyond ±2^53 ms cannot be held exactly and is refused.
