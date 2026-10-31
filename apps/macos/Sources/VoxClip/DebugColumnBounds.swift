@@ -18,6 +18,8 @@ import VoxClipCore
         let column: CGRect
         let content: CGRect
         let collapsed: Bool
+        /// The right column is shown over the editor below 904 (impl-plan §3.5), and is checked there.
+        var overlay = false
         let elements: [Element]
         let scrollAreas: [CGRect]
         let scrolled: [Element]
@@ -62,13 +64,16 @@ import VoxClipCore
             guard failures.isEmpty else { throw VoxClipError.exportFailed("Right-column bounds failed in \(name): \(failures.joined(separator: "; "))") }
             return
         }
-        let column = screenFrame(right, window: editorWindow)
-        let collapsed = split.isSubviewCollapsed(right)
+        // Below 904 the collapsed column may show over the editor: its bounds are checked there.
+        let overlay = split.isSubviewCollapsed(right) ? DebugShell.view("voxclip.shell.rightOverlay", in: contentView).flatMap { $0.isHiddenOrHasHiddenAncestor ? nil : $0 } : nil
+        let shown = overlay ?? right
+        let column = screenFrame(shown, window: editorWindow)
+        let collapsed = overlay == nil && split.isSubviewCollapsed(right)
         var failures: [String] = []
         var elements: [Element] = []
         var unmeasured: [String] = []
         var scrolled: [Element] = []
-        let scrollAreas = collapsed ? [] : DebugRightColumn.scrollViews(in: right).map { screenFrame($0, window: editorWindow) }
+        let scrollAreas = collapsed ? [] : DebugRightColumn.scrollViews(in: shown).map { screenFrame($0, window: editorWindow) }
         for viewport in scrollAreas {
             if !column.insetBy(dx: -0.5, dy: -0.5).contains(viewport) { failures.append("Scroll viewport leaves column: \(viewport)") }
             if !content.insetBy(dx: -0.5, dy: -0.5).contains(viewport) { failures.append("Scroll viewport leaves window: \(viewport)") }
@@ -155,10 +160,19 @@ import VoxClipCore
                 if elements.filter({ $0.role == kAXDisclosureTriangleRole }).count != 1 { failures.append("Captions must have exactly one disclosure control") }
             }
         }
-        let evidence = Evidence(editor: true, column: column, content: content, collapsed: collapsed, elements: elements, scrollAreas: scrollAreas, scrolled: scrolled,
-            unmeasured: unmeasured, failures: failures, markers: DebugRightColumn.markers(in: right))
+        let evidence = Evidence(editor: true, column: column, content: content, collapsed: collapsed, overlay: overlay != nil, elements: elements, scrollAreas: scrollAreas, scrolled: scrolled,
+            unmeasured: unmeasured, failures: failures, markers: DebugRightColumn.markers(in: shown))
         try JSONEncoder().encode(evidence).write(to: directory.appendingPathComponent("\(name)-bounds.json"), options: .atomic)
         guard failures.isEmpty else { throw VoxClipError.exportFailed("Right-column bounds failed in \(name): \(failures.joined(separator: "; "))") }
+    }
+    /// Every measurable accessibility element of this process whose frame lies in
+    /// `window`, in screen points from the top-left like `screenFrame`.
+    static func elements(in window: NSWindow) -> [Element] {
+        guard let content = window.contentView else { return [] }
+        let bounds = screenFrame(content, window: window).insetBy(dx: -1, dy: -1)
+        let application = AXUIElementCreateApplication(getpid())
+        let windows = attribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []
+        return windows.flatMap { descendants($0, depth: 0) }.compactMap(element).filter { bounds.contains($0.frame) && $0.frame.width > 0 && $0.frame.height > 0 }
     }
     private static func containsTranscript(_ view: NSView) -> Bool {
         view is TranscriptNSTextView || view.subviews.contains { containsTranscript($0) }
