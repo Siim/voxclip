@@ -302,6 +302,9 @@ import VoxClipCore
         check("a Rewrite session survives a tab switch, hidden on the other tab with its words unmarked",
               session.isOpen && editor.openRewrite === session && editor.rewrite == nil && editor.rewriteRange == nil && editor.displayTimeline.rewrite == nil)
         check("on another tab the session stays current and its tab keeps the dot", session.current && bar.items[.clip(kept[0])]?.showsDot == true)
+        // With no words selected the transcript's Escape leaves the clip (no selection bar to dismiss first).
+        editor.selectedWordIDs = []
+        editor.selectedPauseIDs = []
         let escape = String(UnicodeScalar(UInt8(27)))
         if focusTranscript(in: window), let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
                                                                  context: nil, characters: escape, charactersIgnoringModifiers: escape, isARepeat: false, keyCode: 53) {
