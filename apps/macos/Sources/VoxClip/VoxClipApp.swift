@@ -229,6 +229,7 @@ import VoxClipCore
         case 13: shell.selection = .home; return
         case 14: if shell.document != nil { shell.selection = .fullTake }; return
         case 16: shell.toggleSidebar(); return
+        case 50: if validateMenuItem(item) { shell.toggleTimeline() }; return
         // Help works on Home and with no project open; both sheets belong to the main window.
         case 35: MainWindowController.shared.show(); shell.showShortcuts = true; return
         case 36: MainWindowController.shared.show(); model.showTour = true; return
@@ -340,6 +341,11 @@ import VoxClipCore
             case 16:
                 item.title = model.shell.sidebarShown ? "Hide Sidebar" : "Show Sidebar"
                 return mainWindowIsKey
+            case 50:
+                // While the right column is hidden the timeline carries play and the timecode, so it stays (WorkspaceShell.toggleTimeline).
+                let shell = model.shell
+                item.title = shell.layout.timelineVisible ? "Hide Timeline" : "Show Timeline"
+                return mainWindowIsKey && shell.editor != nil && !shell.showsHome && (shell.layout.rightVisible || !shell.layout.timelineVisible)
             case 35, 36: return true
             default: break
             }
@@ -470,6 +476,7 @@ import VoxClipCore
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")
         command(view, "Hide Sidebar", 16, "s", [.command, .control])
+        command(view, "Hide Timeline", 50, "j")
         command(view, "Source / Edited Timeline", 17)
         command(view, "Bigger Text", 18, "+")
         command(view, "Smaller Text", 19, "-")

@@ -1787,6 +1787,7 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Home / Full take | ⌘1 / ⌘2 | Ctrl+1 / Ctrl+2 (Alt+Left also selects Home) | Replaces "Inspector tabs" |
 | Show / hide viewer | ⌥⌘I | Ctrl+Shift+I | Replaces "Toggle inspector" |
 | Show / hide sidebar | ⌃⌘S | — (TitleBar pane toggle) | |
+| Show / hide timeline | ⌘J | Ctrl+J (planned) | The v2 bottom panel. It stays while the right column is hidden, until the viewer has its hover transport |
 | Selection bar focus | Tab or ⌃F6 | Shift+F10 or Menu key | |
 | Move focus to the next pane | ⌃F6 | F6 (Shift+F6 goes back) | Order in §15 |
 | Transcript text bigger / smaller / reset | ⌘+ / ⌘− / ⌘0 | Ctrl+= / Ctrl+− / Ctrl+0 | |

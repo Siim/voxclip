@@ -54,7 +54,7 @@ import VoxClipCore
             ("Clip", "Dismiss Suggestion", String(UnicodeScalar(NSDeleteCharacter)!), []),
             ("Clip", "Rename Clip…", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),
             ("Clip", "Remove Clip", String(UnicodeScalar(NSDeleteCharacter)!), []),
-            ("View", "Bigger Text", "+", .command), ("View", "Smaller Text", "-", .command), ("View", "Actual Size", "0", .command),
+            ("View", "Hide Timeline", "j", .command), ("View", "Bigger Text", "+", .command), ("View", "Smaller Text", "-", .command), ("View", "Actual Size", "0", .command),
             ("VoxClip", "Settings…", ",", .command)
         ]
         for (menu, title, key, modifiers) in bindings {
