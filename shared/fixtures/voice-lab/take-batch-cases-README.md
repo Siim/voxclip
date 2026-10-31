@@ -1,0 +1,25 @@
+# Take batch cases
+
+`take-batch-cases.json` pins how a Rewrite's voice phrases are paid for together: voice-lab.md §8.6 with several hunks (design delta §13.2), the bounded runs of §2.6 and the presentation and monthly cap of §3.1, as design delta §6 T1 uses them. The Mac suite `apps/macos/Tests/VoxClipCoreTests/VoiceLab/VoiceLabTakeBatchTests.swift` replays every case through `VoiceLabTakeBatch` and `VoiceLabTakeBatchProgress`. Only the Mac replays this file for now; the Windows twin (`VoiceLabTakeBatch.cs`) is plan package W3.
+
+Regenerate only with `python3 tools/fixtures/voice-lab/generate_take_batch.py` and review the diff as a behaviour change. The generator uses only the Python standard library, computes every expected value with its own reference of the rules below, and gives identical bytes on every run. `check_drift.py` requires these bytes to match exactly. Expected values are never edited by hand.
+
+## Inputs
+
+Each case lists windows in the order given to the batch. A window has the four fields every window of one batch must share (`recordId`, `language`, `modelId`, `contentKey`), its source range in samples at `sampleRate` (24 kHz), and `takes` take quotes. Every take holds the same two quotes: the TTS quote `synthesis` and the Scribe QA quote `qa`, each with `usd` (a decimal string, or null when the price is unknown) and `credits` (or null).
+
+The amounts are the catalog list prices in `shared/catalog/voice-lab.json` at generation time: TTS bills the window's `characters` once per take on `modelId`, and every QA quote is the bounded 290 s of `scribe_v2`. `eleven_unlisted` has no catalog entry, so its TTS price is unknown. The suite builds quotes with exactly these amounts and never reads the catalog.
+
+## Rules
+
+- **Shape.** A batch holds 1 to `maximumWindows` windows. `ElevenLabsVoiceLab` holds at most 32 outstanding quotes (§2.6) and a window holds a TTS and a QA quote for each of `candidates` takes, so 5 is the most one client can hold before preparing another window would evict the first window's quotes. The windows share one voice record, language, model and source, and are in source order with a gap between them: `endSample` of one window is below `startSample` of the next. Windows that touch are refused, because placeAll (§8.4) merges them into one. Each refusal is `{"error": "invalidInput"}`. The suite also checks that a repeated run, quote or request ID is refused, which the file cannot express.
+- **Estimate.** The sum of every take's TTS and QA quote, `units` = the number of takes, `unit` "take" and basis `bounded-tts-and-scribe`. When any quote's price is unknown, `usd` is null and basis is `unknown`; `credits` is null when any quote's credits are (Scribe has none, so a batch's credits are always null).
+- **Presentation.** One `kind` for the whole batch, with the case's monthly `cap` (`limit`, `spent`) when present: §3.1 for a take batch, which is never lip sync and never free. Three windows that are each inline alone (`three-windows-crossing-limit`) confirm together.
+- **Run.** The windows run one at a time in source order. Each `run` step reports how one window ended (`end`, a `VoiceLabTakeRunEnd`) and, per take in order, which of its requests the provider accepted: `"both"` (TTS and QA), `"synthesis"` (TTS only: the take failed before QA, such as the speaker check), or `"none"` (the provider refused it, such as a 500, so nothing was recorded). Takes after the list sent nothing. A window that is `completed` or `earlyStop` discards its own unsent quotes and hands over to the next window; the last window ends the batch. A `fatal`, `cancelled` or `invalidated` window ends the batch and discards every later window's quotes too.
+- **After each step.** `next` is the window that runs next (null once the batch is over). `sent` is the estimate of the accepted requests, one unit per take with an accepted TTS: exactly what the spend ledger recorded, and the "Made {t} takes · ≈ ${x}" line. `remaining` is the estimate of the approved requests neither sent nor discarded, which a cap check before a later dispatch weighs instead of the whole batch. `discarded` lists `[window, take, part]` for every request that will never be sent, in run order. A step for a window other than `next`, or with more takes than the window has, is `{"error": "invalidInput"}` and changes nothing.
+
+## Cases
+
+The plan's four cases are `three-windows-inline` (three windows under $0.50), `three-windows-crossing-limit` (a batch crossing $0.50 confirms), `three-windows-crossing-cap` (a batch crossing the cap) and `early-stop-on-window-2`. The others pin the boundaries: just below the limit, reaching the cap exactly, a month already past the cap, crossing both, an unknown price, a single-window batch (Try Another), five windows and six, overlapping, touching and unordered windows, mixed voice record, language, model and source, a refused request, and fatal, cancelled and invalidated ends.
+
+These vectors are synthetic and offline. They do not claim live-provider behaviour.
