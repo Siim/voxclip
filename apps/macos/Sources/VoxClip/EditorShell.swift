@@ -460,7 +460,7 @@ struct EditorShellState: Equatable {
     private(set) var editorWork: EditorWorkController?
     /// Home's title row and Home, while Home shows.
     private var homeBand: ShellBand?
-    private let homeSearch = HomeSearchField()
+    let homeSearch = HomeSearchField()
     /// Shows and hides the Explorer: in its header while it shows, else at the start of the work area's title row.
     let explorerToggle = ShellIconButton(symbol: "sidebar.left", identifier: "voxclip.shell.toggleExplorer")
 
@@ -512,6 +512,8 @@ struct EditorShellState: Equatable {
         homeSearch.font = VCType.callout.nsFont()
         homeSearch.sendsSearchStringImmediately = true
         homeSearch.delegate = self
+        homeSearch.target = self
+        homeSearch.action = #selector(homeSearchChanged(_:))
         homeSearch.setAccessibilityIdentifier("voxclip.home.search")
     }
 
@@ -604,9 +606,15 @@ struct EditorShellState: Equatable {
         content.divider.setPosition(CGFloat(shell.layout.explorerWidth), ofDividerAt: 0)
     }
 
+    /// Typing posts a text change at once and sends the action a moment later; the cancel
+    /// button and Escape clear the field and send only the action.
     func controlTextDidChange(_ notification: Notification) {
         guard (notification.object as? NSSearchField) === homeSearch else { return }
-        shell.homeQuery = homeSearch.stringValue
+        followHomeSearch()
+    }
+    @objc private func homeSearchChanged(_ sender: NSSearchField) { followHomeSearch() }
+    private func followHomeSearch() {
+        if shell.homeQuery != homeSearch.stringValue { shell.homeQuery = homeSearch.stringValue }
     }
 
 }
