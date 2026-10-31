@@ -10,7 +10,8 @@
             <SolidColorBrush x:Key="VcBgInputBrush" Color="#212225" />
             <SolidColorBrush x:Key="VcBgSelectedRowBrush" Color="#2B2C30" />
             <SolidColorBrush x:Key="VcLineDefaultBrush" Color="#28292D" />
-            <SolidColorBrush x:Key="VcLineStrongBrush" Color="#34353A" />
+            <SolidColorBrush x:Key="VcLineStrongBrush" Color="#6C6E75" />
+            <SolidColorBrush x:Key="VcLineEdgeBrush" Color="#34353A" />
             <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="#ECECEA" />
             <SolidColorBrush x:Key="VcTextSecondaryBrush" Color="#A4A6AB" />
             <SolidColorBrush x:Key="VcTextMutedBrush" Color="#9C9EA4" />
@@ -100,6 +101,7 @@
             <SolidColorBrush x:Key="VcBgSelectedRowBrush" Color="#E3E1DB" />
             <SolidColorBrush x:Key="VcLineDefaultBrush" Color="#E3E1DB" />
             <SolidColorBrush x:Key="VcLineStrongBrush" Color="#85878E" />
+            <SolidColorBrush x:Key="VcLineEdgeBrush" Color="#85878E" />
             <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="#1A1B1F" />
             <SolidColorBrush x:Key="VcTextSecondaryBrush" Color="#575A61" />
             <SolidColorBrush x:Key="VcTextMutedBrush" Color="#5E6168" />
@@ -189,6 +191,7 @@
             <SolidColorBrush x:Key="VcBgSelectedRowBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcLineDefaultBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcLineStrongBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcLineEdgeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcTextSecondaryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcTextMutedBrush" Color="{ThemeResource SystemColorWindowTextColor}" />

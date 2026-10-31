@@ -71,10 +71,11 @@ A pair may name a token at an opacity, `ai.tint@0.16`.
 A few v2 colours stay under their minimum on purpose (impl-plan item 6). A
 recorded `exception` pair (the gutter timecodes) must still reach 3:1 and says
 why in its label. `belowMinimum` lists the decorative or repeated ones
-(`line.strong`, `text.disabled`, `gutter.textOut`, `fold.dot`) with a reason;
+(`line.edge`, `text.disabled`, `gutter.textOut`, `fold.dot`) with a reason;
 their default appearance is not measured. Every such colour carries an
 `increaseContrast` value, and `increaseContrastPairs` measure it at the full
-minimum.
+minimum. Reduce Transparency alone keeps the default appearance, so a pair that
+must hold under it (the opaque `line.strong` edges) is a default pair.
 
 `npm test` fails on any pair below its minimum, on a colour token that no pair
 checks and that is not listed as exempt with a reason, on a colour below its

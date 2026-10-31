@@ -35,8 +35,9 @@ test('the ADR-R29 badge, selection and boundary pairs are checked in both modes'
     ['text', 'text.secondary', 'clip.badgeBackground over bg.sunken', 'default'],
     ['text', 'text.secondary', 'clip.badgeBackground over glass.sidebar over bg.surface', 'default'],
     ['text', 'text.primary', 'selection.transcript', 'default'],
-    // v2 keeps line.strong quiet; Increase Contrast restores the 3:1 boundary.
-    ['ui', 'line.strong', 'bg.sunken', 'increaseContrast'],
+    // line.strong is the 3:1 boundary in every appearance; the quiet v2 line2 is line.edge, raised under Increase Contrast.
+    ['ui', 'line.strong', 'bg.sunken', 'default'],
+    ['ui', 'line.edge', 'bg.sunken', 'increaseContrast'],
   ];
   for (const mode of ['light', 'dark']) {
     for (const [category, foreground, background, appearance] of required) {
@@ -79,7 +80,7 @@ test('the v2 palette (notes.md section 3) is the dark appearance, with the item 
   const v2 = {
     'bg.window': '#17181A', 'bg.sunken': '#17181A', 'bg.surface': '#1C1D20', 'bg.input': '#212225', 'bg.selectedRow': '#2B2C30',
     'editor.band': '#222327', 'timeline.lane': '#111214', 'timeline.rulerOut': '#131416', 'timeline.piece': '#2E3035', 'timeline.seam': '#0B0C0D',
-    'line.default': '#28292D', 'line.strong': '#34353A',
+    'line.default': '#28292D', 'line.edge': '#34353A',
     'text.primary': '#ECECEA', 'text.secondary': '#A4A6AB', 'text.disabled': '#4E5056',
     'word.text': '#DCDCD9', 'gutter.text': '#6A6D73', 'gutter.textOut': '#55585E', 'fold.dot': '#5B5E64', 'clip.label': '#C9CAC6',
     'tint.default': '#F26B3A', 'tint.on': '#1A0F0A', 'tint.selection': '#F26B3A29', 'tint.wash': '#F26B3A12',
@@ -140,6 +141,30 @@ test('colours below a minimum are recorded with a reason and meet it under Incre
   changed.color.gutter.text.$extensions['com.voxconvo.voxclip'].increaseContrast.dark = '#55585E';
   const failing = contrastRows(changed, xaml).filter(row => !row.passed).map(row => `${row.mode} ${row.appearance} ${row.foreground} on ${row.background}`);
   assert.deepEqual(failing, ['dark increaseContrast gutter.text on editor.band', 'dark increaseContrast gutter.text on bg.surface']);
+});
+
+test('line.strong stays the 3:1 boundary in the default appearance, which Reduce Transparency keeps', () => {
+  // Clip rules and brackets, suggestion outlines, drop zones and the opaque edges under Reduce
+  // Transparency all draw line.strong; Reduce Transparency alone is not an Increase Contrast appearance.
+  assert.equal(belowMinimum['line.strong'], undefined);
+  assert.equal(token('line.strong').$extensions['com.voxconvo.voxclip'].increaseContrast, undefined);
+  assert.deepEqual(token('line.strong').$value, { dark: '#6C6E75', light: '#85878E' });
+  assert.notEqual(value('line.edge', 'dark'), value('line.strong', 'dark'));
+  const rows = contrastRows(source, xaml).filter(row => row.platform === 'tokens');
+  for (const mode of ['light', 'dark']) {
+    for (const background of ['bg.surface', 'bg.sunken', 'bg.window', 'overlay.transportOpaque over stage']) {
+      const row = rows.find(candidate => candidate.mode === mode && candidate.appearance === 'default' && candidate.foreground === 'line.strong' && candidate.background === background);
+      assert.ok(row?.category === 'ui' && row.passed, `${mode} line.strong on ${background}`);
+    }
+  }
+  const transparency = rows.filter(row => /transparency/i.test(row.label));
+  assert.ok(transparency.some(row => row.foreground === 'line.strong'));
+  for (const row of transparency) assert.equal(row.appearance, 'default', `${row.mode} ${row.foreground} on ${row.background} (${row.label})`);
+  // The gate catches the regression: the quiet line2 value as line.strong fails its boundary pairs.
+  const quiet = structuredClone(source);
+  quiet.color.line.strong.$value.dark = value('line.edge', 'dark');
+  const failing = contrastRows(quiet, xaml).filter(row => !row.passed).map(row => `${row.mode} ${row.appearance} ${row.foreground} on ${row.background}`);
+  assert.deepEqual(failing, ['bg.surface', 'bg.sunken', 'bg.window', 'overlay.transportOpaque over stage'].map(background => `dark default line.strong on ${background}`));
 });
 
 test('a token with an opacity is composited at that fraction of its alpha', () => {

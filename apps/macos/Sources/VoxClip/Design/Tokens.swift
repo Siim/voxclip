@@ -54,6 +54,12 @@ extension Color {
     })
 
     static let vcLineStrong = Color(nsColor: NSColor(name: NSColor.Name("vcLineStrong")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 108.0 / 255, green: 110.0 / 255, blue: 117.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 133.0 / 255, green: 135.0 / 255, blue: 142.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcLineEdge = Color(nsColor: NSColor(name: NSColor.Name("vcLineEdge")) { appearance in
         switch appearance.bestMatch(from: [.darkAqua, .aqua, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastAqua]) ?? .aqua {
         case .accessibilityHighContrastDarkAqua: NSColor(srgbRed: 108.0 / 255, green: 110.0 / 255, blue: 117.0 / 255, alpha: 255.0 / 255)
         case .accessibilityHighContrastAqua: NSColor(srgbRed: 133.0 / 255, green: 135.0 / 255, blue: 142.0 / 255, alpha: 255.0 / 255)

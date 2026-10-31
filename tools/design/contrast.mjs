@@ -42,6 +42,10 @@ const tokenPairs = [
   ['accent', 'word.playingForeground', 'word.playingBackground'],
   ['accent', '#FFFFFF', 'accent.default', 'macOS system glyph on the AccentColor asset'],
   ...['focus.ring', 'accent.text', 'accent.default'].flatMap(foreground => ['bg.surface', 'bg.sunken', 'bg.window'].map(background => ['ui', foreground, background])),
+  // line.strong is the 3:1 boundary in the default appearance: Reduce Transparency alone keeps
+  // the default appearance, so the opaque selection bar, sidebar and transport pill edges rely on it.
+  ...['bg.surface', 'bg.sunken', 'bg.window'].map(background => ['ui', 'line.strong', background, 'clip rules and brackets, suggestion outlines and opaque edges under Reduce Transparency']),
+  ['ui', 'line.strong', ['overlay.transportOpaque', 'stage'], 'transport pill border under Reduce Transparency'],
   ['ui', 'accent.text', 'bg.elevated'],
   ['ui', 'focus.ring', 'bg.elevated'],
   ...['timeline.kept', 'cut.fill', 'cut.pauseFill', 'timeline.playhead', 'timeline.clipBracket'].map(foreground => ['ui', foreground, 'timeline.track']),
@@ -96,17 +100,18 @@ const tokenPairs = [
 // Colours kept below their minimum on purpose (impl-plan item 6), with the reason. Their
 // default appearance is not measured; increaseContrastPairs measure their Increase Contrast value.
 export const belowMinimum = {
-  'line.strong': 'v2 line2: input outlines and the timeline top edge; an input is identified by its bg.input fill and label',
+  'line.edge': 'v2 line2: input outlines and the timeline top edge; an input is identified by its bg.input fill and label, the edge by the panel under it',
   'text.disabled': 'v2 t4: disabled labels, keyboard hints and leading zero groups, which repeat a menu shortcut or a value read in full',
   'gutter.textOut': 'decorative: the paragraph time outside the open clip, which VoiceOver reads from the paragraph',
   'fold.dot': 'decorative: the fold reads "1 cut: uh, pause 1.4 seconds" and the Cuts rotor lands on it',
 };
 
 // Pairs measured with each colour's increaseContrast value where it has one (macOS Increase
-// Contrast). Every colour with an increaseContrast value must appear here, at its full minimum.
+// Contrast, the accessibilityHighContrast appearances). Every colour with an increaseContrast value
+// must appear here, at its full minimum. Reduce Transparency alone keeps the default appearance, so
+// a pair that must hold under it belongs in tokenPairs.
 const increaseContrastPairs = [
-  ...['bg.surface', 'bg.sunken', 'bg.window'].map(background => ['ui', 'line.strong', background]),
-  ['ui', 'line.strong', ['overlay.transportOpaque', 'stage'], 'transport pill border under Reduce Transparency'],
+  ...['bg.surface', 'bg.sunken', 'bg.window', 'bg.input'].map(background => ['ui', 'line.edge', background]),
   ['text', 'text.disabled', 'bg.window', 'keyboard hints and disabled labels'],
   ...['editor.band', 'bg.surface'].map(background => ['text', 'gutter.text', background]),
   ['text', 'gutter.textOut', 'bg.surface'],

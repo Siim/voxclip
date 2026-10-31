@@ -18,6 +18,24 @@ import Testing
         return result
     }
 
+    /// The WCAG 2.x contrast of two token colours as AppKit draws them in a named appearance.
+    private func contrast(_ foreground: NSColor, _ background: NSColor, in name: NSAppearance.Name) throws -> Double {
+        let appearance = try #require(NSAppearance(named: name))
+        var ratio = 0.0
+        appearance.performAsCurrentDrawingAppearance {
+            let luminances = [foreground, background].map { color -> Double in
+                guard let rgb = color.usingColorSpace(.sRGB) else { return 0 }
+                let linear = [rgb.redComponent, rgb.greenComponent, rgb.blueComponent].map { component -> Double in
+                    let value = Double(component)
+                    return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+                }
+                return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+            }.sorted(by: >)
+            ratio = (luminances[0] + 0.05) / (luminances[1] + 0.05)
+        }
+        return ratio
+    }
+
     @Test func typeScaleUsesOnlyTheNativeTextStyleSizes() {
         #expect(VCType.allCases.map(\.size) == [15, 13, 12, 11, 10, 9])
         #expect(VCType.title3.size == NSFont.preferredFont(forTextStyle: .title3, options: [:]).pointSize)
@@ -56,7 +74,7 @@ import Testing
         // which exist for bestMatch(from:), so the resolver behind every dynamic token colour is checked directly.
         #expect(TokenColorModes.appearances == [.darkAqua, .aqua, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastAqua])
         let raised = [("gutter.text", "#6A6D73", "#878A90"), ("gutter.textOut", "#55585E", "#878A90"), ("fold.dot", "#5B5E64", "#707379"),
-                      ("line.strong", "#34353A", "#6C6E75"), ("text.disabled", "#4E5056", "#82858B")]
+                      ("line.edge", "#34353A", "#6C6E75"), ("text.disabled", "#4E5056", "#82858B")]
         for (path, normal, increased) in raised {
             let modes = try #require(DesignValues.colorModes(path), "\(path)")
             #expect(hex(modes.resolve(.darkAqua)) == normal && hex(modes.resolve(.accessibilityHighContrastDarkAqua)) == increased, "\(path)")
@@ -65,10 +83,24 @@ import Testing
         #expect(hex(DesignValues.colorModes("gutter.text")?.resolve(.accessibilityHighContrastAqua)) == "#66696F")
         #expect(hex(DesignValues.colorModes("gutter.text")?.resolve(nil)) == "#7E8187")
         // Colours without an increaseContrast value keep their own value under Increase Contrast.
-        for path in ["text.primary", "bg.surface", "tint.default"] {
+        for path in ["text.primary", "bg.surface", "tint.default", "line.strong"] {
             let modes = try #require(DesignValues.colorModes(path), "\(path)")
             #expect(hex(modes.resolve(.accessibilityHighContrastDarkAqua)) == hex(modes.resolve(.darkAqua)), "\(path)")
             #expect(hex(modes.resolve(.accessibilityHighContrastAqua)) == hex(modes.resolve(.aqua)), "\(path)")
         }
+    }
+
+    @Test func lineStrongReadsThreeToOneWithoutIncreaseContrast() throws {
+        // Reduce Transparency alone keeps darkAqua or aqua. The opaque selection bar, the sidebar overlay
+        // and the transport pill then draw a line.strong edge, and clip rules and suggestion outlines always do.
+        for name in [NSAppearance.Name.darkAqua, .aqua] {
+            for surface in ["bg.surface", "bg.sunken", "bg.window"] {
+                let ratio = try contrast(DesignValues.nsColor("line.strong"), DesignValues.nsColor(surface), in: name)
+                #expect(ratio >= 3, "\(name.rawValue) line.strong on \(surface): \(ratio)")
+            }
+        }
+        // The quiet v2 line2 is its own token, for input outlines and the timeline's top edge only.
+        #expect(try hex(DesignValues.nsColor("line.strong"), in: .darkAqua) == "#6C6E75")
+        #expect(try hex(DesignValues.nsColor("line.edge"), in: .darkAqua) == "#34353A")
     }
 }
