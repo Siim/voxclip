@@ -3,9 +3,9 @@ import VoxClipCore
 
 /// A Rewrite's voice windows, each with its own `VoiceLabTakeRun`, prepared and approved as one `VoiceLabTakeBatch`;
 /// voice-lab §8.6 with several hunks and design delta §6 T1. After `approve(_:)` the caller runs the windows one after
-/// another in source order, each with its run's `execute(_:approved:progress:started:)`, advances a
-/// `VoiceLabTakeBatchProgress` from each result, and calls `discard(from:)` when the progress ends before the last window or
-/// the user stops. Each run keeps its own window's takes, so a later window never retires an earlier window's takes.
+/// another in source order with `execute(_:window:progress:started:)`, which discards the rest of the batch itself when a
+/// window ends it, and advances a `VoiceLabTakeBatchProgress` from each result. Stop calls `discard(from:)` with the
+/// running window. Each run keeps its own window's takes, so a later window never retires an earlier window's takes.
 public struct VoiceLabTakeBatchRun: Sendable {
     /// One run per window, in source order.
     public let runs: [VoiceLabTakeRun]
@@ -44,8 +44,31 @@ public struct VoiceLabTakeBatchRun: Sendable {
         }
     }
 
-    /// Discards the unsent sets of the windows from `index` on and keeps the takes they already made: after a fatal,
-    /// cancelled or invalidated window, and on Stop, which also cancels the window that is running.
+    /// Runs window `index` of the approved `batch` with its run's `execute(_:approved:progress:started:)`, under the batch's
+    /// one approval. When the window ends the batch (`fatal`, `cancelled` or `invalidated`) or its launch throws, this
+    /// window's set and every later window's are discarded before this returns, so nothing more can be sent under the
+    /// approval (§8.6: an early end discards the whole unsent remainder; a new run needs a new approval). A window that
+    /// completes or stops early leaves the later windows approved. A batch that is not this run's is `consentRequired`.
+    public func execute(_ batch: VoiceLabTakeBatch, window index: Int,
+                        progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in },
+                        started: @escaping @Sendable () async throws -> Void = {}) async throws -> VoiceLabTakeRunResult {
+        guard batch.windows.count == runs.count, runs.indices.contains(index) else { throw VoiceLabError.consentRequired }
+        let result: VoiceLabTakeRunResult
+        do {
+            result = try await runs[index].execute(batch.windows[index].quote, approved: true, progress: progress, started: started)
+        } catch {
+            await discard(from: index)
+            throw error
+        }
+        switch result.end {
+        case .completed, .earlyStop: break
+        case .cancelled, .invalidated, .fatal: await discard(from: index)
+        }
+        return result
+    }
+
+    /// Discards the unsent sets of the windows from `index` on and keeps the takes they already made: on Stop, which also
+    /// cancels the window that is running, and when a window ends the batch.
     public func discard(from index: Int) async {
         for run in runs.dropFirst(max(0, index)) { await run.cancel(keepingTakes: true) }
     }

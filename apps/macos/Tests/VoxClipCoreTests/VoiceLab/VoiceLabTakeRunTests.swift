@@ -656,6 +656,31 @@ struct VoiceLabTakeRunTests {
         #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == 0)
     }
+    /// A window that ends the batch, with a fatal end or a launch that throws, discards its own set and every later
+    /// window's before `execute` returns: nothing more is sent under the batch's approval, even straight through a run.
+    @Test(arguments: [false, true]) func aWindowThatEndsTheBatchDiscardsTheRest(launchFails: Bool) async throws {
+        let fixture = try await fixture { $0.firstStatus = launchFails ? 200 : 401 }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let runs = VoiceLabTakeBatchRun(runs: [fixture.run, fixture.later])
+        let batch = try await runs.prepare([fixture.input, fixture.laterInput])
+        try await runs.approve(batch)
+        var progress = VoiceLabTakeBatchProgress(batch: batch)
+        if launchFails {
+            await #expect(throws: CancellationError.self) { try await runs.execute(batch, window: 0, started: { throw CancellationError() }) }
+            try progress.finish(window: 0, sent: [], end: .cancelled)
+        } else {
+            let first = try await runs.execute(batch, window: 0)
+            #expect(first.end == .fatal && first.rows.count == 1 && first.rows[0].acceptedRequestIDs.isEmpty)
+            try progress.finish(window: 0, result: first)
+        }
+        #expect(progress.window == nil && progress.sent.isEmpty)
+        // Later windows first, straight through each run, so no refusal here can discard what the batch left behind.
+        for (run, window) in zip(runs.runs, batch.windows).reversed() {
+            await #expect(throws: VoiceLabError.consentRequired) { try await run.execute(window.quote, approved: true) }
+        }
+        #expect(fixture.http.value.withLock { $0.seeds == (launchFails ? [] : [UInt32.max]) && $0.qa == 0 })
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == 0)
+    }
     @Test func aRunPinsOnlyItsOwnFreshSetAndOnlyOnce() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)
