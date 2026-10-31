@@ -18,12 +18,21 @@ namespace VoxClip.App.Services
     {
         private readonly string sharedDirectory = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR") ?? "shared";
 
+#if BOUNDARY_GENERATEDTAG
+        /// <summary>A XAML compiler tag on a type that has no obj/ XAML output proves nothing.</summary>
+        [System.CodeDom.Compiler.GeneratedCode("Microsoft.UI.Xaml.Markup.Compiler", "1")]
+        internal static Func<string, string>? XamlNamedOverride = null;
+#endif
+
         public async Task<string> RenderAsync(string passage, CancellationToken ct)
         {
             await Task.Yield();
             ct.ThrowIfCancellationRequested();
 #if BOUNDARY_DEBUGLITERAL
             if (Environment.GetEnvironmentVariable("VOXCLIP_DEBUG_REWRITE_FIXTURE") is { Length: > 0 } canned) return canned;
+#endif
+#if BOUNDARY_GENERATEDTAG
+            if (XamlNamedOverride is { } replace) return replace(passage);
 #endif
             return passage.Length == 0 ? sharedDirectory : passage.Trim();
         }
@@ -34,6 +43,17 @@ namespace VoxClip.App.Services
     internal sealed class RewriteBackendStandIn : IRewriteBackend
     {
         public Task<string> RenderAsync(string passage, CancellationToken ct) => Task.FromResult(passage);
+    }
+#endif
+
+#if BOUNDARY_FILELOCAL
+    /// <summary>A fake backend declared with the C# file modifier: Roslyn names it &lt;Fixture&gt;F&lt;sha256&gt;__RewriteBackendStandIn
+    /// without [CompilerGenerated], so it must be inventoried like any other hand-written type.</summary>
+    file sealed class RewriteBackendStandIn : IRewriteBackend
+    {
+        internal static string? CannedForTests = null;
+
+        public Task<string> RenderAsync(string passage, CancellationToken ct) => Task.FromResult(CannedForTests ?? passage);
     }
 #endif
 
@@ -59,17 +79,42 @@ namespace VoxClip.App.ViewModels
 {
     using VoxClip.App.Services;
 
+#if BOUNDARY_OBSERVABLE
+    public sealed partial class RewriteGeneration : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+#else
     public sealed partial class RewriteGeneration
+#endif
     {
         private readonly IRewriteBackend backend;
 
-        public RewriteGeneration(IRewriteBackend backend) => this.backend = backend;
+        public RewriteGeneration(IRewriteBackend backend)
+        {
+#if BOUNDARY_FILELOCAL
+            // Wired into an approved member: only the file type itself is new.
+            this.backend = backend is RewriteGenerationBackend ? backend : new RewriteBackendStandIn();
+#else
+            this.backend = backend;
+#endif
+        }
 
 #if BOUNDARY_HOOK
         /// <summary>An internal test hook on an already approved type.</summary>
-        internal static Func<IRewriteBackend>? ReplacementForTests;
+        internal static Func<IRewriteBackend>? ReplacementForTests = null;
 
         internal void UseBackend(IRewriteBackend replacement) => ReplacementForTests = () => replacement;
+#endif
+
+#if BOUNDARY_OBSERVABLE
+        /// <summary>A test hook declared with CommunityToolkit.Mvvm's hand-written [ObservableProperty]: the generator writes the
+        /// DiscoverOverrideForTests accessors into this approved type.</summary>
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private Func<IRewriteBackend>? discoverOverrideForTests;
+#endif
+
+#if BOUNDARY_GENERATEDTAG
+        /// <summary>Hand-written hooks that merely claim to be generated.</summary>
+        [System.CodeDom.Compiler.GeneratedCode("hand", "1")]
+        internal static Func<IRewriteBackend>? ReplacementForTests = null;
 #endif
 
 #if BOUNDARY_SEAMS
@@ -82,11 +127,26 @@ namespace VoxClip.App.ViewModels
         public async Task<string> RunAsync(string passage, CancellationToken ct)
         {
             Status = "running";
-            var result = await backend.RenderAsync(passage, ct);
+            var chosen = backend;
+#if BOUNDARY_OBSERVABLE
+            chosen = DiscoverOverrideForTests?.Invoke() ?? chosen;
+#endif
+#if BOUNDARY_GENERATEDTAG
+            chosen = ReplacementForTests?.Invoke() ?? chosen;
+#endif
+            var result = await chosen.RenderAsync(passage, ct);
 #if BOUNDARY_SEAMS
             if (Environment.GetEnvironmentVariable("VOXCLIP_REWRITE_STAND_IN") == "1" ||
                 Environment.GetCommandLineArgs().Contains("--rewrite-stand-in")) result = passage;
             Trace("run");
+#endif
+#if BOUNDARY_LOWERCASE
+            // Windows environment names are case-insensitive: these read VOXCLIP_DEBUG_* and stand-in switches.
+            if (Environment.GetEnvironmentVariable("voxclip_debug_rewrite_stand_in") == "1" ||
+                Environment.GetEnvironmentVariable("VoxClip_Debug_Rewrite") is { Length: > 0 } ||
+                Environment.GetEnvironmentVariable("rewrite_stand_in") == "1" ||
+                Environment.GetEnvironmentVariable("RewriteStandIn", EnvironmentVariableTarget.User) == "1" ||
+                Environment.GetCommandLineArgs().Contains("/rewrite-stand-in")) result = passage;
 #endif
             Status = "done";
             return result;

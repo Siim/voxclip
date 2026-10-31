@@ -234,6 +234,111 @@ public sealed class ReleaseAssemblyInspectionTests
     }
 
     [Fact]
+    public void FileLocalStandInFailsUnderACanonicalName()
+    {
+        // Roslyn names a C# file type <Fixture>F<sha256 of its path>__RewriteBackendStandIn without [CompilerGenerated].
+        var inventory = Read("FileLocal");
+        var result = inventory.Check(Allowlist.Read(FixtureAllowlist));
+        Assert.Empty(result.Forbidden);
+        Assert.Equal(new[]
+        {
+            "member VoxClip.App.Services.<Fixture>F#__RewriteBackendStandIn :: field internal CannedForTests",
+            "member VoxClip.App.Services.<Fixture>F#__RewriteBackendStandIn :: method public .ctor()",
+            "member VoxClip.App.Services.<Fixture>F#__RewriteBackendStandIn :: method public RenderAsync(string,System.Threading.CancellationToken)",
+            "type VoxClip.App.Services.<Fixture>F#__RewriteBackendStandIn",
+        }, result.Unapproved);
+        Assert.Equal("apps/windows/tests/ReleaseBoundaryFixture/Fixture.cs", inventory.EvidenceFor("type VoxClip.App.Services.<Fixture>F#__RewriteBackendStandIn"));
+        // The path checksum differs between checkouts, so it never reaches an allowlist line.
+        Assert.DoesNotContain(inventory.AllowlistLines, line => Regex.IsMatch(line, "[0-9A-F]{64}"));
+        Assert.True(Rules.IsFileLocalTypeName("<Fixture>F" + new string('A', 64) + "__RewriteBackendStandIn"));
+        Assert.False(Rules.IsSynthesizedTypeName("<Fixture>F" + new string('A', 64) + "__RewriteBackendStandIn"));
+        foreach (var synthesized in new[] { "<>c", "<>c__DisplayClass3_0", "<RunAsync>d__4", "<Module>", "<PrivateImplementationDetails>", "<>y__InlineArray2`1", "<>f__AnonymousType0`2" })
+            Assert.True(Rules.IsSynthesizedTypeName(synthesized), synthesized);
+    }
+
+    [Fact]
+    public void SourceGeneratedHookOnAnApprovedTypeFails()
+    {
+        // [ObservableProperty] is a hand-written declaration: the CommunityToolkit.Mvvm generator writes the accessors into the
+        // approved type, and under TreatWarningsAsErrors (MVVMTK0034) only generated code may touch the field.
+        var inventory = Read("Observable");
+        var result = inventory.Check(Allowlist.Read(FixtureAllowlist));
+        Assert.Empty(result.Forbidden);
+        Assert.Equal(new[]
+        {
+            "attribute VoxClip.App.ViewModels.RewriteGeneration :: field private discoverOverrideForTests @ CommunityToolkit.Mvvm.ComponentModel.ObservablePropertyAttribute()",
+            "attribute VoxClip.App.ViewModels.RewriteGeneration :: property DiscoverOverrideForTests @ System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute()",
+            "member VoxClip.App.ViewModels.RewriteGeneration :: field private discoverOverrideForTests",
+            "member VoxClip.App.ViewModels.RewriteGeneration :: method public get_DiscoverOverrideForTests()",
+            "member VoxClip.App.ViewModels.RewriteGeneration :: method public set_DiscoverOverrideForTests(System.Func`1<VoxClip.App.Services.IRewriteBackend>)",
+        }, result.Unapproved);
+        Assert.Contains("source generator CommunityToolkit.Mvvm.SourceGenerators/CommunityToolkit.Mvvm.SourceGenerators.ObservablePropertyGenerator",
+            inventory.EvidenceFor("member VoxClip.App.ViewModels.RewriteGeneration :: method public get_DiscoverOverrideForTests()"));
+        // Types the generator declares by itself are toolchain output.
+        var cache = Assert.Single(inventory.Entries, entry => entry.Key == "type CommunityToolkit.Mvvm.ComponentModel.__Internals.__KnownINotifyPropertyChangedArgs");
+        Assert.Equal(EntryOrigin.Generated, cache.Origin);
+    }
+
+    [Fact]
+    public void GeneratedCodeTagsDoNotExemptHandWrittenFields()
+    {
+        // Only the XAML compiler's tag counts, and only on a type with obj/ XAML output.
+        var result = Check("GeneratedTag");
+        Assert.Empty(result.Forbidden);
+        Assert.Equal(new[]
+        {
+            "member VoxClip.App.Services.RewriteGenerationBackend :: field internal XamlNamedOverride",
+            "member VoxClip.App.ViewModels.RewriteGeneration :: field internal ReplacementForTests",
+        }, result.Unapproved);
+    }
+
+    [Fact]
+    public void DebugNamesSwitchesAndEnvironmentReadsFailInAnyCase()
+    {
+        var inventory = Read("LowerCase");
+        var result = inventory.Check(Allowlist.Read(FixtureAllowlist));
+        Assert.Contains(result.Forbidden, line => line.StartsWith("Debug environment literal \"voxclip_debug_rewrite_stand_in\"", StringComparison.Ordinal));
+        Assert.Contains(result.Forbidden, line => line.StartsWith("Debug environment literal \"VoxClip_Debug_Rewrite\"", StringComparison.Ordinal));
+        // Any literal passed to an environment-variable API needs approval, whatever its shape; /switches are switch-like.
+        foreach (var line in new[] { "literal \"rewrite_stand_in\"", "literal \"RewriteStandIn\"", "literal \"/rewrite-stand-in\"" })
+            Assert.Contains(line, result.Unapproved);
+        Assert.StartsWith("environment variable name: ", inventory.EvidenceFor("literal \"RewriteStandIn\""));
+        var everything = inventory.Check(inventory.AllowlistLines);
+        Assert.Empty(everything.Unapproved);
+        Assert.Contains("Allowlist entry can never be approved: literal \"voxclip_debug_rewrite_stand_in\"", everything.Forbidden);
+        Assert.Contains("Allowlist entry can never be approved: literal \"VoxClip_Debug_Rewrite\"", everything.Forbidden);
+        Assert.True(Rules.IsSwitchLike("voxclip_rewrite"));
+        Assert.True(Rules.IsSwitchLike("rewrite_stand_in"));
+    }
+
+    [Fact]
+    public void OnlyRecognisedToolchainDocumentsAreToolchainOutput()
+    {
+        var root = Root;
+        DocumentKind Kind(string path) => Rules.Classify(path, root).Kind;
+        Assert.Equal(DocumentKind.HandWritten, Kind(Path.Combine(root, "apps/windows/src/VoxClip.App/App.xaml.cs")));
+        Assert.Equal(DocumentKind.HandWritten, Kind("/_/apps/windows/src/VoxClip.App/App.xaml.cs"));
+        Assert.Equal(DocumentKind.Unrecognized, Kind("/_/src/SomePackage/Library.cs"));
+        Assert.Equal(DocumentKind.BuildOutput, Kind(Path.Combine(root, "apps/windows/src/VoxClip.App/obj/x64/Release/net10.0-windows10.0.26100.0/win-x64/Pages/EditorPage.g.cs")));
+        Assert.Equal(DocumentKind.BuildOutput, Kind(Path.Combine(root, "apps/windows/tests/VoxClip.App.TypeCheck/obj/Release/net10.0-windows10.0.26100.0/Generated.g.cs")));
+        Assert.Equal(DocumentKind.ToolchainGenerator, Kind(Path.Combine(root,
+            "apps/windows/src/VoxClip.Core/obj/x64/Release/net10.0/System.Text.Json.SourceGeneration/System.Text.Json.SourceGeneration.JsonSourceGenerator/ProjectJsonContext.g.cs")));
+        Assert.Equal(DocumentKind.ToolchainGenerator, Kind(Path.Combine(root,
+            "apps/windows/src/VoxClip.App/obj/x64/Release/net10.0-windows10.0.26100.0/win-x64/WinRT.SourceGenerator/Generator.WinRTAotSourceGenerator/WinRTCCWVtable.g.cs")));
+        Assert.Equal(DocumentKind.Generator, Kind(Path.Combine(root,
+            "apps/windows/src/VoxClip.Core/obj/Release/net10.0/System.Text.RegularExpressions.Generator/System.Text.RegularExpressions.Generator.RegexGenerator/RegexGenerator.g.cs")));
+        Assert.Equal(DocumentKind.Generator, Kind(Path.Combine(root,
+            "apps/windows/src/VoxClip.App/obj/Release/CommunityToolkit.Mvvm.SourceGenerators/CommunityToolkit.Mvvm.SourceGenerators.ObservablePropertyGenerator/X.g.cs")));
+        Assert.Equal(DocumentKind.Package, Kind("C:/Users/runneradmin/.nuget/packages/microsoft.windowsappsdk.foundation/2.3.12/include/WindowsAppRuntimeAutoInitializer.cs"));
+        Assert.Equal(DocumentKind.Mapped, Kind(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.xaml")));
+        Assert.Equal(DocumentKind.Unrecognized, Kind("/src/Fixture.cs"));
+        Assert.Equal(DocumentKind.Unrecognized, Kind(Path.Combine(root, "../elsewhere/Fixture.cs")));
+        // An inventory with a PDB but no hand-written type at all has collapsed.
+        var collapsed = new AssemblyInventory(new AssemblyIdentity("VoxClip.dll", "VoxClip", "Release", "Amd64", true, true, "", "VoxClip.pdb"), [], [], [], root);
+        Assert.Contains(AssemblyInspector.IdentityErrors(collapsed, "VoxClip", Machine.Amd64, false), line => line.Contains("no hand-written types", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void CheckedInReleaseAllowlistsAreCanonicalAndNeverApproveDebugContent()
     {
         foreach (var name in ReleaseCheck.ShippingAssemblies)
@@ -244,7 +349,7 @@ public sealed class ReleaseAssemblyInspectionTests
             Assert.Equal(lines.Order(StringComparer.Ordinal).Distinct(StringComparer.Ordinal), lines);
             Assert.Equal(File.ReadAllText(path), Allowlist.Render(name, lines));
             Assert.All(lines, line => Assert.Matches("^(type|member|attribute|literal) ", line));
-            Assert.All(lines, line => Assert.DoesNotContain(Rules.DebugEnvironmentMarker, line));
+            Assert.All(lines, line => Assert.False(Rules.HasDebugEnvironmentMarker(line), line));
             Assert.All(lines, line => Assert.DoesNotContain("ConditionalAttribute(\"DEBUG\")", line));
             Assert.DoesNotContain(File.ReadAllBytes(path), value => value > 126 || (value < 32 && value != 10));
         }

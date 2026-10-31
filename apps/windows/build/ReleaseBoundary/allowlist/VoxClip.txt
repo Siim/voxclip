@@ -9,6 +9,10 @@ literal "--self-check"
 literal "--transcript-frame-probe"
 literal "Set VOXCLIP_SHARED_DIR for the frame probe."
 literal "VOXCLIP_SHARED_DIR"
+literal "claude_ai"
+literal "eleven_multilingual_v2"
+literal "oauth_token"
+literal "scribe_v2"
 member VoxClip.App.App :: field private services
 member VoxClip.App.App :: method internal NewWindow()
 member VoxClip.App.App :: method internal OpenSettings()

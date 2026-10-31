@@ -98,6 +98,10 @@
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Hook" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=DebugLiteral" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Seams" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=FileLocal" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Observable" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=GeneratedTag" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=LowerCase" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Debug;BoundaryVariant=DebugBuild" />
     </ItemGroup>
     <MSBuild Projects="@(_ReleaseBoundaryVariant)" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />

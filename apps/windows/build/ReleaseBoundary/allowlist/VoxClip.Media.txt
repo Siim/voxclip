@@ -23,6 +23,16 @@ literal "--enable-nonfree"
 literal "BASE_EN"
 literal "LARGE_V3_TURBO"
 literal "SMALL_EN"
+literal "emoji_u"
+literal "h264_amf"
+literal "h264_mf"
+literal "h264_nvenc"
+literal "h264_qsv"
+literal "hw_encoding"
+literal "pc_vbr"
+literal "protocol_whitelist"
+literal "rate_control"
+literal "vbr_peak"
 member VoxClip.Media.Audio.AudioRing :: field private buffer
 member VoxClip.Media.Audio.AudioRing :: field private read
 member VoxClip.Media.Audio.AudioRing :: field private written

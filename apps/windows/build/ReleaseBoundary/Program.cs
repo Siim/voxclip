@@ -39,7 +39,8 @@ switch (positional)
         foreach (var entry in inventory.Entries)
             Console.WriteLine($"{entry.Origin}\t{(entry.RequiresApproval ? "approve" : "record")}\t{entry.Key}\t{entry.Evidence}");
         foreach (var line in inventory.Forbidden) Console.WriteLine("FORBIDDEN\t" + line);
-        return inventory.Forbidden.Count == 0 ? 0 : 1;
+        foreach (var document in inventory.UnrecognizedDocuments) Console.WriteLine("UNRECOGNISED\t" + document);
+        return inventory.Forbidden.Count == 0 && inventory.UnrecognizedDocuments.Count == 0 ? 0 : 1;
     }
     case ["update", var assembly, var file]:
     {

@@ -30,9 +30,15 @@ public sealed record CheckResult(string[] Forbidden, string[] Unapproved, string
     public bool Passed => Forbidden.Length == 0 && Unapproved.Length == 0;
 }
 
-public sealed class AssemblyInventory(AssemblyIdentity identity, IReadOnlyList<InventoryEntry> entries, IReadOnlyList<string> forbidden)
+public sealed class AssemblyInventory(AssemblyIdentity identity, IReadOnlyList<InventoryEntry> entries, IReadOnlyList<string> forbidden,
+    IReadOnlyList<string> unrecognizedDocuments, string repositoryRoot)
 {
     public AssemblyIdentity Identity { get; } = identity;
+    /// <summary>PDB documents that are neither repository sources nor recognised toolchain output. Their code is treated as
+    /// hand-written, and any of them fails the identity check: the PDB paths do not match --repo-root.</summary>
+    public IReadOnlyList<string> UnrecognizedDocuments { get; } = unrecognizedDocuments;
+    public string RepositoryRoot { get; } = repositoryRoot;
+    public int HandWrittenTypes => Entries.Count(entry => entry.Origin == EntryOrigin.Source && entry.Key.StartsWith("type ", StringComparison.Ordinal));
     /// <summary>Every enumerated type, member, attribute and literal, including toolchain-generated evidence.</summary>
     public IReadOnlyList<InventoryEntry> Entries { get; } = entries;
     /// <summary>Content that can never ship, even if someone adds it to an allowlist.</summary>
@@ -58,14 +64,36 @@ public sealed class AssemblyInventory(AssemblyIdentity identity, IReadOnlyList<I
 
 public static class Rules
 {
-    /// <summary>Debug environment switches are DEBUG-only by contract and may never be allowlisted.</summary>
+    /// <summary>Debug environment switches are DEBUG-only by contract and may never be allowlisted. Windows environment
+    /// names are case-insensitive, so the marker matches in any case.</summary>
     public const string DebugEnvironmentMarker = "VOXCLIP_DEBUG";
-    private static readonly Regex EnvironmentShape = new(@"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$", RegexOptions.CultureInvariant);
-    private static readonly Regex SwitchShape = new(@"^--?[A-Za-z][A-Za-z0-9-]*(?:[=:].*)?$", RegexOptions.CultureInvariant | RegexOptions.Singleline);
+    private static readonly Regex EnvironmentShape = new(@"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+    private static readonly Regex SwitchShape = new(@"^(?:--?|/)[A-Za-z][A-Za-z0-9-]*(?:[=:].*)?$", RegexOptions.CultureInvariant | RegexOptions.Singleline);
+    /// <summary>Roslyn's metadata name for a C# <c>file</c> type: &lt;FileName&gt;F&lt;SHA-256 of the path&gt;__Name.</summary>
+    private static readonly Regex FileLocalTypeName = new(@"^<[A-Za-z0-9_]*>F[0-9A-F]{64}__", RegexOptions.CultureInvariant);
+    private static readonly Regex GeneratorTypeFolder = new(@"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)+$", RegexOptions.CultureInvariant);
+    public const string XamlCompiler = "Microsoft.UI.Xaml.Markup.Compiler";
+    /// <summary>Source generators whose output never implements a hand-written declaration: System.Text.Json contexts and the
+    /// CsWinRT AOT generator. Members other generators add to hand-written types (CommunityToolkit.Mvvm [ObservableProperty]
+    /// and [RelayCommand], [GeneratedRegex], [LibraryImport] and unknown generators) need approval.</summary>
+    public static readonly IReadOnlySet<string> ToolchainGenerators = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "System.Text.Json.SourceGeneration",
+        "WinRT.SourceGenerator",
+    };
 
-    /// <summary>Literals that can select behaviour from the environment or command line: these need explicit approval.</summary>
+    /// <summary>Literals that can select behaviour from the environment or command line: these need explicit approval.
+    /// Environment-shaped (SNAKE_CASE in any case), command-line shaped (-x, --name, /name) or containing VOXCLIP_ in any case.</summary>
     public static bool IsSwitchLike(string literal) =>
-        EnvironmentShape.IsMatch(literal) || SwitchShape.IsMatch(literal) || literal.Contains("VOXCLIP_", StringComparison.Ordinal);
+        EnvironmentShape.IsMatch(literal) || SwitchShape.IsMatch(literal) || literal.Contains("VOXCLIP_", StringComparison.OrdinalIgnoreCase);
+
+    public static bool HasDebugEnvironmentMarker(string text) => text.Contains(DebugEnvironmentMarker, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>C# can only declare a type whose metadata name starts with '&lt;' as a <c>file</c> type. Every other such name
+    /// (closures, state machines, anonymous types, inline arrays, &lt;Module&gt;, &lt;PrivateImplementationDetails&gt;) is compiler-generated.</summary>
+    public static bool IsSynthesizedTypeName(string metadataName) => metadataName.StartsWith('<') && !FileLocalTypeName.IsMatch(metadataName);
+
+    public static bool IsFileLocalTypeName(string metadataName) => FileLocalTypeName.IsMatch(metadataName);
 
     /// <summary>A JSON-style ASCII string literal: quotes, backslashes, controls and non-ASCII are escaped.</summary>
     public static string Quote(string text)
@@ -90,7 +118,7 @@ public static class Rules
     }
 
     internal static bool ForbiddenInAllowlist(string line) =>
-        line.Contains(DebugEnvironmentMarker, StringComparison.Ordinal) ||
+        HasDebugEnvironmentMarker(line) ||
         line.Contains("@ System.Diagnostics.ConditionalAttribute(\"DEBUG\")", StringComparison.Ordinal);
 
     /// <summary>Compiler bookkeeping attributes carry no product meaning and churn with nullability and lowering.</summary>
@@ -129,23 +157,61 @@ public static class Rules
         "System.Runtime.CompilerServices.TupleElementNamesAttribute",
     };
 
-    /// <summary>Hand-written code lives in the repository, outside obj/ and bin/. Everything else is toolchain output.</summary>
-    public static bool IsHandWritten(string document, string repositoryRoot)
+    /// <summary>Classifies one PDB document. Only documents positively recognised as toolchain output count as toolchain:
+    /// repository obj/ and bin/ output (the XAML compiler and MSBuild), source generator documents (Roslyn names them
+    /// &lt;intermediate dir&gt;/&lt;generator assembly&gt;/&lt;generator type&gt;/&lt;hint&gt;) and NuGet package sources. Anything else that is
+    /// not a repository source, for example after a PathMap or with another spelling of the root, is unrecognised.</summary>
+    public static DocumentFacts Classify(string document, string repositoryRoot)
     {
         var path = document.Replace('\\', '/');
-        if (!path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) return false;
-        string relative;
-        if (path.StartsWith("/_/", StringComparison.Ordinal)) relative = path[3..];
-        else
+        if (!path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) return new(DocumentKind.Mapped, document, "");
+        var root = repositoryRoot.Replace('\\', '/').TrimEnd('/') + "/";
+        string? relative = path.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? path[root.Length..]
+            : path.StartsWith("/_/", StringComparison.Ordinal) ? path[3..] : null;
+        if (relative is null) return new(IsPackageSource(path) ? DocumentKind.Package : DocumentKind.Unrecognized, document, "");
+        var parts = relative.Split('/');
+        if (parts.Any(part => part.Length == 0 || part is "." or "..")) return new(DocumentKind.Unrecognized, document, "");
+        var output = Array.FindIndex(parts, part => part.Equals("obj", StringComparison.OrdinalIgnoreCase) || part.Equals("bin", StringComparison.OrdinalIgnoreCase));
+        if (output < 0)
         {
-            var root = repositoryRoot.Replace('\\', '/').TrimEnd('/') + "/";
-            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) return false;
-            relative = path[root.Length..];
+            // Deterministic /_/ paths count only when the source really is in this checkout (package PDBs use /_/ too).
+            var exists = !path.StartsWith("/_/", StringComparison.Ordinal) || File.Exists(Path.Combine(repositoryRoot, relative));
+            return new(exists ? DocumentKind.HandWritten : DocumentKind.Unrecognized, document, "");
         }
-        return !relative.Split('/').Any(part => part.Equals("obj", StringComparison.OrdinalIgnoreCase) ||
-            part.Equals("bin", StringComparison.OrdinalIgnoreCase) || part.Length == 0 || part == "..");
+        if (parts.Length - output - 1 >= 3 && GeneratorTypeFolder.IsMatch(parts[^2]))
+            return new(ToolchainGenerators.Contains(parts[^3]) ? DocumentKind.ToolchainGenerator : DocumentKind.Generator, document, parts[^3] + "/" + parts[^2]);
+        return new(DocumentKind.BuildOutput, document, "");
+    }
+
+    private static bool IsPackageSource(string path)
+    {
+        if (path.Contains("/.nuget/packages/", StringComparison.OrdinalIgnoreCase)) return true;
+        var packages = Environment.GetEnvironmentVariable("NUGET_PACKAGES")?.Replace('\\', '/').TrimEnd('/');
+        return !string.IsNullOrEmpty(packages) && path.StartsWith(packages + "/", StringComparison.OrdinalIgnoreCase);
     }
 }
+
+/// <summary>What produced a PDB document.</summary>
+public enum DocumentKind
+{
+    /// <summary>Repository C# outside obj/ and bin/.</summary>
+    HandWritten,
+    /// <summary>Repository obj/ or bin/ output outside a source generator folder: the WinUI XAML compiler and MSBuild.</summary>
+    BuildOutput,
+    /// <summary>A source generator whose output never implements hand-written declarations (System.Text.Json, CsWinRT).</summary>
+    ToolchainGenerator,
+    /// <summary>Any other source generator. Members it adds to a hand-written type implement hand-written declarations or
+    /// attributes and need approval; types it declares by itself are toolchain output.</summary>
+    Generator,
+    /// <summary>NuGet package sources, for example the Windows App SDK auto-initializers.</summary>
+    Package,
+    /// <summary>A non-C# document (#line mapped, for example XAML). It decides nothing by itself.</summary>
+    Mapped,
+    /// <summary>Anything else: treated as hand-written, and it fails the identity check.</summary>
+    Unrecognized,
+}
+
+public readonly record struct DocumentFacts(DocumentKind Kind, string Path, string Generator);
 
 public static class Allowlist
 {
@@ -190,12 +256,14 @@ public static class AssemblyInspector
             var identity = new AssemblyIdentity(full, reader.GetString(reader.GetAssemblyDefinition().Name), scan.Configuration,
                 pe.PEHeaders.CoffHeader.Machine.ToString(), (pe.PEHeaders.CorHeader!.Flags & CorFlags.ILOnly) != 0, scan.Optimized,
                 Convert.ToHexString(SHA256.HashData(bytes)), hasPdb ? (pdbPath ?? "embedded") : null);
-            return new(identity, scan.Entries, scan.Forbidden.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
+            return new(identity, scan.Entries, scan.Forbidden.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+                scan.Unrecognized.Order(StringComparer.Ordinal).ToArray(), repositoryRoot);
         }
     }
 
     /// <summary>Identity errors for a shipping assembly: wrong name (for example the typecheck surrogate), Debug, unoptimized,
-    /// missing PDB (needed to classify toolchain output) or the wrong architecture.</summary>
+    /// missing PDB (needed to classify toolchain output), the wrong architecture, or a classification that cannot be trusted
+    /// because PDB documents are outside --repo-root or no hand-written type was found.</summary>
     public static IEnumerable<string> IdentityErrors(AssemblyInventory inventory, string expectedName, Machine? requiredMachine, bool allowAnyCpu)
     {
         var identity = inventory.Identity;
@@ -206,24 +274,37 @@ public static class AssemblyInspector
         if (requiredMachine is { } machine && identity.Machine != machine.ToString() &&
             !(allowAnyCpu && identity.IlOnly && identity.Machine == nameof(Machine.I386)))
             yield return $"{expectedName}: expected {machine} code, found {identity.Machine}";
+        if (inventory.UnrecognizedDocuments.Count > 0)
+            yield return $"{expectedName}: {inventory.UnrecognizedDocuments.Count} PDB document(s) are neither under --repo-root {inventory.RepositoryRoot} " +
+                $"nor recognised toolchain output, for example {inventory.UnrecognizedDocuments[0]}. Pass the repository root exactly as the " +
+                "compiler saw it (not a symlink alias) and build without PathMap; their code was treated as hand-written";
+        if (identity.PdbPath is not null && inventory.HandWrittenTypes == 0)
+            yield return $"{expectedName}: no hand-written types were found, so the classification collapsed; check --repo-root and the PDB paths";
     }
 
     private sealed class Scan(MetadataReader reader, PEReader pe, MetadataReader? pdb, string repositoryRoot)
     {
         private readonly Names names = new(reader);
         private readonly Dictionary<TypeDefinitionHandle, TypeFacts> types = [];
-        private readonly Dictionary<DocumentHandle, (bool HandWritten, string Path)> documents = [];
-        private readonly Dictionary<MethodDefinitionHandle, (EntryOrigin? Origin, string Evidence)> methodOrigins = [];
+        private readonly Dictionary<TypeDefinitionHandle, bool> buildOutputTypes = [];
+        private readonly Dictionary<DocumentHandle, DocumentFacts> documents = [];
+        private readonly Dictionary<MethodDefinitionHandle, Decision?> methodDecisions = [];
         private readonly Dictionary<int, List<MethodDefinitionHandle>> literalUses = [];
+        private readonly HashSet<int> environmentNames = [];
+        private readonly Dictionary<int, bool> environmentApis = [];
         private readonly Dictionary<TypeDefinitionHandle, List<TypeDefinitionHandle>> implementers = [];
         private readonly Dictionary<FieldDefinitionHandle, List<MethodDefinitionHandle>> fieldUses = [];
         private Dictionary<MethodDefinitionHandle, MethodDefinitionHandle>? stateMachines;
         internal readonly List<InventoryEntry> Entries = [];
         internal readonly List<string> Forbidden = [];
+        internal readonly HashSet<string> Unrecognized = new(StringComparer.Ordinal);
         internal string Configuration = "";
         internal bool Optimized = true;
 
         private sealed record TypeFacts(string Name, bool CompilerGenerated, EntryOrigin Origin, string Evidence);
+
+        /// <summary>The origin decided by a set of PDB documents. <see cref="Kind"/> is the deciding document kind.</summary>
+        private sealed record Decision(EntryOrigin Origin, string Evidence, DocumentKind Kind, string Generator);
 
         internal void Run()
         {
@@ -239,19 +320,17 @@ public static class AssemblyInspector
             {
                 var facts = Type(handle);
                 var type = reader.GetTypeDefinition(handle);
-                if (facts.Name == "<Module>") continue;
-                if (!facts.CompilerGenerated) Add("type " + facts.Name, facts.Origin, facts.Evidence);
+                if (facts.CompilerGenerated) continue;
+                Add("type " + facts.Name, facts.Origin, facts.Evidence);
                 foreach (var method in type.GetMethods())
                 {
-                    var name = reader.GetString(reader.GetMethodDefinition(method).Name);
-                    if (facts.CompilerGenerated || name.StartsWith('<')) continue;
+                    if (reader.GetString(reader.GetMethodDefinition(method).Name).StartsWith('<')) continue;
                     var (origin, evidence) = Method(method, facts);
                     Add("member " + MethodOwner(method), origin, evidence);
                 }
                 foreach (var fieldHandle in type.GetFields())
                 {
-                    var field = reader.GetFieldDefinition(fieldHandle);
-                    if (facts.CompilerGenerated || reader.GetString(field.Name).StartsWith('<')) continue;
+                    if (reader.GetString(reader.GetFieldDefinition(fieldHandle).Name).StartsWith('<')) continue;
                     var (origin, evidence) = Field(fieldHandle, facts);
                     Add("member " + FieldOwner(fieldHandle), origin, evidence);
                 }
@@ -264,7 +343,39 @@ public static class AssemblyInspector
         private void Add(string key, EntryOrigin origin, string evidence, bool? approval = null)
         {
             Entries.Add(new(key, origin, approval ?? origin == EntryOrigin.Source, evidence));
-            if (key.Contains(Rules.DebugEnvironmentMarker, StringComparison.Ordinal)) Forbidden.Add("Debug environment name: " + key);
+            if (Rules.HasDebugEnvironmentMarker(key)) Forbidden.Add("Debug environment name: " + key);
+        }
+
+        /// <summary>Hand-written (or unrecognised) documents make a record hand-written. Otherwise a non-exempt source generator
+        /// document, then any toolchain document decides. Mapped (#line) documents never decide when other documents exist.</summary>
+        private Decision? Decide(IEnumerable<DocumentFacts> seen)
+        {
+            DocumentFacts? handWritten = null, unrecognized = null, generator = null, toolchain = null, mapped = null;
+            foreach (var document in seen)
+            {
+                switch (document.Kind)
+                {
+                    case DocumentKind.HandWritten: handWritten ??= document; break;
+                    case DocumentKind.Unrecognized: unrecognized ??= document; Unrecognized.Add(document.Path); break;
+                    case DocumentKind.Generator: generator ??= document; break;
+                    case DocumentKind.Mapped: mapped ??= document; break;
+                    default: toolchain ??= document; break;
+                }
+            }
+            if (handWritten is { } source) return new(EntryOrigin.Source, Relative(source.Path), DocumentKind.HandWritten, "");
+            if (unrecognized is null && generator is null && toolchain is null && mapped is { } lonely)
+            {
+                Unrecognized.Add(lonely.Path);
+                unrecognized = lonely;
+            }
+            if (unrecognized is { } unknown)
+                return new(EntryOrigin.Source, "unrecognised document " + unknown.Path + " (outside --repo-root and the NuGet root): treated as hand-written",
+                    DocumentKind.Unrecognized, "");
+            if (generator is { } driven)
+                return new(EntryOrigin.Generated, "source generator " + driven.Generator + " document " + Relative(driven.Path), DocumentKind.Generator, driven.Generator);
+            if (toolchain is { } output)
+                return new(EntryOrigin.Generated, "generated document " + Relative(output.Path), output.Kind, output.Generator);
+            return null;
         }
 
         private TypeFacts Type(TypeDefinitionHandle handle)
@@ -274,15 +385,13 @@ public static class AssemblyInspector
             var name = names.Definition(handle);
             var declaring = type.GetDeclaringType();
             var parent = declaring.IsNil ? null : Type(declaring);
-            var compilerGenerated = reader.GetString(type.Name).StartsWith('<') || parent?.CompilerGenerated == true;
-            var documentsSeen = OwnDocuments(handle).ToArray();
+            var compilerGenerated = Rules.IsSynthesizedTypeName(reader.GetString(type.Name)) || parent?.CompilerGenerated == true;
             TypeFacts facts;
-            if (documentsSeen.FirstOrDefault(document => document.HandWritten) is { Path: not null } source)
-                facts = new(name, compilerGenerated, EntryOrigin.Source, Relative(source.Path));
-            else if (documentsSeen.FirstOrDefault() is { Path: not null } generated)
-                facts = new(name, compilerGenerated, EntryOrigin.Generated, "generated document " + Relative(generated.Path));
-            else if (GeneratedCodeTool(type.GetCustomAttributes()) is { } tool)
-                facts = new(name, compilerGenerated, EntryOrigin.Generated, "GeneratedCode " + tool);
+            if (Decide(OwnDocuments(handle)) is { } decision)
+                facts = new(name, compilerGenerated, decision.Origin, decision.Kind == DocumentKind.Generator
+                    ? "declared entirely by " + decision.Evidence : decision.Evidence);
+            else if (!declaring.IsNil && GeneratedCodeTool(type.GetCustomAttributes()) == Rules.XamlCompiler && HasBuildOutput(declaring))
+                facts = new(name, compilerGenerated, EntryOrigin.Generated, "GeneratedCode " + Rules.XamlCompiler + " in a type with obj/ XAML output");
             else if (GeneratedImplementers(handle) is { } implementer)
                 facts = new(name, compilerGenerated, EntryOrigin.Generated, "interface implemented only by generated " + implementer);
             else if (XamlCompanion(handle) is { } companion)
@@ -295,15 +404,23 @@ public static class AssemblyInspector
             return facts;
         }
 
+        /// <summary>Whether a type has WinUI XAML compiler (obj/ build) output among its own documents.</summary>
+        private bool HasBuildOutput(TypeDefinitionHandle handle)
+        {
+            if (!buildOutputTypes.TryGetValue(handle, out var known))
+                buildOutputTypes[handle] = known = OwnDocuments(handle).Any(document => document.Kind == DocumentKind.BuildOutput);
+            return known;
+        }
+
         /// <summary>Documents of a type's own methods (async and iterator kickoffs through their state machines), its
         /// compiler-generated closures and state machines, and Roslyn's TypeDefinitionDocuments for body-less top-level types.
         /// Nested types without documents are covered by the declaring type, exactly as Roslyn records them.</summary>
-        private IEnumerable<(bool HandWritten, string? Path)> OwnDocuments(TypeDefinitionHandle handle)
+        private IEnumerable<DocumentFacts> OwnDocuments(TypeDefinitionHandle handle)
         {
             var type = reader.GetTypeDefinition(handle);
             foreach (var document in type.GetMethods().SelectMany(MethodDocuments).Concat(DefinitionDocuments(handle))) yield return document;
             foreach (var nested in type.GetNestedTypes())
-                if (reader.GetString(reader.GetTypeDefinition(nested).Name).StartsWith('<'))
+                if (Rules.IsSynthesizedTypeName(reader.GetString(reader.GetTypeDefinition(nested).Name)))
                     foreach (var document in OwnDocuments(nested)) yield return document;
         }
 
@@ -314,12 +431,12 @@ public static class AssemblyInspector
             var type = reader.GetTypeDefinition(handle);
             var simple = reader.GetString(type.Name);
             if ((type.Attributes & TypeAttributes.Interface) == 0 || type.GetDeclaringType().IsNil ||
-                !simple.EndsWith("_BindingsScopeConnector", StringComparison.Ordinal)) return null;
+                !simple.EndsWith("_BindingsScopeConnector", StringComparison.Ordinal) || !HasBuildOutput(type.GetDeclaringType())) return null;
             var sibling = simple[..^"ScopeConnector".Length];
             foreach (var nested in reader.GetTypeDefinition(type.GetDeclaringType()).GetNestedTypes())
             {
                 var candidate = reader.GetTypeDefinition(nested);
-                if (reader.GetString(candidate.Name) == sibling && GeneratedCodeTool(candidate.GetCustomAttributes()) == "Microsoft.UI.Xaml.Markup.Compiler")
+                if (reader.GetString(candidate.Name) == sibling && GeneratedCodeTool(candidate.GetCustomAttributes()) == Rules.XamlCompiler)
                     return names.Definition(nested);
             }
             return null;
@@ -335,34 +452,42 @@ public static class AssemblyInspector
             return facts.All(user => user.Origin == EntryOrigin.Generated) ? facts[0].Name : null;
         }
 
-        private (EntryOrigin Origin, string Evidence) Method(MethodDefinitionHandle handle, TypeFacts owner)
+        private Decision? MethodDecision(MethodDefinitionHandle handle)
         {
-            if (!methodOrigins.TryGetValue(handle, out var known))
-            {
-                var seen = MethodDocuments(handle).ToArray();
-                known = seen.FirstOrDefault(document => document.HandWritten) is { Path: not null } source ? (EntryOrigin.Source, Relative(source.Path))
-                    : seen.FirstOrDefault() is { Path: not null } generated ? (EntryOrigin.Generated, "generated document " + Relative(generated.Path))
-                    : (null, "");
-                methodOrigins[handle] = known;
-            }
-            return known.Origin is { } origin ? (origin, known.Evidence) : (owner.Origin, owner.Evidence);
+            if (!methodDecisions.TryGetValue(handle, out var known)) methodDecisions[handle] = known = Decide(MethodDocuments(handle));
+            return known;
         }
 
-        /// <summary>Fields have no documents. A field of a hand-written type is toolchain output when it is tagged
-        /// GeneratedCode or when only toolchain methods use it (for example System.Text.Json context caches).</summary>
+        /// <summary>A method's origin is where its body is declared. A body that a non-exempt source generator adds to a
+        /// hand-written type implements a hand-written declaration or attribute ([ObservableProperty] accessors,
+        /// [GeneratedRegex] and [LibraryImport] partials), so it needs approval. Body-less methods follow their type.</summary>
+        private (EntryOrigin Origin, string Evidence) Method(MethodDefinitionHandle handle, TypeFacts owner)
+        {
+            if (MethodDecision(handle) is not { } decision) return (owner.Origin, owner.Evidence);
+            if (decision.Kind == DocumentKind.Generator && owner.Origin == EntryOrigin.Source)
+                return (EntryOrigin.Source, decision.Evidence + ", added to hand-written " + owner.Name + " (" + owner.Evidence + ")");
+            return (decision.Origin, decision.Evidence);
+        }
+
+        /// <summary>Fields have no documents. A field of a hand-written type is toolchain output only when the WinUI XAML compiler
+        /// tagged it and the type has obj/ XAML output, or when only System.Text.Json or CsWinRT generated code uses it (for
+        /// example JsonSerializerContext caches). Any other GeneratedCode tag or use by other generated code proves nothing.</summary>
         private (EntryOrigin Origin, string Evidence) Field(FieldDefinitionHandle handle, TypeFacts owner)
         {
             if (owner.Origin == EntryOrigin.Generated) return (owner.Origin, owner.Evidence);
-            if (GeneratedCodeTool(reader.GetFieldDefinition(handle).GetCustomAttributes()) is { } tool) return (EntryOrigin.Generated, "GeneratedCode " + tool);
+            var field = reader.GetFieldDefinition(handle);
+            if (GeneratedCodeTool(field.GetCustomAttributes()) == Rules.XamlCompiler && HasBuildOutput(field.GetDeclaringType()))
+                return (EntryOrigin.Generated, "GeneratedCode " + Rules.XamlCompiler + " in a type with obj/ XAML output");
             if (fieldUses.TryGetValue(handle, out var uses) && uses.Count > 0)
             {
-                var origins = uses.Select(use => (use, origin: Method(use, Type(reader.GetMethodDefinition(use).GetDeclaringType())).Origin)).ToArray();
-                if (origins.All(pair => pair.origin == EntryOrigin.Generated)) return (EntryOrigin.Generated, "used only by generated " + MethodOwner(origins[0].use));
+                var decisions = uses.Select(MethodDecision).ToArray();
+                if (decisions.All(decision => decision is { Kind: DocumentKind.ToolchainGenerator }))
+                    return (EntryOrigin.Generated, "used only by " + decisions[0]!.Generator + " output " + MethodOwner(uses[0]));
             }
             return (owner.Origin, owner.Evidence);
         }
 
-        private IEnumerable<(bool HandWritten, string? Path)> MethodDocuments(MethodDefinitionHandle handle)
+        private IEnumerable<DocumentFacts> MethodDocuments(MethodDefinitionHandle handle)
         {
             if (pdb is null) yield break;
             var info = pdb.GetMethodDebugInformation(handle.ToDebugInformationHandle());
@@ -389,7 +514,7 @@ public static class AssemblyInspector
             return stateMachines;
         }
 
-        private IEnumerable<(bool HandWritten, string? Path)> DefinitionDocuments(TypeDefinitionHandle handle)
+        private IEnumerable<DocumentFacts> DefinitionDocuments(TypeDefinitionHandle handle)
         {
             if (pdb is null) yield break;
             foreach (var cdiHandle in pdb.GetCustomDebugInformation(handle))
@@ -401,13 +526,10 @@ public static class AssemblyInspector
             }
         }
 
-        private (bool HandWritten, string? Path) Document(DocumentHandle handle)
+        private DocumentFacts Document(DocumentHandle handle)
         {
             if (!documents.TryGetValue(handle, out var known))
-            {
-                var path = pdb!.GetString(pdb.GetDocument(handle).Name);
-                documents[handle] = known = (Rules.IsHandWritten(path, repositoryRoot), path);
-            }
+                documents[handle] = known = Rules.Classify(pdb!.GetString(pdb.GetDocument(handle).Name), repositoryRoot);
             return known;
         }
 
@@ -457,7 +579,7 @@ public static class AssemblyInspector
                 : "(" + string.Join(",", value.Value.FixedArguments.Select(Names.Value)
                     .Concat(value.Value.NamedArguments.Select(argument => argument.Name + "=" + Names.Value(argument)))) + ")";
             foreach (var text in value is null ? [] : Strings(value.Value))
-                if (text.Contains(Rules.DebugEnvironmentMarker, StringComparison.Ordinal))
+                if (Rules.HasDebugEnvironmentMarker(text))
                     Forbidden.Add($"Debug environment literal {Json(text)} in {type} on {Describe(attribute.Parent)}");
             if (type == "System.Diagnostics.ConditionalAttribute" && value is { FixedArguments: [{ Value: "DEBUG" }] })
                 Forbidden.Add("DEBUG-only member ships in Release: " + Describe(attribute.Parent) + " carries [Conditional(\"DEBUG\")]");
@@ -555,8 +677,11 @@ public static class AssemblyInspector
             var method = reader.GetMethodDefinition(handle);
             if (method.RelativeVirtualAddress == 0) return;
             var il = pe.GetMethodBody(method.RelativeVirtualAddress).GetILReader();
+            var instruction = 0;
+            var recentStrings = new List<(int Instruction, int Offset)>();
             while (il.RemainingBytes > 0)
             {
+                instruction++;
                 short code = il.ReadByte();
                 if (code == 0xFE) code = unchecked((short)(0xFE00 | il.ReadByte()));
                 var operand = Operands.TryGetValue(code, out var known) ? known : throw new BadImageFormatException($"Unknown IL opcode 0x{code:X}");
@@ -573,6 +698,15 @@ public static class AssemblyInspector
                         var token = il.ReadInt32();
                         if (!literalUses.TryGetValue(token & 0xFFFFFF, out var uses)) literalUses[token & 0xFFFFFF] = uses = [];
                         uses.Add(handle);
+                        recentStrings.Add((instruction, token & 0xFFFFFF));
+                        if (recentStrings.Count > 4) recentStrings.RemoveAt(0);
+                        break;
+                    case OperandType.InlineMethod:
+                        // A literal loaded just before an environment-variable call is a variable name, whatever its shape or case.
+                        var callee = il.ReadInt32();
+                        if (code is 0x28 or 0x6F && IsEnvironmentVariableApi(callee))
+                            foreach (var recent in recentStrings)
+                                if (instruction - recent.Instruction <= 3) environmentNames.Add(recent.Offset);
                         break;
                     case OperandType.InlineSwitch:
                         var targets = il.ReadInt32(); // read the count before computing the new offset
@@ -585,6 +719,24 @@ public static class AssemblyInspector
                     default: il.Offset += 4; break;
                 }
             }
+        }
+
+        private bool IsEnvironmentVariableApi(int token)
+        {
+            if (environmentApis.TryGetValue(token, out var known)) return known;
+            var entity = MetadataTokens.EntityHandle(token);
+            known = false;
+            if (entity.Kind == HandleKind.MemberReference)
+            {
+                var reference = reader.GetMemberReference((MemberReferenceHandle)entity);
+                if (reference.Parent.Kind == HandleKind.TypeReference)
+                {
+                    var type = reader.GetTypeReference((TypeReferenceHandle)reference.Parent);
+                    known = reader.GetString(type.Namespace) == "System" && reader.GetString(type.Name) == "Environment" &&
+                        reader.GetString(reference.Name) is "GetEnvironmentVariable" or "SetEnvironmentVariable";
+                }
+            }
+            return environmentApis[token] = known;
         }
 
         private FieldDefinitionHandle? ResolveField(int token)
@@ -611,13 +763,14 @@ public static class AssemblyInspector
             while (!handle.IsNil)
             {
                 var text = reader.GetUserString(handle);
-                var uses = literalUses.TryGetValue(MetadataTokens.GetHeapOffset(handle), out var found) ? found : [];
+                var offset = MetadataTokens.GetHeapOffset(handle);
+                var uses = literalUses.TryGetValue(offset, out var found) ? found : [];
                 var origins = uses.Select(use => (use, facts: Method(use, Type(reader.GetMethodDefinition(use).GetDeclaringType())))).ToArray();
                 var chosen = origins.FirstOrDefault(pair => pair.facts.Origin == EntryOrigin.Source);
                 if (chosen.facts.Evidence is null && origins.Length > 0) chosen = origins[0];
                 if (uses.Count == 0 && text.Length == 0) { handle = reader.GetNextHandle(handle); continue; } // heap padding
                 if (uses.Count == 0) Literal(text, EntryOrigin.Source, "unreferenced user string");
-                else Literal(text, chosen.facts.Origin, chosen.facts.Evidence + " via " + MethodOwner(chosen.use));
+                else Literal(text, chosen.facts.Origin, chosen.facts.Evidence + " via " + MethodOwner(chosen.use), environmentNames.Contains(offset));
                 handle = reader.GetNextHandle(handle);
             }
         }
@@ -649,11 +802,12 @@ public static class AssemblyInspector
             return (origin, "constant " + FieldOwner(field));
         }
 
-        private void Literal(string text, EntryOrigin origin, string evidence)
+        private void Literal(string text, EntryOrigin origin, string evidence, bool environmentName = false)
         {
-            if (text.Contains(Rules.DebugEnvironmentMarker, StringComparison.Ordinal))
+            if (Rules.HasDebugEnvironmentMarker(text))
                 Forbidden.Add($"Debug environment literal {Json(text)} ({evidence})");
-            Entries.Add(new("literal " + Json(text), origin, origin == EntryOrigin.Source && Rules.IsSwitchLike(text), evidence));
+            Entries.Add(new("literal " + Json(text), origin, origin == EntryOrigin.Source && (environmentName || Rules.IsSwitchLike(text)),
+                environmentName ? "environment variable name: " + evidence : evidence));
         }
 
         private static string Json(string text) => Rules.Quote(text);
@@ -663,6 +817,8 @@ public static class AssemblyInspector
     {
         private static readonly Regex AssemblyVersion = new(@", (?:Version|Culture|PublicKeyToken)=[^,\]]+", RegexOptions.CultureInvariant);
         private static readonly Regex Ordinals = new(@"(?<=(?:d__|b__|c__DisplayClass|f__AnonymousType|g__\w+\|))\d+(?:_\d+)?", RegexOptions.CultureInvariant);
+        /// <summary>A file type's metadata name embeds the SHA-256 of its source path, which differs between checkouts.</summary>
+        private static readonly Regex FileChecksum = new(@"^(<[A-Za-z0-9_]*>F)[0-9A-F]{64}(?=__)", RegexOptions.CultureInvariant);
 
         public string Definition(TypeDefinitionHandle handle) => GetTypeFromDefinition(reader, handle, 0);
 
@@ -693,7 +849,7 @@ public static class AssemblyInspector
 
         public static string Value(CustomAttributeNamedArgument<string> argument) => Value(new CustomAttributeTypedArgument<string>(argument.Type, argument.Value));
 
-        private static string Canonical(string name) => Ordinals.Replace(name, "#");
+        private static string Canonical(string name) => Ordinals.Replace(FileChecksum.Replace(name, "$1#"), "#");
 
         public string GetTypeFromDefinition(MetadataReader metadata, TypeDefinitionHandle handle, byte rawTypeKind)
         {
