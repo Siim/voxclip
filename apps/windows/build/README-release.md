@@ -272,9 +272,9 @@ that keeps its executable open for three seconds, plus failure-path fixtures.
   build notes, original source/build-tool archives and selected AMF subset.
   See `doc/release.md` section 3.3 for the staging and archive contract.
 - `src/VoxClip.App/Assets/VoxClip.ico` must exist for production packaging.
-- The skeleton has no `.config/dotnet-tools.json` or `CHANGELOG.md`. Production
-  requires a changelog section for the current version, which is passed to
-  Velopack as release notes. A repository local-tool manifest remains an
+- The repository has no `.config/dotnet-tools.json`. The root `CHANGELOG.md`
+  exists, and production requires its section for the current version, which is
+  passed to Velopack as release notes. A repository local-tool manifest remains an
   integration follow-up; implementation changes stay in this track's release
   tooling in `build/`. The lead separately accepts `doc/release.md` wording
   changes in the asset table and sections 3.2/3.6 as a scoped exception.
