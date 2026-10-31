@@ -29,10 +29,13 @@ struct CLIProcessRunnerTests {
         #expect(kill(try cliReadPID(directory.url.appendingPathComponent("escaped.pid")), 0) == 0)
     }
 
+    /// The grandchild holds the pipe far past the suite's time limit and, once the leader is reaped,
+    /// no deadline applies, so the run returning at all proves the runner did not wait for it; no
+    /// wall-clock bound is involved. A runner that waited is cancelled by the time limit instead.
     @Test func completedLeaderDoesNotWaitForPipeHoldingGrandchild() async throws {
         let directory = try CLITestDirectory()
         let script = try cliNativeScript("""
-        /bin/sleep 30 &
+        /bin/sleep 300 &
         echo $! > child.pid
         while [ ! -f release ]; do /bin/sleep 0.05; done
         printf done
@@ -46,12 +49,10 @@ struct CLIProcessRunnerTests {
                 workingDirectory: directory.url, environment: [:], timeout: .seconds(10)))
         }
         try await cliWaitForFile(directory.url.appendingPathComponent("child.pid"))
-        let released = ContinuousClock.now
         FileManager.default.createFile(atPath: directory.url.appendingPathComponent("release").path, contents: nil)
-        let result = try await task.value
+        let result = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
         #expect(result.exitCode == 0)
         #expect(result.stdout == Data("done".utf8))
-        #expect(ContinuousClock.now - released < .seconds(2))
     }
 
     @Test func leaderExitObservedAfterItsDeadlineIsNotATimeout() async throws {
