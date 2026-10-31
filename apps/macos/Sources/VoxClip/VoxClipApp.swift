@@ -171,10 +171,19 @@ import VoxClipCore
         guard mainWindowIsKey, !model.shell.showsHome else { return nil }
         return model.shell.editor
     }
+    /// The key window's shell: the main window's or a Versions window's. The tab commands act on it.
+    private var keyShell: WorkspaceShell? {
+        #if DEBUG
+        if let commandWindowForTesting { return (commandWindowForTesting.windowController as? ShellWindowController)?.shell }
+        #endif
+        return (NSApp.keyWindow?.windowController as? ShellWindowController)?.shell
+    }
     @objc private func newProject(_ sender: Any?) { chooseFile(app: model, moviesOnly: true) }
     @objc private func openProject(_ sender: Any?) { chooseFile(app: model) }
-    /// ⌘W closes the project and shows Home; on Home it closes the window (design §11).
+    /// ⌘W closes a clip or suggestion tab (impl-plan item 5). On Full Take it closes the
+    /// project and shows Home, and on Home it closes the window (design §11).
     @objc private func closeProject(_ sender: Any?) {
+        if let shell = keyShell, shell.closesTab { shell.closeTab(shell.tabs.active); return }
         guard mainWindowIsKey else { NSApp.keyWindow?.performClose(sender); return }
         if model.shell.document != nil { Task { await model.shell.closeProject() } }
         else { model.shell.windowController?.window?.performClose(sender) }
@@ -229,6 +238,8 @@ import VoxClipCore
         case 13: shell.selection = .home; return
         case 14: if shell.document != nil { shell.selection = .fullTake }; return
         case 16: shell.toggleSidebar(); return
+        // Tabs work in the key window, a Versions window too (impl-plan V3a).
+        case 50, 51: keyShell?.showAdjacentTab(item.tag == 50 ? -1 : 1); return
         // Help works on Home and with no project open; both sheets belong to the main window.
         case 35: MainWindowController.shared.show(); shell.showShortcuts = true; return
         case 36: MainWindowController.shared.show(); model.showTour = true; return
@@ -330,7 +341,7 @@ import VoxClipCore
             item.title = model.update.map { "VoxClip \($0.version) Available…" } ?? "Check for Updates…"
         }
         if item.action == #selector(closeProject(_:)) {
-            item.title = mainWindowIsKey && model.shell.document != nil ? "Close Project" : "Close"
+            item.title = keyShell?.closesTab == true ? "Close Tab" : mainWindowIsKey && model.shell.document != nil ? "Close Project" : "Close"
             return NSApp.keyWindow != nil
         }
         if item.action == #selector(performEditorCommand(_:)) {
@@ -341,6 +352,7 @@ import VoxClipCore
                 item.title = model.shell.sidebarShown ? "Hide Sidebar" : "Show Sidebar"
                 return mainWindowIsKey
             case 35, 36: return true
+            case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
             default: break
             }
             guard let editor else { return false }
@@ -387,6 +399,9 @@ import VoxClipCore
         return true
     }
     private func installMenus() {
+        // The windows never tab (`tabbingMode = .disallowed`), so AppKit adds no tab items of
+        // its own beside the editor's Show Next Tab and Show Previous Tab (⌃Tab, impl-plan V3a).
+        NSWindow.allowsAutomaticWindowTabbing = false
         let main = NSMenu()
         NSApp.mainMenu = main
         func menu(_ title: String) -> NSMenu {
@@ -504,6 +519,15 @@ import VoxClipCore
         add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
         add(window, "Zoom", #selector(NSWindow.performZoom(_:)))
         add(window, "Toggle Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
+        window.addItem(.separator())
+        // The editor's tabs (impl-plan §3.2): ⌃⇧Tab and ⌃Tab, with ⇧⌘[ and ⇧⌘] as hidden alternates.
+        command(window, "Show Previous Tab", 50, "\t", [.control, .shift])
+        command(window, "Show Next Tab", 51, "\t", [.control])
+        for (tag, key) in [(50, "{"), (51, "}")] {
+            command(window, tag == 50 ? "Show Previous Tab" : "Show Next Tab", tag, key, [.command])
+            window.items.last?.isHidden = true
+            window.items.last?.allowsKeyEquivalentWhenHidden = true
+        }
         window.addItem(.separator())
         add(window, "VoxClip", #selector(showMainWindow(_:)), target: self)
         window.addItem(.separator())

@@ -28,6 +28,7 @@ import VoxClipCore
         func item(_ menu: String, _ title: String) -> NSMenuItem? {
             let items = NSApp.mainMenu?.item(withTitle: menu)?.submenu
             return items?.item(withTitle: title) ?? (title == "Hide Cut Words" ? items?.item(withTitle: "Show Cut Words") : nil)
+                ?? (title == "Close Project" ? items?.item(withTitle: "Close Tab") ?? items?.item(withTitle: "Close") : nil)
         }
         guard let delegate = NSApp.delegate as? AppDelegate else { throw CocoaError(.coderInvalidValue) }
         let bindings: [(String, String, String, NSEvent.ModifierFlags)] = [
