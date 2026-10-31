@@ -1288,6 +1288,16 @@ ensure_release_draft '{self.root / 'draft-status'}'
                       (BUILD / "Release-Common.ps1").read_text())
         self.assertIn("-RuntimeIdentifier $rid -ReportDirectory", (BUILD / "vm-release.ps1").read_text())
 
+    def test_published_payloads_ship_only_the_pinned_onnx_runtime_before_signing(self):
+        vm = (BUILD / "vm-release.ps1").read_text()
+        check = "& (Join-Path $windows 'build\\Assert-OnnxRuntimePin.ps1') -AppDirectory $app -RuntimeIdentifier $rid"
+        self.assertEqual(vm.count(check), 1)
+        payload = vm.index("Assert-ReleaseWhisperRuntimes -AppDirectory $app -RuntimeIdentifier $rid")
+        self.assertLess(payload, vm.index(check))
+        self.assertLess(vm.index(check), vm.index("Copy-ReleaseFfmpeg -Rid $rid -AppDirectory $app -Pin $pin"))
+        self.assertLess(vm.index(check), vm.index("Sign-Artifacts.ps1"))
+        self.assertTrue((BUILD / "Assert-OnnxRuntimePin.ps1").is_file())
+
     def test_term_and_int_interrupt_long_step_before_remote_cleanup(self):
         for interrupt, expected in ((signal.SIGTERM, 143), (signal.SIGINT, 130)):
             with self.subTest(interrupt=interrupt):
