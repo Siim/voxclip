@@ -134,6 +134,16 @@ class RewriteSpecTests(unittest.TestCase):
         names = section(self.design, '## 15.')
         self.assertIn('"Speech found: 1 minute 52 seconds" without `preferRange`', names)
 
+    def test_plain_return_never_runs_the_panel_primary_from_a_row(self):
+        rows = {row[0]: row for row in table_rows(section(self.design, '### 11.2'), '| Action | macOS | Windows | Notes |')}
+        primary = rows["Rewrite panel's primary action"][1]
+        edit = rows['Edit a proposed change'][1]
+        self.assertIn('⌘Return', primary)
+        self.assertIn('Return on a focused change', edit)
+        # The edit binding owns Return on a row, so a plain-Return primary must exclude rows.
+        if 'Return' in primary.replace('⌘Return', ''):
+            self.assertRegex(primary, r'never on a change or phrase row')
+
 
 if __name__ == '__main__':
     unittest.main()

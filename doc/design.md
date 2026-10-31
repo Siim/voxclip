@@ -1126,7 +1126,7 @@ From the top:
    The line is read-only; the picker lives in the bar.
 3. **Headline**, with an optional sub-line. Every state has one.
 4. **Body**: the state's content.
-5. **Footer**, pinned: at most one note, at most one secondary link, and exactly one primary button (the default button). The note sits above the button row, with the link at the leading end and the primary at the trailing end.
+5. **Footer**, pinned: at most one note, at most one secondary link, and exactly one primary button (the default button; §11.2 says when plain Return runs it). The note sits above the button row, with the link at the leading end and the primary at the trailing end.
 
 Rules:
 
@@ -1771,7 +1771,7 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Rewrite the scope | ⇧⌘R | Ctrl+R | The selection, else the selected clip, else Full take (§6.3). Needs no Voice Lab |
 | Stop a running Rewrite | ⌘. or Esc | Esc | Also the panel's **Stop** |
 | Close the Rewrite panel | Esc, when nothing runs | Esc | Focus returns to the scope's first word |
-| Rewrite panel's primary action | ⌘Return anywhere in the panel; Return when focus is not in a text field | Ctrl+Enter in the panel | |
+| Rewrite panel's primary action | ⌘Return anywhere in the panel; plain Return only when focus is on a footer button or plain panel text, never on a change or phrase row, a checkbox or a text field | Ctrl+Enter in the panel | Return on a focused change row edits it (next row) |
 | Edit a proposed change | Return on a focused change or change row | Enter or F2 | Click also opens it (§6.3.5) |
 | Include or exclude a change | Space on its row | Space | |
 | Compare takes | Space plays the focused phrase; ← → switch its take | Space; ← → | |
