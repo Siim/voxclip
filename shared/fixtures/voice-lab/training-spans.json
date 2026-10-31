@@ -21,6 +21,7 @@
         "status": "ok",
         "availableMs": 34000,
         "selectedMs": 34000,
+        "preferredMs": 0,
         "selected": [
           {"startMs":1000,"endMs":19000,"snrDb":50.0},
           {"startMs":22000,"endMs":38000,"snrDb":50.0}
@@ -55,6 +56,7 @@
         "status": "ok",
         "availableMs": 34500,
         "selectedMs": 34500,
+        "preferredMs": 0,
         "selected": [
           {"startMs":500,"endMs":17500,"snrDb":48.0},
           {"startMs":22700,"endMs":40200,"snrDb":48.0}
@@ -88,6 +90,7 @@
         "status": "ok",
         "availableMs": 31400,
         "selectedMs": 31400,
+        "preferredMs": 0,
         "selected": [
           {"startMs":1000,"endMs":11000,"snrDb":45.0},
           {"startMs":12100,"endMs":24000,"snrDb":45.0},
@@ -120,6 +123,7 @@
         "status": "ok",
         "availableMs": 35800,
         "selectedMs": 35800,
+        "preferredMs": 0,
         "selected": [
           {"startMs":0,"endMs":14000,"snrDb":50.0},
           {"startMs":14000,"endMs":24000,"snrDb":40.0},
@@ -162,6 +166,7 @@
         "status": "ok",
         "availableMs": 53200,
         "selectedMs": 53200,
+        "preferredMs": 0,
         "selected": [
           {"startMs":0,"endMs":12000,"snrDb":50.0},
           {"startMs":20100,"endMs":39900,"snrDb":50.0},
@@ -202,6 +207,7 @@
         "status": "ok",
         "availableMs": 30000,
         "selectedMs": 30000,
+        "preferredMs": 0,
         "selected": [
           {"startMs":1000,"endMs":21000,"snrDb":35.0},
           {"startMs":46000,"endMs":56000,"snrDb":20.0}
@@ -244,6 +250,7 @@
         "status": "ok",
         "availableMs": 68500,
         "selectedMs": 68500,
+        "preferredMs": 0,
         "selected": [
           {"startMs":1000,"endMs":26000,"snrDb":50.0},
           {"startMs":27500,"endMs":52000,"snrDb":50.0},
@@ -272,6 +279,7 @@
         "status": "ok",
         "availableMs": 30000,
         "selectedMs": 30000,
+        "preferredMs": 0,
         "selected": [
           {"startMs":35000,"endMs":65000,"snrDb":50.0}
         ],
@@ -308,6 +316,7 @@
         "status": "ok",
         "availableMs": 151000,
         "selectedMs": 120000,
+        "preferredMs": 0,
         "selected": [
           {"startMs":28000,"endMs":56000,"snrDb":50.0},
           {"startMs":59000,"endMs":89000,"snrDb":45.0},
@@ -345,6 +354,7 @@
         "status": "belowMinimum",
         "availableMs": 29990,
         "selectedMs": 0,
+        "preferredMs": 0,
         "selected": [],
         "qualifying": [
           {"startMs":0,"endMs":15000,"snrDb":50.0},
@@ -369,6 +379,7 @@
         "status": "belowMinimum",
         "availableMs": 6000,
         "selectedMs": 0,
+        "preferredMs": 0,
         "selected": [],
         "qualifying": [
           {"startMs":1000,"endMs":7000,"snrDb":38.0}
@@ -386,9 +397,273 @@
         "status": "belowMinimum",
         "availableMs": 0,
         "selectedMs": 0,
+        "preferredMs": 0,
         "selected": [],
         "qualifying": [],
         "rejected": []
+      }
+    },
+    {
+      "id": "prefer-fills-cap",
+      "duration": 200.0,
+      "items": [
+        {"kind":"word","start":2.0,"end":11.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":12.0,"end":21.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":22.0,"end":27.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":30.0,"end":39.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":40.0,"end":49.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":50.0,"end":60.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":63.0,"end":72.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":73.0,"end":82.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":83.0,"end":93.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":96.0,"end":105.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":106.0,"end":115.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":116.0,"end":126.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":129.0,"end":138.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":139.0,"end":148.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":149.0,"end":159.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":162.0,"end":171.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":172.0,"end":181.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":182.0,"end":192.0,"conf":0.9,"speaker":null,"synthetic":false}
+      ],
+      "excluded": [],
+      "preferRange": [28.0,195.0],
+      "frames": [[200,-70.0],[2500,-20.0],[300,-70.0],[3000,-30.0],[300,-70.0],[3000,-28.0],[300,-70.0],[3000,-32.0],[300,-70.0],[3000,-26.0],[300,-70.0],[3000,-24.0],[800,-70.0]],
+      "expected": {
+        "status": "ok",
+        "availableMs": 175000,
+        "selectedMs": 120000,
+        "preferredMs": 120000,
+        "selected": [
+          {"startMs":30000,"endMs":60000,"snrDb":40.0},
+          {"startMs":63000,"endMs":93000,"snrDb":42.0},
+          {"startMs":129000,"endMs":159000,"snrDb":44.0},
+          {"startMs":162000,"endMs":192000,"snrDb":46.0}
+        ],
+        "qualifying": [
+          {"startMs":2000,"endMs":27000,"snrDb":50.0},
+          {"startMs":30000,"endMs":60000,"snrDb":40.0},
+          {"startMs":63000,"endMs":93000,"snrDb":42.0},
+          {"startMs":96000,"endMs":126000,"snrDb":38.0},
+          {"startMs":129000,"endMs":159000,"snrDb":44.0},
+          {"startMs":162000,"endMs":192000,"snrDb":46.0}
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "id": "prefer-below-cap-filled-from-other",
+      "duration": 180.0,
+      "items": [
+        {"kind":"word","start":1.0,"end":10.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":11.0,"end":20.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":21.0,"end":31.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":34.0,"end":44.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":62.0,"end":71.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":72.0,"end":82.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":85.0,"end":94.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":95.0,"end":100.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":103.0,"end":112.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":113.0,"end":122.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":123.0,"end":133.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":136.0,"end":145.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":146.0,"end":155.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":156.0,"end":166.0,"conf":0.9,"speaker":null,"synthetic":false}
+      ],
+      "excluded": [],
+      "preferRange": [60.0,100.0],
+      "frames": [[100,-70.0],[3000,-20.0],[300,-70.0],[1000,-44.0],[1800,-70.0],[2000,-35.0],[300,-70.0],[1500,-40.0],[300,-70.0],[3000,-25.0],[300,-70.0],[3000,-30.0],[1400,-70.0]],
+      "expected": {
+        "status": "ok",
+        "availableMs": 135000,
+        "selectedMs": 105000,
+        "preferredMs": 35000,
+        "selected": [
+          {"startMs":1000,"endMs":31000,"snrDb":50.0},
+          {"startMs":34000,"endMs":44000,"snrDb":26.0},
+          {"startMs":62000,"endMs":82000,"snrDb":35.0},
+          {"startMs":85000,"endMs":100000,"snrDb":30.0},
+          {"startMs":103000,"endMs":133000,"snrDb":45.0}
+        ],
+        "qualifying": [
+          {"startMs":1000,"endMs":31000,"snrDb":50.0},
+          {"startMs":34000,"endMs":44000,"snrDb":26.0},
+          {"startMs":62000,"endMs":82000,"snrDb":35.0},
+          {"startMs":85000,"endMs":100000,"snrDb":30.0},
+          {"startMs":103000,"endMs":133000,"snrDb":45.0},
+          {"startMs":136000,"endMs":166000,"snrDb":40.0}
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "id": "prefer-partial-overlap",
+      "duration": 200.0,
+      "items": [
+        {"kind":"word","start":1.0,"end":10.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":11.0,"end":20.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":21.0,"end":25.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":28.0,"end":37.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":38.0,"end":47.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":48.0,"end":58.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":61.0,"end":70.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":71.0,"end":80.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":81.0,"end":91.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":96.0,"end":105.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":106.0,"end":115.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":116.0,"end":126.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":129.0,"end":138.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":139.0,"end":148.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":149.0,"end":159.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":162.0,"end":171.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":172.0,"end":181.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":182.0,"end":192.0,"conf":0.9,"speaker":null,"synthetic":false}
+      ],
+      "excluded": [],
+      "preferRange": [19.9996,96.0004],
+      "frames": [[100,-70.0],[2400,-40.0],[300,-70.0],[3000,-42.0],[300,-70.0],[3000,-35.0],[500,-70.0],[3000,-44.0],[300,-70.0],[3000,-20.0],[300,-70.0],[3000,-25.0],[800,-70.0]],
+      "expected": {
+        "status": "ok",
+        "availableMs": 174000,
+        "selectedMs": 114000,
+        "preferredMs": 65000,
+        "selected": [
+          {"startMs":1000,"endMs":25000,"snrDb":30.0},
+          {"startMs":28000,"endMs":58000,"snrDb":28.0},
+          {"startMs":61000,"endMs":91000,"snrDb":35.0},
+          {"startMs":129000,"endMs":159000,"snrDb":50.0}
+        ],
+        "qualifying": [
+          {"startMs":1000,"endMs":25000,"snrDb":30.0},
+          {"startMs":28000,"endMs":58000,"snrDb":28.0},
+          {"startMs":61000,"endMs":91000,"snrDb":35.0},
+          {"startMs":96000,"endMs":126000,"snrDb":26.0},
+          {"startMs":129000,"endMs":159000,"snrDb":50.0},
+          {"startMs":162000,"endMs":192000,"snrDb":45.0}
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "id": "prefer-no-qualifying-span",
+      "duration": 200.0,
+      "items": [
+        {"kind":"word","start":1.0,"end":10.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":11.0,"end":21.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":24.0,"end":33.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":34.0,"end":40.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":43.0,"end":51.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":54.0,"end":57.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":60.0,"end":69.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":70.0,"end":79.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":80.0,"end":90.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":93.0,"end":102.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":103.0,"end":112.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":113.0,"end":123.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":126.0,"end":135.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":136.0,"end":145.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":146.0,"end":156.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":159.0,"end":168.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":169.0,"end":178.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":179.0,"end":189.0,"conf":0.9,"speaker":null,"synthetic":false}
+      ],
+      "excluded": [],
+      "preferRange": [40.0,60.0],
+      "frames": [[100,-70.0],[2000,-20.0],[300,-70.0],[1600,-44.0],[300,-70.0],[800,-50.0],[300,-70.0],[300,-20.0],[300,-70.0],[3000,-42.0],[300,-70.0],[3000,-25.0],[300,-70.0],[3000,-30.0],[300,-70.0],[3000,-35.0],[1100,-70.0]],
+      "expected": {
+        "status": "ok",
+        "availableMs": 156000,
+        "selectedMs": 110000,
+        "preferredMs": 0,
+        "selected": [
+          {"startMs":1000,"endMs":21000,"snrDb":50.0},
+          {"startMs":93000,"endMs":123000,"snrDb":45.0},
+          {"startMs":126000,"endMs":156000,"snrDb":40.0},
+          {"startMs":159000,"endMs":189000,"snrDb":35.0}
+        ],
+        "qualifying": [
+          {"startMs":1000,"endMs":21000,"snrDb":50.0},
+          {"startMs":24000,"endMs":40000,"snrDb":26.0},
+          {"startMs":60000,"endMs":90000,"snrDb":28.0},
+          {"startMs":93000,"endMs":123000,"snrDb":45.0},
+          {"startMs":126000,"endMs":156000,"snrDb":40.0},
+          {"startMs":159000,"endMs":189000,"snrDb":35.0}
+        ],
+        "rejected": [
+          {"startMs":43000,"endMs":51000,"reason":"lowSnr","snrDb":null},
+          {"startMs":54000,"endMs":57000,"reason":"short","snrDb":null}
+        ]
+      }
+    },
+    {
+      "id": "prefer-ties-across-groups",
+      "duration": 200.0,
+      "items": [
+        {"kind":"word","start":1.0,"end":10.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":11.0,"end":20.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":21.0,"end":31.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":34.0,"end":44.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":61.0,"end":70.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":71.0,"end":80.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":81.0,"end":91.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":94.0,"end":103.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":104.0,"end":113.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":114.0,"end":124.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":127.0,"end":136.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":137.0,"end":146.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":147.0,"end":157.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":160.0,"end":169.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":170.0,"end":180.0,"conf":0.9,"speaker":null,"synthetic":false}
+      ],
+      "excluded": [],
+      "preferRange": [60.0,200.0],
+      "frames": [[100,-70.0],[3000,-30.0],[300,-70.0],[1000,-30.0],[1700,-70.0],[3000,-30.0],[300,-70.0],[3000,-30.0],[300,-70.0],[3000,-30.0],[300,-70.0],[2000,-30.0],[2000,-70.0]],
+      "expected": {
+        "status": "ok",
+        "availableMs": 150000,
+        "selectedMs": 120000,
+        "preferredMs": 110000,
+        "selected": [
+          {"startMs":34000,"endMs":44000,"snrDb":40.0},
+          {"startMs":61000,"endMs":91000,"snrDb":40.0},
+          {"startMs":94000,"endMs":124000,"snrDb":40.0},
+          {"startMs":127000,"endMs":157000,"snrDb":40.0},
+          {"startMs":160000,"endMs":180000,"snrDb":40.0}
+        ],
+        "qualifying": [
+          {"startMs":1000,"endMs":31000,"snrDb":40.0},
+          {"startMs":34000,"endMs":44000,"snrDb":40.0},
+          {"startMs":61000,"endMs":91000,"snrDb":40.0},
+          {"startMs":94000,"endMs":124000,"snrDb":40.0},
+          {"startMs":127000,"endMs":157000,"snrDb":40.0},
+          {"startMs":160000,"endMs":180000,"snrDb":40.0}
+        ],
+        "rejected": []
+      }
+    },
+    {
+      "id": "prefer-below-minimum",
+      "duration": 40.0,
+      "items": [
+        {"kind":"word","start":1.0,"end":10.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":11.0,"end":21.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":24.0,"end":28.0,"conf":0.9,"speaker":null,"synthetic":false}
+      ],
+      "excluded": [],
+      "preferRange": [0.0,40.0],
+      "frames": [[100,-70.0],[2000,-20.0],[300,-70.0],[400,-20.0],[1200,-70.0]],
+      "expected": {
+        "status": "belowMinimum",
+        "availableMs": 20000,
+        "selectedMs": 0,
+        "preferredMs": 0,
+        "selected": [],
+        "qualifying": [
+          {"startMs":1000,"endMs":21000,"snrDb":50.0}
+        ],
+        "rejected": [
+          {"startMs":24000,"endMs":28000,"reason":"short","snrDb":null}
+        ]
       }
     }
   ]

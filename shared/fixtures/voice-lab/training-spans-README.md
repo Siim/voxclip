@@ -6,16 +6,25 @@ no recorded audio, transcript text or provider replies. Both Core suites replay
 every case through `VoiceTrainingSpans.select` (Swift) and
 `VoiceTrainingSpans.Select` (C#) without decoding media or loading a model.
 
+`python3 tools/fixtures/voice-lab/generate_training_spans.py` writes the file.
+It holds every case's inputs and computes `expected` with its own
+standard-library reference of §6.5.1, written from the spec rather than from
+either Core. Two runs give identical bytes, and `check_drift.py` requires the
+committed bytes to match exactly. The reference reproduces the twelve original
+hand-calculated cases unchanged; they gained only `preferredMs` 0.
+
 Each case gives `duration` in seconds, `items` in stored transcript order (only
 the fields the selection reads: `kind`, `start`, `end`, `conf`, `speaker` and
-`synthetic`), `excluded` source ranges `[start, end]` in seconds, and `frames`
-as run-length pairs `[count, dBFS]`. Expand the pairs in order into one 10 ms
+`synthetic`), `excluded` source ranges `[start, end]` in seconds, an optional
+`preferRange` `[start, end]` in source seconds (absent means no preference),
+and `frames` as run-length pairs `[count, dBFS]`. Expand the pairs in order into one 10 ms
 level per frame; frame `i` covers `[i / 100, (i + 1) / 100)` seconds. Word
 lengths of several seconds are deliberate: the selection only reads times, and
 long words keep the vectors small.
 
-`expected` is compared exactly: `status`, `availableMs`, `selectedMs`, and the
-`selected`, `qualifying` and `rejected` lists in source order. Times are whole
+`expected` is compared exactly: `status`, `availableMs`, `selectedMs`,
+`preferredMs`, and the `selected`, `qualifying` and `rejected` lists in source
+order. Times are whole
 milliseconds. `snrDb` is a binary64 difference of two listed levels, so it is
 compared with `==`; it is null for `short` and `unsplittable` pieces and for a
 `lowSnr` piece without voiced frames.
@@ -34,6 +43,12 @@ compared with `==`; it is null for `short` and `unsplittable` pieces and for a
 | `below-minimum` | A 2.001 s gap ends a run, a 4.999 s run is `short`, an exact 5 s run qualifies, and 29.99 s available is `belowMinimum` with nothing selected. |
 | `snr-percentiles` | The floor is sorted index `floor(n / 10)` (−60, not −62) and the voiced level is index `floor(m / 2)` of an even count (−22, not −30). |
 | `empty-transcript` | No items gives `belowMinimum` with zero totals. |
+| `prefer-fills-cap` | The preferred spans alone fill 120 s, so the 50 dB span outside the range is skipped; a fifth preferred 30 s span does not fit. |
+| `prefer-below-cap-filled-from-other` | 35 s of preferred spans come first, then the other spans by SNR; a 30 s span that would pass 120 s is skipped and a later 10 s one fits. |
+| `prefer-partial-overlap` | A span crossing the range start counts only its overlap; a span starting exactly at the range end is not preferred; the range is converted with `ms(t)` (19.9996 and 96.0004 s are 20,000 and 96,000 ms). |
+| `prefer-no-qualifying-span` | The range holds only a `lowSnr` and a `short` piece, and qualifying spans touch both its edges: the unpreferred selection with `preferredMs` 0. |
+| `prefer-ties-across-groups` | Every span is 40 dB: preferred spans go first even when a span outside the range is as loud, as long and earlier; an outside 10 s span then fits. |
+| `prefer-below-minimum` | A range over the whole take with 20 s available: `belowMinimum`, nothing selected and `preferredMs` 0. |
 
 Hand calculation, for example `low-snr-rejected`: 7,000 frames, of which 1,500
 are −55 dBFS, so sorted index 700 is −55. The first run covers frames 100 to
@@ -46,7 +61,27 @@ to 4,299 at −36, giving 19, below 20. The third covers frames 4,600 to 5,599 a
 104 s; 25 s would make 129 s and is skipped; 16 s makes 120 s; 6 s would make
 126 s and is skipped.
 
-Expected values may be edited by hand only with the rule and the reason stated
-in the change, and checked against a second calculation before committing.
+`preferRange` (§6.5.1 Preferred range and step 6): the qualifying spans with
+`startMs < preferEnd` and `endMs > preferStart` are ranked first, each group by
+SNR, then duration, then start, and the walk fills up to 120 s across both.
+`preferredMs` sums each selected span's overlap with the range; it is 0 without
+a range and when nothing is selected. Every `prefer-` case has a −70 dBFS
+floor, so a span's SNR is its level plus 70, and speaks each span as words of
+at most 10 s with 0.5 s pauses.
+
+`prefer-fills-cap` ranks the preferred 30 s spans 46, 44, 42, 40 and 38 dB:
+30, 60, 90 and 120 s, then 38 dB would make 150 s and the outside 25 s span at
+50 dB would make 145 s, so both are skipped. Without the range the 50 dB span
+is picked first and the selection is 115 s.
+
+`prefer-partial-overlap` picks the preferred 35, 30 and 28 dB spans (30, 24 and
+30 s: 84 s), then the outside 50 dB span (114 s); the outside 45 and 26 dB spans
+would pass 120 s. `preferredMs` is 5,000 (25,000 − 20,000) + 30,000 + 30,000 =
+65,000.
+
+Change a case by editing its inputs in the generator; the expected values follow.
+A change to the reference itself must state the rule and the reason, and the
+twelve original cases must stay identical.
+
 These vectors do not claim anything about real recordings, speaker match or
 clone quality.

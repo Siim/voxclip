@@ -5,15 +5,16 @@ The audio-math generator calls libm (log10, tan, pow) and NumPy reductions whose
 platforms: a hosted Ubuntu runner and an Apple silicon Mac disagree by 1 ULP on some coefficients and by up to
 ~1e-13 on accumulated loudness values. Such a file passes when its structure, strings, booleans and integers are
 identical and every float agrees within REL_TOL / ABS_TOL; the committed bytes are then restored so the
-byte-exact `git diff --exit-code` that follows checks only the other generators. Continuity and LLM send cost
-vectors have an explicit byte-exact expectation, never float tolerance. Run from the repository root, after the generators."""
+byte-exact `git diff --exit-code` that follows checks only the other generators. Continuity, LLM send cost and
+training span vectors have an explicit byte-exact expectation, never float tolerance. Run from the repository root, after the generators."""
 import json
 import math
 import subprocess
 import sys
 
 TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json']
-EXACT = ['shared/fixtures/voice-lab/continuity-cases.json', 'shared/fixtures/voice-lab/llm-send-cost-cases.json']
+EXACT = ['shared/fixtures/voice-lab/continuity-cases.json', 'shared/fixtures/voice-lab/llm-send-cost-cases.json',
+         'shared/fixtures/voice-lab/training-spans.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
 
