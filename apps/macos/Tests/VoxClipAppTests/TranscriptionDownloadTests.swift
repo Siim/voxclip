@@ -80,6 +80,20 @@ private actor SheetModelDownloader: ModelDownloader {
         }
     }
 
+    /// The Engine picker can't change while the download runs, and even if the engine or language differs when it ends, the
+    /// finished download only continues the local transcription it was started for: no upload starts without a click.
+    @Test func aFinishedDownloadContinuesOnlyTheLocalTranscriptionItWasStartedFor() async throws {
+        let model = try await turbo()
+        let install = TranscriptionModelInstall(model: model, engine: "local", language: "auto")
+        #expect(install.continues(installed: true, engine: "local", language: "auto"))
+        #expect(!install.continues(installed: false, engine: "local", language: "auto"))
+        #expect(!install.continues(installed: true, engine: "elevenlabs", language: "auto"))
+        #expect(!install.continues(installed: true, engine: "apple", language: "auto"))
+        #expect(!install.continues(installed: true, engine: "local", language: "et"))
+        let cloud = TranscriptionModelInstall(model: model, engine: "elevenlabs", language: "auto")
+        #expect(!cloud.continues(installed: true, engine: "elevenlabs", language: "auto"))
+    }
+
     @Test func settingsDownloadsKeepTheirOwnConfirmation() async throws {
         let model = try await turbo()
         let store = SheetModelDownloader(model: model)

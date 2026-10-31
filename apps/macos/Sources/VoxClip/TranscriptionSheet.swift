@@ -13,7 +13,7 @@ import VoxClipMedia
     @State private var consent = TranscriptionConsentGate()
     @State private var error: String?
     @State private var prompt: TranscriptionPrompt?
-    @State private var installing: ModelDescriptor?
+    @State private var installing: TranscriptionModelInstall?
     @State private var running = false
     @State private var progress: TranscriptionProgress?
     @State private var hasCloudKey = false
@@ -31,6 +31,7 @@ import VoxClipMedia
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Transcribe \(model.project.title ?? "video")").font(.title2)
+            // A first-use download keeps the engine and language it was started for until it ends (transcription §11.3).
             Form {
                 Picker("Language", selection: $language) { Text("Auto").tag("auto"); ForEach(Locale.LanguageCode.isoLanguageCodes, id: \.identifier) { code in Text(Locale.current.localizedString(forLanguageCode: code.identifier) ?? code.identifier).tag(code.identifier) } }
                 Toggle("Remember for new imports", isOn: $remember)
@@ -46,7 +47,7 @@ import VoxClipMedia
                     }
                     Text("Sends the audio track to ElevenLabs, which keeps it under its terms. Estimated cost is shown by the engine when available.").font(.caption)
                 }
-            }.formStyle(.grouped).scrollContentBackground(.hidden).disabled(running)
+            }.formStyle(.grouped).scrollContentBackground(.hidden).disabled(running || installing != nil)
             if running { ProgressView(model.progress ?? "Reading video…", value: progress?.fraction) }
             if let prompt { promptRow(prompt) }
             if let error { InlineNotice(text: error) }
@@ -63,16 +64,17 @@ import VoxClipMedia
         }
         .onChange(of: [engine, language]) { if installing == nil { prompt = nil } }
         .modifier(ModelDownloadConfirmationDialog(library: model.app.modelLibrary, origin: .transcription))
-        // A first-use download continues the transcription when it finishes (transcription §11.3); closing the sheet
-        // cancels only that continuation, and the app-owned download goes on.
-        .task(id: installing?.id) {
-            guard let descriptor = installing else { return }
+        // A first-use download continues the local transcription it was started for when it finishes (transcription
+        // §11.3); closing the sheet cancels only that continuation, and the app-owned download goes on.
+        .task(id: installing?.model.id) {
+            guard let request = installing else { return }
             let library = model.app.modelLibrary
-            let installed = await library.install(descriptor)
-            guard !Task.isCancelled, installing?.id == descriptor.id else { return }
+            let installed = await library.install(request.model)
+            guard !Task.isCancelled, installing?.model.id == request.model.id else { return }
             installing = nil
-            if installed { prompt = nil; transcribe() }
-            else if library.failedModelID == descriptor.id, let failure = library.error { error = failure }
+            if installed { prompt = nil }
+            if request.continues(installed: installed, engine: engine, language: language) { transcribe() }
+            else if !installed, library.failedModelID == request.model.id, let failure = library.error { error = failure }
         }
         .task {
             engine = model.app.string("transcription.engineMode", fallback: "local"); if engine == "ask" { engine = "local" }
@@ -95,7 +97,7 @@ import VoxClipMedia
                         Spacer()
                         Button("Cancel") { library.task?.cancel() }
                     } else {
-                        Button("Download") { error = nil; installing = download }.disabled(running || library.progress != nil)
+                        Button("Download") { error = nil; installing = TranscriptionModelInstall(model: download, engine: engine, language: language) }.disabled(running || library.progress != nil)
                         if prompt.offersCloud { Button("Use ElevenLabs instead") { useElevenLabs() }.disabled(running) }
                     }
                 }.padding(.horizontal, 12)
@@ -185,6 +187,19 @@ import VoxClipMedia
                 dismiss()
             } catch is CancellationError {} catch VoxClipError.cancelled {} catch { self.error = await model.app.safeError(error) }
         }
+    }
+}
+
+/// A first-use model download started from the transcription sheet, with the engine and language it was started for.
+struct TranscriptionModelInstall: Equatable {
+    let model: ModelDescriptor
+    let engine: String
+    let language: String
+    /// Whether the finished download goes on to transcribe by itself: only once the model is installed, and only for the
+    /// local engine and language the user chose Download for. Any other engine waits for Transcribe, so an ElevenLabs
+    /// upload always follows a click and its first-upload consent (transcription §11.3).
+    func continues(installed: Bool, engine: String, language: String) -> Bool {
+        installed && self.engine == "local" && engine == self.engine && language == self.language
     }
 }
 
