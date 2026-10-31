@@ -119,7 +119,7 @@ public static class VoiceLabSourceAudio
             var samples = new float[checked((int)(end - start))];
             await DecodeMonoAsync(source, start, end, sampleRate, conversion,
                 (block, first) => block.CopyTo(samples.AsSpan((int)(first - start))), ct).ConfigureAwait(false);
-            regions.Add(new(start, samples));
+            regions.Add(VoiceLabSourceExcerpt.Region.Owning(start, samples));
         }
         return (new(frames, regions), envelope);
     }
@@ -220,7 +220,7 @@ public static class VoiceLabSourceAudio
         foreach (var region in excerpt.Regions)
         {
             if (region.Start * target % rate != 0) throw Failure(VoiceLabSourceAudioErrorCode.InvalidAudio);
-            regions.Add(new(region.Start * target / rate, VoiceConsentAudio.Resample(region.Samples.Span, rate, target)));
+            regions.Add(VoiceLabSourceExcerpt.Region.Owning(region.Start * target / rate, VoiceConsentAudio.Resample(region.Samples.Span, rate, target)));
         }
         return new(excerpt.TotalFrames * target / rate, regions);
     }

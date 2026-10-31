@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
@@ -97,5 +98,19 @@ public sealed class VoiceLabSourceExcerptTests
         Assert.Equal(6f, excerpt.Samples(60, 61)!.Value.Span[0]);
         Assert.True(excerpt.IsFinite);
         Assert.False(new VoiceLabSourceExcerpt(3, [new VoiceLabSourceExcerpt.Region(0, [0, float.PositiveInfinity])]).IsFinite);
+    }
+
+    /// <summary>The source decode hands its freshly filled arrays to the regions, so a decoded region is held once, not twice.</summary>
+    [Fact]
+    public void AnOwningRegionKeepsItsArrayWhereTheConstructorCopies()
+    {
+        float[] decoded = [1, 2, 3];
+        var owned = VoiceLabSourceExcerpt.Region.Owning(5, decoded);
+        Assert.True(MemoryMarshal.TryGetArray(owned.Samples, out var held));
+        Assert.Same(decoded, held.Array);
+        Assert.Equal((5L, 8L), (owned.Start, owned.End));
+        Assert.True(MemoryMarshal.TryGetArray(new VoiceLabSourceExcerpt.Region(5, decoded).Samples, out var copied));
+        Assert.NotSame(decoded, copied.Array);
+        Assert.Throws<ArgumentOutOfRangeException>(() => VoiceLabSourceExcerpt.Region.Owning(-1, decoded));
     }
 }

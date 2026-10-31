@@ -239,6 +239,38 @@ public sealed class VoiceLabRewriteSourceTests
         }
     }
 
+    /// <summary>Each region keeps the array it is decoded into, and the 24 kHz excerpt keeps the resampler's output, so neither is
+    /// held twice and memory stays one chunk, the regions and the envelope. The fake conversions complete at once, so the whole
+    /// read runs on this thread and every allocation it makes is this thread's.</summary>
+    [Fact]
+    public async Task RegionsAreHeldOnceWhenDecodedAndWhenResampled()
+    {
+        const int rate = 48_000, asset = 24_000;
+        const long frames = 30 * rate;
+        var spans = new List<(long Start, long End)>(4);
+        var conversion = Conversion(frames, frame => (short)(frame % 2_000 - 1_000), spans);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var read = VoiceLabSourceAudio.RewriteSourceAsync("held-once", frames, rate, Window(10, 20, rate), null, null, [], conversion, Token);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(read.IsCompletedSuccessfully);
+        var result = await read;
+        // One envelope chunk, then 1 s around the room-tone run at the start and 6 s past each side of the 10 s window.
+        Assert.Equal(new (long Start, long End)[] { (0, frames), (0, 72_000), (192_000, 1_248_000) }, spans);
+        var held = result.Excerpt.Regions.Sum(region => (long)region.Samples.Length);
+        Assert.Equal(1_128_000, held);
+        // The conversions' WAVs and one float per region frame, with room for each decode pass's 256 KB buffer and the envelope.
+        // A copy of the regions would add 4.5 MB.
+        var wavs = spans.Sum(span => 44 + 2 * (span.End - span.Start));
+        Assert.InRange(allocated, wavs + 4 * held, wavs + 4 * held + 2_000_000);
+        before = GC.GetAllocatedBytesForCurrentThread();
+        var staged = VoiceLabSourceAudio.Resample(result.Excerpt, rate, asset);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var resampled = staged.Regions.Sum(region => (long)region.Samples.Length);
+        Assert.Equal(held / 2, resampled);
+        // A copy of the resampled regions would add 2.3 MB.
+        Assert.InRange(allocated, 4 * resampled, 4 * resampled + 256_000);
+    }
+
     [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
     public async Task RewriteSourceDecodesOnlyTheRegionsOfARealTrackLongerThanOneChunk()
     {
