@@ -1,0 +1,21 @@
+# Release allowlist for ReleaseBoundaryFixture. Every hand-written type, member, tagged member, friend
+# assembly and switch-like literal in the shipping Release assembly must appear here; nothing else may.
+# Toolchain output (WinUI XAML compiler, CsWinRT, source generators, Windows App SDK sources) is
+# classified from the PDB and recorded only as evidence. Regenerate after a reviewed product change:
+#   dotnet run --project apps/windows/build/ReleaseBoundary -c Release -- update <Release assembly> <this file>
+# then review the diff. Fakes, harnesses, probes, seams and DEBUG-only helpers belong under #if DEBUG.
+literal "VOXCLIP_SHARED_DIR"
+member VoxClip.App.Controls.RewritePanel :: method public .ctor()
+member VoxClip.App.Services.IRewriteBackend :: method public RenderAsync(string,System.Threading.CancellationToken)
+member VoxClip.App.Services.RewriteGenerationBackend :: field private sharedDirectory
+member VoxClip.App.Services.RewriteGenerationBackend :: method public .ctor()
+member VoxClip.App.Services.RewriteGenerationBackend :: method public RenderAsync(string,System.Threading.CancellationToken)
+member VoxClip.App.ViewModels.RewriteGeneration :: field private backend
+member VoxClip.App.ViewModels.RewriteGeneration :: method private set_Status(string)
+member VoxClip.App.ViewModels.RewriteGeneration :: method public .ctor(VoxClip.App.Services.IRewriteBackend)
+member VoxClip.App.ViewModels.RewriteGeneration :: method public RunAsync(string,System.Threading.CancellationToken)
+member VoxClip.App.ViewModels.RewriteGeneration :: method public get_Status()
+type VoxClip.App.Controls.RewritePanel
+type VoxClip.App.Services.IRewriteBackend
+type VoxClip.App.Services.RewriteGenerationBackend
+type VoxClip.App.ViewModels.RewriteGeneration

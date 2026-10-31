@@ -451,10 +451,16 @@ public sealed class CreateVoiceTests
         var project = System.Xml.Linq.XDocument.Load(Path.Combine(root, "apps/windows/tests/VoxClip.Core.Tests/Tracks/win-ui/VoxClip.Ui.Tests.csproj"));
         var target = Assert.Single(project.Descendants("Target"), target => (string?)target.Attribute("Name") == "BuildReleaseAppForInspection");
         Assert.Equal("CoreCompile", (string?)target.Attribute("BeforeTargets"));
-        var build = Assert.Single(target.Elements("MSBuild"));
-        Assert.Equal("Restore;Build", (string?)build.Attribute("Targets"));
-        Assert.EndsWith("VoxClip.App.TypeCheck.csproj", (string?)build.Attribute("Projects"));
-        Assert.Contains("Configuration=Release", (string?)build.Attribute("Properties"));
+        // The typecheck surrogate and the portable Release CLI, both inspected by the fast Release boundary precheck.
+        var builds = target.Elements("MSBuild").ToArray();
+        Assert.Equal(2, builds.Length);
+        Assert.EndsWith("VoxClip.App.TypeCheck.csproj", (string?)builds[0].Attribute("Projects"));
+        Assert.EndsWith("VoxClip.Cli.csproj", (string?)builds[1].Attribute("Projects"));
+        foreach (var build in builds)
+        {
+            Assert.Equal("Restore;Build", (string?)build.Attribute("Targets"));
+            Assert.Contains("Configuration=Release", (string?)build.Attribute("Properties"));
+        }
     }
 
     [Fact]

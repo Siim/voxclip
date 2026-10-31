@@ -28,6 +28,9 @@
     <Compile Include="RewritePanelTests.cs" />
     <Compile Include="RewriteGenerationTests.cs" />
     <Compile Include="VoiceLabReleaseBoundaryTests.cs" />
+    <Compile Include="ReleaseAssemblyInspectionTests.cs" />
+    <Compile Include="../../../../build/ReleaseBoundary/AssemblyInventory.cs" Link="Build/AssemblyInventory.cs" />
+    <Compile Include="../../../../build/ReleaseBoundary/ReleaseCheck.cs" Link="Build/ReleaseCheck.cs" />
     <Compile Include="RewriteTakeReviewTests.cs" />
     <Compile Include="../../../../src/VoxClip.App/Services/RewriteGenerationBackend.cs" Link="Services/RewriteGenerationBackend.cs" />
     <Compile Include="EditorVoiceLabPresentationTests.cs" />
@@ -86,8 +89,39 @@
     <Compile Include="../../../../src/VoxClip.App/Services/CaptionGalleryRenderer.cs" Link="Services/CaptionGalleryRenderer.cs" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+  <!-- Real Release (and one Debug) compilations that ReleaseAssemblyInspectionTests feeds to the Release boundary checker. -->
+  <ItemGroup>
+    <ReleaseBoundaryFixture Include="$(MSBuildThisFileDirectory)../../../ReleaseBoundaryFixture/ReleaseBoundaryFixture.csproj" />
+  </ItemGroup>
+  <Target Name="BuildReleaseBoundaryFixtures" BeforeTargets="CoreCompile">
+    <MSBuild Projects="@(ReleaseBoundaryFixture)" Targets="Restore" Properties="Configuration=Release"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />
+    <ItemGroup>
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Clean" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=StandIn" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Hook" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=DebugLiteral" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Seams" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=FileLocal" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Observable" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=GeneratedTag" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=LowerCase" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Mapped" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=NestedObservable" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=NestedLibraryImport" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=GeneratedOuter" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=App" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=AppPathMap" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Debug;BoundaryVariant=DebugBuild" />
+    </ItemGroup>
+    <MSBuild Projects="@(_ReleaseBoundaryVariant)" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />
+  </Target>
+  <!-- The fast Release precheck inspects the typecheck surrogate and the portable Release CLI. -->
   <Target Name="BuildReleaseAppForInspection" BeforeTargets="CoreCompile" Condition="'$(Configuration)' == 'Release'">
     <MSBuild Projects="$(MSBuildThisFileDirectory)../../../VoxClip.App.TypeCheck/VoxClip.App.TypeCheck.csproj"
+             Targets="Restore;Build" Properties="Configuration=Release"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../../../../src/VoxClip.Cli/VoxClip.Cli.csproj"
              Targets="Restore;Build" Properties="Configuration=Release"
              RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />
   </Target>

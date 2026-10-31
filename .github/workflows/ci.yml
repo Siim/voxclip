@@ -493,6 +493,12 @@ jobs:
         working-directory: apps/windows
         run: build/Assert-OnnxRuntimePin.ps1 -AppDirectory src/VoxClip.App/bin/x64/Release/net10.0-windows10.0.26100.0/win-x64 -RuntimeIdentifier win-x64
 
+      - name: Inspect shipping Release assemblies (win-x64)
+        if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
+        shell: pwsh
+        working-directory: apps/windows
+        run: build/Test-ReleaseBoundary.ps1 -RuntimeIdentifier win-x64
+
       - name: Build WinUI app (win-arm64)
         if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
         shell: bash
@@ -504,6 +510,21 @@ jobs:
         shell: pwsh
         working-directory: apps/windows
         run: build/Assert-OnnxRuntimePin.ps1 -AppDirectory src/VoxClip.App/bin/ARM64/Release/net10.0-windows10.0.26100.0/win-arm64 -RuntimeIdentifier win-arm64
+
+      - name: Inspect shipping Release assemblies (win-arm64)
+        if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}
+        shell: pwsh
+        working-directory: apps/windows
+        run: build/Test-ReleaseBoundary.ps1 -RuntimeIdentifier win-arm64
+
+      - name: Upload shipping Release inspection inventories
+        if: always() && steps.detect.outputs.app == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-boundary-inventories
+          path: ${{ runner.temp }}/voxclip-release-boundary
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Launch the DEBUG Editor on the hosted desktop
         if: ${{ !cancelled() && steps.detect.outputs.app == 'true' }}

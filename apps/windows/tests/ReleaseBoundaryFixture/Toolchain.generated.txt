@@ -1,0 +1,92 @@
+// Simulated toolchain output, compiled from obj/. Shapes follow the WinUI XAML compiler and the Windows App SDK
+// auto-initializer, including the members they emit without GeneratedCode. None of it may need an allowlist entry.
+#pragma warning disable 0169, 0649, 8618
+namespace VoxClip.App.ViewModels
+{
+    partial class RewriteGeneration
+    {
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        private global::System.Object RewriteButton;
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        private bool _contentLoaded;
+
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        public void InitializeComponent()
+        {
+            if (_contentLoaded) return;
+            _contentLoaded = true;
+            Bindings = new RewriteGeneration_obj1_Bindings();
+        }
+
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        private interface IRewriteGeneration_Bindings
+        {
+            void Update();
+        }
+
+        private interface IRewriteGeneration_BindingsScopeConnector
+        {
+            bool ContainsElement(int connectionId);
+        }
+
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        private partial class RewriteGeneration_obj1_Bindings : IRewriteGeneration_Bindings, IRewriteGeneration_BindingsScopeConnector
+        {
+            private delegate void InvokeFunctionDelegate(int phase);
+            public void Update() { }
+            public bool ContainsElement(int connectionId) => connectionId == 1;
+        }
+
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        private IRewriteGeneration_Bindings Bindings;
+    }
+}
+
+namespace VoxClip.App.Controls
+{
+    partial class RewritePanel
+    {
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        public void InitializeComponent() { }
+
+        // Generated code whose every sequence point is #line-mapped to a XAML file (EmitToolchainOutput writes it beside this one).
+#line 12 "RewritePanel.xaml"
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        public void Connect(int connectionId, object target) { if (connectionId == 2) global::System.GC.KeepAlive(target); }
+#line default
+
+        [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.UI.Xaml.Markup.Compiler", " 3.0.0.2510")]
+        private interface IRewritePanel_Bindings
+        {
+            void Update();
+        }
+
+        private interface IRewritePanel_BindingsScopeConnector
+        {
+            bool ContainsElement(int connectionId);
+        }
+    }
+}
+
+namespace VoxClip.App.ReleaseBoundaryFixture_XamlTypeInfo
+{
+    internal delegate object Activator();
+}
+
+namespace Microsoft.Windows.Foundation.UndockedRegFreeWinRTCS
+{
+    internal static class NativeMethods
+    {
+        [global::System.Runtime.InteropServices.DllImport("Microsoft.WindowsAppRuntime.dll", ExactSpelling = true)]
+        internal static extern int WindowsAppRuntime_EnsureIsLoaded();
+    }
+
+    internal static class AutoInitialize
+    {
+        internal static void AccessWindowsAppSDK() =>
+            global::System.Environment.SetEnvironmentVariable("MICROSOFT_WINDOWSAPPRUNTIME_BASE_DIRECTORY", global::System.AppContext.BaseDirectory);
+    }
+}
