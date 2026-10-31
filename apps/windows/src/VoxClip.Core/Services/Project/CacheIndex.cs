@@ -23,10 +23,20 @@ public sealed class CacheIndex
     private static readonly (string Prefix, string Suffix)[] LegacyRootShapes =
         [("apple-", ".caf"), ("audio-16k-", ".partial"), ("audio-16k.wav.", ".partial"), ("envelope-", ".partial"), ("meta.json.", ".partial")];
     private readonly string root;
+    private readonly TimeProvider clock;
     private readonly SemaphoreSlim gate = new(1, 1);
 
-    /// <summary>Use the data root's Cache folder unless a separate root is supplied.</summary>
-    public CacheIndex(string? root = null) => this.root = Path.GetFullPath(root ?? DataLocations.Resolve().Cache);
+    /// <summary>Use the data root's Cache folder unless a separate root is supplied. <paramref name="time"/> is the clock
+    /// for <c>lastAccessAt</c> and the one-hour rule of <see cref="EvictAsync(long, IReadOnlySet{string}, bool, CancellationToken)"/>;
+    /// tests inject one.</summary>
+    public CacheIndex(string? root = null, TimeProvider? time = null)
+    {
+        this.root = Path.GetFullPath(root ?? DataLocations.Resolve().Cache);
+        clock = time ?? TimeProvider.System;
+    }
+
+    /// <summary>The keys in use in this cache folder, shared with every other index of the folder (architecture §8.2).</summary>
+    public CacheKeyRegistry Keys => CacheKeyRegistry.Shared(root);
 
     /// <summary>The source's own entry, Cache/&lt;contentKey&gt;; only a lowercase SHA-256 key names one (architecture §8.2).</summary>
     public string EntryDirectory(string contentKey)
@@ -34,23 +44,27 @@ public sealed class CacheIndex
 
     /// <summary>Extract transcription audio into the source's own entry, so no two sources share audio-16k.wav or
     /// envelope-10ms.f32, then record the entry in this index's meta.json format: the existing CreatedAt, LastAccessAt now,
-    /// the measured bytes and the envelope (architecture §8.2). Removes the files earlier builds left at the cache root.</summary>
+    /// the measured bytes and the envelope (architecture §8.2). Removes the files earlier builds left at the cache root.
+    /// The key is leased throughout, and an existing entry is marked used as the extraction starts, so it sorts as the most
+    /// recently used, also for the app's eviction while the CLI extracts.</summary>
     public async Task<AudioExtractionResult> ExtractAudioAsync(IAudioExtractor extractor, MediaInfo media, string contentKey,
         IProgress<MediaProgress>? progress, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(extractor);
         var directory = EntryDirectory(contentKey);
+        // Eviction never touches an entry while it is written (architecture §8.2).
+        using var lease = await Keys.LeaseAsync(contentKey, ct).ConfigureAwait(false);
         // An entry is a real folder or nothing yet: never extract through a link (architecture §8.2).
         var existing = new DirectoryInfo(directory);
         if (existing.LinkTarget is not null || (existing.Exists ? (existing.Attributes & FileAttributes.ReparsePoint) != 0 : File.Exists(directory)))
             throw new IOException("Cache entries cannot be symbolic links.");
         RemoveLegacyRootFiles();
-        var createdAt = (await ReadEntryAsync(directory, contentKey, ct).ConfigureAwait(false))?.CreatedAt;
+        var createdAt = (await MarkEntryUsedAsync(directory, contentKey, ct).ConfigureAwait(false))?.CreatedAt;
         var result = await extractor.ExtractAsync(new(media, contentKey, directory), progress, ct).ConfigureAwait(false);
         await gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.GetUtcNow();
             var entry = new CacheEntry("voxclip-cache/1", contentKey, createdAt ?? now, now, DataBytes(directory, ct),
                 new CacheEnvelope(result.Envelope.SampleRate, 0.01, result.Envelope.Rms.Count));
             await AtomicFile.WriteAsync(Path.Combine(directory, "meta.json"), JsonSerializer.Serialize(entry, CacheJsonContext.Default.CacheEntry) + "\n", ct).ConfigureAwait(false);
@@ -109,6 +123,35 @@ public sealed class CacheIndex
         catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException) { return null; }
     }
 
+    /// <summary>Marks an existing entry used now, as an editor opens its project, so least-recently-used eviction goes by
+    /// when it was last used rather than when it was extracted (architecture §8.2), as the Mac's <c>CacheStore.touch</c>.
+    /// It waits while eviction is working on that entry. An entry without readable metadata, or with an invalid key, is left
+    /// as it is.</summary>
+    public async Task MarkUsedAsync(string contentKey, CancellationToken ct)
+    {
+        if (!ValidKey(contentKey)) return;
+        using var lease = await Keys.LeaseAsync(contentKey, ct).ConfigureAwait(false);
+        await MarkEntryUsedAsync(Path.Combine(root, contentKey), contentKey, ct).ConfigureAwait(false);
+    }
+
+    // Rewrites a readable entry's lastAccessAt under the gate and returns the entry as it was; null when there is none.
+    private async Task<CacheEntry?> MarkEntryUsedAsync(string directory, string key, CancellationToken ct)
+    {
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (await ReadEntryAsync(directory, key, ct).ConfigureAwait(false) is not { } entry) return null;
+            try
+            {
+                await AtomicFile.WriteAsync(Path.Combine(directory, "meta.json"), JsonSerializer.Serialize(
+                    entry with { LastAccessAt = clock.GetUtcNow() }, CacheJsonContext.Default.CacheEntry) + "\n", ct).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+            return entry;
+        }
+        finally { gate.Release(); }
+    }
+
     /// <summary>Record size and access time atomically, preserving creation time.</summary>
     public async Task TouchAsync(string contentKey, long bytes, CacheEnvelope? envelope, CancellationToken ct)
     {
@@ -120,7 +163,7 @@ public sealed class CacheIndex
             if (Directory.Exists(directory) && (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Cache entries cannot be symbolic links.");
             var existing = (await ReadAsync(ct).ConfigureAwait(false)).FirstOrDefault(entry => entry.ContentKey == contentKey);
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.GetUtcNow();
             var entry = new CacheEntry("voxclip-cache/1", contentKey, existing?.CreatedAt ?? now, now, bytes, envelope ?? existing?.Envelope);
             await AtomicFile.WriteAsync(Path.Combine(root, contentKey, "meta.json"), JsonSerializer.Serialize(entry, CacheJsonContext.Default.CacheEntry) + "\n", ct).ConfigureAwait(false);
         }
@@ -135,87 +178,109 @@ public sealed class CacheIndex
         => EvictAsync(limitBytes, inUseKeys, false, ct);
 
     /// <summary>As the overload above, but with keepEnvelopes it stops after the first pass: "Clear cache" keeps envelopes and
-    /// raw transcripts, "Clear everything" does not.</summary>
+    /// raw transcripts, "Clear everything" does not.
+    /// <para>An entry whose key is leased in <see cref="Keys"/> or listed in <paramref name="inUseKeys"/> is never touched; it
+    /// still counts towards the limit. An entry whose meta.json is missing or unreadable sorts as the least recently used,
+    /// but is left alone, and counted, until an hour after anything in it was last written, because it may be an extraction
+    /// under way in the CLI, which holds no lease here. Passes for one cache folder run one at a time, in arrival order,
+    /// whichever index runs them. Only 64-hex entry folders are evicted; the cache root keeps everything but the legacy
+    /// root files (<see cref="RemoveLegacyRootFiles"/>).</para></summary>
     public async Task<IReadOnlyList<string>> EvictAsync(long limitBytes, IReadOnlySet<string> inUseKeys, bool keepEnvelopes, CancellationToken ct)
     {
         if (limitBytes < 0) throw new ArgumentOutOfRangeException(nameof(limitBytes));
-        await gate.WaitAsync(ct).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(inUseKeys);
+        var keys = Keys;
+        await keys.BeginEvictionAsync(ct).ConfigureAwait(false);
         try
         {
-            RemoveLegacyRootFiles();
-            var metadata = (await ReadAsync(ct).ConfigureAwait(false)).ToDictionary(entry => entry.ContentKey, StringComparer.Ordinal);
-            var entries = new List<EvictionEntry>();
-            if (!Directory.Exists(root)) return [];
-            foreach (var directory in Directory.EnumerateDirectories(root))
+            await gate.WaitAsync(ct).ConfigureAwait(false);
+            try { return await EvictUnderTurnAsync((ulong)limitBytes, inUseKeys, keepEnvelopes, keys, ct).ConfigureAwait(false); }
+            finally { gate.Release(); }
+        }
+        finally { keys.EndEviction(); }
+    }
+
+    private async Task<IReadOnlyList<string>> EvictUnderTurnAsync(ulong limit, IReadOnlySet<string> inUseKeys, bool keepEnvelopes,
+        CacheKeyRegistry keys, CancellationToken ct)
+    {
+        RemoveLegacyRootFiles();
+        var metadata = (await ReadAsync(ct).ConfigureAwait(false)).ToDictionary(entry => entry.ContentKey, StringComparer.Ordinal);
+        var entries = new List<EvictionEntry>();
+        if (!Directory.Exists(root)) return [];
+        var unindexedCutoff = clock.GetUtcNow().UtcDateTime - UnindexedGrace;
+        foreach (var directory in Directory.EnumerateDirectories(root))
+        {
+            ct.ThrowIfCancellationRequested();
+            var key = Path.GetFileName(directory);
+            if (!ValidKey(key)) continue;
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                var key = Path.GetFileName(directory);
-                if (!ValidKey(key)) continue;
-                try
-                {
-                    if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) continue;
-                    var measured = Measure(directory, ct);
-                    metadata.TryGetValue(key, out var entry);
-                    entries.Add(new(key, entry?.LastAccessAt ?? DateTimeOffset.MinValue,
-                        UInt128.Max(measured.Bytes, (UInt128)(ulong)(entry?.Bytes ?? 0)),
-                        entry is not null || measured.LatestWrite < DateTime.UtcNow.AddHours(-1)));
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+                if ((File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0) continue;
+                var measured = Measure(directory, ct);
+                metadata.TryGetValue(key, out var entry);
+                entries.Add(new(key, entry?.LastAccessAt ?? DateTimeOffset.MinValue,
+                    UInt128.Max(measured.Bytes, (UInt128)(ulong)(entry?.Bytes ?? 0)),
+                    entry is not null || measured.LatestWrite < unindexedCutoff));
             }
-            var total = entries.Aggregate((UInt128)0, (sum, entry) => sum + entry.Bytes);
-            var removed = new List<string>();
-            var ordered = entries.OrderBy(entry => entry.LastAccessAt).ThenBy(entry => entry.ContentKey, StringComparer.Ordinal).ToArray();
-            var sizes = ordered.Select(entry => entry.Bytes).ToArray();
-            for (var index = 0; index < ordered.Length; index++)
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+        }
+        var total = entries.Aggregate((UInt128)0, (sum, entry) => sum + entry.Bytes);
+        var removed = new List<string>();
+        var ordered = entries.OrderBy(entry => entry.LastAccessAt).ThenBy(entry => entry.ContentKey, StringComparer.Ordinal).ToArray();
+        var sizes = ordered.Select(entry => entry.Bytes).ToArray();
+        for (var index = 0; index < ordered.Length; index++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var entry = ordered[index];
+            if (!entry.Eligible || total <= limit || !keys.TryClaim(entry.ContentKey, inUseKeys)) continue;
+            var directory = Path.Combine(root, entry.ContentKey);
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                var entry = ordered[index];
-                if (!entry.Eligible || inUseKeys.Contains(entry.ContentKey) || total <= (ulong)limitBytes) continue;
-                var directory = Path.Combine(root, entry.ContentKey);
-                try
+                var written = Directory.GetLastWriteTimeUtc(directory);
+                foreach (var item in new DirectoryInfo(directory).EnumerateFileSystemInfos())
                 {
-                    var written = Directory.GetLastWriteTimeUtc(directory);
-                    foreach (var item in new DirectoryInfo(directory).EnumerateFileSystemInfos())
-                    {
-                        if (item.Name is EnvelopeFile or TranscriptsFolder or "meta.json") continue;
-                        if (item is DirectoryInfo folder && (folder.Attributes & FileAttributes.ReparsePoint) == 0) folder.Delete(true);
-                        else item.Delete();
-                    }
-                    if (!HoldsKeptData(directory))
-                    {
-                        Directory.Delete(directory, true);
-                        total -= sizes[index];
-                        removed.Add(entry.ContentKey);
-                        continue;
-                    }
-                    if (metadata.TryGetValue(entry.ContentKey, out var meta))
-                        await AtomicFile.WriteAsync(Path.Combine(directory, "meta.json"), JsonSerializer.Serialize(
-                            meta with { Bytes = DataBytes(directory, ct) }, CacheJsonContext.Default.CacheEntry) + "\n", ct).ConfigureAwait(false);
-                    else Directory.SetLastWriteTimeUtc(directory, written); // stripping must not make an entry without metadata look fresh
-                    var left = Measure(directory, ct).Bytes;
-                    total -= sizes[index] - left;
-                    sizes[index] = left;
+                    if (item.Name is EnvelopeFile or TranscriptsFolder or "meta.json") continue;
+                    if (item is DirectoryInfo folder && (folder.Attributes & FileAttributes.ReparsePoint) == 0) folder.Delete(true);
+                    else item.Delete();
                 }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
-            }
-            if (keepEnvelopes) return removed;
-            for (var index = 0; index < ordered.Length; index++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var entry = ordered[index];
-                if (!entry.Eligible || inUseKeys.Contains(entry.ContentKey) || removed.Contains(entry.ContentKey) || total <= (ulong)limitBytes) continue;
-                try
+                if (!HoldsKeptData(directory))
                 {
-                    Directory.Delete(Path.Combine(root, entry.ContentKey), true);
+                    Directory.Delete(directory, true);
                     total -= sizes[index];
                     removed.Add(entry.ContentKey);
+                    continue;
                 }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+                if (metadata.TryGetValue(entry.ContentKey, out var meta))
+                    await AtomicFile.WriteAsync(Path.Combine(directory, "meta.json"), JsonSerializer.Serialize(
+                        meta with { Bytes = DataBytes(directory, ct) }, CacheJsonContext.Default.CacheEntry) + "\n", ct).ConfigureAwait(false);
+                else Directory.SetLastWriteTimeUtc(directory, written); // stripping must not make an entry without metadata look fresh
+                var left = Measure(directory, ct).Bytes;
+                total -= sizes[index] - left;
+                sizes[index] = left;
             }
-            return removed;
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+            finally { keys.EndClaim(); }
         }
-        finally { gate.Release(); }
+        if (keepEnvelopes) return removed;
+        for (var index = 0; index < ordered.Length; index++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var entry = ordered[index];
+            if (!entry.Eligible || removed.Contains(entry.ContentKey) || total <= limit || !keys.TryClaim(entry.ContentKey, inUseKeys)) continue;
+            try
+            {
+                Directory.Delete(Path.Combine(root, entry.ContentKey), true);
+                total -= sizes[index];
+                removed.Add(entry.ContentKey);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+            finally { keys.EndClaim(); }
+        }
+        return removed;
     }
+
+    /// <summary>How long every pass leaves an entry without readable metadata alone after its last write (architecture §8.2).</summary>
+    internal static TimeSpan UnindexedGrace { get; } = TimeSpan.FromHours(1);
 
     private sealed record EvictionEntry(string ContentKey, DateTimeOffset LastAccessAt, UInt128 Bytes, bool Eligible);
 
