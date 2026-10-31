@@ -23,7 +23,9 @@ public enum VoiceTrainingSpanStatus
     [JsonStringEnumMemberName("ok")] Ok,
     [JsonStringEnumMemberName("belowMinimum")] BelowMinimum
 }
-public sealed record VoiceTrainingSpanSelection(VoiceTrainingSpanStatus Status, long AvailableMs, long SelectedMs,
+/// <summary>The §6.5.1 result. <c>PreferredMs</c> is how much of <c>SelectedMs</c> lies inside the preferred range: each selected span's
+/// overlap with it, summed; 0 without one.</summary>
+public sealed record VoiceTrainingSpanSelection(VoiceTrainingSpanStatus Status, long AvailableMs, long SelectedMs, long PreferredMs,
     IReadOnlyList<VoiceTrainingSpan> Selected, IReadOnlyList<VoiceTrainingSpan> Qualifying, IReadOnlyList<VoiceTrainingRejection> Rejected);
 /// <summary>The selection inputs taken from a project; see <see cref="VoiceTrainingSpans.Inputs"/>.</summary>
 public sealed record VoiceTrainingInputs(IReadOnlyList<VoiceTrainingItem> Items, IReadOnlyList<VoiceTrainingRange> Excluded);
@@ -60,16 +62,22 @@ public static class VoiceTrainingSpans
     }
 
     /// <summary>Usable words form runs, long runs split at their longest pause, pieces keep a take-relative SNR of at least 20 dB,
-    /// and the best pieces are picked up to 120 s. Refuses non-finite numbers, reversed excluded ranges and a negative duration.</summary>
+    /// and the best pieces are picked up to 120 s, those overlapping <paramref name="preferRange"/> first (source seconds, like
+    /// <paramref name="excluded"/>; Rewrite passes the scope clip's range). Null leaves the selection unchanged. Refuses non-finite
+    /// numbers, reversed excluded or preferred ranges and a negative duration.</summary>
     public static VoiceTrainingSpanSelection Select(IReadOnlyList<VoiceTrainingItem> items, IReadOnlyList<VoiceTrainingRange> excluded,
-        IReadOnlyList<double> frameDb, double duration)
+        IReadOnlyList<double> frameDb, double duration, VoiceTrainingRange? preferRange = null)
     {
         ArgumentNullException.ThrowIfNull(items); ArgumentNullException.ThrowIfNull(excluded); ArgumentNullException.ThrowIfNull(frameDb);
+        static bool Malformed(VoiceTrainingRange span) => !double.IsFinite(span.Start) || !double.IsFinite(span.End) || span.End < span.Start;
         if (items.Any(item => item is null || !double.IsFinite(item.Start) || !double.IsFinite(item.End) || item.Conf is { } conf && !double.IsFinite(conf)) ||
-            excluded.Any(range => !double.IsFinite(range.Start) || !double.IsFinite(range.End) || range.End < range.Start) ||
+            excluded.Any(Malformed) || preferRange is { } wanted && Malformed(wanted) ||
             frameDb.Any(level => !double.IsFinite(level)) || !double.IsFinite(duration) || duration < 0) throw Invalid();
         var end = Ms(duration);
         var ranges = excluded.Select(range => (Start: Ms(range.Start), End: Ms(range.End))).ToArray();
+        (long Start, long End)? prefer = preferRange is { } bounds ? (Ms(bounds.Start), Ms(bounds.End)) : null;
+        bool Preferred(VoiceTrainingSpan span) => prefer is { } within && span.StartMs < within.End && span.EndMs > within.Start;
+        long Overlap(VoiceTrainingSpan span) => prefer is { } within ? Math.Max(0, Math.Min(span.EndMs, within.End) - Math.Max(span.StartMs, within.Start)) : 0;
         // Kept and rejected pieces in the order the runs and splits produce them; equal starts keep this order, as in Swift.
         var pieces = new List<(long Start, long End, VoiceTrainingRejectionReason? Reason)>();
         var run = new List<(long Start, long End)>();
@@ -113,17 +121,21 @@ public static class VoiceTrainingSpans
         // OrderBy is stable, so source order breaks start ties by production order.
         var inOrder = qualifying.OrderBy(span => span.StartMs).ToArray();
         var rejections = rejected.OrderBy(rejection => rejection.StartMs).ToArray();
-        if (available < TotalMinMs) return new(VoiceTrainingSpanStatus.BelowMinimum, available, 0, [], inOrder, rejections);
-        // Best SNR, then longest, then earliest: the source-order index is the start with production-order ties.
+        if (available < TotalMinMs) return new(VoiceTrainingSpanStatus.BelowMinimum, available, 0, 0, [], inOrder, rejections);
+        // The spans overlapping the preferred range, then the others; each group by best SNR, then longest, then earliest: the
+        // source-order index is the start with production-order ties.
         var chosen = new bool[inOrder.Length];
         long total = 0;
-        foreach (var index in Enumerable.Range(0, inOrder.Length).OrderByDescending(index => inOrder[index].SnrDb)
+        foreach (var index in Enumerable.Range(0, inOrder.Length)
+            .OrderBy(index => Preferred(inOrder[index]) ? 0 : 1)
+            .ThenByDescending(index => inOrder[index].SnrDb)
             .ThenByDescending(index => inOrder[index].EndMs - inOrder[index].StartMs).ThenBy(index => index))
         {
             if (total + inOrder[index].EndMs - inOrder[index].StartMs > TotalMaxMs) continue;
             chosen[index] = true; total += inOrder[index].EndMs - inOrder[index].StartMs;
         }
-        return new(VoiceTrainingSpanStatus.Ok, available, total, inOrder.Where((_, index) => chosen[index]).ToArray(), inOrder, rejections);
+        var selected = inOrder.Where((_, index) => chosen[index]).ToArray();
+        return new(VoiceTrainingSpanStatus.Ok, available, total, selected.Sum(span => Overlap(span)), selected, inOrder, rejections);
     }
 
     /// <summary>ms(t) = floor(t × 1000 + 0.5) in binary64.</summary>

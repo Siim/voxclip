@@ -36,12 +36,12 @@ public sealed class VoiceTrainingSpansTests
         Assert.Equal(VoiceTrainingSpans.MinSnrDb, constants.GetProperty("minSnrDb").GetDouble());
         Assert.Equal(VoiceTrainingSpans.TotalMinMs, constants.GetProperty("totalMinMs").GetInt64());
         Assert.Equal(VoiceTrainingSpans.TotalMaxMs, constants.GetProperty("totalMaxMs").GetInt64());
-        Assert.Equal(12, Cases().Count);
+        Assert.Equal(18, Cases().Count);
+        // The original twelve cases have no preferRange: their selection is the unpreferred one.
+        Assert.Equal(12, Document.Value.GetProperty("cases").EnumerateArray().Count(test => !test.TryGetProperty("preferRange", out _)));
     }
 
-    [Theory]
-    [MemberData(nameof(Cases))]
-    public void FixtureCaseReplaysExactly(string id)
+    static (JsonElement Test, VoiceTrainingItem[] Items, VoiceTrainingRange[] Excluded, double[] Frames, double Duration) Inputs(string id)
     {
         var test = Document.Value.GetProperty("cases").EnumerateArray().Single(test => test.GetProperty("id").GetString() == id);
         var items = test.GetProperty("items").EnumerateArray().Select(item => new VoiceTrainingItem(
@@ -50,11 +50,22 @@ public sealed class VoiceTrainingSpansTests
             item.GetProperty("speaker").GetString(), item.GetProperty("synthetic").GetBoolean())).ToArray();
         var excluded = test.GetProperty("excluded").EnumerateArray().Select(range => new VoiceTrainingRange(range[0].GetDouble(), range[1].GetDouble())).ToArray();
         var frames = test.GetProperty("frames").EnumerateArray().SelectMany(run => Enumerable.Repeat(run[1].GetDouble(), run[0].GetInt32())).ToArray();
-        var actual = VoiceTrainingSpans.Select(items, excluded, frames, test.GetProperty("duration").GetDouble());
+        return (test, items, excluded, frames, test.GetProperty("duration").GetDouble());
+    }
+
+    [Theory]
+    [MemberData(nameof(Cases))]
+    public void FixtureCaseReplaysExactly(string id)
+    {
+        var (test, items, excluded, frames, duration) = Inputs(id);
+        VoiceTrainingRange? prefer = test.TryGetProperty("preferRange", out var range) ? new VoiceTrainingRange(range[0].GetDouble(), range[1].GetDouble()) : null;
+        Assert.True(prefer is null || range.GetArrayLength() == 2, id);
+        var actual = VoiceTrainingSpans.Select(items, excluded, frames, duration, prefer);
         var expected = test.GetProperty("expected");
         Assert.Equal(expected.GetProperty("status").GetString(), JsonSerializer.Serialize(actual.Status).Trim('"'));
         Assert.Equal(expected.GetProperty("availableMs").GetInt64(), actual.AvailableMs);
         Assert.Equal(expected.GetProperty("selectedMs").GetInt64(), actual.SelectedMs);
+        Assert.Equal(expected.GetProperty("preferredMs").GetInt64(), actual.PreferredMs);
         Assert.Equal(Spans(expected.GetProperty("selected")), actual.Selected);
         Assert.Equal(Spans(expected.GetProperty("qualifying")), actual.Qualifying);
         Assert.Equal(expected.GetProperty("rejected").EnumerateArray().Select(rejection => (rejection.GetProperty("startMs").GetInt64(),
@@ -62,6 +73,21 @@ public sealed class VoiceTrainingSpansTests
             rejection.GetProperty("snrDb").ValueKind == JsonValueKind.Null ? (double?)null : rejection.GetProperty("snrDb").GetDouble())),
             actual.Rejected.Select(rejection => (rejection.StartMs, rejection.EndMs, JsonSerializer.Serialize(rejection.Reason).Trim('"'), rejection.SnrDb)));
         Assert.Equal(actual.Selected.Sum(span => span.EndMs - span.StartMs), actual.SelectedMs);
+    }
+
+    [Theory]
+    [MemberData(nameof(Cases))]
+    public void ARangeOverTheWholeTakeOrOutsideEverySpanPicksWhatNoRangePicks(string id)
+    {
+        var (_, items, excluded, frames, duration) = Inputs(id);
+        var plain = VoiceTrainingSpans.Select(items, excluded, frames, duration);
+        var whole = VoiceTrainingSpans.Select(items, excluded, frames, duration, new VoiceTrainingRange(0, duration));
+        Assert.Equal(plain.SelectedMs, whole.PreferredMs);
+        Assert.Equal((plain.Status, plain.AvailableMs, plain.SelectedMs), (whole.Status, whole.AvailableMs, whole.SelectedMs));
+        Assert.Equal(plain.Selected, whole.Selected); Assert.Equal(plain.Qualifying, whole.Qualifying); Assert.Equal(plain.Rejected, whole.Rejected);
+        var outside = VoiceTrainingSpans.Select(items, excluded, frames, duration, new VoiceTrainingRange(duration, duration));
+        Assert.Equal((plain.Status, plain.AvailableMs, plain.SelectedMs, 0L), (outside.Status, outside.AvailableMs, outside.SelectedMs, outside.PreferredMs));
+        Assert.Equal(plain.Selected, outside.Selected);
     }
 
     static VoiceTrainingSpan[] Spans(JsonElement spans) => spans.EnumerateArray().Select(span => new VoiceTrainingSpan(span.GetProperty("startMs").GetInt64(),
@@ -86,6 +112,15 @@ public sealed class VoiceTrainingSpansTests
         Refused([], [new(2, 1)], [], 10);
         Refused([], [], [], -0.001);
         Refused([Word(end: 1e300)], [], [], 10);
+        void RefusedPreference(VoiceTrainingRange range) => Assert.Equal(VoiceLabErrorKind.InvalidInput,
+            Assert.Throws<VoiceLabException>(() => VoiceTrainingSpans.Select([Word()], [], [-20], 10, range)).Kind);
+        foreach (var value in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity })
+        {
+            RefusedPreference(new(value, 2));
+            RefusedPreference(new(1, value));
+        }
+        RefusedPreference(new(3, 2));
+        RefusedPreference(new(1, 1e300));
         var empty = VoiceTrainingSpans.Select([], [new(1, 1)], [], 0);
         Assert.Equal(VoiceTrainingSpanStatus.BelowMinimum, empty.Status);
         Assert.Equal(0, empty.AvailableMs);

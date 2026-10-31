@@ -250,8 +250,8 @@ public sealed class VoiceCreationFlowTests
         return new("Demo take", transcript ? project : project with { Transcript = null }, media);
     }
     private static VoiceTrainingSpanSelection Selection(long availableMs) => availableMs < 30_000
-        ? new(VoiceTrainingSpanStatus.BelowMinimum, availableMs, 0, [], [], [])
-        : new(VoiceTrainingSpanStatus.Ok, availableMs, Math.Min(availableMs, 30_000), [new(1_000, 31_000, 40)], [new(1_000, 31_000, 40)], []);
+        ? new(VoiceTrainingSpanStatus.BelowMinimum, availableMs, 0, 0, [], [], [])
+        : new(VoiceTrainingSpanStatus.Ok, availableMs, Math.Min(availableMs, 30_000), 0, [new(1_000, 31_000, 40)], [new(1_000, 31_000, 40)], []);
 
     [Fact]
     public async Task ProjectWithATranscriptIsTheDefaultSourceAndNeedsNoRecording()
