@@ -19,6 +19,25 @@ private final class FullScreenStandIn: NSWindow {
 /// and settings are never loaded, so nothing is written.
 @Suite("v2 shell controllers", .serialized)
 @MainActor struct EditorShellTests {
+    private func editor(_ app: AppModel) throws -> EditorModel {
+        let shared = try SharedResources.locate()
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        return EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+    }
+    /// The editor's columns and timeline at the work area's size, with the layout applied as
+    /// EditorShellController applies it.
+    private func makeWork(_ model: EditorModel, _ shell: WorkspaceShell) -> EditorWorkController {
+        let work = EditorWorkController(model: model, shell: shell)
+        work.view.setFrameSize(NSSize(width: shell.windowWidth - shell.layout.explorerWidth, height: 776))
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
+        return work
+    }
+    /// What a divider drag leaves behind: the pane's new state and the split's resize report.
+    private func drag(_ item: NSSplitViewItem, collapsed: Bool, in split: ShellSplitController) {
+        item.isCollapsed = collapsed
+        NotificationCenter.default.post(name: NSSplitView.didResizeSubviewsNotification, object: split.divider)
+    }
+
     /// The cancel button clears the field and sends only its action, no text change.
     @Test func clearingHomeSearchWithItsCancelButtonClearsTheQuery() throws {
         _ = NSApplication.shared
@@ -61,6 +80,33 @@ private final class FullScreenStandIn: NSWindow {
         window.reportsFullScreen = true
         NotificationCenter.default.post(name: NSWindow.didEnterFullScreenNotification, object: NSWindow())
         #expect(titleRow.leadingInset == ShellMetrics.windowButtons)
+    }
+
+    /// At 1024 a drag of the right column's divider is Show Viewer or Hide Viewer: the width
+    /// rule's bookkeeping stays right, and nothing stores a width.
+    @Test func draggingTheRightColumnOpenOrClosedIsItsToggle() throws {
+        let app = AppModel()
+        let shell = WorkspaceShell(app: app)
+        let model = try editor(app)
+        defer { model.close() }
+        shell.windowWidth = 1024
+        #expect(!shell.layout.rightVisible && shell.layout.explorerVisible)
+        // Building the work area while the width rule hides the column keeps it hidden.
+        let work = makeWork(model, shell)
+        defer { work.tearDown() }
+        #expect(!shell.layout.rightVisible && work.rightItem.isCollapsed)
+
+        // Dragged open: the Explorer makes room, and a 1 pt resize keeps the column.
+        drag(work.rightItem, collapsed: false, in: work.columns)
+        #expect(shell.layout.rightVisible && !shell.layout.explorerVisible)
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
+        shell.windowWidth = 1025
+        #expect(shell.layout.rightVisible && !shell.layout.explorerVisible)
+
+        // Dragged closed: the Explorer hidden to make room comes back.
+        drag(work.rightItem, collapsed: true, in: work.columns)
+        #expect(!shell.layout.rightVisible && shell.layout.explorerVisible)
+        #expect(app.settings.values[WorkspaceLayout.rightWidthKey] == nil)
     }
 }
 #endif

@@ -450,6 +450,9 @@ struct EditorShellState: Equatable {
     private let content = ShellSplitController(vertical: true, identifier: "voxclip.shell.content")
     private let explorerHeader = ShellBand(fill: "bg.window", bottomLine: false, movesWindow: true, region: "explorerHeader")
     private var explorerItem: NSSplitViewItem?
+    /// What `apply` last asked of the Explorer. Only a change from it is the user's: the
+    /// layout can be ahead of the pane until SwiftUI applies it.
+    private var explorerShown = true
     private let workArea = ShellStackView(fill: "bg.window")
     private var workHost: ShellViewController?
     private var workController: NSViewController?
@@ -526,6 +529,7 @@ struct EditorShellState: Equatable {
         let rebuild = applied.map { $0.editor != state.editor || $0.showsHome != state.showsHome } ?? true
         applied = state
         if rebuild { buildWorkArea() }
+        explorerShown = state.explorerVisible
         if let explorerItem { ShellSplitController.setCollapsed(explorerItem, !state.explorerVisible) }
         editorWork?.apply(rightVisible: state.rightVisible, timelineVisible: state.timelineVisible)
         if homeSearch.stringValue != state.homeQuery { homeSearch.stringValue = state.homeQuery }
@@ -594,10 +598,13 @@ struct EditorShellState: Equatable {
         placeChrome()
     }
 
-    /// A drag that collapses or expands a pane reaches the layout.
+    /// A divider drag that collapses or opens the Explorer reaches the layout.
     private func syncCollapsed() {
-        guard let explorerItem, applied != nil else { return }
-        if explorerItem.isCollapsed == shell.layout.explorerVisible { shell.layout.explorerVisible = !explorerItem.isCollapsed }
+        guard let explorerItem else { return }
+        let shows = !explorerItem.isCollapsed
+        guard shows != explorerShown else { return }
+        explorerShown = shows
+        if shell.layout.explorerVisible != shows { shell.layout.explorerVisible = shows }
     }
     private func explorerDragged() {
         guard let explorerItem, !explorerItem.isCollapsed else { return }
@@ -635,7 +642,8 @@ struct EditorShellState: Equatable {
 @MainActor final class EditorWorkController: ShellSplitController, NSPopoverDelegate {
     let model: EditorModel
     let shell: WorkspaceShell
-    private let top = ShellSplitController(vertical: true, identifier: "voxclip.editor.split")
+    /// The editor column beside the right column.
+    let columns = ShellSplitController(vertical: true, identifier: "voxclip.editor.split")
     let tabRow = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "tabBar")
     let clipBar = ShellBand(fill: "bg.surface", bottomLine: true, movesWindow: false, region: "clipBar")
     private let rightTitle = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "rightTitle")
@@ -648,6 +656,10 @@ struct EditorShellState: Equatable {
     private(set) var rightItem: NSSplitViewItem!
     private(set) var timelineItem: NSSplitViewItem!
     private var topItem: NSSplitViewItem!
+    /// What `apply` last asked of the right column and the timeline. Only a change from it
+    /// is the user's: the layout can be ahead of the panes until SwiftUI applies it.
+    private var rightShown = true
+    private var timelineShown = true
     private var observations: [ShellObservation] = []
     private(set) var findClipsPopover: NSPopover?
     private var explorerToggle: NSView?
@@ -687,14 +699,14 @@ struct EditorShellState: Equatable {
         let editorItem = Self.item(editorColumn, holding: 250, collapses: false)
         editorItem.minimumThickness = VCTokens.sizeTranscriptMinWidth
         rightItem = Self.item(rightColumn, thickness: CGFloat(WorkspaceLayout.rightRange.lowerBound)...CGFloat(WorkspaceLayout.rightRange.upperBound), holding: 251, collapses: true)
-        top.addSplitViewItem(editorItem)
-        top.addSplitViewItem(rightItem)
-        top.divider.onDividerDrag = { [weak self] in self?.rightDragged() }
-        top.onResize = { [weak self] in self?.syncCollapsed() }
+        columns.addSplitViewItem(editorItem)
+        columns.addSplitViewItem(rightItem)
+        columns.divider.onDividerDrag = { [weak self] in self?.rightDragged() }
+        columns.onResize = { [weak self] in self?.syncCollapsed() }
 
-        top.view.setFrameSize(NSSize(width: width, height: 560))
+        columns.view.setFrameSize(NSSize(width: width, height: 560))
         timeline.view.setFrameSize(NSSize(width: width, height: layout.timelineHeight))
-        topItem = Self.item(top, holding: 250, collapses: false)
+        topItem = Self.item(columns, holding: 250, collapses: false)
         topItem.minimumThickness = ShellMetrics.topMinimum
         timelineItem = Self.item(timelinePane, thickness: CGFloat(WorkspaceLayout.timelineRange.lowerBound)...CGFloat(WorkspaceLayout.timelineRange.upperBound), holding: 251, collapses: true)
         addSplitViewItem(topItem)
@@ -730,7 +742,9 @@ struct EditorShellState: Equatable {
     /// Collapses or shows the right column and the timeline, and moves the right column's
     /// controls into the tab row while it is hidden.
     func apply(rightVisible: Bool, timelineVisible: Bool) {
+        rightShown = rightVisible
         Self.setCollapsed(rightItem, !rightVisible)
+        timelineShown = timelineVisible
         Self.setCollapsed(timelineItem, !timelineVisible)
         rightToggle.describe((rightVisible ? EditorIconAction.hideViewer : .showViewer).name, shortcut: "⌥⌘I")
         timelineToggle.describe((timelineVisible ? EditorIconAction.hideTimeline : .showTimeline).name)
@@ -819,11 +833,21 @@ struct EditorShellState: Equatable {
 
     // MARK: Sizes
 
+    /// A divider drag that collapses or opens a pane reaches the layout. The right column
+    /// goes through its toggle, which keeps the width rule's bookkeeping: the Explorer hidden
+    /// to make room comes back, and showing it where the transcript would be too narrow hides
+    /// the Explorer.
     private func syncCollapsed() {
         guard let rightItem, let timelineItem else { return }
-        let layout = shell.layout
-        if rightItem.isCollapsed == layout.rightVisible { layout.rightVisible = !rightItem.isCollapsed }
-        if timelineItem.isCollapsed == layout.timelineVisible { layout.timelineVisible = !timelineItem.isCollapsed }
+        let right = !rightItem.isCollapsed, timeline = !timelineItem.isCollapsed
+        if right != rightShown {
+            rightShown = right
+            if shell.layout.rightVisible != right { shell.toggleViewer() }
+        }
+        if timeline != timelineShown {
+            timelineShown = timeline
+            if shell.layout.timelineVisible != timeline { shell.layout.timelineVisible = timeline }
+        }
     }
     private func rightDragged() {
         guard !rightItem.isCollapsed else { return }
@@ -837,13 +861,13 @@ struct EditorShellState: Equatable {
         super.viewDidLayout()
         // The first real size places the dividers, after this layout pass: the right column
         // at its width and the timeline at its height.
-        guard !sized, divider.bounds.height > 300, top.divider.bounds.width > 400 else { return }
+        guard !sized, divider.bounds.height > 300, columns.divider.bounds.width > 400 else { return }
         sized = true
         Task { @MainActor [weak self] in self?.placeDividers() }
     }
     private func placeDividers() {
         let layout = shell.layout
-        if !rightItem.isCollapsed { top.divider.setPosition(top.divider.bounds.width - CGFloat(layout.rightWidth) - top.divider.dividerThickness, ofDividerAt: 0) }
+        if !rightItem.isCollapsed { columns.divider.setPosition(columns.divider.bounds.width - CGFloat(layout.rightWidth) - columns.divider.dividerThickness, ofDividerAt: 0) }
         if !timelineItem.isCollapsed { divider.setPosition(divider.bounds.height - CGFloat(layout.timelineHeight) - divider.dividerThickness, ofDividerAt: 0) }
     }
 }
