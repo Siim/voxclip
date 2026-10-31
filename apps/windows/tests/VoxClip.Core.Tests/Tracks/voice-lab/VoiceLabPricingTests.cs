@@ -332,6 +332,33 @@ public sealed class VoiceLabPricingTests
         Assert.Equal(Text(concurrent["ledger"]), await File.ReadAllTextAsync(path, ct));
     }
 
+    /// <summary>Writers in one process try the lock in the order they asked for it, as on the Mac. Without the line, a writer that
+    /// recorded again at once took the lock straight back, and the other writer of the test above could time out on a slow disk and
+    /// lose its record. Here nothing holds the lock file, yet a later writer waits for an earlier one, then records once that one is
+    /// done.</summary>
+    [Fact]
+    public async Task ALaterWriterWaitsForEveryEarlierOne()
+    {
+        using var scratch = new Scratch();
+        var ct = TestContext.Current.CancellationToken;
+        var path = Path.Combine(scratch.Root, "VoiceLab", "spend.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var turns = VoiceLabSpendTurns.Shared(path + ".lock");
+        var earlier = turns.Join();
+        var later = turns.Join();
+        Assert.True(turns.IsFirst(earlier));
+        Assert.False(turns.IsFirst(later));
+        var now = DateTimeOffset.UtcNow;
+        var ledger = new VoiceLabSpendLedger(path, TimeZoneInfo.Utc, TimeSpan.FromMilliseconds(50));
+        Assert.Equal(new VoiceLabSpendWarning(VoiceLabSpendWarningKind.LockTimedOut), await ledger.RecordAsync(Isolation, now, ct));
+        turns.Leave(earlier);
+        Assert.True(turns.IsFirst(later));
+        Assert.Equal(new VoiceLabSpendWarning(VoiceLabSpendWarningKind.LockTimedOut), await ledger.RecordAsync(Isolation, now, ct));
+        turns.Leave(later);
+        Assert.Null(await ledger.RecordAsync(Isolation, now, ct));
+        Assert.Equal(new VoiceLabSpendTotal(0.36m, 0), await ledger.TotalAsync("elevenlabs", now, ct));
+    }
+
     [Fact]
     public async Task CorruptLedgersAreMovedAsideAndAFreshLedgerStarts()
     {

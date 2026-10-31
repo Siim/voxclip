@@ -251,12 +251,27 @@ public sealed partial class SettingsWindow : Window
         Body.Children.Add(Ui.Text("New-project defaults only. Existing projects keep their choices.", "HelperText"));
         var updates = new ToggleSwitch { Header = "Check for updates automatically", IsOn = App.Services.Get("update.autoCheck", true) };
         updates.Toggled += (_, _) => Save("update.autoCheck", updates.IsOn); AddSetting(updates);
-        var cacheSizes = new[] { 2, 5, 10, 20 };
-        var cache = Ui.Choice("Cache limit", cacheSizes.Select(size => size + " GB"), Array.IndexOf(cacheSizes, App.Services.Get("cache.limitGB", 5)));
-        cache.SelectionChanged += (_, _) => Save("cache.limitGB", cacheSizes[cache.SelectedIndex]); AddSetting(cache);
+        // Cache size limit, Clear cache and Clear everything (design Settings → General, architecture §8.2). A lower limit is
+        // enforced at once in the background; the Clear actions wait for a pass that is running and never touch an entry in use.
+        var cacheSizes = CacheUpkeep.LimitChoices;
+        var cache = Ui.Choice(CacheUpkeep.LimitLabel, cacheSizes.Select(size => size + " GB"), Array.IndexOf(cacheSizes, App.Services.Get(CacheUpkeep.LimitKey, 5)));
+        cache.SelectionChanged += (_, _) => Save(CacheUpkeep.LimitKey, cacheSizes[cache.SelectedIndex]); AddSetting(cache);
+        var clear = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        clear.Children.Add(Ui.Button(CacheUpkeep.ClearCacheLabel, () => ClearCache(false)));
+        clear.Children.Add(Ui.Button(CacheUpkeep.ClearEverythingLabel, () => ClearCache(true)));
+        AddSetting(clear);
+        Body.Children.Add(Ui.Text(CacheUpkeep.ClearHelp, "HelperText"));
         Body.Children.Add(Ui.Text("Local first. No telemetry. No account wall. Your source media is never changed.", "HelperText"));
         Body.Children.Add(Ui.Button("Show data folder", () => ShareHelpers.Reveal(App.Services.Data.Logs)));
     }
+    /// <summary>Clear cache, or Clear everything, then say what happened. A failed pass is only logged: a missing entry is
+    /// recomputed. An update restart waits for it.</summary>
+    private void ClearCache(bool everything) => RunSensitive(async () =>
+    {
+        var upkeep = App.Services.CacheUpkeep;
+        var message = everything ? await upkeep.ClearEverythingAsync() : await upkeep.ClearCacheAsync();
+        Ui.Show(notice, message, InfoBarSeverity.Success);
+    }, everything ? CacheUpkeep.ClearEverythingLabel : CacheUpkeep.ClearCacheLabel);
     private async Task TranscriptionAsync()
     {
         var generation = pageGeneration;

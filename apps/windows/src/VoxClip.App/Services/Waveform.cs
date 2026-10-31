@@ -29,6 +29,8 @@ internal sealed class Waveform(IAudioExtractor extractor, string cacheRoot)
             var result = await Task.Run(async () =>
             {
                 var index = new CacheIndex(cacheRoot);
+                // Eviction leaves the entry alone while its envelope is read or extracted (architecture §8.2).
+                using var lease = await index.Keys.LeaseAsync(contentKey, ct).ConfigureAwait(false);
                 var directory = index.EntryDirectory(contentKey);
                 var entry = (await index.ReadAsync(ct).ConfigureAwait(false)).FirstOrDefault(entry => entry.ContentKey == contentKey);
                 var file = Path.Combine(directory, "envelope-10ms.f32");
