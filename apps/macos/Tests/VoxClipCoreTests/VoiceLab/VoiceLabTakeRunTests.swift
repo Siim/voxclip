@@ -11,6 +11,8 @@ private final class TakeRunClock: Sendable {
     func now() -> Date { date.withLock { $0 } }
     func elapsed() -> Duration { time.withLock { $0 } }
     func advance(_ seconds: Double) { date.withLock { $0.addTimeInterval(seconds) }; time.withLock { $0 += .seconds(seconds) } }
+    /// Moves only the monotonic clock that quote expiry reads, so the ledger month stays put.
+    func elapse(_ seconds: Double) { time.withLock { $0 += .seconds(seconds) } }
     func rewindWall() { date.withLock { $0.addTimeInterval(-3_600) } }
 }
 
@@ -137,6 +139,9 @@ struct VoiceLabTakeRunTests {
         let ledger: VoiceLabSpendLedger
         let run: VoiceLabTakeRun
         let input: VoiceLabTakeInput
+        /// A second window's run on the same client, store and speaker check, and its input over the word "last".
+        let later: VoiceLabTakeRun
+        let laterInput: VoiceLabTakeInput
     }
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
@@ -203,14 +208,18 @@ struct VoiceLabTakeRunTests {
         let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-take-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)),
             prices: VoiceLabPricingTests.catalogIfPresent, spend: ledger, enforceCapabilities: true)
         let clock = TakeRunClock(); await client.useClock({ clock.now() }, monotonic: { clock.elapsed() })
-        let run = VoiceLabTakeRun(client: client, store: store, speaker: .init(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45),
-            storage: VoiceLabTakeStorage(projectId: UUID().uuidString.lowercased(), paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch")), dispatchIfCurrent: { start in
-            if let boundary { try await boundary(start); return }
-            try http.value.withLock { state in
-                guard state.current else { throw VoiceLabError.consentRequired }
-                try start()
-            }
-        }) { http.value.withLock { $0.current } }
+        let speakerCheck = VoiceSpeakerCheck(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45)
+        let storage = VoiceLabTakeStorage(projectId: UUID().uuidString.lowercased(), paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch"))
+        let makeRun: () -> VoiceLabTakeRun = {
+            VoiceLabTakeRun(client: client, store: store, speaker: speakerCheck, storage: storage, dispatchIfCurrent: { start in
+                if let boundary { try await boundary(start); return }
+                try http.value.withLock { state in
+                    guard state.current else { throw VoiceLabError.consentRequired }
+                    try start()
+                }
+            }) { http.value.withLock { $0.current } }
+        }
+        let run = makeRun(), later = makeRun()
         let choices = try await run.discover(language: "en")
         #expect(choices.voices.map(\.id) == (initial.remoteRequiresVerification ? [] : [record.id]))
         let rate = 24_000
@@ -233,7 +242,14 @@ struct VoiceLabTakeRunTests {
         let input = VoiceLabTakeInput(text: "Hello", modelID: "eleven_v3", recordID: record.id, language: "en", seed: UInt32.max,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: window,
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
-        return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input)
+        let lastWindow = VoiceLabWindow(firstWordId: "last", lastWordId: "last", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 7, end: 8,
+            startSample: 168_000, endSample: 192_000, leftSeam: .init(kind: .hard, time: 7, sample: 168_000, fadeSamples: 288),
+            rightSeam: .init(kind: .hard, time: 8, sample: 192_000, fadeSamples: 288))
+        let laterInput = VoiceLabTakeInput(text: "Hello", modelID: "eleven_v3", recordID: record.id, language: "en", seed: 7,
+            contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: lastWindow,
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+        return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input,
+                       later: later, laterInput: laterInput)
     }
     @Test(arguments: ["clock", "inputs", "model", "embedder", "consent", "record", "validation", "approval", "launch"])
     func cancellationAtEveryExecuteSuspension(point: String) async throws {
@@ -580,6 +596,76 @@ struct VoiceLabTakeRunTests {
         }
         #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == 0)
+    }
+    /// voice-lab §8.6 with several hunks: one approval pins every window's set, so a later window still runs after its
+    /// quotes' five-minute expiry, and the spend ledger holds exactly what the batch's progress counts as sent.
+    @Test func oneBatchApprovalHoldsALaterWindowPastTheExpiry() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let runs = VoiceLabTakeBatchRun(runs: [fixture.run, fixture.later])
+        let batch = try await runs.prepare([fixture.input, fixture.laterInput])
+        #expect(batch.takeCount == 6 && batch.windows.map(\.input) == [fixture.input, fixture.laterInput])
+        let windowTotals = batch.windows.map(\.quote.estimate.usd)
+        #expect(batch.estimate.usd == (windowTotals.contains(nil) ? nil : windowTotals.compactMap { $0 }.reduce(0, +)))
+        #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
+        try await runs.approve(batch)
+        #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 }, "Approving sends nothing")
+        var progress = VoiceLabTakeBatchProgress(batch: batch)
+        let first = try await fixture.run.execute(batch.windows[0].quote, approved: true) { rows in
+            if rows.count == 1 { fixture.clock.elapse(301) }
+        }
+        #expect(first.end == .earlyStop && first.rows.count == 1, "Failures: \(first.rows.map(\.failure))")
+        try progress.finish(window: 0, result: first)
+        #expect(progress.window == 1 && progress.discarded.count == 4)
+        let later = batch.windows[1].quote.takes.flatMap { [$0.synthesis, $0.qa] }
+        #expect(await fixture.client.quotesAreFresh(later) == false, "Unpinned, the later window's set would have expired")
+        let second = try await fixture.later.execute(batch.windows[1].quote, approved: true)
+        #expect(!second.rows.isEmpty)
+        #expect(fixture.http.value.withLock { $0.seeds.count > 1 && $0.seeds.first == UInt32.max && $0.seeds[1] == 7 })
+        try progress.finish(window: 1, result: second)
+        #expect(progress.window == nil)
+        #expect(progress.sentEstimate.units == Double(1 + second.rows.filter { $0.receipt != nil }.count))
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == (progress.sentEstimate.usd ?? 0))
+    }
+    /// The control: each window approving itself when it starts, a later window prepared with the first expires while
+    /// the first runs, and sends nothing.
+    @Test func withoutTheBatchApprovalALaterWindowExpiresWhileTheFirstRuns() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let first = try await fixture.run.prepare(fixture.input)
+        let later = try await fixture.later.prepare(fixture.laterInput)
+        let result = try await fixture.run.execute(first, approved: true) { rows in
+            if rows.count == 1 { fixture.clock.elapse(301) }
+        }
+        #expect(result.end == .earlyStop)
+        await #expect(throws: VoiceLabError.consentRequired) { try await fixture.later.execute(later, approved: true) }
+        #expect(fixture.http.value.withLock { $0.seeds == [UInt32.max] && $0.qa == 1 })
+    }
+    @Test func aBatchApprovalIsAllOrNothingAndPreparationChecksTheWindowsFirst() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let runs = VoiceLabTakeBatchRun(runs: [fixture.run, fixture.later])
+        await #expect(throws: VoiceLabError.invalidInput) { try await runs.prepare([fixture.input, fixture.input]) }
+        await #expect(throws: VoiceLabError.invalidInput) { try await runs.prepare([fixture.input]) }
+        let batch = try await runs.prepare([fixture.input, fixture.laterInput])
+        fixture.clock.elapse(300)
+        await #expect(throws: VoiceLabError.consentRequired) { try await runs.approve(batch) }
+        for (run, window) in zip(runs.runs, batch.windows) {
+            await #expect(throws: VoiceLabError.consentRequired) { try await run.execute(window.quote, approved: true) }
+        }
+        #expect(fixture.http.value.withLock { $0.seeds.isEmpty && $0.qa == 0 })
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == 0)
+    }
+    @Test func aRunPinsOnlyItsOwnFreshSetAndOnlyOnce() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let foreign = try await fixture.later.prepare(fixture.laterInput)
+        await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.approve(foreign) }
+        try await fixture.run.approve(quote)
+        await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.approve(quote) }
+        await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: false) }
+        fixture.clock.elapse(301)
+        let result = try await fixture.run.execute(quote, approved: true)
+        #expect(result.end == .earlyStop && fixture.http.value.withLock { $0.seeds == [UInt32.max] && $0.qa == 1 })
+        await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.approve(quote) }
+        await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: true) }
     }
     @Test(arguments: [false, true]) func consentOrModelChangeInvalidatesRemainder(consent: Bool) async throws {
         let fixture = try await fixture { $0.mismatchCount = 1 }; defer { try? FileManager.default.removeItem(at: fixture.root) }

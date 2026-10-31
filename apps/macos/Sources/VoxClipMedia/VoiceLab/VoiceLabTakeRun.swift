@@ -25,6 +25,8 @@ public actor VoiceLabTakeRun {
         let source: VoiceLabSourceExcerpt
         let sourceSpeech: [Float]
         let modelRevision: Int
+        /// Pinned in the client by a take batch's one approval (`approve(_:)`), so `execute` skips its own approval.
+        var approvedAhead = false
     }
     private enum Abort: Error { case invalidated }
     private let client: ElevenLabsVoiceLab
@@ -130,6 +132,24 @@ public actor VoiceLabTakeRun {
             throw error
         }
     }
+    /// Pins this run's prepared set under a take batch's one approval (voice-lab §8.6 with several hunks, `VoiceLabTakeBatchRun`).
+    /// Every quote must still be fresh. The client then holds the set, so it neither expires nor is evicted while the
+    /// batch's earlier windows run, and `execute(_:approved:progress:started:)` later runs it without a second approval.
+    /// Nothing is sent. A quote that is not this run's prepared set, a set already pinned, and a run that is executing are
+    /// refused (`consentRequired`). `cancel()`, a new `prepare(_:)` and a launch that ends before any dispatch drop the pin.
+    public func approve(_ quote: VoiceLabTakeRunQuote) async throws {
+        guard task == nil, runningID == nil, executionOwner == nil, let value = pending, value.quote == quote, !value.approvedAhead
+        else { throw VoiceLabError.consentRequired }
+        let currentRevision = revision
+        let quotes = quote.takes.flatMap { [$0.synthesis, $0.qa] }
+        guard await client.quotesAreFresh(quotes), revision == currentRevision, executionOwner == nil else { throw VoiceLabError.consentRequired }
+        try await client.approveRun(quote.id, quotes: quotes)
+        guard revision == currentRevision, executionOwner == nil, pending?.quote == quote else {
+            await client.unapproveRun(quote.id)
+            throw VoiceLabError.consentRequired
+        }
+        pending?.approvedAhead = true
+    }
     public func execute(_ quote: VoiceLabTakeRunQuote, approved: Bool,
                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in },
                         started: @escaping @Sendable () async throws -> Void = {}) async throws -> VoiceLabTakeRunResult {
@@ -143,12 +163,14 @@ public actor VoiceLabTakeRun {
         let quotes = quote.takes.flatMap { [$0.synthesis, $0.qa] }
         let dispatch = VoiceLabRunDispatch()
         do {
-            let fresh = await client.quotesAreFresh(quotes)
+            // A set pinned by a batch approval was fresh when the user approved the batch, and the client holds it since.
+            let fresh: Bool
+            if value.approvedAhead { fresh = true } else { fresh = await client.quotesAreFresh(quotes) }
             try await checkpoint("clock", revision: currentRevision)
             guard fresh else { throw VoiceLabError.consentRequired }
             try await validate(value, revision: currentRevision)
             try await checkpoint("validation", revision: currentRevision)
-            try await client.approveRun(quote.id, quotes: quotes)
+            if !value.approvedAhead { try await client.approveRun(quote.id, quotes: quotes) }
             try await checkpoint("approval", revision: currentRevision)
             try await checkpoint("launch", revision: currentRevision)
             try await started()
@@ -167,7 +189,8 @@ public actor VoiceLabTakeRun {
     }
     private func release(owner: UUID, quote: VoiceLabTakeRunQuote, retaining value: Pending? = nil) async {
         guard executionOwner == owner else { return }
-        if let value {
+        if var value {
+            value.approvedAhead = false
             pending = value
             await client.unapproveRun(quote.id)
         } else {
