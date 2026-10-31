@@ -129,6 +129,30 @@ namespace VoxClip.App.ViewModels
         internal RewriteGeneration() : this(new RewriteGenerationBackend()) { }
 #endif
 
+#if BOUNDARY_NESTEDOBSERVABLE
+        /// <summary>A hook bag nested in this approved type. CommunityToolkit.Mvvm writes every body it has, and Roslyn records
+        /// no declaration document for a nested type, so only being nested in a hand-written type shows that it is hand-written.</summary>
+        internal sealed partial class HookBag : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+        {
+            internal static HookBag? Current = null;
+
+            [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+            private Func<IRewriteBackend>? standInForTests;
+        }
+#endif
+
+#if BOUNDARY_NESTEDLIBRARYIMPORT
+        /// <summary>Native and pattern hooks nested in this approved type: the LibraryImport and Regex generators write every body.</summary>
+        internal static partial class Natives
+        {
+            [System.Runtime.InteropServices.LibraryImport("rewritestandin", StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+            internal static partial int StandInRender(string passage);
+
+            [System.Text.RegularExpressions.GeneratedRegex("stand-?in", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+            internal static partial System.Text.RegularExpressions.Regex StandInPattern();
+        }
+#endif
+
         public string Status { get; private set; } = "idle";
 
         public async Task<string> RunAsync(string passage, CancellationToken ct)
@@ -141,7 +165,16 @@ namespace VoxClip.App.ViewModels
 #if BOUNDARY_GENERATEDTAG
             chosen = ReplacementForTests?.Invoke() ?? chosen;
 #endif
+#if BOUNDARY_NESTEDOBSERVABLE
+            chosen = HookBag.Current?.StandInForTests?.Invoke() ?? chosen;
+#endif
+#if BOUNDARY_GENERATEDOUTER
+            if (RewriteHooks.Marker.Active()) chosen = RewriteHooks.Current?.StandIn?.Invoke() ?? chosen;
+#endif
             var result = await chosen.RenderAsync(passage, ct);
+#if BOUNDARY_NESTEDLIBRARYIMPORT
+            if (Natives.StandInPattern().IsMatch(passage) && Natives.StandInRender(passage) == 1) result = passage;
+#endif
 #if BOUNDARY_SEAMS
             if (Environment.GetEnvironmentVariable("VOXCLIP_REWRITE_STAND_IN") == "1" ||
                 Environment.GetCommandLineArgs().Contains("--rewrite-stand-in")) result = passage;
@@ -164,4 +197,21 @@ namespace VoxClip.App.ViewModels
         internal static void Trace(string phase) => Console.Error.WriteLine(phase);
 #endif
     }
+
+#if BOUNDARY_GENERATEDOUTER
+    /// <summary>A top-level hook type whose own bodies CommunityToolkit.Mvvm writes. Roslyn leaves this file out of its
+    /// TypeDefinitionDocuments because the nested Marker's method already covers it, so only Marker shows it is hand-written.</summary>
+    internal sealed partial class RewriteHooks : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+    {
+        internal static RewriteHooks? Current = null;
+
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private Func<IRewriteBackend>? standIn;
+
+        internal static class Marker
+        {
+            internal static bool Active() => Current is not null;
+        }
+    }
+#endif
 }

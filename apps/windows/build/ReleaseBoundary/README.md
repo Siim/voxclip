@@ -19,10 +19,12 @@ code.
   it, and the CLI. It requires Release, optimized code, matching PDBs and the
   RID's architecture for the App. Every allowlist must match exactly: unapproved,
   forbidden and stale lines all fail. Any other managed DLL in either folder
-  whose PDB names repository sources fails as `UNLISTED`, so a new first-party
-  reference cannot ship unchecked. `Upload shipping Release inspection
-  inventories` keeps every inventory, the exact candidate allowlists and a
-  summary as `windows-release-boundary-inventories`, even when the check fails.
+  fails as `UNLISTED` when its PDB names repository sources or, without such a
+  PDB, when its name starts with `VoxClip` in any case or its `AssemblyProduct`
+  is `VoxClip`, so a new first-party reference cannot ship unchecked.
+  `Upload shipping Release inspection inventories` keeps every inventory, the
+  exact candidate allowlists and a summary as
+  `windows-release-boundary-inventories`, even when the check fails.
 - **macOS, a fast precheck only.** The Release UI tests run
   `ReleaseBoundary precheck` on the typecheck surrogate
   (`VoxClip.WinCheck.dll`, built with `UseWinUI=false`), the Core and Media
@@ -31,7 +33,9 @@ code.
   App assembly not named `VoxClip`.
 - **Not covered:** the release VM's own `dotnet publish` tree
   (`vm-release.ps1`) is not inspected. The CI builds above compile the same
-  sources with the same settings.
+  sources with the same settings, but the release driver does not check that
+  Windows CI passed for the commit it releases. The operator must cut a release
+  only from a commit whose Windows CI run is green.
 
 ## What is inventoried
 
@@ -39,21 +43,34 @@ Every type, method (with access and parameter types), field, custom attribute
 on types and members, assembly attribute and string literal (user strings, string
 constants, attribute arguments). C# `file` types are inventoried under a
 canonical name, `<File>F#__Name`: the checksum Roslyn embeds depends on the
-checkout path. Each record is classified by where it is declared:
+checkout path. The key keeps only the file name, so two `file` types with the
+same name in same-named files of one namespace (`A/Helpers.cs` and
+`B/Helpers.cs`) share their allowlist lines. No `file` type ships today. Each
+record is classified by where it is declared:
 
 - **Hand-written** code has a PDB document in the repository outside `obj/` and
   `bin/`. Every hand-written type, member, attribute-tagged member and
   `InternalsVisibleTo` grant must appear in `allowlist/<Assembly>.txt`. So must
   every switch-like literal: environment-variable shaped (`SNAKE_CASE` in any
   case), command-line shaped (`-x`, `--name`, `/name`), containing `VOXCLIP_` in
-  any case, or passed to `Environment.GetEnvironmentVariable` or
-  `SetEnvironmentVariable` whatever its shape.
+  any case, or loaded as a literal directly at an
+  `Environment.GetEnvironmentVariable` or `SetEnvironmentVariable` call
+  (within three IL instructions) whatever its shape. A name that reaches the
+  environment another way, such as a `static readonly` field, a helper method,
+  `GetEnvironmentVariables()` or `ExpandEnvironmentVariables`, needs approval
+  only when its shape is switch-like.
 - **Source generators that implement hand-written declarations.** Members that
   CommunityToolkit.Mvvm (`[ObservableProperty]`, `[RelayCommand]`),
   `[GeneratedRegex]`, `[LibraryImport]` or any other generator adds to a
   hand-written type need approval, like the hand-written field or attribute that
   drives them. Types such a generator declares entirely by itself (for example
   the MVVM argument caches and the Regex runner types) are toolchain output.
+  Roslyn records a type's declaring files only for top-level types, and only
+  files none of its or its nested types' methods cover. So a type nested in a
+  hand-written type is hand-written even when a generator writes every body
+  (a nested partial class with only `[ObservableProperty]`, `[LibraryImport]` or
+  `[GeneratedRegex]` members), and so is a type with a hand-written nested type.
+  Generators declare their own types top-level or inside their own types.
 - **Toolchain output** is recognised positively and needs no entry: repository
   `obj/` and `bin/` documents outside a source generator folder (the WinUI XAML
   compiler and MSBuild), System.Text.Json and CsWinRT generator documents, and
@@ -134,6 +151,10 @@ Windows App SDK output must need no entries. Each other variant must fail:
 `StandIn` adds a `RewriteBackendStandIn` fake, `FileLocal` declares it as a C#
 `file` type, `Hook` adds an internal test hook field and method to an approved
 type, `Observable` adds one with CommunityToolkit.Mvvm's `[ObservableProperty]`,
+`NestedObservable` and `NestedLibraryImport` nest a hook class in an approved
+type with bodies only from CommunityToolkit.Mvvm or the LibraryImport and Regex
+generators, `GeneratedOuter` adds a top-level `[ObservableProperty]` hook type
+that only its hand-written nested type reveals,
 `GeneratedTag` adds hooks tagged `GeneratedCode`, `DebugLiteral` adds a
 `VOXCLIP_DEBUG_*` read, `LowerCase` reads debug and stand-in names in other cases
 and checks a `/switch`, `Mapped` adds `#line`-mapped code outside XAML output,
@@ -142,4 +163,5 @@ friend assembly and a `[Conditional("DEBUG")]` member, and `DebugBuild` is a
 Debug compilation. `App` and `AppPathMap` compile the clean sources as an x64
 `VoxClip.dll`: the shipping check must pass `App` with the real root and fail it
 with another root spelling, fail the `-p:PathMap` build, fail stale lines and a
-missing CLI, and fail an unlisted first-party DLL in the payload folder.
+missing CLI, and fail an unlisted first-party DLL in the payload folder, also
+when it has no PDB or a `PathMap` PDB.

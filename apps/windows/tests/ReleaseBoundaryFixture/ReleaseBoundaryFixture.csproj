@@ -18,13 +18,17 @@
     <AssemblyName>VoxClip</AssemblyName>
     <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(BoundaryVariant)' == 'NestedLibraryImport'">
+    <!-- The LibraryImport generator requires unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(BoundaryVariant)' == 'AppPathMap'">
     <PathMap>$(MSBuildProjectDirectory)=/src/</PathMap>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Fixture.cs" />
     <None Include="Toolchain.generated.txt" />
-    <!-- The Observable variant uses the [ObservableProperty] generator the App already references. -->
+    <!-- The Observable, NestedObservable and GeneratedOuter variants use the [ObservableProperty] generator the App already references. -->
     <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
   <!-- Toolchain output is compiled from obj/, like the WinUI XAML compiler's .g.cs files. -->

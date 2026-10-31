@@ -76,8 +76,13 @@ public static class ReleaseCheck
         return Run("Release boundary precheck (typecheck surrogate)", targets, repositoryRoot, evidenceDirectory, output, error);
     }
 
-    /// <summary>Managed assemblies in a folder whose PDB names repository sources but which are not in the shipping set:
-    /// a new first-party reference would otherwise ship unchecked. Package and native DLLs are ignored.</summary>
+    /// <summary>The product name apps/windows/Directory.Build.props stamps on every first-party assembly.</summary>
+    public const string FirstPartyProduct = "VoxClip";
+
+    /// <summary>Managed assemblies in a folder that are first-party but not in the shipping set: a new first-party reference
+    /// would otherwise ship unchecked. An assembly is first-party when its PDB names repository sources or, without such a PDB
+    /// (DebugType none, a PathMap, a PDB that was not copied), when its name starts with VoxClip in any case or its
+    /// AssemblyProduct is <see cref="FirstPartyProduct"/>. Package and native DLLs are ignored.</summary>
     public static IEnumerable<string> UnlistedFirstPartyAssemblies(string directory, string repositoryRoot)
     {
         if (!Directory.Exists(directory)) yield break;
@@ -85,24 +90,51 @@ public static class ReleaseCheck
         {
             var name = Path.GetFileNameWithoutExtension(file);
             if (ShippingAssemblies.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
-            string? source = null;
+            string? source = null, metadata = null;
             try
             {
                 using var pe = new PEReader(File.OpenRead(file));
                 if (!pe.HasMetadata) continue;
-                if (!pe.TryOpenAssociatedPortablePdb(file, candidate => File.Exists(candidate) ? File.OpenRead(candidate) : null, out var provider, out _)) continue;
-                using (provider)
+                if (pe.TryOpenAssociatedPortablePdb(file, candidate => File.Exists(candidate) ? File.OpenRead(candidate) : null, out var provider, out _))
                 {
-                    var pdb = provider!.GetMetadataReader();
-                    source = pdb.Documents.Select(document => pdb.GetString(pdb.GetDocument(document).Name))
-                        .FirstOrDefault(path => Rules.Classify(path, repositoryRoot).Kind == DocumentKind.HandWritten);
+                    using (provider)
+                    {
+                        var pdb = provider!.GetMetadataReader();
+                        source = pdb.Documents.Select(document => pdb.GetString(pdb.GetDocument(document).Name))
+                            .FirstOrDefault(path => Rules.Classify(path, repositoryRoot).Kind == DocumentKind.HandWritten);
+                    }
                 }
+                if (source is null) metadata = FirstPartyMetadata(pe.GetMetadataReader());
             }
             catch (BadImageFormatException) { continue; }
             if (source is not null)
                 yield return $"{Path.GetFileName(file)} in {directory} is a first-party assembly (its PDB names {DisplayPath(source, repositoryRoot)}) " +
                     "but is not in the shipping set: add it to ReleaseCheck.ShippingAssemblies with an allowlist, or stop shipping it";
+            else if (metadata is not null)
+                yield return $"{Path.GetFileName(file)} in {directory} is a first-party assembly ({metadata}) without a PDB that names repository " +
+                    "sources, and is not in the shipping set: add it to ReleaseCheck.ShippingAssemblies with an allowlist, or stop shipping it";
         }
+    }
+
+    private static string? FirstPartyMetadata(MetadataReader reader)
+    {
+        if (!reader.IsAssembly) return null;
+        var assembly = reader.GetAssemblyDefinition();
+        var name = reader.GetString(assembly.Name);
+        if (name.StartsWith(FirstPartyProduct, StringComparison.OrdinalIgnoreCase)) return "its assembly name is " + name;
+        var names = new AssemblyInspector.Names(reader);
+        foreach (var handle in assembly.GetCustomAttributes())
+        {
+            var attribute = reader.GetCustomAttribute(handle);
+            if (names.AttributeType(attribute) != "System.Reflection.AssemblyProductAttribute") continue;
+            try
+            {
+                if (attribute.DecodeValue(names) is { FixedArguments: [{ Value: string product }] } && product == FirstPartyProduct)
+                    return "its AssemblyProduct is " + product;
+            }
+            catch (BadImageFormatException) { }
+        }
+        return null;
     }
 
     /// <summary>Checks each target against its allowlist exactly: unapproved, forbidden and stale lines all fail, as do

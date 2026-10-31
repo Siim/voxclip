@@ -284,6 +284,73 @@ public sealed class ReleaseAssemblyInspectionTests
     }
 
     [Fact]
+    public void HookClassesNestedInAnApprovedTypeFailWhenAGeneratorWritesEveryBody()
+    {
+        // Roslyn records no declaration document for a nested type, and every body of these hook classes comes from a source
+        // generator. Each variant's only other change is inside the approved RunAsync body.
+        var observable = Read("NestedObservable");
+        var result = observable.Check(Allowlist.Read(FixtureAllowlist));
+        Assert.Empty(result.Forbidden);
+        Assert.Equal(new[]
+        {
+            "attribute VoxClip.App.ViewModels.RewriteGeneration+HookBag :: field private standInForTests @ CommunityToolkit.Mvvm.ComponentModel.ObservablePropertyAttribute()",
+            "attribute VoxClip.App.ViewModels.RewriteGeneration+HookBag :: property StandInForTests @ System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute()",
+            "member VoxClip.App.ViewModels.RewriteGeneration+HookBag :: field internal Current",
+            "member VoxClip.App.ViewModels.RewriteGeneration+HookBag :: field private standInForTests",
+            "member VoxClip.App.ViewModels.RewriteGeneration+HookBag :: method public .ctor()",
+            "member VoxClip.App.ViewModels.RewriteGeneration+HookBag :: method public get_StandInForTests()",
+            "member VoxClip.App.ViewModels.RewriteGeneration+HookBag :: method public set_StandInForTests(System.Func`1<VoxClip.App.Services.IRewriteBackend>)",
+            "type VoxClip.App.ViewModels.RewriteGeneration+HookBag",
+        }, result.Unapproved);
+        Assert.StartsWith("nested in hand-written VoxClip.App.ViewModels.RewriteGeneration (apps/windows/tests/ReleaseBoundaryFixture/Fixture.cs); only its bodies come from source generator CommunityToolkit.Mvvm.SourceGenerators/",
+            observable.EvidenceFor("type VoxClip.App.ViewModels.RewriteGeneration+HookBag"));
+        // The generator's own argument cache is still toolchain output.
+        Assert.Equal(EntryOrigin.Generated, Assert.Single(observable.Entries,
+            entry => entry.Key == "type CommunityToolkit.Mvvm.ComponentModel.__Internals.__KnownINotifyPropertyChangedArgs").Origin);
+
+        var natives = Read("NestedLibraryImport");
+        result = natives.Check(Allowlist.Read(FixtureAllowlist));
+        Assert.Empty(result.Forbidden);
+        Assert.Equal(new[]
+        {
+            "attribute VoxClip.App.ViewModels.RewriteGeneration+Natives :: method internal StandInPattern() @ System.Text.RegularExpressions.GeneratedRegexAttribute(\"stand-?in\",1)",
+            "attribute VoxClip.App.ViewModels.RewriteGeneration+Natives :: method internal StandInRender(string) @ System.Runtime.CompilerServices.SkipLocalsInitAttribute()",
+            "attribute VoxClip.App.ViewModels.RewriteGeneration+Natives :: method internal StandInRender(string) @ System.Runtime.InteropServices.LibraryImportAttribute(\"rewritestandin\",StringMarshalling=2)",
+            "member VoxClip.App.ViewModels.RewriteGeneration+Natives :: method internal StandInPattern()",
+            "member VoxClip.App.ViewModels.RewriteGeneration+Natives :: method internal StandInRender(string)",
+            "type VoxClip.App.ViewModels.RewriteGeneration+Natives",
+        }, result.Unapproved);
+        // The Regex runner types the generator declares by itself are still toolchain output.
+        Assert.Contains(natives.Entries, entry => entry.Origin == EntryOrigin.Generated &&
+            entry.Key.StartsWith("type System.Text.RegularExpressions.Generated.<RegexGenerator_g>F#__StandInPattern_", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GeneratorCompletedTypeWithAHandWrittenNestedTypeFails()
+    {
+        // Roslyn leaves Fixture.cs out of RewriteHooks' TypeDefinitionDocuments because the nested Marker's method covers that
+        // file, so its own documents are all generator output. Only a hand-written partial declaration can declare Marker.
+        var inventory = Read("GeneratedOuter");
+        var result = inventory.Check(Allowlist.Read(FixtureAllowlist));
+        Assert.Empty(result.Forbidden);
+        Assert.Equal(new[]
+        {
+            "attribute VoxClip.App.ViewModels.RewriteHooks :: field private standIn @ CommunityToolkit.Mvvm.ComponentModel.ObservablePropertyAttribute()",
+            "attribute VoxClip.App.ViewModels.RewriteHooks :: property StandIn @ System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute()",
+            "member VoxClip.App.ViewModels.RewriteHooks :: field internal Current",
+            "member VoxClip.App.ViewModels.RewriteHooks :: field private standIn",
+            "member VoxClip.App.ViewModels.RewriteHooks :: method public .ctor()",
+            "member VoxClip.App.ViewModels.RewriteHooks :: method public get_StandIn()",
+            "member VoxClip.App.ViewModels.RewriteHooks :: method public set_StandIn(System.Func`1<VoxClip.App.Services.IRewriteBackend>)",
+            "member VoxClip.App.ViewModels.RewriteHooks+Marker :: method internal Active()",
+            "type VoxClip.App.ViewModels.RewriteHooks",
+            "type VoxClip.App.ViewModels.RewriteHooks+Marker",
+        }, result.Unapproved);
+        Assert.StartsWith("declares nested type VoxClip.App.ViewModels.RewriteHooks+Marker in hand-written apps/windows/tests/ReleaseBoundaryFixture/Fixture.cs",
+            inventory.EvidenceFor("type VoxClip.App.ViewModels.RewriteHooks"));
+    }
+
+    [Fact]
     public void GeneratedCodeTagsDoNotExemptHandWrittenFields()
     {
         // Only the XAML compiler's tag counts, and only on a type with obj/ XAML output.
@@ -408,6 +475,32 @@ public sealed class ReleaseAssemblyInspectionTests
             Assert.Contains("UNLISTED ReleaseBoundaryFixture.dll in " + app + " is a first-party assembly (its PDB names apps/windows/tests/ReleaseBoundaryFixture/", text);
             Assert.DoesNotContain("UNLISTED " + Path.GetFileName(package), text);
             Assert.Single(ReleaseCheck.UnlistedFirstPartyAssemblies(app, Root));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void UnlistedFirstPartyAssembliesFailWithoutARepositoryPdb()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "voxclip-release-boundary-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            // Built with DebugType none, or its PDB was not copied: apps/windows/Directory.Build.props stamps AssemblyProduct VoxClip.
+            File.Copy(Fixture("Clean"), Path.Combine(directory, "RewriteHarness.dll"));
+            // A PathMap PDB names no repository source, but the assembly name starts with VoxClip.
+            File.Copy(Path.Combine(FixtureDirectory, "bin/AppPathMap/VoxClip.dll"), Path.Combine(directory, "VoxClip.Rewrite.dll"));
+            File.Copy(Path.Combine(FixtureDirectory, "bin/AppPathMap/VoxClip.pdb"), Path.Combine(directory, "VoxClip.pdb"));
+            // A package assembly without repository sources is not first-party.
+            var package = typeof(Xunit.Assert).Assembly.Location;
+            File.Copy(package, Path.Combine(directory, Path.GetFileName(package)));
+            var unlisted = ReleaseCheck.UnlistedFirstPartyAssemblies(directory, Root).ToArray();
+            Assert.Equal(2, unlisted.Length);
+            Assert.StartsWith("RewriteHarness.dll in " + directory + " is a first-party assembly (its AssemblyProduct is VoxClip) without a PDB that names repository sources", unlisted[0]);
+            Assert.StartsWith("VoxClip.Rewrite.dll in " + directory + " is a first-party assembly (its assembly name is VoxClip) without a PDB", unlisted[1]);
         }
         finally
         {

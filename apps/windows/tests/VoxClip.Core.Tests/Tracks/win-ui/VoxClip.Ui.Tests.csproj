@@ -103,6 +103,9 @@
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=GeneratedTag" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=LowerCase" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Mapped" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=NestedObservable" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=NestedLibraryImport" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=GeneratedOuter" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=App" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=AppPathMap" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Debug;BoundaryVariant=DebugBuild" />

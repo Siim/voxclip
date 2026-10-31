@@ -399,6 +399,7 @@ public static class AssemblyInspector
             TypeFacts facts;
             var own = Decide(OwnDocuments(handle));
             if (own is { Kind: DocumentKind.Mapped } mapped) own = Mapped(mapped, declaring);
+            if (own is { Origin: EntryOrigin.Generated } generated && DeclaredByHand(handle, parent, generated) is { } handWritten) own = handWritten;
             if (own is { } decision)
                 facts = new(name, compilerGenerated, decision.Origin, decision.Kind == DocumentKind.Generator
                     ? "declared entirely by " + decision.Evidence : decision.Evidence);
@@ -414,6 +415,40 @@ public static class AssemblyInspector
                 facts = new(name, compilerGenerated, EntryOrigin.Source, pdb is null ? "no PDB: treated as hand-written" : "no source document: treated as hand-written");
             types[handle] = facts;
             return facts;
+        }
+
+        /// <summary>Roslyn records where a type is declared (TypeDefinitionDocuments) only for top-level types, and only for files
+        /// that no method of the type or of its nested types already covers. A toolchain document therefore cannot show that the
+        /// toolchain declared a type by itself in two cases, and the type is hand-written in both:
+        /// <list type="bullet">
+        /// <item>A type nested in a hand-written type whose bodies all come from a source generator, for example a nested partial
+        /// class with only [ObservableProperty], [LibraryImport] or [GeneratedRegex] members. Generators declare their own types
+        /// top-level or inside their own types, so such a type is a hand-written declaration that a generator completes. (The
+        /// WinUI XAML compiler does nest its binding classes in hand-written pages; obj/ output is not covered by this rule.)</item>
+        /// <item>A type with a nested type that has a hand-written document: only a hand-written partial declaration of the
+        /// containing type can declare it.</item>
+        /// </list></summary>
+        private Decision? DeclaredByHand(TypeDefinitionHandle handle, TypeFacts? parent, Decision decision)
+        {
+            if (decision.Kind is DocumentKind.Generator or DocumentKind.ToolchainGenerator && parent is { Origin: EntryOrigin.Source })
+                return new(EntryOrigin.Source, "nested in hand-written " + parent.Name + " (" + parent.Evidence + "); only its bodies come from " +
+                    decision.Evidence, DocumentKind.HandWritten, "");
+            if (HandWrittenNestedDocument(handle) is { } nested)
+                return new(EntryOrigin.Source, "declares nested type " + nested.Type + " in hand-written " + Relative(nested.Document.Path) +
+                    "; only its own bodies come from " + decision.Evidence, DocumentKind.HandWritten, "");
+            return null;
+        }
+
+        private (string Type, DocumentFacts Document)? HandWrittenNestedDocument(TypeDefinitionHandle handle)
+        {
+            foreach (var nested in reader.GetTypeDefinition(handle).GetNestedTypes())
+            {
+                if (Rules.IsSynthesizedTypeName(reader.GetString(reader.GetTypeDefinition(nested).Name))) continue; // already in OwnDocuments
+                foreach (var document in OwnDocuments(nested))
+                    if (document.Kind is DocumentKind.HandWritten or DocumentKind.Unrecognized) return (names.Definition(nested), document);
+                if (HandWrittenNestedDocument(nested) is { } deeper) return deeper;
+            }
+            return null;
         }
 
         /// <summary>Whether a type has WinUI XAML compiler (obj/ build) output among its own documents.</summary>
