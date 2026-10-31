@@ -11,26 +11,38 @@ import VoxClipCore
     }()
 
     static func value(_ path: String) -> Any? {
+        guard let result = node(path) else { return nil }
+        return (result as? [String: Any])?["$value"] ?? result
+    }
+
+    private static func node(_ path: String) -> Any? {
         var result: Any = values
         for part in path.split(separator: ".") {
             guard let object = result as? [String: Any], let next = object[String(part)] else { return nil }
             result = next
         }
-        return (result as? [String: Any])?["$value"] ?? result
+        return result
     }
 
     static func dimension(_ path: String, fallback: Double) -> Double { value(path) as? Double ?? fallback }
 
     static func nsColor(_ path: String) -> NSColor {
         if let cached = colors[path] { return cached }
-        guard let modes = value("color.\(path)") as? [String: String] else { return .labelColor }
-        let dark = parse(modes["dark"] ?? "")
-        let light = parse(modes["light"] ?? "")
+        guard let modes = colorModes(path) else { return .labelColor }
         let color = NSColor(name: NSColor.Name("voxclip.\(path)")) { appearance in
-            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            modes.resolve(appearance.bestMatch(from: TokenColorModes.appearances))
         }
         colors[path] = color
         return color
+    }
+
+    static func colorModes(_ path: String) -> TokenColorModes? {
+        guard let modes = value("color.\(path)") as? [String: String] else { return nil }
+        let dark = parse(modes["dark"] ?? ""), light = parse(modes["light"] ?? "")
+        let extensions = (node("color.\(path)") as? [String: Any])?["$extensions"] as? [String: Any]
+        let increased = (extensions?["com.voxconvo.voxclip"] as? [String: Any])?["increaseContrast"] as? [String: String]
+        return TokenColorModes(dark: dark, light: light, increasedDark: increased?["dark"].map { parse($0) } ?? dark,
+                          increasedLight: increased?["light"].map { parse($0) } ?? light)
     }
 
     static func color(_ path: String) -> Color { Color(nsColor: nsColor(path)) }
@@ -139,6 +151,24 @@ import VoxClipCore
     static let transcriptLineHeightRatio = Double(VCTokens.typographyTranscriptLineHeight / VCTokens.typographyTranscriptFontSize)
     static let transcriptParagraphGap = Double(VCTokens.spacingTranscriptParagraphGap)
     static let transcriptZoom = Double(VCTokens.typographyTranscriptZoomMin)...Double(VCTokens.typographyTranscriptZoomMax)
+}
+
+/// A colour token's values per appearance. Increase Contrast draws the high-contrast
+/// appearances: a colour kept below its contrast minimum on purpose carries an
+/// increaseContrast value for them (tokens.json conventions); every other colour keeps its own.
+struct TokenColorModes {
+    static var appearances: [NSAppearance.Name] { [.darkAqua, .aqua, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastAqua] }
+    let dark: NSColor, light: NSColor, increasedDark: NSColor, increasedLight: NSColor
+
+    /// The colour for `bestMatch(from: appearances)`.
+    func resolve(_ match: NSAppearance.Name?) -> NSColor {
+        switch match ?? .aqua {
+        case .accessibilityHighContrastDarkAqua: increasedDark
+        case .accessibilityHighContrastAqua: increasedLight
+        case .darkAqua: dark
+        default: light
+        }
+    }
 }
 
 extension View {

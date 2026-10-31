@@ -288,7 +288,19 @@ import VoxClipCore
         }
     }
     static func colorReadbackChecks(directory: URL) throws -> [DebugUISuite.Result] {
-        let data = Data([44, 46, 53, 255, 236, 234, 228, 255, 243, 240, 231, 255, 26, 27, 30, 255])
+        // The v2 palette the pixel checks read back (notes.md section 3): chrome, the open clip's band, t1 and the tint.
+        var palette: [String] = []
+        NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
+            palette = ["bg.window", "editor.band", "text.primary", "tint.default"].map { hex(DesignValues.nsColor($0)) }
+        }
+        let bytes = palette.flatMap { value -> [UInt8] in
+            let number = UInt32(value.dropFirst(), radix: 16) ?? 0
+            return [UInt8(number >> 16 & 255), UInt8(number >> 8 & 255), UInt8(number & 255), 255]
+        }
+        guard palette == ["#17181A", "#222327", "#ECECEA", "#F26B3A"], bytes.count == 16 else {
+            return [.init(name: "the v2 palette resolves for the sRGB readback probe: \(palette)", passed: false)]
+        }
+        let data = Data(bytes)
         let file = directory.appendingPathComponent("probe-srgb-colors.png")
         guard let space = CGColorSpace(name: CGColorSpace.sRGB), let provider = CGDataProvider(data: data as CFData),
               let image = CGImage(width: 4, height: 1, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 16,
@@ -297,7 +309,7 @@ import VoxClipCore
               let destination = CGImageDestinationCreateWithURL(file as CFURL, "public.png" as CFString, 1, nil) else { throw CocoaError(.coderInvalidValue) }
         CGImageDestinationAddImage(destination, image, nil)
         guard CGImageDestinationFinalize(destination), let readback = bitmap(file) else { throw CocoaError(.fileReadCorruptFile) }
-        return ["#2C2E35", "#ECEAE4", "#F3F0E7", "#1A1B1E"].enumerated().map { index, expected in
+        return palette.enumerated().map { index, expected in
             .init(name: "sRGB screenshot readback preserves \(expected) without generic-RGB conversion", passed: hex(readback.colorAt(x: index, y: 0)) == expected)
         }
     }

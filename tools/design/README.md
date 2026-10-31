@@ -27,7 +27,10 @@ timestamps or host-dependent paths in the outputs.
 - Colour `color.text.primary` becomes `Color.vcTextPrimary` and
   `VcTextPrimaryBrush`. Swift colours use dynamic NSColor providers; XAML has
   `Default`, `Light` and `HighContrast` dictionaries. Straight RGBA is converted
-  to XAML ARGB. System colours use the declared platform resources, never a hex
+  to XAML ARGB. A colour with an `increaseContrast` extension (`{dark, light}`,
+  hex only) also matches the macOS `accessibilityHighContrast` appearances and
+  draws that value under Increase Contrast; XAML keeps `$value` and its own
+  `HighContrast` dictionary. System colours use the declared platform resources, never a hex
   approximation; system brush tokens use resource aliases.
 - A colour token whose extensions name a `macosAsset` also becomes
   `apps/macos/Resources/Assets.xcassets/<name>.colorset/Contents.json`, with the
@@ -63,9 +66,21 @@ from `App.xaml`; translucent colours are composited over what they sit on.
 System materials the apps never paint are approximated per mode in
 `materials`: `glass.sidebar` is the macOS sidebar glass as the ADR-R29 mockups
 draw it over the page.
+A pair may name a token at an opacity, `ai.tint@0.16`.
+
+A few v2 colours stay under their minimum on purpose (impl-plan item 6). A
+recorded `exception` pair (the gutter timecodes) must still reach 3:1 and says
+why in its label. `belowMinimum` lists the decorative or repeated ones
+(`line.strong`, `text.disabled`, `gutter.textOut`, `fold.dot`) with a reason;
+their default appearance is not measured. Every such colour carries an
+`increaseContrast` value, and `increaseContrastPairs` measure it at the full
+minimum.
+
 `npm test` fails on any pair below its minimum, on a colour token that no pair
-checks and that is not listed as exempt with a reason, and on an `App.xaml`
-ramp that differs from the accent tokens.
+checks and that is not listed as exempt with a reason, on a colour below its
+minimum without a reason or an Increase Contrast value that passes, on an
+`App.xaml` ramp that differs from the accent tokens, and when the orange
+`tint.*` reaches the `AccentColor` asset or the accent ramp.
 
 Edit the shared tokens, regenerate, and review both output diffs as a design
 change. Never edit a generated file by hand. Consumer-specific aliases

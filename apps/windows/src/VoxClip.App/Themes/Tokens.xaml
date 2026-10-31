@@ -2,26 +2,36 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
-            <SolidColorBrush x:Key="VcBgWindowBrush" Color="#141517" />
-            <SolidColorBrush x:Key="VcBgSurfaceBrush" Color="#1B1C1F" />
-            <SolidColorBrush x:Key="VcBgSunkenBrush" Color="#141517" />
+            <SolidColorBrush x:Key="VcBgWindowBrush" Color="#17181A" />
+            <SolidColorBrush x:Key="VcBgSurfaceBrush" Color="#1C1D20" />
+            <SolidColorBrush x:Key="VcBgSunkenBrush" Color="#17181A" />
             <SolidColorBrush x:Key="VcBgElevatedBrush" Color="#25262A" />
             <SolidColorBrush x:Key="VcBgMutedBrush" Color="#2A2B2F" />
-            <SolidColorBrush x:Key="VcBgInputBrush" Color="#25262A" />
-            <SolidColorBrush x:Key="VcLineDefaultBrush" Color="#2E2F33" />
-            <SolidColorBrush x:Key="VcLineStrongBrush" Color="#6C6E75" />
-            <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="#ECEAE4" />
-            <SolidColorBrush x:Key="VcTextSecondaryBrush" Color="#A8AAB0" />
+            <SolidColorBrush x:Key="VcBgInputBrush" Color="#212225" />
+            <SolidColorBrush x:Key="VcBgSelectedRowBrush" Color="#2B2C30" />
+            <SolidColorBrush x:Key="VcLineDefaultBrush" Color="#28292D" />
+            <SolidColorBrush x:Key="VcLineStrongBrush" Color="#34353A" />
+            <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="#ECECEA" />
+            <SolidColorBrush x:Key="VcTextSecondaryBrush" Color="#A4A6AB" />
             <SolidColorBrush x:Key="VcTextMutedBrush" Color="#9C9EA4" />
-            <SolidColorBrush x:Key="VcTextTertiaryBrush" Color="#8F9198" />
-            <SolidColorBrush x:Key="VcTextDisabledBrush" Color="#777C8D" />
+            <SolidColorBrush x:Key="VcTextTertiaryBrush" Color="#82858B" />
+            <SolidColorBrush x:Key="VcTextDisabledBrush" Color="#4E5056" />
             <SolidColorBrush x:Key="VcAccentDefaultBrush" Color="#6D6F73" />
             <SolidColorBrush x:Key="VcAccentPressedBrush" Color="#5C5E62" />
             <SolidColorBrush x:Key="VcAccentTextBrush" Color="#ECEAE4" />
             <SolidColorBrush x:Key="VcAccentOnBrush" Color="#FAF9F6" />
             <SolidColorBrush x:Key="VcAccentSoftBrush" Color="#343537" />
+            <SolidColorBrush x:Key="VcTintDefaultBrush" Color="#F26B3A" />
+            <SolidColorBrush x:Key="VcTintPressedBrush" Color="#DC5F33" />
+            <SolidColorBrush x:Key="VcTintOnBrush" Color="#1A0F0A" />
+            <SolidColorBrush x:Key="VcTintTextBrush" Color="#F26B3A" />
+            <SolidColorBrush x:Key="VcTintSelectionBrush" Color="#29F26B3A" />
+            <SolidColorBrush x:Key="VcTintWashBrush" Color="#12F26B3A" />
             <SolidColorBrush x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.4" />
             <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#5F6061" />
+            <SolidColorBrush x:Key="VcWordTextBrush" Color="#DCDCD9" />
+            <SolidColorBrush x:Key="VcWordOutsideBrush" Color="#878A90" />
+            <SolidColorBrush x:Key="VcWordGoneBrush" Color="#878A90" />
             <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#D2D1CC" />
             <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="#141517" />
             <SolidColorBrush x:Key="VcWordCutBrush" Color="#93959C" />
@@ -32,6 +42,13 @@
             <SolidColorBrush x:Key="VcCutFillBrush" Color="#EE7F6E" />
             <SolidColorBrush x:Key="VcCutPauseFillBrush" Color="#84878E" />
             <SolidColorBrush x:Key="VcPauseBackgroundBrush" Color="#2A2B2F" />
+            <SolidColorBrush x:Key="VcEditorBandBrush" Color="#222327" />
+            <SolidColorBrush x:Key="VcGutterTextBrush" Color="#6A6D73" />
+            <SolidColorBrush x:Key="VcGutterTextOutBrush" Color="#55585E" />
+            <SolidColorBrush x:Key="VcFoldDotBrush" Color="#5B5E64" />
+            <SolidColorBrush x:Key="VcAiTintBrush" Color="#6AA6FF" />
+            <SolidColorBrush x:Key="VcAiWaveBrush" Color="#D98FB3E8" />
+            <SolidColorBrush x:Key="VcChangeAddBrush" Color="#4FC28B" />
             <SolidColorBrush x:Key="VcStatusWarningBrush" Color="#E3B25C" />
             <SolidColorBrush x:Key="VcStatusWarningBackgroundBrush" Color="#2D2616" />
             <SolidColorBrush x:Key="VcStatusDangerForegroundBrush" Color="#F2A196" />
@@ -41,7 +58,12 @@
             <SolidColorBrush x:Key="VcStatusInfoBackgroundBrush" Color="#232428" />
             <SolidColorBrush x:Key="VcRecordButtonBrush" Color="#E5484D" />
             <SolidColorBrush x:Key="VcRecordLiveBrush" Color="#FF5C5C" />
-            <SolidColorBrush x:Key="VcClipBadgeBackgroundBrush" Color="#1AECEAE4" />
+            <SolidColorBrush x:Key="VcClipBadgeBackgroundBrush" Color="#17ECEAE4" />
+            <SolidColorBrush x:Key="VcClipLabelBrush" Color="#C9CAC6" />
+            <SolidColorBrush x:Key="VcTimelineLaneBrush" Color="#111214" />
+            <SolidColorBrush x:Key="VcTimelineRulerOutBrush" Color="#131416" />
+            <SolidColorBrush x:Key="VcTimelinePieceBrush" Color="#2E3035" />
+            <SolidColorBrush x:Key="VcTimelineSeamBrush" Color="#0B0C0D" />
             <SolidColorBrush x:Key="VcTimelineTrackBrush" Color="#26272B" />
             <SolidColorBrush x:Key="VcTimelineKeptBrush" Color="#7A7D85" />
             <SolidColorBrush x:Key="VcTimelineKeptBackgroundBrush" Color="#17ECEAE4" />
@@ -75,6 +97,7 @@
             <SolidColorBrush x:Key="VcBgElevatedBrush" Color="#FEFDFB" />
             <SolidColorBrush x:Key="VcBgMutedBrush" Color="#ECEAE4" />
             <SolidColorBrush x:Key="VcBgInputBrush" Color="#FEFDFB" />
+            <SolidColorBrush x:Key="VcBgSelectedRowBrush" Color="#E3E1DB" />
             <SolidColorBrush x:Key="VcLineDefaultBrush" Color="#E3E1DB" />
             <SolidColorBrush x:Key="VcLineStrongBrush" Color="#85878E" />
             <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="#1A1B1F" />
@@ -87,8 +110,17 @@
             <SolidColorBrush x:Key="VcAccentTextBrush" Color="#1A1B1F" />
             <SolidColorBrush x:Key="VcAccentOnBrush" Color="#FAF9F6" />
             <SolidColorBrush x:Key="VcAccentSoftBrush" Color="#DFDEDC" />
+            <SolidColorBrush x:Key="VcTintDefaultBrush" Color="#D35D32" />
+            <SolidColorBrush x:Key="VcTintPressedBrush" Color="#CF5B31" />
+            <SolidColorBrush x:Key="VcTintOnBrush" Color="#1A0F0A" />
+            <SolidColorBrush x:Key="VcTintTextBrush" Color="#B5502B" />
+            <SolidColorBrush x:Key="VcTintSelectionBrush" Color="#29D35D32" />
+            <SolidColorBrush x:Key="VcTintWashBrush" Color="#12D35D32" />
             <SolidColorBrush x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemAccentColor}" Opacity="0.4" />
             <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="#C0C1C3" />
+            <SolidColorBrush x:Key="VcWordTextBrush" Color="#26272B" />
+            <SolidColorBrush x:Key="VcWordOutsideBrush" Color="#66696F" />
+            <SolidColorBrush x:Key="VcWordGoneBrush" Color="#66686F" />
             <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="#2C2E35" />
             <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="#FAF9F6" />
             <SolidColorBrush x:Key="VcWordCutBrush" Color="#66686F" />
@@ -99,6 +131,13 @@
             <SolidColorBrush x:Key="VcCutFillBrush" Color="#C2402F" />
             <SolidColorBrush x:Key="VcCutPauseFillBrush" Color="#6F7278" />
             <SolidColorBrush x:Key="VcPauseBackgroundBrush" Color="#ECEAE4" />
+            <SolidColorBrush x:Key="VcEditorBandBrush" Color="#F3F2EE" />
+            <SolidColorBrush x:Key="VcGutterTextBrush" Color="#7E8187" />
+            <SolidColorBrush x:Key="VcGutterTextOutBrush" Color="#A3A5AA" />
+            <SolidColorBrush x:Key="VcFoldDotBrush" Color="#A7A9AE" />
+            <SolidColorBrush x:Key="VcAiTintBrush" Color="#2F6FD6" />
+            <SolidColorBrush x:Key="VcAiWaveBrush" Color="#D92A5DB0" />
+            <SolidColorBrush x:Key="VcChangeAddBrush" Color="#1E8A57" />
             <SolidColorBrush x:Key="VcStatusWarningBrush" Color="#8A5200" />
             <SolidColorBrush x:Key="VcStatusWarningBackgroundBrush" Color="#FAF0DC" />
             <SolidColorBrush x:Key="VcStatusDangerForegroundBrush" Color="#B3261E" />
@@ -109,6 +148,11 @@
             <SolidColorBrush x:Key="VcRecordButtonBrush" Color="#E5484D" />
             <SolidColorBrush x:Key="VcRecordLiveBrush" Color="#FF5C5C" />
             <SolidColorBrush x:Key="VcClipBadgeBackgroundBrush" Color="#171A1B1F" />
+            <SolidColorBrush x:Key="VcClipLabelBrush" Color="#3A3C41" />
+            <SolidColorBrush x:Key="VcTimelineLaneBrush" Color="#E4E2DC" />
+            <SolidColorBrush x:Key="VcTimelineRulerOutBrush" Color="#E9E7E1" />
+            <SolidColorBrush x:Key="VcTimelinePieceBrush" Color="#C9C7C0" />
+            <SolidColorBrush x:Key="VcTimelineSeamBrush" Color="#FAF9F6" />
             <SolidColorBrush x:Key="VcTimelineTrackBrush" Color="#E4E2DC" />
             <SolidColorBrush x:Key="VcTimelineKeptBrush" Color="#74777E" />
             <SolidColorBrush x:Key="VcTimelineKeptBackgroundBrush" Color="#121A1B1F" />
@@ -142,6 +186,7 @@
             <SolidColorBrush x:Key="VcBgElevatedBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
             <SolidColorBrush x:Key="VcBgMutedBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
             <SolidColorBrush x:Key="VcBgInputBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcBgSelectedRowBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcLineDefaultBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcLineStrongBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcTextPrimaryBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
@@ -154,8 +199,17 @@
             <SolidColorBrush x:Key="VcAccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcAccentOnBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
             <SolidColorBrush x:Key="VcAccentSoftBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcTintDefaultBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="VcTintPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="VcTintOnBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
+            <SolidColorBrush x:Key="VcTintTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="VcTintSelectionBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="VcTintWashBrush" Color="#00000000" />
             <SolidColorBrush x:Key="VcSelectionTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcSelectionTranscriptBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="VcWordTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcWordOutsideBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="VcWordGoneBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="VcWordPlayingBackgroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcWordPlayingForegroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcWordCutBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
@@ -166,6 +220,13 @@
             <SolidColorBrush x:Key="VcCutFillBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcCutPauseFillBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="VcPauseBackgroundBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="VcEditorBandBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcGutterTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcGutterTextOutBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="VcFoldDotBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="VcAiTintBrush" Color="{ThemeResource SystemColorHotlightColor}" />
+            <SolidColorBrush x:Key="VcAiWaveBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcChangeAddBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcStatusWarningBrush" Color="{ThemeResource SystemColorHotlightColor}" />
             <SolidColorBrush x:Key="VcStatusWarningBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcStatusDangerForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
@@ -176,6 +237,11 @@
             <SolidColorBrush x:Key="VcRecordButtonBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcRecordLiveBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="VcClipBadgeBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcClipLabelBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcTimelineLaneBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcTimelineRulerOutBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcTimelinePieceBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcTimelineSeamBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcTimelineTrackBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcTimelineKeptBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
             <SolidColorBrush x:Key="VcTimelineKeptBackgroundBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />

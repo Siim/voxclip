@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { appXamlPath, channels, composite, contrast, contrastRows, coverage, materials, minimums, windowsRamp } from './contrast.mjs';
+import { appXamlPath, belowMinimum, channels, composite, contrast, contrastRows, coverage, materials, minimums, windowsRamp } from './contrast.mjs';
 
 const source = JSON.parse(await readFile(new URL('../../shared/design/tokens.json', import.meta.url), 'utf8'));
 const xaml = await readFile(new URL(`../../${appXamlPath}`, import.meta.url), 'utf8');
-const value = (path, mode) => path.split('.').reduce((node, part) => node[part], source.color).$value[mode];
+const token = path => path.split('.').reduce((node, part) => node[part], source.color);
+const value = (path, mode) => token(path).$value[mode];
 
 test('WCAG ratios and alpha compositing match reference values', () => {
   assert.equal(contrast([255, 255, 255], [0, 0, 0]), 21);
@@ -30,16 +31,17 @@ test('every text, on-accent and boundary pair meets its minimum in both modes an
 test('the ADR-R29 badge, selection and boundary pairs are checked in both modes', () => {
   const rows = contrastRows(source, xaml);
   const required = [
-    ['text', 'text.secondary', 'clip.badgeBackground over bg.surface'],
-    ['text', 'text.secondary', 'clip.badgeBackground over bg.sunken'],
-    ['text', 'text.secondary', 'clip.badgeBackground over glass.sidebar over bg.surface'],
-    ['text', 'text.primary', 'selection.transcript'],
-    ['ui', 'line.strong', 'bg.sunken'],
+    ['text', 'text.secondary', 'clip.badgeBackground over bg.surface', 'default'],
+    ['text', 'text.secondary', 'clip.badgeBackground over bg.sunken', 'default'],
+    ['text', 'text.secondary', 'clip.badgeBackground over glass.sidebar over bg.surface', 'default'],
+    ['text', 'text.primary', 'selection.transcript', 'default'],
+    // v2 keeps line.strong quiet; Increase Contrast restores the 3:1 boundary.
+    ['ui', 'line.strong', 'bg.sunken', 'increaseContrast'],
   ];
   for (const mode of ['light', 'dark']) {
-    for (const [category, foreground, background] of required) {
-      const row = rows.find(candidate => candidate.platform === 'tokens' && candidate.mode === mode && candidate.foreground === foreground && candidate.background === background);
-      assert.ok(row?.category === category && row.minimum === minimums[category] && row.passed, `${mode} ${foreground} on ${background}`);
+    for (const [category, foreground, background, appearance] of required) {
+      const row = rows.find(candidate => candidate.platform === 'tokens' && candidate.mode === mode && candidate.appearance === appearance && candidate.foreground === foreground && candidate.background === background);
+      assert.ok(row?.category === category && row.minimum === minimums[category] && row.passed, `${mode} ${appearance} ${foreground} on ${background}`);
     }
   }
   assert.deepEqual(Object.keys(materials['glass.sidebar']).sort(), ['dark', 'light']);
@@ -67,7 +69,84 @@ test('the gate fails a pair below its minimum', () => {
 });
 
 test('every colour token is checked or explicitly exempt', () => {
-  assert.deepEqual(coverage(source), { missing: [], staleExemptions: [] });
+  assert.deepEqual(coverage(source), { missing: [], staleExemptions: [], unrestored: [] });
+  const changed = structuredClone(source);
+  delete changed.color.gutter.textOut.$extensions['com.voxconvo.voxclip'].increaseContrast;
+  assert.deepEqual(coverage(changed).unrestored, ['gutter.textOut']);
+});
+
+test('the v2 palette (notes.md section 3) is the dark appearance, with the item 6 lifts', () => {
+  const v2 = {
+    'bg.window': '#17181A', 'bg.sunken': '#17181A', 'bg.surface': '#1C1D20', 'bg.input': '#212225', 'bg.selectedRow': '#2B2C30',
+    'editor.band': '#222327', 'timeline.lane': '#111214', 'timeline.rulerOut': '#131416', 'timeline.piece': '#2E3035', 'timeline.seam': '#0B0C0D',
+    'line.default': '#28292D', 'line.strong': '#34353A',
+    'text.primary': '#ECECEA', 'text.secondary': '#A4A6AB', 'text.disabled': '#4E5056',
+    'word.text': '#DCDCD9', 'gutter.text': '#6A6D73', 'gutter.textOut': '#55585E', 'fold.dot': '#5B5E64', 'clip.label': '#C9CAC6',
+    'tint.default': '#F26B3A', 'tint.on': '#1A0F0A', 'tint.selection': '#F26B3A29', 'tint.wash': '#F26B3A12',
+    'ai.tint': '#6AA6FF', 'ai.wave': '#8FB3E8D9', 'change.add': '#4FC28B',
+    // Lifted to 4.5:1: t3 on chrome and the editor, out and gone on the band.
+    'text.tertiary': '#82858B', 'word.outside': '#878A90', 'word.gone': '#878A90',
+  };
+  for (const [path, hex] of Object.entries(v2)) assert.equal(value(path, 'dark'), hex, path);
+  const rows = contrastRows(source, xaml).filter(row => row.platform === 'tokens' && row.mode === 'dark' && row.appearance === 'default');
+  const ratio = (foreground, background) => rows.find(row => row.foreground === foreground && row.background === background)?.ratio;
+  assert.ok(ratio('text.tertiary', 'bg.window') >= 4.5 && ratio('text.tertiary', 'bg.surface') >= 4.5);
+  assert.ok(ratio('word.outside', 'editor.band') >= 4.5 && ratio('word.gone', 'editor.band') >= 4.5);
+  // The three meanings never share a hue: orange, blue and green.
+  assert.equal(new Set(['tint.default', 'ai.tint', 'change.add'].map(path => value(path, 'dark'))).size, 3);
+});
+
+test('the orange is the app tint, never the system accent', async () => {
+  // accent.* stays Ink: it generates the macOS AccentColor asset and pins the Windows accent ramp,
+  // so system controls stay neutral (impl-plan item 10).
+  assert.deepEqual(token('accent.default').$value, { dark: '#6D6F73', light: '#2C2E35' });
+  const asset = JSON.parse(await readFile(new URL('../../apps/macos/Resources/Assets.xcassets/AccentColor.colorset/Contents.json', import.meta.url), 'utf8'));
+  const components = hex => ({ alpha: '1.000', blue: `0x${hex.slice(5, 7)}`, green: `0x${hex.slice(3, 5)}`, red: `0x${hex.slice(1, 3)}` });
+  assert.deepEqual(asset.colors.map(entry => entry.color.components), [components(value('accent.default', 'light')), components(value('accent.default', 'dark'))]);
+  const assets = [];
+  const walk = (node, parts) => {
+    if (node?.$type === 'color') { if (node.$extensions?.['com.voxconvo.voxclip']?.macosAsset) assets.push(parts.join('.')); return; }
+    for (const [key, child] of Object.entries(node ?? {})) if (!key.startsWith('$')) walk(child, [...parts, key]);
+  };
+  walk(source.color, []);
+  assert.deepEqual(assets, ['accent.default']);
+  const ramp = Object.values(windowsRamp(xaml)).flatMap(theme => Object.values(theme));
+  for (const mode of ['light', 'dark']) {
+    for (const name of ['default', 'pressed', 'text']) {
+      const orange = value(`tint.${name}`, mode);
+      assert.ok(!['default', 'pressed', 'text', 'on', 'soft'].some(accent => value(`accent.${accent}`, mode) === orange), `tint.${name} ${mode} is not an accent value`);
+      assert.ok(!ramp.includes(orange), `tint.${name} ${mode} is not in the App.xaml accent ramp`);
+    }
+  }
+});
+
+test('colours below a minimum are recorded with a reason and meet it under Increase Contrast', () => {
+  const rows = contrastRows(source, xaml).filter(row => row.platform === 'tokens');
+  for (const [path, reason] of Object.entries(belowMinimum)) {
+    assert.ok(reason.length > 20, path);
+    assert.ok(!rows.some(row => row.appearance === 'default' && row.foreground === path), `${path} is not measured by default`);
+    for (const mode of ['light', 'dark']) {
+      const raised = rows.filter(row => row.appearance === 'increaseContrast' && row.mode === mode && row.foreground === path);
+      assert.ok(raised.length > 0 && raised.every(row => row.passed && row.minimum >= minimums.ui), `${mode} ${path} under Increase Contrast`);
+    }
+  }
+  for (const row of rows.filter(row => row.category === 'exception')) {
+    assert.ok(row.label.length > 20 && row.passed, `${row.mode} ${row.foreground} on ${row.background} is a recorded exception`);
+    const raised = rows.find(candidate => candidate.appearance === 'increaseContrast' && candidate.mode === row.mode && candidate.foreground === row.foreground && candidate.background === row.background);
+    assert.ok(raised?.category === 'text' && raised.passed, `${row.mode} ${row.foreground} on ${row.background} reaches 4.5:1 under Increase Contrast`);
+  }
+  // An Increase Contrast value only changes what Increase Contrast measures.
+  const changed = structuredClone(source);
+  changed.color.gutter.text.$extensions['com.voxconvo.voxclip'].increaseContrast.dark = '#55585E';
+  const failing = contrastRows(changed, xaml).filter(row => !row.passed).map(row => `${row.mode} ${row.appearance} ${row.foreground} on ${row.background}`);
+  assert.deepEqual(failing, ['dark increaseContrast gutter.text on editor.band', 'dark increaseContrast gutter.text on bg.surface']);
+});
+
+test('a token with an opacity is composited at that fraction of its alpha', () => {
+  const rows = contrastRows(source, xaml).filter(row => row.platform === 'tokens' && row.mode === 'dark' && row.appearance === 'default');
+  const ai = rows.find(row => row.foreground === 'text.primary' && row.background === 'ai.tint@0.16 over editor.band');
+  const expected = composite(channels('#6AA6FF29'), channels(value('editor.band', 'dark')).rgb).map(channel => Math.round(channel).toString(16).padStart(2, '0')).join('').toUpperCase();
+  assert.equal(ai.colors, `${value('text.primary', 'dark')} on #${expected}`);
 });
 
 test('the Windows accent ramp in App.xaml is the pinned Ink ramp and leaves High Contrast alone', () => {

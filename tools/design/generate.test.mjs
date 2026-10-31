@@ -118,6 +118,25 @@ test('the macOS AccentColor asset comes from the flagged token in both appearanc
   assert.throws(() => buildOutputs(named), /Invalid macOS asset name/);
 });
 
+test('an increaseContrast colour switches on the macOS high-contrast appearances only', () => {
+  const output = buildOutputs(source);
+  const declaration = name => output.swift.split('\n\n').find(block => block.includes(`static let ${name} = Color`));
+  const gutter = declaration('vcGutterText');
+  assert.ok(gutter.includes('bestMatch(from: [.darkAqua, .aqua, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastAqua]) ?? .aqua {'));
+  assert.ok(gutter.includes('case .accessibilityHighContrastDarkAqua: NSColor(srgbRed: 135.0 / 255, green: 138.0 / 255, blue: 144.0 / 255, alpha: 255.0 / 255)'));
+  assert.ok(gutter.includes('case .accessibilityHighContrastAqua: NSColor(srgbRed: 102.0 / 255, green: 105.0 / 255, blue: 111.0 / 255, alpha: 255.0 / 255)'));
+  assert.ok(gutter.includes('case .darkAqua: NSColor(srgbRed: 106.0 / 255, green: 109.0 / 255, blue: 115.0 / 255, alpha: 255.0 / 255)'));
+  assert.ok(declaration('vcTextPrimary').includes('appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua'));
+  // Windows keeps $value in Default and Light and its own High Contrast system colours.
+  for (const brush of ['<SolidColorBrush x:Key="VcGutterTextBrush" Color="#6A6D73" />', '<SolidColorBrush x:Key="VcGutterTextBrush" Color="#7E8187" />',
+    '<SolidColorBrush x:Key="VcGutterTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />']) assert.equal(output.xaml.split(brush).length, 2, brush);
+  const partial = structuredClone(source);
+  partial.color.gutter.text.$extensions['com.voxconvo.voxclip'].increaseContrast = { dark: '#878A90' };
+  assert.throws(() => buildOutputs(partial), /Increase Contrast colours must be hex in both modes: color.gutter.text/);
+  partial.color.gutter.text.$extensions['com.voxconvo.voxclip'].increaseContrast = { dark: '#878A90', light: 'system:gray' };
+  assert.throws(() => buildOutputs(partial), /must be hex/);
+});
+
 test('unknown formats, missing system mappings and unsafe font paths fail clearly', () => {
   const changed = structuredClone(source);
   changed.$extensions['com.voxconvo.voxclip'].format = 'future';
