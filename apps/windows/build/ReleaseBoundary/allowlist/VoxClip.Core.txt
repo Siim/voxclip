@@ -6270,6 +6270,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public LevelGainD
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public LufsJumpLu(System.ReadOnlySpan`1<float>,int,System.Collections.Generic.IReadOnlyList`1<int>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public MomentaryLufs(System.ReadOnlySpan`1<float>,int,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public NeighbourhoodVoicedRmsDb(System.ReadOnlySpan`1<float>,int,int,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public NeighbourhoodVoicedRmsDb(VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt,int,long,long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public SamplePeakDbfs(System.ReadOnlySpan`1<float>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public SeamJumpLu(System.ReadOnlySpan`1<float>,int,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public TruePeakDbtp(System.ReadOnlySpan`1<float>,int)
@@ -7135,6 +7136,20 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe :: method public op_I
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe :: method public set_Piece(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe :: method public set_Recipe(VoxClip.Core.Domain.VoiceLab.VoiceLabRenderRecipe)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe :: method public set_SegmentId(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method private AllFinite(System.ReadOnlySpan`1<float>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public .ctor(long,System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public Samples(long,long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public Whole(System.ReadOnlySpan`1<float>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public get_IsFinite()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public get_Regions()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public get_TotalFrames()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: field private samples
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method private .ctor(long,float[])
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public .ctor(long,System.ReadOnlySpan`1<float>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public Owning(long,float[])
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public get_End()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public get_Samples()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public get_Start()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions :: method private get_EqualityContract()
@@ -7283,8 +7298,9 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_Trimm
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public .ctor(string,string,string,string,uint,string,VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt,VoxClip.Core.Domain.Transcript.AudioEnvelope,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlySet`1<string>,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,bool,bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public .ctor(string,string,string,string,uint,string,float[],int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlySet`1<string>,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,bool,bool)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Deconstruct(string&,string&,string&,string&,uint&,string&,float[]&,int&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>&,System.Collections.Generic.IReadOnlySet`1<string>&,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow&,System.Nullable`1<double>&,System.Nullable`1<double>&,bool&,bool&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Deconstruct(string&,string&,string&,string&,uint&,string&,VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt&,VoxClip.Core.Domain.Transcript.AudioEnvelope&,int&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>&,System.Collections.Generic.IReadOnlySet`1<string>&,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow&,System.Nullable`1<double>&,System.Nullable`1<double>&,bool&,bool&)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public GetHashCode()
@@ -7303,6 +7319,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Provi
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_RecordId()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Seed()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Source()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_SourceEnvelope()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_SourceSampleRate()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Text()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Window()
@@ -7319,7 +7336,8 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Outgo
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_ProviderConsent(bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_RecordId(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Seed(uint)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Source(float[])
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Source(VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_SourceEnvelope(VoxClip.Core.Domain.Transcript.AudioEnvelope)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_SourceSampleRate(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Text(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Window(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
@@ -7340,6 +7358,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public set_R
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public set_SourceLevel(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: field public MaximumQaSeconds
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method private Frames(double,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method private SourceFrames(double,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public EncodeQaWav(System.ReadOnlySpan`1<float>,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Envelope(float[],int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Preflight(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
@@ -10995,6 +11014,8 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabSegment
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentScope
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe
+type VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt
+type VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechRate
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechRateSource
