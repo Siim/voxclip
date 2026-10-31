@@ -555,7 +555,7 @@ Voices are made only from Rewrite, when a proposal has phrases in your voice and
 
 The guards of the old sheet carry over unchanged:
 
-- **Amounts.** The speech row's `{t}` is `selectedMs` and `{c}` is `preferredMs` (§6.5.1). Below 30 s, `{n}` is `floor(availableMs / 1000)` whole seconds. The `{m}` that V4 and V5 send and the quote binds is the training audio that passed §6.6.
+- **Amounts.** The speech row's `{t}` is `selectedMs` and `{c}` is `preferredMs` (§6.5.1). Without `preferRange`, the row shows no `{c}` and names no clip (design.md §6.3.7 V1). Below 30 s, `{n}` is `floor(availableMs / 1000)` whole seconds. The `{m}` that V4 and V5 send and the quote binds is the training audio that passed §6.6.
 - **Unreadable media.** The source media is missing, cannot be decoded or has a rate outside 8–96 kHz.
 - **Media labelled AI modified.** A re-imported export keeps no Voice Lab segments, so its generated speech cannot be excluded. When the source's XMP names a trained-algorithmic `DigitalSourceType` (`trainedAlgorithmicMedia` or `compositeWithTrainedAlgorithmicMedia`, §11.7), in the top-level XMP UUID box or in QuickTime's `moov/udta/XMP_`, project audio is not used. The label is read before any decoding.
 - **Speaker mismatch.** §6.6 runs on every selected span right after the statement is recorded, before any request (§6.4 item 1). When fewer than 30 s pass, the steps block with the mismatch copy, and **Record a Read-Aloud** switches to (b). The recorded statement is kept, so it is not recorded again. Project audio is not offered again in that enrollment.

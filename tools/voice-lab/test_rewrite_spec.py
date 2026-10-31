@@ -120,6 +120,20 @@ class RewriteSpecTests(unittest.TestCase):
                     self.assertIn("passage panel's", line, old)
                     self.assertIn('design.md` §6.3.6 R2', line, old)
 
+    def test_v1_speech_row_covers_every_scope(self):
+        voice = section(self.design, '#### 6.3.7')
+        ok = next(line for line in between(voice, '**V1. Agree**', '**V2.').splitlines() if line.strip().startswith('- ok:'))
+        # Full take and a selection outside every clip have no preferRange (voice-lab.md §6.5.2).
+        self.assertIn('when `preferRange` is absent', ok)
+        self.assertIn('for a selection is the clip containing it', ok)
+        scope_words = between(section(self.design, '### 6.3'), '**Scope words.**', '#### 6.3.1')
+        self.assertIn('The V1 speech row and its strip (§6.3.7) are the exception', scope_words)
+        found = next(row for row in table_rows(section(self.design, '## 13.'), '| Situation | Where | Copy / UI |') if row[0] == 'Your voice: speech found')
+        for text in quoted(ok):
+            self.assertIn(text, found[2])
+        names = section(self.design, '## 15.')
+        self.assertIn('"Speech found: 1 minute 52 seconds" without `preferRange`', names)
+
 
 if __name__ == '__main__':
     unittest.main()
