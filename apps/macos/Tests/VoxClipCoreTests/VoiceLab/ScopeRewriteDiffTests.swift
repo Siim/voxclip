@@ -36,9 +36,17 @@ struct ScopeRewriteDiffTests {
             #expect(hunk.sourceStartIndex == value[ai: "sourceStartIndex"].aiInt && hunk.sourceEndIndex == value[ai: "sourceEndIndex"].aiInt,
                     "\(label) source token range")
             #expect(hunk.anchorSeconds == value[ai: "anchorSeconds"].aiDouble, "\(label) anchor")
+            #expect(found.insertionAfterItemID == value[ai: "insertionAfterItemId"].aiString, "\(label) insertion place")
             #expect(same(found.lines, value[ai: "lines"]) && same(found.reasons, value[ai: "reasons"]), "\(label) lines and reasons")
             #expect(found.checkThis == value[ai: "checkThis"].aiBool, "\(label) checkThis")
         }
+    }
+
+    /// The §8.2 patch budget over the hunks after every merge, against the whole transcript's word items.
+    private func expectBudget(_ hunks: [ScopeRewriteDiff.Hunk], transcript: [TimedWord], _ expected: JSONValue, _ name: String) {
+        let budget = VoiceLabPatchBudget.evaluate(hunks: hunks.map(\.hunk), transcript: transcript)
+        #expect(budget.voiceTokenCount == expected[ai: "voiceTokenCount"].aiInt && budget.wordItems == expected[ai: "wordItems"].aiInt
+                && budget.flag.rawValue == expected[ai: "flag"].aiString, "\(name): budget")
     }
 
     /// Each case's take is planned by `ScopeRewritePlan.make`, as the plan vectors build it, and its reply goes through
@@ -50,7 +58,8 @@ struct ScopeRewriteDiffTests {
         let plans = ScopeRewritePlanTests()
         for test in cases {
             let name = test[ai: "name"].aiString ?? "?", input = test[ai: "input"], expected = test[ai: "expected"]
-            let plan = try ScopeRewritePlan.make(project: plans.take(input), scope: plans.scope(input[ai: "scope"]),
+            let project = try plans.take(input)
+            let plan = try ScopeRewritePlan.make(project: project, scope: plans.scope(input[ai: "scope"]),
                                                  instruction: try #require(input[ai: "instruction"].aiString),
                                                  language: try #require(input[ai: "language"].aiString),
                                                  envelope: plans.envelope(input[ai: "envelope"]))
@@ -81,7 +90,9 @@ struct ScopeRewriteDiffTests {
                 #expect(throws: VoiceLabWordDiffError.invalidInput, "\(name)") { try ScopeRewriteDiff.hunks(plan: plan, proposal: proposal) }
                 continue
             }
-            expectHunks(try ScopeRewriteDiff.hunks(plan: plan, proposal: proposal), expected[ai: "hunks"], name)
+            let hunks = try ScopeRewriteDiff.hunks(plan: plan, proposal: proposal)
+            expectHunks(hunks, expected[ai: "hunks"], name)
+            expectBudget(hunks, transcript: project.transcript?.words ?? [], expected[ai: "budget"], name)
         }
     }
 
@@ -109,11 +120,14 @@ struct ScopeRewriteDiffTests {
                 let entries = Array(request.entries[pair.0.firstPos...pair.0.lastPos])
                 let items = entries.map { TimedWord(id: "i\($0.index)", text: $0.text, start: $0.start, end: $0.end) }
                 return ScopeRewritePlan.Line(line: pair.1.line, items: items, entries: entries,
+                                             revoicedBefore: Array(repeating: false, count: items.count),
                                              range: pair.1.minChars...pair.1.maxChars, rangeSource: .lineSpan)
             }
             #expect(lines.map(\.line) == formatted.lines.map { "[\($0.firstIndex)-\($0.lastIndex)]" }, "\(id): labels")
             let plan = ScopeRewritePlan(scope: .fullTake, lines: lines, request: request)
-            expectHunks(try ScopeRewriteDiff.hunks(plan: plan, proposal: proposal), expected[ai: "hunks"], id)
+            let hunks = try ScopeRewriteDiff.hunks(plan: plan, proposal: proposal)
+            expectHunks(hunks, expected[ai: "hunks"], id)
+            expectBudget(hunks, transcript: lines.flatMap(\.items), expected[ai: "budget"], id)
         }
     }
 

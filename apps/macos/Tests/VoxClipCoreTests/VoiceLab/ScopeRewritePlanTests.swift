@@ -175,6 +175,12 @@ struct ScopeRewritePlanTests {
                 for (line, value) in zip(plan.lines, lines) {
                     #expect(line.line == value[ai: "line"].aiString && line.itemIDs == value[ai: "itemIds"].aiArray.compactMap(\.aiString),
                             "\(name) \(line.line)")
+                    // The items a re-voiced run precedes, as the vector lists them.
+                    let revoiced = zip(line.items, line.revoicedBefore).compactMap { (pair: (TimedWord, Bool)) -> String? in
+                        pair.1 ? pair.0.id : nil
+                    }
+                    #expect(line.revoicedBefore.count == line.items.count
+                            && revoiced == value[ai: "revoicedBefore"].aiArray.compactMap(\.aiString), "\(name) \(line.line) revoicedBefore")
                     expectRange(line, value, name)
                 }
             }

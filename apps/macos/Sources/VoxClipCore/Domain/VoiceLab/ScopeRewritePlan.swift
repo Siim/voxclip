@@ -46,6 +46,10 @@ public struct ScopeRewritePlan: Sendable {
         public let items: [TimedWord]
         /// The line's request entries, one per item: the text the model read.
         public let entries: [ClipWord]
+        /// One flag per item: items an enabled replacement of the scope already re-voices lie between it and the plan's item
+        /// before it. They are not listed, but no window may span them (§8.4 step 6), so `ScopeRewriteDiff` never merges
+        /// hunks across them. Cut items stop nothing and set no flag.
+        public let revoicedBefore: [Bool]
         /// `minChars...maxChars`, at most 5,000 on both bounds.
         public let range: ClosedRange<Int>
         public let rangeSource: RangeSource
@@ -76,7 +80,8 @@ public struct ScopeRewritePlan: Sendable {
     ///   splitting a surrogate pair. Unlike §11.2, which sends every item, cut items are left out, and so are the items an
     ///   enabled replacement of the scope already re-voices (§8.4): their cuts and corrections are dormant and no window
     ///   may overlap them, so no edit to them could apply. A clip keeps only the items from its first to its last word.
-    /// - Lines are `formatTranscript` of the entries (ai.md §11.3).
+    /// - Lines are `formatTranscript` of the entries (ai.md §11.3). Each line flags the items a run of re-voiced items
+    ///   precedes, back to the entry before.
     /// - A line's range is the §8.9.1 budget of its words as one replace hunk: `VoiceLabWindowPlanner.place` from the line's
     ///   first to its last word item in the scope's render scope, `lendableSilence` for the take-edge pads, and the bridge
     ///   words' length as `f`, at the §8.9.1 rate: `candidates`, the stored candidates for the voice, model and language key,
@@ -147,12 +152,17 @@ public struct ScopeRewritePlan: Sendable {
             let lineItems = kept[line.firstPos...line.lastPos].map { corrected[$0] }
             let lineEntries = Array(entries[line.firstPos...line.lastPos])
             let label = "[\(line.firstIndex)-\(line.lastIndex)]"
+            // Re-voiced items between an entry and the one before it: no window may span them.
+            let revoiced = (line.firstPos...line.lastPos).map { (position: Int) -> Bool in
+                position > 0 && (kept[position - 1] + 1..<kept[position]).contains { (index: Int) -> Bool in replaced[index] }
+            }
             // The labels the model echoes when it returns the line: an event's counts, and "…" has no letters.
             let echoed = (line.firstPos...line.lastPos).filter { corrected[kept[$0]].kind != .word }
                 .reduce(0) { $0 + VoiceLabTextLength.length(entries[$1].text) }
             guard let first = lineItems.first(where: { $0.kind == .word }), let last = lineItems.last(where: { $0.kind == .word }) else {
                 let chars = min(max(1, echoed), maxChars)
-                lines.append(Line(line: label, items: lineItems, entries: lineEntries, range: chars...chars, rangeSource: .noSpeech))
+                lines.append(Line(line: label, items: lineItems, entries: lineEntries, revoicedBefore: revoiced, range: chars...chars,
+                                  rangeSource: .noSpeech))
                 continue
             }
             let speech = try rate()
@@ -168,7 +178,8 @@ public struct ScopeRewritePlan: Sendable {
                 source = .lineSpan
             }
             let lower = min(budget.minChars + echoed, maxChars), upper = min(budget.maxChars + echoed, maxChars)
-            lines.append(Line(line: label, items: lineItems, entries: lineEntries, range: lower...upper, rangeSource: source))
+            lines.append(Line(line: label, items: lineItems, entries: lineEntries, revoicedBefore: revoiced, range: lower...upper,
+                              rangeSource: source))
         }
         let ranges = lines.map { PatchRewriteLineRange(line: $0.line, minChars: $0.range.lowerBound, maxChars: $0.range.upperBound) }
         return ScopeRewritePlan(scope: scope, lines: lines,
