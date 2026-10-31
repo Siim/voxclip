@@ -155,6 +155,9 @@ public sealed class CacheUpkeepTests
         Assert.Contains("Picker(\"" + CacheUpkeep.LimitLabel + "\"", mac);
         Assert.Contains("Button(\"" + CacheUpkeep.ClearCacheLabel + "\")", mac);
         Assert.Contains("\"" + CacheUpkeep.ClearedCache + "\"", mac);
+        Assert.Contains("Button(\"" + CacheUpkeep.ClearEverythingLabel + "\")", mac);
+        Assert.Contains("\"" + CacheUpkeep.ClearedEverything + "\"", mac);
+        Assert.Contains("Text(\"" + CacheUpkeep.ClearHelp + "\")", mac);
         Assert.Contains("Ui.Choice(CacheUpkeep.LimitLabel", settings);
         Assert.Contains("Ui.Button(CacheUpkeep.ClearCacheLabel, () => ClearCache(false))", settings);
         Assert.Contains("Ui.Button(CacheUpkeep.ClearEverythingLabel, () => ClearCache(true))", settings);

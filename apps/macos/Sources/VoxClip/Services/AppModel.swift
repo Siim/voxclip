@@ -184,7 +184,8 @@ extension ProviderChoice {
     }
     /// The content keys in use in this data folder's cache (architecture §8.2).
     var cacheKeys: CacheKeyRegistry { CacheKeyRegistry.shared(cache: locations.cache) }
-    /// Background eviction and Clear cache for this data folder (architecture §8.2). Tests may replace it before launch.
+    /// Background eviction, Clear cache and Clear everything for this data folder (architecture §8.2). Tests may replace it
+    /// before launch.
     @ObservationIgnored lazy var cacheEviction = CacheEvictionScheduler(store: CacheStore(locations: locations), log: log, limitBytes: { [weak self] in
         await self?.cacheLimitBytes ?? CacheEvictionScheduler.defaultLimitBytes
     })

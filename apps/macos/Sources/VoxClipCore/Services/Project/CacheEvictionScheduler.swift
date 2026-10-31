@@ -2,14 +2,15 @@ import Foundation
 import Synchronization
 
 /// Keeps one data folder's cache under the "Cache size limit" setting (architecture §8.2). A background pass runs
-/// `launchDelay` after launch, after each import and when the user lowers the limit; Clear cache runs here too.
+/// `launchDelay` after launch, after each import and when the user lowers the limit; Clear cache and Clear everything
+/// run here too.
 ///
-/// Passes never overlap: every pass takes the cache folder's eviction turn in `CacheKeyRegistry`, so a background pass
-/// and Clear cache wait for each other, and a request made while a pass is queued is answered by that pass. Leased keys
-/// (open projects, extractions, transcriptions, waveform reads, thumbnails) are never touched. Every pass, Clear cache
-/// included, spares an entry without readable metadata while anything in it was written in the last `unindexedGrace`:
-/// it may be an extraction under way in the CLI. A failed pass is logged and never shown: a missing entry is
-/// recomputed.
+/// Passes never overlap: every pass takes the cache folder's eviction turn in `CacheKeyRegistry`, so a background pass,
+/// Clear cache and Clear everything wait for each other, and a request made while a pass is queued is answered by that
+/// pass. Leased keys (open projects, extractions, transcriptions, waveform reads, thumbnails) are never touched. Every
+/// pass, both Clear actions included, spares an entry without readable metadata while anything in it was written in the
+/// last `unindexedGrace`: it may be an extraction under way in the CLI. A failed pass is logged and never shown: a
+/// missing entry is recomputed.
 public final class CacheEvictionScheduler: Sendable {
     /// How long after launch the first pass waits, so it never competes with opening the app.
     public static let launchDelay: Duration = .seconds(30)
@@ -76,6 +77,12 @@ public final class CacheEvictionScheduler: Sendable {
     /// and raw transcripts. It waits for a background pass that is running. A failure is only logged.
     public func clearCache() async {
         await pass(limit: 0, keepingEnvelopes: true, name: "clear")
+    }
+
+    /// Clear everything (architecture §8.2): both passes with a limit of 0, so every entry not in use goes, envelopes and
+    /// raw transcripts with it. It waits for a background pass that is running. A failure is only logged.
+    public func clearEverything() async {
+        await pass(limit: 0, keepingEnvelopes: false, name: "clear-everything")
     }
 
     /// Whether the launch pass has been scheduled.

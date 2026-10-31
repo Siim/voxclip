@@ -67,8 +67,8 @@ private struct HeldEngine: Transcriber {
     }
 }
 
-/// Background eviction under the cache size limit, leases and Clear cache (architecture §8.2). Sizes are logical: audio
-/// and envelopes are sparse files, so a gigabyte-scale cache takes no disk space.
+/// Background eviction under the cache size limit, leases, Clear cache and Clear everything (architecture §8.2). Sizes
+/// are logical: audio and envelopes are sparse files, so a gigabyte-scale cache takes no disk space.
 @Suite("Cache eviction", .serialized, .timeLimit(.minutes(1)))
 struct CacheEvictionTests {
     static let gb = CacheEvictionScheduler.bytesPerGB
@@ -413,6 +413,24 @@ struct CacheEvictionTests {
         #expect(meta.lastAccessAt >= started.addingTimeInterval(-1) && meta.createdAt == Self.ago(hours: 72))
         await gate.open()
         _ = try await job.value
+    }
+
+    /// Clear everything runs both passes at a limit of 0: every entry not in use goes, its envelope and raw transcripts
+    /// with it. An open project's entry and the files kept at the cache root stay.
+    @Test func clearEverythingRemovesEveryEntryNotInUse() async throws {
+        let locations = try locations()
+        defer { try? FileManager.default.removeItem(at: locations.root) }
+        let used = try await entry(Self.key("a"), in: locations, audio: 4_000, envelope: 64, transcript: true, used: Self.ago(hours: 72))
+        let open = try await entry(Self.key("b"), in: locations, audio: 4_000, envelope: 64, used: Self.ago(hours: 100))
+        try Data("x".utf8).write(to: locations.cache.appendingPathComponent("encoders.json"))
+        let lease = CacheStore(locations: locations).keys.leaseNow(Self.key("b"))
+        defer { lease.release() }
+        let scheduler = scheduler(locations, limit: 2 * Self.gb)
+        await scheduler.clearEverything()
+        #expect(!Self.exists(used))
+        #expect(Self.contents(open) == ["audio-16k.wav", "envelope-10ms.f32", "meta.json"])
+        #expect(Self.contents(locations.cache) == ["encoders.json", Self.key("b")].sorted())
+        #expect(scheduler.completedRuns == 0)
     }
 
     @Test func theSettingIsInDecimalGigabytes() {
