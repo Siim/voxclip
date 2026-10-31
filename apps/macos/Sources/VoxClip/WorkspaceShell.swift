@@ -673,22 +673,26 @@ enum SidebarItem: Hashable {
     }
 }
 
-/// A version in File > Revert To > Browse All Versions…: its own window and shell, with
-/// the Explorer hidden. The editor refuses edits to it, and AppKit places and closes the
-/// window with the browser.
-@MainActor final class VersionWindowController: NSWindowController {
+/// A version in File > Revert To > Browse All Versions…: its own window and shell, the
+/// same frame as the main window with the Explorer collapsed (impl-plan V1b). The editor
+/// refuses edits to it, and AppKit places and closes the window with the browser.
+@MainActor final class VersionWindowController: NSWindowController, ShellWindowController {
     let shell: WorkspaceShell
     init(version: VoxClipDocument, app: AppModel) {
         shell = WorkspaceShell(app: app)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        let window = MainWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.isRestorable = false
         window.tabbingMode = .disallowed
         EditorShellController.prepare(window)
         super.init(window: window)
         let hosting = NSHostingController(rootView: WorkspaceView(shell: shell).environment(app).sceneAccent())
+        hosting.sizingOptions = []
         hosting.sceneBridgingOptions = []
         window.contentViewController = hosting
+        window.minSize = NSSize(width: VCTokens.sizeWindowMinWidth, height: VCTokens.sizeWindowMinHeight)
+        window.minFullScreenContentSize = NSSize(width: 640, height: 480)
+        window.setContentSize(NSSize(width: 1100, height: 720))
         shell.windowController = self
         shell.attachVersion(version)
     }
@@ -696,9 +700,10 @@ enum SidebarItem: Hashable {
     override func windowTitle(forDocumentDisplayName displayName: String) -> String { shell.projectTitle }
 }
 
-/// The main window. F6 moves through its shell's panes (any shell window's, through
-/// `ShellWindowController`). The close button and Window > Close run the shell's leave
-/// boundary first, so AppKit never closes the shared window together with a project.
+/// The window of a shell: the main window and each Versions window. F6 moves through its
+/// own shell's panes. On the main window the close button and Window > Close run the
+/// shell's leave boundary first, so AppKit never closes the shared window together with a
+/// project; a Versions window has no `closeProject` and closes with its version.
 @MainActor final class MainWindow: NSWindow {
     var closeProject: (() async -> Bool)?
     override func sendEvent(_ event: NSEvent) {

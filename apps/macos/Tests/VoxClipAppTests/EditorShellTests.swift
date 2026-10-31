@@ -221,6 +221,26 @@ private final class FullScreenStandIn: NSWindow {
         #expect(editor.focusedPane == .transcript)
     }
 
+    /// A Versions window hosts the same shell in the shell's window class, with the
+    /// Explorer collapsed and edits refused; F6 there moves through its own shell.
+    @Test func aVersionsWindowHostsTheShellReadOnly() throws {
+        _ = NSApplication.shared
+        let app = AppModel()
+        let version = VoxClipDocument(project: try project(), demo: true)
+        version.versionForTesting = true
+        let controller = VersionWindowController(version: version, app: app)
+        defer { version.close() }
+        let window = try #require(controller.window as? MainWindow)
+        #expect(window.toolbar == nil && window.titleVisibility == .hidden && window.titlebarAppearsTransparent && window.closeProject == nil)
+        #expect((window.windowController as? ShellWindowController)?.shell === controller.shell && controller.shell !== app.shell)
+        #expect(!controller.shell.layout.explorerVisible && !controller.shell.paneOrder.contains(.sidebar))
+        let editor = try #require(controller.shell.editor)
+        #expect(!editor.capabilities.writable && !editor.capabilities.edit && !editor.capabilities.ai)
+        // Wider than 1,128, the Explorer the version window hid stays hidden.
+        controller.shell.windowWidth = 1400
+        #expect(!controller.shell.layout.explorerVisible)
+    }
+
     /// Full-screen entry at a Split View width collapses both columns and the window
     /// buttons' room goes; exit to 1280 brings both back and the overlay goes.
     @Test func fullScreenAtASplitViewWidthAndBack() async throws {
