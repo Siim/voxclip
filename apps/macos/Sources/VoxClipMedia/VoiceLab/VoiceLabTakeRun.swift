@@ -22,7 +22,7 @@ public actor VoiceLabTakeRun {
         let input: VoiceLabTakeInput
         let record: VoiceConsentRecord
         let preflight: VoiceLabTakePreflight
-        let source: [Float]
+        let source: VoiceLabSourceExcerpt
         let sourceSpeech: [Float]
         let modelRevision: Int
     }
@@ -99,12 +99,13 @@ public actor VoiceLabTakeRun {
         guard input.providerConsent, input.language == record.statement.language,
               speaker.supports(language: input.language), speaker.embedder?.modelID == record.speaker.model,
               speaker.threshold == record.speaker.threshold else { throw VoiceConsentError.speakerUnavailable }
-        let preflight = try VoiceLabTakeProcessing.preflight(input, envelope: VoiceLabTakeProcessing.envelope(input.source, sampleRate: input.sourceSampleRate))
+        let preflight = try VoiceLabTakeProcessing.preflight(input)
         let resampled = try VoiceLabSourceAudio.resample(input.source, from: Double(input.sourceSampleRate), to: 24_000)
         let rate = input.sourceSampleRate
         let center = Int((input.window.startSample + input.window.endSample) / 2)
-        let start = max(0, center - 5 * rate), end = min(input.source.count, start + 10 * rate)
-        let sourceSpeech = VoiceConsentAudio.resample(Array(input.source[start..<end]), rate: rate)
+        let start = max(0, center - 5 * rate), end = min(input.source.totalFrames, start + 10 * rate)
+        guard let speech = input.source.samples(start..<end) else { throw VoiceLabError.invalidInput }
+        let sourceSpeech = VoiceConsentAudio.resample(Array(speech), rate: rate)
         let id = UUID()
         var takes: [VoiceLabTakeQuote] = []
         var quotes: [VoiceLabQuote] = []

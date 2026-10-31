@@ -975,10 +975,10 @@ import ApplicationServices
             check("everything cut disables export", !model.canExport)
             undo.undo()
             check("undo restores export", model.canExport)
-            let encoded = try ShareText.url("x", caption: "A & B + C?")
+            let encoded = try ShareText.url("x", caption: "A & B + C?", disclosureLine: nil)
             check("share URL host and encoding", encoded?.absoluteString == "https://x.com/intent/post?text=A%20%26%20B%20%2B%20C%3F")
             check("share weighted URL and emoji", ShareText.weight("Hi 👩🏽‍💻 https://example.com/a") == 29)
-            let intent = try ShareText.url("x", caption: String(repeating: "word ", count: 100))!
+            let intent = try ShareText.url("x", caption: String(repeating: "word ", count: 100), disclosureLine: nil)!
             let truncated = URLComponents(url: intent, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "text" }?.value ?? ""
             check("share over limit truncates", (ShareText.weight(truncated) ?? .max) <= 280 && truncated.hasSuffix("…"))
             check("secrets use isolated account names", SecretStore.account(for: "elevenlabs") == "elevenlabs-api-key" && SecretStore.account(for: "openai") == "llm-api-key-openai")

@@ -39,6 +39,10 @@ private final class GenerationDispatchCount: Sendable {
 
 @Suite("Headless Rewrite generation", .serialized)
 @MainActor struct RewriteGenerationTests {
+    @Test func sourceAudioRefusalsSayWhatWentWrong() {
+        #expect(RewriteSession.refusal(VoiceLabSourceAudioError.unreadable) == "The audio cannot be read. Check that the file is still available. Your edits are saved.")
+        #expect(RewriteSession.refusal(VoiceLabSourceAudioError.rateMismatch) == "The source audio's sample rate differs from the project. Reopen the original source. Your edits are saved.")
+    }
     @Test(arguments: ["before-click", "during-confirmation", "before-launch", "transport"])
     func monthlyCapIsRecheckedAfterQuoteSheetAndTransportSuspensions(point: String) async throws {
         let (session, state) = try await replacementSession()

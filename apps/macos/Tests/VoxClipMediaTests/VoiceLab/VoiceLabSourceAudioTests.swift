@@ -10,19 +10,138 @@ import VoxClipCore
     @Test func rewriteSourceRetainsNativeRateAndAbsoluteFrameOrder() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("rewrite.mov")
-        try await movie(url, rate: 48_000, channels: 1, frames: 4_800, float: false) { frame, _ in Double(Self.left(frame)) }
-        let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: 4_800, sampleRate: 48_000)
-        let wav = try await VoiceLabSourceAudio.conversionInput(source: url, startSample: 0, endSample: 4_800, sourceSampleRate: 48_000)
-        let expected = stride(from: 44, to: wav.count, by: 2).map { offset in
-            let lower: UInt16 = UInt16(wav[offset])
-            let upper: UInt16 = UInt16(wav[offset + 1])
-            let bits: UInt16 = lower | upper << 8
-            let signed: Int16 = Int16(bitPattern: bits)
-            let sample: Float = Float(signed)
-            let scale: Float = 32_768
-            return sample / scale
+        try await movie(url, rate: 48_000, channels: 1, frames: 4_800, float: false) { frame, _ in Double(Self.mono(frame)) }
+        let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: 4_800, sampleRate: 48_000,
+                                                                 window: Self.window(start: 0.02, end: 0.08, rate: 48_000), incomingSilence: nil, outgoingSilence: nil, items: [])
+        let expected = Self.floats(try await VoiceLabSourceAudio.conversionInput(source: url, startSample: 0, endSample: 4_800, sourceSampleRate: 48_000))
+        #expect(result.excerpt == VoiceLabSourceExcerpt(whole: expected) && expected.count == 4_800)
+        #expect(result.envelope == VoiceLabTakeProcessing.envelope(expected, sampleRate: 48_000))
+    }
+
+    /// The old whole-track decode refused any source over 30,000,000 frames (10 min 25 s at 48 kHz) before reading it.
+    @Test func rewriteSourceHoldsOnlyTheWindowAndRoomToneRegionsOfALongTrack() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("long.mov"), rate = 8_000, frames = 60 * rate
+        // Speech-like content everywhere except a silent stretch at 50.0–50.6 s, which only a gap in the words exposes.
+        try await movie(url, rate: rate, channels: 1, frames: frames, float: false, bufferFrames: 8_000) { frame, _ in
+            (400_000..<404_800).contains(frame) ? 0 : Double(Self.mono(frame))
         }
-        #expect(result == expected && result.count == 4_800)
+        let items = [TimedWord(id: "a", text: "a", kind: .word, start: 0, end: 49.9), TimedWord(id: "b", text: "b", kind: .word, start: 50.7, end: 60)]
+        let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: Int64(frames), sampleRate: rate,
+                                                                 window: Self.window(start: 30, end: 31, rate: rate), incomingSilence: nil, outgoingSilence: nil, items: items)
+        let whole = Self.floats(try await VoiceLabSourceAudio.conversionInput(source: url, startSample: 0, endSample: Int64(frames) / 2, sourceSampleRate: Double(rate)))
+            + Self.floats(try await VoiceLabSourceAudio.conversionInput(source: url, startSample: Int64(frames) / 2, endSample: Int64(frames), sourceSampleRate: Double(rate)))
+        #expect(result.envelope == VoiceLabTakeProcessing.envelope(whole, sampleRate: rate))
+        let tone = try VoiceLabRoomToneSelection.select(items: items, envelope: result.envelope, sourceSampleRate: Double(rate), totalSamples: Int64(frames))
+        #expect(tone.sourceStartSample == 400_000)
+        // 6 s around the window, and 1 s around the 0.5 s room-tone run.
+        #expect(result.excerpt.totalFrames == frames)
+        #expect(result.excerpt.regions.map { $0.start..<$0.end } == [192_000..<296_000, 392_000..<412_000])
+        for region in result.excerpt.regions { #expect(region.samples == Array(whole[region.start..<region.end])) }
+        #expect(result.excerpt.regions.reduce(0) { $0 + $1.samples.count } < frames / 3)
+        #expect(result.excerpt.samples(0..<rate) == nil && result.excerpt.samples(29 * rate..<32 * rate) != nil)
+    }
+
+    /// 30,000,001 frames used to be refused as too large before the file was opened; now only the file's length decides.
+    @Test func rewriteSourceHasNoLengthCap() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("short.mov")
+        try await movie(url, rate: 48_000, channels: 1, frames: 4_800, float: false) { frame, _ in Double(Self.mono(frame)) }
+        await #expect(throws: VoiceLabSourceAudioError.rangeOutsideMedia) {
+            _ = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: 30_000_001, sampleRate: 48_000,
+                                                            window: Self.window(start: 0.02, end: 0.08, rate: 48_000), incomingSilence: nil, outgoingSilence: nil, items: [])
+        }
+        await #expect(throws: VoiceLabSourceAudioError.unsupportedRate) {
+            _ = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: 4_800, sampleRate: 192_000,
+                                                            window: Self.window(start: 0.02, end: 0.08, rate: 48_000), incomingSilence: nil, outgoingSilence: nil, items: [])
+        }
+    }
+
+    /// 280 s at 96 kHz is 53,760,044 bytes of PCM16, over the upload limit, so a 96 kHz source over about 260 s used to fail
+    /// with tooLarge. Every chunk, with the 20 ms remainder it can absorb, now passes `conversionChunk` at every rate.
+    @Test func decodeChunksStayUnderTheUploadLimitAtEverySupportedRate() throws {
+        for rate in [8_000, 16_000, 44_100, 48_000, 88_200, 96_000] {
+            let chunk = VoiceLabSourceAudio.decodeChunkFrames(sampleRate: rate), trailing = (rate + 49) / 50
+            let longest = try VoiceLabSourceAudio.conversionChunk(startSample: 0, endSample: Int64(chunk + trailing - 1), sourceSampleRate: Double(rate))
+            #expect(longest.frames == chunk + trailing - 1)
+            #expect(chunk == (rate <= 88_200 ? 280 * rate : 24_999_977 - trailing))
+        }
+    }
+
+    @Test func regionsStartOnTheTakeRateGridAndJoinWhenTheyMeet() {
+        #expect(VoiceLabSourceAudio.aligned(44_100 * 10 + 5, 44_100 * 20, total: 44_100 * 30, rate: 44_100) == 441_000..<882_000)
+        #expect(VoiceLabSourceAudio.aligned(441_100, 500_000, total: 441_000 * 2, rate: 44_100).lowerBound.isMultiple(of: 147))
+        #expect(VoiceLabSourceAudio.aligned(-5, 10_000_000, total: 96_000, rate: 48_000) == 0..<96_000)
+        #expect(VoiceLabSourceAudio.merged([10..<20, 0..<5, 5..<8, 18..<30]) == [0..<8, 10..<30])
+        let window = Self.window(start: 1, end: 2, rate: 48_000)
+        // The speaker-check span (0–10 s) reaches past 6 s after a window near the start.
+        #expect(VoiceLabSourceAudio.nearWindow(window, incomingSilence: nil, outgoingSilence: nil, total: 48_000 * 60, rate: 48_000) == 0..<480_000)
+        // A gap seam reaches past the silence it lends; a hard seam lends none.
+        let gaps = Self.window(start: 30, end: 31, rate: 8_000, kind: .gap)
+        #expect(VoiceLabSourceAudio.nearWindow(gaps, incomingSilence: 8, outgoingSilence: 0.5, total: 8_000 * 60, rate: 8_000) == 128_000..<300_000)
+        #expect(VoiceLabSourceAudio.nearWindow(Self.window(start: 30, end: 31, rate: 8_000), incomingSilence: nil, outgoingSilence: nil,
+                                               total: 8_000 * 60, rate: 8_000) == 192_000..<296_000)
+    }
+
+    /// A take 7 s too long for a 1 s window borrows 7 s of the 8 s silence before its gap seam (§8.9.2), and staging reads
+    /// the half second before the widened window and the seam handle at its start. The window's region used to reach only
+    /// 6 s before the window, so staging found no samples there and refused the take after it was paid for.
+    @Test func theWindowRegionHoldsWhatAFitThatBorrowsALongSilenceStages() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("borrow.mov"), rate = 8_000, frames = 60 * rate, asset = 24_000
+        let phase: Double = 2 * Double.pi * 220 / Double(rate)
+        try await movie(url, rate: rate, channels: 1, frames: frames, float: false, bufferFrames: 8_000) { frame, _ in
+            (8_000 * sin(phase * Double(frame))).rounded()
+        }
+        let window = Self.window(start: 30, end: 31, rate: rate, kind: .gap)
+        let take = VoiceLabFitTake(assetFrames: Int64(8 * asset), assetSampleRate: asset, trimStart: 0, trimEnd: 8,
+                                   words: [VoiceLabWord(text: "new", start: 0, end: 8, synthetic: true)],
+                                   envelope: AudioEnvelope(sampleRate: Double(asset), levels: [Float](repeating: 1, count: 800)))
+        let fit = try VoiceLabFitPlanner.plan(window: window, incomingSilence: 8, outgoingSilence: 0.1, take: take,
+                                              tokens: ["new"], sourceSampleRate: Double(rate))
+        guard case .exact(let plan) = fit else { Issue.record("The take should fit exactly by borrowing"); return }
+        #expect(plan.incoming.borrowedSamples == Int64(7 * rate) && plan.windowStart == 23 && plan.windowEnd == 31)
+        let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: Int64(frames), sampleRate: rate, window: window,
+                                                                 incomingSilence: 8, outgoingSilence: 0.1, items: [])
+        let staged = try VoiceLabSourceAudio.resample(result.excerpt, from: Double(rate), to: Double(asset))
+        let decoded = Self.floats(try await VoiceLabSourceAudio.conversionInput(source: url, startSample: 0, endSample: Int64(frames), sourceSampleRate: Double(rate)))
+        let whole = try VoiceLabSourceAudio.resample(decoded, from: Double(rate), to: Double(asset))
+        // What stageTake reads at the asset rate: the 0.5 s lead and the incoming handle at 23 s, the outgoing handle and the tail at 31 s.
+        let start = 23 * asset, end = 31 * asset, lead = asset / 2, handle = 240
+        for range in [(start - lead)..<(start + handle), (end - handle)..<(end + lead)] {
+            let samples = try #require(staged.samples(range))
+            // A frame's shift moves this 220 Hz tone by more than 0.01, so the reads are the whole track's frames.
+            #expect(zip(samples, whole[range]).allSatisfy { abs($0 - $1) <= 0.000_01 })
+        }
+    }
+
+    @Test func excerptRegionsResampleOnTheWholeTracksGrid() throws {
+        let rate = 48_000, target = 24_000
+        let whole = (0..<(rate * 12)).map { Float(0.25 * sin(2 * Double.pi * 220 * Double($0) / Double(rate))) }
+        let expected = try VoiceLabSourceAudio.resample(whole, from: Double(rate), to: Double(target))
+        #expect(try VoiceLabSourceAudio.resample(VoiceLabSourceExcerpt(whole: whole), from: Double(rate), to: Double(target)) == VoiceLabSourceExcerpt(whole: expected))
+        let excerpt = VoiceLabSourceExcerpt(totalFrames: whole.count, regions: [.init(start: 4 * rate, samples: Array(whole[(4 * rate)..<(9 * rate)]))])
+        let resampled = try VoiceLabSourceAudio.resample(excerpt, from: Double(rate), to: Double(target))
+        #expect(resampled.totalFrames == 12 * target && resampled.regions.map(\.start) == [4 * target])
+        // 1 s in from the region's edges, where a take run reads, the samples are the whole track's.
+        let inner = try #require(resampled.samples((5 * target)..<(8 * target)))
+        #expect(zip(inner, expected[(5 * target)..<(8 * target)]).allSatisfy { abs($0 - $1) <= 0.000_001 })
+        let offGrid = VoiceLabSourceExcerpt(totalFrames: 100, regions: [.init(start: 1, samples: [0, 0])])
+        #expect(throws: VoiceLabSourceAudioError.invalidAudio) { try VoiceLabSourceAudio.resample(offGrid, from: Double(rate), to: Double(target)) }
+    }
+
+    private static func window(start: Double, end: Double, rate: Int, kind: VoiceLabSeamKind = .hard) -> VoiceLabWindow {
+        let first = Int64((start * Double(rate)).rounded()), last = Int64((end * Double(rate)).rounded())
+        let fade: Int64 = kind == .hard ? 288 : Int64(rate / 50)
+        return VoiceLabWindow(firstWordId: "w", lastWordId: "w", leftBridgeWordIds: [], rightBridgeWordIds: [], start: start, end: end,
+                              startSample: first, endSample: last, leftSeam: .init(kind: kind, time: start, sample: first, fadeSamples: fade),
+                              rightSeam: .init(kind: kind, time: end, sample: last, fadeSamples: fade))
+    }
+    private static func floats(_ wav: Data) -> [Float] {
+        stride(from: 44, to: wav.count, by: 2).map { offset in
+            let bits: UInt16 = UInt16(wav[offset]) | UInt16(wav[offset + 1]) << 8
+            return Float(Int16(bitPattern: bits)) / 32_768
+        }
     }
     // Sample-unique content per channel, so a shifted cut, a swapped channel or another downmix cannot match.
     private static func left(_ index: Int) -> Float { Float((index * 7_919) % 4_001 - 2_000) / 4_000 }

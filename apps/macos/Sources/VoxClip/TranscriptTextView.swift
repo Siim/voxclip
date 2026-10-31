@@ -284,6 +284,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
     var map = TranscriptRangeMap(spans: [])
     private var correction: NSTextField?
+    private var correctionWordID: String?
     private var selectionBar: NSHostingView<SelectionBar>?
     private var selectionTask: Task<Void, Never>?
     private var scrollingTokens: [NSObjectProtocol] = []
@@ -521,6 +522,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         }
     }
     override func mouseDown(with event: NSEvent) {
+        finishCorrection()
         selecting = true; selectionDismissed = false; hideSelectionBar()
         super.mouseDown(with: event)
         selecting = false
@@ -593,21 +595,52 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         try? model?.applyVoiceLab(.chooseCandidate(segmentID: segment.id, index: sender.tag))
     }
     func updateCorrection() {
-        guard let model, let id = model.correctionID, let span = map.span(id: id) else { correction?.removeFromSuperview(); correction = nil; return }
+        guard let model, let id = model.correctionID, let span = map.span(id: id) else { removeCorrectionField(refocus: correctionHasFocus); return }
+        if correction != nil, correctionWordID != id { removeCorrectionField(refocus: false) }
         guard correction == nil, let window else { return }
         hideSelectionBar()
         let rect = convert(window.convertFromScreen(firstRect(forCharacterRange: span.range, actualRange: nil)), from: nil)
         let field = NSTextField(frame: CGRect(x: rect.minX, y: rect.minY, width: max(90, rect.width + 24), height: 28))
         field.stringValue = model.correctionText; field.font = DesignValues.transcriptFont(size: model.textSize); field.delegate = self; field.setAccessibilityLabel("Correct spelling, audio stays the same")
-        addSubview(field); correction = field; window.makeFirstResponder(field); field.selectText(nil)
+        addSubview(field); correction = field; correctionWordID = id; window.makeFirstResponder(field); field.selectText(nil)
+    }
+    #if DEBUG
+    /// Installs a correction field without a window, for the headless correction tests.
+    var correctionFieldForTests: NSTextField? {
+        get { correction }
+        set { correction = newValue; correctionWordID = model?.correctionID; if let newValue { newValue.delegate = self; addSubview(newValue) } }
+    }
+    #endif
+    private var correctionHasFocus: Bool { correction?.currentEditor().map { window?.firstResponder === $0 } ?? false }
+    /// Forgets the field before removing it, so the end-editing notice its removal sends is ignored.
+    private func removeCorrectionField(refocus: Bool) {
+        guard let field = correction else { return }
+        correction = nil; correctionWordID = nil
+        field.removeFromSuperview()
+        if refocus { window?.makeFirstResponder(self) }
+    }
+    /// A click elsewhere or focus leaving the field ends the correction like an inline rename (EditorModel.endCorrection).
+    private func finishCorrection() {
+        guard let field = correction else { return }
+        removeCorrectionField(refocus: false)
+        model?.correctionText = field.stringValue
+        model?.endCorrection()
+    }
+    func controlTextDidChange(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField, field === correction else { return }
+        model?.correctionText = field.stringValue
+    }
+    func controlTextDidEndEditing(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField, field === correction else { return }
+        finishCorrection()
     }
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         guard let model, let field = correction else { return false }
         switch selector {
         case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)): model.correctionText = field.stringValue; model.saveCorrection(advance: selector == #selector(NSResponder.insertTab(_:)))
-        case #selector(NSResponder.cancelOperation(_:)): model.correctionID = nil
+        case #selector(NSResponder.cancelOperation(_:)): model.endCorrection(keep: false)
         default: return false
         }
-        field.removeFromSuperview(); correction = nil; window?.makeFirstResponder(self); updateCorrection(); return true
+        removeCorrectionField(refocus: true); updateCorrection(); return true
     }
 }

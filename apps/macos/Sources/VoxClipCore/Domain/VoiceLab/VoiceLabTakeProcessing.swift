@@ -18,14 +18,14 @@ public struct VoiceLabTakeAnalysis: Sendable {
 
 public enum VoiceLabTakeProcessing {
     public static let maximumQASeconds = 290.0
-    public static func preflight(_ input: VoiceLabTakeInput, envelope: AudioEnvelope) throws -> VoiceLabTakePreflight {
-        let rate = input.sourceSampleRate
+    public static func preflight(_ input: VoiceLabTakeInput) throws -> VoiceLabTakePreflight {
+        let rate = input.sourceSampleRate, total = input.source.totalFrames
         guard input.providerConsent, !input.contentKey.isEmpty, !input.text.isEmpty, input.text.unicodeScalars.count <= 5_000,
-              (8_000...96_000).contains(rate), !input.source.isEmpty,
-              input.window.startSample >= 0, input.window.endSample <= input.source.count,
+              (8_000...96_000).contains(rate), total > 0,
+              input.window.startSample >= 0, input.window.endSample <= total,
               input.window.endSample > input.window.startSample, input.window.start.isFinite, input.window.end.isFinite,
               input.window.start >= 0, input.window.end > input.window.start,
-              input.window.end <= Double(input.source.count) / Double(rate),
+              input.window.end <= Double(total) / Double(rate),
               frames(input.window.start, rate) == input.window.startSample,
               frames(input.window.end, rate) == input.window.endSample else { throw VoiceLabError.invalidInput }
         let range = Int(input.window.startSample)..<Int(input.window.endSample)
@@ -40,8 +40,8 @@ public enum VoiceLabTakeProcessing {
         let leading = try bridgeTokens(input.window.leftBridgeWordIds), trailing = try bridgeTokens(input.window.rightBridgeWordIds)
         guard Array(tokens.prefix(leading.count)) == leading, Array(tokens.suffix(trailing.count)) == trailing else { throw VoiceLabError.invalidInput }
         let level = try VoiceLabLoudness.neighbourhoodVoicedRmsDb(input.source, sampleRate: rate, window: range)
-        let tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: envelope,
-            sourceSampleRate: Double(rate), totalSamples: Int64(input.source.count))
+        let tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: input.sourceEnvelope,
+            sourceSampleRate: Double(rate), totalSamples: Int64(total))
         return VoiceLabTakePreflight(sourceLevel: level, roomTone: tone)
     }
     public static func envelope(_ samples: [Float], sampleRate: Int) -> AudioEnvelope {

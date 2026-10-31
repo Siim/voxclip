@@ -71,7 +71,8 @@ struct FittedAssetVector: Decodable {
         let snapshot = try VoiceLabAssets.preparePaid(asset: paid, projectId: projectId, paidRoot: root, scratchRoot: root)
         return try VoiceLabSilenceFit.prepare(snapshot: snapshot, paidAsset: paid, fit: fit(), window: window(), sourceSampleRate: 48_000)
     }
-    func scratch(root: URL, hard: Bool = false, roomTone: Bool = false) throws -> VoiceLabTakeScratch {
+    /// `regions` holds only the room-tone run and 1 s around the window, as `VoiceLabSourceAudio.rewriteSource` keeps them.
+    func scratch(root: URL, hard: Bool = false, roomTone: Bool = false, regions: Bool = false) throws -> VoiceLabTakeScratch {
         let initial = try prepare(root: root)
         var window = window()
         if hard {
@@ -86,7 +87,11 @@ struct FittedAssetVector: Decodable {
         let input = VoiceLabTakeInput(text: "new words", modelID: "fixture", recordID: "fixture", language: "en", seed: 7,
             contentKey: "fixture", source: [], sourceSampleRate: 48_000, items: [], window: window,
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
-        return try VoiceLabAudioRenderer.stageTake(fitted: fitted, analysis: analysis, input: input, sourceAtAssetRate: source, scratchRoot: root)
+        let lower = Int(EditingPrimitives.jsRound(window.start * Double(rate))) - rate, upper = Int(EditingPrimitives.jsRound(window.end * Double(rate))) + rate
+        let excerpt = regions ? VoiceLabSourceExcerpt(totalFrames: source.count, regions: [.init(start: 0, samples: Array(source[0..<(rate / 2)])),
+                                                                                          .init(start: lower, samples: Array(source[lower..<upper]))])
+                              : VoiceLabSourceExcerpt(whole: source)
+        return try VoiceLabAudioRenderer.stageTake(fitted: fitted, analysis: analysis, input: input, sourceAtAssetRate: excerpt, scratchRoot: root)
     }
 }
 
@@ -126,6 +131,35 @@ extension HeavyMediaTests {
         #expect(scratch.audio.mixed[rate / 2 + Int(vector.expected.outputFrames) + count - count / 2] == 0.1)
         let file = try VoiceLabWavePCM(Data(contentsOf: scratch.mixedAudioURL))
         #expect(file.frames == scratch.audio.mixed.count && file.floating && file.bits == 32)
+    }
+    @Test(arguments: [false, true]) func scratchFromSourceRegionsMatchesTheWholeSource(hard: Bool) throws {
+        let vector = try #require(FittedAssetVector.load().first { $0.name == "balanced-edits" })
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        for roomTone in [false, true] {
+            let whole = root.appendingPathComponent("whole-\(roomTone)"), regions = root.appendingPathComponent("regions-\(roomTone)")
+            try FileManager.default.createDirectory(at: whole, withIntermediateDirectories: false)
+            try FileManager.default.createDirectory(at: regions, withIntermediateDirectories: false)
+            let expected = try vector.scratch(root: whole, hard: hard, roomTone: roomTone)
+            let actual = try vector.scratch(root: regions, hard: hard, roomTone: roomTone, regions: true)
+            #expect(actual.audio == expected.audio)
+        }
+    }
+    @Test func scratchRefusesASourceExcerptWithoutTheWindow() throws {
+        let vector = try #require(FittedAssetVector.load().first)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fitted = try vector.prepare(root: root)
+        let analysis = VoiceLabTakeAnalysis(sampleRate: vector.rate, trimmed: [], gainDb: 0, roomTone: nil, fit: vector.fit())
+        let input = VoiceLabTakeInput(text: "new words", modelID: "fixture", recordID: "fixture", language: "en", seed: 7,
+            contentKey: "fixture", source: [], sourceSampleRate: 48_000, items: [], window: vector.window(),
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+        let excerpt = VoiceLabSourceExcerpt(totalFrames: vector.rate * 6, regions: [.init(start: 0, samples: [Float](repeating: 0.1, count: vector.rate))])
+        #expect(throws: VoiceLabError.invalidAudio) {
+            try VoiceLabAudioRenderer.stageTake(fitted: fitted, analysis: analysis, input: input, sourceAtAssetRate: excerpt, scratchRoot: root)
+        }
     }
     @Test func scratchUsesFiftyMillisecondRoomLoopAndDoesNotBakeItIntoFit() throws {
         let vector = try #require(FittedAssetVector.load().first)

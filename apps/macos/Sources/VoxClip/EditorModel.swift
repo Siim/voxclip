@@ -17,7 +17,14 @@ struct EditorRenderSnapshot {
     var findClipsAnchor = FindClipsAnchor.toolbar
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
-    var selectedWordIDs: Set<String> = [] { didSet { if selectedWordIDs != oldValue { rewriteOpenTask?.cancel() } } }
+    var selectedWordIDs: Set<String> = [] {
+        didSet {
+            guard selectedWordIDs != oldValue else { return }
+            rewriteOpenTask?.cancel()
+            // Selecting other words ends an open inline correction, as a click elsewhere ends an inline rename.
+            if let id = correctionID, !selectedWordIDs.contains(id) { endCorrection() }
+        }
+    }
     var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel() } } }
     var previewStop: Double?
     var playhead: Double = 0
@@ -134,6 +141,8 @@ struct EditorRenderSnapshot {
     var finding = false
     var exportProgress: ExportProgress?
     var exports: [ExportResult] = []
+    /// Each exported target's share disclosure line (voice-lab.md §11.3), keyed like `ExportLedger.targetID`.
+    var exportDisclosureLines: [String: String] = [:]
     var exportError: String?
     var exportClipIDs: [String] = []
     var activeExportKey: String?
@@ -141,7 +150,7 @@ struct EditorRenderSnapshot {
     var exporting = false
     func presentExport(clipIDs: [String]? = nil) {
         guard capabilities.writable, mediaExportable else { return }
-        if !exporting { exports = []; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
+        if !exporting { exports = []; exportDisclosureLines = [:]; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
         showExport = true
     }
     var exportIndex = 0
@@ -413,7 +422,7 @@ struct EditorRenderSnapshot {
         history = nil
         renderedTranscript = nil; renderedEdits = nil; renderedMedia = nil; renderedVoiceLab = nil
         planningSegments = nil; planningWordIndex = [:]; summaryCache.removeAll()
-        selectedWordIDs = []; selectedPauseIDs = []; correctionID = nil
+        correctionID = nil; selectedWordIDs = []; selectedPauseIDs = []
         fallbackNote = nil; focusedSuggestion = nil; clipError = nil; error = nil; previewError = nil
         mediaResolved = document.demo
         refresh()
@@ -870,6 +879,13 @@ struct EditorRenderSnapshot {
         correctionID = nil
         if advance, let position = index(id), position + 1 < words.count { selectedWordIDs = [words[position + 1].id]; beginCorrection() }
     }
+    /// Ends the inline correction (design §4.2) the way an inline rename ends: focus leaving the field, a selection
+    /// change and Play keep the typed text when it can be saved; Esc, or text that can't be saved, keeps the word.
+    func endCorrection(keep: Bool = true) {
+        guard correctionID != nil else { return }
+        if keep { saveCorrection() }
+        correctionID = nil
+    }
     func select(_ id: String, extend: Bool = false) {
         selectedPauseIDs = []
         if extend, let anchor = selectedIDs.first, let lower = index(anchor), let upper = index(id) { selectedWordIDs = Set(words[min(lower, upper)...max(lower, upper)].map(\.id)) }
@@ -893,15 +909,17 @@ struct EditorRenderSnapshot {
         }
     }
     func transport(_ key: String, shift: Bool = false) {
-        guard correctionID == nil else { return }
+        // Saving an open correction pauses (`apply`), so Space and L toggle from the state before the save.
+        let wasPlaying = isPlaying
+        endCorrection()
         switch key.lowercased() {
         case " ":
             if shift, let word = words.first(where: { selectedWordIDs.contains($0.id) }) { seek(source: word.start) }
-            if isPlaying { preview.pause() } else { preview.play() }
+            if wasPlaying { preview.pause() } else { preview.play() }
             isPlaying = preview.isPlaying
         case "j": seek(source: max(0, sourceTime - 3))
         case "k": preview.pause(); isPlaying = false; playbackRate = 1; previewStop = nil
-        case "l": playbackRate = isPlaying ? (playbackRate == 1 ? 1.5 : 2) : 1; preview.play(); nativePreview?.player.rate = playbackRate; isPlaying = preview.isPlaying
+        case "l": playbackRate = wasPlaying ? (playbackRate == 1 ? 1.5 : 2) : 1; preview.play(); nativePreview?.player.rate = playbackRate; isPlaying = preview.isPlaying
         case "p": if let word = words.first(where: { selectedWordIDs.contains($0.id) }), let last = words.last(where: { selectedWordIDs.contains($0.id) }) { previewStop = min(sourceDuration, last.end + 2); seek(source: max(0, word.start - 2)); preview.play(); isPlaying = preview.isPlaying }
         case "c", "\r": beginCorrection()
         case "i": setClipEdge(start: true)
