@@ -176,7 +176,12 @@ public struct CostEstimate: Codable, Sendable, Hashable {
 }
 ```
 
-An LLM send, the rewrite (`voiceRewrite`, §8.9.1) or Fix with AI (`patchRewrite`, §8.1), estimates its request in tokens with basis `unknown` and no `usd` or `credits`, so it always reaches the confirmation for an unknown price.
+An LLM send (`voiceRewrite`, `patchRewrite`) estimates its request in tokens with basis `unknown`. Its presentation depends on who pays:
+
+- A CLI connector whose sign-in is a plan (`authMethod` is not an API key; Codex's status does not say "API key"), a loopback local server, a remote local server and Apple on-device present as **inline with no amount**. Their button is just the action, and they do not confirm. The send line says where the words go.
+- An API-key connector, and a CLI connector signed in with an API key, present as **confirm** with "VoxClip can't tell what this costs. Check {provider}'s pricing." on every send.
+
+A CLI whose sign-in method is unknown sends nothing (ai.md §4.8), so it never counts as a plan. The first-use consent sheet (ai.md §4.8) still comes before each connector's first send. `VoiceLabCostPresentation`, or a helper beside it, applies this rule on both platforms from the connector kind and the sign-in method that ai.md §6.8–§6.10 detection already reads; it adds no setting or field. The table below covers every other estimate.
 
 | Estimate | Presentation |
 |---|---|
@@ -1792,6 +1797,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - Isolator for 3 min = $0.36. LatentSync for 5 s = $0.20 and for 60 s = $0.30.
     - TTS for 60 characters × 3 candidates = $0.0144, shown "≈ $0.01".
     - Estimates of $0.50 or more require a confirmation.
+    - An LLM send on a CLI signed in on a plan, a local server (loopback or remote) or Apple on-device is inline with no amount and does not confirm. On an API key, or a CLI signed in with an API key, it confirms on every send with the unknown-price copy. A CLI with an unknown sign-in method sends nothing. Both Cores check the same table over every connector kind and sign-in method.
 11. **Consent check (§6.4).**
     - A WER of 0.14 with all nonce words passes.
     - A WER of 0.10 with a nonce word missing fails.
