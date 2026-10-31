@@ -33,7 +33,10 @@ struct EditorRenderSnapshot {
     var playbackRate: Float = 1
     var showCuts = true
     var showPauses = true
-    var editedTimeline = false
+    /// Show cuts (ux/v2 notes.md §5 and §6): on, the timeline shows take time with the cuts
+    /// as gaps (Source); off, it shows the scope's output with every cut closed (Edited).
+    /// Off by default. A view setting: no undo step and no document change (impl-plan §3.3).
+    var showsCuts = false
     var findVisible = false
     var query = ""
     var textSize = DesignValues.transcriptTextSize
@@ -156,7 +159,7 @@ struct EditorRenderSnapshot {
     var exportIndex = 0
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
-    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { closeRewrite(returnFocus: false) } } }
+    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { closeRewrite(returnFocus: false) }; followWaveformKey() } }
     /// The project has a transcript. Unlike `project`, views observe it, so a transcript
     /// that arrives or is undone redraws the transcript column.
     private(set) var transcribed = false
@@ -164,7 +167,7 @@ struct EditorRenderSnapshot {
     /// show from `project`, which they can't observe, read it (the toolbar's Export).
     private(set) var projectRevision = 0
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
-    var mediaUnreadable = false { didSet { if mediaUnreadable { closeRewrite(returnFocus: false) } } }
+    var mediaUnreadable = false { didSet { if mediaUnreadable { closeRewrite(returnFocus: false) }; followWaveformKey() } }
     var canMoveCaptions: Bool {
         !document.demo && capabilities.captionPosition && !mediaUnreadable && (previewError == nil || !mediaResolved)
     }
@@ -194,44 +197,30 @@ struct EditorRenderSnapshot {
     var cutPauseIDs: Set<String> = []
     var scopeBounds: ClosedRange<Int>?
     var editingAvailable = false
-    var timeline = TimelineProjection()
     var waveform: WaveformData?
     var waveformRevision = 0
     var waveformKey: WaveformCache.Key? {
         guard !document.demo, mediaResolved, !mediaUnreadable, project.media.source.audio != nil else { return nil }
         return WaveformCache.Key(contentKey: project.media.source.contentKey, source: sourceURL, cache: app.locations.cache)
     }
+    /// The load `followWaveformKey` started for `requestedWaveformKey`, until it ends.
+    @ObservationIgnored private(set) var waveformTask: Task<Void, Never>?
+    @ObservationIgnored private var requestedWaveformKey: WaveformCache.Key?
     func loadWaveform() async {
         let key = waveformKey
         let value = if let key { await WaveformCache.shared.load(key) } else { nil as WaveformData? }
         guard !Task.isCancelled, key == waveformKey else { return }
         waveform = value; waveformRevision += 1
-        timeline = TimelineProjection(model: self)
     }
-    var displayTimeline: TimelineProjection {
-        var display = timeline
-        let indices = selectedWordIDs.compactMap { wordIndex[$0] }
-        var starts = indices.map { words[$0].start }
-        var ends = indices.map { words[$0].end }
-        for id in selectedPauseIDs {
-            if let pause = pauseIndex[id] { starts.append(pause.start); ends.append(pause.end) }
-        }
-        if let start = starts.min(), let end = ends.max() { display.selection = timelineBand(start: start, end: end) }
-        if let rewrite = rewriteRange, words.indices.contains(rewrite.lowerBound), words.indices.contains(rewrite.upperBound) {
-            display.rewrite = timelineBand(start: words[rewrite.lowerBound].start, end: words[rewrite.upperBound].end)
-        }
-        return display
-    }
-    var timelineAccessibilityValue: String {
-        let current: Double = editedTimeline ? playhead : sourceTime
-        let total: Double = editedTimeline ? duration : sourceDuration
-        let cuts: Int = summary.cutWordCount + summary.cutPauseCount
-        return timelineValueText(time: current, total: total, cuts: cuts, edited: editedTimeline)
-    }
-    private func timelineBand(start: Double, end: Double) -> TimelineBand {
-        let lower = renderTimeline?.mapTime(start) ?? start
-        let upper = renderTimeline?.mapTime(end) ?? end
-        return TimelineBand(source: start...max(start, end), edited: lower...max(lower, upper))
+    /// Loads the waveform when the project's media is there to read, and again when it
+    /// changes (impl-plan §3.1): the model owns it, so a hidden timeline never starves the
+    /// audiogram stand-in or Rewrite.
+    func followWaveformKey() {
+        let key = waveformKey
+        guard key != requestedWaveformKey else { return }
+        requestedWaveformKey = key
+        waveformTask?.cancel()
+        waveformTask = Task { [weak self] in await self?.loadWaveform() }
     }
     @ObservationIgnored private var renderedTranscript: Transcript?
     @ObservationIgnored private var renderedEdits: ProjectEdits?
@@ -426,7 +415,7 @@ struct EditorRenderSnapshot {
     func close() {
         closeRewrite(returnFocus: false)
         previewRevision &+= 1
-        workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); preview.close()
+        workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); waveformTask?.cancel(); preview.close()
         app.openProjectKeys[project.id] = nil
         cacheLeaseEnded = true
         cacheLease?.release(); cacheLease = nil
@@ -533,7 +522,7 @@ struct EditorRenderSnapshot {
         renderedTranscript = project.transcript; renderedEdits = edits; renderedMedia = project.media
         renderedVoiceLab = project.voiceLab
         transcriptRevision += 1
-        timeline = TimelineProjection(model: self)
+        followWaveformKey()
         if edits.activeClipId != renderedActiveClipID {
             renderedActiveClipID = edits.activeClipId
             onActiveClipChange?(edits.activeClipId)
@@ -741,21 +730,6 @@ struct EditorRenderSnapshot {
         guard let clip = activeClip, let id = selectedIDs.first, let caret = index(id), let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return }
         guard start ? caret <= upper : caret >= lower else { return }
         apply(.updateClip(id: clip.id, startIndex: start ? caret : lower, endIndex: start ? upper : caret), name: "Set clip edge")
-    }
-    func timelineSourceTime(_ time: Double) -> Double {
-        guard editedTimeline else { return time }
-        if time <= 0 { return scopeBounds.map { words[$0.lowerBound].start } ?? 0 }
-        if time >= duration { return scopeBounds.map { words[$0.upperBound].end } ?? sourceDuration }
-        let mapped: Double = renderTimeline?.sourceTime(time) ?? time
-        guard let scope = scopeBounds else { return mapped }
-        return mapped.clamped(to: words[scope.lowerBound].start...words[scope.upperBound].end)
-    }
-    func timelineTrimIndex(_ clip: ClipRange, start: Bool, fraction: Double) -> Int? {
-        let time: Double = timeline.time(fraction, edited: editedTimeline)
-        let source: Double = timelineSourceTime(time)
-        guard let candidate = trimIndex(start: start, source: source),
-              let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return nil }
-        return start ? candidate.clamped(to: 0...upper) : candidate.clamped(to: lower...(words.count - 1))
     }
     func trimIndex(start: Bool, source: Double) -> Int? {
         guard !words.isEmpty else { return nil }

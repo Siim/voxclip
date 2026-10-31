@@ -1156,17 +1156,3 @@ struct EditorShellState: Equatable {
             .onExitCommand(perform: shell.rightOverlay ? { shell.rightOverlay = false } : nil)
     }
 }
-
-/// The timeline panel's content until V7a: today's 72 pt strip at the top of the panel.
-/// With the right column hidden it carries the compact transport.
-@MainActor private struct TimelinePanel: View {
-    let model: EditorModel
-    let shell: WorkspaceShell
-    var body: some View {
-        TimelineStrip(model: model, compactTransport: !shell.layout.rightVisible)
-            .frame(height: VCTokens.sizeTimelineHeight)
-            .modifier(EditorPaneFocus(model: model, pane: .timeline))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(DesignValues.color("bg.window"))
-    }
-}

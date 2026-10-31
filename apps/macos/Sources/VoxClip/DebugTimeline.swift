@@ -22,9 +22,6 @@ import VoxClipCore
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         func mark(_ name: String) { try? Data(name.utf8).write(to: directory.appendingPathComponent("timeline-phase.txt"), options: .atomic) }
         mark("prepare model")
-        check("timeline clip zoom uses the 1.5-second minimum padding", timelineZoom(clip: 10...15, duration: 50) == 8.5...16.5)
-        check("timeline clip zoom caps padding at three seconds", timelineZoom(clip: 10...50, duration: 80) == 7...53)
-        check("timeline zoom clamps to source bounds", timelineZoom(clip: 0.5...9.5, duration: 10) == 0...10)
         results += trimEndpoints(app: app, fixture: fixture)
         mark("trim endpoints complete")
         let project = try DebugSidebar.fiveQuestions(from: fixture)
@@ -34,18 +31,23 @@ import VoxClipCore
         guard let model = shell.editor, let undo = model.undoManager else { throw CocoaError(.coderInvalidValue) }
         defer { model.close(); model.document.updateChangeCount(.changeCleared); model.document.close() }
         mark("refreshed")
-        check("timeline clip numbers follow Core sidebar order and suggestions", model.timeline.clips.map(\.number) == model.sortedClips.compactMap { model.clipNumber($0.id) } && model.timeline.clips.contains { $0.state == .suggested })
-        check("timeline defaults to Source", !model.editedTimeline)
+        check("timeline defaults to Edited: Show cuts is off", !model.showsCuts && model.timelineAxis == .edited)
+        let steps = model.undoSteps, edited = model.document.isDocumentEdited
+        model.showsCuts = true
+        check("Show cuts switches the timeline to take time without an undo step or a document change",
+              model.timelineAxis == .source && model.undoSteps == steps && model.document.isDocumentEdited == edited && !undo.canUndo)
+        model.showsCuts = false
         let spokenCases: [(Double, String)] = [(0, "0 seconds"), (0.5, "0 seconds"), (1.5, "2 seconds"), (59.49, "59 seconds"), (59.5, "1 minute 00"), (60.5, "1 minute 00"), (65, "1 minute 05"), (119.5, "2 minutes 00"), (135, "2 minutes 15")]
         for (time, expected) in spokenCases {
             check("timeline spoken whole seconds match Windows rounding at \(time)", timelineSpokenTime(time) == expected)
         }
         check("Edited slider uses the exact spoken design value", timelineValueText(time: 42, total: 135, cuts: 12, edited: true) == "42 seconds of 2 minutes 15 after cuts, 12 cuts")
         check("Source slider uses source duration and never says after cuts", timelineValueText(time: 42, total: 190, cuts: 12, edited: false) == "42 seconds of 3 minutes 10 source, 12 cuts")
-        let revision = model.transcriptRevision
-        model.selectedWordIDs = Set(model.words[3...6].map(\.id)); model.rewriteRange = 4...7
-        check("timeline selection and Rewrite update without rebuilding the transcript", model.displayTimeline.selection?.source == model.words[3].start...model.words[6].end && model.displayTimeline.rewrite?.source == model.words[4].start...model.words[7].end && model.transcriptRevision == revision)
-        model.selectedWordIDs = []; model.rewriteRange = nil
+        check("overview clips follow Explorer order and mark suggestions", model.timelineOverviewClips.map(\.number) == model.sortedClips.compactMap { model.clipNumber($0.id) }
+              && model.timelineOverviewClips.contains { $0.proposal })
+        model.selectedWordIDs = Set(model.words[3...6].map(\.id))
+        check("the timeline selection is the selected words' take range", model.timelineSelection(on: .source) == model.words[3].start...model.words[6].end)
+        model.selectedWordIDs = []
         guard model.keptClips.count >= 2 else { throw CocoaError(.coderInvalidValue) }
         let clip = model.keptClips[1]
         model.activate(clip)
@@ -61,85 +63,226 @@ import VoxClipCore
         check("one undo restores the pre-trim clip edge", model.activeClip?.endWordId == clip.endWordId)
         let boundary = model.words[oldEnd].end
         check("end trim snaps to the nearest word end, not word start", model.trimIndex(start: false, source: boundary + 0.001) == oldEnd)
-        let scope = model.timeline.scope!.source
-        check("clip projection exposes its exact source zoom", model.timeline.zoom == timelineZoom(clip: scope, duration: model.sourceDuration))
-        check("zoomed scrubbing maps both endpoints without full-take scaling", model.timeline.time(0, edited: false) == model.timeline.zoom.lowerBound && model.timeline.time(1, edited: false) == model.timeline.zoom.upperBound)
+        check("Edited In and Out run from 0 to the clip's output length", model.timelineInOut(on: .edited) == 0...model.duration)
+        check("Source In and Out are the clip's take range", model.timelineInOut(on: .source) == model.scopeSourceRange && model.scopeSourceRange != nil)
         let envelope = WaveformData(fine: [0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
         check("50-ms waveform buckets aggregate five 10-ms RMS levels energetically", abs(envelope.buckets[0] - sqrt(0.2)) < 0.0001 && envelope.buckets[1] == 1)
         results += try await waveform(directory: directory)
         mark("waveform complete")
         results += try await audioCaptures(app: app, fixture: fixture, directory: directory)
         results += try await missingCaptionPosition(app: app, fixture: fixture, directory: directory)
-        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            for edited in [false, true] {
-                model.editedTimeline = edited
-                for compact in [false, true] {
-                    let suffix = "timeline-\(edited ? "edited" : "source")-\(compact ? "compact" : "viewer")-\(name)"
-                    let window = makeWindow(TimelineStrip(model: model, compactTransport: compact), width: 960, appearance: appearance)
-                    defer { window.close() }
-                    window.setAccessibilityIdentifier(suffix)
-                    window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
-                    try await Task.sleep(for: .milliseconds(150))
-                    _ = try capture(window.contentView!, name: suffix, directory: directory)
-                    let elements = accessibility(window)
-                    let sliders = elements.filter { attribute($0, kAXRoleAttribute) as? String == kAXSliderRole }
-                    let spokenValues: [String] = sliders.compactMap { (element: AXUIElement) -> String? in
-                        attribute(element, kAXValueDescriptionAttribute) as? String ?? attribute(element, kAXValueAttribute) as? String
-                    }
-                    check("\(suffix) exposes its active projection's spoken slider value", spokenValues.contains(model.timelineAccessibilityValue))
-                    let labels = elements.compactMap { attribute($0, kAXDescriptionAttribute) as? String }
-                    check("\(suffix) exposes one slider and separate trim handles", sliders.count == 1 && labels.contains("Clip 2 start") && labels.contains("Clip 2 end"))
-                    let times = elements.filter { attribute($0, kAXIdentifierAttribute) as? String == "voxclip.compact.time" }
-                    check("\(suffix) has a time readout only in compact transport", times.count == (compact ? 1 : 0))
-                    try JSONSerialization.data(withJSONObject: labels).write(to: directory.appendingPathComponent("\(suffix)-ax.json"))
-                }
-            }
-            if let bounds = model.scopeBounds {
-                let selectionEnd = min(bounds.upperBound, bounds.lowerBound + 3)
-                let rewriteStart = min(bounds.upperBound, bounds.lowerBound + 4)
-                let rewriteEnd = min(bounds.upperBound, bounds.lowerBound + 9)
-                model.selectedWordIDs = Set(model.words[bounds.lowerBound...selectionEnd].map(\.id))
-                model.rewriteRange = rewriteStart...rewriteEnd
-                let highlighted = makeWindow(TimelineTrack(projection: model.displayTimeline, edited: model.editedTimeline), width: 600, appearance: appearance)
-                _ = try capture(highlighted.contentView!, name: "timeline-selection-rewrite-\(name)", directory: directory)
-                highlighted.close()
-                model.selectedWordIDs = []; model.rewriteRange = nil
-            }
-            var hatch = TimelineProjection()
-            hatch.blocks = [TimelineBlock(source: 0.05...0.45, edited: 0...0, cut: true, pause: false, filler: false, inScope: true),
-                TimelineBlock(source: 0.55...0.95, edited: 0...0, cut: true, pause: true, filler: false, inScope: true)]
-            let hatchWindow = makeWindow(TimelineTrack(projection: hatch, edited: false), width: 600, appearance: appearance)
-            let bitmap = try capture(hatchWindow.contentView!, name: "timeline-hatches-\(name)", directory: directory)
-            let scale = bitmap.pixelsWide / 600
-            check("\(name) word-cut hatch repeats every six points, not nine", repeats(bitmap, from: 70 * scale, to: 210 * scale, row: 43 * scale, period: 6 * scale) && !repeats(bitmap, from: 70 * scale, to: 210 * scale, row: 43 * scale, period: 9 * scale))
-            check("\(name) pause-cut hatch repeats every nine points, not six", repeats(bitmap, from: 370 * scale, to: 510 * scale, row: 43 * scale, period: 9 * scale) && !repeats(bitmap, from: 370 * scale, to: 510 * scale, row: 43 * scale, period: 6 * scale))
-            hatchWindow.close()
-            var dim = TimelineProjection()
-            dim.scope = TimelineBand(source: 0.3...0.7, edited: 0...1)
-            let dimWindow = makeWindow(TimelineTrack(projection: dim, edited: false), width: 600, appearance: appearance)
-            let dimBitmap = try capture(dimWindow.contentView!, name: "timeline-dim-\(name)", directory: directory)
-            let reference = Canvas { context, size in
-                let track = Path(CGRect(x: 0, y: 28, width: size.width, height: 30))
-                context.fill(track, with: .color(DesignValues.color("timeline.track")))
-                context.fill(track, with: .color(DesignValues.color("timeline.scopeDim")))
-            }
-            let referenceWindow = makeWindow(reference, width: 600, appearance: appearance)
-            let referenceBitmap = try capture(referenceWindow.contentView!, name: "timeline-dim-reference-\(name)", directory: directory)
-            let expected = pixel(referenceBitmap, x: 60 * scale, y: 43 * scale)
-            let actual = pixel(dimBitmap, x: 60 * scale, y: 43 * scale)
-            let tolerance: Double = 1.0 / 255
-            let matches: Bool = zip(actual, expected).allSatisfy { (pair: (Double, Double)) -> Bool in abs(pair.0 - pair.1) < tolerance }
-            check("\(name) outside-clip pixels composite timeline.scopeDim at its token alpha", matches)
-            referenceWindow.close()
-            dimWindow.close()
-            let contrastAppearance: NSAppearance.Name = name == "light" ? .accessibilityHighContrastAqua : .accessibilityHighContrastDarkAqua
-            let contrastWindow = makeWindow(TimelineTrack(projection: dim, edited: false, forceHighContrast: true), width: 600, appearance: contrastAppearance)
-            let contrastBitmap = try capture(contrastWindow.contentView!, name: "timeline-contrast-\(name)", directory: directory)
-            check("\(name) Increase Contrast removes outside-scope dimming", pixel(contrastBitmap, x: 60 * scale, y: 43 * scale) == pixel(contrastBitmap, x: 300 * scale, y: 43 * scale))
-            contrastWindow.close()
-        }
+        mark("panel scenes")
+        results += try await panelScenes(app: app, shell: shell, model: model, directory: directory)
+        mark("hide")
+        shell.layout.rightVisible = true
+        shell.layout.timelineVisible = true
+        shell.toggleTimeline()
+        let hidden = !shell.layout.timelineVisible
+        shell.toggleTimeline()
+        check("⌘J's toggle hides the timeline panel and shows it again", hidden && shell.layout.timelineVisible)
         return results
     }
+
+    /// The panel at notes.md's 1056 × 216 in Edited and Source view, Clip 2 open, dark: the
+    /// lanes' pixels, the playhead slider and the trim handles for VoiceOver, and a playhead
+    /// tick that moves only the playhead layers. Captures `v2-timeline-edited-dark` and
+    /// `v2-timeline-source-dark` from the window server while the session is unlocked.
+    private static func panelScenes(app: AppModel, shell: WorkspaceShell, model: EditorModel, directory: URL) async throws -> [DebugUISuite.Result] {
+        var results: [DebugUISuite.Result] = []
+        func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        guard let clip = model.activeClip, let number = model.clipNumber(clip.id) else { throw CocoaError(.coderInvalidValue) }
+        let size = NSSize(width: 1056, height: 216)
+        for axis in [TimelineAxis.edited, .source] {
+            model.showsCuts = axis == .source
+            let name = "v2-timeline-\(axis.rawValue)-dark"
+            let host = ShellHost.controller(TimelinePanel(model: model, shell: shell), app: app)
+            host.view.frame = NSRect(origin: .zero, size: size)
+            let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.contentViewController = host
+            window.setContentSize(size)
+            window.setAccessibilityIdentifier(name)
+            defer { window.close() }
+            window.orderFront(nil)
+            host.view.layoutSubtreeIfNeeded()
+            try await Task.sleep(for: .milliseconds(200))
+            guard let canvas = DebugShell.firstView(TimelineCanvasView.self, in: host.view) else {
+                check("\(name) hosts the AppKit lanes", false)
+                continue
+            }
+            canvas.renderContent()
+            // The playhead a third of the way into the clip, inside the view.
+            let inOut = model.timelineInOut(on: axis) ?? 0...model.duration
+            let source = model.timelineSourceTime(axis == .edited ? model.duration / 3 : inOut.lowerBound + (inOut.upperBound - inOut.lowerBound) / 3, on: axis)
+            model.sourceTime = source; model.playhead = model.timelineTime(source: source, on: .edited)
+            canvas.followPlayhead()
+            canvas.layoutSubtreeIfNeeded(); canvas.displayIfNeeded()
+            let bitmap = try render(canvas)
+            let scale = CGFloat(bitmap.pixelsWide) / canvas.bounds.width
+            func color(_ x: CGFloat, _ y: CGFloat) -> [Double] { pixel(bitmap, x: Int(x * scale), y: Int(y * scale)) }
+            func matches(_ actual: [Double], _ token: String, alpha: CGFloat = 1, over ground: String? = nil) -> Bool {
+                var expected: [Double] = []
+                NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance {
+                    let top = DesignValues.nsColor(token).usingColorSpace(.sRGB) ?? .black
+                    let base = ground.flatMap { DesignValues.nsColor($0).usingColorSpace(.sRGB) } ?? .black
+                    let a = Double(top.alphaComponent * alpha)
+                    expected = [(top.redComponent, base.redComponent), (top.greenComponent, base.greenComponent), (top.blueComponent, base.blueComponent)]
+                        .map { Double($0.0) * a + Double($0.1) * (1 - a) }
+                }
+                return actual.count == 3 && zip(actual, expected).allSatisfy { abs($0 - $1) < 3.0 / 255 }
+            }
+            let viewport = canvas.viewport
+            let playX = TimelineMetrics.header + viewport.x(model.timelinePlayhead(on: axis))
+            let lineY = TimelineMetrics.tracks[1].y + 10
+            check("\(name) draws the playhead as a 1 pt tint line through the tracks", matches(color(playX, lineY), "tint.default"))
+            check("\(name) draws the playhead's head in the ruler's lower half", matches(color(playX, TimelineMetrics.ruler.y + 14), "tint.default"))
+            let inX = TimelineMetrics.header + viewport.x(inOut.lowerBound), outX = TimelineMetrics.header + viewport.x(inOut.upperBound)
+            check("\(name) draws the In bracket the full ruler height in clip.label", matches(color(inX + 0.75, TimelineMetrics.ruler.y + 12), "clip.label"))
+            check("\(name) draws the ruler inside In/Out on chrome", matches(color((inX + outX) / 2 + 2.5, TimelineMetrics.ruler.y + 13), "bg.window"))
+            if inX - 8 > TimelineMetrics.header {
+                check("\(name) darkens the ruler outside In/Out", matches(color(inX - 6, TimelineMetrics.ruler.y + 13), "timeline.rulerOut"))
+            }
+            check("\(name) draws the track lanes on timeline.lane", matches(color(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18), "timeline.lane"))
+            let open = canvas.overview.x((model.timelineOverviewClips.first { $0.open }?.source.lowerBound ?? 0) + 0.3)
+            check("\(name) draws the open clip's overview block at 42% clip.label", matches(color(open, TimelineMetrics.overview.y + 12), "clip.label", alpha: 0.42, over: "timeline.lane")
+                  || matches(color(open, TimelineMetrics.overview.y + 8), "clip.label", alpha: 0.42, over: "timeline.lane"))
+            check("\(name) has no red pixels", !hasRed(bitmap))
+            // A playhead tick moves only the playhead layers: no lane draws again.
+            let draws = [canvas.overview.draws, canvas.ruler.draws, canvas.bed.draws]
+            let moves = canvas.overlay.playheadMoves
+            let before = canvas.overlay.playhead.transform.m41
+            let later = model.timelineSourceTime(model.timelinePlayhead(on: axis) + 0.5, on: axis)
+            model.sourceTime = later; model.playhead = model.timelineTime(source: later, on: .edited)
+            canvas.followPlayhead()
+            canvas.displayIfNeeded()
+            check("\(name) moves the playhead layer on a tick without redrawing a lane (draws \(draws) → \([canvas.overview.draws, canvas.ruler.draws, canvas.bed.draws]))",
+                  [canvas.overview.draws, canvas.ruler.draws, canvas.bed.draws] == draws && canvas.overlay.playheadMoves > moves && canvas.overlay.playhead.transform.m41 > before)
+            // VoiceOver: the playhead slider keeps design §5.2's spoken value; In and Out adjust a word at a time.
+            let children = canvas.accessibilityChildren()?.compactMap { $0 as? TimelineSliderElement } ?? []
+            let labels = children.compactMap { $0.accessibilityLabel() }
+            check("\(name) exposes the Playhead slider with the design's spoken value",
+                  children.first?.accessibilityLabel() == "Playhead" && children.first?.accessibilityValueDescription() == model.timelineAccessibilityValue)
+            check("\(name) exposes Clip \(number)'s start and end handles", labels == ["Playhead", "Clip \(number) start", "Clip \(number) end"])
+            let ax = accessibility(window)
+            let sliders = ax.filter { attribute($0, kAXRoleAttribute) as? String == kAXSliderRole }
+            let spoken = sliders.compactMap { attribute($0, kAXValueDescriptionAttribute) as? String }
+            check("\(name) reaches VoiceOver with the playhead's spoken value", ax.isEmpty || spoken.contains(model.timelineAccessibilityValue))
+            check("\(name) shows the toolbar's timecode readout", ax.isEmpty || ax.contains { attribute($0, kAXIdentifierAttribute) as? String == "voxclip.timeline.time" })
+            if let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: directory.appendingPathComponent("\(name)-lanes.png")) }
+            if DebugUISuite.sessionLocked {
+                results.append(.init(name: "capture \(name)", passed: true, skipped: "the console session is locked"))
+            } else {
+                check("capture \(name)", await windowServerCapture(window, name: name, directory: directory))
+            }
+            canvas.tearDown()
+        }
+        model.showsCuts = false
+        return results
+    }
+
+    /// The whole panel as the window server composites it (SwiftUI toolbar and AppKit lanes).
+    private static func windowServerCapture(_ window: NSWindow, name: String, directory: URL) async -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", "-o", "-l", String(window.windowNumber), directory.appendingPathComponent("\(name).png").path]
+        guard (try? process.run()) != nil else { return false }
+        while process.isRunning { try? await Task.sleep(for: .milliseconds(20)) }
+        return process.terminationStatus == 0 && FileManager.default.fileExists(atPath: directory.appendingPathComponent("\(name).png").path)
+    }
+
+    /// The canvas's layer tree, lanes and playhead layers together, as sRGB pixels.
+    private static func render(_ view: NSView) throws -> NSBitmapImageRep {
+        guard let layer = view.layer, let space = CGColorSpace(name: CGColorSpace.sRGB) else { throw CocoaError(.coderInvalidValue) }
+        let scale = view.window?.backingScaleFactor ?? 2
+        let width = Int(view.bounds.width * scale), height = Int(view.bounds.height * scale)
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw CocoaError(.coderInvalidValue) }
+        context.scaleBy(x: scale, y: scale)
+        if !layer.isGeometryFlipped && view.isFlipped {
+            context.translateBy(x: 0, y: view.bounds.height)
+            context.scaleBy(x: 1, y: -1)
+        }
+        NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance { layer.render(in: context) }
+        guard let image = context.makeImage() else { throw CocoaError(.coderInvalidValue) }
+        return NSBitmapImageRep(cgImage: image)
+    }
+
+    /// A red pixel: red well above green and blue (notes.md §3: no red anywhere).
+    private static func hasRed(_ bitmap: NSBitmapImageRep) -> Bool {
+        for row in stride(from: 0, to: bitmap.pixelsHigh, by: 2) {
+            for column in stride(from: 0, to: bitmap.pixelsWide, by: 2) {
+                let value = pixel(bitmap, x: column, y: row)
+                if value.count == 3, value[0] > 0.55, value[1] < 0.3, value[2] < 0.3 { return true }
+            }
+        }
+        return false
+    }
+
+    /// Full redraw and playhead-tick budgets on a 60-minute take with 9,000 words and 1,500
+    /// cuts (impl-plan §3.1): a full redraw within 8 ms and a tick within 1 ms that redraws
+    /// no lane. Enforced in optimized builds (`./bundle.sh profile`); a debug build records them.
+    static func performance(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
+        var project = fixture
+        let words: [TimedWord] = (0..<9_000).map { index in
+            let start = Double(index) * 0.4
+            return TimedWord(id: "timeline-\(index)", text: index % 20 == 19 ? "word." : "word", start: start, end: start + 0.3)
+        }
+        project.transcript?.words = words
+        project.transcript?.durationSeconds = 3_600
+        project.media.source.durationSeconds = 3_600
+        project.edits = ProjectEdits(cutWordIds: stride(from: 3, to: 9_000, by: 6).map { words[$0].id })
+        let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.mediaResolved = true; model.refresh()
+        let canvas = TimelineCanvasView(model: model)
+        defer { canvas.tearDown() }
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1056, height: TimelineMetrics.height), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = canvas
+        defer { window.close() }
+        canvas.layoutSubtreeIfNeeded()
+        canvas.renderContent()
+        canvas.displayIfNeeded()
+        let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed]
+        var redraws: [Double] = []
+        for _ in 0..<30 {
+            let start = ContinuousClock.now
+            lanes.forEach { $0.invalidate() }
+            canvas.displayIfNeeded()
+            redraws.append(milliseconds(start.duration(to: .now)))
+        }
+        let drawn = lanes.map(\.draws)
+        var ticks: [Double] = []
+        let edited = model.duration
+        for frame in 0..<300 {
+            let time = edited * Double(frame) / 300
+            let start = ContinuousClock.now
+            model.playhead = time; model.sourceTime = model.timelineSourceTime(time, on: .edited)
+            canvas.followPlayhead()
+            canvas.displayIfNeeded()
+            ticks.append(milliseconds(start.duration(to: .now)))
+        }
+        let redrawMaximum = redraws.max() ?? 0, tickP95 = percentile(ticks, 0.95), tickMaximum = ticks.max() ?? 0
+        let tickDraws = zip(lanes.map(\.draws), drawn).map { $0 - $1 }.reduce(0, +)
+        let optimized = !_isDebugAssertConfiguration()
+        let metrics: [String: Double] = ["words": 9_000, "cuts": Double(project.edits.cutWordIds.count), "fullRedrawMaximumMS": redrawMaximum,
+                                         "fullRedrawMedianMS": percentile(redraws, 0.5), "tickP95MS": tickP95, "tickMaximumMS": tickMaximum,
+                                         "laneDrawsDuringTicks": Double(tickDraws), "optimized": optimized ? 1 : 0]
+        try JSONEncoder().encode(metrics).write(to: directory.appendingPathComponent("timeline-performance.json"), options: .atomic)
+        return [
+            .init(name: "60-minute timeline full redraw stays within 8 ms (\(String(format: "%.2f", redrawMaximum)) ms)", passed: drawn.allSatisfy { $0 > 1 } && (!optimized || redrawMaximum <= 8)),
+            .init(name: "60-minute playhead tick stays within 1 ms (p95 \(String(format: "%.3f", tickP95)) ms)", passed: !optimized || tickP95 <= 1),
+            .init(name: "60-minute playhead ticks redraw no lane (\(tickDraws) draws)", passed: tickDraws == 0)
+        ]
+    }
+    private static func milliseconds(_ duration: Duration) -> Double { Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15 }
+    private static func percentile(_ values: [Double], _ fraction: Double) -> Double {
+        let sorted = values.sorted()
+        return sorted.isEmpty ? 0 : sorted[min(sorted.count - 1, Int(Double(sorted.count - 1) * fraction))]
+    }
+
     private static func missingCaptionPosition(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var project = fixture
         project.media.source.absolutePath = directory.appendingPathComponent("missing.mov").path
@@ -212,7 +355,7 @@ import VoxClipCore
         model.undoManager = undo
         model.mediaResolved = true
         model.refresh()
-        model.editedTimeline = true
+        model.showsCuts = false
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         func trim(start: Bool, index: Int) {
@@ -225,12 +368,12 @@ import VoxClipCore
         for start in [false, true] {
             let edge: String = start ? "left" : "right"
             let fraction: Double = start ? 0 : 1
-            if let index = model.timelineTrimIndex(clip, start: start, fraction: fraction) {
+            if let index = model.timelineTrimIndex(clip, start: start, time: fraction * model.duration, on: .edited) {
                 trim(start: start, index: index)
             }
             check("Edited \(edge)-edge trim keeps exact 10–20-second clip word IDs in a 60-second source (\(model.activeClip?.startWordId ?? "nil")...\(model.activeClip?.endWordId ?? "nil"), undo=\(undo.canUndo), duration=\(model.duration))", model.activeClip?.startWordId == clip.startWordId && model.activeClip?.endWordId == clip.endWordId && !undo.canUndo)
             let movedFraction: Double = start ? 0.2 : 0.8
-            if let index = model.timelineTrimIndex(clip, start: start, fraction: movedFraction) {
+            if let index = model.timelineTrimIndex(clip, start: start, time: movedFraction * model.duration, on: .edited) {
                 trim(start: start, index: index)
             }
             check("Edited \(edge)-handle drag creates one Trim clip undo", model.activeClip != clip && undo.undoActionName == "Trim clip")
@@ -238,7 +381,7 @@ import VoxClipCore
             check("one undo of the Edited \(edge)-handle drag restores both exact saved word IDs", model.activeClip == clip && !undo.canUndo)
             undo.removeAllActions()
             let nearEdge: Double = start ? 0.0000001 : 0.9999999
-            if let index = model.timelineTrimIndex(clip, start: start, fraction: nearEdge) { trim(start: start, index: index) }
+            if let index = model.timelineTrimIndex(clip, start: start, time: nearEdge * model.duration, on: .edited) { trim(start: start, index: index) }
             check("sample-rounded Edited \(edge) edge remains within the saved clip endpoints", model.activeClip == clip && !undo.canUndo)
         }
         undo.beginUndoGrouping()
@@ -246,10 +389,9 @@ import VoxClipCore
         undo.endUndoGrouping()
         undo.removeAllActions()
         let collapsedTime: Double = 4
-        let fraction: Double = collapsedTime / model.duration
-        let inverse: Double = model.timelineSourceTime(collapsedTime)
-        let index = model.timelineTrimIndex(clip, start: false, fraction: fraction)
-        check("trim and scrub share a right-continuous inverse across a collapsed cut", inverse == 15 && index == 14 && model.timelineTrimIndex(clip, start: true, fraction: fraction) == 15)
+        let inverse: Double = model.timelineSourceTime(collapsedTime, on: .edited)
+        let index = model.timelineTrimIndex(clip, start: false, time: collapsedTime, on: .edited)
+        check("trim and scrub share a right-continuous inverse across a collapsed cut", inverse == 15 && index == 14 && model.timelineTrimIndex(clip, start: true, time: collapsedTime, on: .edited) == 15)
         if let index { trim(start: false, index: index) }
         check("dragging an Edited end across a collapsed cut snaps to its stable word boundary", model.activeClip?.endWordId == "trim-14" && undo.undoActionName == "Trim clip")
         undo.undo()
@@ -272,9 +414,10 @@ import VoxClipCore
         let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         defer { model.close(); model.document.close() }
         model.mediaResolved = true; model.refresh()
-        await model.loadWaveform()
+        // No timeline shows: the model loads the waveform itself once the media is there (impl-plan §3.1).
+        await model.waveformTask?.value
         model.sourceTime = 0.5; model.playhead = 0.5
-        var results = [DebugUISuite.Result(name: "audio-only stage and timeline share the decoded ten-ms envelope", passed: model.waveform?.fine.count == 100 && !model.timeline.sourceWaveform.isEmpty)]
+        var results = [DebugUISuite.Result(name: "audio-only stage gets the decoded ten-ms envelope with no timeline shown", passed: model.waveform?.fine.count == 100)]
         if let layout = try await model.renderRequest().captionLayout {
             let image = await app.captions.stage(layout, time: 0.5)
             let pixels: Data? = image?.cgImage(forProposedRect: nil, context: nil, hints: nil)?.dataProvider?.data.map { $0 as Data }
@@ -285,10 +428,6 @@ import VoxClipCore
             results.append(.init(name: "audio-only captions paint real export-layout glyphs, not a blank overlay", passed: ink > 20))
         }
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            let timeline = makeWindow(TimelineStrip(model: model), width: 600, appearance: appearance)
-            try await Task.sleep(for: .milliseconds(80))
-            _ = try capture(timeline.contentView!, name: "timeline-waveform-\(name)", directory: directory)
-            timeline.close()
             let host = NSHostingView(rootView: ViewerSection(model: model, columnWidth: 360).frame(width: 360, height: 430).background(DesignValues.color("bg.surface")))
             host.frame = CGRect(x: 0, y: 0, width: 360, height: 430)
             let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
@@ -338,14 +477,6 @@ import VoxClipCore
         results.append(.init(name: "off-main AVAssetReader fallback computes fifty-ms linear-PCM RMS", passed: decoded?.buckets.count == 20 && levelsMatch))
         return results
     }
-    private static func makeWindow(_ view: some View, width: CGFloat, appearance: NSAppearance.Name) -> NSWindow {
-        let host = NSHostingView(rootView: view.frame(width: width, height: 72).background(DesignValues.color("bg.surface")))
-        host.frame = CGRect(x: 0, y: 0, width: width, height: 72)
-        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false; window.contentView = host; window.appearance = NSAppearance(named: appearance)
-        host.layoutSubtreeIfNeeded()
-        return window
-    }
     private static func capture(_ view: NSView, name: String, directory: URL) throws -> NSBitmapImageRep {
         view.layoutSubtreeIfNeeded()
         guard let cached = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.coderInvalidValue) }
@@ -362,12 +493,6 @@ import VoxClipCore
     private static func pixel(_ bitmap: NSBitmapImageRep, x: Int, y: Int) -> [Double] {
         guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return [] }
         return [color.redComponent, color.greenComponent, color.blueComponent]
-    }
-    private static func repeats(_ bitmap: NSBitmapImageRep, from: Int, to: Int, row: Int, period: Int) -> Bool {
-        (from..<(to - period)).allSatisfy { (offset: Int) -> Bool in
-            let next: Int = offset + period
-            return zip(pixel(bitmap, x: offset, y: row), pixel(bitmap, x: next, y: row)).allSatisfy { (pair: (Double, Double)) -> Bool in abs(pair.0 - pair.1) < 0.02 }
-        }
     }
     private static func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
         var value: CFTypeRef?

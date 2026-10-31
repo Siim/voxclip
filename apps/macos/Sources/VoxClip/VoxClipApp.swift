@@ -250,7 +250,7 @@ import VoxClipCore
         case 10: editor.showCuts.toggle()
         case 11: editor.showPauses.toggle()
         case 12: model.shell.toggleViewer()
-        case 17: editor.editedTimeline.toggle()
+        case 17: editor.showsCuts.toggle()
         case 18: editor.zoom(1)
         case 19: editor.zoom(-1)
         case 20: editor.zoom(0)

@@ -844,7 +844,8 @@ import ApplicationServices
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
             guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
             let project = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
-            let results = try DebugTranscriptPerformance.run(app: app, fixture: project, directory: destination)
+            var results = try DebugTranscriptPerformance.run(app: app, fixture: project, directory: destination)
+            results += try DebugTimeline.performance(app: app, fixture: project, directory: destination)
             try JSONEncoder().encode(results).write(to: destination.appendingPathComponent("results.json"), options: .atomic)
             passed = results.allSatisfy { $0.passed }
         } catch { try? Data("Performance fixture failed".utf8).write(to: destination.appendingPathComponent("failure.txt")) }
