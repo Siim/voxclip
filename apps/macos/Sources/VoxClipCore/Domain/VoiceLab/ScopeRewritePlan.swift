@@ -41,11 +41,16 @@ public struct ScopeRewritePlan: Sendable {
     public struct Line: Sendable, Equatable {
         /// The line's `[a-b]` label, as the request's range names it.
         public let line: String
-        /// The transcript item IDs of the line's entries, in source order. Cut and re-voiced items between them are not listed.
-        public let itemIDs: [String]
+        /// The line's items as the transcript holds them, corrections applied, in source order: the items `ScopeRewriteDiff`
+        /// diffs an edit of the line against. Cut and re-voiced items between them are not listed.
+        public let items: [TimedWord]
+        /// The line's request entries, one per item: the text the model read.
+        public let entries: [ClipWord]
         /// `minChars...maxChars`, at most 5,000 on both bounds.
         public let range: ClosedRange<Int>
         public let rangeSource: RangeSource
+        /// The transcript item IDs of the line's entries, in source order.
+        public var itemIDs: [String] { items.map(\.id) }
     }
 
     public static let maxEntries = 3_000
@@ -140,14 +145,14 @@ public struct ScopeRewritePlan: Sendable {
         var lines: [Line] = []
         for line in formatted.lines {
             let lineItems = kept[line.firstPos...line.lastPos].map { corrected[$0] }
+            let lineEntries = Array(entries[line.firstPos...line.lastPos])
             let label = "[\(line.firstIndex)-\(line.lastIndex)]"
-            let ids = lineItems.map(\.id)
             // The labels the model echoes when it returns the line: an event's counts, and "…" has no letters.
             let echoed = (line.firstPos...line.lastPos).filter { corrected[kept[$0]].kind != .word }
                 .reduce(0) { $0 + VoiceLabTextLength.length(entries[$1].text) }
             guard let first = lineItems.first(where: { $0.kind == .word }), let last = lineItems.last(where: { $0.kind == .word }) else {
                 let chars = min(max(1, echoed), maxChars)
-                lines.append(Line(line: label, itemIDs: ids, range: chars...chars, rangeSource: .noSpeech))
+                lines.append(Line(line: label, items: lineItems, entries: lineEntries, range: chars...chars, rangeSource: .noSpeech))
                 continue
             }
             let speech = try rate()
@@ -163,7 +168,7 @@ public struct ScopeRewritePlan: Sendable {
                 source = .lineSpan
             }
             let lower = min(budget.minChars + echoed, maxChars), upper = min(budget.maxChars + echoed, maxChars)
-            lines.append(Line(line: label, itemIDs: ids, range: lower...upper, rangeSource: source))
+            lines.append(Line(line: label, items: lineItems, entries: lineEntries, range: lower...upper, rangeSource: source))
         }
         let ranges = lines.map { PatchRewriteLineRange(line: $0.line, minChars: $0.range.lowerBound, maxChars: $0.range.upperBound) }
         return ScopeRewritePlan(scope: scope, lines: lines,

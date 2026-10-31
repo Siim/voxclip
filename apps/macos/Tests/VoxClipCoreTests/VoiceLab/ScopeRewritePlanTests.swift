@@ -54,7 +54,7 @@ struct ScopeRewritePlanTests {
         return segment
     }
     /// The passage fixture with the vector's items, duration, sample rate, edits and replacements (none unless it lists them).
-    private func take(_ input: JSONValue) throws -> Project {
+    func take(_ input: JSONValue) throws -> Project {
         var project = try #require(Self.passage)
         let edits = input[ai: "edits"]
         let template = try #require(project.voiceLab.segments.first)
@@ -77,7 +77,7 @@ struct ScopeRewritePlanTests {
         project.edits.activeClipId = nil
         return project
     }
-    private func envelope(_ value: JSONValue) throws -> AudioEnvelope? {
+    func envelope(_ value: JSONValue) throws -> AudioEnvelope? {
         guard value != .null else { return nil }
         let levels = try value[ai: "runs"].aiArray.flatMap { run -> [Float] in
             let level = try #require(run.aiArray.first?.aiDouble), count = try #require(run.aiArray.last?.aiInt)
@@ -85,7 +85,7 @@ struct ScopeRewritePlanTests {
         }
         return AudioEnvelope(sampleRate: try #require(value[ai: "sampleRate"].aiDouble), levels: levels)
     }
-    private func scope(_ value: JSONValue) throws -> RewriteScope {
+    func scope(_ value: JSONValue) throws -> RewriteScope {
         switch value[ai: "kind"].aiString {
         case "clip": return .clip(try #require(value[ai: "clipId"].aiString))
         case "selection":
