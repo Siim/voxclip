@@ -788,6 +788,7 @@ All of these end in the Rewrite review (`doc/design.md` §6.3): tracked changes 
 1. **Rewrite a scope.** The scope is the selected kept or suggested clip, or Full take. The scope bar's field supplies the instruction, or "Fix slips and repeats. Keep my words and my voice; change as little as possible." when it is empty. This is "Fix with AI" over the scope through `PatchRewriteService`:
    - `entries` are the scope's kept items, in source order. Each uses the ai.md §11.2 item format, with corrections applied, but unlike §11.2, which includes every item, cut items are left out.
    - `ranges` come from `VoiceLabLengthBudget`, with each `formatTranscript` line as one replace hunk.
+   - `ScopeRewritePlan` (`Domain/VoiceLab/`) builds the entries, lines and ranges for the scope (Swift `make`). A line's window runs from its first to its last word item in the scope's render scope (§8.4, with a clip's `clipTimes` head and tail), with the take's transcript rate (§8.9.1, corrections applied). When `place` refuses that window, or the source envelope is missing, the line takes `fullTake` of its own items instead (advisory, first word start to last word end). A line with no word item gets 1 to 1. Both bounds are capped at 5,000. A take or envelope the window planner cannot read is invalid input for the whole plan.
    - The request limits are unchanged (1 to 3,000 entries; 20,000 bytes); above them the panel says "Rewrite works on up to 3,000 words at a time."
    - Each returned line edit becomes new text for that line. `VoiceLabWordDiff` runs per line against that line's kept items, and §8.2 step 6 then merges hunks across line boundaries. The prompt file, schema, validation and `checkThis` below are unchanged.
 2. **Rewrite a selection.** A word selection uses `VoiceRewriteService` (passage) with the field's instruction, as before.
@@ -1862,6 +1863,8 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - The recipe has a fit factor of 1, `outDuration` equal to the window (or the window plus `residualSeconds` after a partial fit), and chunks that name the paid asset's ID and SHA-256; v3 validation accepts it.
     - The existing unity passage, full-take and touching suites still pass, and both preflights still refuse a fit factor other than 1.
 20. **Training spans (§6.5.1).** Both Core suites replay every case in `training-spans.json` and match its status, totals (including `preferredMs`) and span lists exactly. With a fake speaker check, spans below τ are dropped before any request, fewer than 30 s left blocks with the mismatch copy of `doc/design.md` §6.3.7 V3 and no provider call, and the request sends the statement first and the kept spans in source order.
+
+21. **Scope rewrite plan (§8.1 item 1).** The Swift suite replays every case in `scope-rewrite-plan-cases.json`, written by `tools/fixtures/voice-lab/generate_scope_rewrite.py`: entries, lines and each line's range and its source (`window`, `lineSpan` or `noSpeech`), the limits on both sides with the entry count, and every plan accepted by `PatchRewriteService`. The C# suite replays it once the C# twin lands.
 
 Manual QA with real keys runs locally, never in CI:
 
