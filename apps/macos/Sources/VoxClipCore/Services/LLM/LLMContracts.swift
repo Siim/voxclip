@@ -13,6 +13,16 @@ public enum ConnectorID: String, Codable, Sendable, Hashable, CaseIterable {
     case codex
 }
 
+/// Who pays for an installed CLI's sends, as its sign-in check reports it: Claude Code's `authMethod` (AI §6.8) or
+/// whether `codex login status` says "API key" (AI §6.9). The raw values are the billing keys the app derives from
+/// those reports today. A method the app does not recognise has no value; it never counts as a plan.
+public enum CLISignIn: String, Sendable, Hashable, CaseIterable {
+    /// A Claude or ChatGPT plan: a send counts toward the plan and costs nothing extra.
+    case plan
+    /// An API key: a send is billed to the key the CLI is signed in with.
+    case apiKey = "api_key"
+}
+
 /// Canonical feature; AI §3.1.
 public enum LLMFeature: String, Codable, Sendable, Hashable, CaseIterable {
     case clipFinder
