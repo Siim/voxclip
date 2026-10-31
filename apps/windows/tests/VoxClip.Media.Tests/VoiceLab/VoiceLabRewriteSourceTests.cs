@@ -103,6 +103,44 @@ public sealed class VoiceLabRewriteSourceTests
         Assert.Equal(0, reads);
     }
 
+    /// <summary>Every quote streams the whole track, so when the selection, voice or model changes the token is all that stops the
+    /// read: it must stop before the next chunk, in the envelope pass and in the region decode, and reach the conversion that
+    /// holds a decode in progress.</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public async Task CancellingTheReadStopsItBeforeItsNextChunk(int completed)
+    {
+        const int rate = 8_000;
+        const long frames = 5_000_000;
+        static short Pcm(long frame) => frame is >= 400_000 and < 404_800 ? (short)0 : Speech(frame);
+        TimedWord[] items = [Word("a", 0, 49.9), Word("b", 50.7, 625)];
+        var window = Window(30, 31, rate);
+        // Left alone, the read makes three envelope conversions and then decodes two regions.
+        var spans = new List<(long Start, long End)>();
+        await VoiceLabSourceAudio.RewriteSourceAsync("cancel", frames, rate, window, null, null, items, Conversion(frames, Pcm, spans), Token);
+        Assert.Equal(new (long Start, long End)[] { (0, 2_240_000), (2_240_000, 4_480_000), (4_480_000, frames), (192_000, 296_000), (392_000, 412_000) },
+            spans);
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        if (completed == 0) await cancel.CancelAsync();
+        var fake = Conversion(frames, Pcm);
+        var tokens = new List<CancellationToken>();
+        Func<string, long, long, double, CancellationToken, Task<byte[]>> conversion = async (source, start, end, sampleRate, ct) =>
+        {
+            tokens.Add(ct);
+            var wav = await fake(source, start, end, sampleRate, ct);
+            if (tokens.Count == completed) await cancel.CancelAsync();
+            return wav;
+        };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            VoiceLabSourceAudio.RewriteSourceAsync("cancel", frames, rate, window, null, null, items, conversion, cancel.Token));
+        Assert.Equal(completed, tokens.Count);
+        // Each conversion was handed the caller's token, so cancelling reaches a decode in progress too.
+        Assert.All(tokens, token => Assert.True(token.IsCancellationRequested));
+    }
+
     [Fact]
     public async Task DecodeChunksStayUnderTheUploadLimitAtEverySupportedRate()
     {
