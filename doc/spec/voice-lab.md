@@ -475,7 +475,7 @@ A new statement is generated for each attempt:
 
 ### 6.4 Verification
 
-1. **Order.** After the live statement (§6.3), the speaker match (§6.6) runs on device first, against the selected project spans or the read-aloud. Only when enough audio passes does the panel offer **Create My Voice**. Its single approval covers, in order: the plan check (§2.3), Scribe transcription of the statement (ElevenLabs Scribe v2, transcription.md §8, with `language_code` set to the statement language; under $0.01), and, only if item 3 passes, the creation (§6.7). The approval binds the statement's SHA-256, the files and their roles, the name, the language and the creation time, so the file set is final when the user approves. A failed check creates nothing and spends only the Scribe request.
+1. **Order.** After the live statement (§6.3), the speaker match (§6.6) runs on device first, against the selected project spans or the read-aloud. Only when enough audio passes does the panel offer **Create My Voice**. Its single approval covers, in order: the plan check (§2.3); then, only if the plan check passes, Scribe transcription of the statement (ElevenLabs Scribe v2, transcription.md §8, with `language_code` set to the statement language; under $0.01); then, only if item 3 passes, the creation (§6.7). The approval binds everything §6.7's quote binds: the trimmed name, the language, the creation time, the noise-removal choice, and each file's position, role and SHA-256 (the statement is the first file). So the file set is final when the user approves, and any change to these needs a new approval. A failed plan check stops before Scribe and spends nothing. A failed statement check creates nothing and spends only the Scribe request.
 2. **Normalise.** Tokenise both texts on whitespace and normalise with `normalizeForMatch` (`editing.md` §4.7).
 3. **Pass** only if all of these hold:
    - word-level WER (Levenshtein distance / expected word count) ≤ 0.15;
@@ -1837,7 +1837,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - A recognised language that differs from the statement fails.
     - Date strings use the month tables in en and et.
     - An Estonian transcript gives an English statement while only English has a calibrated speaker check (§6.2).
-    - A speaker mismatch makes no provider request. A failed statement check creates nothing. The single approval refuses a changed file set, name, language or creation time.
+    - A speaker mismatch makes no provider request. A failed plan check makes no Scribe request. A failed statement check creates nothing. The single approval refuses a changed name, language, creation time or noise-removal choice, and a changed file set, including any file's position, role or SHA-256.
 12. **Request goldens** for every endpoint in §4.3, §6.7, §7.3, §8.5, §8.8, §9.4 and §9.5: method, path, headers (with key values redacted), body or multipart parts.
     - The Isolator, forced-alignment, text-to-dialogue and lip-sync client goldens are waiting on their §4/§9 clients. Clean audio and Lip sync stay visibly unavailable with a reason in 0.1.0; no successful provider state machine is implied by the TTS/IVC goldens.
 13. **Provider state machines** with mocked HTTP:

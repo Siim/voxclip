@@ -84,6 +84,21 @@ class RewriteSpecTests(unittest.TestCase):
         for row in ['`claude.ai`', '`third_party`', '`none`', 'an unrecognised status']:
             self.assertIn(row, cost)
 
+    def test_single_enrollment_approval_binds_what_the_creation_quote_binds(self):
+        creation = section(self.voice_lab, '### 6.7')
+        bound = between(creation, 'The quote binds:', 'Any change to these').splitlines()[1:]
+        bound = [line.strip('- ;.').removeprefix('the ').removeprefix("each file's ") for line in bound if line.strip()]
+        self.assertGreaterEqual(len(bound), 5)
+        terms = [term for line in bound for term in re.split(r', | and ', line)]
+        order = numbered_item(section(self.voice_lab, '### 6.4'), 1)
+        for term in terms:
+            self.assertIn(term, order)
+        self.assertIn('only if the plan check passes, Scribe', order)
+        self.assertIn('A failed plan check stops before Scribe', order)
+        consent = numbered_item(section(self.voice_lab, '## 15.'), 11)
+        for term in ['noise-removal choice', "position, role or SHA-256", 'A failed plan check makes no Scribe request']:
+            self.assertIn(term, consent)
+
 
 if __name__ == '__main__':
     unittest.main()
