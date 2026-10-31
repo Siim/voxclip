@@ -65,13 +65,17 @@ public struct VoiceLabTakeRunQuote: Sendable, Equatable, Identifiable {
     public let estimate: CostEstimate
     package init(id: UUID, takes: [VoiceLabTakeQuote], preparedAt: Date) {
         self.id = id; self.takes = takes; self.preparedAt = preparedAt; expiresAt = preparedAt.addingTimeInterval(300)
-        let estimates = takes.flatMap { [$0.synthesis.estimate, $0.qa.estimate] }
+        estimate = Self.total(of: takes.flatMap { [$0.synthesis.estimate, $0.qa.estimate] }, takes: takes.count)
+    }
+    /// The sum of take quotes' estimates, `takes` units of "take": `usd` is unknown when any estimate's is, and so are
+    /// `credits`. A run and a take batch (`VoiceLabTakeBatch`) present their totals this way.
+    package static func total(of estimates: [CostEstimate], takes: Int) -> CostEstimate {
         let known = estimates.allSatisfy { $0.usd != nil }
         let creditsKnown = estimates.allSatisfy { $0.credits != nil }
-        estimate = CostEstimate(provider: "elevenlabs", operation: "takeRun", units: Double(takes.count), unit: "take",
-                                usd: known ? estimates.reduce(Decimal(0)) { $0 + ($1.usd ?? 0) } : nil,
-                                credits: creditsKnown ? estimates.reduce(0) { $0 + ($1.credits ?? 0) } : nil,
-                                basis: known ? "bounded-tts-and-scribe" : "unknown")
+        return CostEstimate(provider: "elevenlabs", operation: "takeRun", units: Double(takes), unit: "take",
+                            usd: known ? estimates.reduce(Decimal(0)) { $0 + ($1.usd ?? 0) } : nil,
+                            credits: creditsKnown ? estimates.reduce(0) { $0 + ($1.credits ?? 0) } : nil,
+                            basis: known ? "bounded-tts-and-scribe" : "unknown")
     }
 }
 
