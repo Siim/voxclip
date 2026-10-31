@@ -378,7 +378,7 @@ import VoxClipCore
             case 34: return editor.capabilities.ai && !editor.words.isEmpty
             case 10: item.title = editor.showCuts ? "Hide Cut Words" : "Show Cut Words"
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
-            case 12: item.title = model.shell.layout.rightVisible ? "Hide Viewer" : "Show Viewer"
+            case 12: item.title = model.shell.viewerShown ? "Hide Viewer" : "Show Viewer"
             default: return true
             }
         }

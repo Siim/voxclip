@@ -94,7 +94,7 @@ import VoxClipMedia
                 guard let split = DebugColumnBounds.split(in: window.contentView), let right = split.arrangedSubviews.last else { return false }
                 return !split.isSubviewCollapsed(right)
             }
-            guard shell.layout.rightVisible, !shell.layout.explorerVisible else { throw VoxClipError.exportFailed("Show Viewer at 960 must hide the sidebar.") }
+            guard shell.layout.rightVisible, !shell.layout.explorerVisible else { throw VoxClipError.exportFailed("At 960 the Explorer collapses and the viewer shows (impl-plan §3.5).") }
             return nil
         }
         shell.windowWidth = 1440

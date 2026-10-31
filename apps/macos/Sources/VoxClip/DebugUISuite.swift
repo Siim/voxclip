@@ -549,8 +549,8 @@ import ApplicationServices
             }
             let appearance = app.string("general.appearance", fallback: "system")
             window.setContentSize(NSSize(width: 1024, height: 700))
-            try await waitUntil { abs(shell.windowWidth - 1024) < 1 && !shell.layout.rightVisible }
-            check("1024 wide collapses the viewer and keeps the sidebar", abs(shell.windowWidth - 1024) < 1 && !shell.layout.rightVisible && shell.layout.explorerVisible)
+            try await waitUntil { abs(shell.windowWidth - 1024) < 1 && !shell.layout.explorerVisible }
+            check("1024 wide collapses the Explorer and keeps the viewer (impl-plan §3.5)", abs(shell.windowWidth - 1024) < 1 && shell.layout.rightVisible && !shell.layout.explorerVisible)
             app.set("general.appearance", .string("light"))
             try await Task.sleep(for: .milliseconds(250))
             app.set("general.appearance", .string(appearance))

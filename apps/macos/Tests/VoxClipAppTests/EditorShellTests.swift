@@ -15,14 +15,35 @@ private final class FullScreenStandIn: NSWindow {
     }
 }
 
-/// The v2 shell's AppKit tree without a visible window (impl-plan V1a). Nothing is shown,
-/// and settings are never loaded, so nothing is written.
+/// The v2 shell's AppKit tree without a visible window (impl-plan V1a and V1b). Nothing is
+/// shown, and settings are never loaded, so nothing is written.
 @Suite("v2 shell controllers", .serialized)
 @MainActor struct EditorShellTests {
-    private func editor(_ app: AppModel) throws -> EditorModel {
+    private func project() throws -> Project {
         let shared = try SharedResources.locate()
-        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
-        return EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        return try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+    }
+    private func editor(_ app: AppModel) throws -> EditorModel {
+        EditorModel(document: VoxClipDocument(project: try project(), demo: true), app: app, preview: DemoPreviewEngine())
+    }
+    /// A shell with the fixture open and its controller built in a never-shown window `width` wide.
+    private func openShell(width: Double = 1280) async throws -> (WorkspaceShell, EditorShellController, FullScreenStandIn) {
+        _ = NSApplication.shared
+        let shell = WorkspaceShell(app: AppModel())
+        await shell.attachForTesting(VoxClipDocument(project: try project(), demo: true), selection: .fullTake)
+        shell.windowWidth = width
+        let controller = EditorShellController(shell: shell)
+        let window = FullScreenStandIn(contentRect: NSRect(x: -10000, y: -10000, width: width, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        window.contentView = controller.view
+        controller.view.frame = NSRect(x: 0, y: 0, width: width, height: 800)
+        controller.apply(EditorShellState(shell: shell))
+        return (shell, controller, window)
+    }
+    /// The first view under `root` with `identifier`.
+    private func view(_ identifier: String, in root: NSView) -> NSView? {
+        if root.identifier?.rawValue == identifier { return root }
+        return root.subviews.lazy.compactMap { view(identifier, in: $0) }.first
     }
     /// The editor's columns and timeline at the work area's size, with the layout applied as
     /// EditorShellController applies it.
@@ -82,31 +103,46 @@ private final class FullScreenStandIn: NSWindow {
         #expect(titleRow.leadingInset == ShellMetrics.windowButtons)
     }
 
-    /// At 1024 a drag of the right column's divider is Show Viewer or Hide Viewer: the width
-    /// rule's bookkeeping stays right, and nothing stores a width.
+    /// At 1024 a drag of the right column's divider is Show Viewer or Hide Viewer, and
+    /// nothing stores a width. Below 904 the collapsed column's divider cannot be dragged:
+    /// Show Viewer shows the column over the editor instead (impl-plan §3.5).
     @Test func draggingTheRightColumnOpenOrClosedIsItsToggle() throws {
         let app = AppModel()
         let shell = WorkspaceShell(app: app)
         let model = try editor(app)
         defer { model.close() }
         shell.windowWidth = 1024
-        #expect(!shell.layout.rightVisible && shell.layout.explorerVisible)
-        // Building the work area while the width rule hides the column keeps it hidden.
+        #expect(shell.layout.rightVisible && !shell.layout.explorerVisible)
         let work = makeWork(model, shell)
         defer { work.tearDown() }
-        #expect(!shell.layout.rightVisible && work.rightItem.isCollapsed)
+        let probe = NSRect(x: 0, y: 0, width: 5, height: 100)
+        #expect(!work.rightItem.isCollapsed && work.columns.splitView(work.columns.divider, effectiveRect: probe, forDrawnRect: probe, ofDividerAt: 0) != .zero)
 
-        // Dragged open: the Explorer makes room, and a 1 pt resize keeps the column.
-        drag(work.rightItem, collapsed: false, in: work.columns)
-        #expect(shell.layout.rightVisible && !shell.layout.explorerVisible)
-        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
-        shell.windowWidth = 1025
-        #expect(shell.layout.rightVisible && !shell.layout.explorerVisible)
-
-        // Dragged closed: the Explorer hidden to make room comes back.
+        // Dragged closed and open again: Hide Viewer and Show Viewer.
         drag(work.rightItem, collapsed: true, in: work.columns)
-        #expect(!shell.layout.rightVisible && shell.layout.explorerVisible)
+        #expect(!shell.layout.rightVisible && !shell.layout.explorerVisible)
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
+        drag(work.rightItem, collapsed: false, in: work.columns)
+        #expect(shell.layout.rightVisible)
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
         #expect(app.settings.values[WorkspaceLayout.rightWidthKey] == nil)
+
+        // Below 904: collapsed by width, locked, and shown over the editor on request.
+        shell.windowWidth = 880
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible, rightOverlay: shell.rightOverlay)
+        #expect(!shell.layout.rightVisible && work.rightItem.isCollapsed && work.rightOverlay == nil)
+        #expect(work.columns.splitView(work.columns.divider, effectiveRect: probe, forDrawnRect: probe, ofDividerAt: 0) == .zero)
+        shell.toggleViewer()
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible, rightOverlay: shell.rightOverlay)
+        let overlay = try #require(work.rightOverlay?.view)
+        overlay.superview?.layoutSubtreeIfNeeded()
+        #expect(work.rightItem.isCollapsed && overlay.frame.width == 300 && overlay.frame.minY == ShellMetrics.titleRow)
+        #expect(overlay.frame.maxX == overlay.superview?.bounds.width)
+        #expect(overlay.accessibilityRole() == .group && overlay.accessibilityLabel() == "Viewer and panel")
+        #expect(work.rightToggle.accessibilityLabel() == EditorIconAction.hideViewer.name)
+        shell.toggleViewer()
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible, rightOverlay: shell.rightOverlay)
+        #expect(work.rightOverlay == nil && overlay.superview == nil)
     }
 
     /// A hidden timeline panel is no F6 stop. Until V4 the panel stays while the right column
@@ -157,6 +193,29 @@ private final class FullScreenStandIn: NSWindow {
         menu.performActionForItem(at: index)
         #expect(model.showFindClips && model.findClipsAnchor == .overflow)
         model.showFindClips = false
+    }
+
+    /// Full-screen entry at a Split View width collapses both columns and the window
+    /// buttons' room goes; exit to 1280 brings both back and the overlay goes.
+    @Test func fullScreenAtASplitViewWidthAndBack() async throws {
+        let (shell, controller, window) = try await openShell()
+        defer { controller.tearDown(); shell.editor?.close() }
+        let work = try #require(controller.editorWork)
+        window.reportsFullScreen = true
+        NotificationCenter.default.post(name: NSWindow.didEnterFullScreenNotification, object: window)
+        shell.windowWidth = 760
+        controller.apply(EditorShellState(shell: shell))
+        #expect(!shell.layout.explorerVisible && !shell.layout.rightVisible)
+        #expect(work.tabRow.leadingInset == 8 && controller.explorerToggle.superview === work.tabRow)
+        shell.toggleViewer()
+        controller.apply(EditorShellState(shell: shell))
+        #expect(work.rightOverlay != nil)
+        window.reportsFullScreen = false
+        NotificationCenter.default.post(name: NSWindow.didExitFullScreenNotification, object: window)
+        shell.windowWidth = 1280
+        controller.apply(EditorShellState(shell: shell))
+        #expect(shell.layout.explorerVisible && shell.layout.rightVisible && !shell.rightOverlay && work.rightOverlay == nil)
+        #expect(work.tabRow.leadingInset == 0 && controller.explorerToggle.superview !== work.tabRow)
     }
 }
 #endif

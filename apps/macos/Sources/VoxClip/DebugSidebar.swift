@@ -341,7 +341,7 @@ import VoxClipCore
         results += await dividerDrag(app: app)
 
         // The sidebar in a window: Export Clip… from a row's context menu, Find Clips'
-        // focus and the overlay below 960.
+        // focus and the overlay below 1,128.
         results += try await sidebarWindow(app: app, project: try fiveQuestions(from: fixture), directory: directory)
 
         // A Versions-browser version opens read-only in its own window.
@@ -424,7 +424,7 @@ import VoxClipCore
 
     /// The sidebar in an offscreen main-window layout: its column width, Export Clip…
     /// through a clip row's own context menu, Find Clips' keyboard focus on its first new
-    /// suggestion, and below 960 the overlay sidebar with Escape.
+    /// suggestion, and below 1,128 the overlay sidebar with Escape.
     static func sidebarWindow(app: AppModel, project: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
@@ -518,13 +518,13 @@ import VoxClipCore
         check("after Find Clips the sidebar list has keyboard focus for the first new suggestion, which stays unselected (first responder \(window.firstResponder.map { String(describing: type(of: $0)) } ?? "none"))",
               editor.focusedSuggestion != nil && window.firstResponder === list && shell.selection == .fullTake && editor.project.edits.activeClipId == nil)
 
-        // Below 960 the sidebar shows as the overlay, and Escape hides it (design §3.7).
+        // Below 1,128 the sidebar shows as the overlay, and Escape hides it (impl-plan §3.5).
         window.setContentSize(NSSize(width: 900, height: 800))
-        for _ in 0..<40 where shell.windowWidth >= WorkspaceShell.sidebarCollapseWidth { try await Task.sleep(for: .milliseconds(25)) }
+        for _ in 0..<40 where shell.windowWidth >= shell.explorerCollapseWidth { try await Task.sleep(for: .milliseconds(25)) }
         app.settings.values["llm.connector"] = nil
         editor.requestFindClips(from: .overflow)
         check("at 900 Find Clips opens its popover without expanding the collapsed sidebar",
-              shell.windowWidth < WorkspaceShell.sidebarCollapseWidth && editor.showFindClips && !editor.showAISetup && !shell.sidebarOverlay && !shell.layout.explorerVisible)
+              shell.windowWidth < shell.explorerCollapseWidth && editor.showFindClips && !editor.showAISetup && !shell.sidebarOverlay && !shell.layout.explorerVisible)
         editor.showFindClips = false
         shell.revealSidebar()
         // Wait for the overlay itself (bounded) rather than a fixed delay that a busy Mac outlasts.
@@ -535,10 +535,10 @@ import VoxClipCore
             try await Task.sleep(for: .milliseconds(25))
         }
         check("at 900 explicitly showing the sidebar opens its overlay while the column stays collapsed",
-              shell.windowWidth < WorkspaceShell.sidebarCollapseWidth && shell.sidebarOverlay && !shell.layout.explorerVisible && overlayList != nil)
+              shell.windowWidth < shell.explorerCollapseWidth && shell.sidebarOverlay && !shell.layout.explorerVisible && overlayList != nil)
         window.setContentSize(NSSize(width: 880, height: 800))
         try await Task.sleep(for: .milliseconds(250))
-        check("a resize below 960 keeps the overlay", shell.sidebarOverlay && !shell.layout.explorerVisible)
+        check("a resize below 1128 keeps the overlay", shell.sidebarOverlay && !shell.layout.explorerVisible)
         if let overlayList { window.makeFirstResponder(overlayList) }
         let responder = window.firstResponder.map { String(describing: type(of: $0)) } ?? "none"
         let escape = String(UnicodeScalar(UInt8(27)))
@@ -739,62 +739,81 @@ import VoxClipCore
     static func editorLayout(app: AppModel, shell: WorkspaceShell, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
-        check("the right column starts at 444 at 1440 and 404 at 1280, within 300-560, narrowed to 360 at 1180 so the transcript keeps 596 beside the Explorer",
-              WorkspaceLayout.rightColumnWidth(windowWidth: 1440) == 444 && WorkspaceLayout.rightColumnWidth(windowWidth: 1280) == 404 && WorkspaceLayout.rightColumnWidth(windowWidth: 1180) == 360
-              && WorkspaceLayout.rightColumnWidth(windowWidth: 1024) == 300 && WorkspaceLayout.rightColumnWidth(windowWidth: 2400) == 560)
+        check("the right column starts at 444 at 1440 and 404 at 1280, within 300-560, narrowed to 352 at 1180 and 300 at 1128 so the editor keeps 604 beside the Explorer, and 340 at 1024 without it",
+              WorkspaceLayout.rightColumnWidth(windowWidth: 1440) == 444 && WorkspaceLayout.rightColumnWidth(windowWidth: 1280) == 404 && WorkspaceLayout.rightColumnWidth(windowWidth: 1180) == 352
+              && WorkspaceLayout.rightColumnWidth(windowWidth: 1128) == 300 && WorkspaceLayout.rightColumnWidth(windowWidth: 1024, explorer: 0) == 340 && WorkspaceLayout.rightColumnWidth(windowWidth: 2400) == 560)
         check("beside a 224 Explorer and the starting right column the transcript measure is 656 at 1440 and 536 at 1280, 480 at the 596 minimum and never wider than the pane after its gutter",
               TranscriptNSTextView.measure(forPane: 1440 - 224 - 444) == 656 && TranscriptNSTextView.measure(forPane: 1280 - 224 - 404) == 536
               && TranscriptNSTextView.measure(forPane: 596) == 480 && TranscriptNSTextView.measure(forPane: 500) == 416)
+        // The narrow-size rule (impl-plan §3.5): the Explorer collapses below 1,128, the right
+        // column below 904, and each shows over the editor on request.
         let rule = WorkspaceShell(app: app)
         rule.windowWidth = 1440
         check("at 1440 the viewer shows beside the sidebar", rule.layout.rightVisible && rule.layout.explorerVisible)
-        rule.windowWidth = 1024
-        check("below a 596 transcript pane the viewer collapses first", !rule.layout.rightVisible && rule.layout.explorerVisible)
+        rule.windowWidth = 1128
+        check("at 1128 both columns still fit: the right column narrows to 300", rule.layout.rightVisible && rule.layout.explorerVisible && rule.rightWidth == 300)
+        rule.windowWidth = 1127
+        check("below 1128 the Explorer collapses first and the viewer stays, at its starting width without the Explorer (\(rule.rightWidth))",
+              rule.layout.rightVisible && !rule.layout.explorerVisible && rule.rightWidth == WorkspaceLayout.rightColumnWidth(windowWidth: 1127, explorer: 0))
         rule.windowWidth = 1440
-        check("widening the window brings an automatically hidden viewer back", rule.layout.rightVisible)
+        check("widening the window brings an automatically hidden Explorer back", rule.layout.explorerVisible && rule.layout.rightVisible)
         rule.windowWidth = 1024
         rule.toggleViewer()
-        check("Show Viewer at 1024 hides the sidebar to make room", rule.layout.rightVisible && !rule.layout.explorerVisible)
+        check("Hide Viewer at 1024 hides the column and leaves the Explorer collapsed", !rule.layout.rightVisible && !rule.layout.explorerVisible && !rule.rightOverlay)
         rule.toggleViewer()
-        check("Hide Viewer again restores the sidebar", !rule.layout.rightVisible && rule.layout.explorerVisible)
+        check("Show Viewer at 1024 shows the column", rule.layout.rightVisible && !rule.rightOverlay)
+        rule.windowWidth = 900
+        check("below 904 the right column collapses too", !rule.layout.rightVisible && !rule.layout.explorerVisible)
+        rule.toggleViewer()
+        check("below 904 Show Viewer shows the right column over the editor, and the column stays collapsed", rule.rightOverlay && rule.viewerShown && !rule.layout.rightVisible)
+        rule.toggleViewer()
+        check("Hide Viewer hides that overlay", !rule.rightOverlay && !rule.viewerShown)
+        rule.toggleViewer()
+        rule.windowWidth = 1000
+        check("at 904 and wider the column collapsed by width comes back and its overlay goes", rule.layout.rightVisible && !rule.rightOverlay)
         rule.toggleViewer()
         rule.windowWidth = 900
+        rule.windowWidth = 1000
+        check("a right column the user hid stays hidden through a narrow resize", !rule.layout.rightVisible && !rule.rightOverlay)
         rule.toggleViewer()
-        check("1024 → Show Viewer → 900 → Hide Viewer keeps the sidebar collapsed", !rule.layout.rightVisible && !rule.layout.explorerVisible)
-        rule.windowWidth = 1100
-        check("the width-hidden sidebar returns only after widening", rule.layout.explorerVisible)
         rule.windowWidth = 900
-        check("below 960 the sidebar collapses", !rule.layout.explorerVisible)
         rule.revealSidebar()
         check("at 900 a revealed sidebar shows as the overlay and the column stays collapsed", rule.sidebarOverlay && !rule.layout.explorerVisible)
         rule.windowWidth = 899
-        check("the width rule keeps the overlay on a resize below 960", rule.sidebarOverlay && !rule.layout.explorerVisible)
+        check("the width rule keeps the overlay on a resize below 1128", rule.sidebarOverlay && !rule.layout.explorerVisible)
         rule.choose(.home, byClick: false)
         check("the arrow keys keep the overlay open", rule.sidebarOverlay)
         rule.choose(.home, byClick: true)
         check("a click on a row hides the overlay", !rule.sidebarOverlay)
         rule.toggleSidebar()
-        check("below 960 the Explorer toggle shows the overlay, not the column", rule.sidebarOverlay && !rule.layout.explorerVisible)
+        check("below 1128 the Explorer toggle shows the overlay, not the column", rule.sidebarOverlay && !rule.layout.explorerVisible)
         rule.toggleSidebar()
         check("View > Hide Sidebar hides the overlay", !rule.sidebarOverlay && !rule.sidebarShown)
         rule.revealSidebar()
         rule.windowWidth = 1100
-        check("at 960 and wider the sidebar collapsed by width comes back", rule.layout.explorerVisible && !rule.sidebarOverlay)
+        check("from 904 up the overlay stays below 1128 while the column stays collapsed", rule.sidebarOverlay && !rule.layout.explorerVisible && rule.layout.rightVisible)
+        rule.windowWidth = 1200
+        check("at 1128 and wider the sidebar collapsed by width comes back", rule.layout.explorerVisible && !rule.sidebarOverlay)
         let explorerKey = WorkspaceLayout.explorerWidthKey, rightKey = WorkspaceLayout.rightWidthKey
         let savedExplorer = app.settings.values[explorerKey], savedWidth = app.settings.values[rightKey]
         rule.windowWidth = 1440
         if !rule.layout.rightVisible { rule.toggleViewer() }
         rule.layout.rememberExplorerWidth(320)
-        rule.windowWidth = 1180
-        check("the narrow rule measures the dragged Explorer: at 1180 with a 320 Explorer the viewer collapses", !rule.layout.rightVisible && rule.layout.explorerWidth == 320)
+        rule.windowWidth = 1200
+        check("the narrow rule measures the dragged Explorer: at 1200 with a 320 Explorer the Explorer collapses and the viewer stays", rule.layout.rightVisible && !rule.layout.explorerVisible && rule.layout.explorerWidth == 320 && rule.explorerCollapseWidth == 1224)
         app.settings.values[explorerKey] = savedExplorer
         rule.windowWidth = 1440
         rule.layout.rememberRightWidth(420.4)
         let remembered = rule.rightWidth, reopened = WorkspaceShell(app: app).rightWidth
         rule.layout.rememberRightWidth(900)
         let clamped = rule.rightWidth
+        rule.windowWidth = 1280
+        let narrowed = rule.rightWidth
+        rule.windowWidth = 1440
+        let restored = rule.rightWidth
         app.settings.values[rightKey] = savedWidth
-        check("a dragged right column width is kept in \(rightKey) for every project, within 300-560", remembered == 420 && reopened == 420 && clamped == 560)
+        check("a dragged right column width is kept in \(rightKey) for every project, within 300-560, narrowed while the editor needs the room (\(narrowed) at 1280)",
+              remembered == 420 && reopened == 420 && clamped == 560 && narrowed == 452 && restored == 560)
 
         for (width, height) in [(1440.0, 900.0), (1280, 800), (1024, 700)] {
             // The window has its width before a project opens in it.
@@ -802,7 +821,7 @@ import VoxClipCore
             for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                 try await DebugUISuite.snapshot(WorkspaceView(shell: shell).environment(app), name: "editor-\(Int(width))-\(suffix)", size: NSSize(width: width, height: height), appearance: appearance, directory: directory, active: true, mainWindow: true)
             }
-            if width == 1024 { check("the 1024 editor collapses the viewer and shows the compact transport", !shell.layout.rightVisible) }
+            if width == 1024 { check("the 1024 editor collapses the Explorer and keeps the viewer", shell.layout.rightVisible && !shell.layout.explorerVisible) }
         }
         shell.windowWidth = 1440
         return results

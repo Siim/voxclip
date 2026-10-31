@@ -11,20 +11,21 @@ import VoxClipCore
     }
 }
 
-/// Below 960 the sidebar over the editor (design §3.7). Escape or a click on a row
-/// hides it again.
+/// Below 1,128 the Explorer over the editor on request (impl-plan §3.5): flat, the
+/// Explorer's width on the chrome, with a 1 pt `line.strong` edge, the boundary a pane over
+/// content needs (3:1), and no shadow. Escape or a click on a row hides it again.
 @MainActor struct SidebarOverlay: View {
     @Bindable var shell: WorkspaceShell
     var body: some View {
         SidebarList(shell: shell, overlay: true)
             .modifier(EditorPaneFocus(model: shell.editor, pane: .sidebar))
-            .frame(width: Double(VCTokens.sizeSidebarIdeal))
+            .frame(width: shell.layout.explorerWidth)
             .frame(maxHeight: .infinity)
-            .background(DesignValues.color("bg.sunken"))
+            .background(DesignValues.color("bg.window"))
             .overlay(alignment: .trailing) { Rectangle().fill(DesignValues.color("line.strong")).frame(width: 1) }
-            .shadow(color: .black.opacity(0.25), radius: 12, x: 4)
             .onExitCommand { shell.sidebarOverlay = false }
             .accessibilityElement(children: .contain)
+            .accessibilityLabel("Explorer")
             .accessibilityIdentifier("voxclip.sidebar.overlay")
     }
 }

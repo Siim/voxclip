@@ -27,6 +27,8 @@ enum SidebarItem: Hashable {
     var timelineMaximized = false
     /// The window's content width, which the right column's starting width follows.
     var windowWidth = 1280.0
+    /// The work area's height above the status bar, which the timeline's starting height follows.
+    var workHeight = 776.0
     init(app: AppModel) { self.app = app }
 
     static let explorerWidthKey = "ui.layout.explorerWidth"
@@ -44,21 +46,36 @@ enum SidebarItem: Hashable {
     /// notes.md §6: the bottom panel defaults to 216; it never gets shorter than today's strip.
     static let timelineDefault = 216.0
     static let timelineRange = Double(ShellMetrics.timelineMinimum)...640.0
+    /// impl-plan §3.5: the panel starts at 216 or 40% of the work area's height, whichever is less.
+    static let timelineShare = 0.4
 
     /// The right column's width when the user never dragged it (impl-plan item 18):
     /// 404 + (W − 1280) × 0.25 within 300–560, so 404 at 1280 and 444 at 1440, narrowed
-    /// toward 300 so the transcript keeps its minimum beside the Explorer.
+    /// toward 300 so the editor keeps its minimum beside an Explorer `explorer` wide (0
+    /// while it is collapsed).
     static func rightColumnWidth(windowWidth: Double, explorer: Double = Double(VCTokens.sizeSidebarIdeal)) -> Double {
-        let preferred = Double(VCTokens.sizeRightColumnIdeal) + (windowWidth - 1280) * 0.25
+        fitted(Double(VCTokens.sizeRightColumnIdeal) + (windowWidth - 1280) * 0.25, windowWidth: windowWidth, explorer: explorer)
+    }
+    /// `width` within 300–560, narrowed so the editor keeps `minimumTranscriptPane` (604).
+    private static func fitted(_ width: Double, windowWidth: Double, explorer: Double) -> Double {
         let room = windowWidth - explorer - WorkspaceShell.minimumTranscriptPane
-        return min(preferred, max(room, rightRange.lowerBound)).clamped(to: rightRange)
+        return min(width, max(room, rightRange.lowerBound)).clamped(to: rightRange)
     }
     /// The Explorer pane's width: where the user last dragged its divider, else 224.
     var explorerWidth: Double { app.number(Self.explorerWidthKey, fallback: Double(VCTokens.sizeSidebarIdeal)).clamped(to: Self.explorerRange) }
-    /// The right column's width: where the user last dragged its divider, else the starting width for this window.
-    var rightWidth: Double { app.number(Self.rightWidthKey, fallback: Self.rightColumnWidth(windowWidth: windowWidth, explorer: explorerWidth)).clamped(to: Self.rightRange) }
-    /// The timeline panel's height below its top edge: where the user last dragged that edge, else 216.
-    var timelineHeight: Double { app.number(Self.timelineHeightKey, fallback: Self.timelineDefault).clamped(to: Self.timelineRange) }
+    /// The right column's width: where the user last dragged its divider, else its starting
+    /// width for this window. Either is narrowed so the editor keeps its minimum beside the
+    /// Explorer while it shows; a wider window gives a dragged width back.
+    var rightWidth: Double {
+        let explorer = explorerVisible ? explorerWidth : 0
+        return Self.fitted(app.number(Self.rightWidthKey, fallback: Self.rightColumnWidth(windowWidth: windowWidth, explorer: explorer)), windowWidth: windowWidth, explorer: explorer)
+    }
+    /// The timeline panel's height below its top edge: where the user last dragged that
+    /// edge, else 216 within 40% of the work area (impl-plan §3.5).
+    var timelineHeight: Double {
+        let start = min(Self.timelineDefault, (workHeight * Self.timelineShare).rounded(.down))
+        return app.number(Self.timelineHeightKey, fallback: start).clamped(to: Self.timelineRange)
+    }
     func rememberExplorerWidth(_ width: Double) { app.set(Self.explorerWidthKey, .number(width.rounded().clamped(to: Self.explorerRange))) }
     func rememberRightWidth(_ width: Double) { app.set(Self.rightWidthKey, .number(width.rounded().clamped(to: Self.rightRange))) }
     func rememberTimelineHeight(_ height: Double) { app.set(Self.timelineHeightKey, .number(height.rounded().clamped(to: Self.timelineRange))) }
@@ -75,10 +92,13 @@ enum SidebarItem: Hashable {
     var selection: SidebarItem = .home { didSet { if selection != oldValue { followSelection() } } }
     /// The shell's regions and sizes (impl-plan V1a).
     let layout: WorkspaceLayout
-    /// Below 960 the sidebar shows over the editor on request (design §3.7): the
-    /// Explorer toggle, View > Show Sidebar and Find Clips. Escape or a click on a row
-    /// hides it again.
+    /// Below `explorerCollapseWidth` (1,128) the Explorer shows over the editor on request
+    /// (impl-plan §3.5): the Explorer toggle, View > Show Sidebar and Find Clips. Escape or
+    /// a click on a row hides it again.
     var sidebarOverlay = false
+    /// Below 904 the right column shows over the editor's trailing edge on request: Show
+    /// Viewer (⌥⌘I) and the right-column toggle. Escape or Hide Viewer hides it again.
+    var rightOverlay = false
     /// The clip whose title is being typed in the sidebar, and the typed title. Leaving
     /// the project and Quit keep it before edits freeze (design §6.2).
     var renaming: String?
@@ -99,17 +119,20 @@ enum SidebarItem: Hashable {
     }
     /// Help > Keyboard Shortcuts (⌘/), also on Home.
     var showShortcuts = false
-    /// The viewer was collapsed by the window's width, not by the user.
-    @ObservationIgnored private var viewerHiddenByWidth = false
-    /// The sidebar was hidden to make room for a viewer shown at a narrow width.
-    @ObservationIgnored private var sidebarHiddenForViewer = false
-    /// The sidebar was hidden because the window is narrower than 960 (design §3.7).
-    @ObservationIgnored private var sidebarHiddenByWidth = false
-    /// Below this window width the sidebar collapses (design §3.7, full-screen Split View).
-    static let sidebarCollapseWidth = 960.0
-    /// The transcript pane's minimum width (design §3.7): a 480 measure, the 84 gutter
-    /// and 32 of trailing padding. Below it the right column collapses first.
-    static let minimumTranscriptPane = 596.0
+    /// The right column was collapsed by the window's width, not by the user.
+    @ObservationIgnored private var rightHiddenByWidth = false
+    /// The Explorer was collapsed by the window's width, not by the user.
+    @ObservationIgnored private var explorerHiddenByWidth = false
+    /// The editor column's minimum width (impl-plan §3.5): the 80 gutter, a 480 measure and
+    /// 44 of trailing padding. It counts the 1 pt dividers on either side, which belong to
+    /// the editor's rows (ShellRegion).
+    static let minimumTranscriptPane = 604.0
+    /// Below this window width the right column collapses (impl-plan §3.5, full screen and
+    /// Split View): the editor's minimum and the right column's, 904.
+    static let rightCollapseWidth = minimumTranscriptPane + WorkspaceLayout.rightRange.lowerBound
+    /// Below this window width the Explorer collapses to its overlay: the Explorer's width
+    /// beside both minimums, 1,128 with a 224 Explorer.
+    var explorerCollapseWidth: Double { layout.explorerWidth + Self.rightCollapseWidth }
     private(set) var importProgress: String?
     @ObservationIgnored private var importTask: Task<Void, Never>?
     @ObservationIgnored weak var windowController: NSWindowController?
@@ -335,50 +358,35 @@ enum SidebarItem: Hashable {
 
     /// The right column's width for this window: dragged, else its starting width.
     var rightWidth: Double { layout.rightWidth }
-    private func paneWidth(viewer: Bool, sidebar: Bool) -> Double {
-        windowWidth - (sidebar ? layout.explorerWidth : 0) - (viewer ? layout.rightWidth : 0)
-    }
-    /// Shows a hidden sidebar for its Find Clips callout and progress (design §6.2); the
-    /// right column makes room first. Below 960 it shows as the overlay (design §3.7).
+    /// Shows a hidden sidebar for its Find Clips callout and progress (design §6.2). Below
+    /// 1,128 it shows as the overlay (impl-plan §3.5).
     func revealSidebar() {
-        if windowWidth < Self.sidebarCollapseWidth { sidebarOverlay = true; return }
-        guard !layout.explorerVisible else { return }
-        sidebarHiddenForViewer = false
-        sidebarHiddenByWidth = false
-        layout.explorerVisible = true
-        fitColumns()
+        if windowWidth < explorerCollapseWidth { sidebarOverlay = true; return }
+        explorerHiddenByWidth = false
+        if !layout.explorerVisible { layout.explorerVisible = true }
     }
-    /// View > Show Sidebar and Hide Sidebar (⌃⌘S) and the Explorer toggle; below 960 the overlay.
+    /// View > Show Sidebar and Hide Sidebar (⌃⌘S) and the Explorer toggle; below 1,128 the overlay.
     func toggleSidebar() {
-        if windowWidth < Self.sidebarCollapseWidth { sidebarOverlay.toggle(); return }
+        if windowWidth < explorerCollapseWidth { sidebarOverlay.toggle(); return }
+        explorerHiddenByWidth = false
         layout.explorerVisible.toggle()
     }
     var sidebarShown: Bool { layout.explorerVisible || sidebarOverlay }
+    /// The right column shows, in its column or over the editor.
+    var viewerShown: Bool { layout.rightVisible || rightOverlay }
     /// A row the user chose in the sidebar list. A click on a row also hides the overlay
     /// sidebar (design §3.7); the arrow keys leave it open.
     func choose(_ row: SidebarItem, byClick: Bool = NSApp.currentEvent.map { $0.type == .leftMouseDown || $0.type == .leftMouseUp } ?? false) {
         selection = row
         if byClick { sidebarOverlay = false }
     }
-    /// Show Viewer / Hide Viewer (⌥⌘I) and the right-column toggle. Showing it where the
-    /// transcript pane would be too narrow hides the sidebar; hiding it again brings the
-    /// sidebar back (design §3.7).
+    /// Show Viewer / Hide Viewer (⌥⌘I) and the right-column toggle. Below 904 the right
+    /// column shows over the editor instead (impl-plan §3.5). From 1,128 up both columns fit
+    /// beside the Explorer, because the right column narrows toward 300 first.
     func toggleViewer() {
-        viewerHiddenByWidth = false
-        if layout.rightVisible {
-            hideRightColumn()
-            if sidebarHiddenForViewer {
-                sidebarHiddenForViewer = false
-                if windowWidth < Self.sidebarCollapseWidth { sidebarHiddenByWidth = true }
-                else { layout.explorerVisible = true }
-            }
-        } else {
-            layout.rightVisible = true
-            if layout.explorerVisible, paneWidth(viewer: true, sidebar: true) < Self.minimumTranscriptPane {
-                sidebarHiddenForViewer = true
-                layout.explorerVisible = false
-            }
-        }
+        if windowWidth < Self.rightCollapseWidth { rightOverlay.toggle(); return }
+        rightHiddenByWidth = false
+        if layout.rightVisible { hideRightColumn() } else { layout.rightVisible = true }
     }
     /// The timeline toggle in the title row. ⌘J and the hover transport arrive with V7a and V4;
     /// until then the panel carries play and the timecode while the right column is hidden,
@@ -393,32 +401,23 @@ enum SidebarItem: Hashable {
         layout.rightVisible = false
         if !layout.timelineVisible { layout.timelineVisible = true }
     }
-    /// The narrow-width rule (design §3.7): the right column collapses before the
-    /// sidebar, and both come back as the window widens.
+    /// The narrow-size rule (impl-plan §3.5): below 1,128 the Explorer collapses and shows
+    /// over the editor on request; below 904 (full screen or Split View) the right column
+    /// does the same. Each comes back as the window widens, unless the user hid it. An
+    /// overlay shown on request stays until Escape, a row choice or a hide, and goes when
+    /// its column fits again.
     private func fitColumns() {
-        // Below 960 the sidebar collapses so the transcript's minimum fits (design §3.7).
-        // An overlay shown on request stays until Escape or a row choice.
-        if windowWidth < Self.sidebarCollapseWidth {
-            if sidebarHiddenForViewer { sidebarHiddenByWidth = true }
-            if layout.explorerVisible { layout.explorerVisible = false; sidebarHiddenByWidth = true }
+        if windowWidth < explorerCollapseWidth {
+            if layout.explorerVisible { layout.explorerVisible = false; explorerHiddenByWidth = true }
         } else {
             sidebarOverlay = false
-            if sidebarHiddenByWidth {
-                sidebarHiddenByWidth = false
-                if !sidebarHiddenForViewer { layout.explorerVisible = true }
-            }
+            if explorerHiddenByWidth { explorerHiddenByWidth = false; layout.explorerVisible = true }
         }
-        if sidebarHiddenForViewer, paneWidth(viewer: true, sidebar: true) >= Self.minimumTranscriptPane {
-            sidebarHiddenForViewer = false
-            layout.explorerVisible = true
-        }
-        let sidebar = layout.explorerVisible
-        if layout.rightVisible, !sidebarHiddenForViewer, paneWidth(viewer: true, sidebar: sidebar) < Self.minimumTranscriptPane {
-            hideRightColumn()
-            viewerHiddenByWidth = true
-        } else if viewerHiddenByWidth, paneWidth(viewer: true, sidebar: sidebar) >= Self.minimumTranscriptPane {
-            layout.rightVisible = true
-            viewerHiddenByWidth = false
+        if windowWidth < Self.rightCollapseWidth {
+            if layout.rightVisible { hideRightColumn(); rightHiddenByWidth = true }
+        } else {
+            rightOverlay = false
+            if rightHiddenByWidth { rightHiddenByWidth = false; layout.rightVisible = true }
         }
     }
 
@@ -465,8 +464,10 @@ enum SidebarItem: Hashable {
         }
     }
 
-    /// A Versions-browser version in its own read-only window (VersionWindowController).
+    /// A Versions-browser version in its own read-only window (VersionWindowController):
+    /// the same shell with the Explorer collapsed, as if the user hid it.
     func attachVersion(_ version: VoxClipDocument) {
+        explorerHiddenByWidth = false
         layout.explorerVisible = false
         attach(version, bringForward: false)
     }
@@ -485,6 +486,7 @@ enum SidebarItem: Hashable {
         next.editorModel = model
         renaming = nil
         sidebarOverlay = false
+        rightOverlay = false
         document = next
         editor = model
         selection = next.project.edits.activeClipId.map(SidebarItem.clip) ?? .fullTake

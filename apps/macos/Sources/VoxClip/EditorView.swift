@@ -34,7 +34,7 @@ import VoxClipCore
             .frame(minWidth: 640, minHeight: 480)
             .onGeometryChange(for: Double.self) { $0.size.width } action: { shell.windowWidth = $0 }
     }
-    /// The AppKit shell, and below 960 the sidebar over it on request (design §3.7),
+    /// The AppKit shell, and below 1,128 the Explorer over it on request (impl-plan §3.5),
     /// under the title row and above the status bar. The shell starts at the window's top
     /// edge, under the transparent titlebar: its title rows are the title bar.
     private var content: some View {

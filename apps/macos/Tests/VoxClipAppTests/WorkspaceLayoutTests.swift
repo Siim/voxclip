@@ -15,7 +15,7 @@ private actor LaunchSettings: SettingsStore {
 }
 #endif
 
-/// The v2 shell's layout (ux/v2 notes.md §1, impl-plan V1a and item 18). Settings stay in
+/// The v2 shell's layout (ux/v2 notes.md §1, impl-plan V1a, V1b, item 18 and §3.5). Settings stay in
 /// memory, except for the launch, which uses a temporary data folder and a settings store
 /// that keeps its saves in memory.
 @Suite("v2 shell layout")
@@ -24,9 +24,12 @@ private actor LaunchSettings: SettingsStore {
         #expect(VCTokens.sizeSidebarIdeal == 224 && VCTokens.sizeRightColumnIdeal == 404)
         #expect(WorkspaceLayout.rightColumnWidth(windowWidth: 1280) == 404)
         #expect(WorkspaceLayout.rightColumnWidth(windowWidth: 1440) == 444)
-        // Narrowed so the transcript keeps 596 beside a 224 Explorer.
-        #expect(WorkspaceLayout.rightColumnWidth(windowWidth: 1180) == 360)
+        // Narrowed so the editor keeps 604 beside a 224 Explorer, and wider without it.
+        #expect(WorkspaceLayout.rightColumnWidth(windowWidth: 1180) == 352)
+        #expect(WorkspaceLayout.rightColumnWidth(windowWidth: 1128) == 300)
         #expect(WorkspaceLayout.rightColumnWidth(windowWidth: 1024) == 300)
+        #expect(WorkspaceLayout.rightColumnWidth(windowWidth: 1024, explorer: 0) == 340)
+        #expect(WorkspaceLayout.rightColumnWidth(windowWidth: 960, explorer: 0) == 324)
         #expect(WorkspaceLayout.rightColumnWidth(windowWidth: 2400) == 560)
     }
 
@@ -89,15 +92,17 @@ private actor LaunchSettings: SettingsStore {
         shell.toggleSidebar(); shell.toggleSidebar()
         shell.toggleTimeline(); shell.toggleTimeline()
         shell.windowWidth = 1024
-        #expect(!shell.layout.rightVisible && shell.layout.explorerVisible)
+        #expect(shell.layout.rightVisible && !shell.layout.explorerVisible && shell.rightWidth == 340)
         shell.windowWidth = 1180
-        #expect(shell.layout.rightVisible && shell.rightWidth == 360)
+        #expect(shell.layout.rightVisible && shell.layout.explorerVisible && shell.rightWidth == 352)
         shell.windowWidth = 900
-        #expect(!shell.layout.explorerVisible)
+        #expect(!shell.layout.explorerVisible && !shell.layout.rightVisible)
         shell.toggleSidebar()
         #expect(shell.sidebarOverlay && !shell.layout.explorerVisible)
+        shell.toggleViewer()
+        #expect(shell.rightOverlay && !shell.layout.rightVisible)
         shell.windowWidth = 1440
-        #expect(shell.layout.explorerVisible && shell.layout.rightVisible && shell.layout.timelineVisible && !shell.sidebarOverlay)
+        #expect(shell.layout.explorerVisible && shell.layout.rightVisible && shell.layout.timelineVisible && !shell.sidebarOverlay && !shell.rightOverlay)
         for key in [WorkspaceLayout.explorerWidthKey, WorkspaceLayout.rightWidthKey, WorkspaceLayout.timelineHeightKey] {
             #expect(app.settings.values[key] == nil)
         }
@@ -117,8 +122,8 @@ private actor LaunchSettings: SettingsStore {
         shell.toggleViewer()
         shell.toggleTimeline()
         #expect(shell.layout.rightVisible && !shell.layout.timelineVisible)
-        // The width rule hides the right column the same way.
-        shell.windowWidth = 1024
+        // The width rule hides the right column the same way, below 904.
+        shell.windowWidth = 900
         #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
     }
 
@@ -126,5 +131,59 @@ private actor LaunchSettings: SettingsStore {
         #expect(EditorPane.order(viewerVisible: true, timelineVisible: true) == [.sidebar, .transcript, .viewer, .panel, .timeline])
         #expect(EditorPane.order(viewerVisible: false, timelineVisible: true) == [.sidebar, .transcript, .timeline])
         #expect(EditorPane.order(viewerVisible: true, timelineVisible: false) == [.sidebar, .transcript, .viewer, .panel])
+    }
+
+    /// impl-plan §3.5: below 1,128 the Explorer collapses first, below 904 the right column;
+    /// each comes back as the window widens unless the user hid it.
+    @Test func theExplorerCollapsesBelow1128AndTheRightColumnBelow904() {
+        let shell = WorkspaceShell(app: AppModel())
+        shell.windowWidth = 1128
+        #expect(shell.explorerCollapseWidth == 1128 && WorkspaceShell.rightCollapseWidth == 904)
+        #expect(shell.layout.explorerVisible && shell.layout.rightVisible && shell.rightWidth == 300)
+        shell.windowWidth = 1127
+        #expect(!shell.layout.explorerVisible && shell.layout.rightVisible)
+        shell.windowWidth = 904
+        #expect(shell.layout.rightVisible && shell.rightWidth == 300)
+        shell.windowWidth = 903
+        #expect(!shell.layout.rightVisible && !shell.rightOverlay)
+        shell.toggleViewer()
+        #expect(shell.rightOverlay && shell.viewerShown && shell.rightWidth == 300)
+        shell.windowWidth = 1280
+        #expect(shell.layout.explorerVisible && shell.layout.rightVisible && !shell.rightOverlay && shell.rightWidth == 404)
+        // The user hid the Explorer: a narrow resize and back leaves it hidden.
+        shell.toggleSidebar()
+        shell.windowWidth = 1000; shell.windowWidth = 1280
+        #expect(!shell.layout.explorerVisible)
+    }
+
+    /// impl-plan §3.5: the timeline starts at 216, or 40% of a short work area; a dragged
+    /// height is the user's and is not clamped to it.
+    @Test func theTimelineStartsAt216OrFortyPercentOfTheWorkArea() {
+        let app = AppModel()
+        let layout = WorkspaceLayout(app: app)
+        layout.workHeight = 776
+        #expect(layout.timelineHeight == 216)
+        layout.workHeight = 456
+        #expect(layout.timelineHeight == 182)
+        layout.rememberTimelineHeight(260)
+        #expect(layout.timelineHeight == 260)
+    }
+
+    /// notes.md §1 at 1280 × 800, and the same rules at the other sizes of impl-plan §3.5.
+    @Test func theRegionRulesMatchTheNotesAt1280AndFollowTheNarrowRule() {
+        let at1280 = Dictionary(uniqueKeysWithValues: ShellRegion.allCases.map { ($0, $0.reference) })
+        #expect(at1280[.explorer] == CGRect(x: 0, y: 0, width: 224, height: 776))
+        #expect(at1280[.tabBar] == CGRect(x: 224, y: 0, width: 652, height: 38))
+        #expect(at1280[.transcript] == CGRect(x: 224, y: 72, width: 652, height: 488))
+        #expect(at1280[.rightBody] == CGRect(x: 876, y: 38, width: 404, height: 522))
+        #expect(at1280[.timeline] == CGRect(x: 224, y: 560, width: 1056, height: 216))
+        #expect(at1280[.statusBar] == CGRect(x: 0, y: 776, width: 1280, height: 24))
+        #expect(ShellRegion.rightTitle.reference(in: CGSize(width: 1440, height: 900)) == CGRect(x: 996, y: 0, width: 444, height: 38))
+        #expect(ShellRegion.tabBar.reference(in: CGSize(width: 1128, height: 800)) == CGRect(x: 224, y: 0, width: 604, height: 38))
+        #expect(ShellRegion.explorer.reference(in: CGSize(width: 960, height: 600)) == nil)
+        #expect(ShellRegion.rightBody.reference(in: CGSize(width: 960, height: 600)) == CGRect(x: 636, y: 38, width: 324, height: 322))
+        #expect(ShellRegion.rightTitle.reference(in: CGSize(width: 800, height: 600)) == nil)
+        #expect(ShellRegion.transcript.reference(in: CGSize(width: 800, height: 600)) == CGRect(x: 0, y: 72, width: 800, height: 288))
+        #expect(ShellRegion.timeline.reference(in: CGSize(width: 800, height: 600)) == CGRect(x: 0, y: 360, width: 800, height: 216))
     }
 }

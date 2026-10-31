@@ -36,16 +36,28 @@ enum ShellRegion: String, CaseIterable, Codable, Sendable {
 
     /// notes.md §1 at 1280 × 800 with fresh defaults. The right body holds the viewer and
     /// the panel together until V4 gives them their own rows.
-    var reference: CGRect {
+    @MainActor var reference: CGRect { reference(in: CGSize(width: 1280, height: 800)) ?? .zero }
+
+    /// The region in a window of `size` with fresh defaults, by the rules of notes.md §1 and
+    /// impl-plan §3.5; nil where it is collapsed. At 1280 × 800 these are notes.md §1.
+    @MainActor func reference(in size: CGSize) -> CGRect? {
+        let width = Double(size.width), height = Double(size.height)
+        let titleRow = Double(ShellMetrics.titleRow), clipBar = Double(ShellMetrics.clipBar), statusBar = Double(ShellMetrics.statusBar)
+        let workHeight = height - statusBar
+        let explorer = width >= Double(VCTokens.sizeSidebarIdeal) + WorkspaceShell.rightCollapseWidth ? Double(VCTokens.sizeSidebarIdeal) : 0
+        let right = width >= WorkspaceShell.rightCollapseWidth ? WorkspaceLayout.rightColumnWidth(windowWidth: width, explorer: explorer) : 0
+        let timeline = min(WorkspaceLayout.timelineDefault, (workHeight * WorkspaceLayout.timelineShare).rounded(.down))
+        let top = workHeight - timeline
+        let editor = width - explorer - right
         switch self {
-        case .explorer: CGRect(x: 0, y: 0, width: 224, height: 776)
-        case .tabBar: CGRect(x: 224, y: 0, width: 652, height: 38)
-        case .clipBar: CGRect(x: 224, y: 38, width: 652, height: 34)
-        case .transcript: CGRect(x: 224, y: 72, width: 652, height: 488)
-        case .rightTitle: CGRect(x: 876, y: 0, width: 404, height: 38)
-        case .rightBody: CGRect(x: 876, y: 38, width: 404, height: 522)
-        case .timeline: CGRect(x: 224, y: 560, width: 1056, height: 216)
-        case .statusBar: CGRect(x: 0, y: 776, width: 1280, height: 24)
+        case .explorer: return explorer > 0 ? CGRect(x: 0, y: 0, width: explorer, height: workHeight) : nil
+        case .tabBar: return CGRect(x: explorer, y: 0, width: editor, height: titleRow)
+        case .clipBar: return CGRect(x: explorer, y: titleRow, width: editor, height: clipBar)
+        case .transcript: return CGRect(x: explorer, y: titleRow + clipBar, width: editor, height: top - titleRow - clipBar)
+        case .rightTitle: return right > 0 ? CGRect(x: width - right, y: 0, width: right, height: titleRow) : nil
+        case .rightBody: return right > 0 ? CGRect(x: width - right, y: titleRow, width: right, height: top - titleRow) : nil
+        case .timeline: return CGRect(x: explorer, y: top, width: width - explorer, height: timeline)
+        case .statusBar: return CGRect(x: 0, y: workHeight, width: width, height: statusBar)
         }
     }
 }
@@ -348,6 +360,8 @@ enum ShellRegion: String, CaseIterable, Codable, Sendable {
 @MainActor final class ShellSplitView: NSSplitView {
     var dividerToken = "line.default"
     var onDividerDrag: (() -> Void)?
+    /// A divider is being dragged: the shell places no divider until the drag ends.
+    private(set) var isDragging = false
     #if DEBUG
     var dividerMouseDowns = 0
     #endif
@@ -357,7 +371,9 @@ enum ShellRegion: String, CaseIterable, Codable, Sendable {
         dividerMouseDowns += 1
         #endif
         let before = arrangedSubviews.map(\.frame.size)
+        isDragging = true
         super.mouseDown(with: event)
+        isDragging = false
         guard arrangedSubviews.map(\.frame.size) != before else { return }
         onDividerDrag?()
     }
@@ -379,6 +395,14 @@ enum ShellRegion: String, CaseIterable, Codable, Sendable {
     }
     required init?(coder: NSCoder) { nil }
     @objc private func splitDidResize(_ notification: Notification) { onResize?() }
+
+    /// A divider that cannot be dragged now: a pane collapsed because the window is too
+    /// narrow for it shows over the editor on request instead (impl-plan §3.5).
+    var dividerLocked: ((Int) -> Bool)?
+    override func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect, forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
+        if dividerLocked?(dividerIndex) == true { return .zero }
+        return super.splitView(splitView, effectiveRect: proposedEffectiveRect, forDrawnRect: drawnRect, ofDividerAt: dividerIndex)
+    }
 
     static func item(_ controller: NSViewController, thickness: ClosedRange<CGFloat>? = nil, holding: Float, collapses: Bool) -> NSSplitViewItem {
         let item = NSSplitViewItem(viewController: controller)
@@ -409,6 +433,74 @@ enum ShellRegion: String, CaseIterable, Codable, Sendable {
     override func loadView() { view = root }
 }
 
+/// The editor and right columns, and over them below 904 the right column on request
+/// (impl-plan §3.5): under the tab row, at the trailing edge, `overlayWidth` wide.
+@MainActor final class ShellOverlayView: NSView {
+    private let base: NSView
+    var overlay: NSView? {
+        didSet {
+            guard overlay !== oldValue else { return }
+            oldValue?.removeFromSuperview()
+            if let overlay { addSubview(overlay) }
+            needsLayout = true
+        }
+    }
+    var overlayWidth: CGFloat = CGFloat(VCTokens.sizeRightColumnMin) { didSet { needsLayout = true } }
+    init(_ base: NSView) {
+        self.base = base
+        super.init(frame: base.frame)
+        addSubview(base)
+    }
+    required init?(coder: NSCoder) { nil }
+    override var isFlipped: Bool { true }
+    override func layout() {
+        super.layout()
+        base.frame = bounds
+        let width = min(overlayWidth, bounds.width)
+        overlay?.frame = NSRect(x: bounds.width - width, y: ShellMetrics.titleRow, width: width, height: max(0, bounds.height - ShellMetrics.titleRow))
+    }
+}
+
+/// The right column shown over the editor (impl-plan §3.5): flat, on the chrome, with a
+/// 1 pt `line.strong` edge on top of its content at the leading side, the boundary a
+/// pane over content needs (3:1). No shadow.
+@MainActor final class ShellRightOverlay: NSView {
+    private let edge = ShellRule(token: "line.strong")
+    init(content: NSView) {
+        super.init(frame: NSRect(x: 0, y: 0, width: CGFloat(VCTokens.sizeRightColumnMin), height: 400))
+        identifier = NSUserInterfaceItemIdentifier("voxclip.shell.rightOverlay")
+        addSubview(content)
+        addSubview(edge)
+    }
+    required init?(coder: NSCoder) { nil }
+    override var isFlipped: Bool { true }
+    override func layout() {
+        super.layout()
+        for view in subviews where view !== edge { view.frame = bounds }
+        edge.frame = NSRect(x: 0, y: 0, width: 1, height: bounds.height)
+    }
+    override func draw(_ dirtyRect: NSRect) {
+        DesignValues.nsColor("bg.window").setFill()
+        dirtyRect.fill()
+    }
+}
+
+/// A token-coloured line, drawn above its siblings.
+@MainActor final class ShellRule: NSView {
+    private let token: String
+    init(token: String) {
+        self.token = token
+        super.init(frame: .zero)
+        setAccessibilityElement(false)
+    }
+    required init?(coder: NSCoder) { nil }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        DesignValues.nsColor(token).setFill()
+        dirtyRect.fill()
+    }
+}
+
 // MARK: - The shell
 
 /// What the AppKit tree is built from. WorkspaceView reads it, so SwiftUI updates the
@@ -418,6 +510,7 @@ struct EditorShellState: Equatable {
     var showsHome: Bool
     var explorerVisible: Bool
     var rightVisible: Bool
+    var rightOverlay: Bool
     var timelineVisible: Bool
     var homeQuery: String
     @MainActor init(shell: WorkspaceShell) {
@@ -425,6 +518,7 @@ struct EditorShellState: Equatable {
         showsHome = shell.showsHome
         explorerVisible = shell.layout.explorerVisible
         rightVisible = shell.layout.rightVisible
+        rightOverlay = shell.rightOverlay
         timelineVisible = shell.layout.timelineVisible
         homeQuery = shell.homeQuery
     }
@@ -503,6 +597,11 @@ struct EditorShellState: Equatable {
         content.addSplitViewItem(ShellSplitController.item(work, holding: 250, collapses: false))
         content.divider.onDividerDrag = { [weak self] in self?.explorerDragged() }
         content.onResize = { [weak self] in self?.syncCollapsed() }
+        // Below 1,128 a collapsed Explorer opens as the overlay, never by a drag.
+        content.dividerLocked = { [weak self] _ in
+            guard let self, let explorerItem = self.explorerItem else { return false }
+            return explorerItem.isCollapsed && self.shell.windowWidth < self.shell.explorerCollapseWidth
+        }
         addChild(content)
         let status = StatusBarView(shell: shell)
         statusBar = status
@@ -531,7 +630,7 @@ struct EditorShellState: Equatable {
         if rebuild { buildWorkArea() }
         explorerShown = state.explorerVisible
         if let explorerItem { ShellSplitController.setCollapsed(explorerItem, !state.explorerVisible) }
-        editorWork?.apply(rightVisible: state.rightVisible, timelineVisible: state.timelineVisible)
+        editorWork?.apply(rightVisible: state.rightVisible, timelineVisible: state.timelineVisible, rightOverlay: state.rightOverlay)
         if homeSearch.stringValue != state.homeQuery { homeSearch.stringValue = state.homeQuery }
         placeChrome()
     }
@@ -613,6 +712,9 @@ struct EditorShellState: Equatable {
 
     override func viewDidLayout() {
         super.viewDidLayout()
+        // The timeline's starting height follows the work area's (impl-plan §3.5).
+        let workHeight = Double(content.view.frame.height)
+        if workHeight > 0, abs(shell.layout.workHeight - workHeight) > 0.5 { shell.layout.workHeight = workHeight }
         // The first real size places the Explorer's divider at its width, after this layout pass.
         guard !sizedContent, content.divider.bounds.width > 400 else { return }
         sizedContent = true
@@ -638,7 +740,9 @@ struct EditorShellState: Equatable {
 
 /// The editor's part of the shell for one project: the editor column (tab row, clip-bar
 /// row, transcript) beside the right column (title row, viewer and panel), over the
-/// timeline panel, whose top edge (line.edge) is its resize handle.
+/// timeline panel, whose top edge (line.edge) is its resize handle. The editor column
+/// hosts every editor state under the clip-bar row (`TranscriptColumn`). Below 904 the
+/// right column shows over the editor on request.
 @MainActor final class EditorWorkController: ShellSplitController, NSPopoverDelegate {
     let model: EditorModel
     let shell: WorkspaceShell
@@ -656,6 +760,14 @@ struct EditorShellState: Equatable {
     private(set) var rightItem: NSSplitViewItem!
     private(set) var timelineItem: NSSplitViewItem!
     private var topItem: NSSplitViewItem!
+    /// The columns, with the right column over them on request below 904.
+    private var top: ShellOverlayView!
+    private var topController: ShellViewController!
+    /// The right column over the editor and its SwiftUI host, while it shows.
+    private(set) var rightOverlay: (view: ShellRightOverlay, host: NSViewController)?
+    /// What the dividers were last placed for, so a size the split cannot take is not retried.
+    private var placedFor: [CGFloat] = []
+    private var placing = false
     /// What `apply` last asked of the right column and the timeline. Only a change from it
     /// is the user's: the layout can be ahead of the panes until SwiftUI applies it.
     private var rightShown = true
@@ -679,6 +791,7 @@ struct EditorShellState: Equatable {
         transcriptView = transcript.view
         transcript.view.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.transcript")
         let editorStack = ShellStackView(fill: "bg.surface")
+        editorStack.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.editor")
         editorStack.set(top: [(tabRow, ShellMetrics.titleRow), (clipBar, ShellMetrics.clipBar)], fill: transcript.view)
         let editorColumn = ShellViewController(editorStack, children: [transcript])
 
@@ -693,20 +806,29 @@ struct EditorShellState: Equatable {
         let timelinePane = ShellViewController(timeline.view, children: [timeline])
 
         let layout = shell.layout
-        let width = max(800, shell.windowWidth - layout.explorerWidth)
+        let width = max(800, shell.windowWidth - (layout.explorerVisible ? layout.explorerWidth : 0))
         editorStack.setFrameSize(NSSize(width: width - layout.rightWidth, height: 560))
         rightStack.setFrameSize(NSSize(width: layout.rightWidth, height: 560))
         let editorItem = Self.item(editorColumn, holding: 250, collapses: false)
-        editorItem.minimumThickness = VCTokens.sizeTranscriptMinWidth
+        // The editor's minimum less the two dividers its rows include (ShellRegion).
+        editorItem.minimumThickness = CGFloat(WorkspaceShell.minimumTranscriptPane) - 2
         rightItem = Self.item(rightColumn, thickness: CGFloat(WorkspaceLayout.rightRange.lowerBound)...CGFloat(WorkspaceLayout.rightRange.upperBound), holding: 251, collapses: true)
         columns.addSplitViewItem(editorItem)
         columns.addSplitViewItem(rightItem)
         columns.divider.onDividerDrag = { [weak self] in self?.rightDragged() }
         columns.onResize = { [weak self] in self?.syncCollapsed() }
+        // Below 904 a collapsed right column opens over the editor, never by a drag.
+        columns.dividerLocked = { [weak self] _ in
+            guard let self, let rightItem = self.rightItem else { return false }
+            return rightItem.isCollapsed && self.shell.windowWidth < WorkspaceShell.rightCollapseWidth
+        }
 
         columns.view.setFrameSize(NSSize(width: width, height: 560))
         timeline.view.setFrameSize(NSSize(width: width, height: layout.timelineHeight))
-        topItem = Self.item(columns, holding: 250, collapses: false)
+        top = ShellOverlayView(columns.view)
+        top.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.columns")
+        topController = ShellViewController(top, children: [columns])
+        topItem = Self.item(topController, holding: 250, collapses: false)
         topItem.minimumThickness = ShellMetrics.topMinimum
         timelineItem = Self.item(timelinePane, thickness: CGFloat(WorkspaceLayout.timelineRange.lowerBound)...CGFloat(WorkspaceLayout.timelineRange.upperBound), holding: 251, collapses: true)
         addSplitViewItem(topItem)
@@ -729,7 +851,8 @@ struct EditorShellState: Equatable {
         observations = [
             ShellObservation { [weak self] in self?.renderScope() },
             ShellObservation { [weak self] in self?.renderExport() },
-            ShellObservation { [weak self] in self?.renderFindClips() }
+            ShellObservation { [weak self] in self?.renderFindClips() },
+            ShellObservation { [weak self] in self?.followSizes() }
         ]
     }
 
@@ -737,22 +860,42 @@ struct EditorShellState: Equatable {
         observations.forEach { $0.cancel() }
         observations = []
         findClipsPopover?.close()
+        showRightOverlay(false)
     }
 
-    /// Collapses or shows the right column and the timeline, and moves the right column's
-    /// controls into the tab row while it is hidden. Until V4's hover transport the timeline
-    /// panel carries play and the timecode while the right column is hidden, so neither its
-    /// toggle nor a drag of its edge can hide it then (notes.md §1).
-    func apply(rightVisible: Bool, timelineVisible: Bool) {
+    /// Collapses or shows the right column and the timeline, shows the right column over the
+    /// editor on request while it is collapsed below 904, and moves the right column's
+    /// controls into the tab row while it is collapsed. Until V4's hover transport the
+    /// timeline panel carries play and the timecode while the right column is collapsed, so
+    /// neither its toggle nor a drag of its edge can hide it then (notes.md §1).
+    func apply(rightVisible: Bool, timelineVisible: Bool, rightOverlay: Bool = false) {
         rightShown = rightVisible
         Self.setCollapsed(rightItem, !rightVisible)
         timelineShown = timelineVisible
         Self.setCollapsed(timelineItem, !timelineVisible)
         timelineItem.canCollapse = rightVisible
         timelineToggle.isEnabled = rightVisible || !timelineVisible
-        rightToggle.describe((rightVisible ? EditorIconAction.hideViewer : .showViewer).name, shortcut: "⌥⌘I")
+        showRightOverlay(rightOverlay && !rightVisible)
+        rightToggle.describe((rightVisible || rightOverlay ? EditorIconAction.hideViewer : .showViewer).name, shortcut: "⌥⌘I")
         timelineToggle.describe((timelineVisible ? EditorIconAction.hideTimeline : .showTimeline).name)
         placeTabRow(explorerToggle: explorerToggle)
+    }
+
+    /// Builds the right column over the editor when it is asked for, and takes it down when
+    /// it goes. It is its own `RightColumn`; Escape in it hides it.
+    private func showRightOverlay(_ show: Bool) {
+        if show, rightOverlay == nil {
+            let host = ShellHost.controller(RightColumn(model: model).onExitCommand { [shell] in shell.rightOverlay = false }, app: shell.app)
+            let panel = ShellRightOverlay(content: host.view)
+            topController.addChild(host)
+            top.overlayWidth = CGFloat(shell.layout.rightWidth)
+            top.overlay = panel
+            rightOverlay = (panel, host)
+        } else if !show, let current = rightOverlay {
+            top.overlay = nil
+            current.host.removeFromParent()
+            rightOverlay = nil
+        }
     }
 
     /// The tab row: the Explorer toggle while the Explorer is hidden, the scope tab, then ⋯,
@@ -864,15 +1007,44 @@ struct EditorShellState: Equatable {
     override func viewDidLayout() {
         super.viewDidLayout()
         // The first real size places the dividers, after this layout pass: the right column
-        // at its width and the timeline at its height.
-        guard !sized, divider.bounds.height > 300, columns.divider.bounds.width > 400 else { return }
-        sized = true
+        // at its width and the timeline at its height. Later sizes place them again when the
+        // window's size moved what the layout asks for (impl-plan §3.5).
+        if !sized {
+            guard divider.bounds.height > 300, columns.divider.bounds.width > 400 else { return }
+            sized = true
+        }
+        schedulePlacement()
+    }
+    /// The layout's sizes changed: the window resized, a column showed or hid, or a drag ended.
+    private func followSizes() {
+        let layout = shell.layout
+        _ = (layout.rightWidth, layout.timelineHeight)
+        top?.overlayWidth = CGFloat(layout.rightWidth)
+        schedulePlacement()
+    }
+    /// What the dividers should be placed for now: the layout's sizes and the space they share.
+    private var placement: [CGFloat] {
+        [CGFloat(shell.layout.rightWidth), CGFloat(shell.layout.timelineHeight), columns.divider.bounds.width, divider.bounds.height,
+         rightItem.isCollapsed ? 0 : 1, timelineItem.isCollapsed ? 0 : 1]
+    }
+    private func schedulePlacement() {
+        guard sized, !placing, placement != placedFor else { return }
+        placing = true
         Task { @MainActor [weak self] in self?.placeDividers() }
     }
+    /// Places the right column at the layout's width and the timeline at its height. A drag
+    /// in progress wins; it reports its size when it ends.
     private func placeDividers() {
+        placing = false
+        guard !divider.isDragging, !columns.divider.isDragging else { return }
         let layout = shell.layout
-        if !rightItem.isCollapsed { columns.divider.setPosition(columns.divider.bounds.width - CGFloat(layout.rightWidth) - columns.divider.dividerThickness, ofDividerAt: 0) }
-        if !timelineItem.isCollapsed { divider.setPosition(divider.bounds.height - CGFloat(layout.timelineHeight) - divider.dividerThickness, ofDividerAt: 0) }
+        if !rightItem.isCollapsed, abs(rightItem.viewController.view.frame.width - CGFloat(layout.rightWidth)) > 0.5 {
+            columns.divider.setPosition(columns.divider.bounds.width - CGFloat(layout.rightWidth) - columns.divider.dividerThickness, ofDividerAt: 0)
+        }
+        if !timelineItem.isCollapsed, abs(timelineItem.viewController.view.frame.height - CGFloat(layout.timelineHeight)) > 0.5 {
+            divider.setPosition(divider.bounds.height - CGFloat(layout.timelineHeight) - divider.dividerThickness, ofDividerAt: 0)
+        }
+        placedFor = placement
     }
 }
 
