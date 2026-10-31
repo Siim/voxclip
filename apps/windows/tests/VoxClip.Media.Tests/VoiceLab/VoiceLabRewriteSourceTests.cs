@@ -1,8 +1,10 @@
 using System.Buffers.Binary;
+using System.Text.Json;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Media.VoiceLab;
+using VoxClip.Tests.Support;
 using Xunit;
 
 namespace VoxClip.Media.Tests.VoiceLab;
@@ -123,6 +125,52 @@ public sealed class VoiceLabRewriteSourceTests
         Assert.Equal<(long Start, long End)>((24_998_057, frames), spans[1]);
         Assert.Equal(frames / 960, result.Envelope.Rms.Count);
         Assert.Equal(frames, result.Excerpt.TotalFrames);
+    }
+
+    [Fact]
+    public void RegionSelectionReplaysTheSharedVectors()
+    {
+        using var document = FixtureLoader.ReadJson("fixtures/voice-lab/rewrite-source-regions.json");
+        var root = document.RootElement;
+        Assert.Equal("voxclip-voice-lab-rewrite-source-regions/1", root.GetProperty("schema").GetString());
+        Assert.Equal(VoiceLabSourceAudio.TakeAssetRate, root.GetProperty("takeAssetRate").GetInt32());
+        static (long Start, long End) Range(JsonElement pair) => (pair[0].GetInt64(), pair[1].GetInt64());
+        static double? Silence(JsonElement value) => value.ValueKind == JsonValueKind.Null ? null : value.GetDouble();
+        static VoiceLabSeamKind Kind(JsonElement value) => value.GetString() switch
+        {
+            "none" => VoiceLabSeamKind.None,
+            "gap" => VoiceLabSeamKind.Gap,
+            "hard" => VoiceLabSeamKind.Hard,
+            var other => throw new InvalidDataException("Unknown seam kind " + other)
+        };
+        var near = root.GetProperty("nearWindow").EnumerateArray().ToArray();
+        Assert.Equal(11, near.Length);
+        foreach (var row in near)
+        {
+            var rate = row.GetProperty("rate").GetInt32();
+            var start = row.GetProperty("startSample").GetInt64();
+            var end = row.GetProperty("endSample").GetInt64();
+            var window = new VoiceLabWindow("w", "w", [], [], start / (double)rate, end / (double)rate, start, end,
+                new(Kind(row.GetProperty("leftSeam")), start / (double)rate, start, rate / 50),
+                new(Kind(row.GetProperty("rightSeam")), end / (double)rate, end, rate / 50));
+            var actual = VoiceLabSourceAudio.NearWindow(window, Silence(row.GetProperty("incomingSilence")),
+                Silence(row.GetProperty("outgoingSilence")), row.GetProperty("totalFrames").GetInt64(), rate);
+            Assert.True(Range(row.GetProperty("expected")) == actual, row.GetProperty("id").GetString() + ": " + actual);
+        }
+        var aligned = root.GetProperty("aligned").EnumerateArray().ToArray();
+        Assert.Equal(7, aligned.Length);
+        foreach (var row in aligned)
+            Assert.Equal(Range(row.GetProperty("expected")), VoiceLabSourceAudio.Aligned(row.GetProperty("lower").GetInt64(),
+                row.GetProperty("upper").GetInt64(), row.GetProperty("totalFrames").GetInt64(), row.GetProperty("rate").GetInt32()));
+        var merged = root.GetProperty("merged").EnumerateArray().ToArray();
+        Assert.Equal(5, merged.Length);
+        foreach (var row in merged)
+            Assert.Equal(row.GetProperty("expected").EnumerateArray().Select(Range).ToArray(),
+                VoiceLabSourceAudio.Merged(row.GetProperty("ranges").EnumerateArray().Select(Range).ToArray()));
+        var chunks = root.GetProperty("decodeChunkFrames").EnumerateArray().ToArray();
+        Assert.Equal(12, chunks.Length);
+        foreach (var row in chunks)
+            Assert.Equal(row.GetProperty("expected").GetInt32(), VoiceLabSourceAudio.DecodeChunkFrames(row.GetProperty("rate").GetInt32()));
     }
 
     /// <summary>A take 7 s too long for a 1 s window borrows 7 s of the 8 s silence before its gap seam (§8.9.2), and staging reads
