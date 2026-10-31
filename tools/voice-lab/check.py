@@ -115,13 +115,13 @@ def check():
     print("Speaker asset hashes, attribution fixture formats, scores and calibration metadata match.")
 
 
-def check_et():
+def check_et(directory=FIXTURES):
     """Estonian et-v1 evidence, frozen or validated. The catalogue stays English-only until a separate change adopts it."""
-    path = FIXTURES / "calibration-et.json"
+    path = directory / "calibration-et.json"
     if not path.exists():
         return
     report = json.loads(path.read_text())
-    pairs = json.loads((FIXTURES / "calibration-pairs-et.json").read_text())
+    pairs = json.loads((directory / "calibration-pairs-et.json").read_text())
     catalog = json.loads((ROOT / "shared/catalog/voice-lab-models.json").read_text())["models"][0]
     files = {file["role"]: file for file in catalog["files"]}
     assert (report["language"], report["calibration"], report["selectionPolicy"]) == ("et", "et-v1", riigikogu.POLICY)
