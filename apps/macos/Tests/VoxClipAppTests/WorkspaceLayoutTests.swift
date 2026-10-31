@@ -187,6 +187,34 @@ private actor LaunchSettings: SettingsStore {
         #expect(shell.explorerMaximumWidth == 220)
     }
 
+    /// An overlay the user asked for at a narrow width docks when its column fits again, even
+    /// where the user had hidden the column before: showing it was the last request.
+    @Test func anOverlayDocksWhenItsColumnFitsAgain() {
+        let shell = WorkspaceShell(app: AppModel())
+        shell.windowWidth = 1000
+        shell.toggleViewer()
+        #expect(!shell.layout.rightVisible)
+        shell.windowWidth = 800
+        shell.toggleViewer()
+        #expect(shell.rightOverlay)
+        shell.windowWidth = 1280
+        #expect(shell.layout.rightVisible && !shell.rightOverlay && shell.viewerShown)
+        // The Explorer the same way: hidden by the user at 1280, shown over the editor at 1000.
+        shell.toggleSidebar()
+        #expect(!shell.layout.explorerVisible)
+        shell.windowWidth = 1000
+        shell.toggleSidebar()
+        #expect(shell.sidebarOverlay)
+        shell.windowWidth = 1280
+        #expect(shell.layout.explorerVisible && !shell.sidebarOverlay)
+        // An overlay hidden again before the window widens leaves the hidden column hidden.
+        shell.toggleSidebar()
+        shell.windowWidth = 1000
+        shell.toggleSidebar(); shell.toggleSidebar()
+        shell.windowWidth = 1280
+        #expect(!shell.layout.explorerVisible && !shell.sidebarOverlay)
+    }
+
     /// impl-plan §3.5: the timeline starts at 216, or 40% of a short work area; a dragged
     /// height is the user's and is not clamped to it.
     @Test func theTimelineStartsAt216OrFortyPercentOfTheWorkArea() {

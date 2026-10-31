@@ -416,20 +416,22 @@ enum SidebarItem: Hashable {
     /// The narrow-size rule (impl-plan §3.5): below 1,128 the Explorer collapses and shows
     /// over the editor on request; below 904 (full screen or Split View) the right column
     /// does the same. Each comes back as the window widens, unless the user hid it. An
-    /// overlay shown on request stays until Escape, a row choice or a hide, and goes when
-    /// its column fits again.
+    /// overlay shown on request stays until Escape, a row choice or a hide; when its column
+    /// fits again it docks there, because showing it was the user's last request.
     private func fitColumns() {
         if windowWidth < explorerCollapseWidth {
             if layout.explorerVisible { layout.explorerVisible = false; explorerHiddenByWidth = true }
-        } else {
+        } else if sidebarOverlay || explorerHiddenByWidth {
             sidebarOverlay = false
-            if explorerHiddenByWidth { explorerHiddenByWidth = false; layout.explorerVisible = true }
+            explorerHiddenByWidth = false
+            layout.explorerVisible = true
         }
         if windowWidth < Self.rightCollapseWidth {
             if layout.rightVisible { hideRightColumn(); rightHiddenByWidth = true }
-        } else {
+        } else if rightOverlay || rightHiddenByWidth {
             rightOverlay = false
-            if rightHiddenByWidth { rightHiddenByWidth = false; layout.rightVisible = true }
+            rightHiddenByWidth = false
+            layout.rightVisible = true
         }
     }
 
