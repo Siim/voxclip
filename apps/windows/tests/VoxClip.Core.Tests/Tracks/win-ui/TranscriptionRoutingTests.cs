@@ -184,9 +184,15 @@ public sealed class TranscriptionRoutingTests
         Assert.Contains("App.Services.ModelsChanged += ModelsChanged", dialog);
         Assert.Contains("App.Services.ModelsChanged -= ModelsChanged", dialog);
         // Routing runs before any audio work; detection only after the audio is extracted.
-        var run = dialog[dialog.IndexOf("private async Task RunTranscriptionAsync", StringComparison.Ordinal)..];
-        Assert.True(run.IndexOf("await RouteAsync(null)", StringComparison.Ordinal) < run.IndexOf("ExtractAudioAsync", StringComparison.Ordinal));
-        Assert.True(run.IndexOf("ExtractAudioAsync", StringComparison.Ordinal) < run.IndexOf("App.Services.DetectLanguageAsync", StringComparison.Ordinal));
+        var start = dialog.IndexOf("private async Task RunTranscriptionAsync", StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        var run = dialog[start..];
+        Ordered(run, "var route = local ? await RouteAsync(null) : null;", "if (route is { Plan: null, Detector: null }) { ShowRoute(route); return; }",
+            "if (!local)", "ExtractAudioAsync", "App.Services.DetectLanguageAsync", "App.Services.Transcription.TranscribeAsync");
+        // The local engine runs only its routed plan and never falls through to ElevenLabs.
+        Ordered(run, "var plan = local ? route?.Plan ?? throw new InvalidOperationException(", ": new TranscriptionPlan(TranscriptEngine.Elevenlabs,",
+            "TranscribeAsync(new(plan,");
+        Assert.DoesNotContain("route?.Plan ?? new TranscriptionPlan(TranscriptEngine.Elevenlabs", run);
         var settings = System.Xml.Linq.XDocument.Load(Path.Combine(AppRoot, "SettingsWindow.xaml"));
         Assert.Contains(settings.Descendants().Select(element => (string?)element.Attribute("Tag")), tag => tag == SettingsSections.LocalModels);
     }
@@ -196,15 +202,94 @@ public sealed class TranscriptionRoutingTests
     {
         var row = new LocalModelRowState(false);
         Assert.Equal(("Not installed.", "Download"), (row.Status, row.Action));
-        Assert.Equal("Model installed and verified.", row.Finish());
+        Assert.Equal("Model installed and verified.", row.Finish(removed: false));
         Assert.Equal(("Installed and verified.", "Remove"), (row.Status, row.Action));
         Assert.Equal("Removing whisper-small.en-q5_1", row.ProgressName(SmallEn));
-        Assert.Equal("Model removed.", row.Finish());
+        Assert.Equal("Model removed.", row.Finish(removed: true));
         Assert.False(row.Installed);
         var settings = AppFile("SettingsWindow.xaml.cs");
         Assert.DoesNotContain("Reopen Local Models", settings);
+        Assert.Contains("Ui.Show(notice, row.Finish(removed: available));", settings);
         Assert.Contains("status.Text = row.Status; action!.Content = row.Action;", settings);
         Assert.Contains("App.Services.NotifyModelsChanged()", settings);
+    }
+
+    [Fact]
+    public void AnOpenLocalModelsPageFollowsDownloadsMadeElsewhere()
+    {
+        // A model installed from the Transcribe dialog turns its open row into "Installed and verified." / Remove, and back.
+        var row = new LocalModelRowState(false);
+        Assert.False(row.Follow([new InstalledModel(Turbo, "unused", false, null)], Turbo));
+        Assert.False(row.Follow([new InstalledModel(TalTech, "unused", true, null)], Turbo));
+        Assert.True(row.Follow([new InstalledModel(Turbo, "unused", true, null)], Turbo));
+        Assert.Equal(("Installed and verified.", "Remove"), (row.Status, row.Action));
+        Assert.False(row.Follow([new InstalledModel(Turbo, "unused", true, null)], Turbo));
+        // The row's own download finishing after a change elsewhere still ends installed.
+        Assert.Equal("Model installed and verified.", row.Finish(removed: false));
+        Assert.True(row.Installed);
+        Assert.True(row.Follow([], Turbo));
+        Assert.Equal(("Not installed.", "Download"), (row.Status, row.Action));
+        var settings = AppFile("SettingsWindow.xaml.cs");
+        Assert.Contains("App.Services.ModelsChanged += ModelsChanged;", settings);
+        Assert.Contains("App.Services.ModelsChanged -= ModelsChanged;", settings);
+        Ordered(settings, "voiceLabPane = null; followModels = null;", "case \"Local Models\": await ModelsAsync(); break;");
+        Ordered(settings, "private async Task ModelsAsync()", "rows.Add(list => { if (row.Follow(list, model.Id)) Redraw(); });", "followModels = async () =>",
+            "await App.Services.Downloads.ListInstalledAsync(lifetime.Token);", "if (page != pageGeneration || refresh != modelRefreshes", "foreach (var follow in rows) follow(now);");
+    }
+
+    [Fact]
+    public void CancellingADownloadInTheDialogStopsOnlyTheDownloadAndReturnsToTheSetup()
+    {
+        var dialog = AppFile("Controls/TranscriptionDialog.cs");
+        // Cancel or Esc during a download cancels its own source, not the dialog's lifetime.
+        Ordered(dialog, "Closing += (_, args) =>", "if (!running) return;", "if (downloading is { } download) download.Cancel(); else lifetime.Cancel();",
+            "args.Cancel = true;");
+        var download = dialog[dialog.IndexOf("private async Task DownloadAsync", StringComparison.Ordinal)..];
+        Ordered(download, "CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);", "downloading = cancellation;",
+            "ReferenceEquals(downloading, cancellation)) Ui.Show(consentNotice", "}), cancellation.Token);",
+            "catch (OperationCanceledException) when (cancellation.IsCancellationRequested && !lifetime.IsCancellationRequested) { cancelled = true; }",
+            "finally { running = false; downloading = null; }", "ShowSetup();", "if (cancelled) { consentNotice.IsOpen = false; return; }");
+        // The licence and consent pages share one notice; it leaves the old page first, so Download works again after Cancel.
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(dialog, @"page\.Children\.Add\(DetachedConsentNotice\(\)\)").Count);
+        Assert.DoesNotContain("page.Children.Add(consentNotice)", dialog);
+        Assert.Contains("if (consentNotice.Parent is Panel previous) previous.Children.Remove(consentNotice);", dialog);
+    }
+
+    [Fact]
+    public async Task AnEightGigabytePcIsNotLowMemory()
+    {
+        var root = await new ModelCatalog().RootAsync(TestContext.Current.CancellationToken);
+        var threshold = root.GetProperty("defaults").GetProperty("lowMemoryThresholdBytes").GetInt64();
+        Assert.Equal(8L << 30, threshold);
+        // "8.00 GB (7.8 GB usable)": Windows' installed figure wins; without it the usable figure is rounded up to a whole GiB.
+        var usable = (long)(7.8 * (1L << 30));
+        var installed = TranscriptionRouting.InstalledMemory(8L << 20, usable);
+        Assert.Equal(8L << 30, installed);
+        Assert.Equal(8L << 30, TranscriptionRouting.InstalledMemory(null, usable));
+        Assert.Equal(8L << 30, TranscriptionRouting.InstalledMemory(0, usable));
+        Assert.Equal(16L << 30, TranscriptionRouting.InstalledMemory(16L << 20, usable));
+        Assert.Equal(4L << 30, TranscriptionRouting.InstalledMemory(null, (long)(3.6 * (1L << 30))));
+        Assert.Equal(0, TranscriptionRouting.InstalledMemory(null, 0));
+        Assert.True(TranscriptionRouting.InstalledMemoryBytes > 0);
+        // An 8 GB PC gets the regular downloads; only less than 8 GB gets the low-memory ones (§11.2).
+        Assert.Equal(Turbo, TranscriptionRouting.RecommendedDownload(root, "en", installed));
+        Assert.Equal(TalTech, TranscriptionRouting.RecommendedDownload(root, "et", installed));
+        Assert.Equal(Turbo, (await Route(new Installed(TalTech, Vad), "en", ram: installed)).Download!.Id);
+        Assert.Equal(SmallEn, (await Route(new Installed(TalTech, Vad), "en", ram: TranscriptionRouting.InstalledMemory(6L << 20, usable))).Download!.Id);
+        Assert.Contains("TranscriptionRouting.InstalledMemoryBytes", AppFile("Controls/TranscriptionDialog.cs"));
+        Assert.Contains("TranscriptionRouting.InstalledMemoryBytes", AppFile("Controls/OnboardingDialog.cs"));
+        Assert.Contains("GetPhysicallyInstalledSystemMemory(out var kilobytes)", AppFile("ViewModels/TranscriptionRouting.cs"));
+    }
+
+    private static void Ordered(string text, params string[] markers)
+    {
+        var at = 0;
+        foreach (var marker in markers)
+        {
+            var next = text.IndexOf(marker, at, StringComparison.Ordinal);
+            Assert.True(next >= 0, "Missing or out of order: " + marker);
+            at = next + marker.Length;
+        }
     }
 
     private static string AppRoot => Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps/windows/src/VoxClip.App");

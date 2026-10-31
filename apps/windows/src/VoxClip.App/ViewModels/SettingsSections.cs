@@ -14,8 +14,9 @@ internal static class SettingsSections
         .Replace("Settings → AI", "Settings → " + ProvidersAndKeys, StringComparison.Ordinal);
 }
 
-/// <summary>One Settings → Local Models row. A finished download or removal updates the row in place, so it never reads "Not
-/// installed." for a model that was just installed (design §Settings, model row).</summary>
+/// <summary>One Settings → Local Models row. A finished download or removal updates the row in place, and so does one made in
+/// the Transcribe dialog or the welcome tour while the page is open (<c>AppServices.ModelsChanged</c>), so it never reads "Not
+/// installed." for a model that is installed (design §Settings, model row).</summary>
 internal sealed class LocalModelRowState(bool installed)
 {
     internal bool Installed { get; private set; } = installed;
@@ -23,10 +24,19 @@ internal sealed class LocalModelRowState(bool installed)
     internal string Action => Installed ? "Remove" : "Download";
     internal string ProgressName(string id) => (Installed ? "Removing " : "Downloading ") + id;
 
-    /// <summary>Record the finished download or removal and return the notice for it.</summary>
-    internal string Finish()
+    /// <summary>Record this row's finished download or removal and return the notice for it.</summary>
+    internal string Finish(bool removed)
     {
-        Installed = !Installed;
-        return Installed ? "Model installed and verified." : "Model removed.";
+        Installed = !removed;
+        return removed ? "Model removed." : "Model installed and verified.";
+    }
+
+    /// <summary>Follow the installed list after a change made elsewhere; true when the row has to be redrawn.</summary>
+    internal bool Follow(IEnumerable<VoxClip.Core.Services.Models.InstalledModel> installed, string id)
+    {
+        var now = installed.Any(entry => entry.Id == id && entry.Verified);
+        if (now == Installed) return false;
+        Installed = now;
+        return true;
     }
 }

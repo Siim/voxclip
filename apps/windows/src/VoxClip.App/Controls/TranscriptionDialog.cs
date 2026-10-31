@@ -30,6 +30,8 @@ internal sealed class TranscriptionDialog : ContentDialog
     private readonly TextBlock cloudKeyStatus = Ui.Text("Checking ElevenLabs key…", "HelperText");
     private readonly PasswordBox cloudKey = new() { Header = "ElevenLabs API key", PasswordRevealMode = PasswordRevealMode.Hidden, PlaceholderText = "Paste a key to save for your Windows account" };
     private readonly CancellationTokenSource lifetime = new();
+    /// <summary>The model download running from the licence page; Cancel or Esc stops only it and returns to the setup.</summary>
+    private CancellationTokenSource? downloading;
     private readonly string? projectPath;
     private bool running;
 
@@ -72,9 +74,15 @@ internal sealed class TranscriptionDialog : ContentDialog
             CheckLocalRuntime();
         }, "Local models");
         PrimaryButtonClick += Transcribe;
-        // Cancel on the licence page goes back to the setup; while a download runs it cancels it, as "Not now" cancels a run.
+        // Cancel on the licence page goes back to the setup; while a download runs it cancels only the download, which then
+        // returns to the setup, as Settings → Local Models does. "Not now" during a run cancels the run.
         CloseButtonClick += (_, args) => { if (confirmingDownload is not null && !running && !lifetime.IsCancellationRequested) { args.Cancel = true; ShowSetup(); } };
-        Closing += (_, args) => { if (running) { lifetime.Cancel(); args.Cancel = true; } };
+        Closing += (_, args) =>
+        {
+            if (!running) return;
+            if (downloading is { } download) download.Cancel(); else lifetime.Cancel();
+            args.Cancel = true;
+        };
         Closed += (_, _) => { closed = true; App.Services.ModelsChanged -= ModelsChanged; lifetime.Cancel(); lifetime.Dispose(); };
     }
     /// <summary>List Automatic, then the installed local models by name, keeping the current choice; returns how many are installed.</summary>
@@ -125,9 +133,16 @@ internal sealed class TranscriptionDialog : ContentDialog
         page.Children.Add(Ui.Text(ModelDownloadCopy.Body(download, DownloadDependencies(download))));
         if (ModelDownloadCopy.SourcePage(download) is { } source) page.Children.Add(new HyperlinkButton { Content = "Open source page", NavigateUri = source });
         consentNotice.IsOpen = false;
-        page.Children.Add(consentNotice);
+        page.Children.Add(DetachedConsentNotice());
         Content = new ScrollViewer { Content = page, MaxHeight = 600 };
         IsPrimaryButtonEnabled = true;
+    }
+    /// <summary>The licence and cloud consent pages share <see cref="consentNotice"/>. A XAML element has one parent, so it
+    /// leaves the previous page before a page is shown again (Download, Cancel, Download) or the other page is shown.</summary>
+    private InfoBar DetachedConsentNotice()
+    {
+        if (consentNotice.Parent is Panel previous) previous.Children.Remove(consentNotice);
+        return consentNotice;
     }
     private IReadOnlyList<TranscriptionModel> DownloadDependencies(TranscriptionModel download) => ModelDownloadCopy.Dependencies(download, catalogue);
     private void ShowSetup()
@@ -146,15 +161,23 @@ internal sealed class TranscriptionDialog : ContentDialog
             candidate.Id == download.Id && ModelDownloadCopy.Body(candidate, dependencies) == approved ? Task.FromResult(true)
                 : throw new InvalidOperationException("The model download no longer matches the licence shown.");
         running = true; IsPrimaryButtonEnabled = false;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        downloading = cancellation;
+        var cancelled = false;
         try
         {
-            await App.Services.Installer(Confirm).InstallAsync(download.Id,
-                new Progress<ModelDownloadProgress>(value => { if (!closed) Ui.Show(consentNotice, ModelDownloadCopy.Progress(download, value)); }), lifetime.Token);
+            await App.Services.Installer(Confirm).InstallAsync(download.Id, new Progress<ModelDownloadProgress>(value =>
+            {
+                if (!closed && ReferenceEquals(downloading, cancellation)) Ui.Show(consentNotice, ModelDownloadCopy.Progress(download, value));
+            }), cancellation.Token);
         }
-        finally { running = false; }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested && !lifetime.IsCancellationRequested) { cancelled = true; }
+        finally { running = false; downloading = null; }
         if (closed) return;
         App.Services.NotifyModelsChanged();
         ShowSetup();
+        // A cancelled download returns to the setup with the typed language, the model choice and the prompt's Download.
+        if (cancelled) { consentNotice.IsOpen = false; return; }
         ClearRoute();
         Ui.Show(notice, TranscriptionRouting.Installed, InfoBarSeverity.Success);
     }
@@ -245,7 +268,8 @@ internal sealed class TranscriptionDialog : ContentDialog
         DefaultButton = ContentDialogButton.Primary;
         var page = Ui.Stack(16); page.MinWidth = 400; page.MaxWidth = 480;
         page.Children.Add(Ui.Text("ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent."));
-        page.Children.Add(consentNotice);
+        consentNotice.IsOpen = false;
+        page.Children.Add(DetachedConsentNotice());
         Content = new ScrollViewer { Content = page, MaxHeight = 600 };
     }
     private async Task RunTranscriptionAsync()
@@ -300,8 +324,10 @@ internal sealed class TranscriptionDialog : ContentDialog
                     if (closed || model.IsLeaving) return;
                     if (route.Plan is null) { ShowRoute(route); return; }
                 }
-                var plan = route?.Plan ?? new TranscriptionPlan(TranscriptEngine.Elevenlabs, null,
-                    requestedLanguage.Length == 0 || requestedLanguage == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(requestedLanguage), new());
+                // The local engine only ever runs its routed plan; it never falls through to the cloud (no automatic fallback).
+                var plan = local ? route?.Plan ?? throw new InvalidOperationException("Local transcription has no routed model.")
+                    : new TranscriptionPlan(TranscriptEngine.Elevenlabs, null,
+                        requestedLanguage.Length == 0 || requestedLanguage == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(requestedLanguage), new());
                 var cloud = !local;
                 var transcript = await App.Services.Transcription.TranscribeAsync(new(plan, audio.Audio, source.ContentKey), new Progress<TranscriptionProgress>(value =>
                 {

@@ -25,8 +25,30 @@ internal static class TranscriptionRouting
     internal const string Installed = "Model installed and verified. Choose Transcribe to continue.";
     internal const string UseCloud = "Use ElevenLabs instead";
 
-    /// <summary>The installed RAM the low-memory rule compares with <c>defaults.lowMemoryThresholdBytes</c>.</summary>
-    internal static long InstalledMemoryBytes => GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+    /// <summary>The installed RAM the low-memory rule compares with <c>defaults.lowMemoryThresholdBytes</c> (transcription §11.1),
+    /// as the Mac's <c>physicalMemory</c>. Windows reports it with <c>GetPhysicallyInstalledSystemMemory</c>; the GC's total is
+    /// only the usable part (an 8 GB PC shows 7.8 GB once firmware and graphics take theirs), so it is the fallback.</summary>
+    internal static long InstalledMemoryBytes =>
+        InstalledMemory(OperatingSystem.IsWindows() ? WindowsInstalledKilobytes() : null, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
+
+    /// <summary>Installed RAM from Windows' figure in kilobytes when it has one, else the usable memory rounded up to a whole GiB,
+    /// so memory reserved by firmware and graphics never moves an 8 GB PC below the 8 GiB threshold.</summary>
+    internal static long InstalledMemory(long? installedKilobytes, long usableBytes)
+    {
+        if (installedKilobytes is long kilobytes and > 0) return kilobytes * 1024;
+        const long gib = 1L << 30;
+        return usableBytes <= 0 ? 0 : (usableBytes + gib - 1) / gib * gib;
+    }
+
+    private static long? WindowsInstalledKilobytes()
+    {
+        try { return GetPhysicallyInstalledSystemMemory(out var kilobytes) && kilobytes is > 0 and <= long.MaxValue / 1024 ? (long)kilobytes : null; }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException) { return null; }
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetPhysicallyInstalledSystemMemory(out ulong totalMemoryInKilobytes);
 
     /// <summary>The language box text as a choice: empty or "auto" is Auto, anything else is forced.</summary>
     internal static LanguageChoice Language(string text)
