@@ -281,6 +281,12 @@ exit 23
             (("--dry-run",), "--dry-run requires --upload-only"),
             (("--no-upload",), "--no-upload requires --release"),
             (("--release", "--allow-dirty"), "--allow-dirty requires --release --no-upload"),
+            (("profile", "--release"), "Choose only one build/upload mode"),
+            (("--sign-only", "profile"), "Choose only one build/upload mode"),
+            (("profile", "--upload-only"), "Choose only one build/upload mode"),
+            (("profile", "--no-upload"), "--no-upload requires --release"),
+            (("profile", "--allow-dirty"), "--allow-dirty requires --release --no-upload"),
+            (("profile", "--dry-run"), "--dry-run requires --upload-only"),
         )
         for arguments, expected in cases:
             with self.subTest(arguments=arguments):
@@ -672,6 +678,18 @@ fi
                 build = next(line for line in self.calls.read_text().splitlines() if line.startswith("swift build "))
                 self.assertIn(" -c release ", build)
                 self.assertNotRegex(build, r"(?:^|\s)(?:-D\S*|-Xswiftc|-Xcc|debug)(?:\s|$)")
+
+    def test_profile_build_is_optimized_with_debug_and_never_signed_or_released(self):
+        # The profile build (impl-plan V0) runs the DEBUG self-tests and performance gates on optimized code.
+        script = self.prepare_release()
+        self.assert_failed(self.run_bundle(script, "profile"), "Mock swift build stopped")
+        invocations = self.calls.read_text()
+        build = next(line for line in invocations.splitlines() if line.startswith("swift build "))
+        self.assertIn(" -c release ", build)
+        self.assertIn(" -Xswiftc -DDEBUG ", build)
+        # Ad-hoc like the debug build: no Developer ID lookup, release preflight, tag check or GitHub call.
+        for command in ("security ", "ioreg ", "git ", "gh "):
+            self.assertNotIn(command, invocations)
 
     def test_release_rejects_ignored_resources_even_with_allow_dirty(self):
         self.prepare_upload()

@@ -17,7 +17,7 @@ import VoxClipMedia
         check("missing media allows document Rename and caption position only", editor.capabilities.rename && editor.capabilities.captionPosition && !editor.capabilities.edit && !editor.capabilities.ai && !editor.canExport)
         let commands: [Int] = [1, 2, 3, 7, 8, 9, 29, 30, 31, 34, 37, 38, 40, 41, 42, 43, 44, 45]
         for command in commands { check("missing-media menu command \(command) disabled", editor.mutationEnabled(command) == false) }
-        editor.cutSelection(); editor.beginCorrection(); editor.beginRewrite(); editor.requestFindClips(from: .toolbar)
+        editor.cutSelection(); editor.beginCorrection(); editor.beginRewrite(); editor.requestFindClips(from: .overflow)
         check("missing-media action entries refuse editing and AI UI", editor.project == original && editor.correctionID == nil && editor.rewrite == nil && !editor.showFindClips && !editor.showVoiceLabOptIn)
         editor.mediaResolved = true
         check("resolved transcript enables edits and AI", editor.capabilities.edit && editor.capabilities.ai)

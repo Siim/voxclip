@@ -2,7 +2,7 @@ import Foundation
 
 extension SettingsDocument {
     static func isKnownKey(_ key: String) -> Bool {
-        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio"].contains(key) ||
+        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio"].contains(key) || layoutRanges[key] != nil ||
         ProjectValidation.matches(key, "(?:llm\\.model|llm\\.cloudConsent|voiceLab\\.providerConsent|voiceLab\\.monthlyCapUsd)\\.[a-z0-9]+(?:-[a-z0-9]+)*")
     }
 
@@ -22,6 +22,13 @@ extension SettingsDocument {
         guard VoiceLabMoney.parse(text, wholeDigits: 9, fractionDigits: 2) != nil else { throw VoiceLabError.invalidInput }
         values[key] = .string(text)
     }
+
+    /// The Mac editor's dragged layout sizes in pt (v2 shell, impl-plan item 18), kept for every project. They have
+    /// no shared default: missing or null is the window-dependent platform default, and the app clamps to its own
+    /// token range. Windows keeps `ui.rightColumnWidth` until WV1 moves it here.
+    public static let layoutRanges: [String: ClosedRange<Double>] = [
+        "ui.layout.explorerWidth": 160...480, "ui.layout.rightWidth": 240...720, "ui.layout.timelineHeight": 40...1200
+    ]
 
     public static let defaults: [String: JSONValue] = [
         "general.appearance": .string("system"), "general.transcriptTextSize": .null, "ui.rightColumnWidth": .null,
@@ -90,6 +97,10 @@ extension SettingsDocument {
                 if value != .null { guard case .number(let number) = value else { throw VoxClipError.projectUnreadable("Invalid text size") }; try ProjectValidation.number(number, min: 13, max: 28) }
             case "ui.rightColumnWidth":
                 if value != .null { guard case .number(let number) = value else { throw VoxClipError.projectUnreadable("Invalid column width") }; try ProjectValidation.number(number, min: 240, max: 720) }
+            case "ui.layout.explorerWidth", "ui.layout.rightWidth", "ui.layout.timelineHeight":
+                guard value != .null, let range = Self.layoutRanges[key] else { continue }
+                guard case .number(let number) = value else { throw VoxClipError.projectUnreadable("Invalid layout size") }
+                try ProjectValidation.number(number, min: range.lowerBound, max: range.upperBound)
             case "general.recentProjects", "transcription.recentLanguages":
                 let items = try ProjectValidation.array(value)
                 try ProjectValidation.require(items.count <= (key == "general.recentProjects" ? 20 : 10), "Too many recent entries")

@@ -1,9 +1,19 @@
 import SwiftUI
 
+/// F6 order (impl-plan §3.2): Explorer → tab and clip-bar rows → transcript → viewer →
+/// panel → timeline → status bar. A hidden Explorer, right column or timeline panel is no
+/// stop; an Explorer or right column shown over the editor is.
 enum EditorPane: CaseIterable {
-    case sidebar, toolbar, transcript, viewer, panel, timeline
-    static func order(viewerVisible: Bool) -> [Self] {
-        viewerVisible ? allCases : [.sidebar, .toolbar, .transcript, .timeline]
+    case sidebar, tabs, transcript, viewer, panel, timeline, status
+    static func order(explorerVisible: Bool, viewerVisible: Bool, timelineVisible: Bool) -> [Self] {
+        allCases.filter { pane in
+            switch pane {
+            case .sidebar: explorerVisible
+            case .viewer, .panel: viewerVisible
+            case .timeline: timelineVisible
+            case .tabs, .transcript, .status: true
+            }
+        }
     }
     static func isCycleKey(code: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         code == 97 && modifiers.intersection([.command, .option]).isEmpty
@@ -11,6 +21,19 @@ enum EditorPane: CaseIterable {
     static func entersSelectionBar(code: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         code == 48 && modifiers.intersection([.shift, .command, .option, .control]).isEmpty
     }
+}
+
+/// The shell's AppKit F6 stops in its window: the tab and clip-bar rows, the transcript's
+/// text view and the status bar (EditorShellController). The SwiftUI panes take focus
+/// through `EditorPaneFocus`.
+@MainActor protocol ShellChromeFocus: AnyObject {
+    /// The pane that holds keyboard focus when it is one of these stops.
+    func paneHoldingFocus() -> EditorPane?
+    /// Puts keyboard focus in one of these stops. For a SwiftUI pane it only lets go of
+    /// an AppKit stop, so the next F6 starts from that pane; it returns false.
+    @discardableResult func focus(_ pane: EditorPane) -> Bool
+    /// Keyboard focus is in the Explorer or the right column shown over the editor.
+    func overlayHoldsFocus() -> Bool
 }
 
 @MainActor struct EditorPaneFocus: ViewModifier {
@@ -32,13 +55,24 @@ enum EditorPane: CaseIterable {
 }
 
 extension EditorModel {
-    func movePaneFocus(backward: Bool) {
-        let panes = EditorPane.order(viewerVisible: app.shell.viewerVisible)
-        let index: Int = panes.firstIndex(of: focusedPane) ?? 2
-        let offset: Int = backward ? panes.count - 1 : 1
-        let next: Int = (index + offset) % panes.count
-        focusedPane = panes[next]
+    /// Moves `focusedPane` one stop along `order` and asks that pane to take focus.
+    func movePaneFocus(backward: Bool, through order: [EditorPane]) {
+        guard !order.isEmpty else { return }
+        let index: Int = order.firstIndex(of: focusedPane) ?? order.firstIndex(of: .transcript) ?? 0
+        let offset: Int = backward ? order.count - 1 : 1
+        focusedPane = order[(index + offset) % order.count]
         paneFocusRequest += 1
-        if focusedPane == .transcript { _ = focusTranscript(in: window) }
+    }
+}
+
+extension WorkspaceShell {
+    /// F6 and ⇧F6 in this shell's window: the next or previous of its stops. It starts from
+    /// the AppKit stop or the transcript holding focus, else the editor's last pane.
+    func movePaneFocus(backward: Bool) {
+        guard let editor, !showsHome else { return }
+        if let holding = chromeFocus?.paneHoldingFocus() { editor.focusedPane = holding }
+        editor.movePaneFocus(backward: backward, through: paneOrder)
+        let pane = editor.focusedPane
+        if chromeFocus?.focus(pane) != true, pane == .transcript { _ = focusTranscript(in: windowController?.window ?? editor.window) }
     }
 }

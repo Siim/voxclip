@@ -48,6 +48,7 @@ The local-only signing/notarization workflow follows [doc/release.md](../../doc/
 
 ```sh
 ./bundle.sh                         # debug, ad-hoc signed app
+./bundle.sh profile                 # optimized with the DEBUG self-tests, ad-hoc; for performance gates
 ./bundle.sh --sign-only             # release, Developer ID + hardened runtime
 ./bundle.sh --release --no-upload   # notarized app, zip, DMG and checksums
 ./bundle.sh --upload-only --dry-run # verify artifacts/tag; print create/upload commands
@@ -55,7 +56,7 @@ The local-only signing/notarization workflow follows [doc/release.md](../../doc/
 ./bundle.sh --release               # full pipeline, then create/update the draft
 ```
 
-The default debug build is a development build: Voice Lab reads as on until you set the switch, and Rewrite skips the beta notice (doc/spec/voice-lab.md section 5). Release builds keep the shipped off default.
+The default debug build and the profile build are development builds: Voice Lab reads as on until you set the switch, and Rewrite skips the beta notice (doc/spec/voice-lab.md section 5). Release builds keep the shipped off default.
 
 All modes take the per-checkout `.build/bundle.lock` with macOS `shlock` before accessing `dist/`; a concurrent invocation fails without changing the active build's artifacts. The EXIT trap removes the lock and temporary work directory. Operational failures, including signing, stapler and Gatekeeper failures, exit 1; usage errors remain exit 2. GitHub preflight checks only the active github.com account with `gh auth status --hostname github.com --active`; authenticate it with `gh auth login -h github.com` if needed. Ignored files are listed as NUL-delimited Git paths, so `.DS_Store` basenames are exempt even under non-ASCII, quoted or newline-containing directories.
 

@@ -40,6 +40,16 @@ function swiftColor(value, token) {
   return `NSColor(srgbRed: ${bytes[0]}.0 / 255, green: ${bytes[1]}.0 / 255, blue: ${bytes[2]}.0 / 255, alpha: ${bytes[3]}.0 / 255)`;
 }
 
+// A colour's macOS Increase Contrast values, or undefined. Hex only, in both modes.
+function increaseContrast(token) {
+  const raised = extensions(token).increaseContrast;
+  if (raised === undefined) return undefined;
+  for (const mode of ['dark', 'light']) {
+    if (!/^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(raised?.[mode] ?? '')) throw new Error(`Increase Contrast colours must be hex in both modes: ${token.path.join('.')}`);
+  }
+  return raised;
+}
+
 function assetColor(value, token) {
   if (!/^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(value ?? '')) throw new Error(`macOS asset colours must be hex: ${token.path.join('.')}`);
   const [red, green, blue, alpha = 'FF'] = value.slice(1).toUpperCase().match(/../g);
@@ -165,7 +175,17 @@ export function buildOutputs(source) {
 
   const colorDeclarations = colors.map(token => {
     const name = `vc${suffix(token.path.slice(1))}`;
-    return `    static let ${name} = Color(nsColor: NSColor(name: NSColor.Name(${quote(name)})) { appearance in\n        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua\n            ? ${swiftColor(token.$value.dark, token)}\n            : ${swiftColor(token.$value.light, token)}\n    })`;
+    const raised = increaseContrast(token);
+    if (!raised) return `    static let ${name} = Color(nsColor: NSColor(name: NSColor.Name(${quote(name)})) { appearance in\n        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua\n            ? ${swiftColor(token.$value.dark, token)}\n            : ${swiftColor(token.$value.light, token)}\n    })`;
+    // macOS Increase Contrast draws the high-contrast appearances; their value replaces $value there.
+    return `    static let ${name} = Color(nsColor: NSColor(name: NSColor.Name(${quote(name)})) { appearance in
+        switch appearance.bestMatch(from: [.darkAqua, .aqua, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastAqua]) ?? .aqua {
+        case .accessibilityHighContrastDarkAqua: ${swiftColor(raised.dark, token)}
+        case .accessibilityHighContrastAqua: ${swiftColor(raised.light, token)}
+        case .darkAqua: ${swiftColor(token.$value.dark, token)}
+        default: ${swiftColor(token.$value.light, token)}
+        }
+    })`;
   });
   const swift = `// ${header}
 import AppKit

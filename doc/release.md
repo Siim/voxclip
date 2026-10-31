@@ -131,6 +131,7 @@ Both Swift build invocations use two jobs to bound compiler resource use on the 
 | Command | Result |
 |---|---|
 | `./bundle.sh` | Debug build, ad-hoc signed `dist/VoxClip.app`; anyone can run it |
+| `./bundle.sh profile` | Optimized build with the DEBUG self-tests (`swift build -c release -Xswiftc -DDEBUG`), ad-hoc signed like the debug build. Performance gates and test builds use it, because the gates pass automatically in a debug build. It cannot be combined with another mode, never runs the release preflight and is never uploaded |
 | `./bundle.sh --sign-only` | Release build signed with Developer ID and hardened runtime; no notarization. The app's designated requirement matches production releases, preserving camera/mic and Keychain grants |
 | `./bundle.sh --release --no-upload` | Signed, notarized, stapled app, zip, DMG and checksums in `dist/`; submits to Apple, but does not upload to GitHub |
 | `./bundle.sh --upload-only` | Verify existing `dist/` artifacts, then attach them to draft `v<version>`, creating it if missing; no build or notarization |
@@ -139,7 +140,7 @@ Both Swift build invocations use two jobs to bound compiler resource use on the 
 | `./bundle.sh --release --no-upload --allow-dirty` | Untagged/dirty local test release; Apple submissions still happen, GitHub uploads are permanently forbidden for these artifacts |
 | `./bundle.sh --universal` | Reserved and rejected; v1 ships arm64 only |
 
-Usage errors exit **2**: unknown options, conflicting modes, `--no-upload` without `--release`, `--dry-run` without `--upload-only`, or `--allow-dirty` in any combination except `--release --no-upload`. Operational failures exit 1, including nonzero signing, stapler and Gatekeeper statuses, normalized by `set -Eeo pipefail` and `trap 'exit 1' ERR`. `--help` exits 0.
+Usage errors exit **2**: unknown options, conflicting modes (`profile` included), `--no-upload` without `--release`, `--dry-run` without `--upload-only`, or `--allow-dirty` in any combination except `--release --no-upload`. Operational failures exit 1, including nonzero signing, stapler and Gatekeeper statuses, normalized by `set -Eeo pipefail` and `trap 'exit 1' ERR`. `--help` exits 0.
 
 After argument validation, every mode takes the per-checkout `.build/bundle.lock` with `/usr/bin/shlock` before reading or changing `dist/`. A second invocation fails without disturbing the active build or its artifacts. The EXIT trap removes the lock and temporary work directory; `shlock` recovers stale locks from dead processes.
 

@@ -32,6 +32,7 @@ struct EditorAccessibilityPolicy: Equatable {
 
 enum EditorIconAction: CaseIterable {
     case back, play, pause, forward, closeRewrite, hideViewer, showViewer, previousMatch, nextMatch, closeFind
+    case hideSidebar, showSidebar, hideTimeline, showTimeline, moreCommands
     var name: String {
         switch self {
         case .back: "Back 3 seconds"
@@ -44,6 +45,11 @@ enum EditorIconAction: CaseIterable {
         case .previousMatch: "Previous match"
         case .nextMatch: "Next match"
         case .closeFind: "Close find"
+        case .hideSidebar: "Hide Sidebar"
+        case .showSidebar: "Show Sidebar"
+        case .hideTimeline: "Hide Timeline"
+        case .showTimeline: "Show Timeline"
+        case .moreCommands: "More Commands"
         }
     }
     static func suggestion(keep: Bool, number: Int) -> String {

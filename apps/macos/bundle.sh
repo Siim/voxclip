@@ -33,6 +33,8 @@ usage() {
     cat <<'HELP'
 Usage: ./bundle.sh [MODE] [OPTIONS]
   (no mode)        Debug build, ad-hoc signed dist/VoxClip.app.
+  profile         Optimized build with the DEBUG self-tests (-c release -Xswiftc -DDEBUG), ad-hoc
+                  signed; for performance gates and test builds. Never signed, released or uploaded.
   --sign-only     Release build, Developer ID signed; no notarization.
   --release, -r   Build, sign, notarize, staple, package, then upload.
   --upload-only   Upload verified artifacts; create the draft if missing.
@@ -51,6 +53,7 @@ select_mode() {
 
 for argument in "$@"; do
     case "$argument" in
+        profile) select_mode profile ;;
         --release|-r) select_mode release ;;
         --sign-only) select_mode sign-only ;;
         --upload-only) select_mode upload-only ;;
@@ -127,7 +130,10 @@ if [ "$MODE" = release ]; then
     release_preflight
 fi
 [ "$(uname -m)" = arm64 ] || die "Build on Apple silicon; v1 ships arm64 only."
-if [ "$MODE" != debug ]; then
+# Debug and profile builds are ad-hoc signed; every other build mode needs the Developer ID.
+ADHOC=false
+[ "$MODE" != debug ] && [ "$MODE" != profile ] || ADHOC=true
+if [ "$ADHOC" = false ]; then
     identities=$(security find-identity -v -p codesigning)
     printf '%s\n' "$identities" | grep -F "\"$SIGNING_IDENTITY\"" >/dev/null \
         || die "Developer ID identity is missing; use the default ad-hoc build instead."
@@ -145,7 +151,13 @@ PACKAGE_MIN=$(sed -n 's/.*\.macOS(\.v\([0-9]*\)).*/\1.0/p' Package.swift)
 BUILD_FLAGS=(--sdk "$SDK_PATH" -Xlinker -platform_version -Xlinker macos -Xlinker "$MIN_MACOS" -Xlinker "$SDK_VERSION")
 CONFIG=release
 [ "$MODE" != debug ] || CONFIG=debug
-printf 'Building VoxClip %s (%s), %s, arm64, macOS %s+, SDK %s\n' "$VERSION" "$BUILD_NUMBER" "$CONFIG" "$MIN_MACOS" "$SDK_VERSION"
+BUILD_LABEL="$CONFIG"
+if [ "$MODE" = profile ]; then
+    # Optimized like a release, but with the DEBUG self-tests, so performance gates measure real code.
+    BUILD_FLAGS+=(-Xswiftc -DDEBUG)
+    BUILD_LABEL="release with DEBUG (profile)"
+fi
+printf 'Building VoxClip %s (%s), %s, arm64, macOS %s+, SDK %s\n' "$VERSION" "$BUILD_NUMBER" "$BUILD_LABEL" "$MIN_MACOS" "$SDK_VERSION"
 swift build --jobs 2 -c "$CONFIG" "${BUILD_FLAGS[@]}"
 BIN_DIR=$(swift build --jobs 2 -c "$CONFIG" "${BUILD_FLAGS[@]}" --show-bin-path)
 OTOOL=$(xcrun --find otool)
@@ -197,7 +209,7 @@ done < <(find "$APP_BUNDLE/Contents" -type f -print0)
 
 [ "$MODE" != release ] || verify_build_commit
 SIGN=(codesign --force --sign -)
-if [ "$MODE" != debug ]; then
+if [ "$ADHOC" = false ]; then
     SIGN=(codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY")
 fi
 while IFS= read -r -d '' binary; do
@@ -218,7 +230,7 @@ plutil -convert xml1 "$WORK_DIR/signed-entitlements.plist"
 plutil -convert xml1 -o "$WORK_DIR/expected-entitlements.plist" "$ENTITLEMENTS"
 cmp -s "$WORK_DIR/signed-entitlements.plist" "$WORK_DIR/expected-entitlements.plist" \
     || die "Signed entitlements differ from $ENTITLEMENTS."
-if [ "$MODE" != debug ]; then
+if [ "$ADHOC" = false ]; then
     while IFS= read -r -d '' binary; do
         is_macho "$binary" || continue
         signature=$(codesign -d --verbose=4 "$binary" 2>&1)

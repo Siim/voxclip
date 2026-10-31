@@ -5,3 +5,7 @@
 
 # Upstream font licences stay byte-identical to the files they came from.
 shared/fonts/**/OFL.txt -text
+
+# Every v2 package adds an entry to these logs; a union merge keeps both sides, and the lead checks placement.
+apps/macos/CONTRACTS.md merge=union
+CHANGELOG.md merge=union
