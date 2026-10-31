@@ -14,10 +14,20 @@ internal sealed record RewriteConnector(ILlmConnector Connector, string Model, s
 /// <paramref name="SampleRate"/>, the window, its §8.9.2 lendable silences, which the fit can borrow, and the transcript the
 /// room-tone search reads. <see cref="VoiceLabSourceAudio.RewriteSourceAsync"/> answers it at any length.</summary>
 internal sealed record RewriteSourceRequest(long Frames, int SampleRate, VoiceLabWindow Window, double? IncomingSilence, double? OutgoingSilence,
-    IReadOnlyList<TimedWord> Items);
+    IReadOnlyList<TimedWord> Items)
+{
+    /// <summary>A reader that hands each request's fields to <paramref name="decode"/> in their places, for the media at
+    /// <paramref name="source"/> when the request is read. The Editor passes <see cref="VoiceLabSourceAudio.RewriteSourceAsync"/>.</summary>
+    internal static RewriteSourceReader Reader(Func<string> source, RewriteSourceDecoder decode) => (request, ct) =>
+        decode(source(), request.Frames, request.SampleRate, request.Window, request.IncomingSilence, request.OutgoingSilence, request.Items, ct);
+}
 
 /// <summary>Reads a <see cref="RewriteSourceRequest"/>: the regions a take run reads, at absolute frames, and the whole track's envelope.</summary>
 internal delegate Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceReader(RewriteSourceRequest request, CancellationToken ct);
+
+/// <summary>The parameters of <see cref="VoiceLabSourceAudio.RewriteSourceAsync"/>, by name and in order.</summary>
+internal delegate Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceDecoder(string source, long frames, int sampleRate,
+    VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items, CancellationToken ct);
 
 internal sealed class RewriteSession : IDisposable
 {

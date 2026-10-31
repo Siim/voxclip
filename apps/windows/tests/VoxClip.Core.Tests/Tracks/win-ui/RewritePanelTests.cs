@@ -806,7 +806,7 @@ public sealed class RewritePanelTests
             return Task.FromResult((VoiceLabSourceExcerpt.Whole([0f]), new AudioEnvelope(value.SampleRate, 0.01, [])));
         }, CancellationToken.None);
         Assert.Equal(158_760_000, frames);
-        Assert.Contains("VoiceLabSourceAudio.RewriteSourceAsync(media?.Path ?? \"\", request.Frames,", AppSource("Pages", "EditorPage.xaml.cs"));
+        Assert.Contains("RewriteSourceRequest.Reader(() => media?.Path ?? \"\", VoiceLabSourceAudio.RewriteSourceAsync)", AppSource("Pages", "EditorPage.xaml.cs"));
         var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");
         foreach (var file in Directory.EnumerateFiles(app, "*.cs", SearchOption.AllDirectories).Where(file => !file.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)))
         {
