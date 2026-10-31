@@ -305,12 +305,14 @@ internal sealed class TranscriptionDialog : ContentDialog
             try
             {
                 var source = model.Project.Media.Source;
+                // From extraction to the transcript, eviction leaves this source's cache entry alone (architecture §8.2).
+                using var entryLease = await App.Services.CacheKeys.LeaseAsync(source.ContentKey, lifetime.Token);
                 App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "transcribe", "dialog stage=probe");
                 await App.Services.Log.FlushAsync(CancellationToken.None);
                 var media = await App.Services.Probe.ProbeAsync(source.AbsolutePath, lifetime.Token);
                 Report(MediaTranscriptionStage.ExtractingAudio, null);
                 Ui.Show(notice, TranscriptionProgressCopy.ExtractingAudio);
-                var audio = await new CacheIndex(App.Services.Data.Cache).ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, lifetime.Token);
+                var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, lifetime.Token);
                 App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "transcribe", "dialog stage=audio-ready");
                 await App.Services.Log.FlushAsync(CancellationToken.None);
                 if (route is { Detector: not null })
