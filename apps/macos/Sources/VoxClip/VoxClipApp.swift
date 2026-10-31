@@ -523,7 +523,7 @@ On-device transcription, editing, captions and export stay on this Mac. Your cho
 Voice Lab (only when you turn it on; each provider action requires your approval):
 • Source audio for Clean audio goes to ElevenLabs, only on your click. The input WAV is an evictable local cache; the result stays in this Mac's Voice Lab data folder.
 • Consent statement audio goes to ElevenLabs Scribe for the check and IVC as one clone sample. It stays in this Mac's consent record folder until the voice is deleted.
-• Training samples go to ElevenLabs IVC. They are deleted locally after upload; hashes are kept.
+• Training samples (project spans or a read-aloud) go to ElevenLabs IVC. They are temporary: deleted locally after upload or when the sheet closes; hashes are kept.
 • Patch text and context text go to ElevenLabs TTS (previous_text / future_text, at most 100 or 300 characters). They stay in the project segment. Speech-check audio goes to ElevenLabs Scribe for QA.
 • Lip-sync window video and audio go to fal.ai or sync.so. Remote files are deleted where the API allows; the result stays in this Mac's project Voice Lab folder.
 • Speaker embeddings never leave this Mac. They stay in the local consent record.
