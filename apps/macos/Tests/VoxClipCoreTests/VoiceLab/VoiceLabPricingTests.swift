@@ -315,6 +315,31 @@ struct VoiceLabPricingTests {
         #expect(try Self.text(url) == concurrent["ledger"] as? String)
     }
 
+    /// Writers in one process try the lock in the order they asked for it. Before the line, a writer that recorded again
+    /// at once took the lock straight back, and the other writer of `twoConcurrentRecordersLoseNoUpdate` sometimes timed
+    /// out on a slow disk and lost its record. Here no process holds the lock, yet a later writer waits for an earlier
+    /// one, then records once that one is done.
+    @Test func aLaterWriterWaitsForEveryEarlierOne() async throws {
+        let root = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("VoiceLab/spend.json")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let lock = url.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().appendingPathComponent("spend.json.lock")
+        let turns = VoiceLabSpendTurns.shared(lock: lock)
+        let earlier = turns.join(), later = turns.join()
+        #expect(turns.isFirst(earlier) && !turns.isFirst(later))
+        let estimate = try Self.spend(["provider": "elevenlabs", "usd": "0.01"])
+        let at = try VoiceLabRequestFixtures.date("2026-10-27T12:00:00Z")
+        let ledger = VoiceLabSpendLedger(url: url, timeZone: Self.utc, lockTimeout: .milliseconds(50))
+        #expect(await ledger.record(estimate, at: at) == .lockTimedOut)
+        turns.leave(earlier)
+        #expect(turns.isFirst(later))
+        #expect(await ledger.record(estimate, at: at) == .lockTimedOut)
+        turns.leave(later)
+        #expect(await ledger.record(estimate, at: at) == nil)
+        #expect(await ledger.total(provider: "elevenlabs", at: at)?.usd == Self.amount("0.01"))
+    }
+
     @Test func corruptLedgersAreMovedAsideAndAFreshLedgerStarts() async throws {
         let ledger = try Self.ledgerSection()
         let recovery = try #require(ledger["recoveryRecord"] as? [String: Any])
