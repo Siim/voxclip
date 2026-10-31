@@ -468,13 +468,13 @@ A new statement is generated for each attempt:
 
 ### 6.4 Verification
 
-1. **Transcribe.** Send the recording to ElevenLabs Scribe v2 (transcription.md §8) with `language_code` set to the statement language. Cost: under $0.01; shown on the button.
+1. **Order.** After the live statement (§6.3), the speaker match (§6.6) runs on device first, against the selected project spans or the read-aloud. Only when enough audio passes does the panel offer **Create My Voice**. Its single approval covers, in order: the plan check (§2.3), Scribe transcription of the statement (ElevenLabs Scribe v2, transcription.md §8, with `language_code` set to the statement language; under $0.01), and, only if item 3 passes, the creation (§6.7). The approval binds the statement's SHA-256, the files and their roles, the name, the language and the creation time, so the file set is final when the user approves. A failed check creates nothing and spends only the Scribe request.
 2. **Normalise.** Tokenise both texts on whitespace and normalise with `normalizeForMatch` (`editing.md` §4.7).
 3. **Pass** only if all of these hold:
    - word-level WER (Levenshtein distance / expected word count) ≤ 0.15;
    - all four nonce words appear in the recognised tokens;
    - the recognised language matches the statement language.
-4. **Attempts.** Three per 10 minutes. On failure, show "That didn't match the statement. Read it again, clearly, in one take." and generate a new statement for the next attempt.
+4. **Attempts.** Three per 10 minutes. On failure, show "That didn't match the statement. Read it again, clearly, in one take." and generate a new statement for the next attempt. The speaker match reruns on the new recording.
 
 ### 6.5 Training samples
 
@@ -563,7 +563,7 @@ public protocol SpeakerEmbedder: Sendable {
 - **Embedding.** Use 16 kHz mono input. Embed 3 s windows with a 1.5 s hop over voiced frames only, and average them.
 - **Score.** Cosine similarity of the L2-normalised embeddings.
 - **Threshold τ.** It comes from calibration (spike S6), not a model-family starting point. Use the 99.9th percentile of clean calibration impostor scores plus `max(0.002, measured cross-runtime drift)`, rounded up to 0.01. Freeze it before speaker-disjoint validation. Every corpus × input-rate condition must have false-accept rate ≤ 0.5% and same-speaker pass ≥ 95%, with at least 200 impostor and 50 same-speaker pairs. τ is stored per model in the catalogue. **M3 does not ship without a calibrated τ.**
-- **Clone creation.** Every training sample must score ≥ τ against the consent recording. If any sample fails, or has too little voiced speech to embed, drop it. For a read-aloud, if the remaining total falls under 10 s, block with "Some of these recordings don't sound like the voice in your consent statement." For project spans (§6.5 a) the floor is 30 s, with the §6.5.2 copy and the switch to a read-aloud. Dropped spans are not replaced from the unselected ones.
+- **Clone creation.** §6.6 runs on every selected span right after the statement is recorded, and on a read-aloud right after it is recorded, before any request (§6.4 item 1). Every training sample must score ≥ τ against the consent recording. If any sample fails, or has too little voiced speech to embed, drop it. For a read-aloud, if the remaining total falls under 10 s, block with "Some of these recordings don't sound like the voice in your consent statement." For project spans (§6.5 a) the floor is 30 s, with the §6.5.2 copy and the switch to a read-aloud. Dropped spans are not replaced from the unselected ones.
 - **Project span parts.** Without speaker labels (diarization off), a project span can hold another voice beside the user's, and the mean of its windows can still pass. So a project span is also scored in parts: its windows, in order, are grouped three at a time, about the six seconds of each S6 calibration clip, and a last group of one window joins the group before. Each group's mean, normalised, is compared with the statement like a whole sample. The span's score is the lowest of its parts and its whole mean, and it must be ≥ τ. A read-aloud is scored on its mean only. A shorter stretch of another voice inside one part can still pass; this narrows the gap, it does not close it.
 - **Language.** Project spans may be in another language than the statement. They are scored with the statement language's τ; cross-language pairs were not part of the S6 calibration.
 
@@ -593,6 +593,8 @@ The 2026-10-29 end-to-end production rerun gives clean P99.9 = 0.446537032638157
 Pooled results are 30/47,088 false accepts (0.063710%) and 874/876 same-speaker passes (99.771689%); pooling does not replace the per-condition gates. The catalogue publishes `threshold: 0.45` and `outcome: passed`, with date, rule, corpus and separate speaker/clip/render/pair counts. Only English may obtain a production speaker check, and only with installed, hash-verified model/VAD assets and matching calibration/preprocessing evidence. The check is bound to its calibration language at clone preparation, creation and use; passing an English check cannot authorize an Estonian consent record. Estonian remains unavailable. The curves, all pair scores, input/asset hashes and selection policy live in `shared/fixtures/voice-lab/speaker/`. Pairs share speakers and clips and rate renders share source utterances: these are correlated observations, not independent statistical trials, field-accuracy evidence or spoof resistance. **The user's own-voice check on this Mac's microphone is still owed before release.** Estonian has no calibrated check and stays unavailable in this release. Windows must establish parity for this preprocessing version before enabling it.
 
 ### 6.7 Create the voice
+
+The creation is reached only through the single approval of §6.4 item 1, after the statement check passes. The rest of this section is unchanged.
 
 ```
 POST {base}/v1/voices/add
@@ -1804,6 +1806,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - A recognised language that differs from the statement fails.
     - Date strings use the month tables in en and et.
     - An Estonian transcript gives an English statement while only English has a calibrated speaker check (§6.2).
+    - A speaker mismatch makes no provider request. A failed statement check creates nothing. The single approval refuses a changed file set, name, language or creation time.
 12. **Request goldens** for every endpoint in §4.3, §6.7, §7.3, §8.5, §8.8, §9.4 and §9.5: method, path, headers (with key values redacted), body or multipart parts.
     - The Isolator, forced-alignment, text-to-dialogue and lip-sync client goldens are waiting on their §4/§9 clients. Clean audio and Lip sync stay visibly unavailable with a reason in 0.1.0; no successful provider state machine is implied by the TTS/IVC goldens.
 13. **Provider state machines** with mocked HTTP:
