@@ -67,6 +67,15 @@ private struct HeldEngine: Transcriber {
     }
 }
 
+/// Language detection that answers only once the gate opens.
+private struct HeldDetector: SpeechLanguageDetector {
+    let gate: HoldGate
+    func detectLanguage(_ request: TranscriptionRequest) async throws -> SpeechLanguageDetection {
+        await gate.hold()
+        return SpeechLanguageDetection(language: "en", probability: 0.9)
+    }
+}
+
 /// Background eviction under the cache size limit, leases, Clear cache and Clear everything (architecture §8.2). Sizes
 /// are logical: audio and envelopes are sparse files, so a gigabyte-scale cache takes no disk space.
 @Suite("Cache eviction", .serialized, .timeLimit(.minutes(1)))
@@ -413,6 +422,57 @@ struct CacheEvictionTests {
         #expect(meta.lastAccessAt >= started.addingTimeInterval(-1) && meta.createdAt == Self.ago(hours: 72))
         await gate.open()
         _ = try await job.value
+    }
+
+    /// Language detection holds its source's key while it runs, so not even Clear everything takes the audio it reads.
+    @Test func languageDetectionKeepsItsEntry() async throws {
+        let locations = try locations()
+        defer { try? FileManager.default.removeItem(at: locations.root) }
+        let key = Self.key("e")
+        let directory = try await entry(key, in: locations, audio: 64_000, envelope: 800, used: Self.ago(hours: 72))
+        let gate = HoldGate()
+        let service = TranscriptionService(locations: locations, gate: SpeechJobGate())
+        let request = TranscriptionRequest(plan: TranscriptionPlan(engine: .whispercpp, language: .auto),
+                                           audio: ExtractedAudio(wav16k: directory.appendingPathComponent("audio-16k.wav"), sampleCount: 32_000, durationSeconds: 2),
+                                           contentKey: key)
+        let job = Task { try await service.detectLanguage(request, using: HeldDetector(gate: gate)) }
+        await gate.reached()
+        let store = CacheStore(locations: locations)
+        try await store.evict(limitBytes: 0, protectedKeys: [])
+        #expect(Self.exists(directory, "audio-16k.wav"))
+        #expect(store.keys.isLeased(key))
+        await gate.open()
+        let detection = try await job.value
+        #expect(detection.language == "en")
+        #expect(!store.keys.isLeased(key))
+    }
+
+    /// A lease asked for while eviction strips or removes that very entry waits until the claim ends, so its holder finds
+    /// the entry whole or gone. It counts as soon as it is asked for, so the entry cannot be claimed again meanwhile, and
+    /// a lease on another key does not wait. `CacheStore.touch`, extraction, transcription, waveform reads and thumbnails
+    /// all lease this way.
+    @Test func aLeaseWaitsWhileEvictionWorksOnItsEntry() async throws {
+        let locations = try locations()
+        defer { try? FileManager.default.removeItem(at: locations.root) }
+        let keys = CacheStore(locations: locations).keys
+        #expect(keys === CacheKeyRegistry.shared(cache: locations.cache))
+        let key = Self.key("a")
+        #expect(keys.claim(key, unless: []))
+        let waiting = Task { await keys.lease(key) }
+        await Self.until { keys.waitingLeases == 1 }
+        #expect(keys.isLeased(key))
+        let other = await keys.lease(Self.key("b"))
+        #expect(other.key == Self.key("b") && keys.waitingLeases == 1)
+        other.release()
+        keys.endClaim()
+        let lease = await waiting.value
+        #expect(lease.key == key && keys.waitingLeases == 0)
+        #expect(!keys.claim(key, unless: []))
+        #expect(!keys.claim(Self.key("c"), unless: [Self.key("c")]))
+        lease.release()
+        #expect(keys.leasedKeys.isEmpty)
+        #expect(keys.claim(key, unless: []))
+        keys.endClaim()
     }
 
     /// Clear everything runs both passes at a limit of 0: every entry not in use goes, its envelope and raw transcripts

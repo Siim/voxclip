@@ -83,6 +83,8 @@ public final class CacheKeyRegistry: Sendable {
 
     /// Passes waiting for the eviction turn.
     var waitingEvictions: Int { state.withLock { $0.evictionWaiters.count } }
+    /// Leases waiting for eviction to finish with their entry.
+    var waitingLeases: Int { state.withLock { $0.leaseWaiters.count } }
 
     /// Claims an entry for eviction unless it is leased or in `protected`. Until `endClaim`, a new lease on it waits.
     func claim(_ key: String, unless protected: Set<String>) -> Bool {

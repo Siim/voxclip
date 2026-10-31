@@ -1,4 +1,5 @@
 #if DEBUG
+import CoreGraphics
 import Foundation
 import Testing
 @testable import VoxClipCore
@@ -32,8 +33,8 @@ private actor TemporarySettingsStore: SettingsStore {
 }
 
 /// The app's side of the cache size limit (architecture §8.2): the launch pass, a pass after each import and when the
-/// setting is lowered, and every window's open project leasing its key. Each test has its own data folder; caches are
-/// sparse files, so they take no disk space.
+/// setting is lowered, every window's editor leasing its project's key, and the app's other cache holders. Each test
+/// has its own data folder; caches are sparse files, so they take no disk space.
 @Suite("Headless cache size limit", .serialized, .timeLimit(.minutes(1)),
        .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."))
 @MainActor struct CacheEvictionAppTests {
@@ -241,6 +242,53 @@ private actor TemporarySettingsStore: SettingsStore {
         await app.cacheEviction.clearEverything()
         #expect(contents(reverted) == Self.full)
         #expect(!FileManager.default.fileExists(atPath: opened.path))
+    }
+
+    /// Waveform envelope reads (`WaveformCache`) and thumbnail posters (`ThumbnailCache`, Home's recent projects too)
+    /// lease their entry: while eviction works on it they wait, and they release it when they are done.
+    @Test func waveformAndPosterReadsLeaseTheirEntry() async throws {
+        let app = try model()
+        defer { try? FileManager.default.removeItem(at: app.locations.root) }
+        let key = Self.key("d")
+        _ = try await entry(key, in: app, audio: 4_000, hoursAgo: 1)
+        let keys = app.cacheKeys, cache = app.locations.cache
+        let missing = app.locations.root.appendingPathComponent("missing.mov")
+        #expect(keys.claim(key, unless: []))
+        let waveform = Task.detached { await WaveformCache().load(WaveformCache.Key(contentKey: key, source: missing, cache: cache)) }
+        let poster = Task.detached {
+            await ThumbnailCache().frame(of: missing, contentKey: key, at: 0, scope: 0...1, filling: CGSize(width: 16, height: 9), cache: cache)
+        }
+        while keys.waitingLeases < 2 { await Task.yield() }
+        #expect(keys.leasedKeys == [key])
+        keys.endClaim()
+        _ = await waveform.value
+        _ = await poster.value
+        #expect(keys.leasedKeys.isEmpty)
+    }
+
+    /// The import pass, the transcription sheet's lease and the Clear actions run only with windows, so their call sites
+    /// are checked in the source, as the Windows `EveryCacheHolderInTheAppTakesItsLease` does.
+    @Test func windowedCallSitesAskForPassesAndTakeTheirLeases() throws {
+        let sources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/VoxClip", isDirectory: true)
+        func source(_ name: String) throws -> String { try String(contentsOf: sources.appendingPathComponent(name), encoding: .utf8) }
+        func body(_ text: String, of function: String) throws -> Substring {
+            let start = try #require(text.range(of: function))
+            let end = text.range(of: "\n    func ", range: start.upperBound..<text.endIndex)?.lowerBound ?? text.endIndex
+            return text[start.lowerBound..<end]
+        }
+        // `importVideo` asks for a pass once the new project's editor has started and holds its lease.
+        let importing = try body(source("WorkspaceShell.swift"), of: "func importVideo(")
+        let started = try #require(importing.range(of: "await started?.value"))
+        let request = try #require(importing.range(of: "app.requestCacheEviction()"))
+        #expect(started.upperBound <= request.lowerBound)
+        // The sheet leases its source's key before extraction and holds it to the transcript.
+        let transcribing = try body(source("TranscriptionSheet.swift"), of: "private func transcribe()")
+        let lease = try #require(transcribing.range(of: "let lease = await model.app.cacheKeys.lease(model.project.media.source.contentKey)"))
+        let release = try #require(transcribing.range(of: "defer { lease.release() }"))
+        #expect(lease.upperBound <= release.lowerBound)
+        let settings = try source("SettingsView.swift")
+        #expect(settings.contains("await app.cacheEviction.clearCache()") && settings.contains("await app.cacheEviction.clearEverything()"))
     }
 
     /// Opening a project marks its entry used, so a video opened today outlives one extracted later but not opened since.
