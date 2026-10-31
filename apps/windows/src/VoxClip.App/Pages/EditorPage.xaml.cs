@@ -586,8 +586,7 @@ public sealed partial class EditorPage : Page
         IVoiceLabTakeRunner runner = backend.Runner;
         Func<CancellationToken, Task<RewriteGenerationChoices>> discover = ct => backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct);
         Func<CancellationToken, Task<float[]>> readSource = ct => RewriteGenerationBackend.ReadSourceAsync(media?.Path ?? "",
-            checked((long)Math.Floor(session.Project.Media.Source.DurationSeconds * (session.Project.Media.Source.Audio?.SampleRate ?? 0) + 0.5)),
-            session.Project.Media.Source.Audio?.SampleRate ?? 0, ct);
+            RewriteSourceLimit.Frames(session.Project), session.Project.Media.Source.Audio?.SampleRate ?? 0, ct);
         Func<Guid, VoiceLabTakeScratch?> scratch = backend.Runner.Scratch;
         Func<Guid, Task> reject = backend.Runner.RejectAsync;
         async Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)> Publish(Guid id, DateTimeOffset date, CancellationToken ct)

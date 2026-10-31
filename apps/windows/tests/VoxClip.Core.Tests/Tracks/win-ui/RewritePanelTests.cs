@@ -727,12 +727,61 @@ public sealed class RewritePanelTests
         Assert.Contains("model?.RewriteCaretChanged()", File.ReadAllText(Path.Combine(app, "Controls", "TranscriptView.cs")));
     }
 
+    [Fact]
+    public async Task ALongSourceKeepsTheProposalCutsAndCorrectionsAndOnlyNewTakesAreRefused()
+    {
+        static EditorViewModel Long(double seconds, int rate = 48_000)
+        {
+            var project = Editor().Project;
+            return new(project with { Media = project.Media with { Source = project.Media.Source with { DurationSeconds = seconds, Audio = new(rate, 1) } } },
+                now: () => new DateTimeOffset(2026, 10, 28, 0, 0, 0, TimeSpan.Zero));
+        }
+        const string refusal = "New takes work only in videos up to 10 minutes long. Cuts and corrections still work. Your edits are saved.";
+        // A take run reads at most 30,000,000 source frames: 10 min 25 s at 48 kHz.
+        Assert.Null(RewriteSourceLimit.Refusal(Long(625).Project));
+        Assert.Equal(30_000_000, RewriteSourceLimit.Frames(Long(625).Project));
+        Assert.Equal("New takes work only in videos up to 11 minutes long. Cuts and corrections still work. Your edits are saved.",
+            RewriteSourceLimit.Refusal(Long(3_600, 44_100).Project));
+        // A 44-minute talk still gets the AI proposal (none of it reads the source audio) and can apply its cuts.
+        var editor = Long(2_640);
+        var fake = new RecordingConnector { Rewrite = "word10 word12" };
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test", "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        Assert.Equal("", session.Problem);
+        var action = Assert.IsType<VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction>(session.Prepared);
+        session.MarkEstimateShown(action);
+        Assert.True(session.CanPropose);
+        Assert.True(await session.ProposeAsync(action, true));
+        Assert.Equal(1, fake.Calls.Count(call => call == "send"));
+        Assert.Equal("", session.Problem);
+        Assert.Equal("Apply Cuts", session.LocalAction);
+        // A correction applies as well, and new words only reach the take refusal, before decoding or any ElevenLabs call.
+        session.Edit("WORD10 word11 word12");
+        Assert.Equal("Apply Correction", session.LocalAction);
+        Assert.Equal("", session.Problem);
+        session.Edit("much clearer words");
+        Assert.NotEmpty(session.Review!.VoiceHunks);
+        var error = await Assert.ThrowsAsync<RewriteGenerationException>(() => session.GenerationInputAsync("voice", "model", 1, true,
+            _ => throw new InvalidOperationException("Must refuse before decoding."), CancellationToken.None));
+        Assert.Equal(refusal, error.Message);
+        session.Edit("word10 word12");
+        Assert.True(session.ApplyLocalChanges());
+        Assert.Contains("w11", editor.State!.CutWordIds);
+        Assert.Contains("RewriteSourceLimit.Frames(session.Project)", AppSource("Pages", "EditorPage.xaml.cs"));
+        Assert.Contains("frames is <= 0 or > RewriteSourceLimit.MaxFrames", File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!,
+            "apps", "windows", "src", "VoxClip.App", "Services", "RewriteGenerationBackend.cs")));
+        var setInstruction = AppSource("ViewModels", "RewriteSession.cs");
+        setInstruction = setInstruction[setInstruction.IndexOf("internal async Task SetInstructionAsync", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("RewriteSourceLimit", setInstruction[..setInstruction.IndexOf("internal void MarkEstimateShown", StringComparison.Ordinal)]);
+    }
+
     private sealed class RecordingConnector : ILlmConnector
     {
         internal List<string> Calls { get; } = [];
         internal Exception? Failure { get; set; }
         internal TaskCompletionSource<RawCompletion>? Pending { get; init; }
         internal bool IgnoreCancellation { get; init; }
+        internal string Rewrite { get; init; } = "Better passage";
         public ConnectorId Id => ConnectorId.OpenAI;
         public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) { Calls.Add("status"); return Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready()); }
         public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct)
@@ -742,7 +791,7 @@ public sealed class RewritePanelTests
         {
             Calls.Add("send");
             if (Failure is not null) return Task.FromException<RawCompletion>(Failure);
-            return (IgnoreCancellation ? Pending?.Task : Pending?.Task.WaitAsync(ct)) ?? Task.FromResult(new RawCompletion(null, new JsonObject { ["rewrite"] = "Better passage" }, model, new StopKind.Complete(), null, "fake"));
+            return (IgnoreCancellation ? Pending?.Task : Pending?.Task.WaitAsync(ct)) ?? Task.FromResult(new RawCompletion(null, new JsonObject { ["rewrite"] = Rewrite }, model, new StopKind.Complete(), null, "fake"));
         }
     }
     [Theory]
@@ -775,7 +824,7 @@ public sealed class RewritePanelTests
     public async Task ApprovedFallbackCopyAndConnectorTitlesMatchDesign()
     {
         using var missing = new RewriteSession(Editor(), 10, 12, null, null);
-        Assert.Equal("Choose a connector in Settings → AI.", missing.SendLine);
+        Assert.Equal("Choose a connector in Settings → Providers & Keys.", missing.SendLine);
         Assert.Equal("This change can't be placed in this take. Your edits are saved.",
             RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InvalidInput)));
         Assert.Equal("Inserting words isn't available yet. Your edits are saved.",

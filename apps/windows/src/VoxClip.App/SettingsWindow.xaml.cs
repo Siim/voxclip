@@ -20,6 +20,9 @@ public sealed partial class SettingsWindow : Window
     private readonly List<SettingsTextCommit> textCommits = [];
     private CancellationTokenSource? download;
     private int pageGeneration;
+    /// <summary>Redraws the open Local Models rows from the installed list; null while another section shows.</summary>
+    private Func<Task>? followModels;
+    private int modelRefreshes;
     private readonly SettingsRestartState restartPreparation;
     private bool preparing => restartPreparation.IsPreparing;
     private int keyWrites;
@@ -69,10 +72,16 @@ public sealed partial class SettingsWindow : Window
             if (args.Key != Windows.System.VirtualKey.Escape || createVoicePage is null || createVoicePage.DialogOpen) return;
             args.Handled = true; ReturnFromCreateVoice(VoiceCreationLeaveTrigger.Escape);
         };
-        Closed += (_, _) => { lifetime.Cancel(); download?.Cancel(); App.Services.SettingsChanged -= SettingsChanged; };
+        // Downloads and removals in the Transcribe dialog or the welcome tour show up on an open Local Models page.
+        App.Services.ModelsChanged += ModelsChanged;
+        Closed += (_, _) => { lifetime.Cancel(); download?.Cancel(); App.Services.SettingsChanged -= SettingsChanged; App.Services.ModelsChanged -= ModelsChanged; };
     }
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr window);
+    private void ModelsChanged(object? sender, EventArgs args)
+    {
+        if (followModels is { } follow && !lifetime.IsCancellationRequested) _ = Ui.RunAsync(notice, follow, "Local models");
+    }
     internal void ShowSection(string tag)
     {
         if (Navigation.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(item => (string)item.Tag == tag && item.Visibility == Visibility.Visible) is { } item) Navigation.SelectedItem = item;
@@ -105,7 +114,7 @@ public sealed partial class SettingsWindow : Window
         pageGeneration++;
         textCommits.Clear();
         Body.Children.Clear(); notice.IsOpen = false;
-        voiceLabPane = null;
+        voiceLabPane = null; followModels = null;
         if ((string)item.Tag != "Voice Lab") Body.Children.Add(Ui.Text((string)item.Tag, "TitleTextBlockStyle"));
         Body.Children.Add(notice);
         await Ui.RunAsync(notice, async () =>
@@ -266,7 +275,7 @@ public sealed partial class SettingsWindow : Window
         Body.Children.Add(Ui.Text("Residency regions are for ElevenLabs Enterprise workspaces with data residency, which have their own keys. Most accounts use Default.", "HelperText"));
         await ProviderRowAsync("ElevenLabs", "Sends the audio track to ElevenLabs, which keeps it under its terms. You confirm the first upload before audio is sent. " + VoiceLabCopy.SharedKeyFootnote, "elevenlabs-api-key", null);
         if (generation != pageGeneration) return;
-        Body.Children.Add(Ui.Button("Manage local models…", () => Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == "Local Models")));
+        Body.Children.Add(Ui.Button("Manage local models…", () => Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First(item => (string)item.Tag == SettingsSections.LocalModels)));
         Body.Children.Add(Ui.Text("Models download only after you confirm. Local transcription runs entirely on this PC.", "HelperText"));
     }
     private async Task ProvidersAsync()
@@ -396,17 +405,20 @@ public sealed partial class SettingsWindow : Window
         var catalogue = await App.Services.Models.GetModelsAsync(lifetime.Token);
         var installed = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
         if (catalogue.Count == 0) Body.Children.Add(Ui.Text("No models are available in this build."));
+        var rows = new List<Action<IReadOnlyList<InstalledModel>>>();
         foreach (var model in catalogue.Where(entry => entry.Listed))
         {
-            var panel = Ui.Stack(12); var available = installed.Any(entry => entry.Id == model.Id && entry.Verified);
+            var panel = Ui.Stack(12); var row = new LocalModelRowState(installed.Any(entry => entry.Id == model.Id && entry.Verified));
             panel.Children.Add(Ui.Text($"{model.Engine} · {model.TotalBytes / 1_000_000d:0} MB · {model.License}", "HelperText"));
-            panel.Children.Add(Ui.Text(available ? "Installed and verified." : "Not installed.", "HelperText"));
+            var status = Ui.Text(row.Status, "HelperText"); panel.Children.Add(status);
             var bar = new ProgressBar { Visibility = Visibility.Collapsed }; panel.Children.Add(bar);
-            AutomationProperties.SetName(bar, (available ? "Removing " : "Downloading ") + model.Id);
-            panel.Children.Add(Ui.Button(available ? "Remove" : "Download", () => RunSensitive(async () =>
+            AutomationProperties.SetName(bar, row.ProgressName(model.Id));
+            Button? action = null;
+            action = Ui.Button(row.Action, () => RunSensitive(async () =>
             {
                 if (preparing) return;
                 if (download is not null) { Ui.Show(notice, "A model download is already running."); return; }
+                var available = row.Installed;
                 if (available && !await Ui.ConfirmAsync(Root.XamlRoot, "Remove model?", $"Remove {model.Id}? Your projects and source videos stay here.", "Remove")) return;
                 if (preparing) return;
                 download = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token); bar.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
@@ -414,22 +426,42 @@ public sealed partial class SettingsWindow : Window
                 {
                     if (available) await App.Services.Downloads.RemoveAsync(model.Id, download.Token);
                     else await App.Services.Installer(ConfirmDownloadAsync).InstallAsync(model.Id, new Progress<ModelDownloadProgress>(value => { bar.Visibility = Visibility.Visible; bar.IsIndeterminate = value.TotalBytes is null; bar.Value = value.TotalBytes > 0 ? value.BytesReceived * 100d / value.TotalBytes.Value : 0; Ui.Show(notice, ModelDownloadCopy.Progress(model, value)); }), download.Token);
-                    Ui.Show(notice, available ? "Model removed." : "Model installed and verified. Reopen Local Models to refresh.");
+                    // The row follows the change in place; reopening Local Models is not needed (design §Settings, model row).
+                    Ui.Show(notice, row.Finish(removed: available));
+                    Redraw();
+                    App.Services.NotifyModelsChanged();
                 }
                 catch (OperationCanceledException) when (!lifetime.IsCancellationRequested) { notice.IsOpen = false; throw; }
                 finally { download.Dispose(); download = null; bar.Visibility = Visibility.Collapsed; }
-            }, "Local models")));
+            }, "Local models"));
+            void Redraw()
+            {
+                status.Text = row.Status; action!.Content = row.Action;
+                AutomationProperties.SetName(action, row.Action); AutomationProperties.SetName(bar, row.ProgressName(model.Id));
+            }
+            rows.Add(list => { if (row.Follow(list, model.Id)) Redraw(); });
+            panel.Children.Add(action);
             panel.Children.Add(Ui.Button("Cancel download", () => download?.Cancel()));
             var group = new SettingsExpander { Header = model.Id, HorizontalAlignment = HorizontalAlignment.Stretch };
             group.Items.Add(new SettingsCard { Content = panel, HorizontalContentAlignment = HorizontalAlignment.Stretch }); Body.Children.Add(group);
         }
+        var page = pageGeneration;
+        followModels = async () =>
+        {
+            var refresh = ++modelRefreshes;
+            var now = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
+            // Only the newest list is drawn, and only on the page it was read for.
+            if (page != pageGeneration || refresh != modelRefreshes || lifetime.IsCancellationRequested) return;
+            foreach (var follow in rows) follow(now);
+        };
     }
     private Task<bool> ConfirmDownloadAsync(TranscriptionModel model, IReadOnlyList<TranscriptionModel> dependencies, CancellationToken ct) =>
         Ui.OnUiThreadAsync(DispatcherQueue, async () => !preparing && await Ui.ConfirmDownloadAsync(Root.XamlRoot, model, dependencies, ct) && !preparing);
     private void Export()
     {
         var aspects = new[] { "source", "16:9", "9:16", "1:1" };
-        var aspect = Ui.Choice("Default aspect", ["Source", "16:9", "9:16", "1:1"], Array.IndexOf(aspects, App.Services.Get("export.defaultAspect", "source")));
+        // "Original" is the editor's and the Export dialog's word for the source's own frame; the stored value stays "source".
+        var aspect = Ui.Choice("Default aspect", ["Original", "16:9", "9:16", "1:1"], Array.IndexOf(aspects, App.Services.Get("export.defaultAspect", "source")));
         aspect.SelectionChanged += (_, _) => Save("export.defaultAspect", aspects[aspect.SelectedIndex]); Body.Children.Add(aspect);
         var quality = Ui.Choice("Quality", ["Standard", "High"], App.Services.Get("export.quality", "standard") == "high" ? 1 : 0);
         quality.SelectionChanged += (_, _) => Save("export.quality", quality.SelectedIndex == 1 ? "high" : "standard"); Body.Children.Add(quality);

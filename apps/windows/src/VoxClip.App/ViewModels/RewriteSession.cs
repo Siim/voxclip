@@ -56,7 +56,7 @@ internal sealed class RewriteSession : IDisposable
         "apiKey" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your key.",
         "cli" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your sign-in. Counts toward your {Connector.Plan}.",
         "local" => "Runs on this PC. Nothing leaves it.",
-        _ => "Choose a connector in Settings → AI."
+        _ => $"Choose a connector in Settings → {SettingsSections.ProvidersAndKeys}."
     };
     internal event EventHandler? Changed;
     internal RewriteGeneration? Generation { get; private set; }
@@ -81,6 +81,8 @@ internal sealed class RewriteSession : IDisposable
         bool providerConsent, Func<CancellationToken, Task<float[]>> source, CancellationToken ct)
     {
         if (!GenerationIsCurrent || Review is not { } review || review.Budget.Copy is not null || review.VoiceHunks.Count == 0) return null;
+        // Only new takes read the source audio; a proposal, Apply Cuts and Apply Correction work at any length (RewriteSourceLimit).
+        if (RewriteSourceLimit.Refusal(Project) is { } tooLong) throw new RewriteGenerationException(tooLong);
         if (review.VoiceHunks.Count != 1)
             throw new RewriteGenerationException("Rewrite one passage at a time. Keep one changed passage, then generate takes.");
         var hunk = review.VoiceHunks[0];

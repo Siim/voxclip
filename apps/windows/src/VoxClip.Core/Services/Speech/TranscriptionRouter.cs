@@ -3,14 +3,27 @@ using VoxClip.Core.Services.Models;
 
 namespace VoxClip.Core.Services.Speech;
 
-internal sealed record RoutingDecision(TranscriptionPlan? Plan, Readiness Readiness, string? Prompt = null, bool OfferCloud = false)
+/// <summary>A routing result: a ready plan, or the prompt to show instead; transcription §11.2–11.3. <see cref="Prompt"/> is
+/// "download", "chooseLanguage", "addKey" or "chooseEngine". A download's <see cref="Readiness"/> lists the routed model first,
+/// then its missing required models.</summary>
+/// <param name="Plan">The plan to run, or null when the user must act first.</param>
+/// <param name="Readiness">Ready, or why the plan is missing.</param>
+/// <param name="Prompt">The prompt kind, or null with a plan.</param>
+/// <param name="OfferCloud">True when an ElevenLabs key exists, so the prompt may also offer ElevenLabs.</param>
+public sealed record RoutingDecision(TranscriptionPlan? Plan, Readiness Readiness, string? Prompt = null, bool OfferCloud = false)
 {
-    internal RoutingDecision? Alternative { get; init; }
+    /// <summary>The local route offered alongside an add-key or choose-engine prompt.</summary>
+    public RoutingDecision? Alternative { get; init; }
 }
 
-internal sealed class TranscriptionRouter(ModelCatalog catalog, IModelDownloader store)
+/// <summary>Language routing over the bundled catalogue and the installed models; transcription §11.2. It never downloads,
+/// never uploads and calls <c>detect</c> only for <see cref="LanguageChoice.Auto"/> with an installed OpenAI multilingual
+/// model (§9.8).</summary>
+public sealed class TranscriptionRouter(ModelCatalog catalog, IModelDownloader store)
 {
-    internal async Task<RoutingDecision> RouteAsync(string mode, LanguageChoice language, long ramBytes, bool keyPresent,
+    /// <summary>Route <paramref name="language"/> for the Settings engine <paramref name="mode"/> ("local", "ask", "apple" or
+    /// "elevenlabs"). <paramref name="detect"/> returns the detected language code and its probability, or null.</summary>
+    public async Task<RoutingDecision> RouteAsync(string mode, LanguageChoice language, long ramBytes, bool keyPresent,
         Func<CancellationToken, Task<(string Language, double Probability)?>>? detect, CancellationToken ct)
     {
         if (mode is not ("local" or "ask" or "apple" or "elevenlabs")) throw new ArgumentException("Unknown transcription mode.", nameof(mode));

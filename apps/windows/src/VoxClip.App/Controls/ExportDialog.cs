@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using VoxClip.App.Services;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Share;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Share;
 using VoxClip.Core.Domain.VoiceLab;
@@ -30,6 +31,8 @@ internal sealed class ExportDialog : ContentDialog
     private readonly StackPanel share = Ui.Stack();
     private readonly StackPanel exportedFiles = Ui.Stack(4);
     private string captionTarget = "full";
+    /// <summary>The selected export's AI disclosure line for its post text and the share action its removal warning holds.</summary>
+    private readonly ShareDisclosureFlow shareFlow = new();
     private readonly CancellationTokenSource lifetime = new();
     /// <summary>Export clip… chooses only this clip (design §2 step 7); null offers the kept clips, where manual clips always
     /// count (ADR-R29).</summary>
@@ -104,10 +107,10 @@ internal sealed class ExportDialog : ContentDialog
             catch (Exception exception) { Ui.Show(notice, UiError.Message(exception, "Share"), InfoBarSeverity.Warning); }
         };
         share.Visibility = Visibility.Collapsed; share.Children.Add(Ui.Text("Ready to share", "SubtitleTextBlockStyle")); share.Children.Add(exportedFiles); share.Children.Add(caption); share.Children.Add(counts);
-        share.Children.Add(Ui.Button("Copy caption", () => { ShareHelpers.Copy(caption.Text); Ui.Show(notice, "Caption copied."); }));
+        share.Children.Add(Ui.Button("Copy caption", () => Share(ShareDisclosurePresentation.Copy)));
         share.Children.Add(Ui.Button("Show in Explorer", () => { if (exported is not null) ShareHelpers.Reveal(exported); }));
-        share.Children.Add(Ui.Button("Open X composer", () => _ = OpenComposerAsync("x")));
-        share.Children.Add(Ui.Button("Open LinkedIn composer", () => _ = OpenComposerAsync("linkedin")));
+        share.Children.Add(Ui.Button("Open X composer", () => Share(ShareDisclosurePresentation.X)));
+        share.Children.Add(Ui.Button("Open LinkedIn composer", () => Share(ShareDisclosurePresentation.LinkedIn)));
         share.Children.Add(Ui.Text("Attach the revealed video in your browser. VoxClip never posts for you.", "HelperText")); body.Children.Add(share);
         Content = new ScrollViewer { Content = body, MaxHeight = 620 };
         PrimaryButtonClick += Export;
@@ -122,12 +125,50 @@ internal sealed class ExportDialog : ContentDialog
         disclosure.Visibility = contains ? Visibility.Visible : Visibility.Collapsed;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(this, VoiceLabDisclosure.AccessibleName("Export video", contains));
     }
-    /// <summary>One composer at a time: a click while the X text is still being cut does nothing.</summary>
+    /// <summary>Copy caption, Open X and Open LinkedIn. With AI-modified speech, a caption that lost its disclosure line first
+    /// shows the removal warning with [Share anyway] and [Restore line]; Restore line puts the line back and then shares, as on
+    /// the Mac (voice-lab §11.3).</summary>
+    private void Share(string action)
+    {
+        notice.Content = null;
+        if (shareFlow.Request(action, caption.Text) is { } now) { ShareNow(now); return; }
+        Ui.Show(notice, ShareDisclosure.RemovedWarning, InfoBarSeverity.Warning);
+        var choices = Ui.Stack(8);
+        choices.Orientation = Orientation.Horizontal;
+        choices.Children.Add(Ui.Button(ShareDisclosure.ShareAnyway, () =>
+        {
+            notice.Content = null;
+            if (shareFlow.ShareAnyway() is { } held) ShareNow(held); else notice.IsOpen = false;
+        }));
+        choices.Children.Add(Ui.Button(ShareDisclosure.RestoreLine, () =>
+        {
+            notice.Content = null; notice.IsOpen = false;
+            if (shareFlow.RestoreLine(caption.Text) is not { } restored) return;
+            caption.Text = restored.Caption;
+            ShareNow(restored.Action);
+        }));
+        notice.Content = choices;
+    }
+    private void ShareNow(string action)
+    {
+        if (action == ShareDisclosurePresentation.Copy) { ShareHelpers.Copy(caption.Text); Ui.Show(notice, "Caption copied."); }
+        else _ = OpenComposerAsync(action);
+    }
+    /// <summary>One composer at a time: a click while the X text is still being cut does nothing. Open X then shows the "Made with
+    /// AI" checklist tip while disclosure is required; voice-lab §11.4.</summary>
     private async Task OpenComposerAsync(string destination)
     {
         if (composing) return;
         composing = true;
-        try { await Ui.RunAsync(notice, () => ShareHelpers.OpenComposerAsync(destination, caption.Text, exported!), "Share"); }
+        var line = shareFlow.Line;
+        try
+        {
+            await Ui.RunAsync(notice, async () =>
+            {
+                await ShareHelpers.OpenComposerAsync(destination, caption.Text, exported!, line);
+                if (ShareDisclosurePresentation.Tip(destination, line) is { } tip) Ui.Show(notice, tip);
+            }, "Share");
+        }
         finally { composing = false; }
     }
     private async Task ChooseFolderAsync()
@@ -168,6 +209,7 @@ internal sealed class ExportDialog : ContentDialog
                     var state = route.State(exportTarget);
                     var exportedProject = route.Project;
                     var job = await route.JobAsync(exportTarget, snapshot, lifetime.Token);
+                    var line = ShareDisclosurePresentation.Line(job.Snapshot.VoiceLab?.Prepared.Disclosure);
                     var result = await App.Services.Exporter.ExportAsync(job,
                         new Progress<ExportProgress>(value => { if (!running || !ReferenceEquals(currentTarget, exportTarget)) return; progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100; model.SetExportActivity(exportTarget, ClipExportState.Exporting, value.Fraction); Ui.Show(notice, ExportProgressText.Format(currentJob, jobs.Count, value.Fraction, clock.Elapsed.TotalSeconds)); }), lifetime.Token);
                     await App.Services.ExportLedger.RecordAsync(exportedProject, exportTarget, result.Output, lifetime.Token,
@@ -193,7 +235,13 @@ internal sealed class ExportDialog : ContentDialog
                     var defaultCaption = string.Join(" ", sentence);
                     if (sentence.Count == 40 && !defaultCaption.EndsWithAny(".!?…")) defaultCaption += "…";
                     if (clip is not null) defaultCaption = clip.Title + "\n\n" + defaultCaption;
-                    void SelectExport() { exported = result.Output; captionTarget = shareId; caption.Text = model.Project.Share.Captions.GetValueOrDefault(shareId) ?? defaultCaption; }
+                    // With AI-modified speech the field opens with the disclosure line appended when it is missing (voice-lab §11.3).
+                    void SelectExport()
+                    {
+                        if (shareFlow.Pending is not null) { notice.Content = null; notice.IsOpen = false; }
+                        exported = result.Output; captionTarget = shareId; shareFlow.Select(line);
+                        caption.Text = ShareDisclosurePresentation.FieldText(model.Project.Share.Captions.GetValueOrDefault(shareId) ?? defaultCaption, line);
+                    }
                     fileRow.Click += (_, _) => SelectExport(); SelectExport();
                 }
                 share.Visibility = Visibility.Visible; CloseButtonText = "Done"; Ui.Show(notice, $"Saved {jobs.Count} {(jobs.Count == 1 ? "video" : "videos")} to {folder.Text}");
