@@ -84,7 +84,7 @@ public sealed class VoiceEnrollment
             var statementWav = store.Statement(recordId);
             if (VoiceConsentStore.Hash(statementWav) != verification.Hash) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
             var training = await PrepareTrainingAsync(client, recordId, displayName, verification.Statement, statementWav, inputs, threshold,
-                speaker.EmbeddingAsync, clock.GetUtcNow(), ct).ConfigureAwait(false);
+                speaker.EmbeddingAsync, speaker.PartEmbeddingsAsync, clock.GetUtcNow(), ct).ConfigureAwait(false);
             pending.Clear();
             pending.Add(training.Quote, new(training.Request, training.Policy, verification, training.Samples, training.Owner, training.TrainingMs));
             return training.Quote;
@@ -112,11 +112,13 @@ public sealed class VoiceEnrollment
         return source;
     }
     /// <summary>The §6.6 speaker match on every sample, on device and before any request: a sample whose embedding fails or scores
-    /// below τ is dropped and never replaced. Fewer than 10 s of read-aloud or 30 s of project spans left is a speaker mismatch.
-    /// The quote sends the consent statement first, then the kept samples in caller order.</summary>
+    /// below τ is dropped and never replaced. A read-aloud scores on its mean; a project span scores as the lowest of its mean and
+    /// its parts (<see cref="SpeakerAudio.PartEmbeddings"/>). Fewer than 10 s of read-aloud or 30 s of project spans left is a
+    /// speaker mismatch. The quote sends the consent statement first, then the kept samples in caller order.</summary>
     internal static async Task<PreparedTraining> PrepareTrainingAsync(ElevenLabsVoiceLab client, string recordId, string displayName,
         VoiceConsentStatement statement, byte[] statementWav, IReadOnlyList<VoiceTrainingSample> inputs, double threshold,
-        Func<float[], CancellationToken, Task<float[]>> embed, DateTimeOffset created, CancellationToken ct)
+        Func<float[], CancellationToken, Task<float[]>> embed, Func<float[], CancellationToken, Task<(float[] Whole, float[][] Parts)>> parts,
+        DateTimeOffset created, CancellationToken ct)
     {
         var source = TrainingSource(inputs);
         var owner = await embed(VoiceConsentAudio.Pcm16k(statementWav), ct).ConfigureAwait(false);
@@ -128,11 +130,17 @@ public sealed class VoiceEnrollment
             ct.ThrowIfCancellationRequested();
             var format = VoiceConsentAudio.ValidateWav(sample.Wav);
             if (Math.Abs(format.Frames / (double)format.Rate - sample.Seconds) >= 0.001) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
-            float[] candidate;
-            try { candidate = await embed(VoiceConsentAudio.Pcm16k(sample.Wav), ct).ConfigureAwait(false); }
+            (float[] Whole, float[][] Parts) candidate;
+            try
+            {
+                var pcm = VoiceConsentAudio.Pcm16k(sample.Wav);
+                candidate = source == "project" ? await parts(pcm, ct).ConfigureAwait(false) : (await embed(pcm, ct).ConfigureAwait(false), []);
+            }
             catch (VoiceConsentException error) when (error.Kind == VoiceConsentError.SpeakerMismatch) { continue; }
             ct.ThrowIfCancellationRequested();
-            var score = SpeakerAudio.Cosine(owner, candidate);
+            // Without speaker labels a project span can hold another voice beside the user's, and the mean of its windows can
+            // still pass. Each part must pass on its own, and the span scores as its lowest part.
+            var score = candidate.Parts.Aggregate(SpeakerAudio.Cosine(owner, candidate.Whole), (lowest, part) => Math.Min(lowest, SpeakerAudio.Cosine(owner, part)));
             if (score < threshold) continue;
             accepted.Add(sample);
             hashes.Add(new(VoiceConsentStore.Hash(sample.Wav), sample.Seconds, sample.Source, score));

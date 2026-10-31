@@ -31,6 +31,8 @@ internal static class VoiceLabCopy
     internal const string NoTranscript = "Transcribe this project to use its audio instead.";
     internal const string ProjectMismatch = "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead.";
     internal const string RecordReadAloud = "Record a Read-Aloud";
+    /// <summary>The Rewrite panel's voice row in a project whose language has no calibrated speaker check (voice-lab.md §6.5.2).</summary>
+    internal const string LanguageUnavailable = "Your voice can't be used in this project's language yet. It works in English projects.";
     internal static string ProjectFinding(string project) => "Finding clear speech in " + project + "…";
     internal static string ProjectFound(long seconds, string project) => Seconds(seconds) + " s of clear speech found in " + project;
     internal static string ProjectTooLittle(long seconds) => seconds == 0 ? "This project has no clear speech to use. Record a read-aloud instead."

@@ -33,27 +33,41 @@ public sealed class VoiceTrainingMediaTests
             throw new InvalidOperationException("Training preparation must not reach a provider.");
         }
     }
-    /// <summary>Returns the owner vector for the statement, then one scripted result per training sample in call order.</summary>
-    private sealed class Embedder(params Func<float[]>[] results)
+    /// <summary>Returns the owner vector for the statement, then one scripted result per training sample in call order. A result
+    /// lists the sample's window embeddings, which <see cref="SpeakerAudio"/> combines into its mean or its project-span parts as the
+    /// ONNX embedder does.</summary>
+    private sealed class Embedder(params Func<float[][]>[] results)
     {
         private int calls;
         internal int Calls => calls;
+        internal int PartCalls { get; private set; }
+        private float[][] Windows()
+        {
+            var index = calls++;
+            return index == 0 ? [[1f, 0f]] : results[index - 1]();
+        }
         internal Task<float[]> EmbedAsync(float[] pcm16k, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            var index = calls++;
-            return Task.FromResult(index == 0 ? [1f, 0f] : results[index - 1]());
+            return Task.FromResult(SpeakerAudio.Embedding(Windows()));
+        }
+        internal Task<(float[] Whole, float[][] Parts)> PartsAsync(float[] pcm16k, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            PartCalls++;
+            return Task.FromResult(SpeakerAudio.PartEmbeddings(Windows()));
         }
     }
-    private static Func<float[]> Score(double cosine) => () => [(float)cosine, (float)Math.Sqrt(1 - cosine * cosine)];
-    private static Func<float[]> TooLittleSpeech => () => throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
+    private static float[] Vector(double cosine) => [(float)cosine, (float)Math.Sqrt(1 - cosine * cosine)];
+    private static Func<float[][]> Score(double cosine) => () => [Vector(cosine)];
+    private static Func<float[][]> TooLittleSpeech => () => throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
 
     private static async Task<VoiceEnrollment.PreparedTraining> PrepareAsync(Transport transport, Embedder embedder, params VoiceTrainingSample[] samples)
     {
         using var client = ElevenLabsVoiceLab.ForTesting(new Keys(), transport, ElevenLabsRegion.Default);
         var statement = VoiceTrainingAudio.Wav(Tone(16000, 6), 16000);
         return await VoiceEnrollment.PrepareTrainingAsync(client, Guid.NewGuid().ToString("D"), " Example ", new("en", Statement, ["alpha", "beta", "gamma", "delta"]),
-            statement, samples, 0.45, embedder.EmbedAsync, DateTimeOffset.UnixEpoch, Token);
+            statement, samples, 0.45, embedder.EmbedAsync, embedder.PartsAsync, DateTimeOffset.UnixEpoch, Token);
     }
 
     [Fact]
@@ -244,6 +258,36 @@ public sealed class VoiceTrainingMediaTests
         var error = await Assert.ThrowsAsync<VoiceConsentException>(() => PrepareAsync(transport, embedder, Sample(10), Sample(10), Sample(9.999), Sample(10)));
         Assert.Equal(VoiceConsentError.SpeakerMismatch, error.Kind);
         Assert.Equal(5, embedder.Calls); Assert.Equal(0, transport.Sends);
+    }
+
+    /// <summary>§6.6 project span parts: a 30 s span whose 12–18 s stretch is another voice passes on its mean, but the part holding
+    /// that voice does not, so the span is dropped and never sent. A kept span scores as its lowest part. A read-aloud of the same
+    /// audio is scored on its mean.</summary>
+    [Fact]
+    public async Task ProjectSpansMustMatchInEveryPart()
+    {
+        // 19 windows of 3 s at a 1.5 s hop. Windows 8–10 lie in 12–18 s; the parts are windows 0–2, 3–5, 6–8, 9–11, 12–14 and 15–18.
+        Func<float[][]> mixed = () => Enumerable.Range(0, 19).Select(window => Vector(window is >= 8 and <= 10 ? 0.1 : 0.9)).ToArray();
+        var mean = SpeakerAudio.Cosine(Vector(1), SpeakerAudio.Embedding(mixed()));
+        var parts = SpeakerAudio.PartEmbeddings(mixed()).Parts;
+        Assert.InRange(mean, 0.8, 0.85); Assert.Equal(6, parts.Length);
+        Assert.InRange(SpeakerAudio.Cosine(Vector(1), parts[3]), 0.4, 0.44);
+        var transport = new Transport();
+        var mixedSpan = Sample(30);
+        var refused = new Embedder(mixed, Score(0.9));
+        Assert.Equal(VoiceConsentError.SpeakerMismatch, (await Assert.ThrowsAsync<VoiceConsentException>(() => PrepareAsync(transport, refused, mixedSpan, Sample(25)))).Kind);
+        Assert.Equal(2, refused.PartCalls);
+        var embedder = new Embedder(mixed, () => [Vector(0.9), Vector(0.9), Vector(0.9), Vector(0.6), Vector(0.6), Vector(0.6)], Score(0.9));
+        var prepared = await PrepareAsync(transport, embedder, mixedSpan, Sample(15), Sample(15.5));
+        Assert.Equal(3, embedder.PartCalls); Assert.Equal(30_500, prepared.TrainingMs);
+        Assert.Equal(new[] { 15, 15.5 }, prepared.Samples.Select(sample => sample.Seconds));
+        Assert.Equal(0.6, prepared.Samples[0].SpeakerScore, 5); Assert.Equal(0.9, prepared.Samples[1].SpeakerScore, 5);
+        Assert.DoesNotContain(prepared.Request.Samples, sample => sample.Wav.AsSpan().SequenceEqual(mixedSpan.Wav));
+        var readAloud = new Embedder(mixed, mixed);
+        var kept = await PrepareAsync(transport, readAloud, Sample(30, "readAloud"), Sample(30, "readAloud"));
+        Assert.Equal(0, readAloud.PartCalls); Assert.Equal(60_000, kept.TrainingMs);
+        Assert.All(kept.Samples, sample => Assert.Equal(mean, sample.SpeakerScore, 5));
+        Assert.Equal(0, transport.Sends);
     }
 
     [Fact]

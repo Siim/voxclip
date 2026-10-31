@@ -31,6 +31,7 @@ internal sealed partial class RewritePanel : Grid
     private readonly ComboBox speechModel = new() { Header = "Speech model", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Name", SelectedValuePath = "Id" };
     private readonly Button discover = new() { Content = "Choose Voice…" };
     private readonly StackPanel noVoice = Ui.Stack(6);
+    private readonly StackPanel languageUnavailable = Ui.Stack(6);
     private readonly Button generate = new() { Content = "Generate Takes", HorizontalAlignment = HorizontalAlignment.Left };
     private readonly TextBlock generationProgress = Ui.Text("");
     private readonly ProgressRing generationBusy = new() { Width = 16, Height = 16 };
@@ -159,8 +160,10 @@ internal sealed partial class RewritePanel : Grid
     internal IReadOnlyList<string> DebugFitRequiredIds() => [.. ColumnBoundsGate.Rewrite,
         .. session.LocalAction is null ? Array.Empty<string>() : ["Rewrite.Apply"],
         .. session.Connector is null ? new[] { "Rewrite.Settings" } : Array.Empty<string>(),
-        .. generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.Generate", "Rewrite.ChooseVoice" } : Array.Empty<string>(),
+        .. generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.Generate" } : Array.Empty<string>(),
+        .. discover.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.ChooseVoice" } : Array.Empty<string>(),
         .. noVoice.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.CreateVoice" } : Array.Empty<string>(),
+        .. languageUnavailable.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.LanguageUnavailable" } : Array.Empty<string>(),
         .. voice.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.Voice", "Rewrite.SpeechModel" } : Array.Empty<string>(),
         .. generationError.IsOpen && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.GenerationError", "Rewrite.GenerationSettings", "Rewrite.GenerationRetry" } : Array.Empty<string>(),
         .. cancelGeneration.Visibility == Visibility.Visible && generationBody.Visibility == Visibility.Visible ? new[] { "Rewrite.GenerationCancel", "Rewrite.GenerationProgress" } : Array.Empty<string>(),
@@ -244,6 +247,11 @@ internal sealed partial class RewritePanel : Grid
         });
         AutomationProperties.SetAutomationId(create, "Rewrite.CreateVoice");
         noVoice.Children.Add(Small("No voice yet")); noVoice.Children.Add(create);
+        // A voice made from here would be bound to English and never listed for this project (voice-lab.md §6.5.2).
+        var unavailable = Small(VoiceLabCopy.LanguageUnavailable);
+        AutomationProperties.SetAutomationId(unavailable, "Rewrite.LanguageUnavailable");
+        SetName(unavailable, VoiceLabCopy.LanguageUnavailable);
+        languageUnavailable.Children.Add(unavailable);
         discover.Click += async (_, _) => { if (session.Generation is { } generation) await generation.DiscoverAsync(); };
         voice.SelectionChanged += async (_, _) =>
         { if (!updating && session.Generation is { } generation) await generation.ChooseVoiceAsync(voice.SelectedValue as string); };
@@ -268,7 +276,8 @@ internal sealed partial class RewritePanel : Grid
         };
         generationError.ActionButton = settings; generationError.Content = retry;
         generationBody.Children.Add(discover); generationBody.Children.Add(voice); generationBody.Children.Add(speechModel);
-        generationBody.Children.Add(noVoice); generationBody.Children.Add(Ui.Text("Takes", "BodyStrongTextBlockStyle"));
+        generationBody.Children.Add(noVoice); generationBody.Children.Add(languageUnavailable);
+        generationBody.Children.Add(Ui.Text("Takes", "BodyStrongTextBlockStyle"));
         BuildTakes();
         generationBody.Children.Add(generate); generationBody.Children.Add(Small(RewriteGeneration.SendLine));
         generationBody.Children.Add(generationBusy); generationBody.Children.Add(generationProgress);
@@ -288,7 +297,10 @@ internal sealed partial class RewritePanel : Grid
         speechModel.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         discover.Content = generation.HasDiscovered ? "Refresh voices" : "Choose Voice…";
         discover.IsEnabled = !generation.IsRunning && !generation.IsPreparing;
-        noVoice.Visibility = generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var unavailable = generation.Voices.Count == 0 && session.VoicesUnavailable;
+        discover.Visibility = unavailable ? Visibility.Collapsed : Visibility.Visible;
+        noVoice.Visibility = !unavailable && generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        languageUnavailable.Visibility = unavailable ? Visibility.Visible : Visibility.Collapsed;
         generate.Content = generation.ButtonTitle;
         generate.IsEnabled = generation.CanExecute;
         SetName(generate, generation.ButtonName); ToolTipService.SetToolTip(generate, generation.ButtonName);

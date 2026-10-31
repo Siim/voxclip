@@ -98,6 +98,22 @@ public sealed class VoiceLabSessionTests
         Assert.Equal(VoiceLabCopy.SpeakerUnavailable, session.CreateBlockedReason);
         Assert.Equal(installed, session.SpeakerInstalled);
     }
+    /// <summary>voice-lab.md §6.5.2: a voice is bound to its statement language, so with only English calibrated an Estonian project's
+    /// Rewrite panel explains instead of offering one. Without a calibrated check it offers Create Your Voice… as before.</summary>
+    [Fact]
+    public void RewriteExplainsWhenTheProjectLanguageHasNoSpeakerCheck()
+    {
+        Func<string, bool> english = language => language == "en";
+        Assert.True(VoiceLabSession.VoicesUnavailable("et", english)); Assert.True(VoiceLabSession.VoicesUnavailable("fr", english));
+        Assert.False(VoiceLabSession.VoicesUnavailable("en", english)); Assert.False(VoiceLabSession.VoicesUnavailable(null, english));
+        Assert.False(VoiceLabSession.VoicesUnavailable("et", language => language is "en" or "et"));
+        Assert.False(VoiceLabSession.VoicesUnavailable("et", _ => false)); Assert.False(VoiceLabSession.VoicesUnavailable("et", language => language == "et"));
+        Assert.Equal("Your voice can't be used in this project's language yet. It works in English projects.", VoiceLabCopy.LanguageUnavailable);
+        // A8 keeps the Windows check closed, so for now no language counts as calibrated and every project offers Create Your Voice….
+        Assert.False(VoiceSpeakerCheck.WindowsNativeParityVerified);
+        Assert.False(VoiceLabSession.SpeakerCalibrated("en")); Assert.False(VoiceLabSession.SpeakerCalibrated("et"));
+        Assert.NotNull(new SpeakerModelCatalog().Entry.CalibratedThreshold("en")); Assert.Null(new SpeakerModelCatalog().Entry.CalibratedThreshold("et"));
+    }
     [Fact]
     public async Task GateClosedMakesZeroBackendCallsAndClearsApproval()
     {

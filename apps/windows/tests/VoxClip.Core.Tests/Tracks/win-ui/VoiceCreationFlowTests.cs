@@ -445,6 +445,25 @@ public sealed class VoiceCreationFlowTests
         Assert.Equal("en", setup.Session.Statement!.Language); Assert.Null(setup.Session.BlockedReason);
     }
 
+    /// <summary>§6.5.2: in a project whose language has no calibrated speaker check, Rewrite explains instead of offering a voice, but
+    /// Create Your Voice from Settings still defaults to that project's audio, with an English statement.</summary>
+    [Fact]
+    public async Task ProjectInAnUncalibratedLanguageStillTrainsFromSettings()
+    {
+        var opened = Project();
+        await using var setup = new Setup(opened with { Project = opened.Project with { Transcript = opened.Project.Transcript! with { Language = "et" } } });
+        setup.Backend.Calibrated = language => language == "en";
+        Assert.True(VoiceLabSession.VoicesUnavailable("et", setup.Backend.Calibrated));
+        Assert.Equal(VoiceTrainingSource.Project, setup.Session.TrainingSource); Assert.True(setup.Session.ProjectOffered);
+        await WaitForAsync(() => setup.Backend.Analyses == 1);
+        setup.Session.SetInputs("Example", "et", true, true, true);
+        Assert.Equal("en", setup.Session.Statement!.Language); Assert.Null(setup.Session.BlockedReason);
+        setup.Backend.Analysis.SetResult(Selection(47_900));
+        await WaitForAsync(() => setup.Session.ProjectAudio == VoiceProjectAudioState.Ready);
+        Assert.Equal(VoiceTrainingSource.Project, setup.Session.TrainingSource);
+        Assert.Contains("?? App.Windows.FirstOrDefault(window => window.VoiceTrainingProject is not null)", AppFile("Controls/CreateVoicePage.cs"));
+    }
+
     [Fact]
     public void PageOffersBothSourcesWithTheirExactCopy()
     {

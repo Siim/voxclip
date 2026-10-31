@@ -173,6 +173,11 @@ public sealed class VoiceConsentMediaTests
             Assert.Equal(expected.Length, actual.Length);
             for (var index = 0; index < expected.Length; index++)
                 Assert.InRange(Math.Abs(actual[index] - expected[index]), 0, root.GetProperty("embeddingAbsoluteTolerance").GetDouble());
+            // A project span's whole embedding is the same mean; a 6 s clip holds at most three windows, so one part.
+            var (whole, parts) = await embedder.PartEmbeddingsAsync(pcm, Token);
+            Assert.Equal(whole, Assert.Single(parts));
+            for (var index = 0; index < expected.Length; index++)
+                Assert.InRange(Math.Abs(whole[index] - expected[index]), 0, root.GetProperty("embeddingAbsoluteTolerance").GetDouble());
             vectors.Add(id, actual);
         }
         Assert.Equal(8, vectors.Count);

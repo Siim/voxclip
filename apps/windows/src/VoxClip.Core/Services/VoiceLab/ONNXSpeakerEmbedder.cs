@@ -56,7 +56,12 @@ public sealed class ONNXSpeakerEmbedder : IDisposable
         }
         return ranges;
     }
-    public async Task<float[]> EmbeddingAsync(float[] pcm16k, CancellationToken ct)
+    public async Task<float[]> EmbeddingAsync(float[] pcm16k, CancellationToken ct) =>
+        SpeakerAudio.Embedding(await WindowEmbeddingsAsync(pcm16k, ct).ConfigureAwait(false));
+    /// <summary>A project span's embedding and its parts (voice-lab.md §6.6, <see cref="SpeakerAudio.PartEmbeddings"/>).</summary>
+    public async Task<(float[] Whole, float[][] Parts)> PartEmbeddingsAsync(float[] pcm16k, CancellationToken ct) =>
+        SpeakerAudio.PartEmbeddings(await WindowEmbeddingsAsync(pcm16k, ct).ConfigureAwait(false));
+    private async Task<float[][]> WindowEmbeddingsAsync(float[] pcm16k, CancellationToken ct)
     {
         var snapshot = pcm16k.ToArray();
         await gate.WaitAsync(ct).ConfigureAwait(false);
@@ -66,7 +71,7 @@ public sealed class ONNXSpeakerEmbedder : IDisposable
             var ranges = await VoicedRangesAsync(snapshot, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             var voiced = SpeakerAudio.Select(snapshot, ranges);
-            var mean = new float[Dimension];
+            var embedded = new List<float[]>();
             foreach (var window in SpeakerAudio.Windows(voiced))
             {
                 ct.ThrowIfCancellationRequested();
@@ -75,11 +80,10 @@ public sealed class ONNXSpeakerEmbedder : IDisposable
                 using var result = session.Run([NamedOnnxValue.CreateFromTensor("feats", tensor)], ["embs"]);
                 var raw = result.Single().AsTensor<float>().ToArray();
                 if (raw.Length != Dimension) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-                var vector = SpeakerAudio.Normalized(raw);
-                for (var index = 0; index < mean.Length; index++) mean[index] += vector[index];
+                embedded.Add(SpeakerAudio.Normalized(raw));
             }
             ct.ThrowIfCancellationRequested();
-            return SpeakerAudio.Normalized(mean);
+            return embedded.ToArray();
         }
         finally { gate.Release(); }
     }
@@ -126,5 +130,10 @@ public sealed class VoiceSpeakerCheck
     {
         ValidateAvailability();
         return embedder!.EmbeddingAsync(pcm16k, ct);
+    }
+    public Task<(float[] Whole, float[][] Parts)> PartEmbeddingsAsync(float[] pcm16k, CancellationToken ct)
+    {
+        ValidateAvailability();
+        return embedder!.PartEmbeddingsAsync(pcm16k, ct);
     }
 }
