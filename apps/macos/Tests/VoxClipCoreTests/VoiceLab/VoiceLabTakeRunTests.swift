@@ -729,7 +729,7 @@ struct VoiceLabTakeRunTests {
             try progress.finish(window: 0, sent: [], end: .cancelled)
         } else {
             let first = try await runs.execute(batch, window: 0)
-            #expect(first.end == .fatal && first.rows.count == 1 && first.rows[0].acceptedRequestIDs.isEmpty)
+            #expect(first.end == .fatal && first.rows.count == 1 && first.rows.allSatisfy { $0.acceptedRequestIDs.isEmpty })
             try progress.finish(window: 0, result: first)
         }
         #expect(progress.window == nil && progress.sent.isEmpty)
@@ -802,7 +802,7 @@ struct VoiceLabTakeRunTests {
             #expect(progress.sent == Set(takes.flatMap { [$0.synthesis.requestID, $0.qa.requestID] }))
             #expect(fixture.http.value.withLock { $0.seeds.count == 3 && $0.qa == 3 })
         } else {
-            #expect(result.end == .fatal && result.rows.count == 1 && result.rows[0].receipt == nil)
+            #expect(result.end == .fatal && result.rows.count == 1 && result.rows.allSatisfy { $0.receipt == nil })
             #expect(progress.sent == [takes[0].synthesis.requestID] && progress.sentEstimate.units == 1)
             #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
         }
