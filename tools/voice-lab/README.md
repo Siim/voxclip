@@ -38,6 +38,8 @@ CI runs `python3 -m unittest discover -s tools/voice-lab -p 'test_*.py'` and `py
 
 Estonian uses the same τ rule, gates and production CLI hook, and the corpus adapter `riigikogu.py`. The predeclared policy is `shared/fixtures/voice-lab/speaker/policy-et-v1.md`, which covers name normalisation, the transcript-only 30-session pool, the hash-split groups `rk-cal-a`, `rk-val-a`, `rk-cal-b` and `rk-val-b`, the replacement rule and the 40-speaker target / 17-speaker minimum. Group roles are explicit (`riigikogu.ROLES`, and `ROLES` for English), so no substring test decides which data fits τ.
 
+The 2026-10-31 run froze the candidate at 0.49 from the calibration groups and then **failed**: the same-speaker pass in `rk-cal-a` and `rk-val-a` is 89.166667% (below 95%) at both rates, although every cell meets FAR ≤ 0.5%. `threshold` is `null`, and Estonian stays unavailable. The fixture README has the full condition table.
+
 `speaker.py` still never downloads. Only `riigikogu.py transcripts` and `riigikogu.py excerpt` use the network: they read the pinned Hugging Face revision over HTTPS.
 - `transcripts` verifies every `.trs` against its Git blob ID.
 - `select` reads transcripts only and writes a local selection file that contains names. Keep that file out of the repository and delete it afterwards.
