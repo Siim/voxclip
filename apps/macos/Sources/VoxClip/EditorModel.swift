@@ -141,6 +141,8 @@ struct EditorRenderSnapshot {
     var finding = false
     var exportProgress: ExportProgress?
     var exports: [ExportResult] = []
+    /// Each exported target's share disclosure line (voice-lab.md §11.3), keyed like `ExportLedger.targetID`.
+    var exportDisclosureLines: [String: String] = [:]
     var exportError: String?
     var exportClipIDs: [String] = []
     var activeExportKey: String?
@@ -148,7 +150,7 @@ struct EditorRenderSnapshot {
     var exporting = false
     func presentExport(clipIDs: [String]? = nil) {
         guard capabilities.writable, mediaExportable else { return }
-        if !exporting { exports = []; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
+        if !exporting { exports = []; exportDisclosureLines = [:]; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
         showExport = true
     }
     var exportIndex = 0

@@ -204,11 +204,13 @@ enum ShareText {
 }
 
 extension EditorModel {
-    /// The disclosure line for a share target, from the plan its export renders (voice-lab.md §11.1, §11.3); nil when
-    /// no enabled AI segment is in the target.
-    func shareDisclosureLine(_ target: String) -> String? {
-        let scope: VoiceLabOutputScope = target == "full" ? .full : .clip(target)
-        return (try? VoiceLabRenderContract.prepare(project, scope: scope, labelPosition: app.voiceLabLabelPosition))?.disclosure.postText
+    /// The disclosure line for a share target, from the plan its export rendered (voice-lab.md §11.1, §11.3), as Windows
+    /// reads it from the job snapshot; nil when that render had no enabled AI segment. Edits made during or after the
+    /// export don't change it, because the shared file is the one that was rendered.
+    func shareDisclosureLine(_ target: String) -> String? { exportDisclosureLines[target] }
+    /// Records the disclosure of the plan a target's export rendered, for the share text.
+    func recordShareDisclosure(_ target: ExportTarget, disclosure: VoiceLabDisclosurePlan?) {
+        exportDisclosureLines[ExportLedger.targetID(target)] = disclosure?.postText
     }
     func shareCaption(_ target: String) -> String {
         if let saved = project.share.captions[target] { return saved }
@@ -229,7 +231,7 @@ extension EditorModel {
         let snapshot = renderSnapshot.project
         let pattern = app.string("export.fileNamePattern", fallback: "{project}-{clip}-{aspect}")
         let openFolderAfter = app.bool("export.openFolderAfter", fallback: false)
-        exportError = nil; exports = []; exporting = true; exportStartedAt = Date(); exportIndex = 1
+        exportError = nil; exports = []; exportDisclosureLines = [:]; exporting = true; exportStartedAt = Date(); exportIndex = 1
         exportClipIDs = targets.compactMap { if case .clip(let id) = $0 { id } else { nil } }
         activeExportKey = targets.first.map { ExportLedger.key($0, aspect: snapshot.export.aspect) }
         let total = targets.count
@@ -268,6 +270,7 @@ extension EditorModel {
                         if after > before, after < 4 { self.announce("Rendering \(self.exportIndex) of \(total) · \(after * 25)%") }
                     } }
                     exports.append(result)
+                    recordShareDisclosure(target, disclosure: render.voiceLab?.prepared.disclosure)
                     try app.exportLedger.record(ExportRecord(projectID: snapshot.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
                         planFingerprint: fingerprint, styleId: snapshot.captions.styleId, aspect: snapshot.export.aspect, outputPath: result.outputURL.path))
                     activeExportKey = nil

@@ -14,9 +14,19 @@ import Testing
         change(&project)
         return EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
     }
+    /// What `beginExport` records for each target it rendered: the disclosure plan of that render.
+    private func exported(_ model: EditorModel, _ targets: [ExportTarget]) {
+        for target in targets {
+            let scope: VoiceLabOutputScope
+            switch target { case .fullEdit: scope = .full; case .clip(let id): scope = .clip(id) }
+            let prepared = try? VoiceLabRenderContract.prepare(model.project, scope: scope, labelPosition: model.app.voiceLabLabelPosition)
+            model.recordShareDisclosure(target, disclosure: prepared?.disclosure)
+        }
+    }
 
     @Test func captionFieldOpensWithTheDisclosureLineForAIModifiedSpeech() throws {
         let model = try editor(); defer { model.close() }
+        exported(model, [.fullEdit, .clip("clip-main")])
         var draft = ShareCaptionDraft()
         draft.load(target: "full", model: model)
         #expect(draft.captionDraft == "Today we shipped the clipper. Thanks\n\n" + line)
@@ -27,6 +37,7 @@ import Testing
 
     @Test func removingTheLineWarnsAndRestoreLinePutsItBack() throws {
         let model = try editor(); defer { model.close() }
+        exported(model, [.fullEdit])
         var draft = ShareCaptionDraft()
         draft.load(target: "full", model: model)
         draft.edit("Today we shipped the clipper. Thanks")
@@ -49,14 +60,33 @@ import Testing
             project.edits.clips.append(ClipRange(id: "after-ai", startWordId: "w8", endWordId: "w9", title: "After"))
         }
         defer { model.close() }
+        exported(model, [.clip("after-ai")])
         var draft = ShareCaptionDraft()
         draft.load(target: "after-ai", model: model)
         #expect(draft.disclosureLine == nil && !draft.lineRemoved)
         #expect(draft.captionDraft == model.shareCaption("after-ai"))
         let off = try editor { project in project.voiceLab.segments = project.voiceLab.segments.map { var segment = $0; segment.enabled = false; return segment } }
         defer { off.close() }
+        exported(off, [.fullEdit])
         draft.load(target: "full", model: off)
         #expect(draft.disclosureLine == nil && draft.captionDraft == "Today we shipped the clipper. Thanks")
+    }
+
+    /// The line comes from the render the export made, as Windows reads it from the job snapshot, not from the live
+    /// project: an edit made while the export ran or after it, here turning the AI segment off, leaves the shared file's
+    /// AI speech and label in place, so it must not drop the line from that file's share text.
+    @Test func theLineComesFromTheRenderedExportNotTheLiveProject() throws {
+        let model = try editor(); defer { model.close() }
+        exported(model, [.fullEdit])
+        var project = model.project
+        project.voiceLab.segments = project.voiceLab.segments.map { var segment = $0; segment.enabled = false; return segment }
+        model.replace(project, name: "Turn off the AI segment")
+        try #require(model.project.voiceLab.segments.allSatisfy { !$0.enabled })
+        var draft = ShareCaptionDraft()
+        draft.load(target: "full", model: model)
+        #expect(draft.disclosureLine == line && draft.captionDraft.hasSuffix("\n\n" + line))
+        // A target the export didn't render has no line.
+        #expect(model.shareDisclosureLine("clip-main") == nil)
     }
 
     @Test func openXKeepsTheLineWholeAndLastWhenTheCaptionIsCut() throws {
