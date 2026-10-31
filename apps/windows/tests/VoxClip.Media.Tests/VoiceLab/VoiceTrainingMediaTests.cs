@@ -78,7 +78,7 @@ public sealed class VoiceTrainingMediaTests
             var samples = Enumerable.Range(0, rate / 3 + 7).Select(index => (float)(0.25 * Math.Sin(index * 0.37) * (index % 997 == 0 ? 0 : 1))).ToArray();
             var levels = new VoiceTrainingLevels(rate);
             for (var start = 0; start < samples.Length; start += 333) levels.Append(samples.AsSpan(start, Math.Min(333, samples.Length - start)));
-            var take = levels.Finish();
+            var take = levels.Finish(long.MaxValue);
             var count = (int)(samples.LongLength * 100 / rate);
             Assert.Equal(rate, take.Rate); Assert.Equal(samples.Length, take.Samples); Assert.Equal(count, take.FrameDb.Count);
             for (var frame = 0; frame < count; frame++)
@@ -93,16 +93,17 @@ public sealed class VoiceTrainingMediaTests
         }
         var silent = new VoiceTrainingLevels(22_050);
         silent.Append(new float[220]);
-        Assert.Empty(silent.Finish().FrameDb);
+        Assert.Empty(silent.Finish(long.MaxValue).FrameDb);
         silent.Append(new float[221]);
-        Assert.Equal(new[] { -180.0, -180.0 }, silent.Finish().FrameDb);
+        Assert.Equal(new[] { -180.0, -180.0 }, silent.Finish(long.MaxValue).FrameDb);
     }
 
     [Fact]
     public void TimelineFillsLateStartsAndGapsWithSilenceAndDropsOverlaps()
     {
         var blocks = new List<(long First, float[] Samples)>();
-        var timeline = new VoiceTrainingTimeline((samples, first) => blocks.Add((first, samples.ToArray())));
+        // The last block starts before the media's limit, so it is kept whole although it ends past it.
+        var timeline = new VoiceTrainingTimeline((samples, first) => blocks.Add((first, samples.ToArray())), 70_010);
         timeline.Append([1, 2, 3], -2);
         timeline.Append([4, 5], 3);
         timeline.Append([6, 7, 8], 4);
@@ -120,6 +121,82 @@ public sealed class VoiceTrainingMediaTests
             Assert.Equal(next, block.First); Assert.InRange(block.Samples.Length, 1, 65_536);
             next += block.Samples.Length;
         }
+    }
+
+    /// <summary>§6.5.1: the media's duration bounds the placed stream. A block placed at or after ceil(duration × rate) is dropped with no
+    /// silence up to it, a block placed before it is kept whole, and the take lasts the smaller of the placed and media lengths in whole
+    /// milliseconds (Mac 04ce651c).</summary>
+    [Fact]
+    public void TimelineStopsAtTheMediaDurationAndTheTakeLastsTheShorterLength()
+    {
+        const int rate = 8_000;
+        // 125,063 µs is 1,000.504 samples: blocks placed from sample 1,001 on are dropped, and the media lasts 125 ms.
+        const long duration = 125_063;
+        Assert.Equal(1_001, VoiceTrainingTimeline.Limit(duration, rate));
+        Assert.Equal(1_000, VoiceTrainingTimeline.Limit(125_000, rate));
+        Assert.Equal(1, VoiceTrainingTimeline.Limit(1, rate));
+        Assert.Equal(96_000L * 3_600 * 24 * 365, VoiceTrainingTimeline.Limit(3_600L * 24 * 365 * 1_000_000, 96_000));
+        float[] Block(int index, int count) => Enumerable.Range(0, count).Select(sample => (float)(0.05 * (index + 1) * Math.Sin(sample * 0.3 + index))).ToArray();
+        (long First, float[] Samples, bool Placed)[] rows =
+        [
+            (0, Block(0, 100), true),
+            (400, Block(1, 100), true),              // a timestamp gap: silence across it
+            (1_000, Block(2, 50), true),             // placed before the limit, so kept whole
+            (1_050, Block(3, 50), false),            // sequential, but at the limit or after it: dropped
+            (800_000, Block(4, 50), false),          // a corrupt far timestamp: dropped, with no silence up to it
+            (long.MaxValue / 4, Block(5, 50), false), // beyond any decodable length: dropped, not refused as too large
+        ];
+        var expected = new List<float>();
+        foreach (var row in rows.Where(row => row.Placed))
+        {
+            expected.AddRange(new float[row.First - expected.Count]);
+            expected.AddRange(row.Samples);
+        }
+        Assert.Equal(1_050, expected.Count);
+        var reference = new VoiceTrainingLevels(rate);
+        reference.Append(expected.ToArray());
+        var levels = new VoiceTrainingLevels(rate);
+        var timeline = new VoiceTrainingTimeline((samples, _) => levels.Append(samples), VoiceTrainingTimeline.Limit(duration, rate));
+        foreach (var row in rows) timeline.Append(row.Samples, row.First);
+        Assert.Equal(1_050, timeline.Next);
+        var take = levels.Finish(duration / 1_000);
+        Assert.Equal(1_050, take.Samples); Assert.Equal(125, take.MediaMilliseconds);
+        Assert.Equal(13, take.FrameDb.Count); Assert.Equal(reference.Finish(long.MaxValue).FrameDb, take.FrameDb);
+        Assert.Equal(0.125, take.Duration);
+        // A placed take shorter than the media sets the duration.
+        var head = new VoiceTrainingLevels(rate);
+        var headTimeline = new VoiceTrainingTimeline((samples, _) => head.Append(samples), VoiceTrainingTimeline.Limit(1_000_000, rate));
+        headTimeline.Append(rows[0].Samples, rows[0].First);
+        var partial = head.Finish(1_000);
+        Assert.Equal(reference.Finish(long.MaxValue).FrameDb.Take(1), partial.FrameDb);
+        Assert.Equal(0.012, partial.Duration);
+        // With only a far block nothing is placed, and TrainingMixAsync refuses the take as unreadable.
+        var far = new VoiceTrainingTimeline((_, _) => Assert.Fail("A block past the media's duration was placed."), VoiceTrainingTimeline.Limit(duration, rate));
+        far.Append(rows[4].Samples, rows[4].First);
+        Assert.Equal(0, far.Next);
+        // Below the limit the stream keeps its size bound, before any silence is placed.
+        var unbounded = new VoiceTrainingTimeline((_, _) => Assert.Fail("An oversized block was placed."), long.MaxValue);
+        Assert.Equal(VoiceLabSourceAudioErrorCode.TooLarge, Assert.Throws<VoiceLabSourceAudioException>(() => unbounded.Append(new float[2], Array.MaxLength - 1)).Code);
+        Assert.Equal(0, unbounded.Next);
+    }
+
+    /// <summary>A timestamp gap that runs past a span's end is the silence the levels read there: the one-pass cut reads on to the
+    /// block after the gap (TrainingMixAsync continues while the placed stream is short of <see cref="VoiceTrainingCut.End"/>) and
+    /// never refuses the span (Mac 04ce651c).</summary>
+    [Fact]
+    public void CutTakesTheSilenceOfAGapThatRunsPastItsEnd()
+    {
+        const int rate = 8_000;
+        var cut = new VoiceTrainingCut([new(1_000, 6_000, 30)], rate);
+        var timeline = new VoiceTrainingTimeline(cut.Append, VoiceTrainingTimeline.Limit(10_000_000, rate));
+        var voiced = Tone(rate, 4, 240);
+        timeline.Append(voiced, 0);
+        Assert.True(timeline.Next < cut.End);
+        timeline.Append(Tone(rate, 1, 240), 7 * rate);
+        Assert.True(timeline.Next >= cut.End);
+        var expected = new float[5 * rate];
+        voiced.AsSpan(rate).CopyTo(expected);
+        Assert.Equal(VoiceTrainingAudio.Wav(expected, rate), Assert.Single(cut.Finish()).Wav);
     }
 
     [Fact, Trait("Category", "RequiresFFmpeg"), Trait("Category", "RequiresWindows")]
@@ -146,7 +223,9 @@ public sealed class VoiceTrainingMediaTests
         }
         var expected = new VoiceTrainingLevels(rate);
         expected.Append(mono);
-        Assert.Equal(expected.Finish().FrameDb, take.FrameDb);
+        Assert.Equal(expected.Finish(long.MaxValue).FrameDb, take.FrameDb);
+        // The container lasts until the audio ends 12.25 s in, so nothing placed is dropped.
+        Assert.InRange(take.MediaMilliseconds, 12_249, 12_251); Assert.InRange(take.Duration, 12.249, 12.251);
         Assert.All(take.FrameDb.Take(150), level => Assert.True(level < -170));
         Assert.True(take.FrameDb[151] > -40);
         Assert.All(take.FrameDb.Skip(555).Take(65), level => Assert.True(level < -170));
@@ -157,6 +236,12 @@ public sealed class VoiceTrainingMediaTests
             var (first, last) = VoiceTrainingAudio.SpanSamples(spans[index], rate);
             Assert.Equal(VoiceTrainingAudio.Wav(mono[(int)first..(int)last], rate), samples[index].Wav);
         }
+        // A span alone that ends inside the 5.5–6.25 s gap: its pass reads on to the frame after the gap and holds the silence the
+        // levels read there, never RangeOutsideMedia.
+        VoiceTrainingSpan gapped = new(500, 5_900, 30);
+        var (gapFirst, gapLast) = VoiceTrainingAudio.SpanSamples(gapped, rate);
+        Assert.Equal(VoiceTrainingAudio.Wav(mono[(int)gapFirst..(int)gapLast], rate),
+            Assert.Single(await VoiceTrainingAudio.ProjectSpansAsync(path, rate, [gapped], Token)).Wav);
     }
 
     [Theory]
@@ -337,7 +422,8 @@ public sealed class VoiceTrainingMediaTests
         var expected = new VoiceTrainingLevels(rate);
         expected.Append(mono);
         var take = await VoiceTrainingAudio.AnalyzeAsync(path, rate, Token);
-        Assert.Equal(frames, take.Samples); Assert.Equal(expected.Finish().FrameDb, take.FrameDb);
+        Assert.Equal(frames, take.Samples); Assert.Equal(expected.Finish(long.MaxValue).FrameDb, take.FrameDb);
+        Assert.Equal(40_005, take.MediaMilliseconds); Assert.Equal(40.005, take.Duration);
         VoiceTrainingSpan[] spans = [new(20_000, 39_999, 33), new(1_001, 6_500, 25)];
         var samples = await VoiceTrainingAudio.ProjectSpansAsync(path, rate, spans, Token);
         for (var index = 0; index < spans.Length; index++)

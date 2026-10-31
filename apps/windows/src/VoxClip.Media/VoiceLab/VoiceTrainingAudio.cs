@@ -61,13 +61,13 @@ public static class VoiceTrainingAudio
         return result;
     }
     /// <summary>The take's §6.5.1 frame levels: one streamed decode of the first audio track's mono mix on the source timeline that
-    /// transcript times use, never the whole take in memory. Missing media, a decode failure or a rate outside 8–96 kHz throws
-    /// <see cref="VoiceLabSourceAudioException"/>.</summary>
+    /// transcript times use, up to the media's duration, never the whole take in memory. Missing media, a decode failure, a media
+    /// duration that is unknown or a rate outside 8–96 kHz throws <see cref="VoiceLabSourceAudioException"/>.</summary>
     public static async Task<VoiceTrainingTake> AnalyzeAsync(string source, int rate, CancellationToken ct = default)
     {
         var levels = new VoiceTrainingLevels(rate);
-        await VoiceLabSourceAudio.TrainingMixAsync(source, rate, (samples, _) => levels.Append(samples), null, ct).ConfigureAwait(false);
-        return levels.Finish();
+        var mediaMs = await VoiceLabSourceAudio.TrainingMixAsync(source, rate, (samples, _) => levels.Append(samples), null, ct).ConfigureAwait(false);
+        return levels.Finish(mediaMs);
     }
     /// <summary>Cuts the selected spans from the same mono mix in one streamed pass that stops after the last span, as normalised
     /// project training samples in the given order.</summary>
@@ -113,24 +113,34 @@ public static class VoiceTrainingAudio
     private static VoiceLabException Invalid() => new(VoiceLabErrorKind.InvalidAudio);
 }
 
-/// <summary>A take's 10 ms levels in dBFS and its length on the source timeline (§6.5.1).</summary>
-public sealed record VoiceTrainingTake(int Rate, long Samples, IReadOnlyList<double> FrameDb)
+/// <summary>A take's 10 ms levels in dBFS, its placed length on the source timeline and the media's duration in whole milliseconds
+/// (§6.5.1).</summary>
+public sealed record VoiceTrainingTake(int Rate, long Samples, IReadOnlyList<double> FrameDb, long MediaMilliseconds)
 {
-    /// <summary>The placed length floored to whole milliseconds, so every selected span ends inside the decoded samples.</summary>
-    public double Duration => Samples * 1000 / Rate / 1000.0;
+    /// <summary>The smaller of the placed length and the media's duration, each floored to whole milliseconds, so every selected span
+    /// ends inside the decoded samples and the media.</summary>
+    public double Duration => Math.Min(Samples * 1000 / Rate, MediaMilliseconds) / 1000.0;
 }
 
 /// <summary>Turns decoded blocks at their source-grid positions into one gapless stream from sample 0, the way transcription
 /// extraction (AudioDecoder) lays them out, so the levels and cuts match transcript times: silence before a late start and across a
-/// timestamp gap, and samples before 0 or already placed are dropped.</summary>
-internal sealed class VoiceTrainingTimeline(VoiceLabSourceAudio.SampleBlock consume)
+/// timestamp gap, and samples before 0 or already placed are dropped. The media's duration bounds the stream (§6.5.1): a block placed
+/// at or after <paramref name="limit"/>, ceil(duration × rate), is dropped with no silence up to it, so a corrupt timestamp cannot
+/// stretch the take, while a block placed before it is kept whole.</summary>
+internal sealed class VoiceTrainingTimeline(VoiceLabSourceAudio.SampleBlock consume, long limit)
 {
     private static readonly float[] Silence = new float[65_536];
+    /// <summary>ceil(duration × rate) for a media duration in FFmpeg's AV_TIME_BASE microseconds, in integer arithmetic.</summary>
+    internal static long Limit(long durationMicroseconds, int rate) =>
+        (long)(((Int128)durationMicroseconds * rate + 999_999) / 1_000_000);
     /// <summary>The next sample index of the stream: everything before it has been placed.</summary>
     internal long Next { get; private set; }
     internal void Append(ReadOnlySpan<float> block, long first)
     {
-        if (first + block.Length <= Next) return;
+        if (first >= limit || first + block.Length <= Next) return;
+        // Checked here, after the bound, so a corrupt far timestamp is dropped rather than refused.
+        if (first + block.Length > VoiceLabSourceAudio.MaxDecodedFrames || first + block.Length > Array.MaxLength)
+            throw new VoiceLabSourceAudioException(VoiceLabSourceAudioErrorCode.TooLarge);
         while (Next < first)
         {
             var count = (int)Math.Min(first - Next, Silence.Length);
@@ -161,7 +171,7 @@ internal sealed class VoiceTrainingLevels(int rate)
             frameEnd = (levels.Count + 1L) * rate / 100;
         }
     }
-    internal VoiceTrainingTake Finish() => new(rate, samples, levels.Take((int)(samples * 100 / rate)).ToArray());
+    internal VoiceTrainingTake Finish(long mediaMilliseconds) => new(rate, samples, levels.Take((int)(samples * 100 / rate)).ToArray(), mediaMilliseconds);
 }
 
 /// <summary>Collects the selected spans' samples from sequential mono blocks; the take must reach the last span.</summary>
