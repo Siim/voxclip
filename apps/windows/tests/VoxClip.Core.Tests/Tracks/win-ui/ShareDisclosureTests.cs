@@ -64,6 +64,39 @@ public sealed class ShareDisclosureTests
     }
 
     [Fact]
+    public void ARemovedLineHoldsTheShareAndRestoreLinePutsItBackThenShares()
+    {
+        const string copy = ShareDisclosurePresentation.Copy, x = ShareDisclosurePresentation.X, linkedIn = ShareDisclosurePresentation.LinkedIn;
+        var flow = new ShareDisclosureFlow();
+        flow.Select(Line);
+        var field = ShareDisclosurePresentation.FieldText("We cut the long pause.", Line);
+        // With the line in place every action shares at once.
+        foreach (var action in new[] { copy, x, linkedIn }) Assert.Equal(action, flow.Request(action, field));
+        Assert.Null(flow.Pending);
+        // Without it the action waits behind the warning; Restore line returns the caption with the line and the same action.
+        const string edited = "We cut the long pause.";
+        foreach (var action in new[] { copy, x, linkedIn })
+        {
+            Assert.Null(flow.Request(action, edited));
+            Assert.Equal(action, flow.Pending);
+            Assert.Equal<(string, string)?>((field, action), flow.RestoreLine(edited));
+            Assert.Null(flow.Pending);
+            Assert.False(ShareDisclosurePresentation.NeedsWarning(field, flow.Line));
+        }
+        Assert.Null(flow.RestoreLine(edited));
+        // Share anyway shares the caption as it is, once.
+        Assert.Null(flow.Request(copy, edited));
+        Assert.Equal(copy, flow.ShareAnyway());
+        Assert.Null(flow.ShareAnyway());
+        // Choosing another export drops the held action; an export without AI-modified speech never warns.
+        Assert.Null(flow.Request(linkedIn, edited));
+        flow.Select(null);
+        Assert.Null(flow.Pending);
+        Assert.Equal(linkedIn, flow.Request(linkedIn, edited));
+        Assert.Null(flow.Line);
+    }
+
+    [Fact]
     public void TheExportDialogUsesTheExportsDisclosureForEveryShareAction()
     {
         var app = Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps/windows/src/VoxClip.App");
@@ -77,6 +110,39 @@ public sealed class ShareDisclosureTests
             Assert.Contains($"() => Share(ShareDisclosurePresentation.{action})", dialog);
         Assert.DoesNotContain("ShareHelpers.Copy(caption.Text); Ui.Show(notice, \"Caption copied.\"); }))", dialog);
         Assert.Contains("ShareHelpers.OpenComposerAsync(destination, caption.Text, exported!, line)", dialog);
+        // Every share click goes through the warning check before it shares.
+        var share = Between(dialog, "private void Share(string action)", "private void ShareNow(string action)");
+        Ordered(share, "if (shareFlow.Request(action, caption.Text) is { } now) { ShareNow(now); return; }", "ShareDisclosure.RemovedWarning");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(share, @"ShareNow\(now\)"));
+        // Share anyway shares the held action; Restore line puts the line back in the field, then shares.
+        Ordered(share, "ShareDisclosure.ShareAnyway", "if (shareFlow.ShareAnyway() is { } held) ShareNow(held);");
+        Ordered(share, "ShareDisclosure.RestoreLine", "shareFlow.RestoreLine(caption.Text) is not { } restored", "caption.Text = restored.Caption;",
+            "ShareNow(restored.Action);");
+        // Open X shows the "Made with AI" tip after the composer opens, with the export's line.
+        Ordered(Between(dialog, "private async Task OpenComposerAsync(string destination)", "private async Task ChooseFolderAsync()"),
+            "var line = shareFlow.Line;", "await ShareHelpers.OpenComposerAsync(destination, caption.Text, exported!, line);",
+            "if (ShareDisclosurePresentation.Tip(destination, line) is { } tip) Ui.Show(notice, tip);");
+        Assert.Contains("shareFlow.Select(line);", dialog);
+    }
+
+    private static string Between(string text, string start, string end)
+    {
+        var from = text.IndexOf(start, StringComparison.Ordinal);
+        Assert.True(from >= 0, start);
+        var to = text.IndexOf(end, from, StringComparison.Ordinal);
+        Assert.True(to > from, end);
+        return text[from..to];
+    }
+
+    private static void Ordered(string text, params string[] markers)
+    {
+        var at = 0;
+        foreach (var marker in markers)
+        {
+            var next = text.IndexOf(marker, at, StringComparison.Ordinal);
+            Assert.True(next >= 0, "Missing or out of order: " + marker);
+            at = next + marker.Length;
+        }
     }
 }
 #endif

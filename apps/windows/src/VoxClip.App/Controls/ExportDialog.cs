@@ -31,8 +31,8 @@ internal sealed class ExportDialog : ContentDialog
     private readonly StackPanel share = Ui.Stack();
     private readonly StackPanel exportedFiles = Ui.Stack(4);
     private string captionTarget = "full";
-    /// <summary>The selected export's AI disclosure line for its post text, or null when it has no AI-modified speech.</summary>
-    private string? disclosureLine;
+    /// <summary>The selected export's AI disclosure line for its post text and the share action its removal warning holds.</summary>
+    private readonly ShareDisclosureFlow shareFlow = new();
     private readonly CancellationTokenSource lifetime = new();
     /// <summary>Export clip… chooses only this clip (design §2 step 7); null offers the kept clips, where manual clips always
     /// count (ADR-R29).</summary>
@@ -126,19 +126,26 @@ internal sealed class ExportDialog : ContentDialog
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(this, VoiceLabDisclosure.AccessibleName("Export video", contains));
     }
     /// <summary>Copy caption, Open X and Open LinkedIn. With AI-modified speech, a caption that lost its disclosure line first
-    /// shows the removal warning with [Share anyway] and [Restore line]; voice-lab §11.3.</summary>
+    /// shows the removal warning with [Share anyway] and [Restore line]; Restore line puts the line back and then shares, as on
+    /// the Mac (voice-lab §11.3).</summary>
     private void Share(string action)
     {
         notice.Content = null;
-        if (!ShareDisclosurePresentation.NeedsWarning(caption.Text, disclosureLine)) { ShareNow(action); return; }
+        if (shareFlow.Request(action, caption.Text) is { } now) { ShareNow(now); return; }
         Ui.Show(notice, ShareDisclosure.RemovedWarning, InfoBarSeverity.Warning);
         var choices = Ui.Stack(8);
         choices.Orientation = Orientation.Horizontal;
-        choices.Children.Add(Ui.Button(ShareDisclosure.ShareAnyway, () => { notice.Content = null; ShareNow(action); }));
+        choices.Children.Add(Ui.Button(ShareDisclosure.ShareAnyway, () =>
+        {
+            notice.Content = null;
+            if (shareFlow.ShareAnyway() is { } held) ShareNow(held); else notice.IsOpen = false;
+        }));
         choices.Children.Add(Ui.Button(ShareDisclosure.RestoreLine, () =>
         {
             notice.Content = null; notice.IsOpen = false;
-            caption.Text = ShareDisclosurePresentation.FieldText(caption.Text, disclosureLine);
+            if (shareFlow.RestoreLine(caption.Text) is not { } restored) return;
+            caption.Text = restored.Caption;
+            ShareNow(restored.Action);
         }));
         notice.Content = choices;
     }
@@ -153,7 +160,7 @@ internal sealed class ExportDialog : ContentDialog
     {
         if (composing) return;
         composing = true;
-        var line = disclosureLine;
+        var line = shareFlow.Line;
         try
         {
             await Ui.RunAsync(notice, async () =>
@@ -231,7 +238,8 @@ internal sealed class ExportDialog : ContentDialog
                     // With AI-modified speech the field opens with the disclosure line appended when it is missing (voice-lab §11.3).
                     void SelectExport()
                     {
-                        exported = result.Output; captionTarget = shareId; disclosureLine = line;
+                        if (shareFlow.Pending is not null) { notice.Content = null; notice.IsOpen = false; }
+                        exported = result.Output; captionTarget = shareId; shareFlow.Select(line);
                         caption.Text = ShareDisclosurePresentation.FieldText(model.Project.Share.Captions.GetValueOrDefault(shareId) ?? defaultCaption, line);
                     }
                     fileRow.Click += (_, _) => SelectExport(); SelectExport();
