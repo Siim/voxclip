@@ -366,7 +366,7 @@ enum SidebarItem: Hashable {
     func toggleViewer() {
         viewerHiddenByWidth = false
         if layout.rightVisible {
-            layout.rightVisible = false
+            hideRightColumn()
             if sidebarHiddenForViewer {
                 sidebarHiddenForViewer = false
                 if windowWidth < Self.sidebarCollapseWidth { sidebarHiddenByWidth = true }
@@ -380,8 +380,19 @@ enum SidebarItem: Hashable {
             }
         }
     }
-    /// The timeline toggle in the title row. ⌘J and the hover transport arrive with V7a and V4.
-    func toggleTimeline() { layout.timelineVisible.toggle() }
+    /// The timeline toggle in the title row. ⌘J and the hover transport arrive with V7a and V4;
+    /// until then the panel carries play and the timecode while the right column is hidden,
+    /// so it does not hide then (notes.md §1: "play and timecode are never lost").
+    func toggleTimeline() {
+        guard layout.rightVisible || !layout.timelineVisible else { return }
+        layout.timelineVisible.toggle()
+    }
+    /// Hides the right column, and shows the timeline panel, which carries the compact
+    /// transport while it is hidden (until V4).
+    private func hideRightColumn() {
+        layout.rightVisible = false
+        if !layout.timelineVisible { layout.timelineVisible = true }
+    }
     /// The narrow-width rule (design §3.7): the right column collapses before the
     /// sidebar, and both come back as the window widens.
     private func fitColumns() {
@@ -403,7 +414,7 @@ enum SidebarItem: Hashable {
         }
         let sidebar = layout.explorerVisible
         if layout.rightVisible, !sidebarHiddenForViewer, paneWidth(viewer: true, sidebar: sidebar) < Self.minimumTranscriptPane {
-            layout.rightVisible = false
+            hideRightColumn()
             viewerHiddenByWidth = true
         } else if viewerHiddenByWidth, paneWidth(viewer: true, sidebar: sidebar) >= Self.minimumTranscriptPane {
             layout.rightVisible = true

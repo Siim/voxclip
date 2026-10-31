@@ -20,8 +20,9 @@ import VoxClipMedia
         check("only forward Tab enters selection bar without trapping Shift-Tab", EditorPane.entersSelectionBar(code: 48, modifiers: []) && !EditorPane.entersSelectionBar(code: 48, modifiers: .shift) && !EditorPane.entersSelectionBar(code: 48, modifiers: .control) && !EditorPane.entersSelectionBar(code: 97, modifiers: .control))
         let visible: [EditorPane] = [.sidebar, .transcript, .viewer, .panel, .timeline]
         let hidden: [EditorPane] = [.sidebar, .transcript, .timeline]
-        check("visible pane order matches design C15", EditorPane.order(viewerVisible: true) == visible)
-        check("collapsed viewer removes both right-column panes", EditorPane.order(viewerVisible: false) == hidden)
+        check("visible pane order matches design C15", EditorPane.order(viewerVisible: true, timelineVisible: true) == visible)
+        check("collapsed viewer removes both right-column panes", EditorPane.order(viewerVisible: false, timelineVisible: true) == hidden)
+        check("a hidden timeline panel is no F6 stop", EditorPane.order(viewerVisible: true, timelineVisible: false) == [.sidebar, .transcript, .viewer, .panel])
         for motion in [false, true] {
             for transparency in [false, true] {
                 for contrast in [false, true] {

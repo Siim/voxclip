@@ -740,12 +740,16 @@ struct EditorShellState: Equatable {
     }
 
     /// Collapses or shows the right column and the timeline, and moves the right column's
-    /// controls into the tab row while it is hidden.
+    /// controls into the tab row while it is hidden. Until V4's hover transport the timeline
+    /// panel carries play and the timecode while the right column is hidden, so neither its
+    /// toggle nor a drag of its edge can hide it then (notes.md §1).
     func apply(rightVisible: Bool, timelineVisible: Bool) {
         rightShown = rightVisible
         Self.setCollapsed(rightItem, !rightVisible)
         timelineShown = timelineVisible
         Self.setCollapsed(timelineItem, !timelineVisible)
+        timelineItem.canCollapse = rightVisible
+        timelineToggle.isEnabled = rightVisible || !timelineVisible
         rightToggle.describe((rightVisible ? EditorIconAction.hideViewer : .showViewer).name, shortcut: "⌥⌘I")
         timelineToggle.describe((timelineVisible ? EditorIconAction.hideTimeline : .showTimeline).name)
         placeTabRow(explorerToggle: explorerToggle)

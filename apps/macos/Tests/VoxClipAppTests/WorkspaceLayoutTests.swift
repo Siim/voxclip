@@ -67,4 +67,29 @@ import VoxClipCore
             #expect(app.settings.values[key] == nil)
         }
     }
+
+    /// Until V4's hover transport the timeline panel carries play and the timecode while the
+    /// right column is hidden (notes.md §1), so it shows then.
+    @Test func theTimelineShowsWhileTheRightColumnIsHidden() {
+        let shell = WorkspaceShell(app: AppModel())
+        shell.windowWidth = 1280
+        shell.toggleTimeline()
+        #expect(!shell.layout.timelineVisible)
+        shell.toggleViewer()
+        #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
+        shell.toggleTimeline()
+        #expect(shell.layout.timelineVisible)
+        shell.toggleViewer()
+        shell.toggleTimeline()
+        #expect(shell.layout.rightVisible && !shell.layout.timelineVisible)
+        // The width rule hides the right column the same way.
+        shell.windowWidth = 1024
+        #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
+    }
+
+    @Test func aHiddenPaneIsNoF6Stop() {
+        #expect(EditorPane.order(viewerVisible: true, timelineVisible: true) == [.sidebar, .transcript, .viewer, .panel, .timeline])
+        #expect(EditorPane.order(viewerVisible: false, timelineVisible: true) == [.sidebar, .transcript, .timeline])
+        #expect(EditorPane.order(viewerVisible: true, timelineVisible: false) == [.sidebar, .transcript, .viewer, .panel])
+    }
 }

@@ -1,11 +1,17 @@
 import SwiftUI
 
 /// F6 order. The toolbar pane went with the toolbar (impl-plan V1a); V1b adds the tab
-/// and clip-bar rows and the status bar.
+/// and clip-bar rows and the status bar. A hidden right column or timeline panel is no stop.
 enum EditorPane: CaseIterable {
     case sidebar, transcript, viewer, panel, timeline
-    static func order(viewerVisible: Bool) -> [Self] {
-        viewerVisible ? allCases : [.sidebar, .transcript, .timeline]
+    static func order(viewerVisible: Bool, timelineVisible: Bool) -> [Self] {
+        allCases.filter { pane in
+            switch pane {
+            case .viewer, .panel: viewerVisible
+            case .timeline: timelineVisible
+            case .sidebar, .transcript: true
+            }
+        }
     }
     static func isCycleKey(code: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
         code == 97 && modifiers.intersection([.command, .option]).isEmpty
@@ -35,7 +41,8 @@ enum EditorPane: CaseIterable {
 
 extension EditorModel {
     func movePaneFocus(backward: Bool) {
-        let panes = EditorPane.order(viewerVisible: app.shell.layout.rightVisible)
+        let layout = app.shell.layout
+        let panes = EditorPane.order(viewerVisible: layout.rightVisible, timelineVisible: layout.timelineVisible)
         let index: Int = panes.firstIndex(of: focusedPane) ?? panes.firstIndex(of: .transcript) ?? 0
         let offset: Int = backward ? panes.count - 1 : 1
         let next: Int = (index + offset) % panes.count

@@ -108,5 +108,30 @@ private final class FullScreenStandIn: NSWindow {
         #expect(!shell.layout.rightVisible && shell.layout.explorerVisible)
         #expect(app.settings.values[WorkspaceLayout.rightWidthKey] == nil)
     }
+
+    /// A hidden timeline panel is no F6 stop. Until V4 the panel stays while the right column
+    /// is hidden: its toggle is unavailable and its edge does not collapse it.
+    @Test func aHiddenTimelineIsNoF6StopAndStaysWhileTheRightColumnIsHidden() throws {
+        let app = AppModel()
+        let shell = app.shell
+        let model = try editor(app)
+        defer { model.close() }
+        shell.toggleTimeline()
+        #expect(!shell.layout.timelineVisible)
+        model.focusedPane = .panel
+        model.movePaneFocus(backward: false)
+        #expect(model.focusedPane == .sidebar)
+        model.movePaneFocus(backward: true)
+        #expect(model.focusedPane == .panel)
+
+        shell.toggleViewer()
+        #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
+        let work = makeWork(model, shell)
+        defer { work.tearDown() }
+        #expect(!work.timelineToggle.isEnabled && !work.timelineItem.canCollapse && !work.timelineItem.isCollapsed)
+        shell.toggleViewer()
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
+        #expect(work.timelineToggle.isEnabled && work.timelineItem.canCollapse)
+    }
 }
 #endif
