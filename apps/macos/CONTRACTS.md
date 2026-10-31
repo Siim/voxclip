@@ -1,5 +1,14 @@
 # macOS implementation contracts
 
+### 2026-10-31 — p0-scope D0 — clip-first Rewrite spec merge
+
+- Docs only; no code, fixture or test changed. `doc/design.md` §6.3 is now "Rewrite (clip-first) and your voice": the scope bar and its AI picker, the panel states R0–R3, the inline voice steps V0–V6, takes T1–T4, the edge states and the list of removed items. §2, §3.4–§3.6, §4.2–§4.3, §6.2, §6.4, §10, §11.2–§11.3, §13, §15 and §17 follow it. A reserved §6.5 fixes only the Director shapes Phase 0 builds on (`DirectorTask`, `ActivityStep`, `ChangeSet`, `ProposalItem`, `PanelCard`). voice-lab.md §3.1, §5, §6.4–§6.7, §8.1, §8.2 item 7, §8.4, §8.6, §8.12 and §15, ai.md §4.8 and §10.3, and CHANGELOG follow.
+- Two approved rule changes are now normative for both Cores, ahead of the code:
+  - voice-lab.md §3.1: an LLM send on a CLI signed in on a plan, a local server (loopback or remote) or Apple on-device is inline with no amount and does not confirm. An API key, or a CLI signed in with an API key, confirms every send with the unknown-price copy. A CLI with an unknown sign-in method sends nothing. Today `RewriteSession` still confirms every LLM send; C8 changes that.
+  - voice-lab.md §6.4: after the live statement, the on-device speaker match runs first. One approval then covers the plan check, the Scribe statement check and the voice creation, and binds the statement's SHA-256, the files and their roles, the name, the language and the creation time. A failed check creates nothing. Today `VoiceEnrollment` verifies the statement before the training choice; C7 changes that.
+- Left out on purpose: the visual layer (sizes, type, colours, the transcript and timeline treatments, narrow-width rules and the §16 contrast pairs), which the visual redesign merges later; design.md §4.1 names the rows it will replace. The Phase 1 agentic rules belong to `doc/spec/harness.md`.
+- Until each Phase 0 package lands, the app still ships the passage `RewritePanel`, `CreateVoiceSheet` and the Voice Lab gate on Rewrite, as before.
+
 ### 2026-10-31 — mac-mvp-fixes — Rewrite takes on long recordings
 
 - Take generation used to decode the whole source into one array, refused more than 30,000,000 frames (10 min 25 s at 48 kHz, 11 min 20 s at 44.1 kHz), and resampled the whole track to 24 kHz. Any longer recording failed before a quote. The user saw the generic "The operation could not finish." with Open Settings and a Retry that failed the same way.

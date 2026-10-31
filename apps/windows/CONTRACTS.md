@@ -1,5 +1,12 @@
 # Windows fixed contracts
 
+### 2026-10-31 - Clip-first Rewrite spec merge (track/p0-scope, D0)
+
+- Docs only; no code, fixture, test or Release allowlist changed. `doc/design.md` §6.3 is now "Rewrite (clip-first) and your voice", with the scope bar (`AutoSuggestBox`, accent `Button`, `DropDownButton` AI picker), the panel states R0–R3, the inline voice steps V0–V6 and takes T1–T4. voice-lab.md §3.1, §5, §6.4–§6.7, §8.1, §8.4, §8.6, §8.12 and §15 and ai.md §4.8 and §10.3 follow it. The Mac entry of the same date lists every section.
+- Normative for the C# Core as for the Swift Core: an LLM send on a CLI signed in on a plan, a local server or Apple presents inline with no amount, and an API key or a CLI on an API-key sign-in confirms every send (voice-lab.md §3.1); the enrollment runs the on-device speaker match first and one approval covers the Scribe statement check and the creation (§6.4). The C# twins replay the same fixtures after each Swift Core package (W1–W4).
+- Windows keeps voice creation off until its speaker check reaches parity: V1 shows the not-ready `InfoBar` and offers only the free changes (design.md §6.3.7). Takes work for a voice already consented on this PC.
+- Until the Windows packages land, the app still ships `RewritePanel`, `CreateVoicePage`, `VoiceCreationDialog` and the Voice Lab gate on Rewrite, as before.
+
 ### 2026-10-31 - Windows Rewrite takes on long recordings (track/win-long-source-takes)
 
 - Port of the Mac's long-recording Rewrite takes (d2851910, d4dfef26, 2a906dcf). Take generation read the whole source into one array (`RewriteGenerationBackend.ReadSourceAsync`), and `RewriteSession` refused a source over `RewriteSourceLimit.MaxFrames` (30,000,000 frames, 10 min 25 s at 48 kHz) with "New takes work only in videos up to 10 minutes long. Cuts and corrections still work. Your edits are saved." `ReadSourceAsync`, `RewriteSourceLimit` and that copy are gone; nothing refuses a source by length. The Mac has no other length refusal to keep.
