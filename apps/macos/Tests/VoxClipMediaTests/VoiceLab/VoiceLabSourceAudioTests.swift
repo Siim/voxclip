@@ -57,6 +57,17 @@ import VoxClipCore
         }
     }
 
+    /// 280 s at 96 kHz is 53,760,044 bytes of PCM16, over the upload limit, so a 96 kHz source over about 260 s used to fail
+    /// with tooLarge. Every chunk, with the 20 ms remainder it can absorb, now passes `conversionChunk` at every rate.
+    @Test func decodeChunksStayUnderTheUploadLimitAtEverySupportedRate() throws {
+        for rate in [8_000, 16_000, 44_100, 48_000, 88_200, 96_000] {
+            let chunk = VoiceLabSourceAudio.decodeChunkFrames(sampleRate: rate), trailing = (rate + 49) / 50
+            let longest = try VoiceLabSourceAudio.conversionChunk(startSample: 0, endSample: Int64(chunk + trailing - 1), sourceSampleRate: Double(rate))
+            #expect(longest.frames == chunk + trailing - 1)
+            #expect(chunk == (rate <= 88_200 ? 280 * rate : 24_999_977 - trailing))
+        }
+    }
+
     @Test func regionsStartOnTheTakeRateGridAndJoinWhenTheyMeet() {
         #expect(VoiceLabSourceAudio.aligned(44_100 * 10 + 5, 44_100 * 20, total: 44_100 * 30, rate: 44_100) == 441_000..<882_000)
         #expect(VoiceLabSourceAudio.aligned(441_100, 500_000, total: 441_000 * 2, rate: 44_100).lowerBound.isMultiple(of: 147))

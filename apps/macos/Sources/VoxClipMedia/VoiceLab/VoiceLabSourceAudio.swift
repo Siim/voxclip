@@ -108,10 +108,10 @@ public enum VoiceLabSourceAudio {
         return result
     }
 
-    /// Source frames `range` as mono Float32, decoded in 280 s chunks through `conversionInput` and handed to `body`
-    /// one chunk at a time. A remainder shorter than 20 ms joins the chunk before it.
+    /// Source frames `range` as mono Float32, decoded in chunks of `decodeChunkFrames` through `conversionInput` and
+    /// handed to `body` one chunk at a time. A remainder shorter than 20 ms joins the chunk before it.
     private static func decodeMono(source: URL, range: Range<Int64>, sampleRate: Int, _ body: ([Float]) -> Void) async throws {
-        let chunkSamples: Int = 280 * sampleRate
+        let chunkSamples: Int = decodeChunkFrames(sampleRate: sampleRate)
         let chunkFrames: Int64 = Int64(chunkSamples)
         let trailingSamples: Int = (sampleRate + 49) / 50
         let trailingFrames: Int64 = Int64(trailingSamples)
@@ -133,6 +133,14 @@ public enum VoiceLabSourceAudio {
             body(chunk)
             start = end
         }
+    }
+
+    /// 280 s of frames, or fewer where that much PCM16 would reach the 50,000,000-byte limit `conversionChunk` enforces
+    /// (above about 89 kHz), less the 20 ms remainder a chunk can absorb, so every chunk at every supported rate decodes.
+    static func decodeChunkFrames(sampleRate: Int) -> Int {
+        let largest: Int = (uploadLimit - 1 - 44) / 2
+        let trailing: Int = (sampleRate + 49) / 50
+        return min(280 * sampleRate, largest - trailing)
     }
 
     /// `VoiceLabTakeProcessing.envelope` computed chunk by chunk: the same frames, summed in the same order.
