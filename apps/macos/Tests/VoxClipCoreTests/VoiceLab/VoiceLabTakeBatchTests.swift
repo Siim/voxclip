@@ -217,33 +217,44 @@ struct VoiceLabTakeBatchTests {
         #expect(throws: VoiceLabError.invalidInput) { try VoiceLabTakeBatch(windows: [first, second(Self.takes(4, synthesis: tts, qa: qa))]) }
     }
 
-    /// Sent is what the provider accepted, read from the receipts on a window's rows; a QA receipt needs its take's TTS.
-    @Test func finishingFromAResultCountsOnlyTheReceipts() throws {
+    /// Sent is what the provider accepted, read from the rows: a receipt, or a request accepted before its reply failed and
+    /// left no receipt, which the spend ledger recorded all the same. A QA request needs its take's TTS.
+    @Test func finishingFromAResultCountsWhatTheProviderAccepted() throws {
         let tts = CostEstimate(provider: "elevenlabs", operation: "textToSpeech", units: 5, unit: "character", usd: Decimal(string: "0.0004"), credits: 5, basis: "fixture")
         let qa = CostEstimate(provider: "elevenlabs", operation: "speechToText", units: 290, unit: "second", usd: Decimal(string: "0.0177222222"), basis: "fixture")
         let quote = VoiceLabTakeRunQuote(id: UUID(), takes: Self.takes(3, synthesis: tts, qa: qa), preparedAt: Self.preparedAt)
+        let laterQuote = VoiceLabTakeRunQuote(id: UUID(), takes: Self.takes(3, synthesis: tts, qa: qa), preparedAt: Self.preparedAt)
         let batch = try VoiceLabTakeBatch(windows: [.init(input: Self.input(startSample: 48_000, endSample: 96_000), quote: quote),
-            .init(input: Self.input(startSample: 120_000, endSample: 168_000),
-                  quote: VoiceLabTakeRunQuote(id: UUID(), takes: Self.takes(3, synthesis: tts, qa: qa), preparedAt: Self.preparedAt))])
+            .init(input: Self.input(startSample: 120_000, endSample: 168_000), quote: laterQuote)])
         func receipt(_ request: VoiceLabQuote) -> VoiceLabReceipt {
             VoiceLabReceipt(provider: "elevenlabs", region: .default, endpoint: request.endpoint, modelID: nil, voiceID: nil,
                             requestID: request.requestID, providerRequestID: nil, spendWarning: nil)
         }
-        let takes = quote.takes
+        let takes = quote.takes, later = laterQuote.takes
         let rows = [
             VoiceLabTakeRow(id: takes[0].synthesis.requestID, index: 0, seed: takes[0].seed, receipt: receipt(takes[0].synthesis),
                             failure: .qa([.transcript]), qaReceipt: receipt(takes[0].qa), quote: takes[0]),
+            // Scribe accepted the QA request, then its reply was malformed.
             VoiceLabTakeRow(id: takes[1].synthesis.requestID, index: 1, seed: takes[1].seed, receipt: receipt(takes[1].synthesis),
-                            failure: .qa([.speaker]), quote: takes[1]),
+                            failure: .provider(.malformedResponse), quote: takes[1], accepted: [takes[1].qa.requestID]),
             VoiceLabTakeRow(id: takes[2].synthesis.requestID, index: 2, seed: takes[2].seed, failure: .provider(.providerFailure(500)), quote: takes[2]),
         ]
+        #expect(rows[0].acceptedRequestIDs == [takes[0].synthesis.requestID, takes[0].qa.requestID])
+        #expect(rows[1].acceptedRequestIDs == [takes[1].synthesis.requestID, takes[1].qa.requestID] && rows[2].acceptedRequestIDs.isEmpty)
         var progress = VoiceLabTakeBatchProgress(batch: batch)
         try progress.finish(window: 0, result: VoiceLabTakeRunResult(rows: rows, end: .completed))
-        #expect(progress.sent == [takes[0].synthesis.requestID, takes[0].qa.requestID, takes[1].synthesis.requestID])
-        #expect(progress.discarded == [takes[1].qa.requestID, takes[2].synthesis.requestID, takes[2].qa.requestID])
+        #expect(progress.sent == [takes[0].synthesis.requestID, takes[0].qa.requestID, takes[1].synthesis.requestID, takes[1].qa.requestID])
+        #expect(progress.discarded == [takes[2].synthesis.requestID, takes[2].qa.requestID])
         #expect(progress.window == 1)
-        #expect(progress.sentEstimate.units == 2 && progress.sentEstimate.usd == Decimal(string: "0.0185222222"))
+        #expect(progress.sentEstimate.units == 2 && progress.sentEstimate.usd == Decimal(string: "0.0362444444"))
         #expect(progress.remainingEstimate.units == 3 && progress.remainingEstimate.usd == Decimal(string: "0.0543666666"))
+        // ElevenLabs accepted the TTS request, then its alignment was missing: a fatal end with no receipt.
+        let missing = VoiceLabTakeRow(id: later[0].synthesis.requestID, index: 0, seed: later[0].seed, failure: .provider(.invalidAlignment),
+                                      quote: later[0], accepted: [later[0].synthesis.requestID])
+        try progress.finish(window: 1, result: VoiceLabTakeRunResult(rows: [missing], end: .fatal))
+        #expect(progress.window == nil && progress.sent.contains(later[0].synthesis.requestID))
+        #expect(progress.sentEstimate.units == 3 && progress.sentEstimate.usd == Decimal(string: "0.0366444444"))
+        #expect(progress.remainingEstimate.units == 0 && progress.remainingEstimate.usd == 0)
 
         var lone = VoiceLabTakeBatchProgress(batch: batch)
         #expect(throws: VoiceLabError.invalidInput) { try lone.finish(window: 0, sent: [takes[0].qa.requestID], end: .completed) }

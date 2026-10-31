@@ -77,8 +77,9 @@ public struct VoiceLabTakeBatch: Sendable, Equatable, Identifiable {
 
 /// A take batch's run, window by window; voice-lab §2.6 and §8.6. A window that completes or stops early discards its own
 /// unsent quotes and hands over to the next window. A fatal, cancelled or invalidated window ends the batch and discards
-/// every later window's quotes too. Sent means the provider accepted the request, which is exactly what the spend ledger
-/// records (§3.1); a request the provider refused counts with the discarded ones, because nothing was recorded for it.
+/// every later window's quotes too. Sent means the provider accepted the request: its 2xx status line arrived, which is
+/// exactly when the spend ledger records it (§3.1), whether or not the reply then succeeded. A request the provider
+/// refused counts with the discarded ones, because nothing was recorded for it.
 public struct VoiceLabTakeBatchProgress: Sendable, Equatable {
     public let batch: VoiceLabTakeBatch
     /// The window that runs next, in source order; nil once the batch is over.
@@ -110,10 +111,10 @@ public struct VoiceLabTakeBatchProgress: Sendable, Equatable {
         }
     }
 
-    /// `finish(window:sent:end:)` for a window's result: sent are the requests whose receipts its rows carry.
+    /// `finish(window:sent:end:)` for a window's result: sent are the requests its rows record as accepted
+    /// (`VoiceLabTakeRow.acceptedRequestIDs`), receipt or not.
     public mutating func finish(window index: Int, result: VoiceLabTakeRunResult) throws {
-        let accepted = result.rows.flatMap { [$0.receipt?.requestID, $0.qaReceipt?.requestID].compactMap { $0 } }
-        try finish(window: index, sent: Set(accepted), end: result.end)
+        try finish(window: index, sent: Set(result.rows.flatMap(\.acceptedRequestIDs)), end: result.end)
     }
 
     /// What the provider accepted, one unit per take with a sent TTS request: the "Made {t} takes · ≈ ${x}" line and the

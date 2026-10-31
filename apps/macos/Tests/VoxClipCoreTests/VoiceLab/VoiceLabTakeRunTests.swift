@@ -105,6 +105,8 @@ private final class TakeRunHTTP: Sendable {
         var missingAlignment = false
         var remoteRequiresVerification = false
         var malformedAlignment = false
+        /// Scribe answers 200 with no words, after the spend ledger has recorded the QA request.
+        var malformedQA = false
         var current = true
         var paused = false
         var entered = false
@@ -199,6 +201,7 @@ struct VoiceLabTakeRunTests {
                     #expect(body.contains("name=\"\(field)\"\r\n\r\n\(value)\r\n"))
                 }
                 let state = http.value.withLock { $0.qa += 1; return $0 }
+                if state.malformedQA { return (200, [:], Data(#"{"language_code":"eng"}"#.utf8)) }
                 let text = state.qa <= state.mismatchCount ? "different" : "Hello"
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": [["type": "word", "text": text, "start": 0.65, "end": state.duration + 0.35]]]))
             default: Issue.record("Unexpected take-run request"); return (500, [:], Data())
@@ -666,6 +669,30 @@ struct VoiceLabTakeRunTests {
         #expect(result.end == .earlyStop && fixture.http.value.withLock { $0.seeds == [UInt32.max] && $0.qa == 1 })
         await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.approve(quote) }
         await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: true) }
+    }
+    /// A request the provider accepted counts as sent even when its reply then fails and leaves no receipt: the spend
+    /// ledger recorded it on the 2xx status line, and the batch's progress agrees with the ledger.
+    @Test(arguments: [false, true]) func anAcceptedRequestWithoutAReceiptCountsAsSent(qa: Bool) async throws {
+        let fixture = try await fixture { $0.missingAlignment = !qa; $0.malformedQA = qa }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let runs = VoiceLabTakeBatchRun(runs: [fixture.run])
+        let batch = try await runs.prepare([fixture.input])
+        try await runs.approve(batch)
+        let result = try await fixture.run.execute(batch.windows[0].quote, approved: true)
+        var progress = VoiceLabTakeBatchProgress(batch: batch)
+        try progress.finish(window: 0, result: result)
+        let takes = batch.windows[0].quote.takes
+        #expect(result.rows.allSatisfy { $0.qaReceipt == nil })
+        if qa {
+            #expect(result.end == .completed && result.rows.count == 3 && result.rows.allSatisfy { $0.receipt != nil })
+            #expect(progress.sent == Set(takes.flatMap { [$0.synthesis.requestID, $0.qa.requestID] }))
+            #expect(fixture.http.value.withLock { $0.seeds.count == 3 && $0.qa == 3 })
+        } else {
+            #expect(result.end == .fatal && result.rows.count == 1 && result.rows[0].receipt == nil)
+            #expect(progress.sent == [takes[0].synthesis.requestID] && progress.sentEstimate.units == 1)
+            #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
+        }
+        #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == (progress.sentEstimate.usd ?? 0))
     }
     @Test(arguments: [false, true]) func consentOrModelChangeInvalidatesRemainder(consent: Bool) async throws {
         let fixture = try await fixture { $0.mismatchCount = 1 }; defer { try? FileManager.default.removeItem(at: fixture.root) }

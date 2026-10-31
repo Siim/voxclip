@@ -252,6 +252,7 @@ public actor VoiceLabTakeRun {
             var qaReceipt: VoiceLabReceipt?
             var generated: VoiceLabAudioResult?
             var audio: VoiceLabTakeAudio?
+            let synthesisAccepted = VoiceLabRequestAcceptance(), qaAccepted = VoiceLabRequestAcceptance()
             do {
                 let authorization = try await useGuard.authorize(quote: take.synthesis, contentKey: value.input.contentKey,
                     recordID: value.record.id, speech16k: value.sourceSpeech, approved: true)
@@ -260,7 +261,7 @@ public actor VoiceLabTakeRun {
                 let result = try await client.synthesize(text: value.input.text, modelID: value.input.modelID,
                     voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
                     options: value.input.options(take: take.index), requestID: take.synthesis.requestID,
-                    authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true))
+                    authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true), acceptance: synthesisAccepted)
                 receipt = result.receipt
                 generated = result
                 let storage = storage
@@ -302,7 +303,8 @@ public actor VoiceLabTakeRun {
                 }) { try await self.validate(value, revision: expected) }
                 try await capability.bindDispatch(boundary(revision: expected, dispatch: dispatch))
                 let recognized = try await client.transcribeQA(processed.mixed, rate: processed.sampleRate,
-                    language: value.input.language, authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability)
+                    language: value.input.language, authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability,
+                    acceptance: qaAccepted)
                 qaReceipt = recognized.receipt
                 try await validate(value, revision: expected)
                 let lower = Double(processed.patchRange.lowerBound) / Double(processed.sampleRate)
@@ -322,8 +324,12 @@ public actor VoiceLabTakeRun {
                 if qa.passed, case .exact = processed.fit { return VoiceLabTakeRunResult(rows: rows, end: .earlyStop) }
             } catch {
                 guard dispatch.started else { return VoiceLabTakeRunResult(rows: [], end: end(error)) }
-                rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
-                    receipt: receipt, audio: audio, failure: failure(error), qaReceipt: qaReceipt, generated: generated, quote: take))
+                // A request the provider accepted is in the spend ledger even when its reply failed and left no receipt.
+                var accepted = Set<UUID>()
+                if synthesisAccepted.accepted { accepted.insert(take.synthesis.requestID) }
+                if qaAccepted.accepted { accepted.insert(take.qa.requestID) }
+                rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed, receipt: receipt,
+                    audio: audio, failure: failure(error), qaReceipt: qaReceipt, generated: generated, quote: take, accepted: accepted))
                 await progress(rows)
                 if fatal(error) { return VoiceLabTakeRunResult(rows: rows, end: end(error)) }
             }

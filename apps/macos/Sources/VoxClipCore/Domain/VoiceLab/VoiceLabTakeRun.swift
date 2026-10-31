@@ -163,6 +163,9 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     public let seed: UInt32
     public let receipt: VoiceLabReceipt?
     public let qaReceipt: VoiceLabReceipt?
+    /// The take's request IDs the provider accepted: the 2xx status line arrived, which is when the spend ledger records
+    /// a request (voice-lab §3.1), even if the reply then failed and no receipt followed. Holds both receipts' IDs.
+    public let acceptedRequestIDs: Set<UUID>
     public let generated: VoiceLabAudioResult?
     public let quote: VoiceLabTakeQuote?
     public let audio: VoiceLabTakeAudio?
@@ -176,10 +179,12 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     }
     package init(id: UUID, index: Int, seed: UInt32, receipt: VoiceLabReceipt? = nil, audio: VoiceLabTakeAudio? = nil,
                  qa: VoiceLabTakeQAResult? = nil, score: Double? = nil, failure: VoiceLabTakeFailure? = nil,
-                 qaReceipt: VoiceLabReceipt? = nil, generated: VoiceLabAudioResult? = nil, quote: VoiceLabTakeQuote? = nil) {
+                 qaReceipt: VoiceLabReceipt? = nil, generated: VoiceLabAudioResult? = nil, quote: VoiceLabTakeQuote? = nil,
+                 accepted: Set<UUID> = []) {
         self.id = id; self.index = index; self.seed = seed; self.receipt = receipt; self.audio = audio
         self.qa = qa; self.score = score; self.failure = failure
         self.qaReceipt = qaReceipt; self.generated = generated; self.quote = quote
+        acceptedRequestIDs = accepted.union([receipt?.requestID, qaReceipt?.requestID].compactMap { $0 })
     }
 }
 public enum VoiceLabTakeRunEnd: String, Sendable, Equatable { case completed, earlyStop, cancelled, invalidated, fatal }
