@@ -92,6 +92,16 @@ enum ShellRegion: String, CaseIterable, Codable, Sendable {
     }
 }
 
+extension NSView {
+    /// Makes this view a named VoiceOver group around its subviews (impl-plan V1b:
+    /// "Explorer", "Editor", "Viewer and panel", "Timeline", "Status").
+    func shellGroup(_ label: String) {
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel(label)
+    }
+}
+
 // MARK: - Views
 
 /// Fixed-height rows at the top and bottom, and one view that fills the rest.
@@ -469,6 +479,7 @@ enum ShellRegion: String, CaseIterable, Codable, Sendable {
     init(content: NSView) {
         super.init(frame: NSRect(x: 0, y: 0, width: CGFloat(VCTokens.sizeRightColumnMin), height: 400))
         identifier = NSUserInterfaceItemIdentifier("voxclip.shell.rightOverlay")
+        shellGroup("Viewer and panel")
         addSubview(content)
         addSubview(edge)
     }
@@ -585,6 +596,7 @@ struct EditorShellState: Equatable {
         let list = ShellHost.controller(WorkspaceSidebar(shell: shell), app: shell.app)
         let explorerView = ShellStackView(fill: "bg.window")
         explorerView.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.explorer")
+        explorerView.shellGroup("Explorer")
         explorerView.set(top: [(explorerHeader, ShellMetrics.explorerHeader)], fill: list.view)
         let explorer = ShellViewController(explorerView, children: [list])
         explorerView.setFrameSize(NSSize(width: shell.layout.explorerWidth, height: 776))
@@ -605,6 +617,7 @@ struct EditorShellState: Equatable {
         addChild(content)
         shell.chromeFocus = self
         let status = StatusBarView(shell: shell)
+        status.shellGroup("Status")
         statusBar = status
         root.set(top: [], fill: content.view, bottom: [(status, ShellMetrics.statusBar)])
         explorerHeader.trailingInset = 8
@@ -814,18 +827,23 @@ struct EditorShellState: Equatable {
         transcript.view.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.transcript")
         let editorStack = ShellStackView(fill: "bg.surface")
         editorStack.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.editor")
+        editorStack.shellGroup("Editor")
         editorStack.set(top: [(tabRow, ShellMetrics.titleRow), (clipBar, ShellMetrics.clipBar)], fill: transcript.view)
         let editorColumn = ShellViewController(editorStack, children: [transcript])
 
         let right = ShellHost.controller(RightColumn(model: model), app: app)
         let rightStack = ShellStackView(fill: "bg.window")
         rightStack.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.right")
+        rightStack.shellGroup("Viewer and panel")
         rightStack.set(top: [(rightTitle, ShellMetrics.titleRow)], fill: right.view)
         let rightColumn = ShellViewController(rightStack, children: [right])
 
         let timeline = ShellHost.controller(TimelinePanel(model: model, shell: shell), app: app)
-        timeline.view.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.timeline")
-        let timelinePane = ShellViewController(timeline.view, children: [timeline])
+        let timelineStack = ShellStackView(fill: "bg.window")
+        timelineStack.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.timeline")
+        timelineStack.shellGroup("Timeline")
+        timelineStack.set(top: [], fill: timeline.view)
+        let timelinePane = ShellViewController(timelineStack, children: [timeline])
 
         let layout = shell.layout
         let width = max(800, shell.windowWidth - (layout.explorerVisible ? layout.explorerWidth : 0))
@@ -846,7 +864,7 @@ struct EditorShellState: Equatable {
         }
 
         columns.view.setFrameSize(NSSize(width: width, height: 560))
-        timeline.view.setFrameSize(NSSize(width: width, height: layout.timelineHeight))
+        timelineStack.setFrameSize(NSSize(width: width, height: layout.timelineHeight))
         top = ShellOverlayView(columns.view)
         top.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.columns")
         topController = ShellViewController(top, children: [columns])

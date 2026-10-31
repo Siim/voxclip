@@ -28,7 +28,8 @@ import AppKit
     func tearDown() { observation?.cancel() }
 
     /// The status bar is F6's last stop (impl-plan §3.2): F6 gives it keyboard focus, with
-    /// the focus ring inside its bounds; a click does not.
+    /// the focus ring inside its bounds; a click does not. VoiceOver reads it as the
+    /// "Status" group (EditorShellController).
     @discardableResult func takeFocus() -> Bool {
         focusRequested = true
         defer { focusRequested = false }

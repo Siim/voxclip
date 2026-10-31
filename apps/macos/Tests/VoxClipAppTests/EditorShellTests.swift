@@ -195,6 +195,20 @@ private final class FullScreenStandIn: NSWindow {
         model.showFindClips = false
     }
 
+    /// VoiceOver reads the shell as five groups, in this order (impl-plan V1b).
+    @Test func theShellReadsAsFiveNamedGroups() async throws {
+        let (shell, controller, _) = try await openShell()
+        defer { controller.tearDown(); shell.editor?.close() }
+        func groups(_ view: NSView) -> [String] {
+            let label = view.accessibilityLabel() ?? ""
+            let own = view.isAccessibilityElement() && view.accessibilityRole() == .group && !label.isEmpty ? [label] : []
+            return own + view.subviews.flatMap(groups)
+        }
+        #expect(groups(controller.view) == ["Explorer", "Editor", "Viewer and panel", "Timeline", "Status"])
+        let explorer = try #require(view("voxclip.shell.explorer", in: controller.view))
+        #expect(!(explorer.accessibilityChildren() ?? []).isEmpty)
+    }
+
     /// F6 reaches the AppKit stops: ⋯ for the tab and clip-bar rows, and the status bar,
     /// and starts again from the stop that holds focus (impl-plan §3.2).
     @Test func f6ReachesTheTabRowAndTheStatusBar() async throws {
