@@ -1482,7 +1482,6 @@ member VoxClip.App.Services.RewriteGenerationBackend :: field private gate
 member VoxClip.App.Services.RewriteGenerationBackend :: field private store
 member VoxClip.App.Services.RewriteGenerationBackend :: method internal .ctor(VoxClip.Core.Services.Project.DataLocations,VoxClip.Core.Services.LLM.IKeyProvider,VoxClip.Core.Services.Logging.ILog,VoxClip.Core.Domain.VoiceLab.VoiceLabPriceCatalog,VoxClip.Core.Services.Speech.ElevenLabsRegion,string,System.Func`1<bool>,System.Func`2<System.Action,System.Threading.Tasks.Task>)
 member VoxClip.App.Services.RewriteGenerationBackend :: method internal DiscoverAsync(string,System.Threading.CancellationToken)
-member VoxClip.App.Services.RewriteGenerationBackend :: method internal ReadSourceAsync(string,long,int,System.Threading.CancellationToken,System.Func`6<string,long,long,double,System.Threading.CancellationToken,System.Threading.Tasks.Task`1<byte[]>>)
 member VoxClip.App.Services.RewriteGenerationBackend :: method internal VoiceLabel(string,System.DateTimeOffset)
 member VoxClip.App.Services.RewriteGenerationBackend :: method internal get_Runner()
 member VoxClip.App.Services.RewriteGenerationBackend :: method private RequireCurrent(System.Threading.CancellationToken)
@@ -2969,7 +2968,7 @@ member VoxClip.App.ViewModels.RewriteSession :: method internal ApplyTakeAsync()
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfigureGeneration(VoxClip.App.ViewModels.RewriteGeneration)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ConfirmCostAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>)
 member VoxClip.App.ViewModels.RewriteSession :: method internal Edit(string)
-member VoxClip.App.ViewModels.RewriteSession :: method internal GenerationInputAsync(string,string,uint,bool,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<float[]>>,System.Threading.CancellationToken)
+member VoxClip.App.ViewModels.RewriteSession :: method internal GenerationInputAsync(string,string,uint,bool,VoxClip.App.ViewModels.RewriteSourceReader,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.RewriteSession :: method internal MarkEstimateShown(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction)
 member VoxClip.App.ViewModels.RewriteSession :: method internal ProposeAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabPreparedAction,bool)
 member VoxClip.App.ViewModels.RewriteSession :: method internal Refusal(System.Exception)
@@ -3020,10 +3019,38 @@ member VoxClip.App.ViewModels.RewriteSession :: method private set_Prepared(VoxC
 member VoxClip.App.ViewModels.RewriteSession :: method private set_ProposalRevision(int)
 member VoxClip.App.ViewModels.RewriteSession :: method private set_Review(VoxClip.App.ViewModels.RewriteReview)
 member VoxClip.App.ViewModels.RewriteSession :: method public Dispose()
-member VoxClip.App.ViewModels.RewriteSourceLimit :: field internal MaxFrames
-member VoxClip.App.ViewModels.RewriteSourceLimit :: method internal Copy(int)
-member VoxClip.App.ViewModels.RewriteSourceLimit :: method internal Frames(VoxClip.Core.Domain.Shared.Project)
-member VoxClip.App.ViewModels.RewriteSourceLimit :: method internal Refusal(VoxClip.Core.Domain.Shared.Project)
+member VoxClip.App.ViewModels.RewriteSourceDecoder :: method public .ctor(object,nint)
+member VoxClip.App.ViewModels.RewriteSourceDecoder :: method public BeginInvoke(string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Threading.CancellationToken,System.AsyncCallback,object)
+member VoxClip.App.ViewModels.RewriteSourceDecoder :: method public EndInvoke(System.IAsyncResult)
+member VoxClip.App.ViewModels.RewriteSourceDecoder :: method public Invoke(string,long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Threading.CancellationToken)
+member VoxClip.App.ViewModels.RewriteSourceReader :: method public .ctor(object,nint)
+member VoxClip.App.ViewModels.RewriteSourceReader :: method public BeginInvoke(VoxClip.App.ViewModels.RewriteSourceRequest,System.Threading.CancellationToken,System.AsyncCallback,object)
+member VoxClip.App.ViewModels.RewriteSourceReader :: method public EndInvoke(System.IAsyncResult)
+member VoxClip.App.ViewModels.RewriteSourceReader :: method public Invoke(VoxClip.App.ViewModels.RewriteSourceRequest,System.Threading.CancellationToken)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method internal Reader(System.Func`1<string>,VoxClip.App.ViewModels.RewriteSourceDecoder)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method private .ctor(VoxClip.App.ViewModels.RewriteSourceRequest)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public .ctor(long,int,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public Deconstruct(long&,int&,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow&,System.Nullable`1<double>&,System.Nullable`1<double>&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>&)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public Equals(VoxClip.App.ViewModels.RewriteSourceRequest)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public Equals(object)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public GetHashCode()
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public ToString()
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public get_Frames()
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public get_IncomingSilence()
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public get_Items()
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public get_OutgoingSilence()
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public get_SampleRate()
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public get_Window()
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public op_Equality(VoxClip.App.ViewModels.RewriteSourceRequest,VoxClip.App.ViewModels.RewriteSourceRequest)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public op_Inequality(VoxClip.App.ViewModels.RewriteSourceRequest,VoxClip.App.ViewModels.RewriteSourceRequest)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_Frames(long)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_IncomingSilence(System.Nullable`1<double>)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_Items(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_OutgoingSilence(System.Nullable`1<double>)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_SampleRate(int)
+member VoxClip.App.ViewModels.RewriteSourceRequest :: method public set_Window(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
 member VoxClip.App.ViewModels.RewriteTakeAccess :: method private .ctor(VoxClip.App.ViewModels.RewriteTakeAccess)
 member VoxClip.App.ViewModels.RewriteTakeAccess :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.RewriteTakeAccess :: method private get_EqualityContract()
@@ -4156,7 +4183,9 @@ type VoxClip.App.ViewModels.RewriteHunkReview
 type VoxClip.App.ViewModels.RewriteOpening
 type VoxClip.App.ViewModels.RewriteReview
 type VoxClip.App.ViewModels.RewriteSession
-type VoxClip.App.ViewModels.RewriteSourceLimit
+type VoxClip.App.ViewModels.RewriteSourceDecoder
+type VoxClip.App.ViewModels.RewriteSourceReader
+type VoxClip.App.ViewModels.RewriteSourceRequest
 type VoxClip.App.ViewModels.RewriteTakeAccess
 type VoxClip.App.ViewModels.RewriteVoice
 type VoxClip.App.ViewModels.SelectionBarLayout
