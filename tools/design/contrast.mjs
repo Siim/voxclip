@@ -95,6 +95,7 @@ const tokenPairs = [
   ...['editor.band', 'bg.surface', 'bg.window'].map(background => ['ui', 'ai.tint', background, 'AI voice waveform glyph']),
   ...['editor.band', 'bg.surface', 'bg.window'].map(background => ['ui', 'change.add', background, 'change bar, ruler mark and Outline dot']),
   ['ui', 'ai.wave', ['ai.tint@0.10', 'timeline.lane'], 'AI patch waveform on A1'],
+  ...['bg.window', 'timeline.rulerOut'].map(background => ['text', 'timeline.rulerLabel', background, 'ruler timecode labels']),
 ];
 
 // Colours kept below their minimum on purpose (impl-plan item 6), with the reason. Their
@@ -132,6 +133,7 @@ export const exempt = {
   'tint.wash': 'selection wash over the timeline tracks; the ruler selection bar and the transcript selection carry it',
   'timeline.piece': 'decorative 1 pt outline of a clip piece; its fill, filmstrip or waveform identify it',
   'timeline.seam': 'decorative 1 pt cut seam; cuts are also folds in the transcript, the Cuts rotor and the status summary',
+  'timeline.tick': 'decorative 6 pt minor ruler tick; the labelled major ticks carry the time',
 };
 
 // Windows draws accent text and on-accent text from the App.xaml ramp, not from tokens. The

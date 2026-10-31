@@ -398,6 +398,18 @@ extension Color {
             : NSColor(srgbRed: 250.0 / 255, green: 249.0 / 255, blue: 246.0 / 255, alpha: 255.0 / 255)
     })
 
+    static let vcTimelineRulerLabel = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineRulerLabel")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 138.0 / 255, green: 141.0 / 255, blue: 147.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 94.0 / 255, green: 97.0 / 255, blue: 104.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcTimelineTick = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineTick")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 58.0 / 255, green: 60.0 / 255, blue: 65.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 201.0 / 255, green: 199.0 / 255, blue: 192.0 / 255, alpha: 255.0 / 255)
+    })
+
     static let vcTimelineTrack = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineTrack")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 38.0 / 255, green: 39.0 / 255, blue: 43.0 / 255, alpha: 255.0 / 255)
