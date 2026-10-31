@@ -1,0 +1,6286 @@
+{
+ "schema": "voxclip-voice-lab-scope-rewrite-plan/1",
+ "limits": {
+  "maxEntries": 3000,
+  "maxBytes": 20000,
+  "maxWordTextLength": 100,
+  "maxChars": 5000
+ },
+ "caseCount": 17,
+ "cases": [
+  {
+   "name": "clip-cuts-corrections",
+   "note": "A kept clip in mid-take: the cut repeat w6 is left out and absorbed by its line window; corrections are applied; the event and unlabeled speech are entries; the clip head and tail come from clipTimes.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-mid"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 3,
+      "text": "we",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "index": 4,
+      "text": "ship",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "index": 5,
+      "text": "the",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "index": 7,
+      "text": "new",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "index": 8,
+      "text": "editor.",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "index": 9,
+      "text": "(laughs)",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "index": 10,
+      "text": "It",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "index": 11,
+      "text": "cuts",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "index": 12,
+      "text": "\u2026",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "index": 13,
+      "text": "words,",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "index": 14,
+      "text": "fast.",
+      "start": 4.65,
+      "end": 5.0
+     }
+    ],
+    "utf8Bytes": 57,
+    "lines": [
+     {
+      "line": "[3-8]",
+      "itemIds": [
+       "w3",
+       "w4",
+       "w5",
+       "w7",
+       "w8"
+      ],
+      "minChars": 18,
+      "maxChars": 20,
+      "rangeSource": "window",
+      "note": "seams gap/hard, target 1.7349999999999997 s, bridge 0"
+     },
+     {
+      "line": "[9-14]",
+      "itemIds": [
+       "e9",
+       "w10",
+       "w11",
+       "u12",
+       "w13",
+       "w14"
+      ],
+      "minChars": 18,
+      "maxChars": 20,
+      "rangeSource": "window",
+      "note": "seams hard/gap, target 1.7650000000000001 s, bridge 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "full-take",
+   "note": "Full take: cut items left out, a correction ending a sentence, an event-only line (1 to 1) and a line whose window is refused because the cut filler touches it (advisory span).",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Make it clearer. Keep my words where they work; change as little as possible.",
+    "language": "en"
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 0,
+      "text": "So",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "index": 2,
+      "text": "today.",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "index": 3,
+      "text": "we",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "index": 4,
+      "text": "ship",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "index": 5,
+      "text": "the",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "index": 7,
+      "text": "new",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "index": 8,
+      "text": "editor.",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "index": 9,
+      "text": "(laughs)",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "index": 10,
+      "text": "It",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "index": 11,
+      "text": "cuts",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "index": 12,
+      "text": "\u2026",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "index": 13,
+      "text": "words,",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "index": 14,
+      "text": "fast.",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "index": 15,
+      "text": "(applause)",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "index": 17,
+      "text": "Thanks",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "index": 18,
+      "text": "for",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "index": 19,
+      "text": "watching!",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "utf8Bytes": 99,
+    "lines": [
+     {
+      "line": "[0-2]",
+      "itemIds": [
+       "w0",
+       "w2"
+      ],
+      "minChars": 11,
+      "maxChars": 12,
+      "rangeSource": "window",
+      "note": "seams none/gap, target 1.105 s, bridge 0"
+     },
+     {
+      "line": "[3-8]",
+      "itemIds": [
+       "w3",
+       "w4",
+       "w5",
+       "w7",
+       "w8"
+      ],
+      "minChars": 18,
+      "maxChars": 21,
+      "rangeSource": "window",
+      "note": "seams gap/hard, target 1.8049999999999997 s, bridge 0"
+     },
+     {
+      "line": "[9-14]",
+      "itemIds": [
+       "e9",
+       "w10",
+       "w11",
+       "u12",
+       "w13",
+       "w14"
+      ],
+      "minChars": 23,
+      "maxChars": 25,
+      "rangeSource": "window",
+      "note": "seams hard/gap, target 2.1749999999999994 s, bridge 0"
+     },
+     {
+      "line": "[15-15]",
+      "itemIds": [
+       "e15"
+      ],
+      "minChars": 1,
+      "maxChars": 1,
+      "rangeSource": "noSpeech"
+     },
+     {
+      "line": "[17-19]",
+      "itemIds": [
+       "w17",
+       "w18",
+       "w19"
+      ],
+      "minChars": 10,
+      "maxChars": 12,
+      "rangeSource": "lineSpan",
+      "note": "refused: seamFadeCrossesCut"
+     }
+    ]
+   }
+  },
+  {
+   "name": "clip-at-take-start",
+   "note": "A clip whose clipTimes range starts at 0: its first line window reaches the take start with a none seam, so the edge pad shortens that line's target.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-start"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 0,
+      "text": "So",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "index": 2,
+      "text": "today.",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "index": 3,
+      "text": "we",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "index": 4,
+      "text": "ship",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "index": 5,
+      "text": "the",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "index": 7,
+      "text": "new",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "index": 8,
+      "text": "editor.",
+      "start": 2.45,
+      "end": 2.9
+     }
+    ],
+    "utf8Bytes": 33,
+    "lines": [
+     {
+      "line": "[0-2]",
+      "itemIds": [
+       "w0",
+       "w2"
+      ],
+      "minChars": 11,
+      "maxChars": 12,
+      "rangeSource": "window",
+      "note": "seams none/gap, target 1.105 s, bridge 0"
+     },
+     {
+      "line": "[3-8]",
+      "itemIds": [
+       "w3",
+       "w4",
+       "w5",
+       "w7",
+       "w8"
+      ],
+      "minChars": 16,
+      "maxChars": 18,
+      "rangeSource": "lineSpan",
+      "note": "refused: seamFadeCrossesCut"
+     }
+    ]
+   }
+  },
+  {
+   "name": "clip-at-take-end",
+   "note": "A clip whose clipTimes range reaches the take end: the window there gets a none seam. The clip starts in the pause after \"Thanks\", so its left seam is a gap seam inside the clip head.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-end"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 18,
+      "text": "for",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "index": 19,
+      "text": "watching!",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "utf8Bytes": 13,
+    "lines": [
+     {
+      "line": "[18-19]",
+      "itemIds": [
+       "w18",
+       "w19"
+      ],
+      "minChars": 6,
+      "maxChars": 7,
+      "rangeSource": "window",
+      "note": "seams gap/none, target 0.6649999999999987 s, bridge 0"
+     }
+    ]
+   }
+  },
+  {
+   "name": "suggested-clip",
+   "note": "A suggested clip (origin ai, not selected) is a scope like a kept clip. Its head cuts the event just before \"It\", so the first line's hard seam has no kept source for its fade and takes the advisory span.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-suggested"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 10,
+      "text": "It",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "index": 11,
+      "text": "cuts",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "index": 12,
+      "text": "\u2026",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "index": 13,
+      "text": "words,",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "index": 14,
+      "text": "fast.",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "index": 15,
+      "text": "(applause)",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "index": 17,
+      "text": "Thanks",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "index": 18,
+      "text": "for",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "index": 19,
+      "text": "watching!",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "utf8Bytes": 56,
+    "lines": [
+     {
+      "line": "[10-14]",
+      "itemIds": [
+       "w10",
+       "w11",
+       "u12",
+       "w13",
+       "w14"
+      ],
+      "minChars": 15,
+      "maxChars": 17,
+      "rangeSource": "lineSpan",
+      "note": "refused: seamFadeCrossesCut"
+     },
+     {
+      "line": "[15-15]",
+      "itemIds": [
+       "e15"
+      ],
+      "minChars": 1,
+      "maxChars": 1,
+      "rangeSource": "noSpeech"
+     },
+     {
+      "line": "[17-19]",
+      "itemIds": [
+       "w17",
+       "w18",
+       "w19"
+      ],
+      "minChars": 10,
+      "maxChars": 12,
+      "rangeSource": "lineSpan",
+      "note": "refused: seamFadeCrossesCut"
+     }
+    ]
+   }
+  },
+  {
+   "name": "no-envelope",
+   "note": "Without the source envelope no window is placed: every line with words takes its advisory span.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 0,
+      "text": "So",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "index": 2,
+      "text": "today.",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "index": 3,
+      "text": "we",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "index": 4,
+      "text": "ship",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "index": 5,
+      "text": "the",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "index": 7,
+      "text": "new",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "index": 8,
+      "text": "editor.",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "index": 9,
+      "text": "(laughs)",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "index": 10,
+      "text": "It",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "index": 11,
+      "text": "cuts",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "index": 12,
+      "text": "\u2026",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "index": 13,
+      "text": "words,",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "index": 14,
+      "text": "fast.",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "index": 15,
+      "text": "(applause)",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "index": 17,
+      "text": "Thanks",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "index": 18,
+      "text": "for",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "index": 19,
+      "text": "watching!",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "utf8Bytes": 99,
+    "lines": [
+     {
+      "line": "[0-2]",
+      "itemIds": [
+       "w0",
+       "w2"
+      ],
+      "minChars": 8,
+      "maxChars": 10,
+      "rangeSource": "lineSpan",
+      "note": "refused: noEnvelope"
+     },
+     {
+      "line": "[3-8]",
+      "itemIds": [
+       "w3",
+       "w4",
+       "w5",
+       "w7",
+       "w8"
+      ],
+      "minChars": 16,
+      "maxChars": 18,
+      "rangeSource": "lineSpan",
+      "note": "refused: noEnvelope"
+     },
+     {
+      "line": "[9-14]",
+      "itemIds": [
+       "e9",
+       "w10",
+       "w11",
+       "u12",
+       "w13",
+       "w14"
+      ],
+      "minChars": 15,
+      "maxChars": 17,
+      "rangeSource": "lineSpan",
+      "note": "refused: noEnvelope"
+     },
+     {
+      "line": "[15-15]",
+      "itemIds": [
+       "e15"
+      ],
+      "minChars": 1,
+      "maxChars": 1,
+      "rangeSource": "noSpeech"
+     },
+     {
+      "line": "[17-19]",
+      "itemIds": [
+       "w17",
+       "w18",
+       "w19"
+      ],
+      "minChars": 10,
+      "maxChars": 12,
+      "rangeSource": "lineSpan",
+      "note": "refused: noEnvelope"
+     }
+    ]
+   }
+  },
+  {
+   "name": "all-cut",
+   "note": "A clip whose only item is cut keeps nothing.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-all-cut"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "error": "empty"
+   }
+  },
+  {
+   "name": "unknown-clip",
+   "note": "An unknown clip ID is invalid input.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-missing"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "error": "invalidInput"
+   }
+  },
+  {
+   "name": "selection",
+   "note": "A selection is a passage for VoiceRewriteService (section 8.1 item 2), not a scope plan.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 48000,
+     "runs": [
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       15
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       2
+      ],
+      [
+       0.25,
+       33
+      ],
+      [
+       0.0078125,
+       35
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       25
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       45
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       40
+      ],
+      [
+       0.0078125,
+       10
+      ],
+      [
+       0.25,
+       10
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       20
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       35
+      ],
+      [
+       0.0078125,
+       130
+      ],
+      [
+       0.25,
+       70
+      ],
+      [
+       0.0078125,
+       120
+      ],
+      [
+       0.25,
+       50
+      ],
+      [
+       0.0078125,
+       25
+      ],
+      [
+       0.25,
+       15
+      ],
+      [
+       0.0078125,
+       5
+      ],
+      [
+       0.25,
+       30
+      ],
+      [
+       0.0078125,
+       15
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "selection",
+     "first": 3,
+     "last": 8
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "error": "invalidInput"
+   }
+  },
+  {
+   "name": "envelope-rate-mismatch",
+   "note": "An envelope on another rate than the source is invalid input, never a silent fallback.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": {
+     "sampleRate": 44100,
+     "runs": [
+      [
+       0.0078125,
+       960
+      ]
+     ]
+    },
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "error": "invalidInput"
+   }
+  },
+  {
+   "name": "long-text-cut-to-100-units",
+   "note": "Entry text is cut to 100 UTF-16 units without splitting a surrogate pair.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.0,
+    "words": [
+     {
+      "id": "a",
+      "text": "Long",
+      "kind": "word",
+      "start": 0.1,
+      "end": 0.5
+     },
+     {
+      "id": "b",
+      "text": "word",
+      "kind": "word",
+      "start": 0.6,
+      "end": 1.0
+     },
+     {
+      "id": "c",
+      "text": "here.",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {
+      "b": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\ud83d\ude00tail",
+      "c": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\ud83d\ude00z"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 0,
+      "text": "Long",
+      "start": 0.1,
+      "end": 0.5
+     },
+     {
+      "index": 1,
+      "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "start": 0.6,
+      "end": 1.0
+     },
+     {
+      "index": 2,
+      "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\ud83d\ude00",
+      "start": 1.1,
+      "end": 1.5
+     }
+    ],
+    "utf8Bytes": 207,
+    "lines": [
+     {
+      "line": "[0-2]",
+      "itemIds": [
+       "a",
+       "b",
+       "c"
+      ],
+      "minChars": 176,
+      "maxChars": 187,
+      "rangeSource": "lineSpan",
+      "note": "refused: noEnvelope"
+     }
+    ]
+   }
+  },
+  {
+   "name": "range-capped-at-5000",
+   "note": "A line whose budget passes the request limit is capped at 5,000 on both bounds.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 53.0,
+    "words": [
+     {
+      "id": "f0",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.05
+     },
+     {
+      "id": "f1",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.1
+     },
+     {
+      "id": "f2",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.1,
+      "end": 0.15000000000000002
+     },
+     {
+      "id": "f3",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.15000000000000002,
+      "end": 0.2
+     },
+     {
+      "id": "f4",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.2,
+      "end": 0.25
+     },
+     {
+      "id": "f5",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.3
+     },
+     {
+      "id": "f6",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.30000000000000004,
+      "end": 0.35000000000000003
+     },
+     {
+      "id": "f7",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.35000000000000003,
+      "end": 0.4
+     },
+     {
+      "id": "f8",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.4,
+      "end": 0.45
+     },
+     {
+      "id": "f9",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.5
+     },
+     {
+      "id": "f10",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.5,
+      "end": 0.55
+     },
+     {
+      "id": "f11",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.6000000000000001
+     },
+     {
+      "id": "f12",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.6000000000000001,
+      "end": 0.6500000000000001
+     },
+     {
+      "id": "f13",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.65,
+      "end": 0.7000000000000001
+     },
+     {
+      "id": "f14",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.7000000000000001,
+      "end": 0.7500000000000001
+     },
+     {
+      "id": "f15",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.75,
+      "end": 0.8
+     },
+     {
+      "id": "f16",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.8,
+      "end": 0.8500000000000001
+     },
+     {
+      "id": "f17",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.8500000000000001,
+      "end": 0.9000000000000001
+     },
+     {
+      "id": "f18",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.9,
+      "end": 0.9500000000000001
+     },
+     {
+      "id": "f19",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 0.9500000000000001,
+      "end": 1.0
+     },
+     {
+      "id": "f20",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.0,
+      "end": 1.05
+     },
+     {
+      "id": "f21",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.1
+     },
+     {
+      "id": "f22",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.1,
+      "end": 1.1500000000000001
+     },
+     {
+      "id": "f23",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.1500000000000001,
+      "end": 1.2000000000000002
+     },
+     {
+      "id": "f24",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.2000000000000002,
+      "end": 1.2500000000000002
+     },
+     {
+      "id": "f25",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.25,
+      "end": 1.3
+     },
+     {
+      "id": "f26",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.35
+     },
+     {
+      "id": "f27",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.35,
+      "end": 1.4000000000000001
+     },
+     {
+      "id": "f28",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.4000000000000001,
+      "end": 1.4500000000000002
+     },
+     {
+      "id": "f29",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.4500000000000002,
+      "end": 1.5000000000000002
+     },
+     {
+      "id": "f30",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.55
+     },
+     {
+      "id": "f31",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.6
+     },
+     {
+      "id": "f32",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.6,
+      "end": 1.6500000000000001
+     },
+     {
+      "id": "f33",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.6500000000000001,
+      "end": 1.7000000000000002
+     },
+     {
+      "id": "f34",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.7000000000000002,
+      "end": 1.7500000000000002
+     },
+     {
+      "id": "f35",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.75,
+      "end": 1.8
+     },
+     {
+      "id": "f36",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.8,
+      "end": 1.85
+     },
+     {
+      "id": "f37",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.9000000000000001
+     },
+     {
+      "id": "f38",
+      "text": "abcdefghij",
+      "kind": "word",
+      "start": 1.9000000000000001,
+      "end": 1.9500000000000002
+     },
+     {
+      "id": "f39",
+      "text": "abcdefghij.",
+      "kind": "word",
+      "start": 1.9500000000000002,
+      "end": 2.0
+     },
+     {
+      "id": "s0",
+      "text": "x",
+      "kind": "word",
+      "start": 3.0,
+      "end": 3.01
+     },
+     {
+      "id": "s1",
+      "text": "x",
+      "kind": "word",
+      "start": 4.2,
+      "end": 4.21
+     },
+     {
+      "id": "s2",
+      "text": "x",
+      "kind": "word",
+      "start": 5.4,
+      "end": 5.41
+     },
+     {
+      "id": "s3",
+      "text": "x",
+      "kind": "word",
+      "start": 6.6,
+      "end": 6.609999999999999
+     },
+     {
+      "id": "s4",
+      "text": "x",
+      "kind": "word",
+      "start": 7.8,
+      "end": 7.81
+     },
+     {
+      "id": "s5",
+      "text": "x",
+      "kind": "word",
+      "start": 9.0,
+      "end": 9.01
+     },
+     {
+      "id": "s6",
+      "text": "x",
+      "kind": "word",
+      "start": 10.2,
+      "end": 10.209999999999999
+     },
+     {
+      "id": "s7",
+      "text": "x",
+      "kind": "word",
+      "start": 11.4,
+      "end": 11.41
+     },
+     {
+      "id": "s8",
+      "text": "x",
+      "kind": "word",
+      "start": 12.6,
+      "end": 12.61
+     },
+     {
+      "id": "s9",
+      "text": "x",
+      "kind": "word",
+      "start": 13.799999999999999,
+      "end": 13.809999999999999
+     },
+     {
+      "id": "s10",
+      "text": "x",
+      "kind": "word",
+      "start": 15.0,
+      "end": 15.01
+     },
+     {
+      "id": "s11",
+      "text": "x",
+      "kind": "word",
+      "start": 16.2,
+      "end": 16.21
+     },
+     {
+      "id": "s12",
+      "text": "x",
+      "kind": "word",
+      "start": 17.4,
+      "end": 17.41
+     },
+     {
+      "id": "s13",
+      "text": "x",
+      "kind": "word",
+      "start": 18.6,
+      "end": 18.610000000000003
+     },
+     {
+      "id": "s14",
+      "text": "x",
+      "kind": "word",
+      "start": 19.8,
+      "end": 19.810000000000002
+     },
+     {
+      "id": "s15",
+      "text": "x",
+      "kind": "word",
+      "start": 21.0,
+      "end": 21.01
+     },
+     {
+      "id": "s16",
+      "text": "x",
+      "kind": "word",
+      "start": 22.2,
+      "end": 22.21
+     },
+     {
+      "id": "s17",
+      "text": "x",
+      "kind": "word",
+      "start": 23.4,
+      "end": 23.41
+     },
+     {
+      "id": "s18",
+      "text": "x",
+      "kind": "word",
+      "start": 24.599999999999998,
+      "end": 24.61
+     },
+     {
+      "id": "s19",
+      "text": "x",
+      "kind": "word",
+      "start": 25.8,
+      "end": 25.810000000000002
+     },
+     {
+      "id": "s20",
+      "text": "x",
+      "kind": "word",
+      "start": 27.0,
+      "end": 27.01
+     },
+     {
+      "id": "s21",
+      "text": "x",
+      "kind": "word",
+      "start": 28.2,
+      "end": 28.21
+     },
+     {
+      "id": "s22",
+      "text": "x",
+      "kind": "word",
+      "start": 29.4,
+      "end": 29.41
+     },
+     {
+      "id": "s23",
+      "text": "x",
+      "kind": "word",
+      "start": 30.599999999999998,
+      "end": 30.61
+     },
+     {
+      "id": "s24",
+      "text": "x",
+      "kind": "word",
+      "start": 31.799999999999997,
+      "end": 31.81
+     },
+     {
+      "id": "s25",
+      "text": "x",
+      "kind": "word",
+      "start": 33.0,
+      "end": 33.01
+     },
+     {
+      "id": "s26",
+      "text": "x",
+      "kind": "word",
+      "start": 34.2,
+      "end": 34.21
+     },
+     {
+      "id": "s27",
+      "text": "x",
+      "kind": "word",
+      "start": 35.4,
+      "end": 35.41
+     },
+     {
+      "id": "s28",
+      "text": "x",
+      "kind": "word",
+      "start": 36.6,
+      "end": 36.61
+     },
+     {
+      "id": "s29",
+      "text": "x",
+      "kind": "word",
+      "start": 37.8,
+      "end": 37.809999999999995
+     },
+     {
+      "id": "s30",
+      "text": "x",
+      "kind": "word",
+      "start": 39.0,
+      "end": 39.01
+     },
+     {
+      "id": "s31",
+      "text": "x",
+      "kind": "word",
+      "start": 40.199999999999996,
+      "end": 40.209999999999994
+     },
+     {
+      "id": "s32",
+      "text": "x",
+      "kind": "word",
+      "start": 41.4,
+      "end": 41.41
+     },
+     {
+      "id": "s33",
+      "text": "x",
+      "kind": "word",
+      "start": 42.6,
+      "end": 42.61
+     },
+     {
+      "id": "s34",
+      "text": "x",
+      "kind": "word",
+      "start": 43.8,
+      "end": 43.809999999999995
+     },
+     {
+      "id": "s35",
+      "text": "x",
+      "kind": "word",
+      "start": 45.0,
+      "end": 45.01
+     },
+     {
+      "id": "s36",
+      "text": "x",
+      "kind": "word",
+      "start": 46.199999999999996,
+      "end": 46.209999999999994
+     },
+     {
+      "id": "s37",
+      "text": "x",
+      "kind": "word",
+      "start": 47.4,
+      "end": 47.41
+     },
+     {
+      "id": "s38",
+      "text": "x",
+      "kind": "word",
+      "start": 48.6,
+      "end": 48.61
+     },
+     {
+      "id": "s39",
+      "text": "x",
+      "kind": "word",
+      "start": 49.8,
+      "end": 49.809999999999995
+     },
+     {
+      "id": "s40",
+      "text": "x",
+      "kind": "word",
+      "start": 51.0,
+      "end": 51.01
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "entries": [
+     {
+      "index": 0,
+      "text": "abcdefghij",
+      "start": 0.0,
+      "end": 0.05
+     },
+     {
+      "index": 1,
+      "text": "abcdefghij",
+      "start": 0.05,
+      "end": 0.1
+     },
+     {
+      "index": 2,
+      "text": "abcdefghij",
+      "start": 0.1,
+      "end": 0.15000000000000002
+     },
+     {
+      "index": 3,
+      "text": "abcdefghij",
+      "start": 0.15000000000000002,
+      "end": 0.2
+     },
+     {
+      "index": 4,
+      "text": "abcdefghij",
+      "start": 0.2,
+      "end": 0.25
+     },
+     {
+      "index": 5,
+      "text": "abcdefghij",
+      "start": 0.25,
+      "end": 0.3
+     },
+     {
+      "index": 6,
+      "text": "abcdefghij",
+      "start": 0.30000000000000004,
+      "end": 0.35000000000000003
+     },
+     {
+      "index": 7,
+      "text": "abcdefghij",
+      "start": 0.35000000000000003,
+      "end": 0.4
+     },
+     {
+      "index": 8,
+      "text": "abcdefghij",
+      "start": 0.4,
+      "end": 0.45
+     },
+     {
+      "index": 9,
+      "text": "abcdefghij",
+      "start": 0.45,
+      "end": 0.5
+     },
+     {
+      "index": 10,
+      "text": "abcdefghij",
+      "start": 0.5,
+      "end": 0.55
+     },
+     {
+      "index": 11,
+      "text": "abcdefghij",
+      "start": 0.55,
+      "end": 0.6000000000000001
+     },
+     {
+      "index": 12,
+      "text": "abcdefghij",
+      "start": 0.6000000000000001,
+      "end": 0.6500000000000001
+     },
+     {
+      "index": 13,
+      "text": "abcdefghij",
+      "start": 0.65,
+      "end": 0.7000000000000001
+     },
+     {
+      "index": 14,
+      "text": "abcdefghij",
+      "start": 0.7000000000000001,
+      "end": 0.7500000000000001
+     },
+     {
+      "index": 15,
+      "text": "abcdefghij",
+      "start": 0.75,
+      "end": 0.8
+     },
+     {
+      "index": 16,
+      "text": "abcdefghij",
+      "start": 0.8,
+      "end": 0.8500000000000001
+     },
+     {
+      "index": 17,
+      "text": "abcdefghij",
+      "start": 0.8500000000000001,
+      "end": 0.9000000000000001
+     },
+     {
+      "index": 18,
+      "text": "abcdefghij",
+      "start": 0.9,
+      "end": 0.9500000000000001
+     },
+     {
+      "index": 19,
+      "text": "abcdefghij",
+      "start": 0.9500000000000001,
+      "end": 1.0
+     },
+     {
+      "index": 20,
+      "text": "abcdefghij",
+      "start": 1.0,
+      "end": 1.05
+     },
+     {
+      "index": 21,
+      "text": "abcdefghij",
+      "start": 1.05,
+      "end": 1.1
+     },
+     {
+      "index": 22,
+      "text": "abcdefghij",
+      "start": 1.1,
+      "end": 1.1500000000000001
+     },
+     {
+      "index": 23,
+      "text": "abcdefghij",
+      "start": 1.1500000000000001,
+      "end": 1.2000000000000002
+     },
+     {
+      "index": 24,
+      "text": "abcdefghij",
+      "start": 1.2000000000000002,
+      "end": 1.2500000000000002
+     },
+     {
+      "index": 25,
+      "text": "abcdefghij",
+      "start": 1.25,
+      "end": 1.3
+     },
+     {
+      "index": 26,
+      "text": "abcdefghij",
+      "start": 1.3,
+      "end": 1.35
+     },
+     {
+      "index": 27,
+      "text": "abcdefghij",
+      "start": 1.35,
+      "end": 1.4000000000000001
+     },
+     {
+      "index": 28,
+      "text": "abcdefghij",
+      "start": 1.4000000000000001,
+      "end": 1.4500000000000002
+     },
+     {
+      "index": 29,
+      "text": "abcdefghij",
+      "start": 1.4500000000000002,
+      "end": 1.5000000000000002
+     },
+     {
+      "index": 30,
+      "text": "abcdefghij",
+      "start": 1.5,
+      "end": 1.55
+     },
+     {
+      "index": 31,
+      "text": "abcdefghij",
+      "start": 1.55,
+      "end": 1.6
+     },
+     {
+      "index": 32,
+      "text": "abcdefghij",
+      "start": 1.6,
+      "end": 1.6500000000000001
+     },
+     {
+      "index": 33,
+      "text": "abcdefghij",
+      "start": 1.6500000000000001,
+      "end": 1.7000000000000002
+     },
+     {
+      "index": 34,
+      "text": "abcdefghij",
+      "start": 1.7000000000000002,
+      "end": 1.7500000000000002
+     },
+     {
+      "index": 35,
+      "text": "abcdefghij",
+      "start": 1.75,
+      "end": 1.8
+     },
+     {
+      "index": 36,
+      "text": "abcdefghij",
+      "start": 1.8,
+      "end": 1.85
+     },
+     {
+      "index": 37,
+      "text": "abcdefghij",
+      "start": 1.85,
+      "end": 1.9000000000000001
+     },
+     {
+      "index": 38,
+      "text": "abcdefghij",
+      "start": 1.9000000000000001,
+      "end": 1.9500000000000002
+     },
+     {
+      "index": 39,
+      "text": "abcdefghij.",
+      "start": 1.9500000000000002,
+      "end": 2.0
+     },
+     {
+      "index": 40,
+      "text": "x",
+      "start": 3.0,
+      "end": 3.01
+     },
+     {
+      "index": 41,
+      "text": "x",
+      "start": 4.2,
+      "end": 4.21
+     },
+     {
+      "index": 42,
+      "text": "x",
+      "start": 5.4,
+      "end": 5.41
+     },
+     {
+      "index": 43,
+      "text": "x",
+      "start": 6.6,
+      "end": 6.609999999999999
+     },
+     {
+      "index": 44,
+      "text": "x",
+      "start": 7.8,
+      "end": 7.81
+     },
+     {
+      "index": 45,
+      "text": "x",
+      "start": 9.0,
+      "end": 9.01
+     },
+     {
+      "index": 46,
+      "text": "x",
+      "start": 10.2,
+      "end": 10.209999999999999
+     },
+     {
+      "index": 47,
+      "text": "x",
+      "start": 11.4,
+      "end": 11.41
+     },
+     {
+      "index": 48,
+      "text": "x",
+      "start": 12.6,
+      "end": 12.61
+     },
+     {
+      "index": 49,
+      "text": "x",
+      "start": 13.799999999999999,
+      "end": 13.809999999999999
+     },
+     {
+      "index": 50,
+      "text": "x",
+      "start": 15.0,
+      "end": 15.01
+     },
+     {
+      "index": 51,
+      "text": "x",
+      "start": 16.2,
+      "end": 16.21
+     },
+     {
+      "index": 52,
+      "text": "x",
+      "start": 17.4,
+      "end": 17.41
+     },
+     {
+      "index": 53,
+      "text": "x",
+      "start": 18.6,
+      "end": 18.610000000000003
+     },
+     {
+      "index": 54,
+      "text": "x",
+      "start": 19.8,
+      "end": 19.810000000000002
+     },
+     {
+      "index": 55,
+      "text": "x",
+      "start": 21.0,
+      "end": 21.01
+     },
+     {
+      "index": 56,
+      "text": "x",
+      "start": 22.2,
+      "end": 22.21
+     },
+     {
+      "index": 57,
+      "text": "x",
+      "start": 23.4,
+      "end": 23.41
+     },
+     {
+      "index": 58,
+      "text": "x",
+      "start": 24.599999999999998,
+      "end": 24.61
+     },
+     {
+      "index": 59,
+      "text": "x",
+      "start": 25.8,
+      "end": 25.810000000000002
+     },
+     {
+      "index": 60,
+      "text": "x",
+      "start": 27.0,
+      "end": 27.01
+     },
+     {
+      "index": 61,
+      "text": "x",
+      "start": 28.2,
+      "end": 28.21
+     },
+     {
+      "index": 62,
+      "text": "x",
+      "start": 29.4,
+      "end": 29.41
+     },
+     {
+      "index": 63,
+      "text": "x",
+      "start": 30.599999999999998,
+      "end": 30.61
+     },
+     {
+      "index": 64,
+      "text": "x",
+      "start": 31.799999999999997,
+      "end": 31.81
+     },
+     {
+      "index": 65,
+      "text": "x",
+      "start": 33.0,
+      "end": 33.01
+     },
+     {
+      "index": 66,
+      "text": "x",
+      "start": 34.2,
+      "end": 34.21
+     },
+     {
+      "index": 67,
+      "text": "x",
+      "start": 35.4,
+      "end": 35.41
+     },
+     {
+      "index": 68,
+      "text": "x",
+      "start": 36.6,
+      "end": 36.61
+     },
+     {
+      "index": 69,
+      "text": "x",
+      "start": 37.8,
+      "end": 37.809999999999995
+     },
+     {
+      "index": 70,
+      "text": "x",
+      "start": 39.0,
+      "end": 39.01
+     },
+     {
+      "index": 71,
+      "text": "x",
+      "start": 40.199999999999996,
+      "end": 40.209999999999994
+     },
+     {
+      "index": 72,
+      "text": "x",
+      "start": 41.4,
+      "end": 41.41
+     },
+     {
+      "index": 73,
+      "text": "x",
+      "start": 42.6,
+      "end": 42.61
+     },
+     {
+      "index": 74,
+      "text": "x",
+      "start": 43.8,
+      "end": 43.809999999999995
+     },
+     {
+      "index": 75,
+      "text": "x",
+      "start": 45.0,
+      "end": 45.01
+     },
+     {
+      "index": 76,
+      "text": "x",
+      "start": 46.199999999999996,
+      "end": 46.209999999999994
+     },
+     {
+      "index": 77,
+      "text": "x",
+      "start": 47.4,
+      "end": 47.41
+     },
+     {
+      "index": 78,
+      "text": "x",
+      "start": 48.6,
+      "end": 48.61
+     },
+     {
+      "index": 79,
+      "text": "x",
+      "start": 49.8,
+      "end": 49.809999999999995
+     },
+     {
+      "index": 80,
+      "text": "x",
+      "start": 51.0,
+      "end": 51.01
+     }
+    ],
+    "utf8Bytes": 522,
+    "lines": [
+     {
+      "line": "[0-39]",
+      "itemIds": [
+       "f0",
+       "f1",
+       "f2",
+       "f3",
+       "f4",
+       "f5",
+       "f6",
+       "f7",
+       "f8",
+       "f9",
+       "f10",
+       "f11",
+       "f12",
+       "f13",
+       "f14",
+       "f15",
+       "f16",
+       "f17",
+       "f18",
+       "f19",
+       "f20",
+       "f21",
+       "f22",
+       "f23",
+       "f24",
+       "f25",
+       "f26",
+       "f27",
+       "f28",
+       "f29",
+       "f30",
+       "f31",
+       "f32",
+       "f33",
+       "f34",
+       "f35",
+       "f36",
+       "f37",
+       "f38",
+       "f39"
+      ],
+      "minChars": 320,
+      "maxChars": 339,
+      "rangeSource": "lineSpan",
+      "note": "refused: noEnvelope"
+     },
+     {
+      "line": "[40-80]",
+      "itemIds": [
+       "s0",
+       "s1",
+       "s2",
+       "s3",
+       "s4",
+       "s5",
+       "s6",
+       "s7",
+       "s8",
+       "s9",
+       "s10",
+       "s11",
+       "s12",
+       "s13",
+       "s14",
+       "s15",
+       "s16",
+       "s17",
+       "s18",
+       "s19",
+       "s20",
+       "s21",
+       "s22",
+       "s23",
+       "s24",
+       "s25",
+       "s26",
+       "s27",
+       "s28",
+       "s29",
+       "s30",
+       "s31",
+       "s32",
+       "s33",
+       "s34",
+       "s35",
+       "s36",
+       "s37",
+       "s38",
+       "s39",
+       "s40"
+      ],
+      "minChars": 5000,
+      "maxChars": 5000,
+      "rangeSource": "lineSpan",
+      "note": "refused: noEnvelope"
+     }
+    ]
+   }
+  },
+  {
+   "name": "entries-over-limit",
+   "note": "3,001 kept items refuse with their count.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 1501.0,
+    "wordsRepeat": {
+     "token": "go",
+     "count": 3001,
+     "idPrefix": "r",
+     "timingStep": 0.5
+    },
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "error": "tooLarge",
+    "count": 3001
+   }
+  },
+  {
+   "name": "entries-at-limit",
+   "note": "Cutting one of 3,001 items leaves 3,000, which pass.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 1501.0,
+    "wordsRepeat": {
+     "token": "go",
+     "count": 3001,
+     "idPrefix": "r",
+     "timingStep": 0.5
+    },
+    "edits": {
+     "cutWordIds": [
+      "r1500"
+     ],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "summary": {
+     "entryCount": 3000,
+     "utf8Bytes": 8999,
+     "firstEntry": {
+      "index": 0,
+      "text": "go",
+      "start": 0.0,
+      "end": 0.25
+     },
+     "lastEntry": {
+      "index": 3000,
+      "text": "go",
+      "start": 1500.0,
+      "end": 1500.25
+     },
+     "lines": [
+      {
+       "line": "[0-40]",
+       "itemCount": 41,
+       "firstItemId": "r0",
+       "lastItemId": "r40",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[41-81]",
+       "itemCount": 41,
+       "firstItemId": "r41",
+       "lastItemId": "r81",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[82-122]",
+       "itemCount": 41,
+       "firstItemId": "r82",
+       "lastItemId": "r122",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[123-163]",
+       "itemCount": 41,
+       "firstItemId": "r123",
+       "lastItemId": "r163",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[164-204]",
+       "itemCount": 41,
+       "firstItemId": "r164",
+       "lastItemId": "r204",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[205-245]",
+       "itemCount": 41,
+       "firstItemId": "r205",
+       "lastItemId": "r245",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[246-286]",
+       "itemCount": 41,
+       "firstItemId": "r246",
+       "lastItemId": "r286",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[287-327]",
+       "itemCount": 41,
+       "firstItemId": "r287",
+       "lastItemId": "r327",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[328-368]",
+       "itemCount": 41,
+       "firstItemId": "r328",
+       "lastItemId": "r368",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[369-409]",
+       "itemCount": 41,
+       "firstItemId": "r369",
+       "lastItemId": "r409",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[410-450]",
+       "itemCount": 41,
+       "firstItemId": "r410",
+       "lastItemId": "r450",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[451-491]",
+       "itemCount": 41,
+       "firstItemId": "r451",
+       "lastItemId": "r491",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[492-532]",
+       "itemCount": 41,
+       "firstItemId": "r492",
+       "lastItemId": "r532",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[533-573]",
+       "itemCount": 41,
+       "firstItemId": "r533",
+       "lastItemId": "r573",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[574-614]",
+       "itemCount": 41,
+       "firstItemId": "r574",
+       "lastItemId": "r614",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[615-655]",
+       "itemCount": 41,
+       "firstItemId": "r615",
+       "lastItemId": "r655",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[656-696]",
+       "itemCount": 41,
+       "firstItemId": "r656",
+       "lastItemId": "r696",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[697-737]",
+       "itemCount": 41,
+       "firstItemId": "r697",
+       "lastItemId": "r737",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[738-778]",
+       "itemCount": 41,
+       "firstItemId": "r738",
+       "lastItemId": "r778",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[779-819]",
+       "itemCount": 41,
+       "firstItemId": "r779",
+       "lastItemId": "r819",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[820-860]",
+       "itemCount": 41,
+       "firstItemId": "r820",
+       "lastItemId": "r860",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[861-901]",
+       "itemCount": 41,
+       "firstItemId": "r861",
+       "lastItemId": "r901",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[902-942]",
+       "itemCount": 41,
+       "firstItemId": "r902",
+       "lastItemId": "r942",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[943-983]",
+       "itemCount": 41,
+       "firstItemId": "r943",
+       "lastItemId": "r983",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[984-1024]",
+       "itemCount": 41,
+       "firstItemId": "r984",
+       "lastItemId": "r1024",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1025-1065]",
+       "itemCount": 41,
+       "firstItemId": "r1025",
+       "lastItemId": "r1065",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1066-1106]",
+       "itemCount": 41,
+       "firstItemId": "r1066",
+       "lastItemId": "r1106",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1107-1147]",
+       "itemCount": 41,
+       "firstItemId": "r1107",
+       "lastItemId": "r1147",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1148-1188]",
+       "itemCount": 41,
+       "firstItemId": "r1148",
+       "lastItemId": "r1188",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1189-1229]",
+       "itemCount": 41,
+       "firstItemId": "r1189",
+       "lastItemId": "r1229",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1230-1270]",
+       "itemCount": 41,
+       "firstItemId": "r1230",
+       "lastItemId": "r1270",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1271-1311]",
+       "itemCount": 41,
+       "firstItemId": "r1271",
+       "lastItemId": "r1311",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1312-1352]",
+       "itemCount": 41,
+       "firstItemId": "r1312",
+       "lastItemId": "r1352",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1353-1393]",
+       "itemCount": 41,
+       "firstItemId": "r1353",
+       "lastItemId": "r1393",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1394-1434]",
+       "itemCount": 41,
+       "firstItemId": "r1394",
+       "lastItemId": "r1434",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1435-1475]",
+       "itemCount": 41,
+       "firstItemId": "r1435",
+       "lastItemId": "r1475",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1476-1517]",
+       "itemCount": 41,
+       "firstItemId": "r1476",
+       "lastItemId": "r1517",
+       "minChars": 76,
+       "maxChars": 81,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1518-1558]",
+       "itemCount": 41,
+       "firstItemId": "r1518",
+       "lastItemId": "r1558",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1559-1599]",
+       "itemCount": 41,
+       "firstItemId": "r1559",
+       "lastItemId": "r1599",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1600-1640]",
+       "itemCount": 41,
+       "firstItemId": "r1600",
+       "lastItemId": "r1640",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1641-1681]",
+       "itemCount": 41,
+       "firstItemId": "r1641",
+       "lastItemId": "r1681",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1682-1722]",
+       "itemCount": 41,
+       "firstItemId": "r1682",
+       "lastItemId": "r1722",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1723-1763]",
+       "itemCount": 41,
+       "firstItemId": "r1723",
+       "lastItemId": "r1763",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1764-1804]",
+       "itemCount": 41,
+       "firstItemId": "r1764",
+       "lastItemId": "r1804",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1805-1845]",
+       "itemCount": 41,
+       "firstItemId": "r1805",
+       "lastItemId": "r1845",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1846-1886]",
+       "itemCount": 41,
+       "firstItemId": "r1846",
+       "lastItemId": "r1886",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1887-1927]",
+       "itemCount": 41,
+       "firstItemId": "r1887",
+       "lastItemId": "r1927",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1928-1968]",
+       "itemCount": 41,
+       "firstItemId": "r1928",
+       "lastItemId": "r1968",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[1969-2009]",
+       "itemCount": 41,
+       "firstItemId": "r1969",
+       "lastItemId": "r2009",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2010-2050]",
+       "itemCount": 41,
+       "firstItemId": "r2010",
+       "lastItemId": "r2050",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2051-2091]",
+       "itemCount": 41,
+       "firstItemId": "r2051",
+       "lastItemId": "r2091",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2092-2132]",
+       "itemCount": 41,
+       "firstItemId": "r2092",
+       "lastItemId": "r2132",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2133-2173]",
+       "itemCount": 41,
+       "firstItemId": "r2133",
+       "lastItemId": "r2173",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2174-2214]",
+       "itemCount": 41,
+       "firstItemId": "r2174",
+       "lastItemId": "r2214",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2215-2255]",
+       "itemCount": 41,
+       "firstItemId": "r2215",
+       "lastItemId": "r2255",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2256-2296]",
+       "itemCount": 41,
+       "firstItemId": "r2256",
+       "lastItemId": "r2296",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2297-2337]",
+       "itemCount": 41,
+       "firstItemId": "r2297",
+       "lastItemId": "r2337",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2338-2378]",
+       "itemCount": 41,
+       "firstItemId": "r2338",
+       "lastItemId": "r2378",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2379-2419]",
+       "itemCount": 41,
+       "firstItemId": "r2379",
+       "lastItemId": "r2419",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2420-2460]",
+       "itemCount": 41,
+       "firstItemId": "r2420",
+       "lastItemId": "r2460",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2461-2501]",
+       "itemCount": 41,
+       "firstItemId": "r2461",
+       "lastItemId": "r2501",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2502-2542]",
+       "itemCount": 41,
+       "firstItemId": "r2502",
+       "lastItemId": "r2542",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2543-2583]",
+       "itemCount": 41,
+       "firstItemId": "r2543",
+       "lastItemId": "r2583",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2584-2624]",
+       "itemCount": 41,
+       "firstItemId": "r2584",
+       "lastItemId": "r2624",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2625-2665]",
+       "itemCount": 41,
+       "firstItemId": "r2625",
+       "lastItemId": "r2665",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2666-2706]",
+       "itemCount": 41,
+       "firstItemId": "r2666",
+       "lastItemId": "r2706",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2707-2747]",
+       "itemCount": 41,
+       "firstItemId": "r2707",
+       "lastItemId": "r2747",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2748-2788]",
+       "itemCount": 41,
+       "firstItemId": "r2748",
+       "lastItemId": "r2788",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2789-2829]",
+       "itemCount": 41,
+       "firstItemId": "r2789",
+       "lastItemId": "r2829",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2830-2870]",
+       "itemCount": 41,
+       "firstItemId": "r2830",
+       "lastItemId": "r2870",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2871-2911]",
+       "itemCount": 41,
+       "firstItemId": "r2871",
+       "lastItemId": "r2911",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2912-2952]",
+       "itemCount": 41,
+       "firstItemId": "r2912",
+       "lastItemId": "r2952",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2953-2993]",
+       "itemCount": 41,
+       "firstItemId": "r2953",
+       "lastItemId": "r2993",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[2994-3000]",
+       "itemCount": 7,
+       "firstItemId": "r2994",
+       "lastItemId": "r3000",
+       "minChars": 11,
+       "maxChars": 13,
+       "rangeSource": "lineSpan"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "clip-in-long-take",
+   "note": "A clip of a 3,001-item take counts only its own items.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 1501.0,
+    "wordsRepeat": {
+     "token": "go",
+     "count": 3001,
+     "idPrefix": "r",
+     "timingStep": 0.5
+    },
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-long",
+       "startWordId": "r100",
+       "endWordId": "r180",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-long"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "summary": {
+     "entryCount": 81,
+     "utf8Bytes": 242,
+     "firstEntry": {
+      "index": 100,
+      "text": "go",
+      "start": 50.0,
+      "end": 50.25
+     },
+     "lastEntry": {
+      "index": 180,
+      "text": "go",
+      "start": 90.0,
+      "end": 90.25
+     },
+     "lines": [
+      {
+       "line": "[100-140]",
+       "itemCount": 41,
+       "firstItemId": "r100",
+       "lastItemId": "r140",
+       "minChars": 74,
+       "maxChars": 79,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[141-180]",
+       "itemCount": 40,
+       "firstItemId": "r141",
+       "lastItemId": "r180",
+       "minChars": 72,
+       "maxChars": 77,
+       "rangeSource": "lineSpan"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "bytes-at-limit",
+   "note": "20,000 UTF-8 bytes pass.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 170.0,
+    "wordsRepeat": {
+     "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "count": 339,
+     "idPrefix": "b",
+     "timingStep": 0.5
+    },
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "summary": {
+     "entryCount": 339,
+     "utf8Bytes": 20000,
+     "firstEntry": {
+      "index": 0,
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "start": 0.0,
+      "end": 0.25
+     },
+     "lastEntry": {
+      "index": 338,
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "start": 169.0,
+      "end": 169.25
+     },
+     "lines": [
+      {
+       "line": "[0-40]",
+       "itemCount": 41,
+       "firstItemId": "b0",
+       "lastItemId": "b40",
+       "minChars": 2153,
+       "maxChars": 2272,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[41-81]",
+       "itemCount": 41,
+       "firstItemId": "b41",
+       "lastItemId": "b81",
+       "minChars": 2153,
+       "maxChars": 2272,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[82-122]",
+       "itemCount": 41,
+       "firstItemId": "b82",
+       "lastItemId": "b122",
+       "minChars": 2153,
+       "maxChars": 2272,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[123-163]",
+       "itemCount": 41,
+       "firstItemId": "b123",
+       "lastItemId": "b163",
+       "minChars": 2153,
+       "maxChars": 2272,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[164-204]",
+       "itemCount": 41,
+       "firstItemId": "b164",
+       "lastItemId": "b204",
+       "minChars": 2153,
+       "maxChars": 2272,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[205-245]",
+       "itemCount": 41,
+       "firstItemId": "b205",
+       "lastItemId": "b245",
+       "minChars": 2153,
+       "maxChars": 2272,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[246-286]",
+       "itemCount": 41,
+       "firstItemId": "b246",
+       "lastItemId": "b286",
+       "minChars": 2153,
+       "maxChars": 2272,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[287-327]",
+       "itemCount": 41,
+       "firstItemId": "b287",
+       "lastItemId": "b327",
+       "minChars": 2153,
+       "maxChars": 2272,
+       "rangeSource": "lineSpan"
+      },
+      {
+       "line": "[328-338]",
+       "itemCount": 11,
+       "firstItemId": "b328",
+       "lastItemId": "b338",
+       "minChars": 550,
+       "maxChars": 582,
+       "rangeSource": "lineSpan"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "bytes-over-limit",
+   "note": "A correction adding one letter makes 20,001 bytes, which refuse with the entry count.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 170.0,
+    "wordsRepeat": {
+     "token": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "count": 339,
+     "idPrefix": "b",
+     "timingStep": 0.5
+    },
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {
+      "b7": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en"
+   },
+   "expected": {
+    "error": "tooLarge",
+    "count": 339
+   }
+  }
+ ]
+}
