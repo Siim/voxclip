@@ -134,15 +134,21 @@ private final class FullScreenStandIn: NSWindow {
         #expect(work.columns.splitView(work.columns.divider, effectiveRect: probe, forDrawnRect: probe, ofDividerAt: 0) == .zero)
         shell.toggleViewer()
         work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible, rightOverlay: shell.rightOverlay)
-        let overlay = try #require(work.rightOverlay?.view)
+        let overlay = try #require(work.rightOverlay)
         overlay.superview?.layoutSubtreeIfNeeded()
         #expect(work.rightItem.isCollapsed && overlay.frame.width == 300 && overlay.frame.minY == ShellMetrics.titleRow)
         #expect(overlay.frame.maxX == overlay.superview?.bounds.width)
         #expect(overlay.accessibilityRole() == .group && overlay.accessibilityLabel() == "Viewer and panel")
         #expect(work.rightToggle.accessibilityLabel() == EditorIconAction.hideViewer.name)
+        // The overlay shows the collapsed column's own host: one RightColumn, so no hidden copy
+        // runs the viewer's, the panel's or Rewrite's tasks and focus targets a second time.
+        let docked = try #require(view("voxclip.shell.right", in: work.view))
+        #expect(DebugShell.rightColumnHosts(in: work).count == 1)
+        #expect(work.rightColumnHost.view.isDescendant(of: overlay) && work.rightColumnHost.view.frame.width == 300)
         shell.toggleViewer()
         work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible, rightOverlay: shell.rightOverlay)
         #expect(work.rightOverlay == nil && overlay.superview == nil)
+        #expect(work.rightColumnHost.view.superview === docked && DebugShell.rightColumnHosts(in: work).count == 1)
     }
 
     /// A drag of the Explorer's divider stops where the editor (604) and the right column

@@ -104,7 +104,8 @@ extension NSView {
 
 // MARK: - Views
 
-/// Fixed-height rows at the top and bottom, and one view that fills the rest.
+/// Fixed-height rows at the top and bottom, and one view that fills the rest. A row lent to
+/// another view (the right column shown over the editor) is left alone until it is back.
 @MainActor final class ShellStackView: NSView {
     private var top: [(view: NSView, height: CGFloat)] = []
     private var bottom: [(view: NSView, height: CGFloat)] = []
@@ -126,15 +127,21 @@ extension NSView {
         super.layout()
         var y: CGFloat = 0
         for row in top {
-            row.view.frame = NSRect(x: 0, y: y, width: bounds.width, height: row.height)
+            if row.view.superview === self { row.view.frame = NSRect(x: 0, y: y, width: bounds.width, height: row.height) }
             y += row.height
         }
         var end = bounds.height
         for row in bottom.reversed() {
             end -= row.height
-            row.view.frame = NSRect(x: 0, y: end, width: bounds.width, height: row.height)
+            if row.view.superview === self { row.view.frame = NSRect(x: 0, y: end, width: bounds.width, height: row.height) }
         }
-        fillView?.frame = NSRect(x: 0, y: y, width: bounds.width, height: max(0, end - y))
+        if let fillView, fillView.superview === self { fillView.frame = NSRect(x: 0, y: y, width: bounds.width, height: max(0, end - y)) }
+    }
+    /// Takes back the view it lent, moving it straight here so it never leaves the window.
+    func reclaim(_ view: NSView) {
+        guard view.superview !== self else { return }
+        addSubview(view)
+        needsLayout = true
     }
     override func draw(_ dirtyRect: NSRect) {
         guard let fill else { return }
@@ -481,12 +488,19 @@ extension NSView {
 /// pane over content needs (3:1). No shadow.
 @MainActor final class ShellRightOverlay: NSView {
     private let edge = ShellRule(token: "line.strong")
-    init(content: NSView) {
+    init() {
         super.init(frame: NSRect(x: 0, y: 0, width: CGFloat(VCTokens.sizeRightColumnMin), height: 400))
         identifier = NSUserInterfaceItemIdentifier("voxclip.shell.rightOverlay")
         shellGroup("Viewer and panel")
+        addSubview(edge)
+    }
+    /// Shows `content` under the edge. Call it once this view is in the window: a hosting
+    /// view moved straight from one superview to another in the same window keeps its
+    /// SwiftUI state, and its views do not disappear and appear again.
+    func adopt(_ content: NSView) {
         addSubview(content)
         addSubview(edge)
+        needsLayout = true
     }
     required init?(coder: NSCoder) { nil }
     override var isFlipped: Bool { true }
@@ -800,7 +814,8 @@ struct EditorShellState: Equatable {
 /// row, transcript) beside the right column (title row, viewer and panel), over the
 /// timeline panel, whose top edge (line.edge) is its resize handle. The editor column
 /// hosts every editor state under the clip-bar row (`TranscriptColumn`). Below 904 the
-/// right column shows over the editor on request.
+/// right column's viewer and panel show over the editor on request: the same host, lent
+/// to the overlay, so there is only ever one.
 @MainActor final class EditorWorkController: ShellSplitController, NSPopoverDelegate {
     let model: EditorModel
     let shell: WorkspaceShell
@@ -815,14 +830,18 @@ struct EditorShellState: Equatable {
     let timelineToggle = ShellIconButton(symbol: "rectangle.bottomthird.inset.filled", identifier: "voxclip.shell.toggleTimeline")
     let rightToggle = ShellIconButton(symbol: "sidebar.right", identifier: "voxclip.shell.toggleRight")
     private(set) var transcriptView: NSView?
+    /// The right column's viewer and panel (`RightColumn`): in the column under its title
+    /// row, or in the overlay over the editor while that shows.
+    private(set) var rightColumnHost: NSViewController!
+    private var rightStack: ShellStackView!
     private(set) var rightItem: NSSplitViewItem!
     private(set) var timelineItem: NSSplitViewItem!
     private var topItem: NSSplitViewItem!
     /// The columns, with the right column over them on request below 904.
     private var top: ShellOverlayView!
     private var topController: ShellViewController!
-    /// The right column over the editor and its SwiftUI host, while it shows.
-    private(set) var rightOverlay: (view: ShellRightOverlay, host: NSViewController)?
+    /// The right column over the editor, while it shows.
+    private(set) var rightOverlay: ShellRightOverlay?
     /// What the dividers were last placed for, so a size the split cannot take is not retried.
     private var placedFor: [CGFloat] = []
     private var placing = false
@@ -854,8 +873,10 @@ struct EditorShellState: Equatable {
         editorStack.set(top: [(tabRow, ShellMetrics.titleRow), (clipBar, ShellMetrics.clipBar)], fill: transcript.view)
         let editorColumn = ShellViewController(editorStack, children: [transcript])
 
-        let right = ShellHost.controller(RightColumn(model: model), app: app)
+        let right = ShellHost.controller(RightColumnHost(model: model, shell: shell), app: app)
+        rightColumnHost = right
         let rightStack = ShellStackView(fill: "bg.window")
+        self.rightStack = rightStack
         rightStack.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.right")
         rightStack.shellGroup("Viewer and panel")
         rightStack.set(top: [(rightTitle, ShellMetrics.titleRow)], fill: right.view)
@@ -923,7 +944,7 @@ struct EditorShellState: Equatable {
         observations.forEach { $0.cancel() }
         observations = []
         findClipsPopover?.close()
-        showRightOverlay(false)
+        showRightOverlay(false, refocus: false)
     }
 
     /// Collapses or shows the right column and the timeline, shows the right column over the
@@ -944,20 +965,26 @@ struct EditorShellState: Equatable {
         placeTabRow(explorerToggle: explorerToggle)
     }
 
-    /// Builds the right column over the editor when it is asked for, and takes it down when
-    /// it goes. It is its own `RightColumn`; Escape in it hides it.
-    private func showRightOverlay(_ show: Bool) {
+    /// Shows the right column over the editor when it is asked for, and takes it down when
+    /// it goes. The overlay borrows the collapsed column's own `RightColumn` host, so a
+    /// hidden copy never runs the viewer's and the panel's tasks and focus a second time.
+    /// The host moves straight between the two, in the window, so its SwiftUI state and
+    /// tasks (Rewrite's) carry over. Focus left in the overlay as it goes moves to the
+    /// transcript, unless the column shows.
+    private func showRightOverlay(_ show: Bool, refocus: Bool = true) {
         if show, rightOverlay == nil {
-            let host = ShellHost.controller(RightColumn(model: model).onExitCommand { [shell] in shell.rightOverlay = false }, app: shell.app)
-            let panel = ShellRightOverlay(content: host.view)
-            topController.addChild(host)
+            let panel = ShellRightOverlay()
             top.overlayWidth = CGFloat(shell.layout.rightWidth)
             top.overlay = panel
-            rightOverlay = (panel, host)
-        } else if !show, let current = rightOverlay {
+            panel.adopt(rightColumnHost.view)
+            rightOverlay = panel
+        } else if !show, let panel = rightOverlay {
+            let window = view.window
+            let heldFocus = (window?.firstResponder as? NSView)?.isDescendant(of: panel) == true
+            rightStack.reclaim(rightColumnHost.view)
             top.overlay = nil
-            current.host.removeFromParent()
             rightOverlay = nil
+            if refocus, heldFocus, rightItem.isCollapsed { focusTranscript(in: window) }
         }
     }
 
@@ -1108,6 +1135,17 @@ struct EditorShellState: Equatable {
             divider.setPosition(divider.bounds.height - CGFloat(layout.timelineHeight) - divider.dividerThickness, ofDividerAt: 0)
         }
         placedFor = placement
+    }
+}
+
+/// The right column's root: `RightColumn`, and while it shows over the editor an Escape that
+/// nothing in it uses hides it (Escape outside it is MainWindow's).
+@MainActor private struct RightColumnHost: View {
+    let model: EditorModel
+    let shell: WorkspaceShell
+    var body: some View {
+        RightColumn(model: model)
+            .onExitCommand(perform: shell.rightOverlay ? { shell.rightOverlay = false } : nil)
     }
 }
 

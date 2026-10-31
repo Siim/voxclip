@@ -247,6 +247,17 @@ import VoxClipCore
             try DebugColumnBounds.assertBounds(window: window, name: "v2-shell-800-overlay", directory: directory)
             check("the right column over the editor keeps its controls inside its bounds", true)
         } catch { check("the right column over the editor keeps its controls inside its bounds: \(DebugUISuite.describe(error))", false) }
+        // The overlay borrows the collapsed column's own host: no hidden copy runs the viewer's,
+        // the panel's or Rewrite's tasks and focus a second time.
+        let work = view("voxclip.shell.work", in: root)?.nextResponder as? EditorWorkController
+        let hosts = work.map { rightColumnHosts(in: $0) } ?? []
+        check("at 800 one right column is mounted (\(hosts.count)), and it shows in the overlay",
+              hosts.count == 1 && work.flatMap { work in work.rightOverlay.map { work.rightColumnHost.view.isDescendant(of: $0) } } == true)
+        let editor = shell.editor
+        window.makeFirstResponder(nil)
+        editor?.focusedPane = .transcript
+        shell.movePaneFocus(backward: false)
+        check("at 800 F6 from the transcript reaches the viewer over the editor", editor?.focusedPane == .viewer && !(window.firstResponder is TranscriptNSTextView))
         shell.toggleViewer()
         for _ in 0..<40 where view("voxclip.shell.rightOverlay", in: root) != nil { try await Task.sleep(for: .milliseconds(25)) }
         check("Hide Viewer takes the overlay down", !shell.rightOverlay && view("voxclip.shell.rightOverlay", in: root) == nil)
@@ -461,6 +472,12 @@ import VoxClipCore
             regions[.timeline] = CGRect(x: start, y: timeline.minY, width: timeline.maxX - start, height: timeline.height)
         }
         return regions
+    }
+
+    /// The `RightColumn` hosts under `controller`: one, whether the column or the overlay shows it.
+    static func rightColumnHosts(in controller: NSViewController) -> [NSViewController] {
+        let own = String(describing: type(of: controller)).contains("RightColumn") ? [controller] : []
+        return own + controller.children.flatMap { rightColumnHosts(in: $0) }
     }
 
     /// The first view under `root` with `identifier`.
