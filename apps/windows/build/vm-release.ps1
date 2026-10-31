@@ -183,6 +183,7 @@ try {
         try {
             Assert-ReleaseResources -Repository $repository -AppDirectory $app
             Assert-ReleaseWhisperRuntimes -AppDirectory $app -RuntimeIdentifier $rid
+            & (Join-Path $windows 'build\Assert-OnnxRuntimePin.ps1') -AppDirectory $app -RuntimeIdentifier $rid
             Copy-ReleaseFfmpeg -Rid $rid -AppDirectory $app -Pin $pin
         } catch { $failures += "$rid resources/FFmpeg : $($_.Exception.Message)" }
     }

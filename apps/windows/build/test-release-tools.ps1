@@ -203,6 +203,46 @@ public static class ReleaseArgumentReader {
             Assert-Throws { Assert-ReleaseWhisperRuntimes -AppDirectory $app -RuntimeIdentifier $rid } 'ggml-metal\.metal'
         }
     }
+    Invoke-Test 'release payload ships only the reviewed pinned ONNX Runtime' {
+        $guard = Join-Path $PSScriptRoot 'Assert-OnnxRuntimePin.ps1'
+        [xml] $pins = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'Directory.Packages.props') -Raw
+        $version = @($pins.SelectNodes("//PackageVersion[@Include='Microsoft.ML.OnnxRuntime']"))[0].GetAttribute('Version')
+        $natives = @('onnxruntime.dll', 'onnxruntime_providers_shared.dll')
+        foreach ($rid in @('win-x64', 'win-arm64')) {
+            # A modified package cache that matches the payload must still fail against the reviewed nuget.org hashes.
+            $cache = Join-Path $temporary 'ort-modified-cache'
+            $source = Join-Path $cache "microsoft.ml.onnxruntime/$version/runtimes/$rid/native"
+            $app = Join-Path $temporary "ort-modified-$rid"
+            New-Item -ItemType Directory -Force -Path $source, $app | Out-Null
+            foreach ($name in $natives) {
+                [IO.File]::WriteAllText((Join-Path $source $name), "modified $rid $name")
+                Copy-Item -LiteralPath (Join-Path $source $name) -Destination $app
+            }
+            Assert-Throws { & $guard -AppDirectory $app -RuntimeIdentifier $rid -PackagesRoot $cache | Out-Null } "package cache's onnxruntime\.dll is not the reviewed nuget\.org"
+        }
+        $packages = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path ([Environment]::GetFolderPath('UserProfile')) '.nuget/packages' }
+        $managed = Join-Path $packages "microsoft.ml.onnxruntime.managed/$version/lib/net6.0/Microsoft.ML.OnnxRuntime.dll"
+        if (-not (Test-Path -LiteralPath $managed -PathType Leaf)) {
+            Write-Host "NOTE: restore apps/windows to also check payloads built from the pinned ONNX Runtime $version package."
+            return
+        }
+        foreach ($rid in @('win-x64', 'win-arm64')) {
+            $other = if ($rid -eq 'win-x64') { 'win-arm64' } else { 'win-x64' }
+            $app = Join-Path $temporary "ort-payload-$rid"
+            New-Item -ItemType Directory -Force -Path $app | Out-Null
+            foreach ($name in $natives) { Copy-Item -LiteralPath (Join-Path $packages "microsoft.ml.onnxruntime/$version/runtimes/$rid/native/$name") -Destination $app }
+            Copy-Item -LiteralPath $managed -Destination $app
+            & $guard -AppDirectory $app -RuntimeIdentifier $rid | Out-Null
+            Assert-Throws { & $guard -AppDirectory $app -RuntimeIdentifier $other | Out-Null } 'onnxruntime\.dll is not the pinned'
+            foreach ($relative in @('DirectML.dll', 'Microsoft.Windows.AI.MachineLearning.dll', 'onnxruntime_providers_dml.dll', "runtimes/$rid/native/onnxruntime.dll")) {
+                $path = Join-Path $app $relative
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $path) | Out-Null
+                [IO.File]::WriteAllText($path, 'foreign')
+                Assert-Throws { & $guard -AppDirectory $app -RuntimeIdentifier $rid | Out-Null } ([regex]::Escape($relative))
+                Remove-Item -LiteralPath $path
+            }
+        }
+    }
     Invoke-Test 'MSBuild prunes Whisper natives only for the selected Windows RID' {
         $project = Join-Path $temporary 'whisper-publish.proj'
         $output = Join-Path $temporary 'whisper-publish.txt'
@@ -792,7 +832,7 @@ function Invoke-ReleaseProcess {
         Assert-Equal (Test-Path -LiteralPath $env:VOXCLIP_DATA_DIR -PathType Container) $true
         $hash = 'a' * 64
         $receipt = Join-Path $env:VOXCLIP_DATA_DIR 'windows-runtime-agreement.txt'
-        $stamp = "format=voxclip-windows-runtime-agreement/1`nsha256=$hash`n"
+        $stamp = "format=voxclip-windows-runtime-agreement/2`nsha256=$hash`n"
         $exitCode = 0
         if ($Arguments -eq '--runtime-terms --json') {
             $global:fixtureGateEvents += 'terms'

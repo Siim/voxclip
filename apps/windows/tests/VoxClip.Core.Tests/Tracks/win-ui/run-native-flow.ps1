@@ -9,7 +9,7 @@ $tools = Join-Path $Root "test-only-ffmpeg\$RuntimeIdentifier"
 $platform = if ($RuntimeIdentifier -eq 'win-arm64') { 'ARM64' } else { 'x64' }
 $pin = Get-Content (Join-Path $Root 'apps\windows\build\ffmpeg.json') -Raw | ConvertFrom-Json
 $receipt = Join-Path $AcceptedDataRoot 'windows-runtime-agreement.txt'
-if (-not (Test-Path -LiteralPath $receipt)) { throw 'Accept the bundled Windows runtime terms explicitly in the isolated data root first.' }
+if (-not (Test-Path -LiteralPath $receipt) -or (Get-Content -LiteralPath $receipt -TotalCount 1) -cne 'format=voxclip-windows-runtime-agreement/2') { throw 'Accept the bundled Windows runtime terms explicitly in the isolated data root first (a format-2 receipt; roots accepted before 2026-10-31 must accept again).' }
 if ((Get-FileHash -LiteralPath $TestToolsZip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $pin.testTools.$RuntimeIdentifier.sha256) {
     throw 'The test-only FFmpeg archive does not match the reviewed hash.'
 }

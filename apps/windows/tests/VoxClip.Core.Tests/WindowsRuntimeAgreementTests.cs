@@ -13,9 +13,34 @@ public sealed class WindowsRuntimeAgreementTests
         var agreement = new WindowsRuntimeAgreement(path, Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
         var terms = agreement.LoadTerms();
         Assert.Equal(Fenced(source, "### Windows App SDK 2.5.1 redistributable terms\n"), terms.AppSdk);
-        Assert.Equal(Fenced(source, "### Microsoft.Windows.AI.MachineLearning 2.1.74 package terms\n"), terms.MachineLearning);
-        Assert.Equal(64, terms.Sha256.Length);
+        Assert.Equal(Sha256(terms.AppSdk), terms.Sha256);
+        Assert.Equal("d57ece3ec0746b460f9d00007d0300276a852613d6d1ebd2a1d075255e4ebe28", terms.Sha256);
         Assert.Contains("3. DISTRIBUTABLE CODE", terms.DisplayText, StringComparison.OrdinalIgnoreCase);
+        // Windows ML is excluded from the app, so its terms are neither shipped nor part of the agreement.
+        Assert.DoesNotContain("Windows ML", terms.DisplayText, StringComparison.Ordinal);
+        Assert.DoesNotContain("### Microsoft.Windows.AI.MachineLearning", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("### Windows App SDK ML", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EarlierWindowsMlAgreementReceiptsAreAskedAgain()
+    {
+        var directory = Directory.CreateTempSubdirectory("voxclip-agreement-v1-").FullName;
+        try
+        {
+            var stamp = Path.Combine(directory, "agreement.txt");
+            var agreement = new WindowsRuntimeAgreement(RootNotices(), stamp);
+            var terms = agreement.LoadTerms();
+            // The format 1 receipt hash covered the Windows App SDK and Windows ML Runtime 2.1.74 terms together.
+            File.WriteAllText(stamp, "format=voxclip-windows-runtime-agreement/1\nsha256=2d225eaff1555fab8ea01bc3c4799587da51bd167560a37d2e3d1a6364495f09\n");
+            Assert.False(agreement.IsAccepted(terms));
+            File.WriteAllText(stamp, "format=voxclip-windows-runtime-agreement/1\nsha256=" + terms.Sha256 + "\n");
+            Assert.False(agreement.IsAccepted(terms));
+            agreement.Accept(terms, terms.Sha256);
+            Assert.Equal("format=voxclip-windows-runtime-agreement/2\nsha256=" + terms.Sha256 + "\n", File.ReadAllText(stamp));
+            Assert.True(agreement.IsAccepted(terms));
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     [Fact]
@@ -121,6 +146,8 @@ public sealed class WindowsRuntimeAgreementTests
         }
         throw new FileNotFoundException("Repository root notices were not found.");
     }
+    private static string Sha256(string value) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)));
     private static string Fenced(string source, string heading)
     {
         var start = source.IndexOf("```text\n", source.IndexOf(heading, StringComparison.Ordinal), StringComparison.Ordinal) + 8;

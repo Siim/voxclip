@@ -54,7 +54,7 @@ An explicit value in `settings.json` always wins. Earlier Windows builds wrote e
 
 ## Native media dependencies
 
-NuGet pins are centralized in `Directory.Packages.props`; see the root [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) for pinned sources and licences. Whisper.net CPU runtimes include **both win-x64 and win-arm64**; NoAvx is the x64 fallback. macOS native SkiaSharp/HarfBuzz assets let renderer tests run without Windows.
+NuGet pins are centralized in `Directory.Packages.props`; see the root [`THIRD_PARTY_NOTICES.md`](../../THIRD_PARTY_NOTICES.md) for pinned sources and licences. Whisper.net CPU runtimes include **both win-x64 and win-arm64**; NoAvx is the x64 fallback. macOS native SkiaSharp/HarfBuzz assets let renderer tests run without Windows. The App excludes all assets of the Windows App SDK ML, Windows AI MachineLearning, AI, Search and Widgets packages that `Microsoft.WindowsAppSDK` resolves (`ExcludeAssets="all"`), so the only `onnxruntime.dll` in either RID's output is the pinned `Microsoft.ML.OnnxRuntime` native file. CI runs `build/Assert-OnnxRuntimePin.ps1 -AppDirectory <output> -RuntimeIdentifier <rid>` after each App build to check that byte for byte.
 
 The FFmpeg DLLs are **not** fetched by restore or loaded at startup. After building the pinned shipping ZIP locally, stage and verify it on Windows:
 
