@@ -907,15 +907,17 @@ struct EditorRenderSnapshot {
         }
     }
     func transport(_ key: String, shift: Bool = false) {
+        // Saving an open correction pauses (`apply`), so Space and L toggle from the state before the save.
+        let wasPlaying = isPlaying
         endCorrection()
         switch key.lowercased() {
         case " ":
             if shift, let word = words.first(where: { selectedWordIDs.contains($0.id) }) { seek(source: word.start) }
-            if isPlaying { preview.pause() } else { preview.play() }
+            if wasPlaying { preview.pause() } else { preview.play() }
             isPlaying = preview.isPlaying
         case "j": seek(source: max(0, sourceTime - 3))
         case "k": preview.pause(); isPlaying = false; playbackRate = 1; previewStop = nil
-        case "l": playbackRate = isPlaying ? (playbackRate == 1 ? 1.5 : 2) : 1; preview.play(); nativePreview?.player.rate = playbackRate; isPlaying = preview.isPlaying
+        case "l": playbackRate = wasPlaying ? (playbackRate == 1 ? 1.5 : 2) : 1; preview.play(); nativePreview?.player.rate = playbackRate; isPlaying = preview.isPlaying
         case "p": if let word = words.first(where: { selectedWordIDs.contains($0.id) }), let last = words.last(where: { selectedWordIDs.contains($0.id) }) { previewStop = min(sourceDuration, last.end + 2); seek(source: max(0, word.start - 2)); preview.play(); isPlaying = preview.isPlaying }
         case "c", "\r": beginCorrection()
         case "i": setClipEdge(start: true)

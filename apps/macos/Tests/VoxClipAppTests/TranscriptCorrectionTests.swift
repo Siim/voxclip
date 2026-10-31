@@ -38,6 +38,18 @@ import Testing
         #expect(model.isPlaying)
     }
 
+    /// Saving the correction pauses, so Space must toggle from the playing state before the save: it pauses.
+    @Test func pauseWithTheCorrectionOpenSavesItAndStaysPaused() throws {
+        let model = try editor(); defer { model.close() }
+        model.transport(" ")
+        try #require(model.isPlaying)
+        try correcting(model, "w3", text: "Today")
+        model.transport(" ")
+        #expect(model.correctionID == nil)
+        #expect(model.project.edits.corrections["w3"] == "Today")
+        #expect(!model.isPlaying && !model.preview.isPlaying)
+    }
+
     @Test func textThatCannotBeSavedClosesTheFieldAndKeepsTheWord() throws {
         let model = try editor(); defer { model.close() }
         try correcting(model, "w3", text: "  ")
