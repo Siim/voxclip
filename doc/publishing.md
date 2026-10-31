@@ -31,6 +31,7 @@ They appear in the Export sheet after a successful export (design.md section 8).
 
 - Default caption for a clip: `<clip title>` + blank line + the clip's first sentence in its edited, corrected text (words after cuts, corrections applied, punctuation kept), words joined by single spaces. For the full edit: the first sentence of the edited take, with no title. Sentence end = the first word whose last character is `.`, `?`, `!` or `…`; if none of the first 40 words ends a sentence, the caption takes those words (at most 40) followed by `…`. An empty title or sentence is left out together with the blank line. Core: `SharePostText.defaultCaption(title:words:)` (C# `DefaultCaption(title, words)`), where `words` are the target's kept, corrected word texts in transcript order.
 - The user can edit it in the caption field. The edited text is stored in the project per export target in `share.captions[targetId]` (`project.schema.json` `$defs/share`; `targetId` is `full` or the clip id; at most 3,000 characters) and reused next time. Removing a clip drops its entry (editing spec 10.4).
+- When the export target contains AI-modified speech, the field opens with the disclosure line after the caption. Copy caption, Open X and Open LinkedIn ask before sharing text without it, and Open X shows the "Made with AI" tip (voice-lab.md §11.3–§11.4).
 - Counters under the field:
   - **X:** the X weight below. Shown as `212/280`.
   - **LinkedIn:** Unicode scalar count of the text as typed, limit 3,000. Shown as `212/3,000`.
