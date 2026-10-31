@@ -9,15 +9,17 @@ public struct VoiceLabDiffSummaryResult: Sendable, Equatable {
 }
 
 public enum VoiceLabDiffSummary {
-    public static func make(diff: VoiceLabWordDiffResult, meters: [VoiceLabFitMeterResult], catalog: VoiceLabPriceCatalog? = nil,
+    /// §8.2 header over a review's hunks after every merge: a passage's `VoiceLabWordDiff` hunks, or a clip or Full take's
+    /// `ScopeRewriteDiff` hunks.
+    public static func make(hunks: [VoiceLabDiffHunk], meters: [VoiceLabFitMeterResult], catalog: VoiceLabPriceCatalog? = nil,
                             model: String? = nil, candidates: Int = 1, characterMultiplier: Double? = nil,
                             patchTexts: [String?]? = nil) throws -> VoiceLabDiffSummaryResult {
-        let voice: [VoiceLabDiffHunk] = diff.hunks.filter { $0.kind == .voice }
+        let voice: [VoiceLabDiffHunk] = hunks.filter { $0.kind == .voice }
         guard meters.count == voice.count, patchTexts == nil || patchTexts?.count == voice.count else {
             throw VoiceLabLengthBudgetError.invalidInput
         }
         var cutIds: Set<String> = []
-        for hunk in diff.hunks where hunk.kind == .cut { cutIds.formUnion(hunk.sourceWordIds) }
+        for hunk in hunks where hunk.kind == .cut { cutIds.formUnion(hunk.sourceWordIds) }
         var seconds: Double = 0
         for meter in meters {
             guard meter.estimateSeconds.isFinite, meter.estimateSeconds >= 0 else { throw VoiceLabLengthBudgetError.invalidInput }

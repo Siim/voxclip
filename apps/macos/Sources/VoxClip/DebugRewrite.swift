@@ -232,7 +232,7 @@ actor RewriteFixtureConnector: LLMConnector {
                         check("fit uses complete placed patch and lendable silence", expected == hunk.meter)
                     }
                 }
-                let summary = try VoiceLabDiffSummary.make(diff: review.diff, meters: review.voiceHunks.compactMap(\.meter), catalog: prices,
+                let summary = try VoiceLabDiffSummary.make(hunks: review.diff.hunks, meters: review.voiceHunks.compactMap(\.meter), catalog: prices,
                     model: "eleven_multilingual_v2", patchTexts: review.voiceHunks.map(\.patchText))
                 check("summary is Core complete-patch summary", summary == review.summary)
                 check("complete placed patch pricing has a real catalogue amount", review.summary?.costEstimate?.usd != nil)
