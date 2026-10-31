@@ -12,7 +12,7 @@ import VoxClipCore
         let url = root.appendingPathComponent("rewrite.mov")
         try await movie(url, rate: 48_000, channels: 1, frames: 4_800, float: false) { frame, _ in Double(Self.mono(frame)) }
         let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: 4_800, sampleRate: 48_000,
-                                                                 window: Self.window(start: 0.02, end: 0.08, rate: 48_000), items: [])
+                                                                 window: Self.window(start: 0.02, end: 0.08, rate: 48_000), incomingSilence: nil, outgoingSilence: nil, items: [])
         let expected = Self.floats(try await VoiceLabSourceAudio.conversionInput(source: url, startSample: 0, endSample: 4_800, sourceSampleRate: 48_000))
         #expect(result.excerpt == VoiceLabSourceExcerpt(whole: expected) && expected.count == 4_800)
         #expect(result.envelope == VoiceLabTakeProcessing.envelope(expected, sampleRate: 48_000))
@@ -28,7 +28,7 @@ import VoxClipCore
         }
         let items = [TimedWord(id: "a", text: "a", kind: .word, start: 0, end: 49.9), TimedWord(id: "b", text: "b", kind: .word, start: 50.7, end: 60)]
         let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: Int64(frames), sampleRate: rate,
-                                                                 window: Self.window(start: 30, end: 31, rate: rate), items: items)
+                                                                 window: Self.window(start: 30, end: 31, rate: rate), incomingSilence: nil, outgoingSilence: nil, items: items)
         let whole = Self.floats(try await VoiceLabSourceAudio.conversionInput(source: url, startSample: 0, endSample: Int64(frames) / 2, sourceSampleRate: Double(rate)))
             + Self.floats(try await VoiceLabSourceAudio.conversionInput(source: url, startSample: Int64(frames) / 2, endSample: Int64(frames), sourceSampleRate: Double(rate)))
         #expect(result.envelope == VoiceLabTakeProcessing.envelope(whole, sampleRate: rate))
@@ -49,11 +49,11 @@ import VoxClipCore
         try await movie(url, rate: 48_000, channels: 1, frames: 4_800, float: false) { frame, _ in Double(Self.mono(frame)) }
         await #expect(throws: VoiceLabSourceAudioError.rangeOutsideMedia) {
             _ = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: 30_000_001, sampleRate: 48_000,
-                                                            window: Self.window(start: 0.02, end: 0.08, rate: 48_000), items: [])
+                                                            window: Self.window(start: 0.02, end: 0.08, rate: 48_000), incomingSilence: nil, outgoingSilence: nil, items: [])
         }
         await #expect(throws: VoiceLabSourceAudioError.unsupportedRate) {
             _ = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: 4_800, sampleRate: 192_000,
-                                                            window: Self.window(start: 0.02, end: 0.08, rate: 48_000), items: [])
+                                                            window: Self.window(start: 0.02, end: 0.08, rate: 48_000), incomingSilence: nil, outgoingSilence: nil, items: [])
         }
     }
 
@@ -64,7 +64,44 @@ import VoxClipCore
         #expect(VoiceLabSourceAudio.merged([10..<20, 0..<5, 5..<8, 18..<30]) == [0..<8, 10..<30])
         let window = Self.window(start: 1, end: 2, rate: 48_000)
         // The speaker-check span (0–10 s) reaches past 6 s after a window near the start.
-        #expect(VoiceLabSourceAudio.nearWindow(window, total: 48_000 * 60, rate: 48_000) == 0..<480_000)
+        #expect(VoiceLabSourceAudio.nearWindow(window, incomingSilence: nil, outgoingSilence: nil, total: 48_000 * 60, rate: 48_000) == 0..<480_000)
+        // A gap seam reaches past the silence it lends; a hard seam lends none.
+        let gaps = Self.window(start: 30, end: 31, rate: 8_000, kind: .gap)
+        #expect(VoiceLabSourceAudio.nearWindow(gaps, incomingSilence: 8, outgoingSilence: 0.5, total: 8_000 * 60, rate: 8_000) == 128_000..<300_000)
+        #expect(VoiceLabSourceAudio.nearWindow(Self.window(start: 30, end: 31, rate: 8_000), incomingSilence: nil, outgoingSilence: nil,
+                                               total: 8_000 * 60, rate: 8_000) == 192_000..<296_000)
+    }
+
+    /// A take 7 s too long for a 1 s window borrows 7 s of the 8 s silence before its gap seam (§8.9.2), and staging reads
+    /// the half second before the widened window and the seam handle at its start. The window's region used to reach only
+    /// 6 s before the window, so staging found no samples there and refused the take after it was paid for.
+    @Test func theWindowRegionHoldsWhatAFitThatBorrowsALongSilenceStages() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("borrow.mov"), rate = 8_000, frames = 60 * rate, asset = 24_000
+        let phase: Double = 2 * Double.pi * 220 / Double(rate)
+        try await movie(url, rate: rate, channels: 1, frames: frames, float: false, bufferFrames: 8_000) { frame, _ in
+            (8_000 * sin(phase * Double(frame))).rounded()
+        }
+        let window = Self.window(start: 30, end: 31, rate: rate, kind: .gap)
+        let take = VoiceLabFitTake(assetFrames: Int64(8 * asset), assetSampleRate: asset, trimStart: 0, trimEnd: 8,
+                                   words: [VoiceLabWord(text: "new", start: 0, end: 8, synthetic: true)],
+                                   envelope: AudioEnvelope(sampleRate: Double(asset), levels: [Float](repeating: 1, count: 800)))
+        let fit = try VoiceLabFitPlanner.plan(window: window, incomingSilence: 8, outgoingSilence: 0.1, take: take,
+                                              tokens: ["new"], sourceSampleRate: Double(rate))
+        guard case .exact(let plan) = fit else { Issue.record("The take should fit exactly by borrowing"); return }
+        #expect(plan.incoming.borrowedSamples == Int64(7 * rate) && plan.windowStart == 23 && plan.windowEnd == 31)
+        let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: Int64(frames), sampleRate: rate, window: window,
+                                                                 incomingSilence: 8, outgoingSilence: 0.1, items: [])
+        let staged = try VoiceLabSourceAudio.resample(result.excerpt, from: Double(rate), to: Double(asset))
+        let decoded = Self.floats(try await VoiceLabSourceAudio.conversionInput(source: url, startSample: 0, endSample: Int64(frames), sourceSampleRate: Double(rate)))
+        let whole = try VoiceLabSourceAudio.resample(decoded, from: Double(rate), to: Double(asset))
+        // What stageTake reads at the asset rate: the 0.5 s lead and the incoming handle at 23 s, the outgoing handle and the tail at 31 s.
+        let start = 23 * asset, end = 31 * asset, lead = asset / 2, handle = 240
+        for range in [(start - lead)..<(start + handle), (end - handle)..<(end + lead)] {
+            let samples = try #require(staged.samples(range))
+            // A frame's shift moves this 220 Hz tone by more than 0.01, so the reads are the whole track's frames.
+            #expect(zip(samples, whole[range]).allSatisfy { abs($0 - $1) <= 0.000_01 })
+        }
     }
 
     @Test func excerptRegionsResampleOnTheWholeTracksGrid() throws {
@@ -82,11 +119,12 @@ import VoxClipCore
         #expect(throws: VoiceLabSourceAudioError.invalidAudio) { try VoiceLabSourceAudio.resample(offGrid, from: Double(rate), to: Double(target)) }
     }
 
-    private static func window(start: Double, end: Double, rate: Int) -> VoiceLabWindow {
+    private static func window(start: Double, end: Double, rate: Int, kind: VoiceLabSeamKind = .hard) -> VoiceLabWindow {
         let first = Int64((start * Double(rate)).rounded()), last = Int64((end * Double(rate)).rounded())
+        let fade: Int64 = kind == .hard ? 288 : Int64(rate / 50)
         return VoiceLabWindow(firstWordId: "w", lastWordId: "w", leftBridgeWordIds: [], rightBridgeWordIds: [], start: start, end: end,
-                              startSample: first, endSample: last, leftSeam: .init(kind: .hard, time: start, sample: first, fadeSamples: 288),
-                              rightSeam: .init(kind: .hard, time: end, sample: last, fadeSamples: 288))
+                              startSample: first, endSample: last, leftSeam: .init(kind: kind, time: start, sample: first, fadeSamples: fade),
+                              rightSeam: .init(kind: kind, time: end, sample: last, fadeSamples: fade))
     }
     private static func floats(_ wav: Data) -> [Float] {
         stride(from: 44, to: wav.count, by: 2).map { offset in

@@ -40,14 +40,17 @@ public enum VoiceLabSourceAudio {
     /// `sampleRate`: the whole track's 10 ms envelope (`VoiceLabTakeProcessing.envelope`), which the room-tone search
     /// reads, and only the frames around the window and around the room-tone run that search picks. The envelope pass
     /// decodes the track in 280 s chunks and keeps no samples, so memory stays bounded however long the recording is.
+    /// `incomingSilence` and `outgoingSilence` are the window's §8.9.2 outside silences, as the take run's fit reads them
+    /// (`VoiceLabWindowPlanner.lendableSilence`).
     public static func rewriteSource(source: URL, frames: Int64, sampleRate: Int, window: VoiceLabWindow,
+                                     incomingSilence: Double?, outgoingSilence: Double?,
                                      items: [TimedWord]) async throws -> (excerpt: VoiceLabSourceExcerpt, envelope: AudioEnvelope) {
         guard (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.unsupportedRate }
         guard frames > 0 else { throw VoiceLabSourceAudioError.rangeOutsideMedia }
         var levels = EnvelopeAccumulator(sampleRate: sampleRate)
         try await decodeMono(source: source, range: 0..<frames, sampleRate: sampleRate) { levels.append($0) }
         let envelope = levels.envelope, total = Int(frames)
-        var ranges = [nearWindow(window, total: total, rate: sampleRate)]
+        var ranges = [nearWindow(window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, total: total, rate: sampleRate)]
         // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
         if let tone = try? VoiceLabRoomToneSelection.select(items: items, envelope: envelope, sourceSampleRate: Double(sampleRate), totalSamples: frames) {
             ranges.append(aligned(Int(tone.sourceStartSample) - sampleRate, Int(tone.sourceEndSample) + sampleRate, total: total, rate: sampleRate))
@@ -65,13 +68,23 @@ public enum VoiceLabSourceAudio {
     /// The take run resamples the source to the generated audio's rate for staging (§8.9).
     static let takeAssetRate = 24_000
 
-    /// The frames around a window that a take run reads: 6 s on each side holds the 3 s loudness neighbourhood, the
-    /// half-second staging lead and tail and the seam handles with room to spare for the resampler, and the range also
-    /// holds the 10 s speaker-check span, which starts 5 s before the window's centre.
-    static func nearWindow(_ window: VoiceLabWindow, total: Int, rate: Int) -> Range<Int> {
+    /// The frames around a window that a take run reads. The silence fit can widen the window into the silence a gap seam
+    /// lends (§8.9.2), which has no limit of its own, and staging reads the lead, tail and seam handles around the widened
+    /// window. So each side reaches past everything its seam can borrow, up to the 290 s a staged take holds, by 6 s more,
+    /// which holds the 3 s loudness neighbourhood, the half-second staging lead and tail and the seam handles with room to
+    /// spare for the resampler. The range also holds the 10 s speaker-check span, which starts 5 s before the window's centre.
+    static func nearWindow(_ window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?, total: Int, rate: Int) -> Range<Int> {
         let start = Int(clamping: window.startSample), end = Int(clamping: window.endSample)
+        func lendable(_ seam: VoiceLabSeamPlacement, _ silence: Double?) -> Int {
+            guard seam.kind == .gap, let silence, silence.isFinite, silence > 0 else { return 0 }
+            let seconds: Double = min(silence, VoiceLabTakeProcessing.maximumQASeconds)
+            let samples: Double = (seconds * Double(rate)).rounded(.up)
+            return Int(samples)
+        }
+        let before: Int = 6 * rate + lendable(window.leftSeam, incomingSilence)
+        let after: Int = 6 * rate + lendable(window.rightSeam, outgoingSilence)
         let speakerStart = max(0, (start + end) / 2 - 5 * rate), speakerEnd = min(total, speakerStart + 10 * rate)
-        return aligned(min(start - 6 * rate, speakerStart), max(end + 6 * rate, speakerEnd), total: total, rate: rate)
+        return aligned(min(start - before, speakerStart), max(end + after, speakerEnd), total: total, rate: rate)
     }
 
     /// Clamped to the track, with the start moved back to a frame on the 24 kHz grid, so a region resampled on its own

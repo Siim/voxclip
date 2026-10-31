@@ -36,11 +36,13 @@ extension RewriteSession {
             let sampleRate: Double = Double(audio.sampleRate)
             let sampleCount: Double = project.media.source.durationSeconds * sampleRate
             let frames: Int64 = Int64(EditingPrimitives.jsRound(sampleCount))
+            // The fit can borrow this silence, so the decoded source must reach past it.
+            let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window)
             let source = try await VoiceLabSourceAudio.rewriteSource(source: editor.sourceURL, frames: frames, sampleRate: audio.sampleRate,
-                                                                     window: window, items: transcript)
+                                                                     window: window, incomingSilence: silence.incoming,
+                                                                     outgoingSilence: silence.outgoing, items: transcript)
             guard current, self.revision == revision, generation.preparationIsCurrent(reservation), generation.selectedVoiceID == recordID,
                   generation.selectedModelID == modelID, !Task.isCancelled else { return }
-            let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window)
             let input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: recordID,
                 language: project.transcript?.language ?? "en", seed: UInt32.random(in: 0...UInt32.max),
                 contentKey: project.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope, sourceSampleRate: audio.sampleRate,
