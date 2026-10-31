@@ -20,4 +20,5 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Your keys stay in the Mac Keychain or encrypted for your Windows account. VoxClip sends no telemetry.
 - Windows asks you to accept the Microsoft Windows App SDK terms the first time you open it.
 - Windows builds use the LGPL FFmpeg libraries; their source is attached to this release.
+- The dark theme uses the calmer greys of the new editor design on Mac and Windows. On Mac, Increase Contrast brightens the quietest greys and outlines.
 - Not tested on: TODO list the test machines that were not available (doc/plan.md section 6).
