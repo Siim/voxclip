@@ -204,6 +204,8 @@ try {
         return
     }
     $receipt = Join-Path $root 'capture-data\windows-runtime-agreement.txt'
+    # The app rejects receipts older than format 2 and shows the terms again; accept them like a first launch.
+    if ((Test-Path -LiteralPath $receipt) -and (Get-Content -LiteralPath $receipt -TotalCount 1) -cne 'format=voxclip-windows-runtime-agreement/2') { Remove-Item -LiteralPath $receipt }
     if (-not (Test-Path $receipt)) {
         $termsHost = [IntPtr]$app.MainWindowHandle
         if ($termsHost -eq [IntPtr]::Zero -or -not [VoxClipScreen]::BelongsTo($termsHost, $app.Id)) { throw 'The first-launch terms host does not belong to VoxClip.' }

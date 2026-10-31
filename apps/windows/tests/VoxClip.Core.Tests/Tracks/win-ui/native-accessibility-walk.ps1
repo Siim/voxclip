@@ -9,7 +9,8 @@ $shots=Join-Path $EvidenceDir $RuntimeIdentifier
 New-Item -ItemType Directory -Force $shots | Out-Null
 trap { [IO.File]::WriteAllText((Join-Path $shots 'error.txt'),($_ | Out-String)); break }
 $env:VOXCLIP_DATA_DIR=$DataRoot
-if(-not (Test-Path (Join-Path $DataRoot 'windows-runtime-agreement.txt'))){throw 'Accept the bundled Windows runtime terms explicitly in this isolated data root before the walk.'}
+$receipt=Join-Path $DataRoot 'windows-runtime-agreement.txt'
+if(-not (Test-Path -LiteralPath $receipt) -or (Get-Content -LiteralPath $receipt -TotalCount 1) -cne 'format=voxclip-windows-runtime-agreement/2'){throw 'Accept the bundled Windows runtime terms explicitly in this isolated data root before the walk (a format-2 receipt; roots accepted before 2026-10-31 must accept again).'}
 $env:VOXCLIP_SHARED_DIR=Join-Path $root 'shared'
 $platform=if($RuntimeIdentifier -eq 'win-arm64'){'ARM64'}else{'x64'}
 $exe=Join-Path $root "apps\windows\src\VoxClip.App\bin\$platform\Debug\net10.0-windows10.0.26100.0\$RuntimeIdentifier\VoxClip.exe"

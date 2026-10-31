@@ -358,7 +358,7 @@ function Set-NightSky {
 }
 try {
     Assert-Space
-    if(-not (Test-Path -LiteralPath $receipt)){throw 'Explicitly accept the bundled runtime terms in the isolated accepted-data root first.'}
+    if(-not (Test-Path -LiteralPath $receipt) -or (Get-Content -LiteralPath $receipt -TotalCount 1) -cne 'format=voxclip-windows-runtime-agreement/2'){throw 'Explicitly accept the bundled runtime terms in the isolated accepted-data root first (a format-2 receipt; roots accepted before 2026-10-31 must accept again).'}
     if(-not (Test-Path -LiteralPath $exe)){throw 'Build this configuration and architecture first.'}
     if(Get-Process VoxClip -ErrorAction SilentlyContinue | Where-Object {$_.Path -eq $exe}){throw 'Refusing to attach to an existing app process.'}
     New-Item -ItemType Directory -Path $data | Out-Null

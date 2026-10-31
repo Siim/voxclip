@@ -31,7 +31,7 @@ if ($Schedule) {
 }
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $receipt = Join-Path $AcceptedDataRoot 'windows-runtime-agreement.txt'
-if (-not (Test-Path -LiteralPath $receipt)) { throw 'Accept the bundled runtime terms explicitly before running routes.' }
+if (-not (Test-Path -LiteralPath $receipt) -or (Get-Content -LiteralPath $receipt -TotalCount 1) -cne 'format=voxclip-windows-runtime-agreement/2') { throw 'Accept the bundled runtime terms explicitly before running routes (a format-2 receipt; roots accepted before 2026-10-31 must accept again).' }
 if (-not [Environment]::UserInteractive) { throw 'Route repetitions need the owned interactive desktop.' }
 if (Get-Process VoxClip -ErrorAction SilentlyContinue) { throw 'Close existing VoxClip instances before the isolated route gate.' }
 New-Item -ItemType Directory -Path $EvidenceDir | Out-Null
