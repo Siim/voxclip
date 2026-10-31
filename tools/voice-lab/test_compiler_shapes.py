@@ -18,7 +18,8 @@ class CompilerShapeTests(unittest.TestCase):
         root = pathlib.Path(__file__).resolve().parents[2]
         source = (root / 'apps/macos/Sources/VoxClipMedia/VoiceLab/VoiceLabSourceAudio.swift').read_text()
         function = source.split('public static func rewriteSource(', 1)[1].split('public static func', 1)[0]
-        self.assertIn('let chunkSamples: Int = 280 * sampleRate', function)
+        self.assertIn('let chunkSamples: Int = decodeChunkFrames(sampleRate: sampleRate)', function)
+        self.assertIn('return min(280 * sampleRate, largest - trailing)', function)
         self.assertIn('let trailingSamples: Int = (sampleRate + 49) / 50', function)
         self.assertNotIn('Int64(280 *', function)
         self.assertNotIn('Float(Int16(', function)
