@@ -32,11 +32,33 @@ struct ScopeRewritePlanTests {
                       start: try #require(item[ai: "start"].aiDouble), end: try #require(item[ai: "end"].aiDouble))
         }
     }
-    /// The passage fixture with the vector's items, duration, sample rate and edits, and no replacements.
+    /// The passage fixture's replacement on a vector's range and seams. `place` reads only the range and the kind and fade of
+    /// the selected recipe's seams.
+    private func segment(_ value: JSONValue, template: VoiceLabSegment) throws -> VoiceLabSegment {
+        func seam(_ value: JSONValue) throws -> VoiceLabSeam {
+            VoiceLabSeam(kind: try #require(VoiceLabSeamKind(rawValue: value[ai: "kind"].aiString ?? "")),
+                         fadeSamples: Int64(try #require(value[ai: "fadeSamples"].aiInt)), sourceHandleSamples: 0, assetHandleFrames: 0)
+        }
+        var segment = template
+        segment.id = try #require(value[ai: "id"].aiString)
+        segment.enabled = try #require(value[ai: "enabled"].aiBool)
+        segment.replace = VoiceLabReplacement(start: try #require(value[ai: "start"].aiDouble), end: try #require(value[ai: "end"].aiDouble),
+                                              firstWordId: try #require(value[ai: "firstWordId"].aiString),
+                                              lastWordId: try #require(value[ai: "lastWordId"].aiString))
+        var candidate = try #require(template.candidates.first)
+        var recipe = try #require(candidate.recipe)
+        recipe.seams = VoiceLabSeams(in: try seam(value[ai: "inSeam"]), out: try seam(value[ai: "outSeam"]))
+        candidate.recipe = recipe
+        segment.candidates = [candidate]
+        segment.selectedCandidateIndex = 0
+        return segment
+    }
+    /// The passage fixture with the vector's items, duration, sample rate, edits and replacements (none unless it lists them).
     private func take(_ input: JSONValue) throws -> Project {
         var project = try #require(Self.passage)
         let edits = input[ai: "edits"]
-        project.voiceLab.segments = []
+        let template = try #require(project.voiceLab.segments.first)
+        project.voiceLab.segments = try input[ai: "segments"].aiArray.map { try segment($0, template: template) }
         project.voiceLab.assets = []
         project.media.source.audio?.sampleRate = try #require(input[ai: "sampleRate"].aiInt)
         project.media.source.durationSeconds = try #require(input[ai: "durationSeconds"].aiDouble)
@@ -72,12 +94,27 @@ struct ScopeRewritePlanTests {
         default: return .fullTake
         }
     }
+    /// The vector's stored candidates for the rate key (§8.9.1), none unless it lists them.
+    private func candidates(_ value: JSONValue) throws -> [VoiceLabRateCandidate] {
+        try value.aiArray.map { row in
+            VoiceLabRateCandidate(text: try #require(row[ai: "text"].aiString), firstCharStart: try #require(row[ai: "firstCharStart"].aiDouble),
+                                  lastCharEnd: try #require(row[ai: "lastCharEnd"].aiDouble))
+        }
+    }
     private func described(_ error: ScopeRewritePlanError) -> String {
         switch error {
-        case .tooLarge(let count): "tooLarge \(count)"
+        case .tooManyEntries(let count): "tooManyEntries \(count)"
+        case .tooMuchText(let bytes): "tooMuchText \(bytes)"
         case .empty: "empty"
         case .invalidInput: "invalidInput"
         }
+    }
+    /// The vector's `{error}` in `described` form, with the entry or byte count the error carries.
+    private func described(expected: JSONValue) -> String? {
+        let code = expected[ai: "error"].aiString
+        if code == "tooManyEntries" { return "tooManyEntries \(expected[ai: "count"].aiInt ?? -1)" }
+        if code == "tooMuchText" { return "tooMuchText \(expected[ai: "bytes"].aiInt ?? -1)" }
+        return code
     }
     private func expectEntry(_ entry: ClipWord, _ value: JSONValue, _ name: String) {
         #expect(entry.index == value[ai: "index"].aiInt && entry.start == value[ai: "start"].aiDouble && entry.end == value[ai: "end"].aiDouble,
@@ -102,10 +139,10 @@ struct ScopeRewritePlanTests {
             do {
                 plan = try ScopeRewritePlan.make(project: take(input), scope: scope(input[ai: "scope"]),
                                                  instruction: try #require(input[ai: "instruction"].aiString),
-                                                 language: try #require(input[ai: "language"].aiString), envelope: envelope(input[ai: "envelope"]), id: id)
+                                                 language: try #require(input[ai: "language"].aiString), envelope: envelope(input[ai: "envelope"]),
+                                                 candidates: candidates(input[ai: "rateCandidates"]), id: id)
             } catch let failure as ScopeRewritePlanError {
-                let code = expected[ai: "error"].aiString.map { $0 == "tooLarge" ? "tooLarge \(expected[ai: "count"].aiInt ?? -1)" : $0 }
-                #expect(described(failure) == code, "\(name)")
+                #expect(described(failure) == described(expected: expected), "\(name)")
                 continue
             }
             guard expected[ai: "error"] == .null else { Issue.record("\(name): expected \(expected[ai: "error"])"); continue }

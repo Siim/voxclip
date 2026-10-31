@@ -320,11 +320,15 @@ public enum VoiceLabWindowPlanner {
         return selected
     }
 
-    /// The take and envelope checks `place` makes before it looks at any word, so a caller placing many windows can tell a
-    /// take it cannot read from one window's refusal.
-    static func checkTake(_ project: Project, envelope: AudioEnvelope) throws {
+    /// What a caller placing many windows in one render `scope` reads once: the take, the envelope when there is one and the
+    /// scope, as `place` reads them before it looks at any word. Returns, for each transcript item, whether an enabled
+    /// replacement of the scope already re-voices it (§8.4). Throws `invalidInput` for a take, envelope or scope `place`
+    /// cannot read, including a scope `VoiceLabOutputPlanner` does not render (a replacement that crosses the clip's range,
+    /// lacks a selected recipe or overlaps another), so the caller can tell those from one window's refusal.
+    static func replacedItems(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope?) throws -> [Bool] {
         let take = try Take(project)
         try VoiceLabGeometry.check(rate: take.rate, totalSamples: take.total, envelope: envelope, items: take.words)
+        return try ScopeSource(project, scope: scope, take: take).replaced
     }
 
     public static func place(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope,
