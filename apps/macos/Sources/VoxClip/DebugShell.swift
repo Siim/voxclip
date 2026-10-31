@@ -168,6 +168,10 @@ import VoxClipCore
         check("VoiceOver reads the shell as Explorer, Editor, Viewer and panel, Timeline and Status (\(named.joined(separator: ", ")))", named == ["Explorer", "Editor", "Viewer and panel", "Timeline", "Status"])
 
         // F6 (impl-plan §3.2): the AppKit stops take focus, the transcript is found in the new tree.
+        // TranscriptFocusOnShow gave the transcript focus when the window opened, and F6 starts
+        // from the stop that holds focus, so focus starts in the Explorer's list here.
+        let explorerList = view("voxclip.shell.explorer", in: root).flatMap { firstView(NSTableView.self, in: $0) }
+        if !(explorerList.map { window.makeFirstResponder($0) } ?? false) { window.makeFirstResponder(nil) }
         editor.focusedPane = .sidebar
         shell.movePaneFocus(backward: false)
         check("F6 from the Explorer reaches the tab and clip-bar rows at ⋯", editor.focusedPane == .tabs && (window.firstResponder as? NSView)?.identifier?.rawValue == "voxclip.shell.more")
@@ -353,12 +357,25 @@ import VoxClipCore
         let commands = work?.overflowMenu().items.filter { !$0.isSeparatorItem } ?? []
         check("a version is read only: every ⋯ command is off", shell.editor?.capabilities.writable == false && !commands.isEmpty && commands.allSatisfy { !$0.isEnabled })
         let mainPane = app.shell.editor?.focusedPane
-        shell.editor?.focusedPane = .transcript
-        if let f6 = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.function], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
-                                     characters: String(UnicodeScalar(UInt32(NSF6FunctionKey)) ?? " "), charactersIgnoringModifiers: String(UnicodeScalar(UInt32(NSF6FunctionKey)) ?? " "), isARepeat: false, keyCode: 97) {
-            window.sendEvent(f6)
+        func f6(backward: Bool = false) {
+            let key = String(UnicodeScalar(UInt32(NSF6FunctionKey)) ?? " ")
+            if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: backward ? [.function, .shift] : [.function], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                            context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: 97) {
+                window.sendEvent(event)
+            }
         }
-        check("F6 in a version window moves through its own shell, which has no Explorer stop", shell.editor?.focusedPane == .viewer && app.shell.editor?.focusedPane == mainPane)
+        shell.editor?.focusedPane = .transcript
+        f6()
+        check("F6 in a version window moves through its own shell, not the main window's", shell.editor?.focusedPane == .viewer && app.shell.editor?.focusedPane == mainPane)
+        // The Explorer's stop would sit between the status bar and the tab row.
+        window.makeFirstResponder(nil)
+        shell.editor?.focusedPane = .status
+        f6()
+        let forward = shell.editor?.focusedPane
+        window.makeFirstResponder(nil)
+        f6(backward: true)
+        check("a version window has no Explorer stop: F6 from the status bar reaches the tab row (\(forward.map { "\($0)" } ?? "none")), and ⇧F6 from it the status bar",
+              forward == .tabs && shell.editor?.focusedPane == .status)
         return results
     }
 
