@@ -107,6 +107,19 @@ class RewriteSpecTests(unittest.TestCase):
             for line in lines:
                 self.assertIn('unlike §11.2', line, name)
 
+    def test_voice_lab_copy_points_at_the_clip_first_panel(self):
+        # §6.5.2 no longer holds the mismatch copy; design.md §6.3.7 V3 does.
+        self.assertNotIn('§6.5.2 copy', self.voice_lab)
+        mismatch = between(section(self.design, '#### 6.3.7'), '**V3.', '**V4.')
+        self.assertIn('Some of this video\'s audio doesn\'t sound like the voice in your consent statement.', mismatch)
+        self.assertEqual(self.voice_lab.count('the mismatch copy of `doc/design.md` §6.3.7 V3'), 2)
+        # Copy the clip-first panel replaced is either gone or named as the passage panel's.
+        for old in ["That's a lot to re-voice.", 're-voiced phrases (', 'Try different wording or re-record', 'Generate Again']:
+            for line in self.voice_lab.splitlines():
+                if old in line:
+                    self.assertIn("passage panel's", line, old)
+                    self.assertIn('design.md` §6.3.6 R2', line, old)
+
 
 if __name__ == '__main__':
     unittest.main()
