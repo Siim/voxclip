@@ -1,22 +1,35 @@
 using System.Text;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.LLM;
 #pragma warning disable CS1591
 
 namespace VoxClip.Core.Domain.VoiceLab;
 
+/// <summary>What a take run needs. <paramref name="Source"/> holds the source frames the run reads at
+/// <paramref name="SourceSampleRate"/>, and <paramref name="SourceEnvelope"/> is the whole source's 10 ms RMS envelope
+/// (<see cref="VoiceLabTakeProcessing.Envelope"/>), which the room-tone search reads.</summary>
 public sealed record VoiceLabTakeInput(string Text, string ModelId, string RecordId, string Language, uint Seed, string ContentKey,
-    float[] Source, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds, VoiceLabWindow Window,
-    double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent)
+    VoiceLabSourceExcerpt Source, AudioEnvelope SourceEnvelope, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds,
+    VoiceLabWindow Window, double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent)
 {
+    /// <summary>A source held whole, as short sources and tests pass it; the envelope is computed from it.</summary>
+    public VoiceLabTakeInput(string Text, string ModelId, string RecordId, string Language, uint Seed, string ContentKey,
+        float[] Source, int SourceSampleRate, IReadOnlyList<TimedWord> Items, IReadOnlySet<string> CutWordIds, VoiceLabWindow Window,
+        double? IncomingSilence, double? OutgoingSilence, bool CleanAudioOn, bool ProviderConsent)
+        : this(Text, ModelId, RecordId, Language, Seed, ContentKey, VoiceLabSourceExcerpt.Whole(Source),
+            VoiceLabTakeProcessing.Envelope(Source, SourceSampleRate), SourceSampleRate, Items, CutWordIds, Window,
+            IncomingSilence, OutgoingSilence, CleanAudioOn, ProviderConsent) { }
     public VoiceLabSpeechOptions Options(int take)
     {
         var kept = Items.Where(word => word.Kind == WordKind.Word && !CutWordIds.Contains(word.Id)).ToArray();
         return new(unchecked(Seed + (uint)take), string.Join(" ", kept.Where(word => word.End <= Window.Start).Select(word => word.Text)),
             string.Join(" ", kept.Where(word => word.Start >= Window.End).Select(word => word.Text)));
     }
-    public VoiceLabTakeInput Snapshot() => this with { Source = Source.ToArray(), Items = Array.AsReadOnly(Items.ToArray()),
+    /// <summary>A copy that later changes to the caller's lists cannot reach. The excerpt never changes, so it is shared.</summary>
+    public VoiceLabTakeInput Snapshot() => this with { SourceEnvelope = SourceEnvelope with { Rms = Array.AsReadOnly(SourceEnvelope.Rms.ToArray()) },
+        Items = Array.AsReadOnly(Items.ToArray()),
         CutWordIds = System.Collections.Frozen.FrozenSet.ToFrozenSet(CutWordIds, StringComparer.Ordinal),
         Window = Window with { LeftBridgeWordIds = Array.AsReadOnly(Window.LeftBridgeWordIds.ToArray()), RightBridgeWordIds = Array.AsReadOnly(Window.RightBridgeWordIds.ToArray()) } };
 }

@@ -354,6 +354,7 @@ public sealed class VoiceLabTakeRunTests
         internal readonly VoiceLabSpendLedger Ledger;
         internal readonly VoiceLabTakeRun Run;
         internal readonly VoiceLabTakeInput Input;
+        internal readonly float[] Samples;
         internal readonly VoiceConsentRecord Record;
         internal bool SpeakerFailure;
         internal bool Current = true;
@@ -381,7 +382,7 @@ public sealed class VoiceLabTakeRunTests
             }, (_, _, ct) => { ct.ThrowIfCancellationRequested(); return Task.FromResult(SpeakerFailure ? new float[] { 0, 1 } : [1f, 0f]); });
             Run = new(Client, Store, new(Guid.NewGuid().ToString("D"), Path.Combine(Root, "Paid"), Path.Combine(Root, "scratch")), Gate,
                 _ => Task.FromResult(Current), checks);
-            var source = Enumerable.Range(0, 24000 * 8).Select(index =>
+            var source = Samples = Enumerable.Range(0, 24000 * 8).Select(index =>
             {
                 var seconds = index / 24000.0;
                 return seconds is >= 1.9 and < 2.1 or >= 5.9 and < 6.1 or >= 6.5 and < 7.1 ? 0.001f : (float)(0.1 * Math.Sin(2 * Math.PI * 100 * seconds));
@@ -534,7 +535,8 @@ public sealed class VoiceLabTakeRunTests
     {
         await using var fixture = new Fixture();
         var quote = await fixture.Prepare();
-        Array.Fill(fixture.Input.Source, float.NaN);
+        // The input copied the samples it was built from, so changing them cannot reach the prepared run.
+        Array.Fill(fixture.Samples, float.NaN);
         Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, (await fixture.Run.ExecuteAsync(quote, true, ct: Token)).End);
     }
     [Fact]

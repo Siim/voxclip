@@ -7,6 +7,7 @@ using Microsoft.Win32.SafeHandles;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
+using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Media.Ffmpeg;
 using VoxClip.Media.Pipeline;
 
@@ -81,6 +82,24 @@ public static class VoiceLabSourceAudio
         if (frames > 290L * rate) throw Failure(VoiceLabSourceAudioErrorCode.TooLong);
         if (44 + 2 * frames >= UploadLimit) throw Failure(VoiceLabSourceAudioErrorCode.TooLarge);
         return (rate, (int)frames);
+    }
+
+    /// <summary>The take run resamples the source to the generated audio's rate for staging (§8.9).</summary>
+    internal const int TakeAssetRate = 24_000;
+
+    /// <summary>An excerpt resampled region by region with Core's resampler. Each region must start on a frame of the target grid,
+    /// as RewriteSourceAsync aligns them, so its output frames are the whole track's: more than the resampler's kernel radius from a region's inner
+    /// edges they are bit-identical to resampling the whole track. The track's length is the whole track's, ⌊frames × target / rate⌋.</summary>
+    internal static VoiceLabSourceExcerpt Resample(VoiceLabSourceExcerpt excerpt, int rate, int target)
+    {
+        if (rate == target) return excerpt;
+        var regions = new List<VoiceLabSourceExcerpt.Region>();
+        foreach (var region in excerpt.Regions)
+        {
+            if (region.Start * target % rate != 0) throw Failure(VoiceLabSourceAudioErrorCode.InvalidAudio);
+            regions.Add(new(region.Start * target / rate, VoiceConsentAudio.Resample(region.Samples.Span, rate, target)));
+        }
+        return new(excerpt.TotalFrames * target / rate, regions);
     }
 
     /// <summary>Decodes only a private snapshot of a regular paid WAV; optional SHA-256 binds it to its project record.</summary>

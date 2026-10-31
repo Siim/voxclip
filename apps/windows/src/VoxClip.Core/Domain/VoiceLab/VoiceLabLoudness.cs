@@ -63,6 +63,20 @@ public static class VoiceLabLoudness
         return VoicedLevel(before, after, sampleRate) ?? throw new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.NoVoicedAudio);
     }
 
+    /// <summary>The same level read from an excerpt of the source, which must hold the window and up to
+    /// LOUDNESS_NEIGHBOURHOOD on each side of it, clamped to the track. It equals what the whole track gives; a missing
+    /// region is InvalidInput.</summary>
+    public static double NeighbourhoodVoicedRmsDb(VoiceLabSourceExcerpt source, int sampleRate, long windowStart, long windowEnd)
+    {
+        if (sampleRate <= 0 || windowStart < 0 || windowStart > windowEnd || windowEnd > source.TotalFrames)
+            throw new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.InvalidInput);
+        var reach = (long)Math.Min(EditingMath.Round(LoudnessNeighbourhoodSeconds * sampleRate), source.TotalFrames);
+        var lower = Math.Max(0, windowStart - reach);
+        var upper = Math.Min(source.TotalFrames, windowEnd + reach);
+        if (source.Samples(lower, upper) is not { } samples) throw new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.InvalidInput);
+        return NeighbourhoodVoicedRmsDb(samples.Span, sampleRate, (int)(windowStart - lower), (int)(windowEnd - lower));
+    }
+
     /// <summary>audio.gainDb for a candidate (§8.7 item 2): the voiced-RMS difference clamped to GAIN_CLAMP, then
     /// lowered until the candidate's true peak sits at −1 dBTP. A recipe stores one static gain, so this cap is the only
     /// form the limit can take; nothing limits dynamically and the voice itself is unaltered.</summary>
@@ -76,7 +90,7 @@ public static class VoiceLabLoudness
         return Math.Min(gain, TruePeakLimitDbtp - candidateTruePeakDbtp);
     }
 
-    /// <summary>Measures the source beside the window (<see cref="NeighbourhoodVoicedRmsDb"/>) and the trimmed
+    /// <summary>Measures the source beside the window (<see cref="NeighbourhoodVoicedRmsDb(ReadOnlySpan{float}, int, int, int)"/>) and the trimmed
     /// candidate, each at its own rate, then applies <see cref="LevelGainDb(double?, double?, double)"/>. Both buffers
     /// are validated before either side can report NoVoicedAudio.</summary>
     public static double LevelGainDb(ReadOnlySpan<float> source, int sourceSampleRate, int windowStart, int windowEnd,
