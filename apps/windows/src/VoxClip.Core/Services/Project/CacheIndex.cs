@@ -46,7 +46,8 @@ public sealed class CacheIndex
     /// envelope-10ms.f32, then record the entry in this index's meta.json format: the existing CreatedAt, LastAccessAt now,
     /// the measured bytes and the envelope (architecture §8.2). Removes the files earlier builds left at the cache root.
     /// The key is leased throughout, and an existing entry is marked used as the extraction starts, so it sorts as the most
-    /// recently used, also for the app's eviction while the CLI extracts.</summary>
+    /// recently used. That is only an order: while the CLI extracts, the app's passes spare the entry for its *.partial
+    /// temporary, or for missing metadata.</summary>
     public async Task<AudioExtractionResult> ExtractAudioAsync(IAudioExtractor extractor, MediaInfo media, string contentKey,
         IProgress<MediaProgress>? progress, CancellationToken ct)
     {
@@ -181,8 +182,9 @@ public sealed class CacheIndex
     /// raw transcripts, "Clear everything" does not.
     /// <para>An entry whose key is leased in <see cref="Keys"/> or listed in <paramref name="inUseKeys"/> is never touched; it
     /// still counts towards the limit. An entry whose meta.json is missing or unreadable sorts as the least recently used,
-    /// but is left alone, and counted, until an hour after anything in it was last written, because it may be an extraction
-    /// under way in the CLI, which holds no lease here. Passes for one cache folder run one at a time, in arrival order,
+    /// but is left alone, and counted, until an hour after anything in it was last written, and so is any entry holding a
+    /// *.partial temporary written in the last hour, because either may be an extraction under way in the CLI, which holds
+    /// no lease here. Passes for one cache folder run one at a time, in arrival order,
     /// whichever index runs them. Only 64-hex entry folders are evicted; the cache root keeps everything but the legacy
     /// root files (<see cref="RemoveLegacyRootFiles"/>).</para></summary>
     public async Task<IReadOnlyList<string>> EvictAsync(long limitBytes, IReadOnlySet<string> inUseKeys, bool keepEnvelopes, CancellationToken ct)
@@ -236,6 +238,7 @@ public sealed class CacheIndex
             var directory = Path.Combine(root, entry.ContentKey);
             try
             {
+                if (HoldsPartial(directory, unindexedCutoff)) continue;
                 var written = Directory.GetLastWriteTimeUtc(directory);
                 foreach (var item in new DirectoryInfo(directory).EnumerateFileSystemInfos())
                 {
@@ -269,7 +272,9 @@ public sealed class CacheIndex
             if (!entry.Eligible || removed.Contains(entry.ContentKey) || total <= limit || !keys.TryClaim(entry.ContentKey, inUseKeys)) continue;
             try
             {
-                Directory.Delete(Path.Combine(root, entry.ContentKey), true);
+                var directory = Path.Combine(root, entry.ContentKey);
+                if (HoldsPartial(directory, unindexedCutoff)) continue;
+                Directory.Delete(directory, true);
                 total -= sizes[index];
                 removed.Add(entry.ContentKey);
             }
@@ -279,10 +284,22 @@ public sealed class CacheIndex
         return removed;
     }
 
-    /// <summary>How long every pass leaves an entry without readable metadata alone after its last write (architecture §8.2).</summary>
+    /// <summary>How long every pass leaves an entry without readable metadata, or one holding a *.partial temporary, alone after
+    /// that last write (architecture §8.2).</summary>
     internal static TimeSpan UnindexedGrace { get; } = TimeSpan.FromHours(1);
 
     private sealed record EvictionEntry(string ContentKey, DateTimeOffset LastAccessAt, UInt128 Bytes, bool Eligible);
+
+    private static readonly EnumerationOptions PartialSearch = new()
+    {
+        RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, MatchType = MatchType.Simple, IgnoreInaccessible = true,
+    };
+
+    // Whether an entry holds a *.partial temporary written at or after the cutoff: a write under way, such as a CLI extraction
+    // into an entry that already has metadata, as when it re-extracts audio a pass stripped. Checked once the entry is claimed,
+    // just before it would be stripped or removed. Links are not followed.
+    private static bool HoldsPartial(string directory, DateTime cutoff)
+        => new DirectoryInfo(directory).EnumerateFiles("*.partial", PartialSearch).Any(file => file.LastWriteTimeUtc >= cutoff);
 
     // Whether a stripped entry still holds its envelope or any raw transcript.
     private static bool HoldsKeptData(string directory)

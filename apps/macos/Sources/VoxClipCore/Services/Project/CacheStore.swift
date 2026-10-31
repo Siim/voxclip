@@ -53,8 +53,8 @@ public actor CacheStore {
             throw CocoaError(.fileWriteUnknown, userInfo: [NSLocalizedDescriptionKey: "Cache entries cannot be symbolic links."])
         }
         removeLegacyRootFiles()
-        // The entry is in use from now, so it sorts as the most recently used, also for the app's eviction while the CLI
-        // extracts (architecture §8.2).
+        // The entry is in use from now, so it sorts as the most recently used (architecture §8.2). That is only an order:
+        // while the CLI extracts, the app's passes spare the entry for its `*.partial` temporary, or for missing metadata.
         _ = try? await self.entry(contentKey: contentKey)
         let result = try await extractor.extract(AudioExtractionRequest(sourceURL: sourceURL, contentKey: contentKey, durationSeconds: durationSeconds,
                                                                         audioTrackIndex: audioTrackIndex, cacheDirectory: directory), progress: progress)
@@ -133,8 +133,9 @@ public actor CacheStore {
     /// An entry whose key is leased in `keys` or listed in `protectedKeys` is never touched; leased and protected entries
     /// still count towards the limit. An entry whose meta.json is missing or unreadable sorts as the least recently used.
     /// With `sparingUnindexedSince` it is left alone, but counted, while anything in it was modified at or after that
-    /// time, because it may be an extraction under way in the CLI, which holds no lease here. The app's passes, Clear
-    /// cache included, pass an hour ago (`CacheEvictionScheduler`). Passes for one cache folder run one at a time.
+    /// time, and so is any entry holding a `*.partial` temporary modified since then, because either may be an extraction
+    /// under way in the CLI, which holds no lease here. The app's passes, Clear cache included, pass an hour ago
+    /// (`CacheEvictionScheduler`). Passes for one cache folder run one at a time.
     public func evict(limitBytes: Int64, protectedKeys: Set<String>, keepingEnvelopes: Bool = false,
                       sparingUnindexedSince cutoff: Date? = nil) async throws {
         let keys = self.keys
@@ -155,6 +156,7 @@ public actor CacheStore {
         for (index, item) in entries.enumerated() where bytes > limit && !spared[index] {
             guard keys.claim(item.url.lastPathComponent, unless: protectedKeys) else { continue }
             defer { keys.endClaim() }
+            if let cutoff, holdsPartial(item.url, since: cutoff) { continue }
             let written = item.entry == nil ? (try? FileManager.default.attributesOfItem(atPath: item.url.path))?[.modificationDate] as? Date : nil
             let files = (try? FileManager.default.contentsOfDirectory(at: item.url, includingPropertiesForKeys: nil)) ?? []
             for file in files where !Self.keptByStripping.contains(file.lastPathComponent) { try? FileManager.default.removeItem(at: file) }
@@ -176,6 +178,7 @@ public actor CacheStore {
         for (index, item) in entries.enumerated() where bytes > limit && !removed.contains(index) && !spared[index] {
             guard keys.claim(item.url.lastPathComponent, unless: protectedKeys) else { continue }
             defer { keys.endClaim() }
+            if let cutoff, holdsPartial(item.url, since: cutoff) { continue }
             do { try FileManager.default.removeItem(at: item.url); bytes -= sizes[index] } catch { continue }
         }
     }
@@ -189,6 +192,18 @@ public actor CacheStore {
             if let date = (try? file.resourceValues(forKeys: Set(keys)))?.contentModificationDate, date > latest { latest = date }
         }
         return latest
+    }
+
+    /// Whether an entry holds a `*.partial` temporary modified at or after `cutoff`: a write under way, such as a CLI
+    /// extraction into an entry that already has metadata, as when it re-extracts audio a pass stripped. It is checked
+    /// once the entry is claimed, just before it would be stripped or removed. Links are not followed.
+    func holdsPartial(_ directory: URL, since cutoff: Date) -> Bool {
+        let keys: [URLResourceKey] = [.contentModificationDateKey]
+        guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: keys) else { return false }
+        for case let file as URL in files where file.lastPathComponent.hasSuffix(".partial") {
+            if let date = (try? file.resourceValues(forKeys: Set(keys)))?.contentModificationDate, date >= cutoff { return true }
+        }
+        return false
     }
 
     /// Whether a stripped entry still holds its envelope or any raw transcript.

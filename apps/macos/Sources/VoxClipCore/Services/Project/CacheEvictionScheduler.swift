@@ -9,8 +9,8 @@ import Synchronization
 /// Clear cache and Clear everything wait for each other, and a request made while a pass is queued is answered by that
 /// pass. Leased keys (open projects, extractions, transcriptions, waveform reads, thumbnails) are never touched. Every
 /// pass, both Clear actions included, spares an entry without readable metadata while anything in it was written in the
-/// last `unindexedGrace`: it may be an extraction under way in the CLI. A failed pass is logged and never shown: a
-/// missing entry is recomputed.
+/// last `unindexedGrace`, and any entry holding a `*.partial` temporary written in that time: either may be an
+/// extraction under way in the CLI. A failed pass is logged and never shown: a missing entry is recomputed.
 public final class CacheEvictionScheduler: Sendable {
     /// How long after launch the first pass waits, so it never competes with opening the app.
     public static let launchDelay: Duration = .seconds(30)

@@ -10,9 +10,9 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 
 /// <summary>The cache size limit is enforced (architecture §8.2), as the Mac's CacheEvictionTests: the scheduler's launch delay,
 /// requested and joined passes, the two passes at a limit, leases held by editors, transcription and extraction, one pass at a
-/// time per cache folder, the one-hour rule for every pass, Clear cache keeping root files, marking an entry used and decimal
-/// gigabytes. Small files stand in for gigabytes (the limit is injected in bytes), and the launch delay and clock are
-/// injected, so nothing here waits for real time.</summary>
+/// time per cache folder, the one-hour rule for every pass, an entry holding a fresh *.partial file, Clear cache keeping root
+/// files, marking an entry used and decimal gigabytes. Small files stand in for gigabytes (the limit is injected in bytes), and
+/// the launch delay and clock are injected, so nothing here waits for real time.</summary>
 public sealed class CacheEvictionTests
 {
     private const string Audio = "audio-16k.wav";
@@ -178,7 +178,7 @@ public sealed class CacheEvictionTests
         var entries = await index.ReadAsync(Ct);
         Assert.Equal(started, Assert.Single(entries, entry => entry.ContentKey == extracting).LastAccessAt);
         Assert.True(index.Keys.IsLeased(extracting));
-        // It has metadata, so the hour rule does not spare it: only the lease keeps its half-written files.
+        // Two hours on, neither missing metadata nor a fresh *.partial file spares it: only the lease keeps its half-written files.
         clock.Advance(TimeSpan.FromHours(2));
         await new CacheEvictionScheduler(index, () => 0).ClearEverythingAsync();
         Assert.True(File.Exists(Path.Combine(storage.Root, extracting, HeldExtractor.Partial)));
@@ -248,6 +248,35 @@ public sealed class CacheEvictionTests
         Assert.Equal(written, Directory.GetLastWriteTimeUtc(directory));
         await scheduler.ClearEverythingAsync();
         Assert.False(Directory.Exists(directory));
+    }
+
+    /// <summary>The CLI holds no lease in the app. When it re-extracts into an entry that has metadata, as after a pass stripped
+    /// its audio, its *.partial temporary spares the entry from every pass, both Clear actions included, until an hour after it
+    /// was last written; then it is a leftover and goes like anything else that can be made again.</summary>
+    [Fact]
+    public async Task AnEntryHoldingAFreshPartialFileIsSparedForAnHourByEveryPass()
+    {
+        using var storage = new TestStorage();
+        var clock = new Clock(WholeSecondNow());
+        var index = new CacheIndex(storage.Root, clock);
+        var (extracting, other) = (Key('a'), Key('b'));
+        await SeedAsync(index, extracting, audio: 1_000);
+        File.Delete(Path.Combine(storage.PathFor(extracting), Audio));
+        await SeedAsync(index, other, audio: 1_000);
+        const string Partial = "audio-16k.wav.0123abcd.partial";
+        var partial = Path.Combine(storage.PathFor(extracting), Partial);
+        await File.WriteAllBytesAsync(partial, new byte[1_000], Ct);
+        File.SetLastWriteTimeUtc(partial, clock.GetUtcNow().UtcDateTime.AddMinutes(-30));
+        var scheduler = new CacheEvictionScheduler(index, () => 0);
+        scheduler.RequestRun();
+        await scheduler.WaitUntilIdleAsync();
+        await scheduler.ClearCacheAsync();
+        await scheduler.ClearEverythingAsync();
+        Assert.Equal([Partial, Envelope, "meta.json"], Names(storage, extracting));
+        Assert.False(Directory.Exists(storage.PathFor(other)));
+        clock.Advance(TimeSpan.FromMinutes(31));
+        await scheduler.ClearCacheAsync();
+        Assert.Equal([Envelope, "meta.json"], Names(storage, extracting));
     }
 
     [Fact]

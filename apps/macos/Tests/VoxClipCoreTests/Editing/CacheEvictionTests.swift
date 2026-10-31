@@ -475,6 +475,30 @@ struct CacheEvictionTests {
         keys.endClaim()
     }
 
+    /// The CLI holds no lease in the app. When it re-extracts into an entry that has metadata, as after a pass stripped
+    /// its audio, its `*.partial` temporary spares the entry from every pass, both Clear actions included, until an hour
+    /// after it was last written. Then it is a leftover and goes like anything else that can be made again.
+    @Test func passesSpareAnEntryWhileItHoldsAFreshPartialFile() async throws {
+        let locations = try locations()
+        defer { try? FileManager.default.removeItem(at: locations.root) }
+        let extracting = try await entry(Self.key("a"), in: locations, audio: 4_000, envelope: 64, used: Self.ago(hours: 72))
+        try FileManager.default.removeItem(at: extracting.appendingPathComponent("audio-16k.wav"))
+        let partial = extracting.appendingPathComponent("audio-16k-\(UUID().uuidString).partial")
+        try Self.sparse(partial, 4_000)
+        try FileManager.default.setAttributes([.modificationDate: Self.ago(hours: 0.5)], ofItemAtPath: partial.path)
+        let other = try await entry(Self.key("b"), in: locations, audio: 4_000, envelope: 64, used: Self.ago(hours: 24))
+        let scheduler = scheduler(locations, limit: 0)
+        scheduler.requestRun()
+        await scheduler.waitUntilIdle()
+        await scheduler.clearCache()
+        await scheduler.clearEverything()
+        #expect(Self.contents(extracting) == [partial.lastPathComponent, "envelope-10ms.f32", "meta.json"].sorted())
+        #expect(!Self.exists(other))
+        try FileManager.default.setAttributes([.modificationDate: Self.ago(hours: 1.01)], ofItemAtPath: partial.path)
+        await scheduler.clearCache()
+        #expect(Self.contents(extracting) == Self.stripped)
+    }
+
     /// Clear everything runs both passes at a limit of 0: every entry not in use goes, its envelope and raw transcripts
     /// with it. An open project's entry and the files kept at the cache root stay.
     @Test func clearEverythingRemovesEveryEntryNotInUse() async throws {
