@@ -1,5 +1,9 @@
 # Windows fixed contracts
 
+### 2026-10-31 - Scope rewrite plan, Swift first (track/p0-scope, C1)
+
+- No Windows code, test or Release allowlist changed. The Swift Core gained `ScopeRewritePlan` (Mac entry of the same date), and voice-lab.md §8.1 item 1 now fixes how each line's range is made: the line's window, else the advisory span of its words, 1 to 1 for a line without words, capped at 5,000. The new shared `scope-rewrite-plan-cases.json` is replayed only by the Swift suite until the C# twin (W1) adds `ScopeRewritePlan.cs` and replays it byte for byte, including the up-front take and envelope check and the `tooLarge` entry count.
+
 ### 2026-10-31 - Clip-first Rewrite spec merge (track/p0-scope, D0)
 
 - Docs only on Windows; no code, fixture, test or Release allowlist changed. The shared `tools/voice-lab/test_rewrite_spec.py` checks the spec's cross-section rules (Mac entry of the same date). `doc/design.md` §6.3 is now "Rewrite (clip-first) and your voice", with the scope bar (`AutoSuggestBox`, accent `Button`, `DropDownButton` AI picker), the panel states R0–R3, the inline voice steps V0–V6 and takes T1–T4. voice-lab.md §3.1, §5, §6.4–§6.7, §8.1, §8.2, §8.4, §8.6, §8.12 and §15 and ai.md §4.8, §6.8 item 3 and §10.3 follow it. The Mac entry of the same date lists every section.
