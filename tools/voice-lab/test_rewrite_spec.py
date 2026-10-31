@@ -1,0 +1,89 @@
+import pathlib
+import re
+import unittest
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+def read(path):
+    return (ROOT / path).read_text(encoding='utf-8')
+
+
+def section(text, heading):
+    """The body under the first heading line that starts with `heading`, up to the next heading of the same or a higher level."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith(heading + ' '):
+            level = len(heading.split(' ', 1)[0])
+            body = []
+            for following in lines[index + 1:]:
+                match = re.match(r'(#+) ', following)
+                if match and len(match.group(1)) <= level:
+                    break
+                body.append(following)
+            return '\n'.join(body)
+    raise AssertionError(f'no heading {heading!r}')
+
+
+def numbered_item(text, number):
+    """Top-level list item `number.` with its indented sub-items."""
+    match = re.search(rf'^{number}\. .*?(?=^\d+\. |\Z)', text, re.S | re.M)
+    if not match:
+        raise AssertionError(f'no item {number}')
+    return match.group(0)
+
+
+def table_rows(text, header):
+    """The rows of the Markdown table whose header line is `header`, as lists of stripped cells."""
+    lines = text.splitlines()
+    start = lines.index(header)
+    rows = []
+    for line in lines[start + 2:]:
+        if not line.startswith('|'):
+            break
+        cells = line.replace('\\|', '\0').strip('|').split('|')
+        rows.append([cell.replace('\0', '|').strip() for cell in cells])
+    return rows
+
+
+def between(text, start, end):
+    begin = text.index(start)
+    return text[begin:text.index(end, begin)]
+
+
+def quoted(text):
+    return re.findall(r'"([^"]+)"', text)
+
+
+class RewriteSpecTests(unittest.TestCase):
+    """Cross-section consistency of the clip-first Rewrite specs (design.md §6.3, voice-lab.md, ai.md)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.voice_lab = read('doc/spec/voice-lab.md')
+        cls.design = read('doc/design.md')
+        cls.ai = read('doc/spec/ai.md')
+
+    def test_llm_send_plan_sign_in_is_a_closed_list(self):
+        rule = between(section(self.voice_lab, '### 3.1'), 'An LLM send (', '| Estimate |')
+        # A plan is named positively, never as "not an API key".
+        self.assertNotRegex(rule, r'`authMethod` is not an API key|does not say "API key"')
+        self.assertIn('Logged in using ChatGPT', rule)
+        unknown = next(line for line in rule.splitlines() if line.startswith('- **Unknown**'))
+        for method in ['`third_party`', '`none`', 'any other successful Codex output']:
+            self.assertIn(method, unknown)
+        self.assertIn('sends nothing', unknown)
+        detection = numbered_item(section(self.ai, '### 6.8'), 3)
+        plan = re.search(r'It is a plan only when it is (.*?), and an API key', detection)
+        self.assertIsNotNone(plan, 'ai.md §6.8 item 3 must list the plan methods')
+        plans = set(re.findall(r'`([^`]+)`', plan.group(1)))
+        self.assertIn('claude_ai', plans)
+        self.assertTrue(plans.isdisjoint({'third_party', 'none', 'api_key'}))
+        self.assertRegex(detection, r'Every other value, including `third_party`.*?is an unknown method')
+        cost = numbered_item(section(self.voice_lab, '## 15.'), 10)
+        for row in ['`claude.ai`', '`third_party`', '`none`', 'an unrecognised status']:
+            self.assertIn(row, cost)
+
+
+if __name__ == '__main__':
+    unittest.main()

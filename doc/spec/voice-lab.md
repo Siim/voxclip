@@ -178,10 +178,16 @@ public struct CostEstimate: Codable, Sendable, Hashable {
 
 An LLM send (`voiceRewrite`, `patchRewrite`) estimates its request in tokens with basis `unknown`. Its presentation depends on who pays:
 
-- A CLI connector whose sign-in is a plan (`authMethod` is not an API key; Codex's status does not say "API key"), a loopback local server, a remote local server and Apple on-device present as **inline with no amount**. Their button is just the action, and they do not confirm. The send line says where the words go.
+- A CLI connector signed in on a plan, a loopback local server, a remote local server and Apple on-device present as **inline with no amount**. Their button is just the action, and they do not confirm. The send line says where the words go.
 - An API-key connector, and a CLI connector signed in with an API key, present as **confirm** with "VoxClip can't tell what this costs. Check {provider}'s pricing." on every send.
 
-A CLI whose sign-in method is unknown sends nothing (ai.md §4.8), so it never counts as a plan. The first-use consent sheet (ai.md §4.8) still comes before each connector's first send. `VoiceLabCostPresentation`, or a helper beside it, applies this rule on both platforms from the connector kind and the sign-in method that ai.md §6.8–§6.10 detection already reads; it adds no setting or field. The table below covers every other estimate.
+A CLI's sign-in method is one of three, each named by what the detection of ai.md §6.8 item 3 and §6.9 item 4 reads:
+
+- **Plan**: a method ai.md recognises as a plan. That is Claude Code's `claude.ai` or OAuth sign-in (the list in ai.md §6.8 item 3), or Codex's "Logged in using ChatGPT".
+- **API key**: Claude Code's `authMethod` is an API key, or Codex's status says "Logged in using an API key".
+- **Unknown**: anything else. That includes Claude Code's `third_party` (Bedrock or Vertex, billed to the user's cloud account), `none` or a missing method, and any other successful Codex output. An unknown method sends nothing (ai.md §4.8): no sheet, no confirmation and no inline send.
+
+A method is never a plan just because it is not an API key. The first-use consent sheet (ai.md §4.8) still comes before each connector's first send. `VoiceLabCostPresentation`, or a helper beside it, applies this rule on both platforms from the connector kind and the sign-in method that ai.md §6.8–§6.10 detection already reads; it adds no setting or field. The table below covers every other estimate.
 
 | Estimate | Presentation |
 |---|---|
@@ -1824,7 +1830,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
     - Isolator for 3 min = $0.36. LatentSync for 5 s = $0.20 and for 60 s = $0.30.
     - TTS for 60 characters × 3 candidates = $0.0144, shown "≈ $0.01".
     - Estimates of $0.50 or more require a confirmation.
-    - An LLM send on a CLI signed in on a plan, a local server (loopback or remote) or Apple on-device is inline with no amount and does not confirm. On an API key, or a CLI signed in with an API key, it confirms on every send with the unknown-price copy. A CLI with an unknown sign-in method sends nothing. Both Cores check the same table over every connector kind and sign-in method.
+    - An LLM send on a CLI signed in on a plan, a local server (loopback or remote) or Apple on-device is inline with no amount and does not confirm. On an API key, or a CLI signed in with an API key, it confirms on every send with the unknown-price copy. A CLI with an unknown sign-in method sends nothing. Both Cores check the same table over every connector kind and sign-in method. Its Claude Code rows include `claude.ai`, `oauth_token`, `api_key`, `third_party`, `none` and a missing method, and its Codex rows the ChatGPT status, the API-key status and an unrecognised status. `third_party`, `none`, a missing method and the unrecognised Codex status send nothing.
 11. **Consent check (§6.4).**
     - A WER of 0.14 with all nonce words passes.
     - A WER of 0.10 with a nonce word missing fails.

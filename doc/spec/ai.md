@@ -782,7 +782,7 @@ Signed out, the same flags exited 1 with `{"type":"result","subtype":"success","
 **Detection.** Use the catalog `cli.detect` entries, cached per binary (§6.10):
 1. `claude --version` and parse `^(\d+\.\d+\.\d+)`.
 2. `claude --help` must list every `requiredFlags` entry: `--print`, `--output-format`, `--json-schema`, `--tools`, `--system-prompt`, `--model`, `--no-session-persistence`, `--safe-mode`. Otherwise `cliTooOld`. Note which `optionalFlags` are present.
-3. `claude auth status --json`: `loggedIn == true` means ready. Exit code 1 or `loggedIn == false` means `cliSignedOut`. VoxClip reads only `loggedIn` and `authMethod` (a method name, not a credential), so the status line can say "Signed in · API key" and the consent sheet (§4.8) never claims plan usage for an API-key sign-in. Other fields (account details) are discarded and never stored.
+3. `claude auth status --json`: `loggedIn == true` means ready. Exit code 1 or `loggedIn == false` means `cliSignedOut`. VoxClip reads only `loggedIn` and `authMethod` (a method name, not a credential), so the status line can say "Signed in · API key" and the consent sheet (§4.8) never claims plan usage for an API-key sign-in. Other fields (account details) are discarded and never stored. The method is compared after lowercasing and turning `-` and `.` into `_`. It is a plan only when it is `claude_ai` (Claude Code prints `claude.ai`), `claudeai`, `oauth` or `oauth_token`, and an API key when it names one, such as `api_key`. Every other value, including `third_party` (Bedrock or Vertex, billed to the user's cloud account) and `none`, is an unknown method: no consent sheet and no send (§4.8).
 
 **Invocation** (argv array, the catalog `invocation.args`):
 
