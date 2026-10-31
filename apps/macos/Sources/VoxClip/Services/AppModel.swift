@@ -161,26 +161,21 @@ extension ProviderChoice {
         detectedConnectorStatus[provider.id] = result
         return result
     }
-    /// Each open project's content key by project id, in every window. Each one holds a lease in `cacheKeys`, so
-    /// eviction never strips or removes an open project's cache entry, and opening it marks the entry used
-    /// (architecture §8.2).
-    var openProjectKeys: [String: String] = [:] { didSet { leaseOpenProjectKeys() } }
-    @ObservationIgnored private var openProjectLeases: [String: CacheKeyLease] = [:]
+    /// Each open project's content key by project id. The cache leases of open projects are held per editor
+    /// (`EditorModel.holdCacheEntry`), not here, because two windows can show the same project id.
+    var openProjectKeys: [String: String] = [:]
     /// The last `lastAccessAt` update for a project that opened; each waits for the one before it.
     @ObservationIgnored private(set) var cacheTouches: Task<Void, Never>?
-    private func leaseOpenProjectKeys() {
-        for (id, lease) in openProjectLeases where openProjectKeys[id] != lease.key {
-            lease.release()
-            openProjectLeases[id] = nil
+    /// Leases an open project's content key at once, so eviction never strips or removes its cache entry, and marks the
+    /// entry used in the background (architecture §8.2). Each editor holds its own lease and releases it as it closes.
+    func leaseOpenProject(contentKey key: String) -> CacheKeyLease {
+        let lease = cacheKeys.leaseNow(key)
+        let store = CacheStore(locations: locations), previous = cacheTouches
+        cacheTouches = Task.detached(priority: .utility) {
+            await previous?.value
+            await store.touch(contentKey: key)
         }
-        for (id, key) in openProjectKeys where openProjectLeases[id] == nil {
-            openProjectLeases[id] = cacheKeys.leaseNow(key)
-            let store = CacheStore(locations: locations), previous = cacheTouches
-            cacheTouches = Task.detached(priority: .utility) {
-                await previous?.value
-                await store.touch(contentKey: key)
-            }
-        }
+        return lease
     }
     /// The content keys in use in this data folder's cache (architecture §8.2).
     var cacheKeys: CacheKeyRegistry { CacheKeyRegistry.shared(cache: locations.cache) }

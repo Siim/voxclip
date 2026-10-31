@@ -221,7 +221,7 @@ struct CacheEvictionTests {
         #expect(Self.contents(unused[2]) == Self.stripped)
     }
 
-    /// Two windows each with a project open lease their keys, as `AppModel.openProjectKeys` does; even Clear everything
+    /// Two windows each with a project open lease their keys, as each `EditorModel` does; even Clear everything
     /// leaves both entries alone, and a key stays in use while any window still has it open.
     @Test func openProjectsInTwoWindowsKeepTheirEntries() async throws {
         let locations = try locations()

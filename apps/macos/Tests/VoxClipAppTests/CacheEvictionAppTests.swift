@@ -150,8 +150,9 @@ private actor TemporarySettingsStore: SettingsStore {
         #expect(app.cacheEviction.completedRuns == 1)
     }
 
-    /// Each window's editor leases its project's key as it starts (`openProjectKeys`). Clear cache and background passes
-    /// leave those entries alone, a key stays leased while any window still has its video open, and closing releases it.
+    /// Each window's editor leases its project's key as it starts (`EditorModel.holdCacheEntry`). Clear cache and
+    /// background passes leave those entries alone, a key stays leased while any window still has its video open, a
+    /// relink and its undo move the lease, and closing releases it.
     @Test func openProjectsInEveryWindowKeepTheirEntries() async throws {
         let app = try model()
         defer { try? FileManager.default.removeItem(at: app.locations.root) }
@@ -162,23 +163,84 @@ private actor TemporarySettingsStore: SettingsStore {
         // The same video open as another project in a third window.
         let third = try editor(app, id: "project-3", key: Self.key("b"))
         await first.start(); await second.start(); await third.start()
+        // Marking each entry used leases it for a moment; those marks end before the leases are checked.
+        await app.cacheTouches?.value
         #expect(app.cacheKeys.leasedKeys == [Self.key("a"), Self.key("b")])
         await app.cacheEviction.clearCache()
         #expect(contents(one) == Self.full && contents(two) == Self.full)
         #expect(contents(closed) == Self.stripped)
         first.close(); second.close()
         #expect(app.cacheKeys.leasedKeys == [Self.key("b")])
-        // Relinking the third project to another video moves its lease, as `resolveMediaIdentity` does.
-        app.openProjectKeys["project-3"] = Self.key("c")
-        #expect(app.cacheKeys.leasedKeys == [Self.key("c")])
+        // Relinking the third project to another video moves its lease (`replace` with "Locate media").
+        let original = third.project
+        var relinked = original
+        relinked.media.source.contentKey = Self.key("c")
+        third.replace(relinked, name: "Locate media")
+        await app.cacheTouches?.value
+        #expect(app.cacheKeys.leasedKeys == [Self.key("c")] && third.cacheLeaseKey == Self.key("c"))
         app.cacheEviction = scheduler(app, limit: 0)
         app.requestCacheEviction()
         await app.cacheEviction.waitUntilIdle()
         #expect(!FileManager.default.fileExists(atPath: one.path) && !FileManager.default.fileExists(atPath: two.path))
         #expect(contents(closed) == Self.stripped)
+        // Undoing the relink moves it back.
+        third.replace(original, name: "Locate media", restoringSnapshot: true)
+        await app.cacheTouches?.value
+        #expect(app.cacheKeys.leasedKeys == [Self.key("b")] && third.cacheLeaseKey == Self.key("b"))
         third.close()
         #expect(app.cacheKeys.leasedKeys.isEmpty)
+    }
+
+    /// Editors lease per window, not per project id. A Versions-browser window shows the project's id too, perhaps with
+    /// the video it had before a relink; closing it leaves the main window's lease alone (architecture §8.2).
+    @Test func editorsOfTheSameProjectHoldTheirOwnLeases() async throws {
+        let app = try model()
+        defer { try? FileManager.default.removeItem(at: app.locations.root) }
+        let current = try await entry(Self.key("a"), in: app, audio: 4_000, hoursAgo: 72)
+        let older = try await entry(Self.key("b"), in: app, audio: 4_000, hoursAgo: 71)
+        let main = try editor(app, id: "project", key: Self.key("a"))
+        let beforeRelink = try editor(app, id: "project", key: Self.key("b")), sameVideo = try editor(app, id: "project", key: Self.key("a"))
+        await main.start(); await beforeRelink.start(); await sameVideo.start()
         await app.cacheTouches?.value
+        #expect(app.cacheKeys.leasedKeys == [Self.key("a"), Self.key("b")])
+        beforeRelink.close(); sameVideo.close()
+        #expect(app.cacheKeys.leasedKeys == [Self.key("a")] && main.cacheLeaseKey == Self.key("a"))
+        await app.cacheEviction.clearEverything()
+        #expect(contents(current) == Self.full)
+        #expect(!FileManager.default.fileExists(atPath: older.path))
+        main.close()
+        #expect(app.cacheKeys.leasedKeys.isEmpty && main.cacheLeaseKey == nil)
+    }
+
+    /// A reload of the document (a revert, or the .voxclip file changing on disk) moves the lease to the reloaded
+    /// project at once. It holds even while the video is missing, when the envelope is all the audiogram has.
+    @Test func aReloadMovesTheLeaseEvenWhenTheVideoIsMissing() async throws {
+        let app = try model()
+        defer { try? FileManager.default.removeItem(at: app.locations.root) }
+        let opened = try await entry(Self.key("a"), in: app, audio: 4_000, hoursAgo: 72)
+        let reverted = try await entry(Self.key("b"), in: app, audio: 4_000, hoursAgo: 71)
+        // The fixture's video is not on this machine.
+        let shared = try SharedResources.locate()
+        var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        project.id = "missing-video"
+        project.media.source.contentKey = Self.key("a")
+        let document = VoxClipDocument(project: project)
+        let editor = EditorModel(document: document, app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        await editor.start()
+        await app.cacheTouches?.value
+        #expect(!editor.mediaResolved && editor.cacheLeaseKey == Self.key("a"))
+        var reloaded = project
+        reloaded.media.source.contentKey = Self.key("b")
+        document.replaceProject(reloaded)
+        editor.reloadFromDocument(previousProjectID: project.id)
+        #expect(app.cacheKeys.leasedKeys == [Self.key("b")])
+        await editor.waitForPendingPreviewForAudit()
+        #expect(!editor.mediaResolved && editor.cacheLeaseKey == Self.key("b"))
+        await app.cacheTouches?.value
+        await app.cacheEviction.clearEverything()
+        #expect(contents(reverted) == Self.full)
+        #expect(!FileManager.default.fileExists(atPath: opened.path))
     }
 
     /// Opening a project marks its entry used, so a video opened today outlives one extracted later but not opened since.
