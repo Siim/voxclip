@@ -610,10 +610,10 @@ enum VCTokens {
     static let sizeTranscriptMinWidth: CGFloat = 440
     static let sizeTranscriptMeasureMax: CGFloat = 680
     static let sizeSidebarMin: CGFloat = 220
-    static let sizeSidebarIdeal: CGFloat = 252
+    static let sizeSidebarIdeal: CGFloat = 224
     static let sizeSidebarMax: CGFloat = 320
     static let sizeRightColumnMin: CGFloat = 300
-    static let sizeRightColumnIdeal: CGFloat = 360
+    static let sizeRightColumnIdeal: CGFloat = 404
     static let sizeRightColumnMax: CGFloat = 560
     static let sizeStagePortraitMaxWidth: CGFloat = 180
     static let sizeStagePortraitMaxHeight: CGFloat = 320

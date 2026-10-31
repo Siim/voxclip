@@ -73,7 +73,8 @@ test('a windows extension replaces a dimension in Tokens.xaml only', () => {
   assert.ok(output.swift.includes('static let spacingTranscriptGutter: CGFloat = 84'));
   assert.ok(output.xaml.includes('<x:Double x:Key="VcSpacingTranscriptGutter">76</x:Double>'));
   assert.ok(output.xaml.includes('<Thickness x:Key="VcSpacingTranscriptGutterThickness">76</Thickness>'));
-  assert.ok(output.swift.includes('static let sizeSidebarIdeal: CGFloat = 252'));
+  assert.ok(output.swift.includes('static let sizeSidebarIdeal: CGFloat = 224'));
+  assert.ok(output.swift.includes('static let sizeRightColumnIdeal: CGFloat = 404'));
   assert.ok(output.xaml.includes('<x:Double x:Key="VcSizeSidebar">264</x:Double>'));
   assert.ok(!output.xaml.includes('VcSizeSidebarIdeal'));
   assert.ok(output.xaml.includes('<x:Double x:Key="VcSizeRightColumnIdeal">388</x:Double>'));
