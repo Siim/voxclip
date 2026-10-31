@@ -13,11 +13,12 @@ public static class VoiceLabTakeProcessing
     {
         var rate = input.SourceSampleRate;
         var window = input.Window;
+        var total = input.Source.TotalFrames;
         if (!input.ProviderConsent || string.IsNullOrEmpty(input.ContentKey) || string.IsNullOrEmpty(input.Text) || input.Text.EnumerateRunes().Count() > 5000 ||
-            rate is < 8000 or > 96000 || input.Source.Length == 0 || input.Source.Any(sample => !float.IsFinite(sample)) ||
-            window.StartSample < 0 || window.EndSample > input.Source.Length || window.EndSample <= window.StartSample ||
+            rate is < 8000 or > 96000 || total <= 0 || !input.Source.IsFinite ||
+            window.StartSample < 0 || window.EndSample > total || window.EndSample <= window.StartSample ||
             !double.IsFinite(window.Start) || !double.IsFinite(window.End) || window.Start < 0 || window.End <= window.Start ||
-            window.End > input.Source.Length / (double)rate || Frames(window.Start, rate) != window.StartSample || Frames(window.End, rate) != window.EndSample)
+            window.End > total / (double)rate || SourceFrames(window.Start, rate) != window.StartSample || SourceFrames(window.End, rate) != window.EndSample)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
         var tokens = VoiceLabTakeQuality.Tokens(input.Text);
         string[] Bridge(IReadOnlyList<string> ids) => ids.SelectMany(id =>
@@ -30,8 +31,8 @@ public static class VoiceLabTakeProcessing
         var trailing = Bridge(window.RightBridgeWordIds);
         if (tokens.Length == 0 || !tokens.Take(leading.Length).SequenceEqual(leading) || !tokens.TakeLast(trailing.Length).SequenceEqual(trailing))
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
-        var level = VoiceLabLoudness.NeighbourhoodVoicedRmsDb(input.Source, rate, (int)window.StartSample, (int)window.EndSample);
-        var tone = input.CleanAudioOn ? null : VoiceLabRoomToneSelection.Select(input.Items, Envelope(input.Source, rate), rate, input.Source.Length);
+        var level = VoiceLabLoudness.NeighbourhoodVoicedRmsDb(input.Source, rate, window.StartSample, window.EndSample);
+        var tone = input.CleanAudioOn ? null : VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, rate, total);
         return new(level, tone);
     }
     public static AudioEnvelope Envelope(float[] samples, int sampleRate)
@@ -91,4 +92,5 @@ public static class VoiceLabTakeProcessing
         return bytes;
     }
     private static int Frames(double seconds, int rate) => checked((int)Math.Floor(seconds * rate + 0.5));
+    private static long SourceFrames(double seconds, int rate) => checked((long)Math.Floor(seconds * rate + 0.5));
 }

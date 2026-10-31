@@ -1,0 +1,58 @@
+{
+  "schema": "voxclip-voice-lab-rewrite-source-regions/1",
+  "takeAssetRate": 24000,
+  "nearWindow": [
+    { "id": "speaker-span-near-the-start", "rate": 48000, "totalFrames": 2880000, "startSample": 48000, "endSample": 96000,
+      "leftSeam": "hard", "rightSeam": "hard", "incomingSilence": null, "outgoingSilence": null, "expected": [0, 480000] },
+    { "id": "hard-seams-keep-six-seconds", "rate": 8000, "totalFrames": 480000, "startSample": 240000, "endSample": 248000,
+      "leftSeam": "hard", "rightSeam": "hard", "incomingSilence": null, "outgoingSilence": null, "expected": [192000, 296000] },
+    { "id": "gap-seams-reach-past-their-silence", "rate": 8000, "totalFrames": 480000, "startSample": 240000, "endSample": 248000,
+      "leftSeam": "gap", "rightSeam": "gap", "incomingSilence": 8, "outgoingSilence": 0.5, "expected": [128000, 300000] },
+    { "id": "a-hard-seam-lends-nothing", "rate": 8000, "totalFrames": 480000, "startSample": 240000, "endSample": 248000,
+      "leftSeam": "gap", "rightSeam": "hard", "incomingSilence": 8, "outgoingSilence": 8, "expected": [128000, 296000] },
+    { "id": "take-edge-seams-lend-nothing", "rate": 48000, "totalFrames": 2880000, "startSample": 1440000, "endSample": 1488000,
+      "leftSeam": "none", "rightSeam": "none", "incomingSilence": 3, "outgoingSilence": 3, "expected": [1152000, 1776000] },
+    { "id": "zero-and-negative-silence-lend-nothing", "rate": 8000, "totalFrames": 480000, "startSample": 240000, "endSample": 248000,
+      "leftSeam": "gap", "rightSeam": "gap", "incomingSilence": 0, "outgoingSilence": -1, "expected": [192000, 296000] },
+    { "id": "lending-capped-at-290-seconds", "rate": 8000, "totalFrames": 16000000, "startSample": 8000000, "endSample": 8008000,
+      "leftSeam": "gap", "rightSeam": "gap", "incomingSilence": 400, "outgoingSilence": null, "expected": [5632000, 8056000] },
+    { "id": "a-fraction-of-a-frame-rounds-up-then-aligns", "rate": 44100, "totalFrames": 2646000, "startSample": 441000, "endSample": 485100,
+      "leftSeam": "gap", "rightSeam": "gap", "incomingSilence": 0.00001, "outgoingSilence": 1.5, "expected": [176253, 815850] },
+    { "id": "clamped-at-the-track-end", "rate": 48000, "totalFrames": 480000, "startSample": 384000, "endSample": 432000,
+      "leftSeam": "hard", "rightSeam": "hard", "incomingSilence": null, "outgoingSilence": null, "expected": [96000, 480000] },
+    { "id": "96-khz-grid-of-four", "rate": 96000, "totalFrames": 19200000, "startSample": 9600000, "endSample": 9696000,
+      "leftSeam": "hard", "rightSeam": "hard", "incomingSilence": null, "outgoingSilence": null, "expected": [9024000, 10272000] },
+    { "id": "11025-hz-grid-of-147", "rate": 11025, "totalFrames": 661500, "startSample": 220500, "endSample": 231525,
+      "leftSeam": "hard", "rightSeam": "hard", "incomingSilence": null, "outgoingSilence": null, "expected": [154350, 297675] }
+  ],
+  "aligned": [
+    { "rate": 44100, "lower": 441005, "upper": 882000, "totalFrames": 1323000, "expected": [441000, 882000] },
+    { "rate": 44100, "lower": 441100, "upper": 500000, "totalFrames": 882000, "expected": [441000, 500000] },
+    { "rate": 48000, "lower": -5, "upper": 10000000, "totalFrames": 96000, "expected": [0, 96000] },
+    { "rate": 8000, "lower": 1000, "upper": 2000, "totalFrames": 500, "expected": [500, 500] },
+    { "rate": 8000, "lower": 300, "upper": 100, "totalFrames": 1000, "expected": [300, 300] },
+    { "rate": 96000, "lower": 1000003, "upper": 2000000, "totalFrames": 5000000, "expected": [1000000, 2000000] },
+    { "rate": 22050, "lower": 14705, "upper": 30000, "totalFrames": 1323000, "expected": [14700, 30000] }
+  ],
+  "merged": [
+    { "ranges": [[10, 20], [0, 5], [5, 8], [18, 30]], "expected": [[0, 8], [10, 30]] },
+    { "ranges": [[0, 10], [2, 3]], "expected": [[0, 10]] },
+    { "ranges": [[5, 6], [7, 8]], "expected": [[5, 6], [7, 8]] },
+    { "ranges": [[3, 3], [3, 9]], "expected": [[3, 9]] },
+    { "ranges": [], "expected": [] }
+  ],
+  "decodeChunkFrames": [
+    { "rate": 8000, "expected": 2240000 },
+    { "rate": 11025, "expected": 3087000 },
+    { "rate": 16000, "expected": 4480000 },
+    { "rate": 22050, "expected": 6174000 },
+    { "rate": 24000, "expected": 6720000 },
+    { "rate": 32000, "expected": 8960000 },
+    { "rate": 44100, "expected": 12348000 },
+    { "rate": 48000, "expected": 13440000 },
+    { "rate": 88200, "expected": 24696000 },
+    { "rate": 89279, "expected": 24998120 },
+    { "rate": 89280, "expected": 24998191 },
+    { "rate": 96000, "expected": 24998057 }
+  ]
+}

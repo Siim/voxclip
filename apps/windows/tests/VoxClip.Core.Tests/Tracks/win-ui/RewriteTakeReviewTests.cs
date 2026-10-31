@@ -111,7 +111,11 @@ public sealed class RewriteTakeReviewTests
                 storage: new(Editor.Project.Id, Path.Combine(root, "paid"), Path.Combine(root, "scratch"))) { State = state };
             Task Ui(Action action) { OnUi = true; try { action(); } finally { OnUi = false; } return Task.CompletedTask; }
             Generation = new(Runner, Runner.DiscoverAsync,
-                (voice, model, seed, ct) => Session.GenerationInputAsync(voice, model, seed, true, _ => Task.FromResult(new float[480_000]), ct),
+                (voice, model, seed, ct) => Session.GenerationInputAsync(voice, model, seed, true, (request, _) =>
+                {
+                    var silence = new float[checked((int)request.Frames)];
+                    return Task.FromResult((VoiceLabSourceExcerpt.Whole(silence), VoiceLabTakeProcessing.Envelope(silence, request.SampleRate)));
+                }, ct),
                 _ => Task.FromResult(true), _ => Task.FromResult<decimal?>(null), () => Current && Session.GenerationIsCurrent, Ui, timeProvider: Clock);
             Session.ConfigureGeneration(Generation);
             Audition = new(() => { var render = new Render(Preview, () => OutputReason); Endpoints.Add(render); return render; },

@@ -330,8 +330,7 @@ internal sealed partial class RewritePanel : Grid
             var fake = new DebugRewriteTakeRunner(Path.Combine(VoxClip.Core.Services.Project.SharedResources.ResolveRoot(), "fixtures", "voice-lab", "take-run-cases.json")) { State = state };
             var generation = new RewriteGeneration(fake, fake.DiscoverAsync,
                 (voiceId, modelId, seed, ct) => session.GenerationInputAsync(voiceId, modelId, seed, true,
-                    _ => Task.FromResult(new float[checked((int)Math.Floor(session.Project.Media.Source.DurationSeconds *
-                        (session.Project.Media.Source.Audio?.SampleRate ?? 48_000) + 0.5))]), ct),
+                    (request, _) => Task.FromResult(RewriteSourceFixture.Silent(request)), ct),
                 _ => Task.FromResult(true), _ => Task.FromResult<decimal?>(null), () => session.GenerationIsCurrent);
             session.ConfigureGeneration(generation);
             await generation.DiscoverAsync();

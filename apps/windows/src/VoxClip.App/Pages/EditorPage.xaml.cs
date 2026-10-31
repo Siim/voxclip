@@ -585,8 +585,7 @@ public sealed partial class EditorPage : Page
             VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi);
         IVoiceLabTakeRunner runner = backend.Runner;
         Func<CancellationToken, Task<RewriteGenerationChoices>> discover = ct => backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct);
-        Func<CancellationToken, Task<float[]>> readSource = ct => RewriteGenerationBackend.ReadSourceAsync(media?.Path ?? "",
-            RewriteSourceLimit.Frames(session.Project), session.Project.Media.Source.Audio?.SampleRate ?? 0, ct);
+        var readSource = RewriteSourceRequest.Reader(() => media?.Path ?? "", VoiceLabSourceAudio.RewriteSourceAsync);
         Func<Guid, VoiceLabTakeScratch?> scratch = backend.Runner.Scratch;
         Func<Guid, Task> reject = backend.Runner.RejectAsync;
         async Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)> Publish(Guid id, DateTimeOffset date, CancellationToken ct)
@@ -606,8 +605,7 @@ public sealed partial class EditorPage : Page
         if (fake is not null)
         {
             runner = fake; discover = fake.DiscoverAsync;
-            readSource = _ => Task.FromResult(new float[checked((int)Math.Floor(session.Project.Media.Source.DurationSeconds *
-                (session.Project.Media.Source.Audio?.SampleRate ?? 48_000) + 0.5))]);
+            readSource = (request, _) => Task.FromResult(RewriteSourceFixture.Silent(request));
             scratch = fake.Scratch; reject = fake.RejectAsync; publish = fake.PublishAsync;
             releaseRunner = () => { backend.Dispose(); fake.Dispose(); };
             watchKeys = false;

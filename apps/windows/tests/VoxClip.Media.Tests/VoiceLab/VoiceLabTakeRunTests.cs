@@ -354,10 +354,13 @@ public sealed class VoiceLabTakeRunTests
         internal readonly VoiceLabSpendLedger Ledger;
         internal readonly VoiceLabTakeRun Run;
         internal readonly VoiceLabTakeInput Input;
+        internal readonly float[] Samples;
         internal readonly VoiceConsentRecord Record;
+        /// <summary>The source speech each authorization was asked about.</summary>
+        internal readonly List<float[]> Speech = [];
         internal bool SpeakerFailure;
         internal bool Current = true;
-        internal Fixture()
+        internal Fixture(Func<VoiceLabTakeInput, VoiceLabTakeInput>? input = null)
         {
             Directory.CreateDirectory(Root);
             var locations = new DataLocations(Root, Path.Combine(Root, "settings.json"), Path.Combine(Root, "Models"), Path.Combine(Root, "Cache"),
@@ -370,9 +373,10 @@ public sealed class VoiceLabTakeRunTests
             Store.SaveStatement(wav, Record.RecordId); Store.Save(Record);
             Ledger = new(locations);
             Client = ElevenLabsVoiceLab.ForTesting(Keys, Remote, ElevenLabsRegion.Default, clock: Clock, spend: Ledger);
-            var checks = new VoiceLabTakeRunChecks(_ => { }, (record, _, request, binding, model, ct) =>
+            var checks = new VoiceLabTakeRunChecks(_ => { }, (record, speech, request, binding, model, ct) =>
             {
                 ct.ThrowIfCancellationRequested(); Store.ValidateUse(record);
+                lock (Speech) Speech.Add(speech);
                 return Task.FromResult(new OwnVoicePolicy(record.RecordId, record.VoiceId, true, true, true, true, true)
                 {
                     DispatchPermit = new(Store, record.RecordId, request, () => Store.ValidateUse(record), binding),
@@ -381,7 +385,7 @@ public sealed class VoiceLabTakeRunTests
             }, (_, _, ct) => { ct.ThrowIfCancellationRequested(); return Task.FromResult(SpeakerFailure ? new float[] { 0, 1 } : [1f, 0f]); });
             Run = new(Client, Store, new(Guid.NewGuid().ToString("D"), Path.Combine(Root, "Paid"), Path.Combine(Root, "scratch")), Gate,
                 _ => Task.FromResult(Current), checks);
-            var source = Enumerable.Range(0, 24000 * 8).Select(index =>
+            var source = Samples = Enumerable.Range(0, 24000 * 8).Select(index =>
             {
                 var seconds = index / 24000.0;
                 return seconds is >= 1.9 and < 2.1 or >= 5.9 and < 6.1 or >= 6.5 and < 7.1 ? 0.001f : (float)(0.1 * Math.Sin(2 * Math.PI * 100 * seconds));
@@ -390,6 +394,7 @@ public sealed class VoiceLabTakeRunTests
             var window = new VoiceLabWindow("old", "old", [], [], 2, 6, 48000, 144000, new(VoiceLabSeamKind.Hard, 2, 48000, 288), new(VoiceLabSeamKind.Hard, 6, 144000, 288));
             Input = new("Hello", "eleven_v3", Record.RecordId, "en", uint.MaxValue, "synthetic-source", source, 24000,
                 [Word("before", 0, 1.9), Word("old", 2.1, 5.9), Word("after", 6.1, 6.5), Word("last", 7.1, 7.9)], new HashSet<string>(), window, null, null, false, true);
+            if (input is not null) Input = input(Input);
         }
         internal async Task<VoiceLabTakeRunQuote> Prepare()
         {
@@ -534,8 +539,77 @@ public sealed class VoiceLabTakeRunTests
     {
         await using var fixture = new Fixture();
         var quote = await fixture.Prepare();
-        Array.Fill(fixture.Input.Source, float.NaN);
+        // The input copied the samples it was built from, so changing them cannot reach the prepared run.
+        Array.Fill(fixture.Samples, float.NaN);
         Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, (await fixture.Run.ExecuteAsync(quote, true, ct: Token)).End);
+    }
+    /// <summary>A take run on a track past the old 30,000,000-frame cap (11 min 20 s at 44.1 kHz) from the regions
+    /// VoiceLabSourceAudio.RewriteSourceAsync decodes stages, uploads for QA and ranks exactly what the same run does from the
+    /// whole decoded track: the same level, room tone, speaker-check span and 24 kHz frames around the window.</summary>
+    [Fact]
+    public async Task TakesFromALongSourcesRegionsEqualTakesFromTheWholeSource()
+    {
+        const int rate = 44_100;
+        const long frames = 30_000_001;
+        // A 100 Hz tone with quiet gaps: the room-tone pause at 100.0–100.6 s and the window's seams at 402 s and 406 s, as in the
+        // fixture's 8 s source.
+        static short Pcm(long frame)
+        {
+            var seconds = frame / (double)rate;
+            return seconds is >= 100 and < 100.6 or >= 401.9 and < 402.1 or >= 405.9 and < 406.1 ? (short)33
+                : (short)Math.Round(3_277 * Math.Sin(2 * Math.PI * 100 * seconds), MidpointRounding.AwayFromZero);
+        }
+        static TimedWord Word(string id, double start, double end) => new(id, id, WordKind.Word, start, end, null, null, 1, "one", TimingSource.Native);
+        TimedWord[] items = [Word("intro", 0, 100), Word("before", 100.6, 401.9), Word("old", 402.1, 405.9), Word("after", 406.1, 680)];
+        const long first = 402L * rate, last = 406L * rate;
+        var window = new VoiceLabWindow("old", "old", [], [], 402, 406, first, last,
+            new(VoiceLabSeamKind.Hard, 402, first, 529), new(VoiceLabSeamKind.Hard, 406, last, 529));
+        var spans = new List<(long Start, long End)>();
+        var read = await VoiceLabSourceAudio.RewriteSourceAsync("long-source", frames, rate, window, null, null, items,
+            SourceConversion.Fake(frames, Pcm, spans), Token);
+        // Three envelope chunks, then two regions: 2.5 s around the room-tone run at 100 s and 16 s around the window.
+        Assert.Equal(5, spans.Count);
+        Assert.Equal(new long[] { 4_365_900, 396L * rate }, read.Excerpt.Regions.Select(region => region.Start));
+        Assert.Equal(new long[] { 4_476_150, 412L * rate }, read.Excerpt.Regions.Select(region => region.End));
+        var whole = new float[frames];
+        for (var frame = 0; frame < whole.Length; frame++) whole[frame] = Pcm(frame) / 32768f;
+        VoiceLabTakeInput Bind(VoiceLabTakeInput input, VoiceLabSourceExcerpt source, AudioEnvelope envelope) =>
+            input with { Source = source, SourceEnvelope = envelope, SourceSampleRate = rate, Items = items, Window = window };
+        await using var wholeRun = new Fixture(input => Bind(input, VoiceLabSourceExcerpt.Whole(whole), VoiceLabTakeProcessing.Envelope(whole, rate)));
+        await using var regionRun = new Fixture(input => Bind(input, read.Excerpt, read.Envelope));
+        Assert.Equal(VoiceLabTakeProcessing.Preflight(wholeRun.Input), VoiceLabTakeProcessing.Preflight(regionRun.Input));
+        var expected = await wholeRun.Run.ExecuteAsync(await wholeRun.Prepare(), true, ct: Token);
+        var actual = await regionRun.Run.ExecuteAsync(await regionRun.Prepare(), true, ct: Token);
+        Assert.Equal(expected.End, actual.End);
+        Assert.Equal(expected.Rows.Count, actual.Rows.Count);
+        Assert.Contains(actual.Rows, row => row.Audio is { RoomTone: not null } && row.Qa is not null);
+        foreach (var (before, after) in expected.Rows.Zip(actual.Rows))
+        {
+            Assert.Equal(before.Failure?.GetType(), after.Failure?.GetType());
+            Assert.Equal(before.Audio is null, after.Audio is null);
+            if (before.Audio is { } audio && after.Audio is { } staged)
+            {
+                Assert.Equal(audio.RoomTone, staged.RoomTone);
+                Assert.Equal(audio.GainDb, staged.GainDb);
+                Assert.Equal(audio.Trimmed, staged.Trimmed);
+                Assert.Equal(audio.Mixed, staged.Mixed);
+                Assert.Equal(audio.Seams, staged.Seams);
+                Assert.Equal((audio.PatchStart, audio.PatchEnd), (staged.PatchStart, staged.PatchEnd));
+            }
+            Assert.Equal(before.Qa is null, after.Qa is null);
+            if (before.Qa is { } qa && after.Qa is { } measured)
+            {
+                Assert.Equal(qa.Failures, measured.Failures);
+                Assert.Equal((qa.TranscriptMatch, qa.LufsJumpLu, qa.PeakDbfs, qa.SpeakerScore),
+                    (measured.TranscriptMatch, measured.LufsJumpLu, measured.PeakDbfs, measured.SpeakerScore));
+            }
+            Assert.Equal(before.Score, after.Score);
+        }
+        // The QA uploads and the speaker-check speech are the same bytes and samples.
+        Assert.NotEmpty(regionRun.Remote.QaWavs);
+        Assert.Equal(wholeRun.Remote.QaWavs, regionRun.Remote.QaWavs);
+        Assert.NotEmpty(regionRun.Speech);
+        Assert.Equal(wholeRun.Speech, regionRun.Speech);
     }
     [Fact]
     public async Task InvalidPreflightNeverPreparesAPaidRun()
