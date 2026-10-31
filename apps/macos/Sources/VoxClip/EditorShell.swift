@@ -370,6 +370,9 @@ extension NSView {
 @MainActor final class ShellSplitView: NSSplitView {
     var dividerToken = "line.default"
     var onDividerDrag: (() -> Void)?
+    /// Runs with `true` before a divider drag starts and with `false` once it ends, whether
+    /// or not it moved anything.
+    var aroundDividerDrag: ((Bool) -> Void)?
     /// A divider is being dragged: the shell places no divider until the drag ends.
     private(set) var isDragging = false
     #if DEBUG
@@ -381,9 +384,11 @@ extension NSView {
         dividerMouseDowns += 1
         #endif
         let before = arrangedSubviews.map(\.frame.size)
+        aroundDividerDrag?(true)
         isDragging = true
         super.mouseDown(with: event)
         isDragging = false
+        aroundDividerDrag?(false)
         guard arrangedSubviews.map(\.frame.size) != before else { return }
         onDividerDrag?()
     }
@@ -552,9 +557,9 @@ struct EditorShellState: Equatable {
 /// column and the right column over the timeline panel, or Home.
 @MainActor final class EditorShellController: NSViewController, NSSearchFieldDelegate, ShellChromeFocus {
     let shell: WorkspaceShell
-    private let content = ShellSplitController(vertical: true, identifier: "voxclip.shell.content")
+    let content = ShellSplitController(vertical: true, identifier: "voxclip.shell.content")
     private let explorerHeader = ShellBand(fill: "bg.window", bottomLine: false, movesWindow: true, region: "explorerHeader")
-    private var explorerItem: NSSplitViewItem?
+    private(set) var explorerItem: NSSplitViewItem?
     /// What `apply` last asked of the Explorer. Only a change from it is the user's: the
     /// layout can be ahead of the pane until SwiftUI applies it.
     private var explorerShown = true
@@ -615,6 +620,9 @@ struct EditorShellState: Equatable {
             return explorerItem.isCollapsed && self.shell.windowWidth < self.shell.explorerCollapseWidth
         }
         addChild(content)
+        // A drag of the Explorer's divider stops where the editor and the right column keep
+        // their minimums (impl-plan §3.5), so it never squeezes them or passes the width rule.
+        content.divider.aroundDividerDrag = { [weak self] dragging in self?.limitExplorerDrag(dragging) }
         shell.chromeFocus = self
         let status = StatusBarView(shell: shell)
         status.shellGroup("Status")
@@ -652,6 +660,15 @@ struct EditorShellState: Equatable {
     func tearDown() {
         editorWork?.tearDown()
         statusBar?.tearDown()
+    }
+    /// The Explorer item's maximum is `explorerMaximumWidth` only while its divider is dragged,
+    /// when the window's width is fixed, and the Explorer's own 320 otherwise. A maximum that
+    /// followed window resizes could catch the Explorer as it comes back from a narrow window
+    /// and keep it narrower than its width.
+    private func limitExplorerDrag(_ dragging: Bool) {
+        let limit = CGFloat(dragging ? shell.explorerMaximumWidth : WorkspaceLayout.explorerRange.upperBound)
+        guard let explorerItem, explorerItem.maximumThickness != limit else { return }
+        explorerItem.maximumThickness = limit
     }
 
     private func buildWorkArea() {

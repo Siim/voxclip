@@ -164,6 +164,29 @@ private actor LaunchSettings: SettingsStore {
         #expect(!shell.layout.explorerVisible)
     }
 
+    /// A docked Explorer hides at any width. A stored Explorer width this window has no room
+    /// for (320, dragged in a wider window) puts the threshold past the window's width; ⌃⌘S
+    /// and Find Clips must still act on the docked pane, not open the overlay over it.
+    @Test func aDockedExplorerHidesAtAnyWidthAndFindClipsLeavesIt() {
+        let shell = WorkspaceShell(app: AppModel())
+        shell.windowWidth = 1200
+        #expect(shell.layout.explorerVisible && shell.explorerMaximumWidth == 296)
+        shell.layout.rememberExplorerWidth(320)
+        #expect(shell.explorerCollapseWidth > shell.windowWidth && shell.layout.explorerVisible)
+        shell.revealSidebar()
+        #expect(shell.layout.explorerVisible && !shell.sidebarOverlay)
+        shell.toggleSidebar()
+        #expect(!shell.layout.explorerVisible && !shell.sidebarOverlay && !shell.sidebarShown)
+        // Shown again here it has no room beside both columns, so it opens over the editor.
+        shell.toggleSidebar()
+        #expect(!shell.layout.explorerVisible && shell.sidebarOverlay)
+        // The Explorer's drag limit keeps 904 beside it, within its own 220–320.
+        shell.windowWidth = 1440
+        #expect(shell.explorerMaximumWidth == 320)
+        shell.windowWidth = 1000
+        #expect(shell.explorerMaximumWidth == 220)
+    }
+
     /// impl-plan §3.5: the timeline starts at 216, or 40% of a short work area; a dragged
     /// height is the user's and is not clamped to it.
     @Test func theTimelineStartsAt216OrFortyPercentOfTheWorkArea() {

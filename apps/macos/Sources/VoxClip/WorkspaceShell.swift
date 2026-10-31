@@ -133,6 +133,11 @@ enum SidebarItem: Hashable {
     /// Below this window width the Explorer collapses to its overlay: the Explorer's width
     /// beside both minimums, 1,128 with a 224 Explorer.
     var explorerCollapseWidth: Double { layout.explorerWidth + Self.rightCollapseWidth }
+    /// The widest the Explorer's divider can be dragged in this window: the room left beside
+    /// the editor's and the right column's minimums (296 at 1200), within 220–320. So a drag
+    /// never moves `explorerCollapseWidth` past the window's width, and the docked Explorer
+    /// stays docked.
+    var explorerMaximumWidth: Double { (windowWidth - Self.rightCollapseWidth).clamped(to: WorkspaceLayout.explorerRange) }
     /// The AppKit F6 stops of this window's shell (EditorShellController).
     @ObservationIgnored weak var chromeFocus: ShellChromeFocus?
     private(set) var importProgress: String?
@@ -361,17 +366,20 @@ enum SidebarItem: Hashable {
     /// The right column's width for this window: dragged, else its starting width.
     var rightWidth: Double { layout.rightWidth }
     /// Shows a hidden sidebar for its Find Clips callout and progress (design §6.2). Below
-    /// 1,128 it shows as the overlay (impl-plan §3.5).
+    /// 1,128 it shows as the overlay (impl-plan §3.5); a docked Explorer already shows.
     func revealSidebar() {
+        guard !layout.explorerVisible else { return }
         if windowWidth < explorerCollapseWidth { sidebarOverlay = true; return }
         explorerHiddenByWidth = false
-        if !layout.explorerVisible { layout.explorerVisible = true }
+        layout.explorerVisible = true
     }
-    /// View > Show Sidebar and Hide Sidebar (⌃⌘S) and the Explorer toggle; below 1,128 the overlay.
+    /// View > Show Sidebar and Hide Sidebar (⌃⌘S) and the Explorer toggle. A docked Explorer
+    /// hides at any width; a hidden one shows as the overlay below 1,128.
     func toggleSidebar() {
+        if layout.explorerVisible { explorerHiddenByWidth = false; layout.explorerVisible = false; return }
         if windowWidth < explorerCollapseWidth { sidebarOverlay.toggle(); return }
         explorerHiddenByWidth = false
-        layout.explorerVisible.toggle()
+        layout.explorerVisible = true
     }
     var sidebarShown: Bool { layout.explorerVisible || sidebarOverlay }
     /// The right column shows, in its column or over the editor.

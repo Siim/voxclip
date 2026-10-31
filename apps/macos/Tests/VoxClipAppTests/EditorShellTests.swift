@@ -145,6 +145,26 @@ private final class FullScreenStandIn: NSWindow {
         #expect(work.rightOverlay == nil && overlay.superview == nil)
     }
 
+    /// A drag of the Explorer's divider stops where the editor (604) and the right column
+    /// (300) keep their minimums, so the dragged width never moves the Explorer's threshold
+    /// past the window and the work area is never squeezed (impl-plan §3.5). Outside a drag
+    /// the maximum is the Explorer's own, so a window resize never narrows it.
+    @Test func anExplorerDragLeavesTheEditorAndTheRightColumnTheirMinimums() async throws {
+        let (shell, controller, _) = try await openShell(width: 1200)
+        defer { controller.tearDown(); shell.editor?.close() }
+        let item = try #require(controller.explorerItem)
+        #expect(!item.isCollapsed && item.minimumThickness == 220 && item.maximumThickness == 320)
+        let drag = try #require(controller.content.divider.aroundDividerDrag)
+        drag(true)
+        #expect(item.maximumThickness == 296)
+        drag(false)
+        #expect(item.maximumThickness == 320)
+        shell.windowWidth = 1440
+        drag(true)
+        #expect(item.maximumThickness == 320)
+        drag(false)
+    }
+
     /// A hidden timeline panel is no F6 stop. Until V4 the panel stays while the right column
     /// is hidden: its toggle is unavailable and its edge does not collapse it.
     @Test func aHiddenTimelineIsNoF6StopAndStaysWhileTheRightColumnIsHidden() throws {
