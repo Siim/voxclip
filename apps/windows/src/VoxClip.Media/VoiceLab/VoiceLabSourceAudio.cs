@@ -87,6 +87,129 @@ public static class VoiceLabSourceAudio
     /// <summary>The take run resamples the source to the generated audio's rate for staging (§8.9).</summary>
     internal const int TakeAssetRate = 24_000;
 
+    /// <summary>The source a Rewrite take run reads (voice-lab.md §8.7–8.9) from a track of <paramref name="frames"/> frames at its
+    /// native <paramref name="sampleRate"/>: the whole track's 10 ms envelope (<see cref="VoiceLabTakeProcessing.Envelope"/>), which
+    /// the room-tone search reads, and only the frames around the window and around the room-tone run that search picks. The
+    /// envelope pass decodes the track in chunks of <see cref="DecodeChunkFrames"/> and keeps no samples, so memory stays bounded
+    /// however long the recording is. <paramref name="incomingSilence"/> and <paramref name="outgoingSilence"/> are the window's
+    /// §8.9.2 outside silences, as the take run's fit reads them (<see cref="VoiceLabWindowPlanner.LendableSilence"/>).</summary>
+    public static Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceAsync(string source, long frames, int sampleRate,
+        VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items, CancellationToken ct = default)
+        => RewriteSourceAsync(source, frames, sampleRate, window, incomingSilence, outgoingSilence, items, ConversionInputAsync, ct);
+
+    internal static async Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceAsync(string source, long frames, int sampleRate,
+        VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items,
+        Func<string, long, long, double, CancellationToken, Task<byte[]>> conversion, CancellationToken ct)
+    {
+        if (sampleRate is < 8_000 or > 96_000) throw Failure(VoiceLabSourceAudioErrorCode.UnsupportedRate);
+        if (frames <= 0) throw Failure(VoiceLabSourceAudioErrorCode.RangeOutsideMedia);
+        var levels = new AudioEnvelopeBuilder(sampleRate, 1);
+        await DecodeMonoAsync(source, 0, frames, sampleRate, conversion, (samples, _) => levels.Append(samples), ct).ConfigureAwait(false);
+        var envelope = levels.Finish();
+        var ranges = new List<(long Start, long End)> { NearWindow(window, incomingSilence, outgoingSilence, frames, sampleRate) };
+        // A search that finds no run leaves the refusal to the take run's own preflight, which repeats it.
+        VoiceLabRoomTone? tone = null;
+        try { tone = VoiceLabRoomToneSelection.Select(items, envelope, sampleRate, frames); }
+        catch (VoiceLabGeometryException) { }
+        if (tone is not null) ranges.Add(Aligned(tone.SourceStartSample - sampleRate, tone.SourceEndSample + sampleRate, frames, sampleRate));
+        var regions = new List<VoiceLabSourceExcerpt.Region>();
+        foreach (var (start, end) in Merged(ranges))
+        {
+            if (end <= start) continue;
+            var samples = new float[checked((int)(end - start))];
+            await DecodeMonoAsync(source, start, end, sampleRate, conversion,
+                (block, first) => block.CopyTo(samples.AsSpan((int)(first - start))), ct).ConfigureAwait(false);
+            regions.Add(new(start, samples));
+        }
+        return (new(frames, regions), envelope);
+    }
+
+    /// <summary>The frames around a window that a take run reads. The silence fit can widen the window into the silence a gap seam
+    /// lends (§8.9.2), which has no limit of its own, and staging reads the lead, tail and seam handles around the widened window.
+    /// So each side reaches past everything its seam can borrow, up to the 290 s a staged take holds, by 6 s more, which holds the
+    /// 3 s loudness neighbourhood, the half-second staging lead and tail and the seam handles with room to spare for the resampler.
+    /// The range also holds the 10 s speaker-check span, which starts 5 s before the window's centre.</summary>
+    internal static (long Start, long End) NearWindow(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, long total, int rate)
+    {
+        var start = window.StartSample;
+        var end = window.EndSample;
+        long Lendable(VoiceLabSeamPlacement seam, double? silence)
+        {
+            if (seam.Kind != VoiceLabSeamKind.Gap || silence is not { } seconds || !double.IsFinite(seconds) || seconds <= 0) return 0;
+            return (long)Math.Ceiling(Math.Min(seconds, VoiceLabTakeProcessing.MaximumQaSeconds) * rate);
+        }
+        var before = 6L * rate + Lendable(window.LeftSeam, incomingSilence);
+        var after = 6L * rate + Lendable(window.RightSeam, outgoingSilence);
+        var speakerStart = Math.Max(0, (start + end) / 2 - 5L * rate);
+        var speakerEnd = Math.Min(total, speakerStart + 10L * rate);
+        return Aligned(Math.Min(start - before, speakerStart), Math.Max(end + after, speakerEnd), total, rate);
+    }
+
+    /// <summary>Clamped to the track, with the start moved back to a frame on the 24 kHz grid, so a region resampled on its own
+    /// lands on the whole track's 24 kHz frames.</summary>
+    internal static (long Start, long End) Aligned(long lower, long upper, long total, int rate)
+    {
+        long a = rate, b = TakeAssetRate;
+        while (b != 0) (a, b) = (b, a % b);
+        var step = rate / a;
+        var start = Math.Min(Math.Max(0, lower), total) / step * step;
+        return (start, Math.Max(start, Math.Min(Math.Max(0, upper), total)));
+    }
+
+    /// <summary>Ranges sorted by start, with overlapping and touching ones joined.</summary>
+    internal static IReadOnlyList<(long Start, long End)> Merged(IEnumerable<(long Start, long End)> ranges)
+    {
+        var result = new List<(long Start, long End)>();
+        foreach (var range in ranges.OrderBy(range => range.Start))
+        {
+            if (result.Count > 0 && range.Start <= result[^1].End) result[^1] = (result[^1].Start, Math.Max(result[^1].End, range.End));
+            else result.Add(range);
+        }
+        return result;
+    }
+
+    /// <summary>280 s of frames, or fewer where that much PCM16 would reach the 50,000,000-byte limit <see cref="ConversionChunk"/>
+    /// enforces (above about 89 kHz), less the 20 ms remainder a chunk can absorb, so every chunk at every supported rate decodes.</summary>
+    internal static int DecodeChunkFrames(int sampleRate)
+    {
+        var largest = (UploadLimit - 1 - 44) / 2;
+        var trailing = (sampleRate + 49) / 50;
+        return Math.Min(280 * sampleRate, largest - trailing);
+    }
+
+    /// <summary>Source frames [<paramref name="start"/>, <paramref name="end"/>) as mono Float32, decoded in chunks of
+    /// <see cref="DecodeChunkFrames"/> through <paramref name="conversion"/> (<see cref="ConversionInputAsync"/>) and handed to
+    /// <paramref name="consume"/> in order. A remainder shorter than 20 ms joins the chunk before it.</summary>
+    private static async Task DecodeMonoAsync(string source, long start, long end, int sampleRate,
+        Func<string, long, long, double, CancellationToken, Task<byte[]>> conversion, SampleBlock consume, CancellationToken ct)
+    {
+        var chunk = DecodeChunkFrames(sampleRate);
+        var trailing = (sampleRate + 49) / 50;
+        var buffer = new float[65_536];
+        while (start < end)
+        {
+            ct.ThrowIfCancellationRequested();
+            var stop = Math.Min(end, start + chunk);
+            if (end - stop < trailing) stop = end;
+            var wav = await conversion(source, start, stop, sampleRate, ct).ConfigureAwait(false);
+            if (wav.LongLength != 44 + (stop - start) * 2) throw Failure(VoiceLabSourceAudioErrorCode.InvalidAudio);
+            Pcm16(wav, start, buffer, consume);
+            start = stop;
+        }
+    }
+
+    private static void Pcm16(byte[] wav, long first, float[] buffer, SampleBlock consume)
+    {
+        var frames = (wav.Length - 44) / 2;
+        for (var offset = 0; offset < frames; offset += buffer.Length)
+        {
+            var count = Math.Min(buffer.Length, frames - offset);
+            for (var index = 0; index < count; index++)
+                buffer[index] = BinaryPrimitives.ReadInt16LittleEndian(wav.AsSpan(44 + (offset + index) * 2, 2)) / 32768f;
+            consume(buffer.AsSpan(0, count), first + offset);
+        }
+    }
+
     /// <summary>An excerpt resampled region by region with Core's resampler. Each region must start on a frame of the target grid,
     /// as RewriteSourceAsync aligns them, so its output frames are the whole track's: more than the resampler's kernel radius from a region's inner
     /// edges they are bit-identical to resampling the whole track. The track's length is the whole track's, ⌊frames × target / rate⌋.</summary>
