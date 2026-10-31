@@ -36,7 +36,7 @@ public sealed class VoiceTrainingSpansTests
         Assert.Equal(VoiceTrainingSpans.MinSnrDb, constants.GetProperty("minSnrDb").GetDouble());
         Assert.Equal(VoiceTrainingSpans.TotalMinMs, constants.GetProperty("totalMinMs").GetInt64());
         Assert.Equal(VoiceTrainingSpans.TotalMaxMs, constants.GetProperty("totalMaxMs").GetInt64());
-        Assert.Equal(18, Cases().Count);
+        Assert.Equal(19, Cases().Count);
         // The original twelve cases have no preferRange: their selection is the unpreferred one.
         Assert.Equal(12, Document.Value.GetProperty("cases").EnumerateArray().Count(test => !test.TryGetProperty("preferRange", out _)));
     }

@@ -545,6 +545,52 @@
       }
     },
     {
+      "id": "prefer-overlap-at-end",
+      "duration": 200.0,
+      "items": [
+        {"kind":"word","start":2.0,"end":11.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":12.0,"end":21.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":22.0,"end":32.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":35.0,"end":45.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":55.0,"end":64.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":65.0,"end":74.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":75.0,"end":85.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":95.0,"end":104.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":105.0,"end":114.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":115.0,"end":125.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":130.0,"end":139.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":140.0,"end":149.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":150.0,"end":160.0,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":165.0,"end":174.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":175.0,"end":184.5,"conf":0.9,"speaker":null,"synthetic":false},
+        {"kind":"word","start":185.0,"end":190.0,"conf":0.9,"speaker":null,"synthetic":false}
+      ],
+      "excluded": [],
+      "preferRange": [50.0,110.0],
+      "frames": [[200,-70.0],[3000,-20.0],[300,-70.0],[1000,-25.0],[1000,-70.0],[3000,-35.0],[1000,-70.0],[3000,-40.0],[500,-70.0],[3000,-30.0],[500,-70.0],[2500,-28.0],[1000,-70.0]],
+      "expected": {
+        "status": "ok",
+        "availableMs": 155000,
+        "selectedMs": 100000,
+        "preferredMs": 45000,
+        "selected": [
+          {"startMs":2000,"endMs":32000,"snrDb":50.0},
+          {"startMs":35000,"endMs":45000,"snrDb":45.0},
+          {"startMs":55000,"endMs":85000,"snrDb":35.0},
+          {"startMs":95000,"endMs":125000,"snrDb":30.0}
+        ],
+        "qualifying": [
+          {"startMs":2000,"endMs":32000,"snrDb":50.0},
+          {"startMs":35000,"endMs":45000,"snrDb":45.0},
+          {"startMs":55000,"endMs":85000,"snrDb":35.0},
+          {"startMs":95000,"endMs":125000,"snrDb":30.0},
+          {"startMs":130000,"endMs":160000,"snrDb":40.0},
+          {"startMs":165000,"endMs":190000,"snrDb":42.0}
+        ],
+        "rejected": []
+      }
+    },
+    {
       "id": "prefer-no-qualifying-span",
       "duration": 200.0,
       "items": [

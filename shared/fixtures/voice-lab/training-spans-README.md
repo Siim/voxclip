@@ -46,6 +46,7 @@ compared with `==`; it is null for `short` and `unsplittable` pieces and for a
 | `prefer-fills-cap` | The preferred spans alone fill 120 s, so the 50 dB span outside the range is skipped; a fifth preferred 30 s span does not fit. |
 | `prefer-below-cap-filled-from-other` | 35 s of preferred spans come first, then the other spans by SNR; a 30 s span that would pass 120 s is skipped and a later 10 s one fits. |
 | `prefer-partial-overlap` | A span crossing the range start counts only its overlap; a span starting exactly at the range end is not preferred; the range is converted with `ms(t)` (19.9996 and 96.0004 s are 20,000 and 96,000 ms). |
+| `prefer-overlap-at-end` | A selected span crossing the range end counts only the part before the end (15 of its 30 s); with no range the selection differs. |
 | `prefer-no-qualifying-span` | The range holds only a `lowSnr` and a `short` piece, and qualifying spans touch both its edges: the unpreferred selection with `preferredMs` 0. |
 | `prefer-ties-across-groups` | Every span is 40 dB: preferred spans go first even when a span outside the range is as loud, as long and earlier; an outside 10 s span then fits. |
 | `prefer-below-minimum` | A range over the whole take with 20 s available: `belowMinimum`, nothing selected and `preferredMs` 0. |
@@ -78,6 +79,13 @@ is picked first and the selection is 115 s.
 30 s: 84 s), then the outside 50 dB span (114 s); the outside 45 and 26 dB spans
 would pass 120 s. `preferredMs` is 5,000 (25,000 − 20,000) + 30,000 + 30,000 =
 65,000.
+
+`prefer-overlap-at-end` (range 50 to 110 s) picks the preferred 35 and 30 dB
+spans (55 to 85 s and 95 to 125 s: 60 s), then the outside 50 and 45 dB spans
+(100 s); the outside 42 and 40 dB spans would pass 120 s. `preferredMs` is
+30,000 + 15,000 (110,000 − 95,000) = 45,000; counting the 95 to 125 s span
+past the range end would give 60,000. Without the range the pick is 50, 45, 42
+and 40 dB: 95 s.
 
 Change a case by editing its inputs in the generator; the expected values follow.
 A change to the reference itself must state the rule and the reason, and the

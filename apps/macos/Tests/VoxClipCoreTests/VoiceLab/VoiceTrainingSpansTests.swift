@@ -36,8 +36,8 @@ import Testing
             minSnrDb: VoiceTrainingSpans.TRAIN_MIN_SNR, totalMinMs: VoiceTrainingSpans.TRAIN_TOTAL_MIN, totalMaxMs: VoiceTrainingSpans.TRAIN_TOTAL_MAX))
         #expect(vectors.cases.map(\.id) == ["happy-path", "low-confidence-split", "event-inside", "two-speakers", "synthetic-excluded", "low-snr-rejected",
             "long-run-split-at-pauses", "unsplittable-run-and-30-second-span", "cap-120-seconds", "below-minimum", "snr-percentiles", "empty-transcript",
-            "prefer-fills-cap", "prefer-below-cap-filled-from-other", "prefer-partial-overlap", "prefer-no-qualifying-span", "prefer-ties-across-groups",
-            "prefer-below-minimum"])
+            "prefer-fills-cap", "prefer-below-cap-filled-from-other", "prefer-partial-overlap", "prefer-overlap-at-end", "prefer-no-qualifying-span",
+            "prefer-ties-across-groups", "prefer-below-minimum"])
         // The original twelve cases have no preferRange: their selection is the unpreferred one.
         #expect(vectors.cases.filter { $0.preferRange == nil }.count == 12)
     }
