@@ -144,6 +144,13 @@ class RewriteSpecTests(unittest.TestCase):
         if 'Return' in primary.replace('⌘Return', ''):
             self.assertRegex(primary, r'never on a change or phrase row')
 
+    def test_macos_shortcuts_never_bind_bare_f6(self):
+        rows = table_rows(section(self.design, '### 11.2'), '| Action | macOS | Windows | Notes |')
+        moves = {row[0]: row[1] for row in rows}
+        self.assertEqual(moves['Move focus to the next pane'], '⌃F6')
+        for action, mac, *_ in rows:
+            self.assertNotRegex(mac, r'(?<!⌃)F6', action)
+
 
 if __name__ == '__main__':
     unittest.main()

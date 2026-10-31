@@ -1775,7 +1775,7 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Edit a proposed change | Return on a focused change or change row | Enter or F2 | Click also opens it (§6.3.5) |
 | Include or exclude a change | Space on its row | Space | |
 | Compare takes | Space plays the focused phrase; ← → switch its take | Space; ← → | |
-| Write a Rewrite instruction | Click the field, or F6 to the scope bar, then Tab | Click, or F6, then Tab | |
+| Write a Rewrite instruction | Click the field, or ⌃F6 to the scope bar, then Tab | Click, or F6, then Tab | |
 | Keep / dismiss suggestion | Return / ⌫ on the focused suggestion row | Ctrl+Enter / Delete on the focused row | Plain Enter on Windows selects and previews |
 | Rename clip | Return on a focused kept clip row | F2 | |
 | Remove clip | ⌫ on a focused kept clip row | Delete | One undo step |
