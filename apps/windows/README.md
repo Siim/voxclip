@@ -1,6 +1,6 @@
 # VoxClip for Windows
 
-Native WinUI 3 app and `voxclip-cli` on .NET 10, unpackaged and self-contained, for win-x64 and win-arm64. Import, transcription, word editing, clips, Find Clips, captions, export, the share helpers and Velopack updates are integrated. The native redesign and Voice Lab beta work are tracked separately; see CONTRACTS.md for implemented behavior and outstanding native checks.
+Native WinUI 3 app and `voxclip-cli` on .NET 10, unpackaged and self-contained, for win-x64 and win-arm64. Import, transcription, word editing, clips, Find Clips, captions, export, the share helpers and Velopack updates are integrated. The clips-first redesign and the Voice Lab beta are integrated as well; Create Your Voice stays blocked until the speaker check (A8) opens. See CONTRACTS.md for implemented behavior and outstanding native checks.
 
 Read [`CONTRACTS.md`](CONTRACTS.md) before implementation. The architecture and shared schemas live two directories above; do not copy shared data into source projects. The six projects follow architecture §2.3. `VoxClip.Core` has **no NuGet dependencies**. Media depends on Core; App and CLI depend on both. The application version comes only from `Directory.Build.props`.
 
