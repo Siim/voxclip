@@ -55,7 +55,8 @@ internal sealed class VoiceLabSession(IVoiceLabBackend backend, Func<Action, Tas
         : Subscription.VoiceSlotsUsed >= Subscription.VoiceLimit ? "Your ElevenLabs account has no free voice slots." : null;
     internal string SpeakerMessage => VoiceLabCopy.SpeakerUnavailable;
     internal string CreateBlockedReason => VoiceLabCopy.SpeakerUnavailable;
-    /// <summary>The speaker check would run with a calibrated threshold for this statement language. Always false while A8 keeps
+    /// <summary>The speaker check would run with a calibrated threshold for this statement language. The Rewrite voice row and the
+    /// Create Your Voice statement language both read it. Always false while A8 keeps
     /// <see cref="VoiceSpeakerCheck.WindowsNativeParityVerified"/> closed, as on a Mac without the speaker model.</summary>
     internal static bool SpeakerCalibrated(string language)
     {

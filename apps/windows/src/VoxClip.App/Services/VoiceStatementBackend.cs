@@ -55,7 +55,10 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
 
     public bool Enabled => enabled();
     public bool SpeakerAvailable => speakerAvailable();
-    public bool SpeakerCalibrated(string language) => enrollment.SpeakerSupports(language);
+    /// <summary>The same predicate as the Rewrite voice row (<see cref="VoiceLabSession.VoicesUnavailable"/>), as the Mac reads its
+    /// model catalogue in both places, so Rewrite never offers a voice whose statement could not be in the project's language. The
+    /// enrollment still refuses a check bound to another language at preparation and creation.</summary>
+    public bool SpeakerCalibrated(string language) => VoiceLabSession.SpeakerCalibrated(language);
     public string? PlanMessage => plan();
     public string VerificationCost => VoiceLabCostPresentation.Kind(VoiceLabPricing.Estimate(
         VoiceLabPricedOperation.ElevenLabsSpeechToText, "scribe_v2", seconds, 1, null, prices), false, "ElevenLabs").Text;

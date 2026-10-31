@@ -36,8 +36,6 @@ public sealed class VoiceEnrollment
         this.reconciler = reconciler ?? new(store, region => region == client.Region ? client : throw new VoiceConsentException(VoiceConsentError.InvalidRecord), this.clock);
     }
     public bool SpeakerAvailable => speaker.Available;
-    /// <summary>The speaker check is available and calibrated for this statement language.</summary>
-    public bool SpeakerSupports(string language) => speaker.Supports(language);
     public void SetSpeakerCheck(VoiceSpeakerCheck check)
     {
         Reserve();

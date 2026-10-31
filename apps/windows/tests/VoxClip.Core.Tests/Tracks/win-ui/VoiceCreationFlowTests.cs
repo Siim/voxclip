@@ -462,6 +462,9 @@ public sealed class VoiceCreationFlowTests
         await WaitForAsync(() => setup.Session.ProjectAudio == VoiceProjectAudioState.Ready);
         Assert.Equal(VoiceTrainingSource.Project, setup.Session.TrainingSource);
         Assert.Contains("?? App.Windows.FirstOrDefault(window => window.VoiceTrainingProject is not null)", AppFile("Controls/CreateVoicePage.cs"));
+        // In production the sheet's statement language and the Rewrite voice row read one predicate, as the Mac reads its catalogue.
+        Assert.Contains("public bool SpeakerCalibrated(string language) => VoiceLabSession.SpeakerCalibrated(language);", AppFile("Services/VoiceStatementBackend.cs"));
+        Assert.Contains("speakerCalibrated ?? VoiceLabSession.SpeakerCalibrated", AppFile("ViewModels/RewriteSession.cs"));
     }
 
     [Fact]
