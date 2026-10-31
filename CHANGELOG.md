@@ -22,4 +22,5 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Windows builds use the LGPL FFmpeg libraries; their source is attached to this release.
 - The dark theme uses the calmer greys of the new editor design on Mac and Windows. On Mac, Increase Contrast brightens the quietest greys.
 - The Mac editor uses the new code-editor frame: a flat Explorer, a tab row that is the title bar, Export beside the viewer, the timeline as a bottom panel and a status bar, with no toolbar. The Explorer, viewer and timeline each have a show and hide button, and the sizes you drag are kept.
+- On a narrow Mac window the Explorer folds away first, below 1,128 points, and in full screen or Split View the viewer column folds away below 904; each opens over the editor when you ask for it. F6 also visits the tab row and the status bar, and a Versions window shows the same editor frame.
 - Not tested on: TODO list the test machines that were not available (doc/plan.md section 6).
