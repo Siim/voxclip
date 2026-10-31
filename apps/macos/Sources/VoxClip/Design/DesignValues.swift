@@ -171,6 +171,56 @@ struct TokenColorModes {
     }
 }
 
+/// The v2 type scale (notes.md section 2): only the macOS text-style sizes, each with a mono
+/// variant for timecodes, durations, tool ids, keyboard hints and track ids, never for a phrase.
+/// WinUI maps 15 to 16, 13 to 14, 12 to 13, 11 to 12, 10 to 11 and 9 to 10.
+enum VCType: CaseIterable, Sendable {
+    /// 15/20: the transcript body (on its own 26 pt line) and panel headlines.
+    case title3
+    /// 13/16: Explorer rows, tabs, verbs, buttons and the Director thread; the timeline TC readout in mono.
+    case body
+    /// 12/15: panel rows, property rows and the command field.
+    case callout
+    /// 11/14: section headers, meta lines, the status bar and notes; gutter timecodes and pause lengths in mono.
+    case small
+    /// 10/13: FX block labels, Director tool times and keyboard hints; ruler labels in mono.
+    case label
+    /// 9/11: the V1 clip name strip and overview labels.
+    case mini
+
+    /// Points; the AppKit text-style and control sizes of the same names.
+    var size: CGFloat {
+        switch self {
+        case .title3: 15
+        case .body: 13
+        case .callout: 12
+        case .small: 11
+        case .label: 10
+        case .mini: 9
+        }
+    }
+
+    /// The default line height of the size, as the macOS text styles set it.
+    var lineHeight: CGFloat {
+        switch self {
+        case .title3: 20
+        case .body: 16
+        case .callout: 15
+        case .small: 14
+        case .label: 13
+        case .mini: 11
+        }
+    }
+
+    /// The transcript line: title3 body text, with the small mono gutter timecodes on the same line.
+    static let transcriptLineHeight: CGFloat = 26
+
+    func font(_ weight: Font.Weight = .regular) -> Font { .system(size: size, weight: weight) }
+    func mono(_ weight: Font.Weight = .regular) -> Font { .system(size: size, weight: weight, design: .monospaced) }
+    func nsFont(_ weight: NSFont.Weight = .regular) -> NSFont { .systemFont(ofSize: size, weight: weight) }
+    func nsMono(_ weight: NSFont.Weight = .regular) -> NSFont { .monospacedSystemFont(ofSize: size, weight: weight) }
+}
+
 extension View {
     /// Apply at every SwiftUI hosting root: a DEBUG build without the asset tints its
     /// controls with DesignValues.debugTint, a bundled build uses the AccentColor asset.

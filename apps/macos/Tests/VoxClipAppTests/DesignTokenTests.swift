@@ -2,7 +2,7 @@ import AppKit
 import Testing
 @testable import VoxClip
 
-/// The v2 tokens (notes.md section 3, impl-plan V0): the palette, the tint and Increase Contrast.
+/// The v2 tokens (notes.md sections 2 and 3, impl-plan V0): the type scale, the tint and Increase Contrast.
 @Suite("v2 design tokens")
 @MainActor struct DesignTokenTests {
     private func hex(_ color: NSColor?) -> String {
@@ -16,6 +16,24 @@ import Testing
         var result = ""
         appearance.performAsCurrentDrawingAppearance { result = hex(color) }
         return result
+    }
+
+    @Test func typeScaleUsesOnlyTheNativeTextStyleSizes() {
+        #expect(VCType.allCases.map(\.size) == [15, 13, 12, 11, 10, 9])
+        #expect(VCType.title3.size == NSFont.preferredFont(forTextStyle: .title3, options: [:]).pointSize)
+        #expect(VCType.body.size == NSFont.systemFontSize)
+        #expect(VCType.callout.size == NSFont.preferredFont(forTextStyle: .callout, options: [:]).pointSize)
+        #expect(VCType.small.size == NSFont.smallSystemFontSize)
+        #expect(VCType.label.size == NSFont.labelFontSize)
+        #expect(VCType.mini.size == NSFont.systemFontSize(for: .mini))
+        #expect(VCType.allCases.allSatisfy { $0.lineHeight > $0.size })
+        #expect(VCType.title3.lineHeight == 20 && VCType.transcriptLineHeight == 26)
+    }
+
+    @Test(arguments: VCType.allCases) func monoIsTheSameSizeInTheMonospacedDesign(type: VCType) {
+        let mono = type.nsMono(.medium), text = type.nsFont()
+        #expect(mono.pointSize == type.size && text.pointSize == type.size)
+        #expect(mono.isFixedPitch && !text.isFixedPitch)
     }
 
     @Test func v2PaletteResolvesInTheDarkAppearance() throws {
