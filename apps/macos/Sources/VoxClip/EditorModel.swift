@@ -54,8 +54,11 @@ struct EditorRenderSnapshot {
     var showTranscribe = false
     var correctionID: String?
     var correctionText = ""
-    var rewriteRange: ClosedRange<Int>?
-    var rewrite: RewriteSession?
+    /// The open Rewrite session and its words, on whichever tab it belongs to. The
+    /// transcript, the timeline and the right column read `rewrite` and `rewriteRange`,
+    /// which hold them only while the session's tab is active (EditorModel+Tabs).
+    var openRewrite: RewriteSession?
+    var openRewriteRange: ClosedRange<Int>?
     var focusedPane = EditorPane.transcript
     var paneFocusRequest = 0
     var scopeScrollRevision = 0
@@ -90,11 +93,11 @@ struct EditorRenderSnapshot {
                     name: provider.label, group: provider.group, plan: provider.id == "codex" ? "ChatGPT plan" : "Claude plan")
             }
             let envelope = waveform.map { AudioEnvelope(sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
-            rewriteRange = lower...upper
-            rewrite = RewriteSession(editor: self, range: lower...upper, envelope: envelope, connector: connector,
+            openRewriteRange = lower...upper
+            openRewrite = RewriteSession(editor: self, range: lower...upper, envelope: envelope, connector: connector,
                 consent: { [weak self] in
                     guard let self, let provider else { return false }
-                    return await self.rewriteConsent(provider: provider, signature: signature, snapshot: snapshot)
+                    return await self.rewriteConsent(provider: provider)
                 }, connectorIsCurrent: { [weak self] in self?.rewriteConnectorSignature == signature })
             if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
             transcriptRevision += 1
@@ -105,20 +108,21 @@ struct EditorRenderSnapshot {
         return [id, app.string("llm.model.\(id)"), app.string("llm.baseUrl.\(id)"), app.string("llm.cliPath.\(id)")]
     }
     func closeRewrite(returnFocus: Bool = true) {
-        rewriteOpenTask?.cancel(); rewrite?.close(); rewrite = nil; rewriteRange = nil
+        rewriteOpenTask?.cancel(); openRewrite?.close(); openRewrite = nil; openRewriteRange = nil
         transcriptRevision += 1
         if returnFocus { _ = focusTranscript(in: window) }
     }
-    private func rewriteConsent(provider: ProviderChoice, signature: [String], snapshot: Project) async -> Bool {
-        guard capabilities.edit, project == snapshot, rewriteConnectorSignature == signature else { return false }
-        guard let connector = rewrite?.connector?.connector else { return false }
+    /// The session's own `current` (its connector, its project apart from the tab, open)
+    /// decides, so an edit outside its clip or another tab leaves the consent valid (impl-plan §3.3).
+    private func rewriteConsent(provider: ProviderChoice) async -> Bool {
+        guard let session = openRewrite, session.current, let connector = session.connector?.connector else { return false }
         do {
             return try await app.authorizeConnectorRequest(provider, connector: connector, action: .rewrite,
-                wordCount: rewrite?.source.filter { $0.kind == .word }.count ?? 0, parent: window) { [self] in
-                    capabilities.edit && project == snapshot && rewriteConnectorSignature == signature && rewrite?.isOpen == true
+                wordCount: session.source.filter { $0.kind == .word }.count, parent: window) { [self] in
+                    openRewrite === session && session.current
                 }
         } catch is CancellationError { return false } catch {
-            rewrite?.setReadinessProblem(await app.safeError(error, context: "ai:Rewrite"))
+            session.setReadinessProblem(await app.safeError(error, context: "ai:Rewrite"))
             return false
         }
     }
@@ -276,6 +280,8 @@ struct EditorRenderSnapshot {
     var isLeaving = false { didSet { if isLeaving { closeRewrite(returnFocus: false) } } }
     /// Called when a refresh finds a different active clip, for example after Undo.
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
+    /// Called when a refresh finds the clips changed: made, kept, dismissed, removed, or back after Undo. The tabs follow it.
+    @ObservationIgnored var onClipsChange: (() -> Void)?
     /// A new editor puts keyboard focus in its transcript once it shows.
     @ObservationIgnored var wantsTranscriptFocus = true
     /// Shows the sidebar for the Find Clips setup callout and a run's progress (design §6.2).
@@ -289,7 +295,9 @@ struct EditorRenderSnapshot {
     /// Undo steps registered, for harness checks of one-step commands.
     @ObservationIgnored var undoSteps = 0
     #endif
-    @ObservationIgnored private var renderedActiveClipID: String?
+    /// The active clip the last refresh drew. Unlike `project`, views observe it, so a tab
+    /// switch redraws what follows the scope, such as the Rewrite panel.
+    private(set) var renderedActiveClipID: String?
 
     init(document: VoxClipDocument, app: AppModel, preview: (any PreviewEngine)? = nil, exporter: (any Exporter)? = nil) {
         document.beginVoiceLabActivity(paidRoot: app.locations.root.appendingPathComponent("VoiceLab"))
@@ -466,6 +474,7 @@ struct EditorRenderSnapshot {
         let transcriptChanged = renderedTranscript != project.transcript
         let editChanged = renderedEdits != edits
         guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedEdits == nil else { return }
+        let clipsChanged = renderedEdits?.clips != edits.clips
         if transcribed != (project.transcript != nil) { transcribed = project.transcript != nil }
         projectRevision += 1
         scopeDurations.removeAll(keepingCapacity: true)
@@ -538,6 +547,7 @@ struct EditorRenderSnapshot {
             renderedActiveClipID = edits.activeClipId
             onActiveClipChange?(edits.activeClipId)
         }
+        if clipsChanged { onClipsChange?() }
     }
     func word(at source: Double, nearest: Bool = false) -> TimedWord? {
         let words = words
@@ -566,8 +576,14 @@ struct EditorRenderSnapshot {
         // undoing an edit made before a Save As or Rename keeps the new title.
         var newProject = newProject
         newProject.title = project.title
+        // Undo and Redo never switch tabs (impl-plan §3.3): a restored snapshot keeps the
+        // current scope while it still has that clip, else Full Take.
+        if restoringSnapshot { newProject.edits.activeClipId = scopeKept(in: newProject) }
         guard newProject != project else { return }
-        closeRewrite(returnFocus: false)
+        // An edit inside the open Rewrite session's clip closes it (design.md R3); one
+        // outside it leaves the session open on the new project.
+        let keepsRewrite = rewriteOutlives(project, newProject)
+        if !keepsRewrite { closeRewrite(returnFocus: false) }
         preview.pause(); isPlaying = false
         let previous = project
         let mediaChanged = previous.media.source != newProject.media.source
@@ -585,11 +601,16 @@ struct EditorRenderSnapshot {
         #endif
         }
         document.replaceProject(changed)
+        if keepsRewrite { openRewrite?.rebase(onto: changed) }
         // A relink, or its undo or redo, may change the content key: the lease moves with the project.
         if mediaChanged { holdCacheEntry() }
         recordDocumentChange()
         error = nil
         refresh()
+        schedulePreviewUpdate(mediaChanged: mediaChanged)
+    }
+    /// Updates the preview a moment after a project change, after checking a changed video first.
+    func schedulePreviewUpdate(mediaChanged: Bool) {
         updateTask?.cancel()
         updateTask = Task { [weak self] in
             guard let self else { return }
@@ -676,6 +697,11 @@ struct EditorRenderSnapshot {
         next.edits = changed.projectEdits
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
+        // Only the scope changed: a tab switch, not an edit (impl-plan item 16).
+        if onlyScopeDiffers(next) {
+            if setScope(next.edits.activeClipId) { announce(message ?? scopeName(next.edits.activeClipId)) }
+            return
+        }
         replace(next, name: name)
         if case .addAIClips = command, changed == state { clipError = "These clips are already in the list." }
         announce(message ?? announcement(command, before: state, after: changed, fallback: name))
@@ -691,6 +717,7 @@ struct EditorRenderSnapshot {
         next.edits = changed.projectEdits
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
+        if onlyScopeDiffers(next) { return setScope(next.edits.activeClipId) }
         replace(next, name: name)
         return true
     }
@@ -783,9 +810,15 @@ struct EditorRenderSnapshot {
         guard let clip = activeClip, let current = index(start ? clip.startWordId : clip.endWordId) else { return }
         trimClip(clip, start: start, index: current + offset)
     }
+    /// Scopes the editor to `clip`, or to Full Take: a tab, an Explorer row, [ and ], and
+    /// Escape in the transcript. A scope change is no undo step (`setScope`); VoiceOver hears
+    /// `message`, else the new scope's name. The playhead moves to the clip's first word and
+    /// the transcript scrolls to it.
     func activate(_ clip: ClipRange?, announcing message: String? = nil) {
         let previous = project.edits.activeClipId
-        apply(.setActiveClip(clipId: clip?.id), name: "Preview clip", announcing: message)
+        setScope(clip?.id)
+        if let message { announce(message) }
+        else if project.edits.activeClipId != previous { announce(scopeName(project.edits.activeClipId)) }
         if project.edits.activeClipId == clip?.id {
             seekToActiveClip()
             if previous != clip?.id { scopeScrollRevision += 1 }
