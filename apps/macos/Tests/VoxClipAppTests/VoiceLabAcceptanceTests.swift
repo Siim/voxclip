@@ -180,7 +180,7 @@ private struct AcceptanceTestKeys: KeyProvider {
         let run = VoiceLabTakeRun(client: ElevenLabsVoiceLab(keys: AcceptanceTestKeys(), region: .default),
             store: VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])), speaker: .unavailable,
             storage: .init(projectId: original.id, paidRoot: root, scratchRoot: root.appendingPathComponent("scratch")),
-            dispatchIfCurrent: { _ in Issue.record("Acceptance must not dispatch a provider request") }, inputsAreCurrent: { true })
+            dispatchIfCurrent: { _, _ in Issue.record("Acceptance must not dispatch a provider request") }, inputsAreCurrent: { true })
         let session = RewriteGenerationSession(run: run)
         #expect(session.acceptTitle == "Use Take 1")
         let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),

@@ -35,7 +35,7 @@ public enum VoiceLabCostPresentation {
     /// no amount, except that lip sync always confirms. `providerName` is the display name, such as "ElevenLabs", "fal.ai"
     /// or "sync.so".
     public static func kind(_ estimate: CostEstimate, isLipSync: Bool, providerName: String, cap: VoiceLabMonthlyCap? = nil) -> Kind {
-        guard let usd = estimate.usd else { return .confirm("VoxClip can't tell what this costs. Check \(providerName)'s pricing.") }
+        guard let usd = estimate.usd else { return .confirm(unknownPrice(providerName)) }
         if usd == 0 && !isLipSync { return .inline("") }
         let crossing = cap?.isCrossed(by: estimate) ?? false
         if usd < inlineLimit && !isLipSync && !crossing { return .inline(format(usd)) }
@@ -43,6 +43,26 @@ public enum VoiceLabCostPresentation {
         let sentence = "This will cost \(cost) on your \(providerName) account."
         guard crossing, let cap else { return .confirm(sentence) }
         return .confirm(sentence + " " + capWarning(cap: cap.limit, providerName: providerName))
+    }
+
+    /// An LLM send (`voiceRewrite`, `patchRewrite`) by who pays for it; voice-lab §3.1 as amended by the user's decision
+    /// of 2026-10-31. A CLI signed in on a plan, Ollama and LM Studio (on this Mac or another host) and Apple on-device
+    /// cost nothing extra: inline with no amount, so the send starts at once. An API-key connector, a CLI signed in with
+    /// an API key, and a CLI whose sign-in is unknown confirm every send with the unknown-price sentence. An LLM send never
+    /// has a known price (§3.1), so the estimate is not an input. `signIn` is read only for the two CLI connectors.
+    /// `providerName` names whose pricing to check, such as "Anthropic" or "OpenAI".
+    public static func kind(forLLMSendTo connector: ConnectorID, signIn: CLISignIn?, providerName: String) -> Kind {
+        switch connector {
+        case .ollama, .lmstudio, .appleFoundation: return .inline("")
+        case .claudeCode, .codex: if signIn == .plan { return .inline("") }
+        case .anthropic, .openai, .xai, .gemini: break
+        }
+        return .confirm(unknownPrice(providerName))
+    }
+
+    /// The confirmation for an action whose price VoxClip can't know.
+    private static func unknownPrice(_ providerName: String) -> String {
+        "VoxClip can't tell what this costs. Check \(providerName)'s pricing."
     }
 
     /// "< $0.01" below a cent. Otherwise two significant digits, rounded half away from zero but never finer than a

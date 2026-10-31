@@ -8,6 +8,14 @@ private final class VoiceLabTransportStart: Sendable {
     func mark() { value.withLock { $0 = true } }
 }
 
+/// Marked when the provider accepts a billed request: its 2xx status line arrived, which is when the spend ledger records
+/// the request's estimate (voice-lab §3.1), however the reply then ends. A take run reads it for a request that threw.
+final class VoiceLabRequestAcceptance: Sendable {
+    private let value = Mutex(false)
+    var accepted: Bool { value.withLock { $0 } }
+    func mark() { value.withLock { $0 = true } }
+}
+
 /// Explicit, region-bound Voice Lab transport. Mutations are sent once, including on 429/5xx.
 public actor ElevenLabsVoiceLab {
     public nonisolated let region: ElevenLabsRegion
@@ -441,8 +449,10 @@ public actor ElevenLabsVoiceLab {
         let mapper = ElevenLabsTranscriber(keys: keys, region: region, logger: logger)
         return try await mapper.mapResponse(reply.bytes, diarize: false)
     }
+    /// `acceptance` is marked once the provider accepts the request, even when its reply then fails.
     func transcribeQA(_ samples: [Float], rate: Int, language: String, authorization: VoiceLabAuthorization,
-                      capability: VoiceOperationCapability) async throws -> (words: [VoiceLabWord], receipt: VoiceLabReceipt) {
+                      capability: VoiceOperationCapability,
+                      acceptance: VoiceLabRequestAcceptance? = nil) async throws -> (words: [VoiceLabWord], receipt: VoiceLabReceipt) {
         guard rate == 24_000, !samples.isEmpty, samples.count <= Int(VoiceLabTakeProcessing.maximumQASeconds) * rate else { throw VoiceLabError.invalidAudio }
         let wav = try VoiceLabTakeWAV.encode(samples, rate: rate)
         let boundary = newBoundary()
@@ -454,7 +464,8 @@ public actor ElevenLabsVoiceLab {
         try claim(authorization, operation: .speechToText, requestID: authorization.requestID, endpoint: "v1/speech-to-text",
                   fields: [region.rawValue, "scribe_v2", language, String(VoiceLabTakeProcessing.maximumQASeconds)])
         let reply = try await send("v1/speech-to-text", method: "POST", body: body,
-            contentType: "multipart/form-data; boundary=\"\(boundary)\"", limit: maxResponse, billing: authorization, capability: capability)
+            contentType: "multipart/form-data; boundary=\"\(boundary)\"", limit: maxResponse, billing: authorization, capability: capability,
+            acceptance: acceptance)
         guard let object = try? JSONSerialization.jsonObject(with: reply.bytes) as? [String: Any],
               let detected = object["language_code"] as? String, let words = object["words"] as? [[String: Any]] else { throw VoiceLabError.malformedResponse }
         let catalog = try BundledModelCatalog(shared: SharedResources.locate())
@@ -505,6 +516,13 @@ public actor ElevenLabsVoiceLab {
 
     public func synthesize(text: String, modelID: String, voice: VoiceLabVoiceChoice, language: String, options: VoiceLabSpeechOptions,
                            requestID: UUID, authorization: VoiceLabAuthorization) async throws -> VoiceLabAudioResult {
+        try await synthesize(text: text, modelID: modelID, voice: voice, language: language, options: options, requestID: requestID,
+                             authorization: authorization, acceptance: nil)
+    }
+    /// `acceptance` is marked once the provider accepts the request, even when its reply then fails.
+    func synthesize(text: String, modelID: String, voice: VoiceLabVoiceChoice, language: String, options: VoiceLabSpeechOptions,
+                    requestID: UUID, authorization: VoiceLabAuthorization,
+                    acceptance: VoiceLabRequestAcceptance?) async throws -> VoiceLabAudioResult {
         try Task.checkCancellation()
         try voice.validate()
         let capability = try capability(voice)
@@ -531,7 +549,7 @@ public actor ElevenLabsVoiceLab {
         let reply: Reply
         do {
             reply = try await send(components.url!, method: "POST", body: body, contentType: "application/json", limit: maxResponse,
-                billing: authorization, capability: capability, transportStart: transportStart)
+                billing: authorization, capability: capability, transportStart: transportStart, acceptance: acceptance)
         } catch {
             if !transportStart.started, let deadline,
                approvedRuns.values.contains(where: { $0.contains(authorization.quote.id) }) {
@@ -620,14 +638,17 @@ public actor ElevenLabsVoiceLab {
     func runAfterLastByte(_ hook: (@Sendable () -> Void)?) { afterLastByte = hook }
     private struct Reply { let bytes: Data; let response: HTTPURLResponse; let spendWarning: VoiceLabSpendWarning? }
     private func send(_ path: String, method: String, body: Data? = nil, contentType: String? = nil, limit: Int,
-                      billing: VoiceLabAuthorization? = nil, capability: VoiceOperationCapability? = nil) async throws -> Reply {
-        try await send(region.baseURL.appendingPathComponent(path), method: method, body: body, contentType: contentType, limit: limit, billing: billing, capability: capability)
+                      billing: VoiceLabAuthorization? = nil, capability: VoiceOperationCapability? = nil,
+                      acceptance: VoiceLabRequestAcceptance? = nil) async throws -> Reply {
+        try await send(region.baseURL.appendingPathComponent(path), method: method, body: body, contentType: contentType, limit: limit,
+                       billing: billing, capability: capability, acceptance: acceptance)
     }
     /// `billing` is the approved action the request runs. Its 2xx status line is the provider's acceptance, so the estimate is
     /// recorded once from then on however the body ends, and the record finishes before `send` returns or throws (§3.1).
+    /// `acceptance` is marked at the same moment.
     private func send(_ url: URL, method: String, body: Data? = nil, contentType: String? = nil, limit: Int,
                       billing: VoiceLabAuthorization? = nil, capability: VoiceOperationCapability? = nil, discoveryCreator: String? = nil,
-                      transportStart: VoiceLabTransportStart? = nil) async throws -> Reply {
+                      transportStart: VoiceLabTransportStart? = nil, acceptance: VoiceLabRequestAcceptance? = nil) async throws -> Reply {
         try Task.checkCancellation()
         guard url.scheme == "https", url.host == region.baseURL.host, body?.count ?? 0 <= maxRequest else { throw VoiceLabError.invalidInput }
         guard let key = try await keys.key(for: "elevenlabs"), !key.isEmpty else { throw VoiceLabError.missingKey }
@@ -672,7 +693,7 @@ public actor ElevenLabsVoiceLab {
                     switch event {
                     case .response(let http):
                         response = http
-                        if let billing, (200..<300).contains(http.statusCode) { recording = record(billing, at: start) }
+                        if let billing, (200..<300).contains(http.statusCode) { recording = record(billing, at: start); acceptance?.mark() }
                         if let size = http.value(forHTTPHeaderField: "Content-Length").flatMap(Int.init), size > limit { throw VoiceLabError.responseTooLarge }
                     case .data(let data):
                         try Task.checkCancellation()
@@ -697,8 +718,9 @@ public actor ElevenLabsVoiceLab {
             }
             return Reply(bytes: bytes, response: http, spendWarning: await recording?.value)
         } catch {
-            if recording == nil, let billing, let response = relay.receivedResponse, (200..<300).contains(response.statusCode) {
-                recording = record(billing, at: start)
+            if let billing, let response = relay.receivedResponse, (200..<300).contains(response.statusCode) {
+                if recording == nil { recording = record(billing, at: start) }
+                acceptance?.mark()
             }
             // An accepted action is counted before its error reaches the caller.
             _ = await recording?.value
