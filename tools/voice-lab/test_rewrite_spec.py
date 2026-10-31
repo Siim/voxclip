@@ -99,6 +99,14 @@ class RewriteSpecTests(unittest.TestCase):
         for term in ['noise-removal choice', "position, role or SHA-256", 'A failed plan check makes no Scribe request']:
             self.assertIn(term, consent)
 
+    def test_scope_entries_do_not_credit_ai_11_2_with_leaving_out_cuts(self):
+        self.assertIn('**All** items are included, cut ones too', section(self.ai, '### 11.2'))
+        for name, text in [('voice-lab.md §8.1', section(self.voice_lab, '### 8.1')), ('design.md §6.3.6', section(self.design, '#### 6.3.6'))]:
+            lines = [line for line in text.splitlines() if '§11.2' in line and re.search(r'\bcut', line)]
+            self.assertTrue(lines, name)
+            for line in lines:
+                self.assertIn('unlike §11.2', line, name)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1286,7 +1286,7 @@ Phase 0 connectors return one answer, so nothing streams: R1 waits until the rep
 **Request shapes** (detail in voice-lab.md §8.1):
 
 - A clip or Full take uses `PatchRewriteService`:
-  - the entries are the scope's kept items (ai.md §11.2 clip words, with corrections applied and cut words excluded);
+  - the entries are the scope's kept items in the ai.md §11.2 item format, with corrections applied; unlike §11.2, which includes every item, cut items are left out;
   - the lines come from `formatTranscript`;
   - each line's character range comes from `VoiceLabLengthBudget`, with the whole line as one replace hunk.
 - A selection uses `VoiceRewriteService`, as before.
