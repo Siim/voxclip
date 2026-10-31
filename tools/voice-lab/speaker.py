@@ -227,19 +227,32 @@ def calibrate_et(args):
     speakers = [speaker for speaker in manifest["speakers"] if speaker["group"] in groups]
     renders = args.work / "renders"
     renders.mkdir(parents=True, exist_ok=True)
-    items = []
-    for speaker in speakers:
-        for candidate in speaker["candidates"]:
-            source = pathlib.Path(candidate["wav"])
-            if digest(source) != candidate["sha256"]:
-                raise ValueError("Excerpt changed: " + candidate["id"])
-            for rate in RATES:
-                identity = f'{candidate["id"]}-{rate}'
-                target = renders / (identity + ".wav")
-                render(args.ffmpeg, source, target, rate)
-                items.append({"id": identity, "candidate": candidate["id"], "source": candidate["source"], "speaker": speaker["key"], "corpus": speaker["group"], "sampleRate": rate, "group": f'{speaker["group"]}-{rate}', "wav": str(target), "excerptSha256": candidate["sha256"]})
     output = args.work / ("preprocessed-" + args.phase)
-    prepared = preprocess(args.cli, args.vad, items, output)
+    # One group x rate cell per CLI run, deleting its renders once scored, so at most one cell of renders is on disk.
+    # Embeddings are per input and the CLI pairs only within a group, so results match a single combined run.
+    items, prepared, scores = [], {}, []
+    for group in groups:
+        for rate in RATES:
+            cell = []
+            for speaker in speakers:
+                if speaker["group"] != group:
+                    continue
+                for candidate in speaker["candidates"]:
+                    source = pathlib.Path(candidate["wav"])
+                    if digest(source) != candidate["sha256"]:
+                        raise ValueError("Excerpt changed: " + candidate["id"])
+                    identity = f'{candidate["id"]}-{rate}'
+                    target = renders / (identity + ".wav")
+                    render(args.ffmpeg, source, target, rate)
+                    cell.append({"id": identity, "candidate": candidate["id"], "source": candidate["source"], "speaker": speaker["key"], "corpus": group, "sampleRate": rate, "group": f"{group}-{rate}", "wav": str(target), "excerptSha256": candidate["sha256"]})
+            cell_output = output / f"{group}-{rate}"
+            prepared.update(preprocess(args.cli, args.vad, cell, cell_output))
+            scores += json.loads((cell_output / "scores.json").read_text())
+            for item in cell:
+                target = pathlib.Path(item["wav"])
+                item["wavSha256"] = digest(target)
+                target.unlink()
+            items += cell
     voiced = {}
     for item in items:
         voiced.setdefault(item["candidate"], []).append(bool(prepared[item["id"]].get("embedding")))
@@ -248,14 +261,14 @@ def calibrate_et(args):
     selected = [item for item in items if item["candidate"] in kept]
     by_id = {item["id"]: item for item in selected}
     pairs = []
-    for score in json.loads((output / "scores.json").read_text()):
+    for score in scores:
         left, right = by_id.get(score["left"]), by_id.get(score["right"])
         if left is None or right is None:
             continue
         if left["source"] == right["source"] or left["group"] != right["group"]:
             raise ValueError("A pair must use distinct source utterances within one condition")
         pairs.append([left["id"], right["id"], left["speaker"] == right["speaker"], score["value"], left["group"]])
-    clips = [{key: item[key] for key in ["id", "source", "speaker", "corpus", "sampleRate"]} | {"wavSha256": digest(pathlib.Path(item["wav"])), "excerptSha256": item["excerptSha256"]} for item in selected]
+    clips = [{key: item[key] for key in ["id", "source", "speaker", "corpus", "sampleRate", "wavSha256", "excerptSha256"]} for item in selected]
     log = [{"group": group, "qualifyingSpeakers": sum(speaker["group"] == group for speaker in manifest["speakers"]), "selectedSpeakers": len(chosen[group])} for group in groups]
     if fit:
         impostor = [pair[3] for pair in pairs if not pair[2]]
