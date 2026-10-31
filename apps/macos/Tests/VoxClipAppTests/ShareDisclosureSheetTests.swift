@@ -89,6 +89,64 @@ import Testing
         #expect(model.shareDisclosureLine("clip-main") == nil)
     }
 
+    @Test func aRemovedLineHoldsEachShareUntilShareAnywayOrRestoreLine() throws {
+        let model = try editor(); defer { model.close() }
+        exported(model, [.fullEdit])
+        var draft = ShareCaptionDraft()
+        draft.load(target: "full", model: model)
+        var flow = ShareDisclosureFlow()
+        let actions: [ShareAction] = [.copy, .x, .linkedIn]
+        // While the caption keeps the line, every action goes ahead at once.
+        for action in actions {
+            let now = flow.request(action, draft: draft)
+            #expect(now == action && flow.pending == nil)
+        }
+        draft.edit("Today we shipped the clipper. Thanks")
+        for action in actions {
+            let now = flow.request(action, draft: draft)
+            #expect(now == nil && flow.pending == action)
+        }
+        // Share anyway releases the held action with the caption as it is.
+        let anyway = flow.shareAnyway(), nothing = flow.shareAnyway()
+        #expect(anyway == .linkedIn && nothing == nil && flow.pending == nil && draft.lineRemoved)
+        // Restore line puts the line back, then releases the held action.
+        let held = flow.request(.copy, draft: draft)
+        let result = flow.restoreLine(draft)
+        let restored = try #require(result)
+        #expect(held == nil && restored.action == .copy && flow.pending == nil)
+        draft = restored.draft
+        #expect(draft.captionDraft == "Today we shipped the clipper. Thanks\n\n" + line && !draft.lineRemoved)
+        let again = flow.restoreLine(draft)
+        #expect(again?.action == nil)
+        // Editing the caption or choosing another target withdraws the warning.
+        draft.edit("Today we shipped the clipper.")
+        _ = flow.request(.x, draft: draft)
+        #expect(flow.pending == .x)
+        flow.edited()
+        #expect(flow.pending == nil)
+        _ = flow.request(.linkedIn, draft: draft)
+        flow.select()
+        #expect(flow.pending == nil)
+    }
+
+    @Test func openXShowsTheMadeWithAITipOnlyForATargetWithALine() throws {
+        let model = try editor { project in
+            project.edits.clips.append(ClipRange(id: "after-ai", startWordId: "w8", endWordId: "w9", title: "After"))
+        }
+        defer { model.close() }
+        exported(model, [.fullEdit, .clip("after-ai")])
+        var draft = ShareCaptionDraft()
+        var flow = ShareDisclosureFlow()
+        draft.load(target: "after-ai", model: model)
+        let plain = flow.openedX(draft: draft)
+        #expect(!plain && !flow.showsXTip)
+        draft.load(target: "full", model: model)
+        let disclosed = flow.openedX(draft: draft)
+        #expect(disclosed && flow.showsXTip)
+        flow.select()
+        #expect(!flow.showsXTip)
+    }
+
     @Test func openXKeepsTheLineWholeAndLastWhenTheCaptionIsCut() throws {
         let caption = String(repeating: "word ", count: 80) + "\n\n" + line
         let url = try #require(try ShareText.url("x", caption: caption, disclosureLine: line))

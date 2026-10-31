@@ -12,9 +12,8 @@ import VoxClipCore
     @State private var copyRevision = 0
     @State private var copied = false
     @State private var opening = false
-    /// The share action waiting on the removed-line warning (voice-lab.md §11.3).
-    @State private var pendingShare: ShareAction?
-    @State private var showsXTip = false
+    /// The removed-line warning and the X tip (voice-lab.md §11.3–11.4).
+    @State private var flow = ShareDisclosureFlow()
     @FocusState private var captionFocused: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -35,7 +34,7 @@ import VoxClipCore
                     if model.exportClipIDs.isEmpty { Text("Full edit").tag("full") }
                     ForEach(model.exportClipIDs, id: \.self) { id in Text(model.project.edits.clips.first { $0.id == id }?.title ?? "Clip").tag(id) }
                 }.onAppear { let target = model.exportClipIDs.first ?? "full"; draft.load(target: target, model: model); shareTarget = target }
-                TextEditor(text: Binding(get: { draft.captionDraft }, set: { draft.edit($0); copied = false; pendingShare = nil })).focused($captionFocused).frame(height: 90).border(Color.secondary.opacity(0.3))
+                TextEditor(text: Binding(get: { draft.captionDraft }, set: { draft.edit($0); copied = false; flow.edited() })).focused($captionFocused).frame(height: 90).border(Color.secondary.opacity(0.3))
                     .accessibilityLabel("Caption")
                 HStack { if let weight = ShareText.weight(draft.captionDraft) { Text("\(weight)/280 X").foregroundStyle(weight > 280 ? DesignValues.color("status.warning") : Color.secondary) }; Text("\(draft.captionDraft.unicodeScalars.count)/3,000 LinkedIn").foregroundStyle(.secondary) }.font(.caption.monospacedDigit())
                 HStack {
@@ -44,16 +43,16 @@ import VoxClipCore
                     Button("Open X") { share(.x) }.disabled(opening)
                     Button("Open LinkedIn") { share(.linkedIn) }.disabled(opening)
                 }
-                if let pending = pendingShare {
+                if flow.pending != nil {
                     VStack(alignment: .leading, spacing: 4) {
                         InlineNotice(text: ShareDisclosure.removedWarning)
                         HStack {
-                            Button(ShareDisclosure.shareAnyway) { pendingShare = nil; perform(pending) }
-                            Button(ShareDisclosure.restoreLine) { pendingShare = nil; draft.restoreLine(); perform(pending) }
+                            Button(ShareDisclosure.shareAnyway) { if let action = flow.shareAnyway() { perform(action) } }
+                            Button(ShareDisclosure.restoreLine) { if let restored = flow.restoreLine(draft) { draft = restored.draft; perform(restored.action) } }
                         }.padding(.horizontal, 12)
                     }
                 }
-                if showsXTip { InlineNotice(text: ShareDisclosure.xMadeWithAITip) }
+                if flow.showsXTip { InlineNotice(text: ShareDisclosure.xMadeWithAITip) }
                 Text("VoxClip copies the caption and reveals the file. Add the video in the browser; nothing is posted automatically.").font(.caption).foregroundStyle(.secondary)
                 if let error = model.exportError { InlineNotice(text: error) }
                 HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
@@ -81,7 +80,7 @@ import VoxClipCore
             requestedIDs = model.exportClipIDs
             scope = model.exportTargets(.thisClip, requestedIDs: requestedIDs).isEmpty ? .fullVideo : .thisClip
         }
-        .onChange(of: shareTarget) { _, target in commitCaption(); draft.load(target: target, model: model); copied = false; pendingShare = nil; showsXTip = false }
+        .onChange(of: shareTarget) { _, target in commitCaption(); draft.load(target: target, model: model); copied = false; flow.select() }
         .onChange(of: captionFocused) { _, focused in if !focused { commitCaption() } }
         .onDisappear { commitCaption() }
         .task(id: copyRevision) {
@@ -95,17 +94,14 @@ import VoxClipCore
     /// Copy caption, Open X and Open LinkedIn first warn when the caption no longer carries the disclosure line.
     private func share(_ action: ShareAction) {
         commitCaption()
-        if draft.lineRemoved { pendingShare = action; return }
-        pendingShare = nil
-        perform(action)
+        if let action = flow.request(action, draft: draft) { perform(action) }
     }
     private func perform(_ action: ShareAction) {
         switch action {
         case .copy: commitCaption(); copyText(draft.captionDraft); copied = true; copyRevision += 1; model.announce("Caption copied.")
         case .x:
             openShare("x")
-            // An intent link can't set X's disclosure flag, so Open X shows the checklist tip (voice-lab.md §11.4).
-            if draft.disclosureLine != nil { showsXTip = true; model.announce(ShareDisclosure.xMadeWithAITip) }
+            if flow.openedX(draft: draft) { model.announce(ShareDisclosure.xMadeWithAITip) }
         case .linkedIn: openShare("linkedin")
         }
     }
@@ -131,6 +127,47 @@ import VoxClipCore
 }
 
 enum ShareAction { case copy, x, linkedIn }
+
+/// The export sheet's share actions for the selected target (voice-lab.md §11.3–11.4), as Windows `ShareDisclosureFlow`:
+/// Copy caption, Open X and Open LinkedIn share at once while the caption keeps the disclosure line. When the line was
+/// removed or changed, the action waits behind the removal warning until [Share anyway] shares the caption as it is or
+/// [Restore line] puts the line back and then shares.
+@MainActor struct ShareDisclosureFlow {
+    /// The share action held behind the removal warning, or nil.
+    private(set) var pending: ShareAction?
+    /// The "Made with AI" checklist tip, shown after Open X for a target with a line.
+    private(set) var showsXTip = false
+    /// A share click: the action to perform now, or nil when the removal warning shows first and holds it.
+    mutating func request(_ action: ShareAction, draft: ShareCaptionDraft) -> ShareAction? {
+        pending = draft.lineRemoved ? action : nil
+        return pending == nil ? action : nil
+    }
+    /// [Share anyway]: the held action, shared with the caption as it is; nil when nothing is held.
+    mutating func shareAnyway() -> ShareAction? {
+        let action = pending
+        pending = nil
+        return action
+    }
+    /// [Restore line]: the draft with the line put back and the held action to perform with it; nil when nothing is held.
+    mutating func restoreLine(_ draft: ShareCaptionDraft) -> (draft: ShareCaptionDraft, action: ShareAction)? {
+        guard let action = pending else { return nil }
+        pending = nil
+        var restored = draft
+        restored.restoreLine()
+        return (restored, action)
+    }
+    /// Editing the caption withdraws the warning, which was about the text before the edit.
+    mutating func edited() { pending = nil }
+    /// Another target: its caption has its own line, so the warning and the tip go.
+    mutating func select() { pending = nil; showsXTip = false }
+    /// After Open X: an intent link can't set X's disclosure flag, so a target with a line shows the checklist tip.
+    /// Returns true when the tip should be announced.
+    mutating func openedX(draft: ShareCaptionDraft) -> Bool {
+        guard draft.disclosureLine != nil else { return false }
+        showsXTip = true
+        return true
+    }
+}
 
 @MainActor struct ShareCaptionDraft {
     private(set) var draftTarget: String?
