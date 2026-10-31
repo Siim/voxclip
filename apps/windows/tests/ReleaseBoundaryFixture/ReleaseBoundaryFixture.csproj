@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- A tiny assembly the Release boundary checker inspects in window-free mutation tests (VoxClip.Ui.Tests builds every
-       variant). BoundaryVariant=Clean is the approved baseline; each other variant injects one kind of violation. -->
+       variant). BoundaryVariant=Clean is the approved baseline; each other variant injects one kind of violation. App and
+       AppPathMap compile the Clean sources as an x64 VoxClip.dll for the shipping check; AppPathMap also maps its PDB paths
+       away from the repository. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Library</OutputType>
@@ -11,6 +13,13 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(BoundaryVariant)' == 'App' or '$(BoundaryVariant)' == 'AppPathMap'">
+    <AssemblyName>VoxClip</AssemblyName>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(BoundaryVariant)' == 'AppPathMap'">
+    <PathMap>$(MSBuildProjectDirectory)=/src/</PathMap>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Fixture.cs" />

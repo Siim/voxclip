@@ -102,12 +102,18 @@
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=Observable" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=GeneratedTag" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=LowerCase" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=App" />
+      <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Release;BoundaryVariant=AppPathMap" />
       <_ReleaseBoundaryVariant Include="@(ReleaseBoundaryFixture)" AdditionalProperties="Configuration=Debug;BoundaryVariant=DebugBuild" />
     </ItemGroup>
     <MSBuild Projects="@(_ReleaseBoundaryVariant)" Targets="Build" RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />
   </Target>
+  <!-- The fast Release precheck inspects the typecheck surrogate and the portable Release CLI. -->
   <Target Name="BuildReleaseAppForInspection" BeforeTargets="CoreCompile" Condition="'$(Configuration)' == 'Release'">
     <MSBuild Projects="$(MSBuildThisFileDirectory)../../../VoxClip.App.TypeCheck/VoxClip.App.TypeCheck.csproj"
+             Targets="Restore;Build" Properties="Configuration=Release"
+             RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../../../../src/VoxClip.Cli/VoxClip.Cli.csproj"
              Targets="Restore;Build" Properties="Configuration=Release"
              RemoveProperties="TargetFramework;RuntimeIdentifier;SelfContained" BuildInParallel="false" />
   </Target>

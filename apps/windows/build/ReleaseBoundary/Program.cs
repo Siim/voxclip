@@ -2,8 +2,8 @@ using VoxClip.ReleaseBoundary;
 
 const string usage = """
     Usage (paths may be relative to the current directory):
-      ReleaseBoundary check <win-x64|win-arm64> <Release VoxClip.dll> [--allowlist <dir>] [--evidence <dir>] [--repo-root <dir>]
-      ReleaseBoundary precheck <Release VoxClip.WinCheck.dll> [--allowlist <dir>] [--evidence <dir>] [--repo-root <dir>]
+      ReleaseBoundary check <win-x64|win-arm64> <Release VoxClip.dll> <Release voxclip-cli.dll> [--allowlist <dir>] [--evidence <dir>] [--repo-root <dir>]
+      ReleaseBoundary precheck <Release VoxClip.WinCheck.dll> <Release voxclip-cli.dll> [--allowlist <dir>] [--evidence <dir>] [--repo-root <dir>]
       ReleaseBoundary describe <assembly> [--repo-root <dir>]
       ReleaseBoundary update <Release assembly> <allowlist file> [--repo-root <dir>]
     """;
@@ -28,10 +28,10 @@ options.TryGetValue("--evidence", out var evidence);
 
 switch (positional)
 {
-    case ["check", var rid, var app]:
-        return ReleaseCheck.Shipping(rid, app, allowlist, root, evidence, Console.Out, Console.Error);
-    case ["precheck", var surrogate]:
-        return ReleaseCheck.Precheck(surrogate, allowlist, root, evidence, Console.Out, Console.Error);
+    case ["check", var rid, var app, var cli]:
+        return ReleaseCheck.Shipping(rid, app, cli, allowlist, root, evidence, Console.Out, Console.Error);
+    case ["precheck", var surrogate, var cli]:
+        return ReleaseCheck.Precheck(surrogate, cli, allowlist, root, evidence, Console.Out, Console.Error);
     case ["describe", var assembly]:
     {
         var inventory = AssemblyInspector.Read(assembly, root);

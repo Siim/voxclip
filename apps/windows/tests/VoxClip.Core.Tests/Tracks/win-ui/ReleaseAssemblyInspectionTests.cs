@@ -167,9 +167,13 @@ public sealed class ReleaseAssemblyInspectionTests
             var surrogate = Path.Combine(directory, "VoxClip.WinCheck.dll");
             File.Copy(Fixture("Clean"), surrogate);
             var error = new StringWriter();
-            Assert.Equal(1, ReleaseCheck.Shipping("win-x64", surrogate, Path.Combine(Root, ReleaseCheck.AllowlistDirectory), Root, null, TextWriter.Null, error));
+            var cli = Path.Combine(directory, "voxclip-cli.dll");
+            Assert.Equal(1, ReleaseCheck.Shipping("win-x64", surrogate, cli, Path.Combine(Root, ReleaseCheck.AllowlistDirectory), Root, null, TextWriter.Null, error));
             Assert.Contains("never a surrogate", error.ToString());
-            Assert.Equal(2, ReleaseCheck.Shipping("win-x86", Path.Combine(directory, "VoxClip.dll"), directory, Root, null, TextWriter.Null, TextWriter.Null));
+            error = new StringWriter();
+            Assert.Equal(1, ReleaseCheck.Shipping("win-x64", Path.Combine(directory, "VoxClip.dll"), lonely, Path.Combine(Root, ReleaseCheck.AllowlistDirectory), Root, null, TextWriter.Null, error));
+            Assert.Contains("inspects the real Release CLI voxclip-cli.dll", error.ToString());
+            Assert.Equal(2, ReleaseCheck.Shipping("win-x86", Path.Combine(directory, "VoxClip.dll"), cli, directory, Root, null, TextWriter.Null, TextWriter.Null));
         }
         finally
         {
@@ -186,7 +190,7 @@ public sealed class ReleaseAssemblyInspectionTests
             var output = new StringWriter();
             var error = new StringWriter();
             var targets = new[] { new CheckTarget("ReleaseBoundaryFixture", Fixture("StandIn"), FixtureAllowlist) };
-            Assert.Equal(1, ReleaseCheck.Run("Release boundary fixture", targets, strictStale: true, Root, evidence, output, error));
+            Assert.Equal(1, ReleaseCheck.Run("Release boundary fixture", targets, Root, evidence, output, error));
             var text = error.ToString();
             Assert.Contains("UNAPPROVED type VoxClip.App.Services.RewriteBackendStandIn    [apps/windows/tests/ReleaseBoundaryFixture/Fixture.cs]", text);
             Assert.Contains("FAILED: 0 identity, 0 forbidden, 3 unapproved, 0 stale -> apps/windows/tests/ReleaseBoundaryFixture/allowlist/ReleaseBoundaryFixture.txt", text);
@@ -198,7 +202,7 @@ public sealed class ReleaseAssemblyInspectionTests
             Assert.Contains("\"passed\": false", File.ReadAllText(Path.Combine(evidence, "summary.json")));
             var clean = new[] { new CheckTarget("ReleaseBoundaryFixture", Fixture("Clean"), FixtureAllowlist) };
             output = new StringWriter();
-            Assert.Equal(0, ReleaseCheck.Run("Release boundary fixture", clean, strictStale: true, Root, null, output, TextWriter.Null));
+            Assert.Equal(0, ReleaseCheck.Run("Release boundary fixture", clean, Root, null, output, TextWriter.Null));
             Assert.Contains("Release boundary fixture: 1 assemblies passed.", output.ToString());
         }
         finally
@@ -208,7 +212,7 @@ public sealed class ReleaseAssemblyInspectionTests
     }
 
     [Fact]
-    public void StaleLinesWarnOnShippingAndFailTheExactPrecheck()
+    public void StaleLinesFailEveryCheck()
     {
         var clean = Read("Clean");
         var stale = clean.AllowlistLines.Append("type VoxClip.App.Services.RemovedProductType").ToArray();
@@ -222,9 +226,8 @@ public sealed class ReleaseAssemblyInspectionTests
             var allowlist = Path.Combine(directory, "ReleaseBoundaryFixture.txt");
             File.WriteAllText(allowlist, Allowlist.Render("ReleaseBoundaryFixture", stale));
             var targets = new[] { new CheckTarget("ReleaseBoundaryFixture", Fixture("Clean"), allowlist) };
-            Assert.Equal(0, ReleaseCheck.Run("shipping", targets, strictStale: false, Root, null, TextWriter.Null, TextWriter.Null));
             var error = new StringWriter();
-            Assert.Equal(1, ReleaseCheck.Run("precheck", targets, strictStale: true, Root, null, TextWriter.Null, error));
+            Assert.Equal(1, ReleaseCheck.Run("precheck", targets, Root, null, TextWriter.Null, error));
             Assert.Contains("STALE type VoxClip.App.Services.RemovedProductType", error.ToString());
         }
         finally
@@ -312,6 +315,91 @@ public sealed class ReleaseAssemblyInspectionTests
     }
 
     [Fact]
+    public void ShippingFailsClosedWhenPdbPathsDoNotMatchTheRepositoryRoot()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "voxclip-release-boundary-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var allowlists = Path.Combine(directory, "allowlist");
+            Directory.CreateDirectory(allowlists);
+            File.WriteAllText(Path.Combine(allowlists, "VoxClip.txt"), Allowlist.Render("VoxClip", Allowlist.Read(FixtureAllowlist)));
+            string Stage(string variant)
+            {
+                var app = Path.Combine(directory, variant);
+                Directory.CreateDirectory(app);
+                foreach (var file in new[] { "VoxClip.dll", "VoxClip.pdb" })
+                    File.Copy(Path.Combine(FixtureDirectory, "bin", variant, file), Path.Combine(app, file));
+                return Path.Combine(app, "VoxClip.dll");
+            }
+            (int Code, string Output, string Error) Ship(string app, string root)
+            {
+                var output = new StringWriter();
+                var error = new StringWriter();
+                var code = ReleaseCheck.Shipping("win-x64", app, Path.Combine(Path.GetDirectoryName(app)!, "voxclip-cli.dll"), allowlists, root, null, output, error);
+                return (code, output.ToString(), error.ToString());
+            }
+            // The same x64 VoxClip.dll passes with the root the compiler saw (Core, Media and the CLI are absent here).
+            var app = Stage("App");
+            var correct = Ship(app, Root);
+            Assert.Contains("  VoxClip passed against ", correct.Output);
+            Assert.DoesNotContain("VoxClip FAILED", correct.Error);
+            // A root the PDB paths do not start with must not pass. Only the spelling matters, so this plain directory stands
+            // for a symlink alias of the checkout such as /tmp for /private/tmp (no link is created: the test deletes this tree).
+            var alias = Path.Combine(directory, "checkout-alias");
+            Directory.CreateDirectory(alias);
+            var aliased = Ship(app, alias);
+            Assert.Equal(1, aliased.Code);
+            Assert.DoesNotContain("  VoxClip passed against ", aliased.Output);
+            Assert.Contains("VoxClip FAILED", aliased.Error);
+            Assert.Contains("PDB document(s) are neither under --repo-root", aliased.Error);
+            Assert.Contains("UNAPPROVED type Microsoft.Windows.Foundation.UndockedRegFreeWinRTCS.NativeMethods", aliased.Error);
+            // A -p:PathMap build of the same sources must not pass with the correct root either.
+            var mapped = Ship(Stage("AppPathMap"), Root);
+            Assert.Equal(1, mapped.Code);
+            Assert.DoesNotContain("  VoxClip passed against ", mapped.Output);
+            Assert.Contains("for example /src/", mapped.Error);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ShippingFailsOnStaleLinesAMissingCliAndUnlistedFirstPartyAssemblies()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "voxclip-release-boundary-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var app = Path.Combine(directory, "app");
+            var allowlists = Path.Combine(directory, "allowlist");
+            Directory.CreateDirectory(app);
+            Directory.CreateDirectory(allowlists);
+            foreach (var file in new[] { "VoxClip.dll", "VoxClip.pdb" }) File.Copy(Path.Combine(FixtureDirectory, "bin/App", file), Path.Combine(app, file));
+            // A first-party assembly that is not in the shipping set, and a package assembly without repository sources.
+            foreach (var file in new[] { "ReleaseBoundaryFixture.dll", "ReleaseBoundaryFixture.pdb" }) File.Copy(Path.Combine(FixtureDirectory, "bin/Clean", file), Path.Combine(app, file));
+            var package = typeof(Xunit.Assert).Assembly.Location;
+            File.Copy(package, Path.Combine(app, Path.GetFileName(package)));
+            var stale = Allowlist.Read(FixtureAllowlist).Append("type VoxClip.App.Services.RemovedProductType").Order(StringComparer.Ordinal);
+            File.WriteAllText(Path.Combine(allowlists, "VoxClip.txt"), Allowlist.Render("VoxClip", stale));
+            var output = new StringWriter();
+            var error = new StringWriter();
+            Assert.Equal(1, ReleaseCheck.Shipping("win-x64", Path.Combine(app, "VoxClip.dll"), Path.Combine(app, "voxclip-cli.dll"), allowlists, Root, null, output, error));
+            var text = error.ToString();
+            Assert.Contains("  STALE type VoxClip.App.Services.RemovedProductType", text);
+            Assert.Contains("VoxClip FAILED: 0 identity, 0 forbidden, 0 unapproved, 1 stale", text);
+            Assert.Contains("voxclip-cli: missing assembly", text);
+            Assert.Contains("UNLISTED ReleaseBoundaryFixture.dll in " + app + " is a first-party assembly (its PDB names apps/windows/tests/ReleaseBoundaryFixture/", text);
+            Assert.DoesNotContain("UNLISTED " + Path.GetFileName(package), text);
+            Assert.Single(ReleaseCheck.UnlistedFirstPartyAssemblies(app, Root));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void OnlyRecognisedToolchainDocumentsAreToolchainOutput()
     {
         var root = Root;
@@ -385,7 +473,8 @@ public sealed class ReleaseAssemblyInspectionTests
         var script = File.ReadAllText(Path.Combine(Root, "apps/windows/build/Test-ReleaseBoundary.ps1"));
         Assert.Contains("-getProperty:TargetPath", script);
         Assert.Contains("'-p:Configuration=Release'", script);
-        Assert.Contains("check $RuntimeIdentifier $target", script);
+        Assert.Contains("& dotnet build $cliProject -c Release -r $RuntimeIdentifier", script);
+        Assert.Contains("check $RuntimeIdentifier $target $cli", script);
         Assert.Contains("if ($LASTEXITCODE -ne 0)", script);
         Assert.DoesNotContain("TypeCheck", script);
         Assert.DoesNotContain("WinCheck", script);

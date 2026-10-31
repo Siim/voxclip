@@ -175,14 +175,18 @@ public sealed class VoiceLabReleaseBoundaryTests
     [Fact]
     public void ReleaseSurrogateMatchesTheShippingAllowlistsExactly()
     {
-        // Fast macOS precheck only: the typecheck surrogate (VoxClip.WinCheck.dll, UseWinUI=false) must match the checked-in
-        // Release allowlists exactly. The guarantee is the shipping inspection after each real Windows CI Release App build.
+        // Fast macOS precheck only: the typecheck surrogate (VoxClip.WinCheck.dll, UseWinUI=false), the Core and Media assemblies
+        // beside it and the portable Release CLI must match the checked-in Release allowlists exactly. The guarantee is the
+        // shipping inspection after each real Windows CI Release App build and RID-specific Release CLI build.
         var surrogate = Path.Combine(Root, ReleaseCheck.SurrogatePath);
+        var cli = Path.Combine(Root, ReleaseCheck.CliPrecheckPath);
         Assert.True(File.Exists(surrogate), "The fast surrogate precheck is a mandatory UI build prerequisite; Windows CI separately inspects both shipping RIDs.");
+        Assert.True(File.Exists(cli), "BuildReleaseAppForInspection builds the portable Release CLI for the precheck: " + cli);
         var output = new StringWriter();
         var error = new StringWriter();
-        var code = ReleaseCheck.Precheck(surrogate, Path.Combine(Root, ReleaseCheck.AllowlistDirectory), Root, null, output, error);
+        var code = ReleaseCheck.Precheck(surrogate, cli, Path.Combine(Root, ReleaseCheck.AllowlistDirectory), Root, null, output, error);
         Assert.True(code == 0, output + "\n" + error);
+        Assert.Contains("Release boundary precheck (typecheck surrogate): 4 assemblies passed.", output.ToString());
         var app = AssemblyInspector.Read(surrogate, Root);
         Assert.Equal("Release", app.Identity.Configuration);
         Assert.True(app.Identity.Optimized);
