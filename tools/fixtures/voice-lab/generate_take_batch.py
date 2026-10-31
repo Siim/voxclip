@@ -11,7 +11,10 @@ An independent standard-library reference of the rules in shared/fixtures/voice-
   `credits`. One presentation covers the whole batch, with the monthly cap.
 - The windows run in source order. A window that completes or stops early discards its own unsent quotes and hands over
   to the next. A fatal, cancelled or invalidated window ends the batch and discards every later window. Only requests
-  the provider accepted count as sent, which is exactly what the spend ledger records.
+  the provider accepted (its 2xx status line arrived, whatever the reply then did) count as sent, which is exactly what
+  the spend ledger records.
+- Just before each request is dispatched, a cap check weighs the batch's requests from that one on, in run order, that
+  are neither sent nor discarded: every earlier request has ended by then, in the ledger or never to be sent.
 
 Per-take quotes use the catalog list prices: TTS bills the window's characters on eleven_v3, and every take's QA quote is
 the bounded 290 s of scribe_v2. Two runs give identical bytes."""
@@ -139,8 +142,15 @@ def kind(value, cap):
     return {'kind': 'confirm', 'text': text}
 
 
+# Per take, the requests the provider accepted and the requests the window dispatched: a refused TTS ('none') was
+# dispatched, and a take whose TTS was refused or which failed before QA ('synthesis') never dispatches its QA.
+ACCEPTED = {'both': ('synthesis', 'qa'), 'synthesis': ('synthesis',), 'none': ()}
+DISPATCHED = {'both': ('synthesis', 'qa'), 'synthesis': ('synthesis',), 'none': ('synthesis',)}
+
+
 def replay(windows, steps):
-    """The run, step by step: which requests are sent, discarded or still to come after each window ends."""
+    """The run, step by step: what a cap check weighs before each request the window dispatches, then which requests
+    are sent, discarded or still to come after the window ends."""
     every = requests(windows)
     sent, discarded, next_window = set(), set(), 0
     out = []
@@ -149,8 +159,13 @@ def replay(windows, steps):
         if index != next_window or len(parts) > windows[index]['takes']:
             out.append({**step, 'expected': {'error': 'invalidInput'}})
             continue
-        accepted = {(index, take, part) for take, which in enumerate(parts)
-                    for part in {'both': ('synthesis', 'qa'), 'synthesis': ('synthesis',), 'none': ()}[which]}
+        dispatches = []
+        for take, which in enumerate(parts):
+            for part in DISPATCHED[which]:
+                position = [row[:3] for row in every].index((index, take, part))
+                rest = [row for row in every[position:] if row[:3] not in sent and row[:3] not in discarded]
+                dispatches.append({'request': [index, take, part], 'remaining': total(rest)})
+        accepted = {(index, take, part) for take, which in enumerate(parts) for part in ACCEPTED[which]}
         own = {(w, t, part) for w, t, part, _ in every if w == index}
         sent |= accepted
         discarded |= own - accepted
@@ -161,6 +176,7 @@ def replay(windows, steps):
             next_window = None
         pending = [row for row in every if row[:3] not in sent and row[:3] not in discarded]
         out.append({**step, 'expected': {
+            'dispatches': dispatches,
             'next': next_window,
             'sent': total([row for row in every if row[:3] in sent]),
             'remaining': total(pending),

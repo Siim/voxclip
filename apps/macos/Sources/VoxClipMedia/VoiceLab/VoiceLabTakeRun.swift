@@ -16,6 +16,11 @@ private final class VoiceLabRunDispatch: Sendable {
     }
 }
 
+/// A take run's dispatch boundary (voice-lab §3.1): the App's last check before the request with this ID (a take's TTS or
+/// QA `requestID`) starts, such as the month's cap with `VoiceLabTakeBatchProgress.remainingEstimate(from:)`. It calls
+/// `start` to dispatch, or throws to refuse.
+public typealias VoiceLabTakeDispatchBoundary = @Sendable (UUID, @escaping @Sendable () throws -> Void) async throws -> Void
+
 public actor VoiceLabTakeRun {
     private struct Pending: Sendable {
         let quote: VoiceLabTakeRunQuote
@@ -37,7 +42,7 @@ public actor VoiceLabTakeRun {
     private let storage: VoiceLabTakeStorage
     private var scratches: [UUID: VoiceLabTakeScratch] = [:]
     private var paidAssets: [UUID: VoiceLabAsset] = [:]
-    private let dispatchIfCurrent: VoiceLabDispatchBoundary
+    private let dispatchIfCurrent: VoiceLabTakeDispatchBoundary
     private nonisolated let dispatchRevision = Mutex(0)
     private var pending: Pending?
     private var task: Task<VoiceLabTakeRunResult, Never>?
@@ -53,7 +58,7 @@ public actor VoiceLabTakeRun {
     #endif
     public init(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck,
                 storage: VoiceLabTakeStorage,
-                dispatchIfCurrent: @escaping VoiceLabDispatchBoundary,
+                dispatchIfCurrent: @escaping VoiceLabTakeDispatchBoundary,
                 inputsAreCurrent: @escaping @Sendable () async -> Bool) {
         self.client = client; self.store = store; self.speaker = speaker; useGuard = VoiceUseGuard(store: store, check: speaker)
         self.inputsAreCurrent = inputsAreCurrent
@@ -258,7 +263,7 @@ public actor VoiceLabTakeRun {
             do {
                 let authorization = try await useGuard.authorize(quote: take.synthesis, contentKey: value.input.contentKey,
                     recordID: value.record.id, speech16k: value.sourceSpeech, approved: true)
-                try await authorization.capability?.bindDispatch(boundary(revision: expected, dispatch: dispatch))
+                try await authorization.capability?.bindDispatch(boundary(request: take.synthesis.requestID, revision: expected, dispatch: dispatch))
                 try await validate(value, revision: expected)
                 let result = try await client.synthesize(text: value.input.text, modelID: value.input.modelID,
                     voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
@@ -303,7 +308,7 @@ public actor VoiceLabTakeRun {
                 let capability = VoiceOperationCapability(quote: take.qa, reserve: {
                     try await store.dispatchPermit(value.record, requestID: take.qa.requestID)
                 }) { try await self.validate(value, revision: expected) }
-                try await capability.bindDispatch(boundary(revision: expected, dispatch: dispatch))
+                try await capability.bindDispatch(boundary(request: take.qa.requestID, revision: expected, dispatch: dispatch))
                 let recognized = try await client.transcribeQA(processed.mixed, rate: processed.sampleRate,
                     language: value.input.language, authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability,
                     acceptance: qaAccepted)
@@ -341,10 +346,10 @@ public actor VoiceLabTakeRun {
     private func policy(_ record: VoiceConsentRecord) -> OwnVoicePolicy {
         OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
     }
-    private func boundary(revision expected: Int, dispatch run: VoiceLabRunDispatch) -> VoiceLabDispatchBoundary {
+    private func boundary(request: UUID, revision expected: Int, dispatch run: VoiceLabRunDispatch) -> VoiceLabDispatchBoundary {
         let dispatch = dispatchIfCurrent
         return { [self] start in
-            try await dispatch {
+            try await dispatch(request) {
                 try self.dispatchRevision.withLock { revision in
                     guard revision == expected else { throw Abort.invalidated }
                     try start()

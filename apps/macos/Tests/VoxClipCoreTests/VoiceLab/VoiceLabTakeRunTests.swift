@@ -110,6 +110,11 @@ private final class TakeRunHTTP: Sendable {
         var current = true
         var paused = false
         var entered = false
+        /// The request each default dispatch started, in order.
+        var dispatches: [UUID] = []
+        /// With `recordsSpend`, the month's ledger total just before each of `dispatches`.
+        var recordsSpend = false
+        var spentAtDispatch: [Decimal] = []
     }
     let value: Mutex<State>
     init(_ initial: State) { value = Mutex(initial) }
@@ -149,7 +154,7 @@ struct VoiceLabTakeRunTests {
     }
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
-                         boundary: VoiceLabDispatchBoundary? = nil) async throws -> Fixture {
+                         boundary: VoiceLabTakeDispatchBoundary? = nil) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
         let store = VoiceConsentStore(locations: locations)
@@ -216,11 +221,16 @@ struct VoiceLabTakeRunTests {
         let speakerCheck = VoiceSpeakerCheck(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45)
         let storage = VoiceLabTakeStorage(projectId: UUID().uuidString.lowercased(), paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch"))
         let makeRun: () -> VoiceLabTakeRun = {
-            VoiceLabTakeRun(client: client, store: store, speaker: speakerCheck, storage: storage, dispatchIfCurrent: { start in
-                if let boundary { try await boundary(start); return }
+            VoiceLabTakeRun(client: client, store: store, speaker: speakerCheck, storage: storage, dispatchIfCurrent: { request, start in
+                if let boundary { try await boundary(request, start); return }
+                var spent: Decimal?
+                if http.value.withLock({ $0.recordsSpend }) { spent = await ledger.total(provider: "elevenlabs", at: clock.now())?.usd ?? 0 }
+                let observed = spent
                 try http.value.withLock { state in
                     guard state.current else { throw VoiceLabError.consentRequired }
                     try start()
+                    state.dispatches.append(request)
+                    if let observed { state.spentAtDispatch.append(observed) }
                 }
             }) { http.value.withLock { $0.current } }
         }
@@ -402,7 +412,7 @@ struct VoiceLabTakeRunTests {
     func firstTransportApprovalRetainsPlayingScratchUntilRequestStarts(approved: Bool) async throws {
         let suspension = TakeRunSuspension()
         let approvals = TakeRunApproval()
-        let fixture = try await fixture(boundary: { start in try await approvals.dispatch(start) })
+        let fixture = try await fixture(boundary: { _, start in try await approvals.dispatch(start) })
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let initial = try await fixture.run.prepare(fixture.input)
         let result = try await fixture.run.execute(initial, approved: true)
@@ -729,6 +739,36 @@ struct VoiceLabTakeRunTests {
         }
         #expect(fixture.http.value.withLock { $0.seeds == (launchFails ? [] : [UInt32.max]) && $0.qa == 0 })
         #expect(await fixture.ledger.total(provider: "elevenlabs", at: fixture.clock.now())?.usd == 0)
+    }
+    /// Each dispatch names its request, so a cap check can weigh exactly what the batch can still spend: just before a
+    /// request starts, the month's ledger plus `remainingEstimate(from:)` is the approved estimate less what will never
+    /// be sent. The figure that moves only when a window finishes counts the first take's TTS twice at its QA dispatch.
+    @Test func eachDispatchNamesItsRequestForAnExactCapCheck() async throws {
+        let fixture = try await fixture { $0.recordsSpend = true }; defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let runs = VoiceLabTakeBatchRun(runs: [fixture.run, fixture.later])
+        let batch = try await runs.prepare([fixture.input, fixture.laterInput])
+        try await runs.approve(batch)
+        let total = try #require(batch.estimate.usd)
+        var progress = VoiceLabTakeBatchProgress(batch: batch)
+        let fresh = progress
+        let first = try await runs.execute(batch, window: 0)
+        #expect(first.end == .earlyStop)
+        try progress.finish(window: 0, result: first)
+        let take = batch.windows[0].quote.takes[0]
+        let (requests, ledger) = fixture.http.value.withLock { ($0.dispatches, $0.spentAtDispatch) }
+        try #require(requests == [take.synthesis.requestID, take.qa.requestID] && ledger.count == 2)
+        for (request, spent) in zip(requests, ledger) {
+            #expect(spent + (fresh.remainingEstimate(from: request)?.usd ?? 0) == total)
+        }
+        #expect(ledger[1] + (fresh.remainingEstimate.usd ?? 0) > total)
+        let afterFirst = progress
+        _ = try await runs.execute(batch, window: 1)
+        let (laterRequests, laterLedger) = fixture.http.value.withLock { (Array($0.dispatches.dropFirst(2)), Array($0.spentAtDispatch.dropFirst(2))) }
+        let opening = try #require(laterRequests.first), spentAtOpening = try #require(laterLedger.first)
+        #expect(opening == batch.windows[1].quote.takes[0].synthesis.requestID)
+        let dropped = batch.estimate(of: afterFirst.discarded).usd ?? 0
+        #expect(spentAtOpening + (afterFirst.remainingEstimate(from: opening)?.usd ?? 0) == total - dropped)
+        #expect(afterFirst.remainingEstimate(from: opening) == afterFirst.remainingEstimate)
     }
     @Test func aRunPinsOnlyItsOwnFreshSetAndOnlyOnce() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }

@@ -1267,6 +1267,62 @@
           "end": "completed",
           "sent": ["both", "both", "both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [0, 0, "synthesis"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1894999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 0, "qa"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1862999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 1, "synthesis"],
+                "remaining": {
+                  "units": 8,
+                  "usd": "0.1685777776",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 1, "qa"],
+                "remaining": {
+                  "units": 8,
+                  "usd": "0.1653777776",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 2, "synthesis"],
+                "remaining": {
+                  "units": 7,
+                  "usd": "0.1476555554",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 2, "qa"],
+                "remaining": {
+                  "units": 7,
+                  "usd": "0.1444555554",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": 1,
             "sent": {
               "units": 3,
@@ -1288,6 +1344,26 @@
           "end": "earlyStop",
           "sent": ["both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [1, 0, "synthesis"],
+                "remaining": {
+                  "units": 6,
+                  "usd": "0.1267333332",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [1, 0, "qa"],
+                "remaining": {
+                  "units": 6,
+                  "usd": "0.1247333332",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": 2,
             "sent": {
               "units": 4,
@@ -1314,6 +1390,53 @@
           "end": "completed",
           "sent": ["synthesis", "both", "both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [2, 0, "synthesis"],
+                "remaining": {
+                  "units": 3,
+                  "usd": "0.0675666666",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [2, 1, "synthesis"],
+                "remaining": {
+                  "units": 2,
+                  "usd": "0.0450444444",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [2, 1, "qa"],
+                "remaining": {
+                  "units": 2,
+                  "usd": "0.0402444444",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [2, 2, "synthesis"],
+                "remaining": {
+                  "units": 1,
+                  "usd": "0.0225222222",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [2, 2, "qa"],
+                "remaining": {
+                  "units": 1,
+                  "usd": "0.0177222222",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": null,
             "sent": {
               "units": 7,
@@ -1416,6 +1539,35 @@
           "end": "earlyStop",
           "sent": ["none", "both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [0, 0, "synthesis"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1894999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 1, "synthesis"],
+                "remaining": {
+                  "units": 8,
+                  "usd": "0.1685777776",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 1, "qa"],
+                "remaining": {
+                  "units": 8,
+                  "usd": "0.1653777776",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": 1,
             "sent": {
               "units": 1,
@@ -1442,6 +1594,26 @@
           "end": "earlyStop",
           "sent": ["both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [1, 0, "synthesis"],
+                "remaining": {
+                  "units": 6,
+                  "usd": "0.1267333332",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [1, 0, "qa"],
+                "remaining": {
+                  "units": 6,
+                  "usd": "0.1247333332",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": 2,
             "sent": {
               "units": 2,
@@ -1472,6 +1644,26 @@
           "end": "earlyStop",
           "sent": ["both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [2, 0, "synthesis"],
+                "remaining": {
+                  "units": 3,
+                  "usd": "0.0675666666",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [2, 0, "qa"],
+                "remaining": {
+                  "units": 3,
+                  "usd": "0.0627666666",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": null,
             "sent": {
               "units": 3,
@@ -1581,6 +1773,17 @@
           "end": "fatal",
           "sent": ["synthesis"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [0, 0, "synthesis"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1894999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": null,
             "sent": {
               "units": 1,
@@ -1703,6 +1906,26 @@
           "end": "earlyStop",
           "sent": ["both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [0, 0, "synthesis"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1894999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 0, "qa"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1862999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": 1,
             "sent": {
               "units": 1,
@@ -1729,6 +1952,17 @@
           "end": "cancelled",
           "sent": ["synthesis"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [1, 0, "synthesis"],
+                "remaining": {
+                  "units": 6,
+                  "usd": "0.1267333332",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": null,
             "sent": {
               "units": 2,
@@ -1841,6 +2075,26 @@
           "end": "earlyStop",
           "sent": ["both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [0, 0, "synthesis"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1894999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 0, "qa"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1862999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": 1,
             "sent": {
               "units": 1,
@@ -1867,6 +2121,26 @@
           "end": "earlyStop",
           "sent": ["both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [1, 0, "synthesis"],
+                "remaining": {
+                  "units": 6,
+                  "usd": "0.1267333332",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [1, 0, "qa"],
+                "remaining": {
+                  "units": 6,
+                  "usd": "0.1247333332",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": 2,
             "sent": {
               "units": 2,
@@ -1897,6 +2171,7 @@
           "end": "invalidated",
           "sent": [],
           "expected": {
+            "dispatches": [],
             "next": null,
             "sent": {
               "units": 2,
@@ -2024,6 +2299,26 @@
           "end": "earlyStop",
           "sent": ["both"],
           "expected": {
+            "dispatches": [
+              {
+                "request": [0, 0, "synthesis"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1894999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              },
+              {
+                "request": [0, 0, "qa"],
+                "remaining": {
+                  "units": 9,
+                  "usd": "0.1862999998",
+                  "credits": null,
+                  "basis": "bounded-tts-and-scribe"
+                }
+              }
+            ],
             "next": 1,
             "sent": {
               "units": 1,

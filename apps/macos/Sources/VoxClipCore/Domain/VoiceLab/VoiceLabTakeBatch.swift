@@ -120,9 +120,23 @@ public struct VoiceLabTakeBatchProgress: Sendable, Equatable {
     /// What the provider accepted, one unit per take with a sent TTS request: the "Made {t} takes · ≈ ${x}" line and the
     /// "Discard {t} takes?" amount (design delta §6 T3).
     public var sentEstimate: CostEstimate { batch.estimate(of: sent) }
-    /// The approved requests neither sent nor discarded. A cap check before a later dispatch weighs this, not the whole
-    /// batch, because the month's spend already holds what was sent.
+    /// The approved requests neither sent nor discarded, as of the last finished window. It moves only when a window
+    /// finishes, so inside a window it still holds requests already in the spend ledger; before a window's first dispatch
+    /// it equals `remainingEstimate(from:)` for that request.
     public var remainingEstimate: CostEstimate {
         batch.estimate(of: Set(batch.windows.flatMap(\.requestIDs)).subtracting(sent).subtracting(discarded))
+    }
+
+    /// What a cap check weighs just before the run dispatches `requestID` (the request `VoiceLabTakeRun` names to its
+    /// dispatch boundary): the batch's requests from `requestID` on in run order (window by window, each take's TTS then
+    /// its QA) that are neither sent nor discarded. Every earlier request has ended by then, accepted and in the month's
+    /// spend ledger or never to be sent, so the ledger plus this is exactly what the month can reach with the rest of the
+    /// batch (§3.1). The batch's own part of that sum never exceeds its approved estimate, so a check that compares only cap
+    /// crossing with the approval never asks again for the batch's own spend. Nil for a request that is not the batch's, or
+    /// is already sent or discarded.
+    public func remainingEstimate(from requestID: UUID) -> CostEstimate? {
+        let order = batch.windows.flatMap(\.requestIDs)
+        guard let position = order.firstIndex(of: requestID), !sent.contains(requestID), !discarded.contains(requestID) else { return nil }
+        return batch.estimate(of: Set(order[position...]).subtracting(sent).subtracting(discarded))
     }
 }

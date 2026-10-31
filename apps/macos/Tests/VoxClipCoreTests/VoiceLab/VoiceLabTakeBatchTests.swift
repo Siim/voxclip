@@ -25,8 +25,10 @@ struct VoiceLabTakeBatchTests {
                 window = try row.decode(Int.self); take = try row.decode(Int.self); part = try row.decode(String.self)
             }
         }
+        struct Dispatch: Decodable { let request: Request; let remaining: Estimate }
         struct StepExpected: Decodable {
-            let error: String?; let next: Int?; let sent: Estimate?; let remaining: Estimate?; let discarded: [Request]?
+            let error: String?; let dispatches: [Dispatch]?; let next: Int?; let sent: Estimate?; let remaining: Estimate?
+            let discarded: [Request]?
         }
         struct Step: Decodable { let window: Int; let end: String; let sent: [String]; let expected: StepExpected }
         struct Case: Decodable {
@@ -155,8 +157,20 @@ struct VoiceLabTakeBatchTests {
                 #expect(progress == before, "\(label) changes nothing")
                 continue
             }
+            guard let dispatches = step.expected.dispatches else { throw VectorError(message: "\(label): no dispatches") }
+            for (ordinal, dispatch) in dispatches.enumerated() {
+                let request = try Self.requestID(dispatch.request, in: batch)
+                guard let remaining = progress.remainingEstimate(from: request) else {
+                    Issue.record("\(label) dispatch \(ordinal): no remainder"); continue
+                }
+                try Self.expect(remaining, dispatch.remaining, "\(label) dispatch \(ordinal) remaining")
+            }
             try progress.finish(window: step.window, sent: ids, end: end)
             #expect(progress.window == step.expected.next, "\(label) next")
+            for request in progress.sent.union(progress.discarded) {
+                #expect(progress.remainingEstimate(from: request) == nil, "\(label): a sent or discarded request is never dispatched")
+            }
+            #expect(progress.remainingEstimate(from: UUID()) == nil, "\(label): a foreign request")
             try Self.expect(progress.sentEstimate, step.expected.sent, "\(label) sent")
             try Self.expect(progress.remainingEstimate, step.expected.remaining, "\(label) remaining")
             let discarded = try Set((step.expected.discarded ?? []).map { try Self.requestID($0, in: batch) })
@@ -167,6 +181,32 @@ struct VoiceLabTakeBatchTests {
                 #expect(sent + remaining + dropped == total, "\(label): every request is sent, discarded or still to come")
             }
         }
+    }
+
+    /// voice-lab §3.1 with one approval for the batch: a cap check before each dispatch that adds `remainingEstimate(from:)`
+    /// to the month's ledger never crosses a cap the approval did not cross. The figure that moves only when a window
+    /// finishes would, because the ledger already holds the requests it still counts.
+    @Test func aCapCheckBeforeEachDispatchStaysWithTheApproval() throws {
+        let vectors = try vectors()
+        let row = try #require(vectors.cases.first { $0.id == "three-windows-reaching-cap" })
+        let batch = try VoiceLabTakeBatch(windows: row.windows.map { try Self.window($0, rate: vectors.sampleRate) })
+        let cap = try #require(row.cap)
+        let limit = try Self.decimal(cap.limit), approvedAt = try Self.decimal(cap.spent)
+        #expect(!VoiceLabMonthlyCap(limit: limit, spent: approvedAt).isCrossed(by: batch.estimate))
+        var progress = VoiceLabTakeBatchProgress(batch: batch)
+        var ledger = approvedAt, staleCrossings = 0
+        for (index, window) in batch.windows.enumerated() {
+            for request in window.quote.takes.flatMap({ [$0.synthesis, $0.qa] }) {
+                let remaining = try #require(progress.remainingEstimate(from: request.requestID))
+                #expect(!VoiceLabMonthlyCap(limit: limit, spent: ledger).isCrossed(by: remaining))
+                #expect(ledger + (remaining.usd ?? 0) == limit, "every request accepted: the ledger and the rest reach the cap exactly")
+                if VoiceLabMonthlyCap(limit: limit, spent: ledger).isCrossed(by: progress.remainingEstimate) { staleCrossings += 1 }
+                ledger += request.estimate.usd ?? 0
+            }
+            try progress.finish(window: index, sent: Set(window.requestIDs), end: .completed)
+        }
+        #expect(staleCrossings > 0)
+        #expect(ledger == limit && progress.window == nil)
     }
 
     @Test func theConstantsMatchTheVectors() throws {

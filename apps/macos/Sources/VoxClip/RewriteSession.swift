@@ -104,7 +104,7 @@ struct RewriteConnector {
         let storage = VoiceLabTakeStorage(projectId: editor.project.id,
             paidRoot: editor.app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true),
             scratchRoot: editor.app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true))
-        let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { [weak self] start in
+        let run = VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: { [weak self] _, start in
             guard let generation = await self?.generation else { throw VoiceLabError.consentRequired }
             try await generation.dispatchWithCurrentCost(start)
         }) { [weak self] in
