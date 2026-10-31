@@ -6268,6 +6268,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public LevelGainD
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public LufsJumpLu(System.ReadOnlySpan`1<float>,int,System.Collections.Generic.IReadOnlyList`1<int>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public MomentaryLufs(System.ReadOnlySpan`1<float>,int,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public NeighbourhoodVoicedRmsDb(System.ReadOnlySpan`1<float>,int,int,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public NeighbourhoodVoicedRmsDb(VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt,int,long,long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public SamplePeakDbfs(System.ReadOnlySpan`1<float>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public SeamJumpLu(System.ReadOnlySpan`1<float>,int,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabLoudness :: method public TruePeakDbtp(System.ReadOnlySpan`1<float>,int)
@@ -7133,6 +7134,20 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe :: method public op_I
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe :: method public set_Piece(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe :: method public set_Recipe(VoxClip.Core.Domain.VoiceLab.VoiceLabRenderRecipe)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe :: method public set_SegmentId(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method private AllFinite(System.ReadOnlySpan`1<float>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public .ctor(long,System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public Samples(long,long)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public Whole(System.ReadOnlySpan`1<float>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public get_IsFinite()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public get_Regions()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt :: method public get_TotalFrames()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: field private samples
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method private .ctor(long,float[])
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public .ctor(long,System.ReadOnlySpan`1<float>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public Owning(long,float[])
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public get_End()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public get_Samples()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region :: method public get_Start()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions :: method private get_EqualityContract()
@@ -7281,8 +7296,9 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeAudio :: method public set_Trimm
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public .ctor(string,string,string,string,uint,string,VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt,VoxClip.Core.Domain.Transcript.AudioEnvelope,int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlySet`1<string>,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,bool,bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public .ctor(string,string,string,string,uint,string,float[],int,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,System.Collections.Generic.IReadOnlySet`1<string>,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,bool,bool)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Deconstruct(string&,string&,string&,string&,uint&,string&,float[]&,int&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>&,System.Collections.Generic.IReadOnlySet`1<string>&,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow&,System.Nullable`1<double>&,System.Nullable`1<double>&,bool&,bool&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Deconstruct(string&,string&,string&,string&,uint&,string&,VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt&,VoxClip.Core.Domain.Transcript.AudioEnvelope&,int&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>&,System.Collections.Generic.IReadOnlySet`1<string>&,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow&,System.Nullable`1<double>&,System.Nullable`1<double>&,bool&,bool&)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public Equals(object)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public GetHashCode()
@@ -7301,6 +7317,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Provi
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_RecordId()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Seed()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Source()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_SourceEnvelope()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_SourceSampleRate()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Text()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public get_Window()
@@ -7317,7 +7334,8 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Outgo
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_ProviderConsent(bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_RecordId(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Seed(uint)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Source(float[])
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Source(VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_SourceEnvelope(VoxClip.Core.Domain.Transcript.AudioEnvelope)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_SourceSampleRate(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Text(string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput :: method public set_Window(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
@@ -7338,6 +7356,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public set_R
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakePreflight :: method public set_SourceLevel(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: field public MaximumQaSeconds
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method private Frames(double,int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method private SourceFrames(double,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public EncodeQaWav(System.ReadOnlySpan`1<float>,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Envelope(float[],int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeProcessing :: method public Preflight(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput)
@@ -9415,27 +9434,59 @@ member VoxClip.Core.Services.Project.CacheEnvelope :: method public op_Inequalit
 member VoxClip.Core.Services.Project.CacheEnvelope :: method public set_Count(int)
 member VoxClip.Core.Services.Project.CacheEnvelope :: method public set_FrameSeconds(double)
 member VoxClip.Core.Services.Project.CacheEnvelope :: method public set_SampleRate(int)
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private NoProtectedKeys
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private completedRuns
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private currentLimit
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private delay
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private index
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private launch
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private queued
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private sync
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private tail
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field private warn
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field public BytesPerGB
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: field public DefaultLimitBytes
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method private .cctor()
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method private PassAsync(System.Func`1<long>,bool,string)
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public .ctor(VoxClip.Core.Services.Project.CacheIndex,System.Func`1<long>,System.Action`1<string>,System.Func`3<System.TimeSpan,System.Threading.CancellationToken,System.Threading.Tasks.Task>)
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public ClearCacheAsync()
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public ClearEverythingAsync()
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public LimitBytes(System.Nullable`1<double>)
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public RequestRun()
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public ScheduleAfterLaunch()
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public WaitUntilIdleAsync()
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public get_CompletedRuns()
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public get_LaunchDelay()
+member VoxClip.Core.Services.Project.CacheEvictionScheduler :: method public get_LaunchScheduled()
 member VoxClip.Core.Services.Project.CacheIndex :: field private EnvelopeFile
 member VoxClip.Core.Services.Project.CacheIndex :: field private LegacyRootNames
 member VoxClip.Core.Services.Project.CacheIndex :: field private LegacyRootShapes
+member VoxClip.Core.Services.Project.CacheIndex :: field private PartialSearch
 member VoxClip.Core.Services.Project.CacheIndex :: field private TranscriptsFolder
+member VoxClip.Core.Services.Project.CacheIndex :: field private clock
 member VoxClip.Core.Services.Project.CacheIndex :: field private gate
 member VoxClip.Core.Services.Project.CacheIndex :: field private root
 member VoxClip.Core.Services.Project.CacheIndex :: method internal IsLegacyRootFile(string)
+member VoxClip.Core.Services.Project.CacheIndex :: method internal get_UnindexedGrace()
 member VoxClip.Core.Services.Project.CacheIndex :: method private .cctor()
 member VoxClip.Core.Services.Project.CacheIndex :: method private DataBytes(string,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Project.CacheIndex :: method private EvictUnderTurnAsync(ulong,System.Collections.Generic.IReadOnlySet`1<string>,bool,VoxClip.Core.Services.Project.CacheKeyRegistry,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.CacheIndex :: method private HoldsKeptData(string)
+member VoxClip.Core.Services.Project.CacheIndex :: method private HoldsPartial(string,System.DateTime)
+member VoxClip.Core.Services.Project.CacheIndex :: method private MarkEntryUsedAsync(string,string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.CacheIndex :: method private Measure(string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.CacheIndex :: method private ReadEntryAsync(string,string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.CacheIndex :: method private ValidKey(string)
-member VoxClip.Core.Services.Project.CacheIndex :: method public .ctor(string)
+member VoxClip.Core.Services.Project.CacheIndex :: method public .ctor(string,System.TimeProvider)
 member VoxClip.Core.Services.Project.CacheIndex :: method public EntryDirectory(string)
 member VoxClip.Core.Services.Project.CacheIndex :: method public EvictAsync(long,System.Collections.Generic.IReadOnlySet`1<string>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.CacheIndex :: method public EvictAsync(long,System.Collections.Generic.IReadOnlySet`1<string>,bool,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.CacheIndex :: method public ExtractAudioAsync(VoxClip.Core.Services.Media.IAudioExtractor,VoxClip.Core.Domain.Shared.MediaInfo,string,System.IProgress`1<VoxClip.Core.Domain.Shared.MediaProgress>,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Project.CacheIndex :: method public MarkUsedAsync(string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.CacheIndex :: method public ReadAsync(System.Threading.CancellationToken)
 member VoxClip.Core.Services.Project.CacheIndex :: method public RemoveLegacyRootFiles()
 member VoxClip.Core.Services.Project.CacheIndex :: method public TouchAsync(string,long,VoxClip.Core.Services.Project.CacheEnvelope,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Project.CacheIndex :: method public get_Keys()
 member VoxClip.Core.Services.Project.CacheIndex+EvictionEntry :: method private .ctor(VoxClip.Core.Services.Project.CacheIndex+EvictionEntry)
 member VoxClip.Core.Services.Project.CacheIndex+EvictionEntry :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.Project.CacheIndex+EvictionEntry :: method private get_EqualityContract()
@@ -9456,6 +9507,32 @@ member VoxClip.Core.Services.Project.CacheIndex+EvictionEntry :: method public s
 member VoxClip.Core.Services.Project.CacheIndex+EvictionEntry :: method public set_Eligible(bool)
 member VoxClip.Core.Services.Project.CacheIndex+EvictionEntry :: method public set_LastAccessAt(System.DateTimeOffset)
 member VoxClip.Core.Services.Project.CacheJsonContext :: field private InstanceMemberBindingFlags
+member VoxClip.Core.Services.Project.CacheKeyLease :: field private registry
+member VoxClip.Core.Services.Project.CacheKeyLease :: field private released
+member VoxClip.Core.Services.Project.CacheKeyLease :: method internal .ctor(VoxClip.Core.Services.Project.CacheKeyRegistry,string)
+member VoxClip.Core.Services.Project.CacheKeyLease :: method protected Finalize()
+member VoxClip.Core.Services.Project.CacheKeyLease :: method public Dispose()
+member VoxClip.Core.Services.Project.CacheKeyLease :: method public get_Key()
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: field private Folders
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: field private evicting
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: field private evictionRunning
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: field private evictionWaiters
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: field private leaseWaiters
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: field private leases
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: field private sync
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method internal BeginEvictionAsync(System.Threading.CancellationToken)
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method internal EndClaim()
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method internal EndEviction()
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method internal Release(string)
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method internal TryClaim(string,System.Collections.Generic.IReadOnlySet`1<string>)
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method internal get_WaitingEvictions()
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method private .cctor()
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method private .ctor()
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method public IsLeased(string)
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method public LeaseAsync(string,System.Threading.CancellationToken)
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method public LeaseNow(string)
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method public Shared(string)
+member VoxClip.Core.Services.Project.CacheKeyRegistry :: method public get_LeasedKeys()
 member VoxClip.Core.Services.Project.CacheTimestampConverter :: field private Utc
 member VoxClip.Core.Services.Project.CacheTimestampConverter :: method private .cctor()
 member VoxClip.Core.Services.Project.CacheTimestampConverter :: method public .ctor()
@@ -10411,6 +10488,16 @@ member VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger :: method public get_F
 member VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger :: method public get_LockTimeout()
 member VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger :: method public get_ReadTimeout()
 member VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger :: method public get_TimeZone()
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: field private Ledgers
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: field private next
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: field private sync
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: field private waiting
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: method internal IsFirst(long)
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: method internal Join()
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: method internal Leave(long)
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: method internal Shared(string)
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: method private .cctor()
+member VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns :: method public .ctor()
 member VoxClip.Core.Services.VoiceLab.VoiceLabSpendWarning :: method private .ctor(VoxClip.Core.Services.VoiceLab.VoiceLabSpendWarning)
 member VoxClip.Core.Services.VoiceLab.VoiceLabSpendWarning :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.VoiceLab.VoiceLabSpendWarning :: method private get_EqualityContract()
@@ -10988,6 +11075,8 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabSegment
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentKind
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSegmentScope
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSelectedRecipe
+type VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt
+type VoxClip.Core.Domain.VoiceLab.VoiceLabSourceExcerpt+Region
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechOptions
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechRate
 type VoxClip.Core.Domain.VoiceLab.VoiceLabSpeechRateSource
@@ -11152,9 +11241,12 @@ type VoxClip.Core.Services.Project.AtomicFile
 type VoxClip.Core.Services.Project.AtomicFileOperations
 type VoxClip.Core.Services.Project.CacheEntry
 type VoxClip.Core.Services.Project.CacheEnvelope
+type VoxClip.Core.Services.Project.CacheEvictionScheduler
 type VoxClip.Core.Services.Project.CacheIndex
 type VoxClip.Core.Services.Project.CacheIndex+EvictionEntry
 type VoxClip.Core.Services.Project.CacheJsonContext
+type VoxClip.Core.Services.Project.CacheKeyLease
+type VoxClip.Core.Services.Project.CacheKeyRegistry
 type VoxClip.Core.Services.Project.CacheTimestampConverter
 type VoxClip.Core.Services.Project.DataLocations
 type VoxClip.Core.Services.Project.IProjectStore
@@ -11227,6 +11319,7 @@ type VoxClip.Core.Services.VoiceLab.VoiceLabLlmChecks
 type VoxClip.Core.Services.VoiceLab.VoiceLabPrices
 type VoxClip.Core.Services.VoiceLab.VoiceLabRunInvalidatedException
 type VoxClip.Core.Services.VoiceLab.VoiceLabSpendLedger
+type VoxClip.Core.Services.VoiceLab.VoiceLabSpendTurns
 type VoxClip.Core.Services.VoiceLab.VoiceLabSpendWarning
 type VoxClip.Core.Services.VoiceLab.VoiceLabSpendWarningKind
 type VoxClip.Core.Services.VoiceLab.VoiceOperation
