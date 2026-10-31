@@ -278,11 +278,13 @@ extension ProviderChoice {
         do {
             var loaded = try await settingsStore.load()
             loaded.values.merge(pendingSettings) { _, new in new }
+            // The v2 shell keeps its widths under ui.layout.*; the old right-column width is retired once.
+            let retired = WorkspaceLayout.retireLegacyKeys(&loaded.values)
             settings = loaded
             refreshConnectorReadiness()
             settingsLoaded = true
             loadingSettings = false
-            if !pendingSettings.isEmpty { scheduleSettingsSave() }
+            if !pendingSettings.isEmpty || retired { scheduleSettingsSave() }
             pendingSettings.removeAll()
         } catch {
             loadingSettings = false

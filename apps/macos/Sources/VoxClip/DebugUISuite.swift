@@ -7,7 +7,6 @@ import ApplicationServices
 
 @MainActor enum DebugUISuite {
     private static var ran = false
-    private static var toolbarEvidence: [Result] = []
     struct Result: Codable {
         let name: String
         let passed: Bool
@@ -488,13 +487,13 @@ import ApplicationServices
             check("the keep/delete prompt and Save panel name the import after the movie (\(imported.displayName ?? "none"))", imported.displayName == "fillers-chirp")
             check("an untitled import is protected as an edited document", imported.isDocumentEdited && window.isDocumentEdited)
             check("imported video can preview and export without transcript", editor.mediaResolved && editor.canExport && editor.project.transcript == nil)
-            try await waitUntil { subtitleField(in: window)?.accessibilityHelp() == editor.summaryDetail }
-            let subtitle = subtitleField(in: window)
-            check("VoiceOver reads the edit summary's detail after the subtitle (\(editor.summaryDetail); window subtitle \"\(window.subtitle)\", field \(subtitle == nil ? "not found" : "help \(subtitle?.accessibilityHelp() ?? "none")"))",
-                  subtitle?.accessibilityHelp() == editor.summaryDetail)
+            try await waitUntil { statusSummary(in: window)?.accessibilityHelp() == editor.summaryDetail }
+            let summary = statusSummary(in: window)
+            check("the status bar shows the edit summary and VoiceOver reads its detail (\(editor.summaryDetail); summary \(summary.map { "\"\($0.stringValue)\", help \($0.accessibilityHelp() ?? "none")" } ?? "not found"))",
+                  summary?.stringValue == editor.subtitle && summary?.accessibilityHelp() == editor.summaryDetail && window.subtitle.isEmpty && window.titleVisibility == .hidden)
 
             // The editor's flows in the new layout: Find Clips readiness in its popover,
-            // Make Clip, Transcribe Again's warning, Export from the toolbar and 1024 wide.
+            // Make Clip, Transcribe Again's warning, Export from the title row and 1024 wide.
             let transcript = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip")).transcript
             var transcribed = editor.project
             transcribed.transcript = transcript
@@ -531,26 +530,18 @@ import ApplicationServices
             results.append(Result(name: "cancelling Transcribe Again keeps the edits", passed: kept && warned, skipped: kept && !warned ? inactive : nil))
             if let clip = made {
                 shell.selection = .clip(clip.id)
-                // While the console is locked the window isn't redrawn, and its toolbar
-                // keeps showing what it last drew.
-                let stale = sessionLocked ? "the console session is locked, so the toolbar isn't redrawn" : nil
-                func toolbarCheck(_ name: String, _ passed: Bool) { results.append(Result(name: name, passed: passed, skipped: passed ? nil : stale)) }
-                try await waitUntil {
-                    window.toolbar?.validateVisibleItems()
-                    window.displayIfNeeded()
-                    return exportButton(in: window)?.exportTitle == "Export Clip…"
-                }
+                try await waitUntil { exportButton(in: window)?.exportTitle == "Export Clip…" }
                 check("the editor's Export reads Export Clip… for the selected clip", editor.exportTitle == "Export Clip…" && editor.exportUnavailable == nil && editor.canExport)
                 if let export = exportButton(in: window) {
-                    toolbarCheck("the toolbar's Export reads Export Clip… for the selected clip, also to VoiceOver (title \(export.exportTitle), label \(export.accessibilityLabel() ?? "none"), enabled \(export.isEnabled))",
-                                 export.exportTitle == "Export Clip…" && export.accessibilityLabel() == "Export Clip…" && export.isEnabled)
+                    check("the title row's Export reads Export Clip… for the selected clip to VoiceOver (title \(export.exportTitle), label \(export.accessibilityLabel() ?? "none"), enabled \(export.isEnabled))",
+                          export.exportTitle == "Export Clip…" && export.accessibilityLabel() == "Export Clip…" && export.isEnabled)
                     export.performClick(nil)
-                } else { check("the toolbar's Export button is discoverable", false) }
+                } else { check("the title row's Export button is discoverable", false) }
                 try await waitUntil { window.attachedSheet != nil }
-                toolbarCheck("Export from the toolbar opens Export for the selected clip", editor.showExport && editor.activeClip?.id == clip.id && editor.exportClipIDs == [clip.id])
+                check("Export from the title row opens Export for the selected clip", editor.showExport && editor.activeClip?.id == clip.id && editor.exportClipIDs == [clip.id])
                 if let sheet = window.attachedSheet {
                     check("clip export opens an attached sheet", sheet.isVisible)
-                } else { toolbarCheck("clip export opens an attached sheet", false) }
+                } else { check("clip export opens an attached sheet", false) }
                 editor.showExport = false
                 try await waitUntil { window.attachedSheet == nil }
                 check("the export sheet closes before the editor changes", window.attachedSheet == nil && !editor.showExport)
@@ -558,8 +549,8 @@ import ApplicationServices
             }
             let appearance = app.string("general.appearance", fallback: "system")
             window.setContentSize(NSSize(width: 1024, height: 700))
-            try await waitUntil { abs(shell.windowWidth - 1024) < 1 && !shell.viewerVisible }
-            check("1024 wide collapses the viewer and keeps the sidebar", abs(shell.windowWidth - 1024) < 1 && !shell.viewerVisible && shell.columnVisibility == .all)
+            try await waitUntil { abs(shell.windowWidth - 1024) < 1 && !shell.layout.rightVisible }
+            check("1024 wide collapses the viewer and keeps the sidebar", abs(shell.windowWidth - 1024) < 1 && !shell.layout.rightVisible && shell.layout.explorerVisible)
             app.set("general.appearance", .string("light"))
             try await Task.sleep(for: .milliseconds(250))
             app.set("general.appearance", .string(appearance))
@@ -640,6 +631,8 @@ import ApplicationServices
             check("the close button saves the project and closes the window", shell.isHome && !window.isVisible && documents.documents.isEmpty && closedOnDisk.captions.styleId == "off")
             MainWindowController.shared.show()
             results += try await DebugRedesignScenes.capture(app: app, directory: destination)
+            let interview = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
+            results += try await DebugShell.sceneCaptures(app: app, fixture: interview, directory: destination)
         } catch {
             results.append(Result(name: "scene audit: \(error.localizedDescription)", passed: false))
         }
@@ -648,14 +641,9 @@ import ApplicationServices
         exit(results.allSatisfy { $0.passed || $0.skipped != nil } ? 0 : 1)
     }
     static var sessionLocked: Bool { (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool == true }
-    /// The titlebar text field that draws the window subtitle.
-    private static func subtitleField(in window: NSWindow) -> NSTextField? {
-        guard !window.subtitle.isEmpty, let frame = window.contentView?.superview else { return nil }
-        func find(_ view: NSView) -> NSTextField? {
-            if let field = view as? NSTextField, field.stringValue == window.subtitle { return field }
-            return view.subviews.lazy.compactMap(find).first
-        }
-        return frame.subviews.lazy.filter { $0 !== window.contentView }.compactMap(find).first
+    /// The status bar's edit summary, which carries what the hidden window subtitle showed.
+    private static func statusSummary(in window: NSWindow) -> NSTextField? {
+        window.contentView.flatMap { DebugShell.view("voxclip.status.summary", in: $0) as? NSTextField }
     }
     /// Find Clips readiness in the popover (design §6.2), as main's Clips inspector
     /// checked it: a missing key, saving and forgetting it, a stopped local service, a
@@ -694,7 +682,7 @@ import ApplicationServices
             app.providerKeyStoreOverride = nil
         }
         app.set("llm.connector", .string("openai"))
-        editor.requestFindClips(from: .toolbar)
+        editor.requestFindClips(from: .overflow)
         check("Find Clips shows a missing key in its popover", await hasInspectorStatus("Key missing", in: window))
         check("Find Clips stays actionable with a missing key", inspectorElement("findClipsAction", in: window)?.enabled == true)
         do {
@@ -732,13 +720,8 @@ import ApplicationServices
         if let button = view as? NSButton, button.title == title { return button }
         return view.subviews.lazy.compactMap { button(titled: title, in: $0) }.first
     }
-    private static func exportButton(in window: NSWindow) -> ExportToolbarButton? {
-        func find(in view: NSView) -> ExportToolbarButton? {
-            if let button = view as? ExportToolbarButton { return button }
-            return view.subviews.lazy.compactMap { find(in: $0) }.first
-        }
-        return window.toolbar?.visibleItems?.lazy.compactMap { $0.view.flatMap { find(in: $0) } }.first
-            ?? window.contentView.flatMap { find(in: $0) }
+    private static func exportButton(in window: NSWindow) -> ShellExportButton? {
+        window.contentView.flatMap { DebugShell.view("voxclip.shell.export", in: $0) as? ShellExportButton }
     }
     private struct InspectorElement { let element: AXUIElement; let label: String?; let enabled: Bool }
     /// Drive the public AppKit controls in the real Settings window. The tab
@@ -1019,17 +1002,7 @@ import ApplicationServices
             try await snapshot(ExportSheet(model: model).environment(app), name: "export-light", size: NSSize(width: 668, height: 500), appearance: .aqua, directory: destination)
             try await snapshot(ExportSheet(model: model).environment(app), name: "export-dark", size: NSSize(width: 668, height: 500), appearance: .darkAqua, directory: destination)
             try await snapshot(OnboardingView().environment(app), name: "onboarding-dark", size: NSSize(width: 616, height: 536), appearance: .darkAqua, directory: destination)
-            for appearance: NSAppearance.Name in [.aqua, .darkAqua] {
-                for active in [false, true] {
-                    let name = "toolbar-\(appearance == .darkAqua ? "dark" : "light")-\(active ? "key" : "inactive")"
-                    try await snapshot(toolbarContrast, name: name, size: NSSize(width: 560, height: 180), appearance: appearance, directory: destination, active: active)
-                }
-                let prefix = "toolbar-\(appearance == .darkAqua ? "dark" : "light")"
-                let key = try Data(contentsOf: destination.appendingPathComponent("\(prefix)-key.jpg"))
-                let inactive = try Data(contentsOf: destination.appendingPathComponent("\(prefix)-inactive.jpg"))
-                check("\(prefix) key and inactive captures differ", key != inactive)
-            }
-            results += toolbarEvidence
+            results += try await DebugShell.run(app: app, fixture: project, directory: destination)
             model.close()
         } catch { results.append(Result(name: "suite: \(error.localizedDescription)", passed: false)) }
         let fallbacks = cachedMainWindowCaptures
@@ -1045,11 +1018,10 @@ import ApplicationServices
         exit(results.contains { !$0.passed && $0.skipped == nil } ? 1 : 0)
     }
     /// Draws `content` in an offscreen window. `mainWindow` matches the app's main
-    /// window: full-size content under a unified toolbar, as WorkspaceView expects.
+    /// window: full-size content under a transparent titlebar with no toolbar, as the
+    /// shell expects.
     static func snapshot<Content: View>(_ content: Content, name: String, size: NSSize, appearance: NSAppearance.Name, directory: URL, active: Bool = false, mainWindow: Bool = false,
                                       native: Bool = false, beforeCapture: (@MainActor (NSWindow) async throws -> NSWindow?)? = nil) async throws {
-        ExportToolbarButton.offscreenActive = active
-        defer { ExportToolbarButton.offscreenActive = nil }
         let controller = NSHostingController(rootView: content.background(DesignValues.color("bg.window")).sceneAccent().preferredColorScheme(appearance == .darkAqua ? .dark : .light).environment(\.controlActiveState, active ? .key : .inactive))
         // A fixed size from the start: a hosting controller that sizes its window
         // leaves split views laid out for the wrong height in the first frames.
@@ -1065,11 +1037,14 @@ import ApplicationServices
             offscreen.rendersActive = active
             window = offscreen
         }
-        if mainWindow { window.toolbarStyle = .unified }
+        if mainWindow {
+            EditorShellController.prepare(window)
+            controller.sceneBridgingOptions = []
+        }
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: appearance)
         if name.contains("settings") { window.toolbarStyle = .expanded }
-        window.title = name.contains("editor") || name.contains("clips") ? "interview-take" : name.contains("settings") ? "VoxClip Settings" : name.hasPrefix("export") ? "Export" : name.hasPrefix("toolbar") ? "Toolbar contrast" : "Home"
+        window.title = name.contains("editor") || name.contains("clips") ? "interview-take" : name.contains("settings") ? "VoxClip Settings" : name.hasPrefix("export") ? "Export" : "Home"
         window.contentViewController = controller
         hosting.frame = NSRect(origin: .zero, size: size)
         window.orderBack(nil)
@@ -1113,7 +1088,6 @@ import ApplicationServices
             } ?? []
             try JSONEncoder().encode(toolbar).write(to: directory.appendingPathComponent("settings-minimum-toolbar.json"))
         }
-        if name.hasPrefix("toolbar-") { toolbarEvidence += try DebugToolbarPixels.measure(window: window, name: name, directory: directory, active: active) }
         if name == "editor-light" || name == "editor-dark" || name == "demo-editor" {
             guard let layout = editorLayout(in: hosting), layout.transcriptWidth >= 439, layout.previewWidth >= 299 else { throw CocoaError(.coderInvalidValue) }
             if name == "demo-editor" { try JSONEncoder().encode(layout).write(to: directory.appendingPathComponent("editor-layout.json"), options: .atomic) }
@@ -1163,17 +1137,6 @@ import ApplicationServices
         }
         guard image.pixelsWide >= Int(window.frame.width) else { windowServerGaps.append("\(name): \(image.pixelsWide) px for a \(Int(window.frame.width)) pt window"); return nil }
         return image
-    }
-    private static var toolbarContrast: some View {
-        VStack(spacing: 12) {
-            Text("Toolbar probe · left enabled · right disabled")
-            Text("Key state is simulated; the app stays inactive.").font(.caption).foregroundStyle(.secondary)
-        }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) { EditorExportControl {} }
-                ToolbarItem(placement: .primaryAction) { EditorExportControl {}.disabled(true) }
-            }
     }
 }
 

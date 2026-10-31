@@ -150,16 +150,16 @@ actor RewriteFixtureConnector: LLMConnector {
         do {
             let (editor, _) = make()
             defer { editor.close() }
-            let previousViewer = app.shell.viewerVisible
-            defer { app.shell.viewerVisible = previousViewer }
-            app.shell.viewerVisible = true
+            let previousViewer = app.shell.layout.rightVisible
+            defer { app.shell.layout.rightVisible = previousViewer }
+            app.shell.layout.rightVisible = true
             editor.focusedPane = .viewer; editor.movePaneFocus(backward: false)
             check("F6 moves from viewer to Rewrite panel", editor.focusedPane == .panel)
             editor.movePaneFocus(backward: false)
             check("F6 moves from Rewrite panel to timeline", editor.focusedPane == .timeline)
             editor.movePaneFocus(backward: true)
             check("Shift-F6 moves from timeline to Rewrite panel", editor.focusedPane == .panel)
-            app.shell.viewerVisible = false
+            app.shell.layout.rightVisible = false
             editor.focusedPane = .transcript; editor.movePaneFocus(backward: false)
             check("F6 skips hidden right-column panes", editor.focusedPane == .timeline)
         }

@@ -14,8 +14,58 @@ enum SidebarItem: Hashable {
     }
 }
 
+/// The window's layout (impl-plan §3.4): which shell regions show and how big they are.
+/// Per window. The sizes the user drags are kept for every project under `ui.layout.*`;
+/// showing, hiding and window resizes never store one. None of it is an undo step or a
+/// document change.
+@MainActor @Observable final class WorkspaceLayout {
+    @ObservationIgnored private let app: AppModel
+    var explorerVisible = true
+    var rightVisible = true
+    var timelineVisible = true
+    /// The timeline fills the work area (V7a's maximize button); no V1a control sets it.
+    var timelineMaximized = false
+    /// The window's content width, which the right column's starting width follows.
+    var windowWidth = 1280.0
+    init(app: AppModel) { self.app = app }
+
+    static let explorerWidthKey = "ui.layout.explorerWidth"
+    static let rightWidthKey = "ui.layout.rightWidth"
+    static let timelineHeightKey = "ui.layout.timelineHeight"
+    /// The pre-v2 right-column width, which a saved settings file may still hold.
+    static let retiredRightWidthKey = "ui.rightColumnWidth"
+    /// Removes the pre-v2 right-column width from loaded settings (impl-plan item 18).
+    /// True when there was one, so the settings are saved without it.
+    static func retireLegacyKeys(_ values: inout [String: JSONValue]) -> Bool {
+        values.removeValue(forKey: retiredRightWidthKey) != nil
+    }
+    static let explorerRange = Double(VCTokens.sizeSidebarMin)...Double(VCTokens.sizeSidebarMax)
+    static let rightRange = Double(VCTokens.sizeRightColumnMin)...Double(VCTokens.sizeRightColumnMax)
+    /// notes.md §6: the bottom panel defaults to 216; it never gets shorter than today's strip.
+    static let timelineDefault = 216.0
+    static let timelineRange = Double(ShellMetrics.timelineMinimum)...640.0
+
+    /// The right column's width when the user never dragged it (impl-plan item 18):
+    /// 404 + (W − 1280) × 0.25 within 300–560, so 404 at 1280 and 444 at 1440, narrowed
+    /// toward 300 so the transcript keeps its minimum beside the Explorer.
+    static func rightColumnWidth(windowWidth: Double, explorer: Double = Double(VCTokens.sizeSidebarIdeal)) -> Double {
+        let preferred = Double(VCTokens.sizeRightColumnIdeal) + (windowWidth - 1280) * 0.25
+        let room = windowWidth - explorer - WorkspaceShell.minimumTranscriptPane
+        return min(preferred, max(room, rightRange.lowerBound)).clamped(to: rightRange)
+    }
+    /// The Explorer pane's width: where the user last dragged its divider, else 224.
+    var explorerWidth: Double { app.number(Self.explorerWidthKey, fallback: Double(VCTokens.sizeSidebarIdeal)).clamped(to: Self.explorerRange) }
+    /// The right column's width: where the user last dragged its divider, else the starting width for this window.
+    var rightWidth: Double { app.number(Self.rightWidthKey, fallback: Self.rightColumnWidth(windowWidth: windowWidth, explorer: explorerWidth)).clamped(to: Self.rightRange) }
+    /// The timeline panel's height below its top edge: where the user last dragged that edge, else 216.
+    var timelineHeight: Double { app.number(Self.timelineHeightKey, fallback: Self.timelineDefault).clamped(to: Self.timelineRange) }
+    func rememberExplorerWidth(_ width: Double) { app.set(Self.explorerWidthKey, .number(width.rounded().clamped(to: Self.explorerRange))) }
+    func rememberRightWidth(_ width: Double) { app.set(Self.rightWidthKey, .number(width.rounded().clamped(to: Self.rightRange))) }
+    func rememberTimelineHeight(_ height: Double) { app.set(Self.timelineHeightKey, .number(height.rounded().clamped(to: Self.timelineRange))) }
+}
+
 /// State of the one main window (ADR-R29): the open project, its editor, the sidebar
-/// selection and the column visibility. It is the only owner of `EditorModel`
+/// selection and the window's layout. It is the only owner of `EditorModel`
 /// instances. Each project stays a `VoxClipDocument`, attached to the main window's
 /// controller while it is open and detached before it closes.
 @MainActor @Observable final class WorkspaceShell {
@@ -23,33 +73,30 @@ enum SidebarItem: Hashable {
     private(set) var document: VoxClipDocument?
     private(set) var editor: EditorModel?
     var selection: SidebarItem = .home { didSet { if selection != oldValue { followSelection() } } }
-    var columnVisibility: NavigationSplitViewVisibility = .all {
-        didSet {
-            // Below 960 the column stays collapsed: the toolbar's sidebar button shows or
-            // hides the overlay instead (design §3.7).
-            guard !settingColumns, windowWidth < Self.sidebarCollapseWidth, columnVisibility != .detailOnly else { return }
-            setColumns(.detailOnly)
-            sidebarOverlay.toggle()
-        }
-    }
+    /// The shell's regions and sizes (impl-plan V1a).
+    let layout: WorkspaceLayout
     /// Below 960 the sidebar shows over the editor on request (design §3.7): the
-    /// toolbar's sidebar button, View > Show Sidebar and Find Clips. Escape or a click
-    /// on a row hides it again.
+    /// Explorer toggle, View > Show Sidebar and Find Clips. Escape or a click on a row
+    /// hides it again.
     var sidebarOverlay = false
     /// The clip whose title is being typed in the sidebar, and the typed title. Leaving
     /// the project and Quit keep it before edits freeze (design §6.2).
     var renaming: String?
     var renameDraft = ""
-    /// The right column (viewer and captions). Show Viewer / Hide Viewer, ⌥⌘I.
-    var viewerVisible = true
     var notice: String?
     /// A file is being dragged over the window.
     var dropTargeted = false
     /// Home's project search, kept while the editor shows.
     var homeQuery = ""
-    var windowWidth = 1280.0 { didSet { if abs(windowWidth - oldValue) > 0.5 { fitColumns() } } }
-    /// The sidebar's measured width; the user can drag it between its minimum and maximum.
-    @ObservationIgnored var sidebarWidth = Double(VCTokens.sizeSidebarIdeal)
+    /// The window's content width; the narrow-width rule runs when it changes.
+    var windowWidth: Double {
+        get { layout.windowWidth }
+        set {
+            let old = layout.windowWidth
+            layout.windowWidth = newValue
+            if abs(newValue - old) > 0.5 { fitColumns() }
+        }
+    }
     /// Help > Keyboard Shortcuts (⌘/), also on Home.
     var showShortcuts = false
     /// The viewer was collapsed by the window's width, not by the user.
@@ -70,7 +117,6 @@ enum SidebarItem: Hashable {
     @ObservationIgnored private(set) var started: Task<Void, Never>?
     @ObservationIgnored private var closeReply: CloseReply?
     @ObservationIgnored private var leaving = false
-    @ObservationIgnored private var settingColumns = false
     private(set) var pendingRecovery: VoxClipDocument?
     @ObservationIgnored private var additionalRecoveries: [VoxClipDocument] = []
     @ObservationIgnored private var retryingRecovery = false
@@ -81,7 +127,10 @@ enum SidebarItem: Hashable {
     @ObservationIgnored var injectSaveFailure = false
     #endif
 
-    init(app: AppModel) { self.app = app }
+    init(app: AppModel) {
+        self.app = app
+        layout = WorkspaceLayout(app: app)
+    }
 
     /// No project is open.
     var isHome: Bool { document == nil }
@@ -284,65 +333,55 @@ enum SidebarItem: Hashable {
 
     static let busyCopy = "Finish the current task first."
 
-    /// The right column's starting width for a window width (design §3.7).
-    static func rightColumnWidth(windowWidth: Double) -> Double {
-        (360 - (1440 - windowWidth) * 0.25).clamped(to: rightWidthRange)
-    }
-    /// The right column's width: where the user last dragged its divider, kept for every
-    /// project in `ui.rightColumnWidth`, else the starting width for this window.
-    var rightWidth: Double { app.number(Self.rightWidthKey, fallback: Self.rightColumnWidth(windowWidth: windowWidth)).clamped(to: Self.rightWidthRange) }
-    func rememberRightWidth(_ width: Double) { app.set(Self.rightWidthKey, .number(width.rounded().clamped(to: Self.rightWidthRange))) }
-    private static let rightWidthKey = "ui.rightColumnWidth"
-    private static var rightWidthRange: ClosedRange<Double> { Double(VCTokens.sizeRightColumnMin)...Double(VCTokens.sizeRightColumnMax) }
+    /// The right column's width for this window: dragged, else its starting width.
+    var rightWidth: Double { layout.rightWidth }
     private func paneWidth(viewer: Bool, sidebar: Bool) -> Double {
-        windowWidth - (sidebar ? sidebarWidth : 0) - (viewer ? rightWidth : 0)
+        windowWidth - (sidebar ? layout.explorerWidth : 0) - (viewer ? layout.rightWidth : 0)
     }
     /// Shows a hidden sidebar for its Find Clips callout and progress (design §6.2); the
     /// right column makes room first. Below 960 it shows as the overlay (design §3.7).
     func revealSidebar() {
         if windowWidth < Self.sidebarCollapseWidth { sidebarOverlay = true; return }
-        guard columnVisibility == .detailOnly else { return }
+        guard !layout.explorerVisible else { return }
         sidebarHiddenForViewer = false
         sidebarHiddenByWidth = false
-        setColumns(.all)
+        layout.explorerVisible = true
         fitColumns()
     }
-    /// View > Show Sidebar and Hide Sidebar (⌃⌘S); below 960 the overlay.
+    /// View > Show Sidebar and Hide Sidebar (⌃⌘S) and the Explorer toggle; below 960 the overlay.
     func toggleSidebar() {
         if windowWidth < Self.sidebarCollapseWidth { sidebarOverlay.toggle(); return }
-        setColumns(columnVisibility == .detailOnly ? .all : .detailOnly)
+        layout.explorerVisible.toggle()
     }
-    var sidebarShown: Bool { columnVisibility != .detailOnly || sidebarOverlay }
+    var sidebarShown: Bool { layout.explorerVisible || sidebarOverlay }
     /// A row the user chose in the sidebar list. A click on a row also hides the overlay
     /// sidebar (design §3.7); the arrow keys leave it open.
     func choose(_ row: SidebarItem, byClick: Bool = NSApp.currentEvent.map { $0.type == .leftMouseDown || $0.type == .leftMouseUp } ?? false) {
         selection = row
         if byClick { sidebarOverlay = false }
     }
-    private func setColumns(_ visibility: NavigationSplitViewVisibility) {
-        settingColumns = true
-        columnVisibility = visibility
-        settingColumns = false
-    }
-    /// Show Viewer / Hide Viewer. Showing it where the transcript pane would be too
-    /// narrow hides the sidebar; hiding it again brings the sidebar back (design §3.7).
+    /// Show Viewer / Hide Viewer (⌥⌘I) and the right-column toggle. Showing it where the
+    /// transcript pane would be too narrow hides the sidebar; hiding it again brings the
+    /// sidebar back (design §3.7).
     func toggleViewer() {
         viewerHiddenByWidth = false
-        if viewerVisible {
-            viewerVisible = false
+        if layout.rightVisible {
+            layout.rightVisible = false
             if sidebarHiddenForViewer {
                 sidebarHiddenForViewer = false
                 if windowWidth < Self.sidebarCollapseWidth { sidebarHiddenByWidth = true }
-                else { setColumns(.all) }
+                else { layout.explorerVisible = true }
             }
         } else {
-            viewerVisible = true
-            if columnVisibility != .detailOnly, paneWidth(viewer: true, sidebar: true) < Self.minimumTranscriptPane {
+            layout.rightVisible = true
+            if layout.explorerVisible, paneWidth(viewer: true, sidebar: true) < Self.minimumTranscriptPane {
                 sidebarHiddenForViewer = true
-                setColumns(.detailOnly)
+                layout.explorerVisible = false
             }
         }
     }
+    /// The timeline toggle in the title row. ⌘J and the hover transport arrive with V7a and V4.
+    func toggleTimeline() { layout.timelineVisible.toggle() }
     /// The narrow-width rule (design §3.7): the right column collapses before the
     /// sidebar, and both come back as the window widens.
     private func fitColumns() {
@@ -350,24 +389,24 @@ enum SidebarItem: Hashable {
         // An overlay shown on request stays until Escape or a row choice.
         if windowWidth < Self.sidebarCollapseWidth {
             if sidebarHiddenForViewer { sidebarHiddenByWidth = true }
-            if columnVisibility != .detailOnly { setColumns(.detailOnly); sidebarHiddenByWidth = true }
+            if layout.explorerVisible { layout.explorerVisible = false; sidebarHiddenByWidth = true }
         } else {
             sidebarOverlay = false
             if sidebarHiddenByWidth {
                 sidebarHiddenByWidth = false
-                if !sidebarHiddenForViewer { setColumns(.all) }
+                if !sidebarHiddenForViewer { layout.explorerVisible = true }
             }
         }
         if sidebarHiddenForViewer, paneWidth(viewer: true, sidebar: true) >= Self.minimumTranscriptPane {
             sidebarHiddenForViewer = false
-            setColumns(.all)
+            layout.explorerVisible = true
         }
-        let sidebar = columnVisibility != .detailOnly
-        if viewerVisible, !sidebarHiddenForViewer, paneWidth(viewer: true, sidebar: sidebar) < Self.minimumTranscriptPane {
-            viewerVisible = false
+        let sidebar = layout.explorerVisible
+        if layout.rightVisible, !sidebarHiddenForViewer, paneWidth(viewer: true, sidebar: sidebar) < Self.minimumTranscriptPane {
+            layout.rightVisible = false
             viewerHiddenByWidth = true
         } else if viewerHiddenByWidth, paneWidth(viewer: true, sidebar: sidebar) >= Self.minimumTranscriptPane {
-            viewerVisible = true
+            layout.rightVisible = true
             viewerHiddenByWidth = false
         }
     }
@@ -417,7 +456,7 @@ enum SidebarItem: Hashable {
 
     /// A Versions-browser version in its own read-only window (VersionWindowController).
     func attachVersion(_ version: VoxClipDocument) {
-        setColumns(.detailOnly)
+        layout.explorerVisible = false
         attach(version, bringForward: false)
     }
 
@@ -546,14 +585,16 @@ enum SidebarItem: Hashable {
         window.restorationClass = MainWindowController.self
         window.identifier = NSUserInterfaceItemIdentifier("voxclip.main")
         window.tabbingMode = .disallowed
-        window.toolbarStyle = .unified
+        EditorShellController.prepare(window)
         window.title = "VoxClip"
         window.setAccessibilityIdentifier("voxclip.main")
         super.init(window: window)
         let hosting = NSHostingController(rootView: WorkspaceView(shell: shell).environment(shell.app).sceneAccent())
         // The window, not the SwiftUI content, sets the minimum size; full screen and
-        // Split View may go narrower (design §3.7).
+        // Split View may go narrower (design §3.7). The shell sets the title itself and
+        // has no toolbar, so SwiftUI manages neither.
         hosting.sizingOptions = []
+        hosting.sceneBridgingOptions = []
         window.contentViewController = hosting
         window.minSize = NSSize(width: VCTokens.sizeWindowMinWidth, height: VCTokens.sizeWindowMinHeight)
         window.minFullScreenContentSize = NSSize(width: 640, height: 480)
@@ -610,7 +651,7 @@ enum SidebarItem: Hashable {
 }
 
 /// A version in File > Revert To > Browse All Versions…: its own window and shell, with
-/// the sidebar hidden. The editor refuses edits to it, and AppKit places and closes the
+/// the Explorer hidden. The editor refuses edits to it, and AppKit places and closes the
 /// window with the browser.
 @MainActor final class VersionWindowController: NSWindowController {
     let shell: WorkspaceShell
@@ -620,9 +661,11 @@ enum SidebarItem: Hashable {
         window.isReleasedWhenClosed = false
         window.isRestorable = false
         window.tabbingMode = .disallowed
-        window.toolbarStyle = .unified
+        EditorShellController.prepare(window)
         super.init(window: window)
-        window.contentViewController = NSHostingController(rootView: WorkspaceView(shell: shell).environment(app).sceneAccent())
+        let hosting = NSHostingController(rootView: WorkspaceView(shell: shell).environment(app).sceneAccent())
+        hosting.sceneBridgingOptions = []
+        window.contentViewController = hosting
         shell.windowController = self
         shell.attachVersion(version)
     }

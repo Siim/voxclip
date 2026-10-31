@@ -275,8 +275,9 @@ private struct AcceptanceTestKeys: KeyProvider {
         defer { model.close() }
         #expect(model.containsAISpeech())
         #expect(model.exportAccessibleName("Export", targets: [.fullEdit]) == "Export, contains AI-modified speech")
-        let control = EditorExportControl(title: "Export Video…", accessibleName: model.exportAccessibleName("Export Video…", targets: [.fullEdit])) {}
-        #expect(control.accessibleName == "Export Video…, contains AI-modified speech")
+        let control = ShellExportButton()
+        control.setAccessibilityLabel(model.exportAccessibleName("Export Video…", targets: [.fullEdit]))
+        #expect(control.accessibilityLabel() == "Export Video…, contains AI-modified speech" && control.title == "Export")
         for row in ["Source audio for Clean audio", "Consent statement audio", "Training samples", "Patch text and context text", "Lip-sync window video and audio", "Speaker embeddings never leave this Mac"] {
             #expect(privacyCopy.contains(row))
         }

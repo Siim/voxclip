@@ -14,7 +14,7 @@ struct EditorRenderSnapshot {
     let document: VoxClipDocument
     let app: AppModel
     var showFindClips = false
-    var findClipsAnchor = FindClipsAnchor.toolbar
+    var findClipsAnchor = FindClipsAnchor.overflow
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
     var selectedWordIDs: Set<String> = [] {
@@ -96,7 +96,7 @@ struct EditorRenderSnapshot {
                     guard let self, let provider else { return false }
                     return await self.rewriteConsent(provider: provider, signature: signature, snapshot: snapshot)
                 }, connectorIsCurrent: { [weak self] in self?.rewriteConnectorSignature == signature })
-            if app.shell.editor === self, !app.shell.viewerVisible { app.shell.toggleViewer() }
+            if app.shell.editor === self, !app.shell.layout.rightVisible { app.shell.toggleViewer() }
             transcriptRevision += 1
         }
     }
@@ -1100,7 +1100,9 @@ struct EditorRenderSnapshot {
 @MainActor func copyText(_ text: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
 
 extension EditorModel {
-    enum FindClipsAnchor { case toolbar, sidebar }
+    /// Where the Find Clips popover opens: the tab row's ⋯ button (the menus, ⇧⌘K and ⋯;
+    /// impl-plan item 17) or the sidebar's action.
+    enum FindClipsAnchor { case overflow, sidebar }
     static let noClipsMatched = "No clips matched. Try another style or describe what you want."
     /// The chosen clip-finding connector, nil when none is set up.
     var findConnector: ProviderChoice? { app.providers.first { $0.id == app.string("llm.connector") } }

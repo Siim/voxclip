@@ -1,14 +1,13 @@
 import SwiftUI
 import VoxClipCore
 
-/// The workspace sidebar column (design §3.4 and §6.2).
+/// The Explorer pane's list (design §3.4 and §6.2): the sidebar's rows in a plain list
+/// on the chrome, hosted by the shell (impl-plan V1a). V2 restyles the rows.
 @MainActor struct WorkspaceSidebar: View {
     @Bindable var shell: WorkspaceShell
     var body: some View {
-        // On the column's root view, or NavigationSplitView ignores it.
         SidebarList(shell: shell)
             .modifier(EditorPaneFocus(model: shell.editor, pane: .sidebar))
-            .navigationSplitViewColumnWidth(min: VCTokens.sizeSidebarMin, ideal: VCTokens.sizeSidebarIdeal, max: VCTokens.sizeSidebarMax)
     }
 }
 
@@ -50,7 +49,7 @@ import VoxClipCore
                     rows.scrollTo(row)
                 }
                 .onChange(of: shell.editor?.focusedSuggestion) { _, id in
-                    guard let id, overlay || shell.columnVisibility != .detailOnly else { return }
+                    guard let id, overlay || shell.layout.explorerVisible else { return }
                     rows.scrollTo(SidebarItem.clip(id))
                     listFocused = true
                 }
@@ -65,11 +64,12 @@ import VoxClipCore
             }
             if shell.showsHome { RecentSection(shell: shell, listFocused: listFocused) }
         }
-        .listStyle(.sidebar)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(DesignValues.color("bg.window"))
         .environment(\.defaultMinListRowHeight, EditorAccessibilityPolicy.minimumTarget)
         .focused($listFocused)
         .onChange(of: listFocused) { _, focused in if focused { shell.editor?.focusedPane = .sidebar } }
-        .onGeometryChange(for: Double.self) { $0.size.width } action: { if !overlay { shell.sidebarWidth = $0 } }
     }
     /// Return, Escape, the arrow keys and Delete (design §6.2 and §3.7).
     private func keys(_ list: some View) -> some View {

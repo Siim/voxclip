@@ -119,7 +119,7 @@ extension HeavyMediaTests {
             if let reason = result.skipped { print("SKIP: \(result.name): \(reason)") }
             else { #expect(result.passed, Comment(rawValue: result.name)) }
         }
-        for name in ["home-light", "home-dark", "editor-light", "editor-dark", "clips-light", "clips-dark", "settings-light", "onboarding-light", "onboarding-dark", "export-light", "export-dark", "toolbar-light-key", "toolbar-light-inactive", "toolbar-dark-key", "toolbar-dark-inactive"] {
+        for name in ["home-light", "home-dark", "editor-light", "editor-dark", "clips-light", "clips-dark", "settings-light", "onboarding-light", "onboarding-dark", "export-light", "export-dark", "v2-shell-1280-dark"] {
             let image = try #require(NSBitmapImageRep(data: Data(contentsOf: directory.appendingPathComponent(name).appendingPathExtension("jpg"))))
             #expect(image.pixelsWide >= 500 && image.pixelsHigh >= 200)
             #expect(image.representation(using: .png, properties: [:])!.count > 5000)
@@ -179,9 +179,9 @@ extension HeavyMediaTests {
                 let bounds = try JSONDecoder().decode(Bounds.self, from: Data(contentsOf: directory.appendingPathComponent("\(name)-bounds.json")))
                 #expect(bounds.editor && bounds.failures.isEmpty, Comment(rawValue: name))
                 #expect(bounds.collapsed == (name == "live-compact"), Comment(rawValue: name))
-                if name == "live-editor-full" { #expect(abs(bounds.content.width - 1440) <= 1 && abs(bounds.content.height - 900) <= 1 && abs(bounds.column.width - 360) <= 1) }
-                if name == "live-editor-1180" { #expect(abs(bounds.content.width - 1180) <= 1 && abs(bounds.content.height - 800) <= 1 && abs(bounds.column.width - 300) <= 1) }
-                if name == "live-editor-1280" { #expect(!bounds.collapsed && abs(bounds.column.width - 320) <= 1) }
+                if name == "live-editor-full" { #expect(abs(bounds.content.width - 1440) <= 1 && abs(bounds.content.height - 900) <= 1 && abs(bounds.column.width - 444) <= 1) }
+                if name == "live-editor-1180" { #expect(abs(bounds.content.width - 1180) <= 1 && abs(bounds.content.height - 800) <= 1 && abs(bounds.column.width - 360) <= 1) }
+                if name == "live-editor-1280" { #expect(!bounds.collapsed && abs(bounds.column.width - 404) <= 1) }
                 if name == "live-editor-300" { #expect(!bounds.collapsed && abs(bounds.column.width - 300) <= 1) }
                 if name == "live-editor-560" { #expect(!bounds.collapsed && abs(bounds.column.width - 560) <= 1) }
                 if name == "live-editor-960" { #expect(!bounds.collapsed && abs(bounds.content.width - 960) <= 1 && abs(bounds.content.height - 600) <= 1) }

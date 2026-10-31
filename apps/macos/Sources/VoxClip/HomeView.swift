@@ -30,7 +30,6 @@ import VoxClipCore
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(DesignValues.color("bg.surface"))
-        .searchable(text: Bindable(shell).homeQuery, placement: .toolbar, prompt: "Search projects")
         .task(id: app.recent) { app.recentProjects.refresh(app.recent) }
         .onChange(of: app.bool("general.showPlaceholderWords", fallback: true)) { app.recentProjects.refresh(app.recent) }
         .onChange(of: app.string("captions.defaultStyleId", fallback: "vox-highlight")) { app.recentProjects.refresh(app.recent) }

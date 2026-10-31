@@ -356,7 +356,7 @@ import VoxClipCore
         let fillX: Double = middleX * scale
         let fillY: Double = bottomY * scale
         let fill = image.colorAt(x: Int(fillX), y: Int(fillY))
-        let expected = ExportToolbarButton.colors(for: button.effectiveAppearance).label.usingColorSpace(.sRGB)!
+        let expected = ShellExportButton.colors(for: button.effectiveAppearance).label
         var label: NSColor?
         var closest = Double.greatestFiniteMagnitude
         let area = CGRect(x: bounds.minX + 14, y: top + 4, width: max(1, bounds.width - 28), height: max(1, bounds.height - 8))

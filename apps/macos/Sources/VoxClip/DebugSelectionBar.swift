@@ -60,7 +60,7 @@ import VoxClipCore
         model.showFindClips = false
         let previousConnector = app.string("llm.connector")
         app.set("llm.connector", .string(""))
-        model.requestFindClips(from: .toolbar)
+        model.requestFindClips(from: .overflow)
         results.append(.init(name: "Find Clips opens immediately without a connector and preserves clips", passed: model.showFindClips && !model.showAISetup && model.project.edits.clips == clipsBeforeFind))
         model.showFindClips = false
         app.set("llm.connector", .string(previousConnector))

@@ -500,7 +500,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         let shift = event.modifierFlags.contains(.shift)
         if event.modifierFlags.contains(.command) {
             if event.charactersIgnoringModifiers?.lowercased() == "k" {
-                if shift { model.requestFindClips(from: .toolbar) } else { model.makeClip() }
+                if shift { model.requestFindClips(from: .overflow) } else { model.makeClip() }
                 return
             }
             if shift, event.charactersIgnoringModifiers?.lowercased() == "r" { model.beginRewrite(entry: .shortcut); return }

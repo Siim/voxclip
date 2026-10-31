@@ -30,7 +30,7 @@ import VoxClipMedia
         app.connectorOverride = { _ in fake }
         app.set("llm.connector", .string("ollama")); app.set("llm.model.ollama", .string("fixture-local"))
         app.set("voiceLab.enabled", .bool(true))
-        app.settings.values.removeValue(forKey: "ui.rightColumnWidth")
+        for key in [WorkspaceLayout.explorerWidthKey, WorkspaceLayout.rightWidthKey, WorkspaceLayout.timelineHeightKey] { app.settings.values.removeValue(forKey: key) }
         app.recent = [url]; app.recentProjects.refresh([url])
         let shell = WorkspaceShell(app: app)
         var results: [DebugUISuite.Result] = []
@@ -70,8 +70,8 @@ import VoxClipMedia
         try await scene("live-editor-clip", appearance: .aqua)
         shell.selection = .fullTake; editor.setAspect(.landscape)
         try await scene("live-editor-1280", size: NSSize(width: 1280, height: 800)) { window in
-            guard let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last, abs(right.frame.width - 320) <= 1 else {
-                throw VoxClipError.exportFailed("The 1280 scene must have a 320-point right column.")
+            guard let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last, abs(right.frame.width - 404) <= 1 else {
+                throw VoxClipError.exportFailed("The 1280 scene must have a 404-point right column.")
             }
             try await assertSelectedGallery(in: window, styleID: editor.project.captions.styleId, app: app, name: "live-editor-1280-initial", directory: directory)
             try await auditGalleryScroll(in: right, window: window, app: app, directory: directory)
@@ -82,19 +82,19 @@ import VoxClipMedia
             try await dragColumn(in: window, to: 300, shell: shell, directory: directory)
             return nil
         }
-        app.settings.values.removeValue(forKey: "ui.rightColumnWidth")
+        app.settings.values.removeValue(forKey: WorkspaceLayout.rightWidthKey)
         try await scene("live-editor-560") { window in
             try await dragColumn(in: window, to: 560, shell: shell, directory: directory)
             return nil
         }
-        app.settings.values.removeValue(forKey: "ui.rightColumnWidth")
+        app.settings.values.removeValue(forKey: WorkspaceLayout.rightWidthKey)
         try await scene("live-editor-960", size: NSSize(width: 960, height: 600)) { window in
-            if !shell.viewerVisible { shell.toggleViewer() }
+            if !shell.layout.rightVisible { shell.toggleViewer() }
             await DebugConnectorRequests.wait {
                 guard let split = DebugColumnBounds.split(in: window.contentView), let right = split.arrangedSubviews.last else { return false }
                 return !split.isSubviewCollapsed(right)
             }
-            guard shell.viewerVisible, shell.columnVisibility == .detailOnly else { throw VoxClipError.exportFailed("Show Viewer at 960 must hide the sidebar.") }
+            guard shell.layout.rightVisible, !shell.layout.explorerVisible else { throw VoxClipError.exportFailed("Show Viewer at 960 must hide the sidebar.") }
             return nil
         }
         shell.windowWidth = 1440
@@ -261,12 +261,12 @@ import VoxClipMedia
         let down = try event(.leftMouseDown, point: start)
         let dragged = try event(.leftMouseDragged, point: end)
         let up = try event(.leftMouseUp, point: end)
-        let mouseDowns = (split as? EditorSplit)?.dividerMouseDowns ?? 0
+        let mouseDowns = (split as? ShellSplitView)?.dividerMouseDowns ?? 0
         NSApp.postEvent(dragged, atStart: false)
         NSApp.postEvent(up, atStart: false)
         split.mouseDown(with: down)
         try await settleColumn(in: window, name: "drag-\(Int(width))", directory: directory)
-        let delivered = ((split as? EditorSplit)?.dividerMouseDowns ?? 0) - mouseDowns
+        let delivered = ((split as? ShellSplitView)?.dividerMouseDowns ?? 0) - mouseDowns
         struct DragEvidence: Encodable { let requested: CGFloat; let actual: CGFloat; let remembered: Double; let mouseDowns: Int }
         try JSONEncoder().encode(DragEvidence(requested: width, actual: split.arrangedSubviews[1].frame.width, remembered: shell.rightWidth, mouseDowns: delivered))
             .write(to: directory.appendingPathComponent("divider-drag-\(Int(width)).json"), options: .atomic)

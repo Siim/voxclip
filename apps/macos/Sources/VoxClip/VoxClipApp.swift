@@ -267,7 +267,7 @@ import VoxClipCore
         case 31: editor.setClipEdge(start: false)
         case 32: editor.moveClip(-1)
         case 33: editor.moveClip(1)
-        case 34: editor.requestFindClips(from: .toolbar)
+        case 34: editor.requestFindClips(from: .overflow)
         case 37: confirmRetranscription()
         case 38: editor.beginRewrite(entry: .menu)
         case 39: editor.beginRewrite(inserting: true)
@@ -378,7 +378,7 @@ import VoxClipCore
             case 34: return editor.capabilities.ai && !editor.words.isEmpty
             case 10: item.title = editor.showCuts ? "Hide Cut Words" : "Show Cut Words"
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
-            case 12: item.title = model.shell.viewerVisible ? "Hide Viewer" : "Show Viewer"
+            case 12: item.title = model.shell.layout.rightVisible ? "Hide Viewer" : "Show Viewer"
             default: return true
             }
         }
