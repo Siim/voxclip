@@ -1,0 +1,5840 @@
+{
+ "schema": "voxclip-voice-lab-scope-rewrite-diff/1",
+ "merge": {
+  "words": 2,
+  "seconds": 0.35
+ },
+ "caseCount": 30,
+ "cases": [
+  {
+   "name": "cross-line-merge-adjacent",
+   "note": "The last word of [0-5] and the first of [6-9] are each re-voiced. No word lies between them, so step 6 merges them across the line boundary into one hunk carrying both lines and both reasons. The new \"2\" is a digit run no source has, so the merged hunk carries checkThis.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.2,
+    "words": [
+     {
+      "id": "a0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "a1",
+      "text": "last",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "a2",
+      "text": "year",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "a3",
+      "text": "we",
+      "kind": "word",
+      "start": 0.85,
+      "end": 1.0
+     },
+     {
+      "id": "a4",
+      "text": "shipped",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.4
+     },
+     {
+      "id": "a5",
+      "text": "it.",
+      "kind": "word",
+      "start": 1.45,
+      "end": 1.7
+     },
+     {
+      "id": "a6",
+      "text": "Then",
+      "kind": "word",
+      "start": 1.8,
+      "end": 2.0
+     },
+     {
+      "id": "a7",
+      "text": "we",
+      "kind": "word",
+      "start": 2.05,
+      "end": 2.2
+     },
+     {
+      "id": "a8",
+      "text": "fixed",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.6
+     },
+     {
+      "id": "a9",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 2.65,
+      "end": 3.0
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-5]\",\"text\":\"So last year we shipped version 2.\",\"reason\":\"Names the version.\"},{\"line\":\"[6-9]\",\"text\":\"Now we fixed bugs.\",\"reason\":\"Smoother start.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-5]",
+      "inRange": false,
+      "checkThis": true,
+      "isDeletion": false
+     },
+     {
+      "line": "[6-9]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "a5",
+       "a6"
+      ],
+      "newTokens": [
+       "version",
+       "2.",
+       "Now"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 5,
+      "sourceEndIndex": 7,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-5]",
+       "[6-9]"
+      ],
+      "reasons": [
+       "Names the version.",
+       "Smoother start."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "cross-line-merge-one-bridge",
+   "note": "\"shipped\" and \"Then\" are re-voiced; \"it.\" lies between them, one word item, so they merge and \"it.\" becomes a bridge, re-voiced with its own surface.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.2,
+    "words": [
+     {
+      "id": "a0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "a1",
+      "text": "last",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "a2",
+      "text": "year",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "a3",
+      "text": "we",
+      "kind": "word",
+      "start": 0.85,
+      "end": 1.0
+     },
+     {
+      "id": "a4",
+      "text": "shipped",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.4
+     },
+     {
+      "id": "a5",
+      "text": "it.",
+      "kind": "word",
+      "start": 1.45,
+      "end": 1.7
+     },
+     {
+      "id": "a6",
+      "text": "Then",
+      "kind": "word",
+      "start": 1.8,
+      "end": 2.0
+     },
+     {
+      "id": "a7",
+      "text": "we",
+      "kind": "word",
+      "start": 2.05,
+      "end": 2.2
+     },
+     {
+      "id": "a8",
+      "text": "fixed",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.6
+     },
+     {
+      "id": "a9",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 2.65,
+      "end": 3.0
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-5]\",\"text\":\"So last year we released it.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[6-9]\",\"text\":\"Now we fixed bugs.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-5]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[6-9]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "a4",
+       "a5",
+       "a6"
+      ],
+      "newTokens": [
+       "released",
+       "it.",
+       "Now"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [
+       "a5"
+      ],
+      "sourceStartIndex": 4,
+      "sourceEndIndex": 7,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-5]",
+       "[6-9]"
+      ],
+      "reasons": [
+       "Fixes the line.",
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "cross-line-no-merge",
+   "note": "\"year\" and \"Then\" are three word items and 1.0 s apart: two hunks.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.2,
+    "words": [
+     {
+      "id": "a0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "a1",
+      "text": "last",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "a2",
+      "text": "year",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "a3",
+      "text": "we",
+      "kind": "word",
+      "start": 0.85,
+      "end": 1.0
+     },
+     {
+      "id": "a4",
+      "text": "shipped",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.4
+     },
+     {
+      "id": "a5",
+      "text": "it.",
+      "kind": "word",
+      "start": 1.45,
+      "end": 1.7
+     },
+     {
+      "id": "a6",
+      "text": "Then",
+      "kind": "word",
+      "start": 1.8,
+      "end": 2.0
+     },
+     {
+      "id": "a7",
+      "text": "we",
+      "kind": "word",
+      "start": 2.05,
+      "end": 2.2
+     },
+     {
+      "id": "a8",
+      "text": "fixed",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.6
+     },
+     {
+      "id": "a9",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 2.65,
+      "end": 3.0
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-5]\",\"text\":\"So last spring we shipped it.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[6-9]\",\"text\":\"Now we fixed bugs.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-5]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[6-9]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "a2"
+      ],
+      "newTokens": [
+       "spring"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 2,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-5]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "a6"
+      ],
+      "newTokens": [
+       "Now"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 6,
+      "sourceEndIndex": 7,
+      "anchorSeconds": null,
+      "lines": [
+       "[6-9]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "cross-line-merge-by-time",
+   "note": "\"One\" and \"Five\" have three word items between them, but \"Five\" starts exactly 0.35 s after \"One\" ends (binary64, inclusive): they merge with three bridges.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 1.0,
+    "words": [
+     {
+      "id": "c0",
+      "text": "One",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.125
+     },
+     {
+      "id": "c1",
+      "text": "two",
+      "kind": "word",
+      "start": 0.175,
+      "end": 0.195
+     },
+     {
+      "id": "c2",
+      "text": "three",
+      "kind": "word",
+      "start": 0.225,
+      "end": 0.245
+     },
+     {
+      "id": "c3",
+      "text": "four.",
+      "kind": "word",
+      "start": 0.275,
+      "end": 0.295
+     },
+     {
+      "id": "c4",
+      "text": "Five",
+      "kind": "word",
+      "start": 0.475,
+      "end": 0.495
+     },
+     {
+      "id": "c5",
+      "text": "six",
+      "kind": "word",
+      "start": 0.525,
+      "end": 0.545
+     },
+     {
+      "id": "c6",
+      "text": "seven.",
+      "kind": "word",
+      "start": 0.575,
+      "end": 0.6
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"Uno two three four.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[4-6]\",\"text\":\"Cinco six seven.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[4-6]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "c0",
+       "c1",
+       "c2",
+       "c3",
+       "c4"
+      ],
+      "newTokens": [
+       "Uno",
+       "two",
+       "three",
+       "four.",
+       "Cinco"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [
+       "c1",
+       "c2",
+       "c3"
+      ],
+      "sourceStartIndex": 0,
+      "sourceEndIndex": 5,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]",
+       "[4-6]"
+      ],
+      "reasons": [
+       "Fixes the line.",
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "cross-line-bridge-fix-absorbed",
+   "note": "A capital fix to \"three\" lies between \"One\" and \"Five\". Within [0-3] it stays a text-only hunk beside the voice hunk; the merge across the line absorbs it with its new surface. \"Three\" is a capital no source has, so the merged hunk carries checkThis.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 1.0,
+    "words": [
+     {
+      "id": "c0",
+      "text": "One",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.125
+     },
+     {
+      "id": "c1",
+      "text": "two",
+      "kind": "word",
+      "start": 0.175,
+      "end": 0.195
+     },
+     {
+      "id": "c2",
+      "text": "three",
+      "kind": "word",
+      "start": 0.225,
+      "end": 0.245
+     },
+     {
+      "id": "c3",
+      "text": "four.",
+      "kind": "word",
+      "start": 0.275,
+      "end": 0.295
+     },
+     {
+      "id": "c4",
+      "text": "Five",
+      "kind": "word",
+      "start": 0.475,
+      "end": 0.495
+     },
+     {
+      "id": "c5",
+      "text": "six",
+      "kind": "word",
+      "start": 0.525,
+      "end": 0.545
+     },
+     {
+      "id": "c6",
+      "text": "seven.",
+      "kind": "word",
+      "start": 0.575,
+      "end": 0.6
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"Uno two Three four.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[4-6]\",\"text\":\"Cinco six seven.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": true,
+      "isDeletion": false
+     },
+     {
+      "line": "[4-6]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "c0",
+       "c1",
+       "c2",
+       "c3",
+       "c4"
+      ],
+      "newTokens": [
+       "Uno",
+       "two",
+       "Three",
+       "four.",
+       "Cinco"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [
+       "c1",
+       "c2",
+       "c3"
+      ],
+      "sourceStartIndex": 0,
+      "sourceEndIndex": 5,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]",
+       "[4-6]"
+      ],
+      "reasons": [
+       "Fixes the line.",
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "cross-line-cut-barrier",
+   "note": "The same edits, but [0-3] also cuts \"four.\" between the voice hunks: a cut between voice hunks prevents the merge, across lines as within one.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 1.0,
+    "words": [
+     {
+      "id": "c0",
+      "text": "One",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.125
+     },
+     {
+      "id": "c1",
+      "text": "two",
+      "kind": "word",
+      "start": 0.175,
+      "end": 0.195
+     },
+     {
+      "id": "c2",
+      "text": "three",
+      "kind": "word",
+      "start": 0.225,
+      "end": 0.245
+     },
+     {
+      "id": "c3",
+      "text": "four.",
+      "kind": "word",
+      "start": 0.275,
+      "end": 0.295
+     },
+     {
+      "id": "c4",
+      "text": "Five",
+      "kind": "word",
+      "start": 0.475,
+      "end": 0.495
+     },
+     {
+      "id": "c5",
+      "text": "six",
+      "kind": "word",
+      "start": 0.525,
+      "end": 0.545
+     },
+     {
+      "id": "c6",
+      "text": "seven.",
+      "kind": "word",
+      "start": 0.575,
+      "end": 0.6
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"Uno two three\",\"reason\":\"Fixes the line.\"},{\"line\":\"[4-6]\",\"text\":\"Cinco six seven.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[4-6]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "c0"
+      ],
+      "newTokens": [
+       "Uno"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 0,
+      "sourceEndIndex": 1,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "c3"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 4,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "c4"
+      ],
+      "newTokens": [
+       "Cinco"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 4,
+      "sourceEndIndex": 5,
+      "anchorSeconds": null,
+      "lines": [
+       "[4-6]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "cross-line-event-barrier",
+   "note": "\"it.\" ends [0-2] and \"Then\" follows the applause in [3-7]: never merged across the event. The echoed label is dropped from the new text and never spoken.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.6,
+    "words": [
+     {
+      "id": "b0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "b1",
+      "text": "shipped",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.6
+     },
+     {
+      "id": "b2",
+      "text": "it.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 0.9
+     },
+     {
+      "id": "b3",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 0.95,
+      "end": 1.6
+     },
+     {
+      "id": "b4",
+      "text": "Then",
+      "kind": "word",
+      "start": 1.65,
+      "end": 1.8
+     },
+     {
+      "id": "b5",
+      "text": "we",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.0
+     },
+     {
+      "id": "b6",
+      "text": "fixed",
+      "kind": "word",
+      "start": 2.05,
+      "end": 2.4
+     },
+     {
+      "id": "b7",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-2]\",\"text\":\"We shipped that.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[3-7]\",\"text\":\"(applause) Now we fixed bugs.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-2]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[3-7]",
+      "inRange": true,
+      "checkThis": true,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "b2"
+      ],
+      "newTokens": [
+       "that."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 2,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-2]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "b4"
+      ],
+      "newTokens": [
+       "Now"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 4,
+      "anchorSeconds": null,
+      "lines": [
+       "[3-7]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "echoed-label-splits-line",
+   "note": "The model keeps \"(laughs)\" between two changed words: the line splits there, each side is diffed alone, the event is a barrier and stays.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.6,
+    "words": [
+     {
+      "id": "d0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "d1",
+      "text": "were",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.45
+     },
+     {
+      "id": "d2",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.5,
+      "end": 1.1
+     },
+     {
+      "id": "d3",
+      "text": "late.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "d4",
+      "text": "It",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.8
+     },
+     {
+      "id": "d5",
+      "text": "cuts",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.05
+     },
+     {
+      "id": "d6",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 2.1,
+      "end": 2.2
+     },
+     {
+      "id": "d7",
+      "text": "fast.",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"We are (laughs) early.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "d1"
+      ],
+      "newTokens": [
+       "are"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 1,
+      "sourceEndIndex": 2,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "d3"
+      ],
+      "newTokens": [
+       "early."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 2,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "dropped-label-absorbed",
+   "note": "The same change without the label: one stretch, one voice hunk across the event, which it absorbs (section 8.2 step 6).",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.6,
+    "words": [
+     {
+      "id": "d0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "d1",
+      "text": "were",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.45
+     },
+     {
+      "id": "d2",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.5,
+      "end": 1.1
+     },
+     {
+      "id": "d3",
+      "text": "late.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "d4",
+      "text": "It",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.8
+     },
+     {
+      "id": "d5",
+      "text": "cuts",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.05
+     },
+     {
+      "id": "d6",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 2.1,
+      "end": 2.2
+     },
+     {
+      "id": "d7",
+      "text": "fast.",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"We are early.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "d1",
+       "d3"
+      ],
+      "newTokens": [
+       "are",
+       "early."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [
+       "d2"
+      ],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 1,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "dropped-label-no-change",
+   "note": "Leaving the label out and changing nothing else changes nothing: cuts and fixes never touch events.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.6,
+    "words": [
+     {
+      "id": "d0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "d1",
+      "text": "were",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.45
+     },
+     {
+      "id": "d2",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.5,
+      "end": 1.1
+     },
+     {
+      "id": "d3",
+      "text": "late.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "d4",
+      "text": "It",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.8
+     },
+     {
+      "id": "d5",
+      "text": "cuts",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.05
+     },
+     {
+      "id": "d6",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 2.1,
+      "end": 2.2
+     },
+     {
+      "id": "d7",
+      "text": "fast.",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"We were late.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": []
+   }
+  },
+  {
+   "name": "flagged-label-echo",
+   "note": "An echoed label written with a capital flags the edit, but it is dropped and never spoken, so no hunk carries checkThis.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.6,
+    "words": [
+     {
+      "id": "d0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "d1",
+      "text": "were",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.45
+     },
+     {
+      "id": "d2",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.5,
+      "end": 1.1
+     },
+     {
+      "id": "d3",
+      "text": "late.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "d4",
+      "text": "It",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.8
+     },
+     {
+      "id": "d5",
+      "text": "cuts",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.05
+     },
+     {
+      "id": "d6",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 2.1,
+      "end": 2.2
+     },
+     {
+      "id": "d7",
+      "text": "fast.",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"We are (Laughs) late.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": true,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "d1"
+      ],
+      "newTokens": [
+       "are"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 1,
+      "sourceEndIndex": 2,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "echoed-ellipsis",
+   "note": "Unlabeled speech reads as an ellipsis; the model keeps it, so only \"fast.\" changes.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.6,
+    "words": [
+     {
+      "id": "d0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "d1",
+      "text": "were",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.45
+     },
+     {
+      "id": "d2",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.5,
+      "end": 1.1
+     },
+     {
+      "id": "d3",
+      "text": "late.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "d4",
+      "text": "It",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.8
+     },
+     {
+      "id": "d5",
+      "text": "cuts",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.05
+     },
+     {
+      "id": "d6",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 2.1,
+      "end": 2.2
+     },
+     {
+      "id": "d7",
+      "text": "fast.",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[4-7]\",\"text\":\"It cuts \u2026 quickly.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[4-7]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "d7"
+      ],
+      "newTokens": [
+       "quickly."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 5,
+      "sourceEndIndex": 6,
+      "anchorSeconds": null,
+      "lines": [
+       "[4-7]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "changed-label-is-words",
+   "note": "A label the model changed is not echoed: its tokens are new words, here re-voicing \"were\" with \"(laughing)\" spoken. Its key is not in the transcript and it follows an ordinary word, so checkThis flags it.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.6,
+    "words": [
+     {
+      "id": "d0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "d1",
+      "text": "were",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.45
+     },
+     {
+      "id": "d2",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.5,
+      "end": 1.1
+     },
+     {
+      "id": "d3",
+      "text": "late.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "d4",
+      "text": "It",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.8
+     },
+     {
+      "id": "d5",
+      "text": "cuts",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.05
+     },
+     {
+      "id": "d6",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 2.1,
+      "end": 2.2
+     },
+     {
+      "id": "d7",
+      "text": "fast.",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"We (Laughing) late.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": true,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "d1"
+      ],
+      "newTokens": [
+       "(Laughing)"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 1,
+      "sourceEndIndex": 2,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "insert-after-echoed-label",
+   "note": "Words added after the echoed \"(applause)\" anchor at its end. An insertion into a stretch without a word item is never merged, even with re-voiced words right before and after it.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 6.0,
+    "words": [
+     {
+      "id": "e0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "e1",
+      "text": "did",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "e2",
+      "text": "it.",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "e3",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 2.2,
+      "end": 3.0
+     },
+     {
+      "id": "e4",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 4.4,
+      "end": 4.8
+     },
+     {
+      "id": "e5",
+      "text": "all.",
+      "kind": "word",
+      "start": 4.85,
+      "end": 5.2
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-2]\",\"text\":\"We did this.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[3-3]\",\"text\":\"(applause) Thank you.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[4-5]\",\"text\":\"Cheers all.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-2]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[3-3]",
+      "inRange": false,
+      "checkThis": true,
+      "isDeletion": false
+     },
+     {
+      "line": "[4-5]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "e2"
+      ],
+      "newTokens": [
+       "this."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 2,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-2]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [],
+      "newTokens": [
+       "Thank",
+       "you."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 3,
+      "anchorSeconds": 3.0,
+      "lines": [
+       "[3-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "e4"
+      ],
+      "newTokens": [
+       "Cheers"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 4,
+      "anchorSeconds": null,
+      "lines": [
+       "[4-5]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "insert-before-echoed-label",
+   "note": "Words added before the label anchor at its start.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 6.0,
+    "words": [
+     {
+      "id": "e0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "e1",
+      "text": "did",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "e2",
+      "text": "it.",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "e3",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 2.2,
+      "end": 3.0
+     },
+     {
+      "id": "e4",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 4.4,
+      "end": 4.8
+     },
+     {
+      "id": "e5",
+      "text": "all.",
+      "kind": "word",
+      "start": 4.85,
+      "end": 5.2
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[3-3]\",\"text\":\"Thank you. (applause)\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[3-3]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [],
+      "newTokens": [
+       "Thank",
+       "you."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 3,
+      "anchorSeconds": 2.2,
+      "lines": [
+       "[3-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "insert-replacing-label",
+   "note": "Without the label the stretch is the whole line, which holds the event and no word: the insertion anchors at the event's start and does not absorb it.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 6.0,
+    "words": [
+     {
+      "id": "e0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "e1",
+      "text": "did",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "e2",
+      "text": "it.",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "e3",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 2.2,
+      "end": 3.0
+     },
+     {
+      "id": "e4",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 4.4,
+      "end": 4.8
+     },
+     {
+      "id": "e5",
+      "text": "all.",
+      "kind": "word",
+      "start": 4.85,
+      "end": 5.2
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[3-3]\",\"text\":\"Thank you.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[3-3]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [],
+      "newTokens": [
+       "Thank",
+       "you."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 3,
+      "anchorSeconds": 2.2,
+      "lines": [
+       "[3-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "whole-line-deletion",
+   "note": "An empty text deletes [6-9]: one cut hunk of its words, nothing to re-voice.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.2,
+    "words": [
+     {
+      "id": "a0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "a1",
+      "text": "last",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "a2",
+      "text": "year",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "a3",
+      "text": "we",
+      "kind": "word",
+      "start": 0.85,
+      "end": 1.0
+     },
+     {
+      "id": "a4",
+      "text": "shipped",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.4
+     },
+     {
+      "id": "a5",
+      "text": "it.",
+      "kind": "word",
+      "start": 1.45,
+      "end": 1.7
+     },
+     {
+      "id": "a6",
+      "text": "Then",
+      "kind": "word",
+      "start": 1.8,
+      "end": 2.0
+     },
+     {
+      "id": "a7",
+      "text": "we",
+      "kind": "word",
+      "start": 2.05,
+      "end": 2.2
+     },
+     {
+      "id": "a8",
+      "text": "fixed",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.6
+     },
+     {
+      "id": "a9",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 2.65,
+      "end": 3.0
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[6-9]\",\"text\":\"\",\"reason\":\"Not needed.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[6-9]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": true
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "a6",
+       "a7",
+       "a8",
+       "a9"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 6,
+      "sourceEndIndex": 10,
+      "anchorSeconds": null,
+      "lines": [
+       "[6-9]"
+      ],
+      "reasons": [
+       "Not needed."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "whole-line-deletion-keeps-events",
+   "note": "Deleting [0-3] cuts its three words; the laugh between them is never cut.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.6,
+    "words": [
+     {
+      "id": "d0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "d1",
+      "text": "were",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.45
+     },
+     {
+      "id": "d2",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.5,
+      "end": 1.1
+     },
+     {
+      "id": "d3",
+      "text": "late.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "d4",
+      "text": "It",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.8
+     },
+     {
+      "id": "d5",
+      "text": "cuts",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.05
+     },
+     {
+      "id": "d6",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 2.1,
+      "end": 2.2
+     },
+     {
+      "id": "d7",
+      "text": "fast.",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"   \",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": true
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "d0",
+       "d1",
+       "d3"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 0,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "labels-only-left",
+   "note": "A text of only the echoed label keeps the event and cuts the words on each side of it, one cut hunk per stretch; it is no deletion, so it is out of range.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.6,
+    "words": [
+     {
+      "id": "d0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "d1",
+      "text": "were",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.45
+     },
+     {
+      "id": "d2",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.5,
+      "end": 1.1
+     },
+     {
+      "id": "d3",
+      "text": "late.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "d4",
+      "text": "It",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.8
+     },
+     {
+      "id": "d5",
+      "text": "cuts",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.05
+     },
+     {
+      "id": "d6",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 2.1,
+      "end": 2.2
+     },
+     {
+      "id": "d7",
+      "text": "fast.",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"(laughs)\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "d0",
+       "d1"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 0,
+      "sourceEndIndex": 2,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "d3"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 2,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "surface-only-fix",
+   "note": "Commas and a capital: text-only hunks with one corrected text per item. \"going to\" is the correction, so the diff reads it, and its fix keeps both words on its one item. \"Going\" is a capital no source has, so the fix carries checkThis (the rule is a heuristic).",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.4,
+    "words": [
+     {
+      "id": "f0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "f1",
+      "text": "gonna",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.6
+     },
+     {
+      "id": "f2",
+      "text": "ship",
+      "kind": "word",
+      "start": 0.65,
+      "end": 0.9
+     },
+     {
+      "id": "f3",
+      "text": "it",
+      "kind": "word",
+      "start": 0.95,
+      "end": 1.1
+     },
+     {
+      "id": "f4",
+      "text": "today.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {
+      "f1": "going to"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-4]\",\"text\":\"We, Going to ship it today.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-4]",
+      "inRange": false,
+      "checkThis": true,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "textOnly",
+      "sourceWordIds": [
+       "f0",
+       "f1"
+      ],
+      "newTokens": [
+       "We,",
+       "Going",
+       "to"
+      ],
+      "correctedTexts": [
+       "We,",
+       "Going to"
+      ],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 0,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-4]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "partial-correction-revoices-item",
+   "note": "Changing one word of the two-word correction re-voices the whole item with its kept word (section 8.2 step 4).",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.4,
+    "words": [
+     {
+      "id": "f0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "f1",
+      "text": "gonna",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.6
+     },
+     {
+      "id": "f2",
+      "text": "ship",
+      "kind": "word",
+      "start": 0.65,
+      "end": 0.9
+     },
+     {
+      "id": "f3",
+      "text": "it",
+      "kind": "word",
+      "start": 0.95,
+      "end": 1.1
+     },
+     {
+      "id": "f4",
+      "text": "today.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {
+      "f1": "going to"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-4]\",\"text\":\"We aiming to ship it today.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-4]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "f1"
+      ],
+      "newTokens": [
+       "aiming",
+       "to"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 1,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-4]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "unchanged-echo",
+   "note": "An edit identical to its line gives no hunk.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.4,
+    "words": [
+     {
+      "id": "f0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "f1",
+      "text": "gonna",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.6
+     },
+     {
+      "id": "f2",
+      "text": "ship",
+      "kind": "word",
+      "start": 0.65,
+      "end": 0.9
+     },
+     {
+      "id": "f3",
+      "text": "it",
+      "kind": "word",
+      "start": 0.95,
+      "end": 1.1
+     },
+     {
+      "id": "f4",
+      "text": "today.",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {
+      "f1": "going to"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-4]\",\"text\":\"We going to ship it today.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-4]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": []
+   }
+  },
+  {
+   "name": "check-this-on-its-hunk",
+   "note": "\"went\" is in no source but is lower case; \"2026\" is a new digit run. Only the second hunk carries checkThis.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.4,
+    "words": [
+     {
+      "id": "g0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "g1",
+      "text": "moved",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "g2",
+      "text": "to",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.65
+     },
+     {
+      "id": "g3",
+      "text": "the",
+      "kind": "word",
+      "start": 0.7,
+      "end": 0.8
+     },
+     {
+      "id": "g4",
+      "text": "old",
+      "kind": "word",
+      "start": 0.85,
+      "end": 1.0
+     },
+     {
+      "id": "g5",
+      "text": "studio",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.4
+     },
+     {
+      "id": "g6",
+      "text": "in",
+      "kind": "word",
+      "start": 1.45,
+      "end": 1.55
+     },
+     {
+      "id": "g7",
+      "text": "May.",
+      "kind": "word",
+      "start": 1.6,
+      "end": 1.9
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-7]\",\"text\":\"We went to the old studio in 2026.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-7]",
+      "inRange": false,
+      "checkThis": true,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "g1"
+      ],
+      "newTokens": [
+       "went"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 1,
+      "sourceEndIndex": 2,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-7]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "g7"
+      ],
+      "newTokens": [
+       "2026."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 7,
+      "sourceEndIndex": 8,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-7]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "check-this-on-a-fix",
+   "note": "A capital that no source has, mid-sentence, flags a text-only hunk too; the voice hunk of the same line is not flagged.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.4,
+    "words": [
+     {
+      "id": "g0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "g1",
+      "text": "moved",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "g2",
+      "text": "to",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.65
+     },
+     {
+      "id": "g3",
+      "text": "the",
+      "kind": "word",
+      "start": 0.7,
+      "end": 0.8
+     },
+     {
+      "id": "g4",
+      "text": "old",
+      "kind": "word",
+      "start": 0.85,
+      "end": 1.0
+     },
+     {
+      "id": "g5",
+      "text": "studio",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.4
+     },
+     {
+      "id": "g6",
+      "text": "in",
+      "kind": "word",
+      "start": 1.45,
+      "end": 1.55
+     },
+     {
+      "id": "g7",
+      "text": "May.",
+      "kind": "word",
+      "start": 1.6,
+      "end": 1.9
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-7]\",\"text\":\"We went to the old Studio in May.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-7]",
+      "inRange": false,
+      "checkThis": true,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "g1"
+      ],
+      "newTokens": [
+       "went"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 1,
+      "sourceEndIndex": 2,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-7]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "textOnly",
+      "sourceWordIds": [
+       "g5"
+      ],
+      "newTokens": [
+       "Studio"
+      ],
+      "correctedTexts": [
+       "Studio"
+      ],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 5,
+      "sourceEndIndex": 6,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-7]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "check-this-from-instruction",
+   "note": "The year comes from the instruction, so nothing is flagged.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.4,
+    "words": [
+     {
+      "id": "g0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "g1",
+      "text": "moved",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "g2",
+      "text": "to",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.65
+     },
+     {
+      "id": "g3",
+      "text": "the",
+      "kind": "word",
+      "start": 0.7,
+      "end": 0.8
+     },
+     {
+      "id": "g4",
+      "text": "old",
+      "kind": "word",
+      "start": 0.85,
+      "end": 1.0
+     },
+     {
+      "id": "g5",
+      "text": "studio",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.4
+     },
+     {
+      "id": "g6",
+      "text": "in",
+      "kind": "word",
+      "start": 1.45,
+      "end": 1.55
+     },
+     {
+      "id": "g7",
+      "text": "May.",
+      "kind": "word",
+      "start": 1.6,
+      "end": 1.9
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "It was 2025, not May.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-7]\",\"text\":\"We moved to the old studio in 2025.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-7]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "g7"
+      ],
+      "newTokens": [
+       "2025."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 7,
+      "sourceEndIndex": 8,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-7]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "cut-item-between-lines",
+   "note": "Full take of the plan vectors' take A: \"So\" and \"we\" are re-voiced in [0-2] and [3-8]. Only \"today.\" lies between them as a kept word, so they merge; the cut \"um\" is not in the plan and stops nothing.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-2]\",\"text\":\"Well today.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[3-8]\",\"text\":\"they ship the new editor.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-2]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[3-8]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "w0",
+       "w2",
+       "w3"
+      ],
+      "newTokens": [
+       "Well",
+       "today.",
+       "they"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [
+       "w2"
+      ],
+      "sourceStartIndex": 0,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[0-2]",
+       "[3-8]"
+      ],
+      "reasons": [
+       "Fixes the line.",
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "clip-scope",
+   "note": "clip-mid of take A: the cut repeat w6 is not in the plan; the echoed \"(laughs)\" and ellipsis are dropped; a new \"Fast\" after the ellipsis is a capital no source has.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "clip",
+     "clipId": "clip-mid"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[3-8]\",\"text\":\"we ship a new editor.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[9-14]\",\"text\":\"(laughs) It cuts \u2026 words, Fast.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[3-8]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[9-14]",
+      "inRange": true,
+      "checkThis": true,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "w5"
+      ],
+      "newTokens": [
+       "a"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 2,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "lines": [
+       "[3-8]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "textOnly",
+      "sourceWordIds": [
+       "w14"
+      ],
+      "newTokens": [
+       "Fast."
+      ],
+      "correctedTexts": [
+       "Fast."
+      ],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 8,
+      "sourceEndIndex": 9,
+      "anchorSeconds": null,
+      "lines": [
+       "[9-14]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "name": "full-take-event-line-and-fix",
+   "note": "Full take of take A: the event-only line echoed unchanged gives no hunk, and \"watching!\" becomes \"watching.\" as a text-only fix.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 9.6,
+    "words": [
+     {
+      "id": "w0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.05,
+      "end": 0.3
+     },
+     {
+      "id": "w1",
+      "text": "um",
+      "kind": "word",
+      "start": 0.45,
+      "end": 0.6
+     },
+     {
+      "id": "w2",
+      "text": "today",
+      "kind": "word",
+      "start": 0.62,
+      "end": 0.95
+     },
+     {
+      "id": "w3",
+      "text": "we",
+      "kind": "word",
+      "start": 1.3,
+      "end": 1.45
+     },
+     {
+      "id": "w4",
+      "text": "ship",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "w5",
+      "text": "the",
+      "kind": "word",
+      "start": 1.85,
+      "end": 1.95
+     },
+     {
+      "id": "w6",
+      "text": "the",
+      "kind": "word",
+      "start": 2.0,
+      "end": 2.1
+     },
+     {
+      "id": "w7",
+      "text": "new",
+      "kind": "word",
+      "start": 2.15,
+      "end": 2.4
+     },
+     {
+      "id": "w8",
+      "text": "editor.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.9
+     },
+     {
+      "id": "e9",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 3.0,
+      "end": 3.4
+     },
+     {
+      "id": "w10",
+      "text": "It",
+      "kind": "word",
+      "start": 3.5,
+      "end": 3.6
+     },
+     {
+      "id": "w11",
+      "text": "cuts",
+      "kind": "word",
+      "start": 3.65,
+      "end": 3.95
+     },
+     {
+      "id": "u12",
+      "text": "mm",
+      "kind": "unlabeledSpeech",
+      "start": 4.0,
+      "end": 4.2
+     },
+     {
+      "id": "w13",
+      "text": "words",
+      "kind": "word",
+      "start": 4.25,
+      "end": 4.6
+     },
+     {
+      "id": "w14",
+      "text": "fast.",
+      "kind": "word",
+      "start": 4.65,
+      "end": 5.0
+     },
+     {
+      "id": "e15",
+      "text": "(applause)",
+      "kind": "event",
+      "start": 6.3,
+      "end": 7.0
+     },
+     {
+      "id": "w16",
+      "text": "uh",
+      "kind": "word",
+      "start": 8.2,
+      "end": 8.4
+     },
+     {
+      "id": "w17",
+      "text": "Thanks",
+      "kind": "word",
+      "start": 8.4,
+      "end": 8.7
+     },
+     {
+      "id": "w18",
+      "text": "for",
+      "kind": "word",
+      "start": 8.95,
+      "end": 9.1
+     },
+     {
+      "id": "w19",
+      "text": "watching!",
+      "kind": "word",
+      "start": 9.15,
+      "end": 9.45
+     }
+    ],
+    "edits": {
+     "cutWordIds": [
+      "w1",
+      "w6",
+      "w16"
+     ],
+     "cutPauseIds": [],
+     "corrections": {
+      "w2": "today.",
+      "w13": "words,"
+     },
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": [
+      {
+       "id": "clip-mid",
+       "startWordId": "w3",
+       "endWordId": "w14",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-start",
+       "startWordId": "w0",
+       "endWordId": "w8",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-end",
+       "startWordId": "w18",
+       "endWordId": "w19",
+       "origin": "manual",
+       "selected": true
+      },
+      {
+       "id": "clip-suggested",
+       "startWordId": "w10",
+       "endWordId": "w19",
+       "origin": "ai",
+       "selected": false
+      },
+      {
+       "id": "clip-all-cut",
+       "startWordId": "w16",
+       "endWordId": "w16",
+       "origin": "manual",
+       "selected": true
+      }
+     ]
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[15-15]\",\"text\":\"(applause)\",\"reason\":\"Fixes the line.\"},{\"line\":\"[17-19]\",\"text\":\"Thanks for watching.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[15-15]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[17-19]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "textOnly",
+      "sourceWordIds": [
+       "w19"
+      ],
+      "newTokens": [
+       "watching."
+      ],
+      "correctedTexts": [
+       "watching."
+      ],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 13,
+      "sourceEndIndex": 14,
+      "anchorSeconds": null,
+      "lines": [
+       "[17-19]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "name": "unknown-line",
+   "note": "An edit for a line the plan does not have (the validator drops these, so this proposal came from elsewhere).",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.2,
+    "words": [
+     {
+      "id": "a0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "a1",
+      "text": "last",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "a2",
+      "text": "year",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "a3",
+      "text": "we",
+      "kind": "word",
+      "start": 0.85,
+      "end": 1.0
+     },
+     {
+      "id": "a4",
+      "text": "shipped",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.4
+     },
+     {
+      "id": "a5",
+      "text": "it.",
+      "kind": "word",
+      "start": 1.45,
+      "end": 1.7
+     },
+     {
+      "id": "a6",
+      "text": "Then",
+      "kind": "word",
+      "start": 1.8,
+      "end": 2.0
+     },
+     {
+      "id": "a7",
+      "text": "we",
+      "kind": "word",
+      "start": 2.05,
+      "end": 2.2
+     },
+     {
+      "id": "a8",
+      "text": "fixed",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.6
+     },
+     {
+      "id": "a9",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 2.65,
+      "end": 3.0
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "proposal": [
+     {
+      "line": "[0-9]",
+      "text": "Hello.",
+      "reason": "x",
+      "checkThis": false
+     }
+    ]
+   },
+   "expected": {
+    "error": "invalidInput"
+   }
+  },
+  {
+   "name": "duplicate-line",
+   "note": "Two edits for one line.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.2,
+    "words": [
+     {
+      "id": "a0",
+      "text": "So",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "a1",
+      "text": "last",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "a2",
+      "text": "year",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "a3",
+      "text": "we",
+      "kind": "word",
+      "start": 0.85,
+      "end": 1.0
+     },
+     {
+      "id": "a4",
+      "text": "shipped",
+      "kind": "word",
+      "start": 1.05,
+      "end": 1.4
+     },
+     {
+      "id": "a5",
+      "text": "it.",
+      "kind": "word",
+      "start": 1.45,
+      "end": 1.7
+     },
+     {
+      "id": "a6",
+      "text": "Then",
+      "kind": "word",
+      "start": 1.8,
+      "end": 2.0
+     },
+     {
+      "id": "a7",
+      "text": "we",
+      "kind": "word",
+      "start": 2.05,
+      "end": 2.2
+     },
+     {
+      "id": "a8",
+      "text": "fixed",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.6
+     },
+     {
+      "id": "a9",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 2.65,
+      "end": 3.0
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "proposal": [
+     {
+      "line": "[0-5]",
+      "text": "So.",
+      "reason": "x",
+      "checkThis": false
+     },
+     {
+      "line": "[0-5]",
+      "text": "Yes.",
+      "reason": "y",
+      "checkThis": false
+     }
+    ]
+   },
+   "expected": {
+    "error": "invalidInput"
+   }
+  }
+ ],
+ "patchRewriteCaseCount": 82,
+ "patchRewriteCases": [
+  {
+   "id": "in-range-correction",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i44"
+      ],
+      "newTokens": [
+       "2025,"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 4,
+      "sourceEndIndex": 5,
+      "anchorSeconds": null,
+      "lines": [
+       "[40-48]"
+      ],
+      "reasons": [
+       "Corrects the year."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "unknown-line-dropped",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i53"
+      ],
+      "newTokens": [
+       "larger."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 13,
+      "sourceEndIndex": 14,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "duplicate-line-keeps-first",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "i50"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 10,
+      "sourceEndIndex": 11,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "First."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "out-of-range-low",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i49",
+       "i50",
+       "i51",
+       "i52",
+       "i53"
+      ],
+      "newTokens": [
+       "Bigger",
+       "now."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 9,
+      "sourceEndIndex": 14,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Shorter."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "out-of-range-high",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i53"
+      ],
+      "newTokens": [
+       "much,",
+       "much",
+       "bigger",
+       "than",
+       "the",
+       "old",
+       "one."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 13,
+      "sourceEndIndex": 14,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Longer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "new-digit-run",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i44"
+      ],
+      "newTokens": [
+       "2026,"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 4,
+      "sourceEndIndex": 5,
+      "anchorSeconds": null,
+      "lines": [
+       "[40-48]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "digit-run-other-script",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i44"
+      ],
+      "newTokens": [
+       "\u0662\u0660\u0662\u0665,"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 4,
+      "sourceEndIndex": 5,
+      "anchorSeconds": null,
+      "lines": [
+       "[40-48]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "new-url",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i57"
+      ],
+      "newTokens": [
+       "https://voxclip.example",
+       "now."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 17,
+      "sourceEndIndex": 18,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "url-from-instruction",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i57"
+      ],
+      "newTokens": [
+       "https://voxclip.example",
+       "now."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 17,
+      "sourceEndIndex": 18,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "new-www-url",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i57"
+      ],
+      "newTokens": [
+       "www.voxclip.example",
+       "today."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 17,
+      "sourceEndIndex": 18,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "capitalised-mid-sentence",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [],
+      "newTokens": [
+       "in",
+       "Tallinn"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 12,
+      "sourceEndIndex": 12,
+      "anchorSeconds": 3.95,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "capitalised-sentence-start",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "i50"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 10,
+      "sourceEndIndex": 11,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i52",
+       "i53"
+      ],
+      "newTokens": [
+       "grew.",
+       "Everyone",
+       "is",
+       "happy."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [
+       "i52"
+      ],
+      "sourceStartIndex": 12,
+      "sourceEndIndex": 14,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "capitalised-after-closing-quote",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i40",
+       "i41",
+       "i42",
+       "i43",
+       "i44",
+       "i45",
+       "i46",
+       "i47",
+       "i48"
+      ],
+      "newTokens": [
+       "We",
+       "moved",
+       "to",
+       "\"Tartu.\"",
+       "Then",
+       "it",
+       "grew."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [
+       "i46",
+       "i47"
+      ],
+      "sourceStartIndex": 0,
+      "sourceEndIndex": 9,
+      "anchorSeconds": null,
+      "lines": [
+       "[40-48]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "capitalised-case-sensitive",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "textOnly",
+      "sourceWordIds": [
+       "i51"
+      ],
+      "newTokens": [
+       "Studio"
+      ],
+      "correctedTexts": [
+       "Studio"
+      ],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 11,
+      "sourceEndIndex": 12,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "hangul-jamo-key-is-ordinal",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i50"
+      ],
+      "newTokens": [
+       "Z\u1100\u200d\u1161"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 10,
+      "sourceEndIndex": 11,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": true
+     }
+    ]
+   }
+  },
+  {
+   "id": "hangul-syllable-and-trailing-jamo",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i50"
+      ],
+      "newTokens": [
+       "Z\uac00\u11a8"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 10,
+      "sourceEndIndex": 11,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "decomposed-text",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i53"
+      ],
+      "newTokens": [
+       "for",
+       "To\u0303nu."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 13,
+      "sourceEndIndex": 14,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "delete-whole-line",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "i54",
+       "i55",
+       "i56",
+       "i57"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 14,
+      "sourceEndIndex": 18,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Not needed."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "delete-with-whitespace-text",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "i54",
+       "i55",
+       "i56",
+       "i57"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 14,
+      "sourceEndIndex": 18,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Not needed."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "punctuation-only-is-not-deletion",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i54",
+       "i55",
+       "i56",
+       "i57"
+      ],
+      "newTokens": [
+       "..."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 14,
+      "sourceEndIndex": 18,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Pause."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "malformed-items-dropped",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i53"
+      ],
+      "newTokens": [
+       "larger."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 13,
+      "sourceEndIndex": 14,
+      "anchorSeconds": null,
+      "lines": [
+       "[49-53]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "control-character-in-text",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "escape-character-in-text",
+   "expected": {
+    "hunks": []
+   }
+  },
+  {
+   "id": "line-break-in-text",
+   "expected": {
+    "hunks": []
+   }
+  },
+  {
+   "id": "delete-and-c1-controls-in-text",
+   "expected": {
+    "hunks": []
+   }
+  },
+  {
+   "id": "tab-in-text-kept",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "control-character-in-reason",
+   "expected": {
+    "hunks": []
+   }
+  },
+  {
+   "id": "text-of-2000-bytes-kept",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i54",
+       "i55",
+       "i56",
+       "i57"
+      ],
+      "newTokens": [
+       "\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5\u00f5"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 14,
+      "sourceEndIndex": 18,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "text-over-2000-bytes-dropped",
+   "expected": {
+    "hunks": []
+   }
+  },
+  {
+   "id": "edits-of-20000-bytes-kept",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i100",
+       "i101",
+       "i102",
+       "i103",
+       "i104",
+       "i105",
+       "i106",
+       "i107",
+       "i108",
+       "i109"
+      ],
+      "newTokens": [
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 0,
+      "sourceEndIndex": 10,
+      "anchorSeconds": null,
+      "lines": [
+       "[100-100]",
+       "[101-101]",
+       "[102-102]",
+       "[103-103]",
+       "[104-104]",
+       "[105-105]",
+       "[106-106]",
+       "[107-107]",
+       "[108-108]",
+       "[109-109]"
+      ],
+      "reasons": [
+       "Fixes the line.",
+       "Fixes the line.",
+       "Fixes the line.",
+       "Fixes the line.",
+       "Fixes the line.",
+       "Fixes the line.",
+       "Fixes the line.",
+       "Fixes the line.",
+       "Fixes the line.",
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "edits-over-20000-bytes",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "extra-keys-ignored",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "trimmed-line-label",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "code-fenced-reply",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "one-line-code-fence",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "prose-around-json",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "combining-mark-after-quote",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "\u0301} is fine"
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "byte-order-mark-before-json",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "top-level-array",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "repeated-top-level-key",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "repeated-key-in-item",
+   "expected": {
+    "hunks": []
+   }
+  },
+  {
+   "id": "repeated-ignored-key",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "json-keys-latin-collision",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "json-keys-latin-reversed-collision",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "json-keys-kelvin-collision",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "json-keys-nested-collision",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "json-keys-null-collision",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "json-keys-byte-identical-repeat",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "json-keys-separate-objects",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "json-keys-distinct-case",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "json-keys-escaped-byte-repeat",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "json-keys-hangul-collision",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "repeated-key-value-still-checked",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "unpaired-surrogate-in-text",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "unpaired-surrogate-in-reason",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "unpaired-surrogate-in-ignored-key",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "unpaired-surrogate-in-key-name",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "reversed-surrogate-pair",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "escaped-surrogate-pair",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56",
+       "i57"
+      ],
+      "newTokens": [
+       "see",
+       "us",
+       "\ud83d\ude00"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 18,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "nesting-of-64-levels",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "nesting-of-65-levels",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "number-out-of-range",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "negative-number-out-of-range",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "integer-out-of-range",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "number-rounding-to-zero",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "subnormal-number",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "zero-with-large-exponent",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "zero-with-exponent",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "zero-with-capital-exponent",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "zero-fraction-with-negative-exponent",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "negative-zero-with-exponent",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "nan-literal",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "noncharacter-in-text",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see\ufffe"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "raw-noncharacter-in-text",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see\ufffe"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "noncharacter-in-instruction",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i44"
+      ],
+      "newTokens": [
+       "2025,"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 4,
+      "sourceEndIndex": 5,
+      "anchorSeconds": null,
+      "lines": [
+       "[40-48]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "rewrite-with-c1-control",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "rewrite-of-only-a-byte-order-mark",
+   "expected": {
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "i56"
+      ],
+      "newTokens": [
+       "see"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 16,
+      "sourceEndIndex": 17,
+      "anchorSeconds": null,
+      "lines": [
+       "[54-57]"
+      ],
+      "reasons": [
+       "Clearer."
+      ],
+      "checkThis": false
+     }
+    ]
+   }
+  },
+  {
+   "id": "refused-stop",
+   "expected": {
+    "error": "refused"
+   }
+  },
+  {
+   "id": "truncated-stop",
+   "expected": {
+    "error": "truncated"
+   }
+  },
+  {
+   "id": "empty-list",
+   "expected": {
+    "hunks": []
+   }
+  },
+  {
+   "id": "malformed-json",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  },
+  {
+   "id": "missing-edits",
+   "expected": {
+    "error": "invalidOutput"
+   }
+  }
+ ]
+}

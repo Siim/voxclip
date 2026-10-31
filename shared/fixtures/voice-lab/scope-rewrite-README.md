@@ -1,4 +1,9 @@
-# Scope rewrite plan vectors
+# Scope rewrite vectors
+
+Two files pin a clip or Full take Rewrite (voice-lab.md §8.1 item 1): the plan, before any quote, and the diff of the
+proposal into review hunks. Only the Swift suites replay them until the C# twins land (plan W1).
+
+## Plan
 
 `scope-rewrite-plan-cases.json` pins `ScopeRewritePlan.make`: the Fix with AI request for a clip or Full take
 (voice-lab.md §8.1 item 1), before any quote. `tools/fixtures/voice-lab/generate_scope_rewrite.py` writes it (Python 3,
@@ -6,7 +11,7 @@ standard library only, byte-identical on every run); change the generator, never
 offline. The Swift suite `ScopeRewritePlanTests` replays every case. The C# suite does not yet; the C# twin (plan W1)
 replays the same file.
 
-## Rules the generator encodes
+### Rules the generator encodes
 
 - **Scope.** `fullTake` covers every transcript item. `clip` names a `ClipRange` in `edits.clips`, kept (`origin`
   `manual`, or `ai` and selected) or suggested (`ai`, not selected); both are planned alike, from the clip's first to its
@@ -52,7 +57,7 @@ replays the same file.
 - **Request.** `instruction` and `language` pass through; `PatchRewriteService` checks them with the rest. The suite
   also runs `PatchRewriteService.estimate` on every plan, so each plan is a request the service accepts.
 
-## Case shape
+### Case shape
 
 - `input`: `sampleRate`, `durationSeconds`, the take's items (`words`, or the `wordsRepeat` recipe), `edits`
   (`cutWordIds`, `cutPauseIds`, `corrections`, `pauseThresholdSeconds`, `pauseKeepSeconds` and `clips` with `origin`
@@ -74,7 +79,7 @@ replays the same file.
     line's label, item count, first and last item ID, range and source.
   - `{error}`: `tooManyEntries` (with `count`), `tooMuchText` (with `bytes`), `empty` or `invalidInput`.
 
-## Coverage
+### Coverage
 
 A kept clip with a cut repeat inside a line and corrections; Full take with an event-only line and a line refused
 because a cut filler touches it; a clip at the take start (`none` incoming seam, so the edge pad shortens the target)
@@ -84,3 +89,73 @@ line; an enabled replacement inside a clip line, the same one disabled, one besi
 one (with and without an envelope), a cut after acceptance that leaves the scope unrenderable, and a scope that is all
 re-voiced; a stored-candidate rate and a malformed candidate; 100-unit text cuts with a surrogate pair at the boundary;
 the 5,000 cap; and the entry and byte limits on both sides, with both over at once.
+
+## Diff
+
+`scope-rewrite-diff-cases.json` pins `ScopeRewriteDiff.hunks(plan:proposal:)`: the Fix with AI edits of a clip or Full take
+as review hunks (voice-lab.md §8.1 item 1 and §8.2). `tools/fixtures/voice-lab/generate_scope_rewrite_diff.py` writes it
+(Python 3, standard library only, byte-identical on every run); change the generator, never the JSON. It loads only the
+definitions of `generate_scope_rewrite.py` for the plan, of `generate_word_diff.py` for the §8.2 diff, and of
+`generate_patch_rewrite.py` for the edit validation and the `checkThis` rule, and reads `patch-rewrite-cases.json`. The
+Swift suite `ScopeRewriteDiffTests` replays every case. The C# suite does not yet.
+
+### Rules the generator encodes
+
+- **Edits.** Each kept edit is one line's whole new text. An edit for a line the plan does not have, or a second edit for
+  one line, is `invalidInput`: the proposal is not this plan's. A line without an edit is unchanged.
+- **Echoed labels.** The model reads a line's events as their labels and unlabeled speech as `…` (ai.md §11.2), and may
+  return them. The edit's tokens are paired with the line as the model read it: the §8.2 diff (steps 1 to 3) over the
+  line's entry texts, every entry tokenised as a word. A non-word entry is *echoed* when each of its tokens pairs with an
+  `equal` and no inserted token falls between them. Echoed tokens are dropped, so they are never spoken, and each echoed
+  entry splits the line into *stretches*: the items and new tokens between two echoed entries, or between one and the
+  line's edge. A label the model left out or changed is not echoed. Its entry stays in its stretch, where a voice hunk
+  across it absorbs it (§8.2 step 6); a changed label's tokens are new words.
+- **Per stretch.** `VoiceLabWordDiff` runs on each stretch alone, so every DP stays within one line. Its source is the
+  stretch's items as the transcript holds them, corrections applied (`ScopeRewritePlan.Line.items`), not the entry text,
+  which is cut to 100 UTF-16 units: a longer item echoed as sent shows as a change the user can leave out. An empty edit
+  (`isDeletion`) cuts the line's words; its events and unlabeled speech stay (§8.2 step 5).
+- **Across stretches.** §8.2 step 6 runs once more over the scope in transcript order: the first voice hunk of each
+  stretch may merge with the last voice hunk before it (within a stretch, `VoiceLabWordDiff` has decided). The rule is
+  unchanged: only equal words between them (no cut hunk), at most 2 equal word items or at most 0.35 s from the earlier
+  hunk's last source word end to the later hunk's first source word start (binary64, inclusive), and never across an event
+  or unlabeled speech among the plan's items. An echoed entry is such an item, so stretches of one line never merge. The
+  counts, times and barriers read the plan's items: an item already cut or re-voiced is not among them and never stops a
+  merge, as within one line's diff. An insertion's time and barrier position are its stretch's: the next word token's
+  start in its stretch, or the stretch's last word end, and that word's item. The equal words between become bridges with
+  their new surfaces, and a text-only hunk among them is absorbed. Two insertions merged with nothing between keep the
+  earlier one's anchor.
+- **Insertions with no word.** In a stretch without a word item, an insertion anchors at the start of the stretch's first
+  item, else at the start of the echoed entry after it, else at the end of the one before it. It is never merged.
+- **Indices.** A hunk's `sourceStartIndex` and `sourceEndIndex` address the word tokens of all the plan's lines in line
+  order (each word item's `splitWords` tokens), not one line's.
+- **Carried per hunk.** `lines` and `reasons`: the labels and reasons of the edits the hunk comes from, in line order;
+  after a merge, every part's, including an absorbed text-only hunk's. `checkThis`: one of the hunk's own new tokens is a
+  token the §8.1 rule flags in its edit, the edit's whole text giving each token's sentence start; a merged hunk carries it
+  when one part does. The edit's flag is true exactly when one of its tokens is. A cut has no new token and never carries
+  it, and neither does anything for an echoed label the rule flags: it is dropped (`flagged-label-echo`).
+
+### Case shape
+
+- `cases`: `input` is a plan vector's input (`envelope` is always `null`: ranges only set `inRange`, which the diff does
+  not read), plus `reply`, the model's raw reply, which the suite sends through `PatchRewriteService` with a canned
+  connector, or `proposal`, edits `{line, text, reason, checkThis}` taken as they are for the two refusals. `expected` is
+  `{edits, hunks}`, where `edits` gives each validated edit's `line`, `inRange`, `checkThis` and `isDeletion`, or
+  `{error: "invalidInput"}`.
+- Each hunk: `kind`, `sourceWordIds`, `newTokens`, `correctedTexts`, `absorbedItemIds`, `bridgeWordIds`,
+  `sourceStartIndex`, `sourceEndIndex`, `anchorSeconds` (`null` unless the hunk has no source word), `lines`, `reasons`
+  and `checkThis`.
+- `patchRewriteCases`: one result per `patch-rewrite-cases.json` case, in its order. The plan's lines are the
+  `formatTranscript` lines of the case's entries, each entry a word item with ID `i` + index. A reply that validates maps
+  to `{hunks}`; one that fails keeps its `{error}`.
+- `merge` holds the step 6 limits.
+
+### Coverage
+
+Merges across a line boundary with no word, one bridge or three bridges at exactly 0.35 s, and none over three words and
+1 s; a text-only fix absorbed by a merge across lines; a cut hunk and an event as barriers across lines; an echoed label
+splitting a line, a dropped label absorbed, a dropped label changing nothing, an echoed `…`, a changed label spoken as
+words, and a capitalised echo that flags the edit but no hunk; insertions after, before and instead of an event-only
+line's label; whole-line deletions with and without an event, and a text of only the label; surface-only fixes on a
+two-word correction, a partial change to it and an unchanged echo; `checkThis` on the voice hunk that adds the digit run,
+on a text-only capital, and not for a year from the instruction; a cut item between merged lines, a clip scope with a cut
+repeat, echoed labels and a new capital, and Full take's event-only line; the two refusals; and every Fix with AI reply.
