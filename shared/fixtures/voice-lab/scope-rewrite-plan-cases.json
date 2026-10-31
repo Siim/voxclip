@@ -455,6 +455,7 @@
        "w7",
        "w8"
       ],
+      "revoicedBefore": [],
       "minChars": 18,
       "maxChars": 20,
       "rangeSource": "window",
@@ -470,6 +471,7 @@
        "w13",
        "w14"
       ],
+      "revoicedBefore": [],
       "minChars": 24,
       "maxChars": 26,
       "rangeSource": "window",
@@ -957,6 +959,7 @@
        "w0",
        "w2"
       ],
+      "revoicedBefore": [],
       "minChars": 11,
       "maxChars": 12,
       "rangeSource": "window",
@@ -971,6 +974,7 @@
        "w7",
        "w8"
       ],
+      "revoicedBefore": [],
       "minChars": 18,
       "maxChars": 21,
       "rangeSource": "window",
@@ -986,6 +990,7 @@
        "w13",
        "w14"
       ],
+      "revoicedBefore": [],
       "minChars": 29,
       "maxChars": 31,
       "rangeSource": "window",
@@ -996,6 +1001,7 @@
       "itemIds": [
        "e15"
       ],
+      "revoicedBefore": [],
       "minChars": 8,
       "maxChars": 8,
       "rangeSource": "noSpeech"
@@ -1007,6 +1013,7 @@
        "w18",
        "w19"
       ],
+      "revoicedBefore": [],
       "minChars": 10,
       "maxChars": 12,
       "rangeSource": "lineSpan",
@@ -1435,6 +1442,7 @@
        "w0",
        "w2"
       ],
+      "revoicedBefore": [],
       "minChars": 11,
       "maxChars": 12,
       "rangeSource": "window",
@@ -1449,6 +1457,7 @@
        "w7",
        "w8"
       ],
+      "revoicedBefore": [],
       "minChars": 16,
       "maxChars": 18,
       "rangeSource": "lineSpan",
@@ -1847,6 +1856,7 @@
        "w18",
        "w19"
       ],
+      "revoicedBefore": [],
       "minChars": 6,
       "maxChars": 7,
       "rangeSource": "window",
@@ -2290,6 +2300,7 @@
        "w13",
        "w14"
       ],
+      "revoicedBefore": [],
       "minChars": 15,
       "maxChars": 17,
       "rangeSource": "lineSpan",
@@ -2300,6 +2311,7 @@
       "itemIds": [
        "e15"
       ],
+      "revoicedBefore": [],
       "minChars": 8,
       "maxChars": 8,
       "rangeSource": "noSpeech"
@@ -2311,6 +2323,7 @@
        "w18",
        "w19"
       ],
+      "revoicedBefore": [],
       "minChars": 10,
       "maxChars": 12,
       "rangeSource": "lineSpan",
@@ -2638,6 +2651,7 @@
        "w0",
        "w2"
       ],
+      "revoicedBefore": [],
       "minChars": 8,
       "maxChars": 10,
       "rangeSource": "lineSpan",
@@ -2652,6 +2666,7 @@
        "w7",
        "w8"
       ],
+      "revoicedBefore": [],
       "minChars": 16,
       "maxChars": 18,
       "rangeSource": "lineSpan",
@@ -2667,6 +2682,7 @@
        "w13",
        "w14"
       ],
+      "revoicedBefore": [],
       "minChars": 21,
       "maxChars": 23,
       "rangeSource": "lineSpan",
@@ -2677,6 +2693,7 @@
       "itemIds": [
        "e15"
       ],
+      "revoicedBefore": [],
       "minChars": 8,
       "maxChars": 8,
       "rangeSource": "noSpeech"
@@ -2688,6 +2705,7 @@
        "w18",
        "w19"
       ],
+      "revoicedBefore": [],
       "minChars": 10,
       "maxChars": 12,
       "rangeSource": "lineSpan",
@@ -4487,6 +4505,7 @@
        "w7",
        "w8"
       ],
+      "revoicedBefore": [],
       "minChars": 18,
       "maxChars": 20,
       "rangeSource": "window",
@@ -4500,6 +4519,9 @@
        "u12",
        "w13",
        "w14"
+      ],
+      "revoicedBefore": [
+       "u12"
       ],
       "minChars": 21,
       "maxChars": 23,
@@ -4974,6 +4996,7 @@
        "w7",
        "w8"
       ],
+      "revoicedBefore": [],
       "minChars": 18,
       "maxChars": 20,
       "rangeSource": "window",
@@ -4989,6 +5012,7 @@
        "w13",
        "w14"
       ],
+      "revoicedBefore": [],
       "minChars": 24,
       "maxChars": 26,
       "rangeSource": "window",
@@ -5464,6 +5488,7 @@
        "w0",
        "w2"
       ],
+      "revoicedBefore": [],
       "minChars": 10,
       "maxChars": 12,
       "rangeSource": "window",
@@ -5479,6 +5504,9 @@
        "w13",
        "w14"
       ],
+      "revoicedBefore": [
+       "e9"
+      ],
       "minChars": 29,
       "maxChars": 31,
       "rangeSource": "window",
@@ -5489,6 +5517,7 @@
       "itemIds": [
        "e15"
       ],
+      "revoicedBefore": [],
       "minChars": 8,
       "maxChars": 8,
       "rangeSource": "noSpeech"
@@ -5500,6 +5529,7 @@
        "w18",
        "w19"
       ],
+      "revoicedBefore": [],
       "minChars": 10,
       "maxChars": 12,
       "rangeSource": "lineSpan",
@@ -6779,6 +6809,7 @@
        "w7",
        "w8"
       ],
+      "revoicedBefore": [],
       "minChars": 10,
       "maxChars": 12,
       "rangeSource": "window",
@@ -6794,6 +6825,7 @@
        "w13",
        "w14"
       ],
+      "revoicedBefore": [],
       "minChars": 17,
       "maxChars": 18,
       "rangeSource": "window",
@@ -7329,6 +7361,7 @@
        "c",
        "d"
       ],
+      "revoicedBefore": [],
       "minChars": 12,
       "maxChars": 14,
       "rangeSource": "window",
@@ -7339,6 +7372,7 @@
       "itemIds": [
        "e"
       ],
+      "revoicedBefore": [],
       "minChars": 10,
       "maxChars": 11,
       "rangeSource": "window",
@@ -7424,6 +7458,7 @@
        "b",
        "c"
       ],
+      "revoicedBefore": [],
       "minChars": 176,
       "maxChars": 187,
       "rangeSource": "lineSpan",
@@ -8557,6 +8592,7 @@
        "f38",
        "f39"
       ],
+      "revoicedBefore": [],
       "minChars": 320,
       "maxChars": 339,
       "rangeSource": "lineSpan",
@@ -8607,6 +8643,7 @@
        "s39",
        "s40"
       ],
+      "revoicedBefore": [],
       "minChars": 5000,
       "maxChars": 5000,
       "rangeSource": "lineSpan",

@@ -35,7 +35,10 @@ replays the same file.
   size; its R1x copy names no count. The limits count kept items: cutting one of 3,001 items passes, and a clip counts
   only its own.
 - **Lines.** `formatTranscript` (ai.md §11.3) of the entries. Corrections apply first, so a correction that adds a full
-  stop ends a line. `itemIds` lists the line's entries; cut items between them are not listed.
+  stop ends a line. `itemIds` lists the line's entries; cut items between them are not listed. `revoicedBefore` lists
+  the line's items that a run of re-voiced items precedes, back to the entry before (Swift `Line.revoicedBefore`, one
+  flag per item). No window may span such a run (§8.4 step 6), so the diff never merges across it; cut items set no
+  flag.
 - **Ranges** (§8.9.1), in this order:
   - The model returns a line's whole text, echoing its event labels, and Core counts every letter of it. So both bounds
     add the `VoiceLabTextLength` of the line's non-word entries (an event's label; `…` has none), and keeping a label
@@ -72,8 +75,8 @@ replays the same file.
 - `wordsRepeat` follows the word-diff `sourceRepeat` recipe: item `i` has ID `idPrefix + i`, text `token`, kind `word`,
   start `i * timingStep` and end `start + timingStep / 2`.
 - `expected` is one of:
-  - `{entries, utf8Bytes, lines}`: every entry and every line with `line`, `itemIds`, `minChars`, `maxChars` and
-    `rangeSource`. A line's `note` (the seams, target and bridge length, or the refusal) is informative; the suites do
+  - `{entries, utf8Bytes, lines}`: every entry and every line with `line`, `itemIds`, `revoicedBefore`, `minChars`,
+    `maxChars` and `rangeSource`. A line's `note` (the seams, target and bridge length, or the refusal) is informative; the suites do
     not read it.
   - `{summary}` for the three large passing cases: the entry count, the byte count, the first and last entry, and each
     line's label, item count, first and last item ID, range and source.
@@ -85,9 +88,9 @@ A kept clip with a cut repeat inside a line and corrections; Full take with an e
 because a cut filler touches it; a clip at the take start (`none` incoming seam, so the edge pad shortens the target)
 and at the take end (`none` outgoing seam); a suggested clip whose head cuts the event before it; no envelope; an
 all-cut clip, an unknown clip, a selection and an envelope on the wrong rate; event labels at the start and the end of a
-line; an enabled replacement inside a clip line, the same one disabled, one beside other lines, a clip boundary crossing
-one (with and without an envelope), a cut after acceptance that leaves the scope unrenderable, and a scope that is all
-re-voiced; a stored-candidate rate and a malformed candidate; 100-unit text cuts with a surrogate pair at the boundary;
+line; an enabled replacement inside a clip line and one beside other lines, with the items their runs precede, the
+same one disabled, a clip boundary crossing one (with and without an envelope), a cut after acceptance that leaves the
+scope unrenderable, and a scope that is all re-voiced; a stored-candidate rate and a malformed candidate; 100-unit text cuts with a surrogate pair at the boundary;
 the 5,000 cap; and the entry and byte limits on both sides, with both over at once.
 
 ## Diff
@@ -110,6 +113,11 @@ Swift suite `ScopeRewriteDiffTests` replays every case. The C# suite does not ye
   entry splits the line into *stretches*: the items and new tokens between two echoed entries, or between one and the
   line's edge. A label the model left out or changed is not echoed. Its entry stays in its stretch, where a voice hunk
   across it absorbs it (§8.2 step 6); a changed label's tokens are new words.
+- **Re-voiced runs.** The plan leaves out items an enabled replacement already re-voices, but no window may span them
+  (§8.4 step 6), so a run of them splits its line into stretches too (`revoicedBefore`). The model never saw the run, so
+  each new token joins the stretch of the source token the pairing walked last, or the first stretch before any: a
+  change on both sides of the run becomes two changes beside it (`revoiced-run-splits-a-change`), and a word added
+  where it lies joins the stretch before it (`revoiced-run-insertion`).
 - **Per stretch.** `VoiceLabWordDiff` runs on each stretch alone, so every DP stays within one line. Its source is the
   stretch's items as the transcript holds them, corrections applied (`ScopeRewritePlan.Line.items`), not the entry text,
   which is cut to 100 UTF-16 units: a longer item echoed as sent shows as a change the user can leave out. An empty edit
@@ -118,44 +126,61 @@ Swift suite `ScopeRewriteDiffTests` replays every case. The C# suite does not ye
   stretch may merge with the last voice hunk before it (within a stretch, `VoiceLabWordDiff` has decided). The rule is
   unchanged: only equal words between them (no cut hunk), at most 2 equal word items or at most 0.35 s from the earlier
   hunk's last source word end to the later hunk's first source word start (binary64, inclusive), and never across an event
-  or unlabeled speech among the plan's items. An echoed entry is such an item, so stretches of one line never merge. The
-  counts, times and barriers read the plan's items: an item already cut or re-voiced is not among them and never stops a
-  merge, as within one line's diff. An insertion's time and barrier position are its stretch's: the next word token's
-  start in its stretch, or the stretch's last word end, and that word's item. The equal words between become bridges with
-  their new surfaces, and a text-only hunk among them is absorbed. Two insertions merged with nothing between keep the
-  earlier one's anchor.
+  or unlabeled speech among the plan's items, or a re-voiced run between them. An echoed entry is such an item, so the
+  stretches it splits never merge, and neither do those a re-voiced run splits: the merged window would overlap the
+  replacement and be refused, where each part places beside it. The counts, times and barriers read the plan's items: a
+  cut item is not among them and never stops a merge, as within one line's diff. An insertion's time and barrier position
+  are its stretch's: the next word token's start in its stretch, or the stretch's last word end, and that word's item. The
+  equal words between become bridges with their new surfaces, and a text-only hunk among them is absorbed. Two insertions
+  merged with nothing between keep the earlier one's anchor and item.
 - **Insertions with no word.** In a stretch without a word item, an insertion anchors at the start of the stretch's first
   item, else at the start of the echoed entry after it, else at the end of the one before it. It is never merged.
 - **Indices.** A hunk's `sourceStartIndex` and `sourceEndIndex` address the word tokens of all the plan's lines in line
-  order (each word item's `splitWords` tokens), not one line's.
+  order (each word item's `splitWords` tokens), not one line's. They order the hunks, but an insertion's index cannot say
+  on which side of an event or an echoed label between two tokens it lies.
+- **Insertion place.** An insertion has no source item, so `insertionAfterItemId` names the plan item it follows, `null`
+  before the plan's first item: it lies between that item and the plan's next one, at `anchorSeconds`. An insertion
+  before word token `p` follows the plan item before that token's item; one at a stretch's end follows the stretch's last
+  word; one in a stretch without words follows the item before its anchor item, or the echoed entry it comes after.
+  Every hunk with source items has `null`.
 - **Carried per hunk.** `lines` and `reasons`: the labels and reasons of the edits the hunk comes from, in line order;
   after a merge, every part's, including an absorbed text-only hunk's. `checkThis`: one of the hunk's own new tokens is a
   token the §8.1 rule flags in its edit, the edit's whole text giving each token's sentence start; a merged hunk carries it
   when one part does. The edit's flag is true exactly when one of its tokens is. A cut has no new token and never carries
   it, and neither does anything for an echoed label the rule flags: it is dropped (`flagged-label-echo`).
+- **Budget.** The §8.2 patch budget over the hunks after every merge, as M7 applies it to a scope proposal: the new
+  tokens of every voice hunk, bridges included, against the word items of the whole transcript (cut and re-voiced items
+  included), `reRecordInstead` when `count × 100 > 15 × wordItems` or `count > 60`.
 
 ### Case shape
 
 - `cases`: `input` is a plan vector's input (`envelope` is always `null`: ranges only set `inRange`, which the diff does
   not read), plus `reply`, the model's raw reply, which the suite sends through `PatchRewriteService` with a canned
-  connector, or `proposal`, edits `{line, text, reason, checkThis}` taken as they are for the two refusals. `expected` is
-  `{edits, hunks}`, where `edits` gives each validated edit's `line`, `inRange`, `checkThis` and `isDeletion`, or
-  `{error: "invalidInput"}`.
+  connector, or `proposal`, edits `{line, text, reason, checkThis}` taken as they are for the two refusals. Optional
+  `segments` are the replacements already accepted, as in the plan vectors; the generator places each one, and each
+  voice hunk beside them, with the window reference. `expected` is `{edits, hunks, budget}`, where `edits` gives each
+  validated edit's `line`, `inRange`, `checkThis` and `isDeletion`, or `{error: "invalidInput"}`.
 - Each hunk: `kind`, `sourceWordIds`, `newTokens`, `correctedTexts`, `absorbedItemIds`, `bridgeWordIds`,
-  `sourceStartIndex`, `sourceEndIndex`, `anchorSeconds` (`null` unless the hunk has no source word), `lines`, `reasons`
-  and `checkThis`.
+  `sourceStartIndex`, `sourceEndIndex`, `anchorSeconds` (`null` unless the hunk has no source word),
+  `insertionAfterItemId`, `lines`, `reasons` and `checkThis`.
+- `budget`: `voiceTokenCount`, `wordItems` and `flag`, as `VoiceLabPatchBudget.evaluate(hunks:transcript:)` returns them
+  for the case's hunks and the whole transcript.
 - `patchRewriteCases`: one result per `patch-rewrite-cases.json` case, in its order. The plan's lines are the
-  `formatTranscript` lines of the case's entries, each entry a word item with ID `i` + index. A reply that validates maps
-  to `{hunks}`; one that fails keeps its `{error}`.
+  `formatTranscript` lines of the case's entries, each entry a word item with ID `i` + index and no re-voiced run. A
+  reply that validates maps to `{hunks, budget}`, the transcript being the entries; one that fails keeps its `{error}`.
 - `merge` holds the step 6 limits.
 
 ### Coverage
 
 Merges across a line boundary with no word, one bridge or three bridges at exactly 0.35 s, and none over three words and
-1 s; a text-only fix absorbed by a merge across lines; a cut hunk and an event as barriers across lines; an echoed label
+1 s; a text-only fix absorbed by a merge across lines; a cut hunk and an event as barriers across lines; an insertion at
+a line's end merging with the next line's first change, one at a line's start merging back, two insertions merging into
+one, and an event between an insertion and a change at the start and at the end of a line; an echoed label
 splitting a line, a dropped label absorbed, a dropped label changing nothing, an echoed `…`, a changed label spoken as
 words, and a capitalised echo that flags the edit but no hunk; insertions after, before and instead of an event-only
 line's label; whole-line deletions with and without an event, and a text of only the label; surface-only fixes on a
 two-word correction, a partial change to it and an unchanged echo; `checkThis` on the voice hunk that adds the digit run,
 on a text-only capital, and not for a year from the instruction; a cut item between merged lines, a clip scope with a cut
-repeat, echoed labels and a new capital, and Full take's event-only line; the two refusals; and every Fix with AI reply.
+repeat, echoed labels and a new capital, and Full take's event-only line; a re-voiced run between two lines and inside a
+line, each stopping a merge whose window the replacement would refuse, a change across a re-voiced run and a word added
+where one lies; the two refusals; and every Fix with AI reply.

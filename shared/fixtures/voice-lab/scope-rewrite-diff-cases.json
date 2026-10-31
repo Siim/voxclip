@@ -4,7 +4,7 @@
   "words": 2,
   "seconds": 0.35
  },
- "caseCount": 30,
+ "caseCount": 39,
  "cases": [
   {
    "name": "cross-line-merge-adjacent",
@@ -133,6 +133,7 @@
       "sourceStartIndex": 5,
       "sourceEndIndex": 7,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-5]",
        "[6-9]"
@@ -143,7 +144,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 3,
+     "wordItems": 10,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -276,6 +282,7 @@
       "sourceStartIndex": 4,
       "sourceEndIndex": 7,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-5]",
        "[6-9]"
@@ -286,7 +293,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 3,
+     "wordItems": 10,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -413,6 +425,7 @@
       "sourceStartIndex": 2,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-5]"
       ],
@@ -435,6 +448,7 @@
       "sourceStartIndex": 6,
       "sourceEndIndex": 7,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[6-9]"
       ],
@@ -443,7 +457,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 10,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -561,6 +580,7 @@
       "sourceStartIndex": 0,
       "sourceEndIndex": 5,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]",
        "[4-6]"
@@ -571,7 +591,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 5,
+     "wordItems": 7,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -689,6 +714,7 @@
       "sourceStartIndex": 0,
       "sourceEndIndex": 5,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]",
        "[4-6]"
@@ -699,7 +725,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 5,
+     "wordItems": 7,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -805,6 +836,7 @@
       "sourceStartIndex": 0,
       "sourceEndIndex": 1,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -825,6 +857,7 @@
       "sourceStartIndex": 3,
       "sourceEndIndex": 4,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -847,6 +880,7 @@
       "sourceStartIndex": 4,
       "sourceEndIndex": 5,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[4-6]"
       ],
@@ -855,7 +889,626 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 7,
+     "flag": "reRecordInstead"
+    }
+   }
+  },
+  {
+   "name": "cross-line-end-insertion-merges",
+   "note": "\"Again.\" is added at the end of [0-2] and \"I\" becomes \"You\" at the start of [3-5]. No word lies between them, so they merge into one hunk on \"I\" that speaks both.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.2,
+    "words": [
+     {
+      "id": "h0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "h1",
+      "text": "shipped",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.6
+     },
+     {
+      "id": "h2",
+      "text": "it.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 0.9
+     },
+     {
+      "id": "h3",
+      "text": "I",
+      "kind": "word",
+      "start": 1.0,
+      "end": 1.1
+     },
+     {
+      "id": "h4",
+      "text": "fixed",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "h5",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-2]\",\"text\":\"We shipped it. Again.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[3-5]\",\"text\":\"You fixed bugs.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-2]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[3-5]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "h3"
+      ],
+      "newTokens": [
+       "Again.",
+       "You"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 4,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[0-2]",
+       "[3-5]"
+      ],
+      "reasons": [
+       "Fixes the line.",
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 6,
+     "flag": "reRecordInstead"
+    }
+   }
+  },
+  {
+   "name": "cross-line-start-insertion-merges",
+   "note": "\"it.\" becomes \"that.\" at the end of [0-2] and \"Then\" is added before \"I\" at the start of [3-5]: they merge back into one hunk on \"it.\".",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.2,
+    "words": [
+     {
+      "id": "h0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "h1",
+      "text": "shipped",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.6
+     },
+     {
+      "id": "h2",
+      "text": "it.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 0.9
+     },
+     {
+      "id": "h3",
+      "text": "I",
+      "kind": "word",
+      "start": 1.0,
+      "end": 1.1
+     },
+     {
+      "id": "h4",
+      "text": "fixed",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "h5",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-2]\",\"text\":\"We shipped that.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[3-5]\",\"text\":\"Then I fixed bugs.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-2]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[3-5]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "h2"
+      ],
+      "newTokens": [
+       "that.",
+       "Then"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 2,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[0-2]",
+       "[3-5]"
+      ],
+      "reasons": [
+       "Fixes the line.",
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 6,
+     "flag": "reRecordInstead"
+    }
+   }
+  },
+  {
+   "name": "cross-line-insertions-merge",
+   "note": "An insertion ends [0-2] and another starts [3-5], with nothing between: one insertion that keeps the earlier one's anchor, the end of \"it.\", and follows it.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.2,
+    "words": [
+     {
+      "id": "h0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "h1",
+      "text": "shipped",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.6
+     },
+     {
+      "id": "h2",
+      "text": "it.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 0.9
+     },
+     {
+      "id": "h3",
+      "text": "I",
+      "kind": "word",
+      "start": 1.0,
+      "end": 1.1
+     },
+     {
+      "id": "h4",
+      "text": "fixed",
+      "kind": "word",
+      "start": 1.15,
+      "end": 1.5
+     },
+     {
+      "id": "h5",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 1.55,
+      "end": 1.9
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-2]\",\"text\":\"We shipped it. Again.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[3-5]\",\"text\":\"Then I fixed bugs.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-2]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[3-5]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [],
+      "newTokens": [
+       "Again.",
+       "Then"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 3,
+      "anchorSeconds": 0.9,
+      "insertionAfterItemId": "h2",
+      "lines": [
+       "[0-2]",
+       "[3-5]"
+      ],
+      "reasons": [
+       "Fixes the line.",
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 6,
+     "flag": "reRecordInstead"
+    }
+   }
+  },
+  {
+   "name": "cross-line-insertion-event-barrier",
+   "note": "The label that starts [3-6] is left out, so it stays in the stretch, and \"Then\" is added before \"I\". The insertion sits at \"I\", after the laugh, so the laugh lies between it and \"that.\" and they never merge.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 2.6,
+    "words": [
+     {
+      "id": "k0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "k1",
+      "text": "shipped",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.6
+     },
+     {
+      "id": "k2",
+      "text": "it.",
+      "kind": "word",
+      "start": 0.65,
+      "end": 0.9
+     },
+     {
+      "id": "k3",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.95,
+      "end": 1.4
+     },
+     {
+      "id": "k4",
+      "text": "I",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.6
+     },
+     {
+      "id": "k5",
+      "text": "fixed",
+      "kind": "word",
+      "start": 1.65,
+      "end": 2.0
+     },
+     {
+      "id": "k6",
+      "text": "bugs.",
+      "kind": "word",
+      "start": 2.05,
+      "end": 2.4
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-2]\",\"text\":\"We shipped that.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[3-6]\",\"text\":\"Then I fixed bugs.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-2]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[3-6]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "k2"
+      ],
+      "newTokens": [
+       "that."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 2,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[0-2]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [],
+      "newTokens": [
+       "Then"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 3,
+      "anchorSeconds": 1.5,
+      "insertionAfterItemId": "k3",
+      "lines": [
+       "[3-6]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 6,
+     "flag": "reRecordInstead"
+    }
+   }
+  },
+  {
+   "name": "cross-line-end-insertion-event-barrier",
+   "note": "The laugh ends [0-3] and is left out; \"again\" is added after \"it\". The insertion sits after \"it\", the stretch's last word, before the laugh, so the laugh lies between it and \"Alright.\" and they never merge, although no word lies between them.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.4,
+    "words": [
+     {
+      "id": "m0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "m1",
+      "text": "did",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "m2",
+      "text": "it",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.8
+     },
+     {
+      "id": "m3",
+      "text": "(laughs)",
+      "kind": "event",
+      "start": 0.85,
+      "end": 1.3
+     },
+     {
+      "id": "m4",
+      "text": "Right.",
+      "kind": "word",
+      "start": 2.6,
+      "end": 3.0
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"We did it again\",\"reason\":\"Fixes the line.\"},{\"line\":\"[4-4]\",\"text\":\"Alright.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[4-4]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [],
+      "newTokens": [
+       "again"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 3,
+      "anchorSeconds": 0.8,
+      "insertionAfterItemId": "m2",
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "m4"
+      ],
+      "newTokens": [
+       "Alright."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 4,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[4-4]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 4,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -968,6 +1621,7 @@
       "sourceStartIndex": 2,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-2]"
       ],
@@ -990,6 +1644,7 @@
       "sourceStartIndex": 3,
       "sourceEndIndex": 4,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[3-7]"
       ],
@@ -998,7 +1653,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 7,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -1105,6 +1765,7 @@
       "sourceStartIndex": 1,
       "sourceEndIndex": 2,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -1127,6 +1788,7 @@
       "sourceStartIndex": 2,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -1135,7 +1797,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 6,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -1246,6 +1913,7 @@
       "sourceStartIndex": 1,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -1254,7 +1922,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 6,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -1346,7 +2019,12 @@
       "isDeletion": false
      }
     ],
-    "hunks": []
+    "hunks": [],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 6,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -1453,6 +2131,7 @@
       "sourceStartIndex": 1,
       "sourceEndIndex": 2,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -1461,7 +2140,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 6,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -1568,6 +2252,7 @@
       "sourceStartIndex": 5,
       "sourceEndIndex": 6,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[4-7]"
       ],
@@ -1576,7 +2261,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 6,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -1683,6 +2373,7 @@
       "sourceStartIndex": 1,
       "sourceEndIndex": 2,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -1691,7 +2382,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 6,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -1796,6 +2492,7 @@
       "sourceStartIndex": 2,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-2]"
       ],
@@ -1817,6 +2514,7 @@
       "sourceStartIndex": 3,
       "sourceEndIndex": 3,
       "anchorSeconds": 3.0,
+      "insertionAfterItemId": "e3",
       "lines": [
        "[3-3]"
       ],
@@ -1839,6 +2537,7 @@
       "sourceStartIndex": 3,
       "sourceEndIndex": 4,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[4-5]"
       ],
@@ -1847,7 +2546,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 4,
+     "wordItems": 5,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -1939,6 +2643,7 @@
       "sourceStartIndex": 3,
       "sourceEndIndex": 3,
       "anchorSeconds": 2.2,
+      "insertionAfterItemId": "e2",
       "lines": [
        "[3-3]"
       ],
@@ -1947,7 +2652,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 5,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -2039,6 +2749,7 @@
       "sourceStartIndex": 3,
       "sourceEndIndex": 3,
       "anchorSeconds": 2.2,
+      "insertionAfterItemId": "e2",
       "lines": [
        "[3-3]"
       ],
@@ -2047,7 +2758,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 5,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -2169,6 +2885,7 @@
       "sourceStartIndex": 6,
       "sourceEndIndex": 10,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[6-9]"
       ],
@@ -2177,7 +2894,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 10,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -2284,6 +3006,7 @@
       "sourceStartIndex": 0,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -2292,7 +3015,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 6,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -2398,6 +3126,7 @@
       "sourceStartIndex": 0,
       "sourceEndIndex": 2,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -2418,6 +3147,7 @@
       "sourceStartIndex": 2,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-3]"
       ],
@@ -2426,7 +3156,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 6,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -2520,6 +3255,7 @@
       "sourceStartIndex": 0,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-4]"
       ],
@@ -2528,7 +3264,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 5,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -2617,6 +3358,7 @@
       "sourceStartIndex": 1,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-4]"
       ],
@@ -2625,7 +3367,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 5,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -2698,7 +3445,12 @@
       "isDeletion": false
      }
     ],
-    "hunks": []
+    "hunks": [],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 5,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -2805,6 +3557,7 @@
       "sourceStartIndex": 1,
       "sourceEndIndex": 2,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-7]"
       ],
@@ -2827,6 +3580,7 @@
       "sourceStartIndex": 7,
       "sourceEndIndex": 8,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-7]"
       ],
@@ -2835,7 +3589,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 8,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -2942,6 +3701,7 @@
       "sourceStartIndex": 1,
       "sourceEndIndex": 2,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-7]"
       ],
@@ -2966,6 +3726,7 @@
       "sourceStartIndex": 5,
       "sourceEndIndex": 6,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-7]"
       ],
@@ -2974,7 +3735,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 8,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -3081,6 +3847,7 @@
       "sourceStartIndex": 7,
       "sourceEndIndex": 8,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-7]"
       ],
@@ -3089,7 +3856,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 8,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -3335,6 +4107,7 @@
       "sourceStartIndex": 0,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[0-2]",
        "[3-8]"
@@ -3345,7 +4118,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 3,
+     "wordItems": 17,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -3586,6 +4364,7 @@
       "sourceStartIndex": 2,
       "sourceEndIndex": 3,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[3-8]"
       ],
@@ -3610,6 +4389,7 @@
       "sourceStartIndex": 8,
       "sourceEndIndex": 9,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[9-14]"
       ],
@@ -3618,7 +4398,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 17,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -3860,6 +4645,7 @@
       "sourceStartIndex": 13,
       "sourceEndIndex": 14,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[17-19]"
       ],
@@ -3868,7 +4654,668 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 17,
+     "flag": "allowed"
+    }
+   }
+  },
+  {
+   "name": "revoiced-run-between-lines",
+   "note": "\"Really fast.\" was re-voiced, so the plan has no line for it. \"tool.\" and \"It\" are changed on each side of it with no kept word between: two hunks, each placed beside the replacement. One hunk would span it and be refused.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 4.0,
+    "words": [
+     {
+      "id": "s0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "s1",
+      "text": "built",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "s2",
+      "text": "a",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.65
+     },
+     {
+      "id": "s3",
+      "text": "tool.",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1.0
+     },
+     {
+      "id": "s4",
+      "text": "Really",
+      "kind": "word",
+      "start": 1.5,
+      "end": 1.8
+     },
+     {
+      "id": "s5",
+      "text": "fast.",
+      "kind": "word",
+      "start": 1.85,
+      "end": 2.2
+     },
+     {
+      "id": "s6",
+      "text": "It",
+      "kind": "word",
+      "start": 2.8,
+      "end": 2.95
+     },
+     {
+      "id": "s7",
+      "text": "works",
+      "kind": "word",
+      "start": 3.0,
+      "end": 3.3
+     },
+     {
+      "id": "s8",
+      "text": "well.",
+      "kind": "word",
+      "start": 3.35,
+      "end": 3.7
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 1.245,
+      "end": 2.495,
+      "firstWordId": "s4",
+      "lastWordId": "s5",
+      "inSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      },
+      "outSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      }
+     }
+    ],
+    "reply": "{\"edits\":[{\"line\":\"[0-3]\",\"text\":\"We built a toy.\",\"reason\":\"Fixes the line.\"},{\"line\":\"[6-8]\",\"text\":\"That works well.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-3]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     },
+     {
+      "line": "[6-8]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "s3"
+      ],
+      "newTokens": [
+       "toy."
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 4,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[0-3]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "s6"
+      ],
+      "newTokens": [
+       "That"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 4,
+      "sourceEndIndex": 5,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[6-8]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 9,
+     "flag": "reRecordInstead"
+    }
+   }
+  },
+  {
+   "name": "revoiced-run-inside-line",
+   "note": "\"fast\" was re-voiced inside the line. \"a\" and \"tool\" change with two kept words between them, which would merge, but the re-voiced run splits the line: two hunks, each placed beside it.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.2,
+    "words": [
+     {
+      "id": "n0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "n1",
+      "text": "built",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "n2",
+      "text": "a",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.65
+     },
+     {
+      "id": "n3",
+      "text": "really",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1.0
+     },
+     {
+      "id": "n4",
+      "text": "fast",
+      "kind": "word",
+      "start": 1.2,
+      "end": 1.5
+     },
+     {
+      "id": "n5",
+      "text": "new",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.9
+     },
+     {
+      "id": "n6",
+      "text": "tool",
+      "kind": "word",
+      "start": 1.95,
+      "end": 2.2
+     },
+     {
+      "id": "n7",
+      "text": "for",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.4
+     },
+     {
+      "id": "n8",
+      "text": "you.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 1.095,
+      "end": 1.595,
+      "firstWordId": "n4",
+      "lastWordId": "n4",
+      "inSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      },
+      "outSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      }
+     }
+    ],
+    "reply": "{\"edits\":[{\"line\":\"[0-8]\",\"text\":\"We built one really new app for you.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-8]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "n2"
+      ],
+      "newTokens": [
+       "one"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 2,
+      "sourceEndIndex": 3,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[0-8]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "n6"
+      ],
+      "newTokens": [
+       "app"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 5,
+      "sourceEndIndex": 6,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[0-8]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 9,
+     "flag": "reRecordInstead"
+    }
+   }
+  },
+  {
+   "name": "revoiced-run-splits-a-change",
+   "note": "The model rewrote \"really new\", not knowing \"fast\" lies between. Each new token joins the stretch of the source token the pairing walked last: the deletes come first, so \"really\" is cut and \"new\" becomes \"truly novel\", each beside the replacement, never one hunk across it.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.2,
+    "words": [
+     {
+      "id": "n0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "n1",
+      "text": "built",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "n2",
+      "text": "a",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.65
+     },
+     {
+      "id": "n3",
+      "text": "really",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1.0
+     },
+     {
+      "id": "n4",
+      "text": "fast",
+      "kind": "word",
+      "start": 1.2,
+      "end": 1.5
+     },
+     {
+      "id": "n5",
+      "text": "new",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.9
+     },
+     {
+      "id": "n6",
+      "text": "tool",
+      "kind": "word",
+      "start": 1.95,
+      "end": 2.2
+     },
+     {
+      "id": "n7",
+      "text": "for",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.4
+     },
+     {
+      "id": "n8",
+      "text": "you.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 1.095,
+      "end": 1.595,
+      "firstWordId": "n4",
+      "lastWordId": "n4",
+      "inSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      },
+      "outSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      }
+     }
+    ],
+    "reply": "{\"edits\":[{\"line\":\"[0-8]\",\"text\":\"We built a truly novel tool for you.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-8]",
+      "inRange": true,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "cut",
+      "sourceWordIds": [
+       "n3"
+      ],
+      "newTokens": [],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 3,
+      "sourceEndIndex": 4,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[0-8]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     },
+     {
+      "kind": "voice",
+      "sourceWordIds": [
+       "n5"
+      ],
+      "newTokens": [
+       "truly",
+       "novel"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 4,
+      "sourceEndIndex": 5,
+      "anchorSeconds": null,
+      "insertionAfterItemId": null,
+      "lines": [
+       "[0-8]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 9,
+     "flag": "reRecordInstead"
+    }
+   }
+  },
+  {
+   "name": "revoiced-run-insertion",
+   "note": "A word added where the re-voiced run lies joins the stretch before it: an insertion at the end of \"really\", anchored at its end, never at \"new\" after the replacement.",
+   "input": {
+    "sampleRate": 48000,
+    "durationSeconds": 3.2,
+    "words": [
+     {
+      "id": "n0",
+      "text": "We",
+      "kind": "word",
+      "start": 0.0,
+      "end": 0.2
+     },
+     {
+      "id": "n1",
+      "text": "built",
+      "kind": "word",
+      "start": 0.25,
+      "end": 0.5
+     },
+     {
+      "id": "n2",
+      "text": "a",
+      "kind": "word",
+      "start": 0.55,
+      "end": 0.65
+     },
+     {
+      "id": "n3",
+      "text": "really",
+      "kind": "word",
+      "start": 0.7,
+      "end": 1.0
+     },
+     {
+      "id": "n4",
+      "text": "fast",
+      "kind": "word",
+      "start": 1.2,
+      "end": 1.5
+     },
+     {
+      "id": "n5",
+      "text": "new",
+      "kind": "word",
+      "start": 1.7,
+      "end": 1.9
+     },
+     {
+      "id": "n6",
+      "text": "tool",
+      "kind": "word",
+      "start": 1.95,
+      "end": 2.2
+     },
+     {
+      "id": "n7",
+      "text": "for",
+      "kind": "word",
+      "start": 2.25,
+      "end": 2.4
+     },
+     {
+      "id": "n8",
+      "text": "you.",
+      "kind": "word",
+      "start": 2.45,
+      "end": 2.8
+     }
+    ],
+    "edits": {
+     "cutWordIds": [],
+     "cutPauseIds": [],
+     "corrections": {},
+     "pauseThresholdSeconds": 1.0,
+     "pauseKeepSeconds": 0.15,
+     "clips": []
+    },
+    "envelope": null,
+    "scope": {
+     "kind": "fullTake"
+    },
+    "instruction": "Fix slips and repeats.",
+    "language": "en",
+    "segments": [
+     {
+      "id": "r1",
+      "enabled": true,
+      "start": 1.095,
+      "end": 1.595,
+      "firstWordId": "n4",
+      "lastWordId": "n4",
+      "inSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      },
+      "outSeam": {
+       "kind": "gap",
+       "fadeSamples": 960
+      }
+     }
+    ],
+    "reply": "{\"edits\":[{\"line\":\"[0-8]\",\"text\":\"We built a really very new tool for you.\",\"reason\":\"Fixes the line.\"}]}"
+   },
+   "expected": {
+    "edits": [
+     {
+      "line": "[0-8]",
+      "inRange": false,
+      "checkThis": false,
+      "isDeletion": false
+     }
+    ],
+    "hunks": [
+     {
+      "kind": "voice",
+      "sourceWordIds": [],
+      "newTokens": [
+       "very"
+      ],
+      "correctedTexts": [],
+      "absorbedItemIds": [],
+      "bridgeWordIds": [],
+      "sourceStartIndex": 4,
+      "sourceEndIndex": 4,
+      "anchorSeconds": 1.0,
+      "insertionAfterItemId": "n3",
+      "lines": [
+       "[0-8]"
+      ],
+      "reasons": [
+       "Fixes the line."
+      ],
+      "checkThis": false
+     }
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 9,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4108,6 +5555,7 @@
       "sourceStartIndex": 4,
       "sourceEndIndex": 5,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[40-48]"
       ],
@@ -4116,7 +5564,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4137,6 +5590,7 @@
       "sourceStartIndex": 13,
       "sourceEndIndex": 14,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4145,7 +5599,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4164,6 +5623,7 @@
       "sourceStartIndex": 10,
       "sourceEndIndex": 11,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4172,7 +5632,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4198,6 +5663,7 @@
       "sourceStartIndex": 9,
       "sourceEndIndex": 14,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4206,7 +5672,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4233,6 +5704,7 @@
       "sourceStartIndex": 13,
       "sourceEndIndex": 14,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4241,7 +5713,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 7,
+     "wordItems": 18,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -4262,6 +5739,7 @@
       "sourceStartIndex": 4,
       "sourceEndIndex": 5,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[40-48]"
       ],
@@ -4270,7 +5748,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4291,6 +5774,7 @@
       "sourceStartIndex": 4,
       "sourceEndIndex": 5,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[40-48]"
       ],
@@ -4299,7 +5783,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4321,6 +5810,7 @@
       "sourceStartIndex": 17,
       "sourceEndIndex": 18,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4329,7 +5819,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4351,6 +5846,7 @@
       "sourceStartIndex": 17,
       "sourceEndIndex": 18,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4359,7 +5855,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4381,6 +5882,7 @@
       "sourceStartIndex": 17,
       "sourceEndIndex": 18,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4389,7 +5891,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4409,6 +5916,7 @@
       "sourceStartIndex": 12,
       "sourceEndIndex": 12,
       "anchorSeconds": 3.95,
+      "insertionAfterItemId": "i51",
       "lines": [
        "[49-53]"
       ],
@@ -4417,7 +5925,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4436,6 +5949,7 @@
       "sourceStartIndex": 10,
       "sourceEndIndex": 11,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4464,6 +5978,7 @@
       "sourceStartIndex": 12,
       "sourceEndIndex": 14,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4472,7 +5987,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 4,
+     "wordItems": 18,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -4510,6 +6030,7 @@
       "sourceStartIndex": 0,
       "sourceEndIndex": 9,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[40-48]"
       ],
@@ -4518,7 +6039,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 7,
+     "wordItems": 18,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -4541,6 +6067,7 @@
       "sourceStartIndex": 11,
       "sourceEndIndex": 12,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4549,7 +6076,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4570,6 +6102,7 @@
       "sourceStartIndex": 10,
       "sourceEndIndex": 11,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4578,7 +6111,12 @@
       ],
       "checkThis": true
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4599,6 +6137,7 @@
       "sourceStartIndex": 10,
       "sourceEndIndex": 11,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4607,7 +6146,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4629,6 +6173,7 @@
       "sourceStartIndex": 13,
       "sourceEndIndex": 14,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4637,7 +6182,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 2,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4659,6 +6209,7 @@
       "sourceStartIndex": 14,
       "sourceEndIndex": 18,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4667,7 +6218,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4689,6 +6245,7 @@
       "sourceStartIndex": 14,
       "sourceEndIndex": 18,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4697,7 +6254,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4721,6 +6283,7 @@
       "sourceStartIndex": 14,
       "sourceEndIndex": 18,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4729,7 +6292,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4750,6 +6318,7 @@
       "sourceStartIndex": 13,
       "sourceEndIndex": 14,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[49-53]"
       ],
@@ -4758,7 +6327,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4779,6 +6353,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4787,25 +6362,45 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
    "id": "escape-character-in-text",
    "expected": {
-    "hunks": []
+    "hunks": [],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
    "id": "line-break-in-text",
    "expected": {
-    "hunks": []
+    "hunks": [],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
    "id": "delete-and-c1-controls-in-text",
    "expected": {
-    "hunks": []
+    "hunks": [],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4826,6 +6421,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4834,13 +6430,23 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
    "id": "control-character-in-reason",
    "expected": {
-    "hunks": []
+    "hunks": [],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4864,6 +6470,7 @@
       "sourceStartIndex": 14,
       "sourceEndIndex": 18,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4872,13 +6479,23 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
    "id": "text-over-2000-bytes-dropped",
    "expected": {
-    "hunks": []
+    "hunks": [],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4917,6 +6534,7 @@
       "sourceStartIndex": 0,
       "sourceEndIndex": 10,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[100-100]",
        "[101-101]",
@@ -4943,7 +6561,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 10,
+     "wordItems": 11,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -4970,6 +6593,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -4978,7 +6602,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -4999,6 +6628,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5007,7 +6637,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5028,6 +6663,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5036,7 +6672,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5063,6 +6704,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5071,7 +6713,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5092,6 +6739,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5100,7 +6748,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5121,6 +6774,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5129,7 +6783,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5156,6 +6815,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5164,13 +6824,23 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
    "id": "repeated-key-in-item",
    "expected": {
-    "hunks": []
+    "hunks": [],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5191,6 +6861,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5199,7 +6870,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5250,6 +6926,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5258,7 +6935,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5279,6 +6961,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5287,7 +6970,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5308,6 +6996,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5316,7 +7005,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5337,6 +7031,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5345,7 +7040,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5411,6 +7111,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 18,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5419,7 +7120,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 3,
+     "wordItems": 18,
+     "flag": "reRecordInstead"
+    }
    }
   },
   {
@@ -5440,6 +7146,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5448,7 +7155,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5499,6 +7211,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5507,7 +7220,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5528,6 +7246,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5536,7 +7255,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5557,6 +7281,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5565,7 +7290,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5586,6 +7316,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5594,7 +7325,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5615,6 +7351,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5623,7 +7360,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5644,6 +7386,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5652,7 +7395,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5679,6 +7427,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5687,7 +7436,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5708,6 +7462,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5716,7 +7471,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5737,6 +7497,7 @@
       "sourceStartIndex": 4,
       "sourceEndIndex": 5,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[40-48]"
       ],
@@ -5745,7 +7506,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5766,6 +7532,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5774,7 +7541,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5795,6 +7567,7 @@
       "sourceStartIndex": 16,
       "sourceEndIndex": 17,
       "anchorSeconds": null,
+      "insertionAfterItemId": null,
       "lines": [
        "[54-57]"
       ],
@@ -5803,7 +7576,12 @@
       ],
       "checkThis": false
      }
-    ]
+    ],
+    "budget": {
+     "voiceTokenCount": 1,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {
@@ -5821,7 +7599,12 @@
   {
    "id": "empty-list",
    "expected": {
-    "hunks": []
+    "hunks": [],
+    "budget": {
+     "voiceTokenCount": 0,
+     "wordItems": 18,
+     "flag": "allowed"
+    }
    }
   },
   {

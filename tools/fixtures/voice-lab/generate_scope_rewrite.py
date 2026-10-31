@@ -12,7 +12,8 @@ and one character range per line:
   surrogate pair). Unlike section 11.2, which sends every item, cut items are left out, and so are the items an enabled
   replacement of the scope already re-voices (section 8.4 replaced items). A clip keeps only the items from its first to
   its last word.
-- Lines are the ai.md section 11.3 `formatTranscript` lines of the entries.
+- Lines are the ai.md section 11.3 `formatTranscript` lines of the entries. Each line lists its items and, in
+  `revoicedBefore`, those a run of re-voiced items precedes (back to the entry before), so the diff never merges across it.
 - A line's range is the length budget of its words placed as one replace hunk (section 8.9.1): `place` puts the window
   from the line's first to its last word item in the scope's render scope, `lendableSilence` gives the take-edge pads,
   and the bridge words' length is `f`. The rate is the section 8.9.1 rate: the stored candidates the caller passes, or
@@ -161,8 +162,11 @@ def plan(take, scope, envelope, candidates=()):
         # The labels the model echoes when it returns the line: events count, and an ellipsis has no letters.
         echoed = sum(BUDGET['length'](entries[position]['text']) for position in range(first, last + 1)
                      if items[kept[position]]['kind'] != 'word')
+        # The items a run of re-voiced items precedes, back to the entry before: no window may span that run.
+        revoiced = [items[kept[position]]['id'] for position in range(max(first, 1), last + 1)
+                    if any(replaced[index] for index in range(kept[position - 1] + 1, kept[position]))]
         line = {'line': '[%d-%d]' % (entries[first]['index'], entries[last]['index']),
-                'itemIds': [item['id'] for item in line_items]}
+                'itemIds': [item['id'] for item in line_items], 'revoicedBefore': revoiced}
         if not words:
             chars = min(max(1, echoed), MAX_CHARS)
             line.update(minChars=chars, maxChars=chars, rangeSource='noSpeech')
@@ -351,6 +355,7 @@ result = case('replacement-inside-line', '"cuts" was re-voiced in clip-mid. The 
 assert [entry['index'] for entry in result['entries']] == [3, 4, 5, 7, 8, 9, 10, 12, 13, 14], result
 assert result['lines'][0] == CLIP_MID['lines'][0], result
 assert result['lines'][1]['rangeSource'] == 'lineSpan' and result['lines'][1]['note'].startswith('refused: overlapsReplacement r1'), result
+assert [line['revoicedBefore'] for line in result['lines']] == [[], ['u12']], result
 result = case('replacement-disabled', 'The same replacement turned off renders source again: the plan is clip-cuts-corrections.',
               accept(TAKE_A, ENVELOPE_A, 'w11', 'w11', 'clip-mid', enabled=False), {'kind': 'clip', 'clipId': 'clip-mid'},
               envelope=ENVELOPE_A)
@@ -362,6 +367,7 @@ result = case('replacement-beside-lines', '"we ship the the new editor." was re-
 assert [line['line'] for line in result['lines']][:2] == ['[0-2]', '[9-14]'], result
 assert all(not set(line['itemIds']) & {'w3', 'w4', 'w5', 'w7', 'w8'} for line in result['lines']), result
 assert sources(result)[:2] == ['window', 'window'], result
+assert [line['revoicedBefore'] for line in result['lines']][:2] == [[], ['e9']], result
 case('clip-crosses-replacement', 'That Full take replacement starts in the pause before "we", before clip-mid\'s clipTimes '
      'head: the clip boundary crosses it, so clip-mid does not render (section 10.2) and the plan is invalid input.', revoiced,
      {'kind': 'clip', 'clipId': 'clip-mid'}, envelope=ENVELOPE_A)

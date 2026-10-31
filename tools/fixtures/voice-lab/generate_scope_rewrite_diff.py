@@ -9,14 +9,20 @@ the edits into review hunks in transcript order:
   with every entry tokenised. A non-word entry is echoed when each of its tokens pairs with an equal operation and no
   inserted token falls between them. Echoed tokens are dropped, and each echoed entry splits the line into stretches:
   the items and new tokens between two echoed entries are diffed alone.
+- Re-voiced runs. The plan leaves out items an enabled replacement already re-voices, but no window may span them
+  (section 8.4 step 6), so a run of them splits its line too (the plan line's revoicedBefore). Each new token joins
+  the stretch of the source token the pairing walked last, the first stretch before any.
 - Per stretch, VoiceLabWordDiff runs on the stretch's items as the transcript holds them (corrections applied).
 - Across stretches, section 8.2 step 6 runs once more in transcript order: each stretch's first voice hunk may merge
-  with the last voice hunk before it. Word counts, times and barriers read the plan's kept items, and a hunk's source
+  with the last voice hunk before it. Word counts, times and barriers read the plan's kept items: a cut item stops
+  nothing, and an event, unlabeled speech or a re-voiced run between the two hunks stops the merge. A hunk's source
   token indices address the word tokens of all the plan's lines in order.
 - An insertion into a stretch without a word item anchors at the start of the stretch's first item, else at the start
-  of the echoed entry after it, else at the end of the one before it, and is never merged.
+  of the echoed entry after it, else at the end of the one before it, and is never merged. Every insertion names the
+  plan item it follows (insertionAfterItemId, null before the plan's first item).
 - Each hunk carries the line labels and reasons of the edits it comes from, and checkThis when one of its own new
-  tokens is a token the section 8.1 rule flags in its edit.
+  tokens is a token the section 8.1 rule flags in its edit. Each case also carries the section 8.2 patch budget over
+  its hunks.
 
 The plan comes from generate_scope_rewrite.py, the diff from generate_word_diff.py and the edit validation and the
 checkThis rule from generate_patch_rewrite.py; only their definitions are loaded, so their own vectors are not rewritten.
@@ -102,7 +108,8 @@ def new_start(ops, source):
 
 def scope_diff(lines, instruction, entries, edits):
     """The expected hunks, or an error, for validated `edits` over the plan `lines`: each {'line', 'items': rows of [id,
-    text with corrections applied, start, end, kind], 'entries': the line's request entries}."""
+    text with corrections applied, start, end, kind], 'entries': the line's request entries, 'revoicedBefore': one flag
+    per item, set when a run of items an enabled replacement already re-voices lies between it and the item before it}."""
     labels = [line['line'] for line in lines]
     by_line = {}
     for edit in edits:
@@ -110,13 +117,14 @@ def scope_diff(lines, instruction, entries, edits):
             return {'error': 'invalidInput'}
         by_line[edit['line']] = edit
     sources = [entry['text'] for entry in entries] + [instruction]
-    ids, kinds, tokens, surfaces, parts = [], [], [], [], []
-    run = 0
+    ids, kinds, revoiced, tokens, surfaces, parts = [], [], [], [], [], []
     for line in lines:
+        assert len(line['revoicedBefore']) == len(line['items']), line['line']
         first_item, first_token = len(ids), len(tokens)
         for offset, row in enumerate(line['items']):
             ids.append(row[0])
             kinds.append(row[4])
+            revoiced.append(line['revoicedBefore'][offset])
             if row[4] == 'word':
                 for surface in DIFF['tokens'](row[1]):
                     tokens.append((first_item + offset, row[2], row[3]))
@@ -130,33 +138,39 @@ def scope_diff(lines, instruction, entries, edits):
         if 'error' in pairing:
             return {'error': pairing['error'], 'side': pairing['side'], 'count': pairing['count']}
         ops = pairing['ops']
-        echoed = []
+        echoed_ids = []
         for row in line['items']:
             at = [index for index, op in enumerate(ops) if op[1] == row[0]]
             if row[4] != 'word' and at and all(ops[index][0] == 'equal' for index in at) and at[-1] - at[0] + 1 == len(at):
-                echoed.append(row)
-        echoed_ids = [row[0] for row in echoed]
+                echoed_ids.append(row[0])
         flags = flagged_tokens(edit['text'], sources)
-        stretches = [{'items': [], 'new': [], 'editIndex': []}]
-        for row in line['items']:
+        # Stretches end at each echoed entry, which is dropped, and before each item a re-voiced run precedes. Each item's
+        # stretch; an echoed entry's is the stretch after it.
+        position = {row[0]: first_item + offset for offset, row in enumerate(line['items'])}
+        stretches = [{'items': [], 'new': [], 'editIndex': [], 'before': None, 'after': None}]
+        stretch_of = {}
+        for offset, row in enumerate(line['items']):
+            if offset > 0 and line['revoicedBefore'][offset]:
+                stretches.append({'items': [], 'new': [], 'editIndex': [], 'before': None, 'after': None})
             if row[0] in echoed_ids:
-                stretches.append({'items': [], 'new': [], 'editIndex': []})
+                stretches[-1]['after'] = row
+                stretches.append({'items': [], 'new': [], 'editIndex': [], 'before': row, 'after': None})
             else:
                 stretches[-1]['items'].append(row)
-        current, previous, new_index = 0, None, 0
+            stretch_of[row[0]] = len(stretches) - 1
+        # Each new token joins the stretch of the source token the pairing walked last (the first stretch before any).
+        current, new_index = 0, 0
         for op in ops:
-            if op[1] in echoed_ids:
-                if op[1] != previous:
-                    current += 1
-                    previous = op[1]
-            elif op[3] is not None:
-                stretches[current]['new'].append(op[3])
-                stretches[current]['editIndex'].append(new_index)
+            if op[1] is not None:
+                current = stretch_of[op[1]]
             if op[3] is not None:
+                if op[1] not in echoed_ids:
+                    stretches[current]['new'].append(op[3])
+                    stretches[current]['editIndex'].append(new_index)
                 new_index += 1
-        assert current == len(echoed) and new_index == len(flags), line['line']
+        assert new_index == len(flags), line['line']
         offset = first_token
-        for number, stretch in enumerate(stretches):
+        for stretch in stretches:
             count = sum(len(DIFF['tokens'](row[1])) for row in stretch['items'] if row[4] == 'word')
             start_token, offset = offset, offset + count
             if not stretch['items'] and not stretch['new']:
@@ -164,32 +178,41 @@ def scope_diff(lines, instruction, entries, edits):
             diff = DIFF['oracle'](stretch['items'], ' '.join(stretch['new']), 0)
             if 'error' in diff:
                 return {'error': diff['error'], 'side': diff['side'], 'count': diff['count']}
-            position = 0
+            at = 0
             for op in diff['ops']:
                 if op[0] == 'equal':
-                    surfaces[start_token + position] = op[3]
+                    surfaces[start_token + at] = op[3]
                 if op[0] != 'insert':
-                    position += 1
+                    at += 1
             first_voice = True
             for hunk in diff['hunks']:
                 hunk = dict(hunk, sourceStartIndex=start_token + hunk['sourceStartIndex'],
                             sourceEndIndex=start_token + hunk['sourceEndIndex'])
                 local = hunk['sourceStartIndex'] - start_token
-                insert_item = None
+                insert_item = after = None
                 if hunk['sourceStartIndex'] == hunk['sourceEndIndex']:
                     if count == 0:
-                        hunk['anchorSeconds'] = (stretch['items'][0][2] if stretch['items'] else echoed[number][2]
-                                                 if number < len(echoed) else echoed[number - 1][3])
+                        # No word to anchor on: the stretch's first item, else the echoed entry after it, else the one
+                        # before it. An empty stretch only takes new tokens beside an echoed entry.
+                        if stretch['items']:
+                            hunk['anchorSeconds'], following = stretch['items'][0][2], stretch['items'][0]
+                        elif stretch['after'] is not None:
+                            hunk['anchorSeconds'], following = stretch['after'][2], stretch['after']
+                        else:
+                            hunk['anchorSeconds'], following = stretch['before'][3], None
+                        index = position[following[0]] - 1 if following is not None else position[stretch['before'][0]]
                     else:
+                        # Before the item of the next word token in its stretch, or after the stretch's last word.
                         insert_item = tokens[start_token + min(local, count - 1)][0]
+                        index = insert_item - 1 if local < count else insert_item
+                    after = ids[index] if index >= 0 else None
                 begin = new_start(diff['ops'], local)
                 flagged = any(flags[stretch['editIndex'][begin + index]] for index in range(len(hunk['newTokens'])))
                 parts.append({'hunk': hunk, 'lines': [edit['line']], 'reasons': [edit['reason']], 'checkThis': flagged,
-                              'run': run, 'firstVoice': hunk['kind'] == 'voice' and first_voice, 'wordless': count == 0,
-                              'insertItem': insert_item})
+                              'firstVoice': hunk['kind'] == 'voice' and first_voice, 'wordless': count == 0,
+                              'insertItem': insert_item, 'after': after})
                 if hunk['kind'] == 'voice':
                     first_voice = False
-            run += 1
 
     def start_time(part):
         hunk = part['hunk']
@@ -217,7 +240,10 @@ def scope_diff(lines, instruction, entries, edits):
             bridges = list(dict.fromkeys(ids[tokens[index][0]] for index in between))
             gap = start_time(part) - end_time(earlier)
             left, right = last_item(earlier), first_item(part)
-            barrier = any(kinds[index] != 'word' for index in range(left + 1, right))
+            # An event, unlabeled speech or a re-voiced run between them: a re-voiced run lies before an item that has
+            # the flag, and no window may span it (section 8.4 step 6).
+            barrier = any(kinds[index] != 'word' for index in range(left + 1, right)) \
+                or any(revoiced[index] for index in range(left + 1, right + 1))
             if not barrier and (len(bridges) <= MERGE_WORDS or gap <= MERGE_SECONDS):
                 pieces = merged[earlier_index:] + [part]
                 labels_reasons = list(dict.fromkeys((label, reason) for piece in pieces
@@ -234,18 +260,22 @@ def scope_diff(lines, instruction, entries, edits):
                 del merged[earlier_index:]
                 merged.append({'hunk': hunk, 'lines': [label for label, _ in labels_reasons],
                                'reasons': [reason for _, reason in labels_reasons],
-                               'checkThis': any(piece['checkThis'] for piece in pieces), 'run': part['run'], 'firstVoice': False,
-                               'wordless': False, 'insertItem': part['insertItem']})
+                               'checkThis': any(piece['checkThis'] for piece in pieces), 'firstVoice': False,
+                               'wordless': False, 'insertItem': part['insertItem'],
+                               'after': earlier['after'] if start == end else None})
                 continue
         merged.append(part)
     for part in merged:
         assert not part['checkThis'] or any(by_line[label]['checkThis'] for label in part['lines']), part
-    return {'hunks': [dict(part['hunk'], lines=part['lines'], reasons=part['reasons'], checkThis=part['checkThis'])
-                      for part in merged]}
+        assert (part['after'] is not None or part['hunk']['sourceStartIndex'] == 0) if not part['hunk']['sourceWordIds'] \
+            else part['after'] is None, part
+    return {'hunks': [dict(part['hunk'], insertionAfterItemId=part['after'], lines=part['lines'], reasons=part['reasons'],
+                           checkThis=part['checkThis']) for part in merged]}
 
 
 def plan_lines(take, expected_plan):
-    """The plan's lines with their items as the transcript holds them (corrections applied) and their request entries."""
+    """The plan's lines with their items as the transcript holds them (corrections applied), their request entries and
+    the items a re-voiced run precedes."""
     items = {item['id']: item for item in take['words']}
     corrections = take['edits']['corrections']
     lines, at = [], 0
@@ -253,9 +283,18 @@ def plan_lines(take, expected_plan):
         count = len(line['itemIds'])
         rows = [[ident, corrections.get(ident, items[ident]['text']) if items[ident]['kind'] == 'word' else items[ident]['text'],
                  items[ident]['start'], items[ident]['end'], items[ident]['kind']] for ident in line['itemIds']]
-        lines.append({'line': line['line'], 'items': rows, 'entries': expected_plan['entries'][at:at + count]})
+        lines.append({'line': line['line'], 'items': rows, 'entries': expected_plan['entries'][at:at + count],
+                      'revoicedBefore': [ident in line['revoicedBefore'] for ident in line['itemIds']]})
         at += count
     return lines
+
+
+def budget(hunks, word_items):
+    """The section 8.2 patch budget over the hunks after every merge: their voice hunks' new tokens, bridges included,
+    against the word items of the whole transcript."""
+    count = sum(len(hunk['newTokens']) for hunk in hunks if hunk['kind'] == 'voice')
+    disabled = count * 100 > 15 * word_items or count > 60
+    return {'voiceTokenCount': count, 'wordItems': word_items, 'flag': 'reRecordInstead' if disabled else 'allowed'}
 
 
 CASES = []
@@ -271,6 +310,8 @@ def case(name, note, take, reply=None, proposal=None, scope=None, instruction='F
     ranges = [{'line': line['line'], 'minChars': line['minChars'], 'maxChars': line['maxChars']} for line in expected_plan['lines']]
     value = {'sampleRate': take['sampleRate'], 'durationSeconds': take['durationSeconds'], 'words': take['words'],
              'edits': take['edits'], 'envelope': None, 'scope': scope, 'instruction': instruction, 'language': 'en'}
+    if take.get('segments'):
+        value['segments'] = [PLAN['segment_input'](segment) for segment in take['segments']]
     if proposal is not None:
         value['proposal'] = proposal
         edits = [dict(edit, isDeletion=PATCH['js_trim'](edit['text']) == '') for edit in proposal]
@@ -283,8 +324,10 @@ def case(name, note, take, reply=None, proposal=None, scope=None, instruction='F
         summary = [{'line': edit['line'], 'inRange': edit['inRange'], 'checkThis': edit['checkThis'],
                     'isDeletion': edit['isDeletion']} for edit in edits]
     expected = scope_diff(plan_lines(take, expected_plan), instruction, expected_plan['entries'], edits)
-    if summary is not None and 'error' not in expected:
-        expected = {'edits': summary, **expected}
+    if 'error' not in expected:
+        expected['budget'] = budget(expected['hunks'], sum(item['kind'] == 'word' for item in take['words']))
+        if summary is not None:
+            expected = {'edits': summary, **expected}
     CASES.append({'name': name, 'note': note, 'input': value, 'expected': expected})
     return expected
 
@@ -343,6 +386,48 @@ result = case('cross-line-cut-barrier', 'The same edits, but [0-3] also cuts "fo
               'voice hunks prevents the merge, across lines as within one.', FAST,
               [reply_edit('[0-3]', 'Uno two three'), reply_edit('[4-6]', 'Cinco six seven.')])
 assert shape(result) == [('voice', ['c0'], 'Uno', []), ('cut', ['c3'], '', []), ('voice', ['c4'], 'Cinco', [])], result
+
+# Insertions in a stretch with words merge across lines too: an insertion's time is its anchor, and its barrier position
+# is the item of the next word token in its stretch, or of the stretch's last word for one at the stretch's end.
+ADD = {'sampleRate': 48000, 'durationSeconds': 2.2, 'edits': edits(), 'words': [
+    word('h0', 'We', 0.00, 0.20), word('h1', 'shipped', 0.25, 0.60), word('h2', 'it.', 0.65, 0.90),
+    word('h3', 'I', 1.00, 1.10), word('h4', 'fixed', 1.15, 1.50), word('h5', 'bugs.', 1.55, 1.90)]}
+result = case('cross-line-end-insertion-merges', '"Again." is added at the end of [0-2] and "I" becomes "You" at the start of '
+              '[3-5]. No word lies between them, so they merge into one hunk on "I" that speaks both.', ADD,
+              [reply_edit('[0-2]', 'We shipped it. Again.'), reply_edit('[3-5]', 'You fixed bugs.')])
+assert shape(result) == [('voice', ['h3'], 'Again. You', [])], result
+assert (result['hunks'][0]['sourceStartIndex'], result['hunks'][0]['sourceEndIndex']) == (3, 4), result
+assert result['hunks'][0]['lines'] == ['[0-2]', '[3-5]'] and result['hunks'][0]['insertionAfterItemId'] is None, result
+result = case('cross-line-start-insertion-merges', '"it." becomes "that." at the end of [0-2] and "Then" is added before "I" at '
+              'the start of [3-5]: they merge back into one hunk on "it.".', ADD,
+              [reply_edit('[0-2]', 'We shipped that.'), reply_edit('[3-5]', 'Then I fixed bugs.')])
+assert shape(result) == [('voice', ['h2'], 'that. Then', [])], result
+assert (result['hunks'][0]['sourceStartIndex'], result['hunks'][0]['sourceEndIndex']) == (2, 3), result
+result = case('cross-line-insertions-merge', 'An insertion ends [0-2] and another starts [3-5], with nothing between: one '
+              'insertion that keeps the earlier one\'s anchor, the end of "it.", and follows it.', ADD,
+              [reply_edit('[0-2]', 'We shipped it. Again.'), reply_edit('[3-5]', 'Then I fixed bugs.')])
+assert shape(result) == [('voice', [], 'Again. Then', [])], result
+assert (result['hunks'][0]['sourceStartIndex'], result['hunks'][0]['anchorSeconds']) == (3, 0.90), result
+assert result['hunks'][0]['insertionAfterItemId'] == 'h2' and result['hunks'][0]['lines'] == ['[0-2]', '[3-5]'], result
+ADD_EVENT = {'sampleRate': 48000, 'durationSeconds': 2.6, 'edits': edits(), 'words': [
+    word('k0', 'We', 0.00, 0.20), word('k1', 'shipped', 0.25, 0.60), word('k2', 'it.', 0.65, 0.90),
+    word('k3', '(laughs)', 0.95, 1.40, 'event'), word('k4', 'I', 1.50, 1.60), word('k5', 'fixed', 1.65, 2.00),
+    word('k6', 'bugs.', 2.05, 2.40)]}
+result = case('cross-line-insertion-event-barrier', 'The label that starts [3-6] is left out, so it stays in the stretch, and '
+              '"Then" is added before "I". The insertion sits at "I", after the laugh, so the laugh lies between it and '
+              '"that." and they never merge.', ADD_EVENT,
+              [reply_edit('[0-2]', 'We shipped that.'), reply_edit('[3-6]', 'Then I fixed bugs.')])
+assert shape(result) == [('voice', ['k2'], 'that.', []), ('voice', [], 'Then', [])], result
+assert result['hunks'][1]['anchorSeconds'] == 1.50 and result['hunks'][1]['insertionAfterItemId'] == 'k3', result
+END_EVENT = {'sampleRate': 48000, 'durationSeconds': 3.4, 'edits': edits(), 'words': [
+    word('m0', 'We', 0.00, 0.20), word('m1', 'did', 0.25, 0.50), word('m2', 'it', 0.55, 0.80),
+    word('m3', '(laughs)', 0.85, 1.30, 'event'), word('m4', 'Right.', 2.60, 3.00)]}
+result = case('cross-line-end-insertion-event-barrier', 'The laugh ends [0-3] and is left out; "again" is added after "it". The '
+              'insertion sits after "it", the stretch\'s last word, before the laugh, so the laugh lies between it and '
+              '"Alright." and they never merge, although no word lies between them.', END_EVENT,
+              [reply_edit('[0-3]', 'We did it again'), reply_edit('[4-4]', 'Alright.')])
+assert shape(result) == [('voice', [], 'again', []), ('voice', ['m4'], 'Alright.', [])], result
+assert result['hunks'][0]['anchorSeconds'] == 0.80 and result['hunks'][0]['insertionAfterItemId'] == 'm2', result
 
 # An event that starts the second line is a barrier, whether the model echoes its label or not.
 EVENT = {'sampleRate': 48000, 'durationSeconds': 3.6, 'edits': edits(), 'words': [
@@ -436,8 +521,8 @@ result = case('check-this-from-instruction', 'The year comes from the instructio
               [reply_edit('[0-7]', 'We moved to the old studio in 2025.')], instruction="It was 2025, not May.")
 assert [hunk['checkThis'] for hunk in result['hunks']] == [False], result
 
-# The clip and Full take plans leave cut and re-voiced items out, so they never stop a merge. Take A of the plan vectors:
-# "um" (w1) is cut between "So" and "today." in [0-2].
+# The clip and Full take plans leave cut items out, so they never stop a merge. Take A of the plan vectors: "um" (w1) is
+# cut between "So" and "today." in [0-2].
 TAKE_A = PLAN['TAKE_A']
 result = case('cut-item-between-lines', 'Full take of the plan vectors\' take A: "So" and "we" are re-voiced in [0-2] and [3-8]. '
               'Only "today." lies between them as a kept word, so they merge; the cut "um" is not in the plan and stops nothing.',
@@ -452,6 +537,58 @@ result = case('full-take-event-line-and-fix', 'Full take of take A: the event-on
               '"watching!" becomes "watching." as a text-only fix.', TAKE_A,
               [reply_edit('[15-15]', '(applause)'), reply_edit('[17-19]', 'Thanks for watching.')])
 assert shape(result) == [('textOnly', ['w19'], 'watching.', [])], result
+
+# The plans leave re-voiced items out too, but no window may span them (section 8.4 step 6), so a re-voiced run is a
+# barrier like an event: it splits its line into stretches, and nothing merges across it. Each replacement is placed by
+# the window reference, and so is each voice hunk here, beside it.
+def refusal(take, envelope, first, last):
+    """None when `place` puts first..last in Full take beside the take's replacements, else its refusal."""
+    try:
+        PLAN['WINDOW']['place'](PLAN['take_project'](take), None, envelope, first, last)
+    except PLAN['GeometryError'] as error:
+        return error.value['error']
+    return None
+
+
+def placed(take, envelope, result):
+    return [refusal(take, envelope, hunk['sourceWordIds'][0], hunk['sourceWordIds'][-1])
+            for hunk in result['hunks'] if hunk['kind'] == 'voice' and hunk['sourceWordIds']]
+
+
+BUILT_WORDS = [word('s0', 'We', 0.00, 0.20), word('s1', 'built', 0.25, 0.50), word('s2', 'a', 0.55, 0.65),
+               word('s3', 'tool.', 0.70, 1.00), word('s4', 'Really', 1.50, 1.80), word('s5', 'fast.', 1.85, 2.20),
+               word('s6', 'It', 2.80, 2.95), word('s7', 'works', 3.00, 3.30), word('s8', 'well.', 3.35, 3.70)]
+BUILT_ENVELOPE = PLAN['envelope_for'](BUILT_WORDS, 48000, 4.0)
+BUILT = PLAN['accept']({'sampleRate': 48000, 'durationSeconds': 4.0, 'edits': edits(), 'words': BUILT_WORDS}, BUILT_ENVELOPE,
+                       's4', 's5')
+result = case('revoiced-run-between-lines', '"Really fast." was re-voiced, so the plan has no line for it. "tool." and "It" '
+              'are changed on each side of it with no kept word between: two hunks, each placed beside the replacement. One '
+              'hunk would span it and be refused.', BUILT,
+              [reply_edit('[0-3]', 'We built a toy.'), reply_edit('[6-8]', 'That works well.')])
+assert shape(result) == [('voice', ['s3'], 'toy.', []), ('voice', ['s6'], 'That', [])], result
+assert placed(BUILT, BUILT_ENVELOPE, result) == [None, None] and refusal(BUILT, BUILT_ENVELOPE, 's3', 's6') == 'overlapsReplacement'
+NEW_WORDS = [word('n0', 'We', 0.00, 0.20), word('n1', 'built', 0.25, 0.50), word('n2', 'a', 0.55, 0.65),
+             word('n3', 'really', 0.70, 1.00), word('n4', 'fast', 1.20, 1.50), word('n5', 'new', 1.70, 1.90),
+             word('n6', 'tool', 1.95, 2.20), word('n7', 'for', 2.25, 2.40), word('n8', 'you.', 2.45, 2.80)]
+NEW_ENVELOPE = PLAN['envelope_for'](NEW_WORDS, 48000, 3.2)
+NEW = PLAN['accept']({'sampleRate': 48000, 'durationSeconds': 3.2, 'edits': edits(), 'words': NEW_WORDS}, NEW_ENVELOPE, 'n4', 'n4')
+result = case('revoiced-run-inside-line', '"fast" was re-voiced inside the line. "a" and "tool" change with two kept words '
+              'between them, which would merge, but the re-voiced run splits the line: two hunks, each placed beside it.', NEW,
+              [reply_edit('[0-8]', 'We built one really new app for you.')])
+assert shape(result) == [('voice', ['n2'], 'one', []), ('voice', ['n6'], 'app', [])], result
+assert placed(NEW, NEW_ENVELOPE, result) == [None, None] and refusal(NEW, NEW_ENVELOPE, 'n2', 'n6') == 'overlapsReplacement'
+result = case('revoiced-run-splits-a-change', 'The model rewrote "really new", not knowing "fast" lies between. Each new token '
+              'joins the stretch of the source token the pairing walked last: the deletes come first, so "really" is cut '
+              'and "new" becomes "truly novel", each beside the replacement, never one hunk across it.', NEW,
+              [reply_edit('[0-8]', 'We built a truly novel tool for you.')])
+assert shape(result) == [('cut', ['n3'], '', []), ('voice', ['n5'], 'truly novel', [])], result
+assert placed(NEW, NEW_ENVELOPE, result) == [None], result
+result = case('revoiced-run-insertion', 'A word added where the re-voiced run lies joins the stretch before it: an insertion '
+              'at the end of "really", anchored at its end, never at "new" after the replacement.', NEW,
+              [reply_edit('[0-8]', 'We built a really very new tool for you.')])
+assert shape(result) == [('voice', [], 'very', [])], result
+assert (result['hunks'][0]['sourceStartIndex'], result['hunks'][0]['anchorSeconds']) == (4, 1.00), result
+assert result['hunks'][0]['insertionAfterItemId'] == 'n3', result
 
 # A proposal that does not fit the plan is refused, never partly diffed.
 case('unknown-line', 'An edit for a line the plan does not have (the validator drops these, so this proposal came from elsewhere).',
@@ -472,10 +609,13 @@ for vector in patch['cases']:
     for first, last in PLAN['line_bounds'](entries):
         part = entries[first:last + 1]
         lines.append({'line': '[%d-%d]' % (part[0]['index'], part[-1]['index']), 'entries': part,
-                      'items': [['i%d' % entry['index'], entry['text'], entry['start'], entry['end'], 'word'] for entry in part]})
+                      'items': [['i%d' % entry['index'], entry['text'], entry['start'], entry['end'], 'word'] for entry in part],
+                      'revoicedBefore': [False] * len(part)})
     assert [line['line'] for line in lines] == [item['line'] for item in vector.get('ranges', patch['ranges'])], vector['id']
-    PATCH_RESULTS.append({'id': vector['id'],
-                          'expected': scope_diff(lines, vector['instruction'], entries, vector['expected']['edits'])})
+    expected = scope_diff(lines, vector['instruction'], entries, vector['expected']['edits'])
+    if 'error' not in expected:
+        expected['budget'] = budget(expected['hunks'], len(entries))
+    PATCH_RESULTS.append({'id': vector['id'], 'expected': expected})
 assert len(PATCH_RESULTS) == len(patch['cases'])
 
 document = {'schema': 'voxclip-voice-lab-scope-rewrite-diff/1',
