@@ -12,10 +12,13 @@ import VoxClipCore
 /// `sceneCaptures` takes the real-window `v2-shell-1280.png` and `v2-shell-fullscreen.png`.
 @MainActor enum DebugShell {
     struct Region: Codable { let region: String; let frame: CGRect; let reference: CGRect }
+    /// The harness windows' controllers, which their windows do not retain, until `run` ends.
+    private static var windowControllers: [NSWindowController] = []
 
     static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        defer { windowControllers = [] }
         let keys = [WorkspaceLayout.explorerWidthKey, WorkspaceLayout.rightWidthKey, WorkspaceLayout.timelineHeightKey, WorkspaceLayout.retiredRightWidthKey, "llm.connector"]
         let saved = keys.map { app.settings.values[$0] }
         defer { for (key, value) in zip(keys, saved) { app.settings.values[key] = value } }
@@ -44,10 +47,12 @@ import VoxClipCore
     /// notes.md §1's size, then the sizes of impl-plan §3.5 (800 × 600 stands in for full screen or Split View).
     static let sizes = [NSSize(width: 1280, height: 800), NSSize(width: 1440, height: 900), NSSize(width: 1128, height: 800), NSSize(width: 960, height: 600), NSSize(width: 800, height: 600)]
 
-    /// An offscreen window like the main window, showing `shell`.
+    /// An offscreen window like the main window, showing `shell`: a `MainWindow` whose
+    /// controller is the shell's, so F6 and Escape take the window's own path.
     private static func makeWindow(app: AppModel, shell: WorkspaceShell, size: NSSize = NSSize(width: 1280, height: 800)) -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        let window = MainWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        windowControllers.append(DebugShellWindowController(window: window, shell: shell))
         window.appearance = NSAppearance(named: .darkAqua)
         EditorShellController.prepare(window)
         window.title = shell.title
@@ -261,6 +266,19 @@ import VoxClipCore
         shell.toggleViewer()
         for _ in 0..<40 where view("voxclip.shell.rightOverlay", in: root) != nil { try await Task.sleep(for: .milliseconds(25)) }
         check("Hide Viewer takes the overlay down", !shell.rightOverlay && view("voxclip.shell.rightOverlay", in: root) == nil)
+
+        // Escape in the transcript hides the overlay before the transcript's own Escape, which
+        // would leave the clip; the transcript keeps focus (MainWindow).
+        shell.toggleViewer()
+        for _ in 0..<40 where view("voxclip.shell.rightOverlay", in: root) == nil { try await Task.sleep(for: .milliseconds(25)) }
+        let scope = editor?.project.edits.activeClipId
+        let focused = focusTranscript(in: window)
+        let escape = String(UnicodeScalar(UInt8(27)))
+        if let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                      context: nil, characters: escape, charactersIgnoringModifiers: escape, isARepeat: false, keyCode: 53) { window.sendEvent(key) }
+        for _ in 0..<40 where view("voxclip.shell.rightOverlay", in: root) != nil { try await Task.sleep(for: .milliseconds(25)) }
+        check("at 800 Escape in the transcript hides the right column over the editor, keeps the scope and leaves the transcript focused",
+              focused && !shell.rightOverlay && view("voxclip.shell.rightOverlay", in: root) == nil && editor?.project.edits.activeClipId == scope && window.firstResponder is TranscriptNSTextView)
         window.setContentSize(NSSize(width: 1280, height: 800))
         results += try await settleRegions(window, size: NSSize(width: 1280, height: 800), directory: directory)
         return results
@@ -498,5 +516,16 @@ import VoxClipCore
     private static func describe(_ rect: CGRect) -> String {
         "\(Int(rect.minX.rounded())),\(Int(rect.minY.rounded())) \(Int(rect.width.rounded()))×\(Int(rect.height.rounded()))"
     }
+}
+
+/// The controller of a harness or test window that shows `shell`, so its `MainWindow`
+/// routes F6 and Escape to that shell. The window does not retain it.
+@MainActor final class DebugShellWindowController: NSWindowController, ShellWindowController {
+    let shell: WorkspaceShell
+    init(window: NSWindow, shell: WorkspaceShell) {
+        self.shell = shell
+        super.init(window: window)
+    }
+    required init?(coder: NSCoder) { nil }
 }
 #endif

@@ -807,6 +807,14 @@ struct EditorShellState: Equatable {
             return false
         }
     }
+    /// The right column over the editor is this tree's `ShellRightOverlay`. The Explorer over
+    /// the editor is SwiftUI in WorkspaceView, over this tree: while it shows, focus in the
+    /// window outside this tree is in it.
+    func overlayHoldsFocus() -> Bool {
+        guard let responder = view.window?.firstResponder as? NSView else { return false }
+        if let overlay = editorWork?.rightOverlay, responder.isDescendant(of: overlay) { return true }
+        return shell.sidebarOverlay && !responder.isDescendant(of: view)
+    }
 
 }
 

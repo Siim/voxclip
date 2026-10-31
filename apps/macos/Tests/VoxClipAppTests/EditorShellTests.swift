@@ -40,6 +40,27 @@ private final class FullScreenStandIn: NSWindow {
         controller.apply(EditorShellState(shell: shell))
         return (shell, controller, window)
     }
+    /// The same in a `MainWindow` whose controller is the shell's, so the window's F6 and
+    /// Escape reach it. The caller keeps the controller, which the window does not retain.
+    private func openMainWindowShell(width: Double) async throws -> (WorkspaceShell, EditorShellController, MainWindow, NSWindowController) {
+        _ = NSApplication.shared
+        let shell = WorkspaceShell(app: AppModel())
+        await shell.attachForTesting(VoxClipDocument(project: try project(), demo: true), selection: .fullTake)
+        shell.windowWidth = width
+        let controller = EditorShellController(shell: shell)
+        let window = MainWindow(contentRect: NSRect(x: -10000, y: -10000, width: width, height: 800), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        let holder = DebugShellWindowController(window: window, shell: shell)
+        window.contentView = controller.view
+        controller.view.frame = NSRect(x: 0, y: 0, width: width, height: 800)
+        controller.apply(EditorShellState(shell: shell))
+        return (shell, controller, window, holder)
+    }
+    private func escape(in window: NSWindow) throws -> NSEvent {
+        let escape = String(UnicodeScalar(UInt8(27)))
+        return try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                             characters: escape, charactersIgnoringModifiers: escape, isARepeat: false, keyCode: 53))
+    }
     /// The first view under `root` with `identifier`.
     private func view(_ identifier: String, in root: NSView) -> NSView? {
         if root.identifier?.rawValue == identifier { return root }
@@ -183,6 +204,33 @@ private final class FullScreenStandIn: NSWindow {
         shell.toggleSidebar()
         controller.apply(EditorShellState(shell: shell))
         #expect(!shell.sidebarOverlay && controller.explorerToggle.accessibilityLabel() == EditorIconAction.showSidebar.name)
+    }
+
+    /// Escape with focus outside the right column shown over the editor hides it before the
+    /// focused view's own Escape (the transcript's would leave the clip). A text field keeps
+    /// its Escape, and with no overlay open Escape goes on as before.
+    @Test func escapeOutsideTheOverlayHidesIt() async throws {
+        let (shell, controller, window, holder) = try await openMainWindowShell(width: 800)
+        defer { controller.tearDown(); shell.editor?.close(); _ = holder }
+        let work = try #require(controller.editorWork)
+        shell.toggleViewer()
+        controller.apply(EditorShellState(shell: shell))
+        #expect(shell.rightOverlay && work.rightOverlay != nil)
+        // In a text field's editor (a field such as Find, or a word correction) Escape stays the field's.
+        let fieldEditor = NSTextView(frame: NSRect(x: 0, y: 0, width: 100, height: 22))
+        fieldEditor.isFieldEditor = true
+        work.clipBar.addSubview(fieldEditor)
+        #expect(window.makeFirstResponder(fieldEditor))
+        #expect(!shell.dismissOverlaysOnEscape(in: window) && shell.rightOverlay)
+        fieldEditor.removeFromSuperview()
+        // Focus in the tab row, outside the overlay: Escape hides it and is used up.
+        #expect(window.makeFirstResponder(work.overflow))
+        window.sendEvent(try escape(in: window))
+        #expect(!shell.rightOverlay && window.firstResponder === work.overflow)
+        controller.apply(EditorShellState(shell: shell))
+        #expect(work.rightOverlay == nil)
+        // With no overlay open, Escape is not the shell's.
+        #expect(!shell.dismissOverlaysOnEscape(in: window))
     }
 
     /// A hidden timeline panel is no F6 stop. Until V4 the panel stays while the right column

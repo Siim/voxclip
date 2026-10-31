@@ -32,6 +32,8 @@ enum EditorPane: CaseIterable {
     /// Puts keyboard focus in one of these stops. For a SwiftUI pane it only lets go of
     /// an AppKit stop, so the next F6 starts from that pane; it returns false.
     @discardableResult func focus(_ pane: EditorPane) -> Bool
+    /// Keyboard focus is in the Explorer or the right column shown over the editor.
+    func overlayHoldsFocus() -> Bool
 }
 
 @MainActor struct EditorPaneFocus: ViewModifier {

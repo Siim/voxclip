@@ -434,6 +434,20 @@ enum SidebarItem: Hashable {
             layout.rightVisible = true
         }
     }
+    /// Escape in this window (MainWindow): with focus outside an open overlay it hides the
+    /// overlays and is used up, before the focused view's own Escape, which in the transcript
+    /// would leave the clip. Focus inside an overlay gives Escape to it first (its controls,
+    /// then the overlay itself); composing text and a text field's editor keep theirs.
+    func dismissOverlaysOnEscape(in window: NSWindow) -> Bool {
+        guard sidebarOverlay || rightOverlay else { return false }
+        let responder = window.firstResponder
+        if let input = responder as? any NSTextInputClient, input.hasMarkedText() { return false }
+        if let text = responder as? NSTextView, text.isFieldEditor { return false }
+        if chromeFocus?.overlayHoldsFocus() == true { return false }
+        sidebarOverlay = false
+        rightOverlay = false
+        return true
+    }
 
     private func leave(fromImport: Bool = false) async -> Bool {
         // Opening, closing or locating another project waits for a running import, which
@@ -711,12 +725,17 @@ enum SidebarItem: Hashable {
 }
 
 /// The window of a shell: the main window and each Versions window. F6 moves through its
-/// own shell's panes. On the main window the close button and Window > Close run the
-/// shell's leave boundary first, so AppKit never closes the shared window together with a
-/// project; a Versions window has no `closeProject` and closes with its version.
+/// own shell's panes, and Escape outside an open overlay hides it. On the main window the
+/// close button and Window > Close run the shell's leave boundary first, so AppKit never
+/// closes the shared window together with a project; a Versions window has no
+/// `closeProject` and closes with its version.
 @MainActor final class MainWindow: NSWindow {
     var closeProject: (() async -> Bool)?
     override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.keyCode == 53, event.modifierFlags.intersection([.command, .option, .control]).isEmpty, attachedSheet == nil,
+           let shell = (windowController as? ShellWindowController)?.shell, shell.dismissOverlaysOnEscape(in: self) {
+            return
+        }
         if event.type == .keyDown, EditorPane.isCycleKey(code: event.keyCode, modifiers: event.modifierFlags), attachedSheet == nil,
            let shell = (windowController as? ShellWindowController)?.shell, shell.editor != nil, !shell.showsHome {
             if let input = firstResponder as? any NSTextInputClient, input.hasMarkedText() { super.sendEvent(event); return }
