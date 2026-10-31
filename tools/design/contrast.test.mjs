@@ -167,6 +167,65 @@ test('line.strong stays the 3:1 boundary in the default appearance, which Reduce
   assert.deepEqual(failing, ['bg.surface', 'bg.sunken', 'bg.window', 'overlay.transportOpaque over stage'].map(background => `dark default line.strong on ${background}`));
 });
 
+test('the ratios design.md and tokens.json quote are the measured ones', async () => {
+  const design = (await readFile(new URL('../../doc/design.md', import.meta.url), 'utf8')).split('\n');
+  const measured = (foreground, background, mode) => {
+    const base = channels(value(background, mode)).rgb;
+    return contrast(composite(channels(value(foreground, mode)), base), base);
+  };
+  // [where: a phrase of the design.md line, or a token whose description quotes it; the quote; foreground, background, mode]
+  const quotes = [
+    ['Timecodes are right-aligned', '5.23:1 light', 'text.tertiary', 'bg.surface', 'light'],
+    ['Timecodes are right-aligned', '4.56:1 dark', 'text.tertiary', 'bg.surface', 'dark'],
+    ['| Pause (detected gap), uncut |', '6.29:1 dark', 'text.muted', 'bg.surface', 'dark'],
+    ['| Pause (detected gap), uncut |', '5.89:1 light', 'text.muted', 'bg.surface', 'light'],
+    ['| Pause, cut |', '5.28:1 dark', 'text.muted', 'pause.background', 'dark'],
+    ['| Pause, cut |', '5.16:1 light', 'text.muted', 'pause.background', 'light'],
+    ['| Outside the selected clip |', '6.92:1 dark', 'text.secondary', 'bg.surface', 'dark'],
+    ['| Outside the selected clip |', '6.56:1 light', 'text.secondary', 'bg.surface', 'light'],
+    ['**Materials.** Under Reduce Transparency', '3.31:1 dark', 'line.strong', 'bg.surface', 'dark'],
+    ['**Materials.** Under Reduce Transparency', '3.41:1 light', 'line.strong', 'bg.surface', 'light'],
+    ['the AI modified tag (12, 1 px', '16.34:1 light', 'accent.text', 'bg.surface', 'light'],
+    ['the AI modified tag (12, 1 px', '14.01:1 dark', 'accent.text', 'bg.surface', 'dark'],
+    ['- **Box:** 64 high, on `bg.sunken`', '3.49:1 dark', 'line.strong', 'bg.sunken', 'dark'],
+    ['- **Box:** 64 high, on `bg.sunken`', '3.12:1 light', 'line.strong', 'bg.sunken', 'light'],
+    ['The transcript draws its own selection', '9.55:1 light', 'text.primary', 'selection.transcript', 'light'],
+    ['The transcript draws its own selection', '5.33:1 dark', 'text.primary', 'selection.transcript', 'dark'],
+    ['Below a minimum on purpose', 'dark 3.03:1 on `editor.band`', 'gutter.text', 'editor.band', 'dark'],
+    ['Below a minimum on purpose', 'dark 1.38:1 on `bg.surface`', 'line.edge', 'bg.surface', 'dark'],
+    ['Below a minimum on purpose', 'dark 3.31:1 on `bg.surface`', 'line.strong', 'bg.surface', 'dark'],
+    ['re-values the dark neutrals', '4.80:1 on chrome', 'text.tertiary', 'bg.window', 'dark'],
+    ['re-values the dark neutrals', '4.56:1 on the editor', 'text.tertiary', 'bg.surface', 'dark'],
+    ['re-values the dark neutrals', '4.54:1 on `editor.band`', 'word.outside', 'editor.band', 'dark'],
+    ['text.primary', 'dark 14.25:1', 'text.primary', 'bg.surface', 'dark'],
+    ['text.primary', 'light 16.3:1', 'text.primary', 'bg.surface', 'light'],
+    ['text.tertiary', 'dark 4.80:1 on bg.window', 'text.tertiary', 'bg.window', 'dark'],
+    ['text.tertiary', '4.56:1 on bg.surface', 'text.tertiary', 'bg.surface', 'dark'],
+    ['bg.selectedRow', 'dark 11.79:1', 'text.primary', 'bg.selectedRow', 'dark'],
+    ['line.strong', 'dark 3.31:1 on bg.surface', 'line.strong', 'bg.surface', 'dark'],
+    ['line.edge', '1.38:1 on bg.surface', 'line.edge', 'bg.surface', 'dark'],
+    ['accent.soft', 'light 12.80:1', 'text.primary', 'accent.soft', 'light'],
+    ['accent.soft', 'dark 10.38:1', 'text.primary', 'accent.soft', 'dark'],
+    ['selection.transcript', 'light 9.55:1', 'text.primary', 'selection.transcript', 'light'],
+    ['selection.transcript', 'dark 5.33:1', 'text.primary', 'selection.transcript', 'dark'],
+    ['tint.default', 'Dark 5.57:1 on bg.surface', 'tint.default', 'bg.surface', 'dark'],
+    ['tint.default', '6.19:1 on timeline.lane', 'tint.default', 'timeline.lane', 'dark'],
+    ['word.outside', 'dark 4.87:1 on bg.surface', 'word.outside', 'bg.surface', 'dark'],
+    ['word.cut', 'dark 5.6:1 on bg.surface', 'word.cut', 'bg.surface', 'dark'],
+    ['word.cut', '4.73:1 on pause.background', 'word.cut', 'pause.background', 'dark'],
+    ['word.filler', 'dark 8.3:1', 'word.filler', 'bg.surface', 'dark'],
+    ['word.filler', 'light 5.2:1', 'word.filler', 'bg.surface', 'light'],
+    ['cut.stroke', 'dark 6.3:1', 'cut.stroke', 'bg.surface', 'dark'],
+    ['cut.stroke', 'light 4.9:1', 'cut.stroke', 'bg.surface', 'light'],
+  ];
+  for (const [where, quote, foreground, background, mode] of quotes) {
+    const text = /^[a-z]+\.[A-Za-z]+$/.test(where) ? token(where).$description : design.find(line => line.includes(where));
+    assert.ok(text?.includes(quote), `${where} quotes "${quote}"`);
+    const quoted = quote.match(/(\d+\.(\d+)):1/);
+    assert.equal(measured(foreground, background, mode).toFixed(quoted[2].length), quoted[1], `${where}: ${mode} ${foreground} on ${background}`);
+  }
+});
+
 test('a token with an opacity is composited at that fraction of its alpha', () => {
   const rows = contrastRows(source, xaml).filter(row => row.platform === 'tokens' && row.mode === 'dark' && row.appearance === 'default');
   const ai = rows.find(row => row.foreground === 'text.primary' && row.background === 'ai.tint@0.16 over editor.band');

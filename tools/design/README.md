@@ -80,8 +80,10 @@ must hold under it (the opaque `line.strong` edges) is a default pair.
 `npm test` fails on any pair below its minimum, on a colour token that no pair
 checks and that is not listed as exempt with a reason, on a colour below its
 minimum without a reason or an Increase Contrast value that passes, on an
-`App.xaml` ramp that differs from the accent tokens, and when the orange
-`tint.*` reaches the `AccentColor` asset or the accent ramp.
+`App.xaml` ramp that differs from the accent tokens, when the orange
+`tint.*` reaches the `AccentColor` asset or the accent ramp, and when a ratio
+that `doc/design.md` or a token description quotes is no longer the measured
+one.
 
 Edit the shared tokens, regenerate, and review both output diffs as a design
 change. Never edit a generated file by hand. Consumer-specific aliases

@@ -428,7 +428,7 @@ The sidebar collapses last, because it holds the clips. While the viewer is coll
 
 - **Flowing prose, not chips.** A new paragraph starts after a sentence end followed by a pause of ≥ 1.5 s, or at a speaker change when diarization exists.
 - **Gutter.**
-  - It shows the paragraph start as a timecode in `m:ss.d`, or `h:mm:ss.d` past one hour, in SF Mono 11 or Cascadia Mono 12, `text.tertiary` (5.23:1 light, 5.41:1 dark). Timecodes are right-aligned.
+  - It shows the paragraph start as a timecode in `m:ss.d`, or `h:mm:ss.d` past one hour, in SF Mono 11 or Cascadia Mono 12, `text.tertiary` (5.23:1 light, 4.56:1 dark). Timecodes are right-aligned.
   - Each clip's rule is 2 wide, running from the clip's first line to its last.
   - Speaker labels sit under the timecode.
   - **macOS:** gutter 84; timecodes end 30 before the text; the rule sits 14 before the text.
@@ -451,8 +451,8 @@ Word states (each shown by more than colour):
 | Playing | `word.playingBackground` with `word.playingForeground` on both platforms: ink #2C2E35 with paper #FAF9F6 text (light), soft paper #D2D1CC with ink #141517 text (dark). Neither platform uses `AccentFillColorDefaultBrush` for it. Radius 4, 2 inline padding. Playing wins when a word is also selected. Windows High Contrast inverts body text: WindowText with Window text |
 | Selected | macOS: `NSColor.selectedTextBackgroundColor`, Ink-derived #C0C1C3 light, #5F6061 dark with the Multicolor accent. Windows: `selection.transcript` (the same values) with `text.primary`; High Contrast uses Highlight with HighlightText. A selection never looks like the playing word |
 | Cut | `word.cut` text with a 1.5 strike in `cut.stroke` on both platforms. The word stays readable and restorable. With "Hide cut words" (⇧⌘H / Ctrl+Shift+H) a run of cut words still collapses to an SF Mono or Cascadia Mono token `⋯ 5 cut` on `pause.background`, radius 6 |
-| Pause (detected gap), uncut | inline token `‖ 1.8s` in SF Mono 13 or Cascadia Mono 12, `text.muted`, **no fill** (8.04:1 dark, 6.77:1 light). Shown for gaps ≥ the project's `pauseThresholdSeconds` (editing spec: 0.8 s with decoded audio, else 1.0 s, set at import; not a setting in 0.1.0) |
-| Pause, cut | the same token on a `pause.background` chip, radius 6, `text.muted` (6.67:1 / 5.92:1), with the `cut.stroke` strike |
+| Pause (detected gap), uncut | inline token `‖ 1.8s` in SF Mono 13 or Cascadia Mono 12, `text.muted`, **no fill** (6.29:1 dark, 5.89:1 light). Shown for gaps ≥ the project's `pauseThresholdSeconds` (editing spec: 0.8 s with decoded audio, else 1.0 s, set at import; not a setting in 0.1.0) |
+| Pause, cut | the same token on a `pause.background` chip, radius 6, `text.muted` (5.28:1 dark, 5.16:1 light), with the `cut.stroke` strike |
 | Suggested filler | a dotted underline in `word.filler`, 1.5 (macOS) or 2 (Windows) wide; tooltip "Filler · Delete to cut" |
 | Low confidence (if the engine reports it) | dashed underline `word.lowConfidence`; off by default (Settings → General) |
 | Corrected | normal text with a 2 pt dot under the first letter (`word.correctionDot`); tooltip "Heard as: {original}" |
@@ -460,7 +460,7 @@ Word states (each shown by more than colour):
 | Clip end | a `]` bracket glyph after the last word, `line.strong`, or `accent.text` when selected (dashed for suggestions) |
 | Rewrite passage (Voice Lab open) | an `accent.soft` fill and a 1 px `accent.text` outline, radius 4 |
 | AI words (accepted) | an "AI" chip at the start (§6.3) and a 1 px dashed `accent.text` underline. Description adds ", AI modified" |
-| Outside the selected clip | `text.secondary` (7.34:1 dark, 6.56:1 light), **no opacity**. Cut words there keep `word.cut` and the strike; timecodes stay `text.tertiary`; other clips stay neutral |
+| Outside the selected clip | `text.secondary` (6.92:1 dark, 6.56:1 light), **no opacity**. Cut words there keep `word.cut` and the strike; timecodes stay `text.tertiary`; other clips stay neutral |
 
 Live transcript while recording (M2): partial words in `text.muted` italic; a "Jump to live ↓" pill appears when the user scrolls up.
 
@@ -551,7 +551,7 @@ Restore is disabled when nothing in the selection is cut. When the selection alr
   - When the row doesn't fit (the AI modified tag, a rate and long times together), the AI modified tag and then the rate ("1.5×", 11 `text.secondary`) move to a caption line 6 above the row. The row keeps the time and the three buttons at their sizes. The time is never truncated or scaled, and the rate stays out of the accessibility tree as before.
 - **Windows**, row 1 is 40 high:
   - leading: Back 3 seconds (32 subtle icon button, name "Back 3 seconds (J)"), Play (40 round, `ControlFillColorDefaultBrush` fill, 1 px `ControlStrokeColorDefaultBrush`, ink glyph), Forward 3 seconds (32, name "Forward 3 seconds");
-  - trailing: the AI modified tag (12, 1 px `accent.text`, 16.34:1 light, 14.16:1 dark), then the time in Cascadia Mono 13.
+  - trailing: the AI modified tag (12, 1 px `accent.text`, 16.34:1 light, 14.01:1 dark), then the time in Cascadia Mono 13.
 - **Frame row:** 24 high on macOS, 32 on Windows. The label "Frame" (13 or 14 `text.secondary`) leads.
   - The control: macOS `Picker(.segmented)` with `.labelsHidden()`; Windows `CommunityToolkit.WinUI.Controls.Segmented`.
   - When the row doesn't fit, macOS first uses the small control size in the same 24-high row, then puts "Frame" on its own line, 6 above a small picker at the leading edge. Inline rows also start at the leading inner edge. At 1280 (column 320) it stacks; at 360 the small control fits in one row. No label is truncated or dropped.
@@ -1524,7 +1524,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
     - When the user picks another accent, `accentText` and `accentSoft` are derived at runtime: mix `NSColor.controlAccentColor` toward `text.primary` until it reaches 4.5:1 on `bg.surface`. For Blue in light mode that gives `accentText` #046CDD (4.76:1) and `accentSoft` #DCE7F7 (14% over the page).
     - Export is a painted capsule: light `accent.default` with `accent.on`, dark `accent.text` with `word.playingForeground` (15.19:1), matching the Windows `AccentButton` pair. One helper chooses the fill and label for both the button and `DebugToolbarPixels`. It does not use `.glassProminent` or follow a user-chosen system accent.
   - **Windows:** `App.xaml` overrides the accent ramp in its `Light` and `Default` theme dictionaries, so Ink replaces the user's accent. `SystemAccentColor` is cool graphite `#6D6F73` in both, so text selection and `SystemControlHighlightAccentBrush` never fall back to the user's accent. Light: `SystemAccentColorDark1/2/3` `#2C2E35` / `#1A1B1F` / `#0F1013`. Dark: `SystemAccentColorLight1/2/3` `#D2D1CC` / `#ECEAE4` / `#FAF9F6`. `TextOnAccentFillColorPrimary` is `#FAF9F6` / `#141517`, never pure black. High Contrast keeps the system colours. WinUI builds `TextOnAccentFillColorPrimaryBrush` from its own colour with `StaticResource`, so framework controls may keep `#FFFFFF` on Dark1 (13.55:1) / `#000000` on Light2 (17.46:1).
-    - The transcript draws its own selection with `selection.transcript` (`text.primary` on it 9.55:1 light, 5.24:1 dark). Text boxes keep the system selection, which follows the graphite `SystemAccentColor` override. Every `HyperlinkButton` and inline link is underlined.
+    - The transcript draws its own selection with `selection.transcript` (`text.primary` on it 9.55:1 light, 5.33:1 dark). Text boxes keep the system selection, which follows the graphite `SystemAccentColor` override. Every `HyperlinkButton` and inline link is underlined.
 - **Accent budget:**
   - Ink solids per screen are at most four: Export, the playing word, the switch that is on, and the selected clip's badge. Home has one: Import Video….
   - System focus fills (the focused sidebar selection on macOS) do not count.
