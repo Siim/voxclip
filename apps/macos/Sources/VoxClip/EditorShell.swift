@@ -459,7 +459,7 @@ struct EditorShellState: Equatable {
     /// The editor's columns and timeline, while a project shows.
     private(set) var editorWork: EditorWorkController?
     /// Home's title row and Home, while Home shows.
-    private var homeBand: ShellBand?
+    private(set) var homeBand: ShellBand?
     let homeSearch = HomeSearchField()
     /// Shows and hides the Explorer: in its header while it shows, else at the start of the work area's title row.
     let explorerToggle = ShellIconButton(symbol: "sidebar.left", identifier: "voxclip.shell.toggleExplorer")
@@ -515,6 +515,9 @@ struct EditorShellState: Equatable {
         homeSearch.target = self
         homeSearch.action = #selector(homeSearchChanged(_:))
         homeSearch.setAccessibilityIdentifier("voxclip.home.search")
+        for name in [NSWindow.didEnterFullScreenNotification, NSWindow.didExitFullScreenNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(windowFullScreenChanged(_:)), name: name, object: nil)
+        }
     }
 
     /// Builds or updates the tree for `state`.
@@ -583,6 +586,13 @@ struct EditorShellState: Equatable {
     }
 
     @objc private func toggleExplorer() { shell.toggleSidebar() }
+
+    /// The window buttons leave the title rows in full screen and come back after it, and
+    /// neither runs `apply`.
+    @objc private func windowFullScreenChanged(_ notification: Notification) {
+        guard let window = view.window, (notification.object as? NSWindow) === window else { return }
+        placeChrome()
+    }
 
     /// A drag that collapses or expands a pane reaches the layout.
     private func syncCollapsed() {
