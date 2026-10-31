@@ -633,6 +633,7 @@ import ApplicationServices
             results += try await DebugRedesignScenes.capture(app: app, directory: destination)
             let interview = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
             results += try await DebugShell.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugTabs.sceneCaptures(app: app, fixture: interview, directory: destination)
         } catch {
             results.append(Result(name: "scene audit: \(error.localizedDescription)", passed: false))
         }
@@ -984,9 +985,11 @@ import ApplicationServices
             }
             let clipShell = WorkspaceShell(app: app)
             await clipShell.attachForTesting(VoxClipDocument(project: clipped, demo: true), selection: .clip("snapshot-clip"))
-            check("a clip row scopes the editor through setActiveClip", clipShell.editor?.project.edits.activeClipId == "snapshot-clip")
-            clipShell.editor?.undoManager?.undo()
-            check("undo of a row change returns the selection to Full take", clipShell.selection == .fullTake && clipShell.editor?.project.edits.activeClipId == nil)
+            check("a clip row scopes the editor and opens its tab", clipShell.editor?.project.edits.activeClipId == "snapshot-clip" && clipShell.tabs.active == .clip("snapshot-clip"))
+            check("a row change is no undo step and leaves the project unedited (impl-plan item 16)",
+                  clipShell.editor?.undoSteps == 0 && clipShell.document?.isDocumentEdited == false && clipShell.document?.hasUnautosavedChanges == false)
+            clipShell.selection = .fullTake
+            check("Full Take's row returns the scope to Full Take", clipShell.editor?.project.edits.activeClipId == nil && clipShell.tabs.active == .fullTake)
             clipShell.selection = .clip("snapshot-clip")
             try await snapshot(WorkspaceView(shell: clipShell).environment(app), name: "clips-light", size: NSSize(width: 1100, height: 720), appearance: .aqua, directory: destination, mainWindow: true)
             try await snapshot(WorkspaceView(shell: clipShell).environment(app), name: "clips-dark", size: NSSize(width: 1100, height: 720), appearance: .darkAqua, directory: destination, mainWindow: true)
@@ -1003,6 +1006,7 @@ import ApplicationServices
             try await snapshot(ExportSheet(model: model).environment(app), name: "export-dark", size: NSSize(width: 668, height: 500), appearance: .darkAqua, directory: destination)
             try await snapshot(OnboardingView().environment(app), name: "onboarding-dark", size: NSSize(width: 616, height: 536), appearance: .darkAqua, directory: destination)
             results += try await DebugShell.run(app: app, fixture: project, directory: destination)
+            results += try await DebugTabs.run(app: app, fixture: project, directory: destination)
             model.close()
         } catch { results.append(Result(name: "suite: \(error.localizedDescription)", passed: false)) }
         let fallbacks = cachedMainWindowCaptures
