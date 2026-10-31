@@ -127,10 +127,18 @@ private actor LaunchSettings: SettingsStore {
         #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
     }
 
+    /// impl-plan §3.2: Explorer, tab and clip-bar rows, transcript, viewer, panel, timeline,
+    /// status bar; a hidden pane is no stop, an overlay is one.
     @Test func aHiddenPaneIsNoF6Stop() {
-        #expect(EditorPane.order(viewerVisible: true, timelineVisible: true) == [.sidebar, .transcript, .viewer, .panel, .timeline])
-        #expect(EditorPane.order(viewerVisible: false, timelineVisible: true) == [.sidebar, .transcript, .timeline])
-        #expect(EditorPane.order(viewerVisible: true, timelineVisible: false) == [.sidebar, .transcript, .viewer, .panel])
+        #expect(EditorPane.order(explorerVisible: true, viewerVisible: true, timelineVisible: true) == [.sidebar, .tabs, .transcript, .viewer, .panel, .timeline, .status])
+        #expect(EditorPane.order(explorerVisible: true, viewerVisible: false, timelineVisible: true) == [.sidebar, .tabs, .transcript, .timeline, .status])
+        #expect(EditorPane.order(explorerVisible: true, viewerVisible: true, timelineVisible: false) == [.sidebar, .tabs, .transcript, .viewer, .panel, .status])
+        #expect(EditorPane.order(explorerVisible: false, viewerVisible: true, timelineVisible: true) == [.tabs, .transcript, .viewer, .panel, .timeline, .status])
+        let shell = WorkspaceShell(app: AppModel())
+        shell.windowWidth = 900
+        #expect(shell.paneOrder == [.tabs, .transcript, .timeline, .status])
+        shell.toggleSidebar(); shell.toggleViewer()
+        #expect(shell.paneOrder == [.sidebar, .tabs, .transcript, .viewer, .panel, .timeline, .status])
     }
 
     /// impl-plan §3.5: below 1,128 the Explorer collapses first, below 904 the right column;

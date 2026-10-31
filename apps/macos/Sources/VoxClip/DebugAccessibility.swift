@@ -18,11 +18,12 @@ import VoxClipMedia
         check("F6 and Control-F6 use the same pane route", EditorPane.isCycleKey(code: 97, modifiers: []) && EditorPane.isCycleKey(code: 97, modifiers: .control) && EditorPane.isCycleKey(code: 97, modifiers: [.control, .shift]))
         check("pane route does not steal unrelated shortcuts", !EditorPane.isCycleKey(code: 48, modifiers: []) && !EditorPane.isCycleKey(code: 97, modifiers: .command) && !EditorPane.isCycleKey(code: 97, modifiers: .option))
         check("only forward Tab enters selection bar without trapping Shift-Tab", EditorPane.entersSelectionBar(code: 48, modifiers: []) && !EditorPane.entersSelectionBar(code: 48, modifiers: .shift) && !EditorPane.entersSelectionBar(code: 48, modifiers: .control) && !EditorPane.entersSelectionBar(code: 97, modifiers: .control))
-        let visible: [EditorPane] = [.sidebar, .transcript, .viewer, .panel, .timeline]
-        let hidden: [EditorPane] = [.sidebar, .transcript, .timeline]
-        check("visible pane order matches design C15", EditorPane.order(viewerVisible: true, timelineVisible: true) == visible)
-        check("collapsed viewer removes both right-column panes", EditorPane.order(viewerVisible: false, timelineVisible: true) == hidden)
-        check("a hidden timeline panel is no F6 stop", EditorPane.order(viewerVisible: true, timelineVisible: false) == [.sidebar, .transcript, .viewer, .panel])
+        let visible: [EditorPane] = [.sidebar, .tabs, .transcript, .viewer, .panel, .timeline, .status]
+        let hidden: [EditorPane] = [.sidebar, .tabs, .transcript, .timeline, .status]
+        check("visible pane order matches impl-plan §3.2: Explorer, tab and clip-bar rows, transcript, viewer, panel, timeline, status bar", EditorPane.order(explorerVisible: true, viewerVisible: true, timelineVisible: true) == visible)
+        check("collapsed viewer removes both right-column panes", EditorPane.order(explorerVisible: true, viewerVisible: false, timelineVisible: true) == hidden)
+        check("a hidden timeline panel is no F6 stop", EditorPane.order(explorerVisible: true, viewerVisible: true, timelineVisible: false) == [.sidebar, .tabs, .transcript, .viewer, .panel, .status])
+        check("a hidden Explorer is no F6 stop", EditorPane.order(explorerVisible: false, viewerVisible: true, timelineVisible: true) == [.tabs, .transcript, .viewer, .panel, .timeline, .status])
         for motion in [false, true] {
             for transparency in [false, true] {
                 for contrast in [false, true] {
@@ -41,17 +42,14 @@ import VoxClipMedia
         let editor = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()
-        let previousViewer = app.shell.layout.rightVisible
-        defer { app.shell.layout.rightVisible = previousViewer }
         for expanded in [false, true] {
-            app.shell.layout.rightVisible = expanded
             let order = expanded ? visible : hidden
             editor.focusedPane = .sidebar
             var visited: [EditorPane] = []
-            for _ in order { visited.append(editor.focusedPane); editor.movePaneFocus(backward: false) }
+            for _ in order { visited.append(editor.focusedPane); editor.movePaneFocus(backward: false, through: order) }
             check("F6 model completes forward loop expanded=\(expanded)", visited == order && editor.focusedPane == .sidebar)
             var reversed: [EditorPane] = []
-            for _ in order { editor.movePaneFocus(backward: true); reversed.append(editor.focusedPane) }
+            for _ in order { editor.movePaneFocus(backward: true, through: order); reversed.append(editor.focusedPane) }
             check("Shift-F6 model completes backward loop expanded=\(expanded)", reversed == Array(order.reversed()) && editor.focusedPane == .sidebar)
         }
         let words = editor.words

@@ -133,6 +133,8 @@ enum SidebarItem: Hashable {
     /// Below this window width the Explorer collapses to its overlay: the Explorer's width
     /// beside both minimums, 1,128 with a 224 Explorer.
     var explorerCollapseWidth: Double { layout.explorerWidth + Self.rightCollapseWidth }
+    /// The AppKit F6 stops of this window's shell (EditorShellController).
+    @ObservationIgnored weak var chromeFocus: ShellChromeFocus?
     private(set) var importProgress: String?
     @ObservationIgnored private var importTask: Task<Void, Never>?
     @ObservationIgnored weak var windowController: NSWindowController?
@@ -374,6 +376,8 @@ enum SidebarItem: Hashable {
     var sidebarShown: Bool { layout.explorerVisible || sidebarOverlay }
     /// The right column shows, in its column or over the editor.
     var viewerShown: Bool { layout.rightVisible || rightOverlay }
+    /// This window's F6 stops (impl-plan §3.2): a hidden Explorer, right column or timeline is none.
+    var paneOrder: [EditorPane] { EditorPane.order(explorerVisible: sidebarShown, viewerVisible: viewerShown, timelineVisible: layout.timelineVisible) }
     /// A row the user chose in the sidebar list. A click on a row also hides the overlay
     /// sidebar (design §3.7); the arrow keys leave it open.
     func choose(_ row: SidebarItem, byClick: Bool = NSApp.currentEvent.map { $0.type == .leftMouseDown || $0.type == .leftMouseUp } ?? false) {
@@ -576,9 +580,15 @@ enum SidebarItem: Hashable {
     @objc func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) { answer(shouldClose) }
 }
 
+/// A window controller whose window hosts a v2 shell: the main window and each Versions
+/// window. F6 in its window moves through that shell's panes.
+@MainActor protocol ShellWindowController: NSWindowController {
+    var shell: WorkspaceShell { get }
+}
+
 /// The one app-owned main window (ADR-R29). It opens on Home, and each project's
 /// document attaches to this controller while it is open.
-@MainActor final class MainWindowController: NSWindowController, NSWindowDelegate, NSWindowRestoration {
+@MainActor final class MainWindowController: NSWindowController, NSWindowDelegate, NSWindowRestoration, ShellWindowController {
     static let shared = MainWindowController(shell: AppModel.sharedModel.shell)
     let shell: WorkspaceShell
     private static let untitledAutosaveKey = "voxclip.untitledAutosave"
@@ -686,19 +696,20 @@ enum SidebarItem: Hashable {
     override func windowTitle(forDocumentDisplayName displayName: String) -> String { shell.projectTitle }
 }
 
-/// The close button and Window > Close run the shell's leave boundary first, so
-/// AppKit never closes the shared window together with a project.
+/// The main window. F6 moves through its shell's panes (any shell window's, through
+/// `ShellWindowController`). The close button and Window > Close run the shell's leave
+/// boundary first, so AppKit never closes the shared window together with a project.
 @MainActor final class MainWindow: NSWindow {
     var closeProject: (() async -> Bool)?
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, EditorPane.isCycleKey(code: event.keyCode, modifiers: event.modifierFlags), attachedSheet == nil,
-           let editor = AppModel.sharedModel.shell.editor, !AppModel.sharedModel.shell.showsHome {
+           let shell = (windowController as? ShellWindowController)?.shell, shell.editor != nil, !shell.showsHome {
             if let input = firstResponder as? any NSTextInputClient, input.hasMarkedText() { super.sendEvent(event); return }
             if !event.modifierFlags.contains(.shift), let text = firstResponder as? TranscriptNSTextView, text.selectionBarVisible {
                 text.showSelectionBar(focus: true)
                 return
             }
-            editor.movePaneFocus(backward: event.modifierFlags.contains(.shift))
+            shell.movePaneFocus(backward: event.modifierFlags.contains(.shift))
             return
         }
         super.sendEvent(event)

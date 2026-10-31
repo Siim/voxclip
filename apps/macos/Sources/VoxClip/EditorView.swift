@@ -160,10 +160,11 @@ import VoxClipCore
 }
 
 /// Puts keyboard focus in the transcript, as when a project opens. Returns false while
-/// the transcript isn't in the window yet.
+/// the transcript isn't in the window yet. It finds the text view anywhere in the
+/// window's shell, under the clip-bar row (impl-plan V1b).
 @MainActor @discardableResult func focusTranscript(in window: NSWindow?) -> Bool {
     @MainActor func find(_ view: NSView) -> NSTextView? {
-        if let text = view as? TranscriptNSTextView { return text }
+        if let text = view as? TranscriptNSTextView, !text.isHiddenOrHasHiddenAncestor { return text }
         for child in view.subviews { if let text = find(child) { return text } }
         return nil
     }

@@ -539,7 +539,7 @@ struct EditorShellState: Equatable {
 /// The root of the shell (impl-plan V1a): a vertical stack of the content split and the
 /// 24 pt status bar. The content split holds the Explorer and the work area: the editor
 /// column and the right column over the timeline panel, or Home.
-@MainActor final class EditorShellController: NSViewController, NSSearchFieldDelegate {
+@MainActor final class EditorShellController: NSViewController, NSSearchFieldDelegate, ShellChromeFocus {
     let shell: WorkspaceShell
     private let content = ShellSplitController(vertical: true, identifier: "voxclip.shell.content")
     private let explorerHeader = ShellBand(fill: "bg.window", bottomLine: false, movesWindow: true, region: "explorerHeader")
@@ -603,6 +603,7 @@ struct EditorShellState: Equatable {
             return explorerItem.isCollapsed && self.shell.windowWidth < self.shell.explorerCollapseWidth
         }
         addChild(content)
+        shell.chromeFocus = self
         let status = StatusBarView(shell: shell)
         statusBar = status
         root.set(top: [], fill: content.view, bottom: [(status, ShellMetrics.statusBar)])
@@ -734,6 +735,27 @@ struct EditorShellState: Equatable {
     @objc private func homeSearchChanged(_ sender: NSSearchField) { followHomeSearch() }
     private func followHomeSearch() {
         if shell.homeQuery != homeSearch.stringValue { shell.homeQuery = homeSearch.stringValue }
+    }
+
+    // MARK: F6 (ShellChromeFocus)
+
+    func paneHoldingFocus() -> EditorPane? {
+        guard let responder = view.window?.firstResponder as? NSView else { return nil }
+        if responder is TranscriptNSTextView { return .transcript }
+        if let statusBar, responder.isDescendant(of: statusBar) { return .status }
+        if let work = editorWork, responder.isDescendant(of: work.tabRow) || responder.isDescendant(of: work.clipBar) { return .tabs }
+        return nil
+    }
+    /// The tab and clip-bar rows take focus at ⋯ until V3a's tabs; the transcript is found
+    /// in this window's tree; the status bar takes it itself.
+    @discardableResult func focus(_ pane: EditorPane) -> Bool {
+        guard let window = view.window else { return false }
+        switch pane {
+        case .tabs: return editorWork.map { window.makeFirstResponder($0.overflow) } ?? false
+        case .transcript: return focusTranscript(in: window)
+        case .status: return statusBar?.takeFocus() ?? false
+        case .sidebar, .viewer, .panel, .timeline: return false
+        }
     }
 
 }

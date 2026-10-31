@@ -155,9 +155,9 @@ private final class FullScreenStandIn: NSWindow {
         shell.toggleTimeline()
         #expect(!shell.layout.timelineVisible)
         model.focusedPane = .panel
-        model.movePaneFocus(backward: false)
-        #expect(model.focusedPane == .sidebar)
-        model.movePaneFocus(backward: true)
+        model.movePaneFocus(backward: false, through: shell.paneOrder)
+        #expect(model.focusedPane == .status)
+        model.movePaneFocus(backward: true, through: shell.paneOrder)
         #expect(model.focusedPane == .panel)
 
         shell.toggleViewer()
@@ -193,6 +193,32 @@ private final class FullScreenStandIn: NSWindow {
         menu.performActionForItem(at: index)
         #expect(model.showFindClips && model.findClipsAnchor == .overflow)
         model.showFindClips = false
+    }
+
+    /// F6 reaches the AppKit stops: ⋯ for the tab and clip-bar rows, and the status bar,
+    /// and starts again from the stop that holds focus (impl-plan §3.2).
+    @Test func f6ReachesTheTabRowAndTheStatusBar() async throws {
+        let (shell, controller, window) = try await openShell()
+        defer { controller.tearDown(); shell.editor?.close() }
+        let editor = try #require(shell.editor)
+        let work = try #require(controller.editorWork)
+        editor.focusedPane = .sidebar
+        shell.movePaneFocus(backward: false)
+        #expect(editor.focusedPane == .tabs && window.firstResponder === work.overflow)
+        editor.focusedPane = .timeline
+        shell.movePaneFocus(backward: false)
+        #expect(editor.focusedPane == .status && window.firstResponder === controller.statusBar)
+        // Only F6 focuses the status bar: once it lets go, a click cannot give it focus.
+        window.makeFirstResponder(nil)
+        #expect(controller.statusBar?.acceptsFirstResponder == false)
+        controller.statusBar?.takeFocus()
+        editor.focusedPane = .sidebar
+        shell.movePaneFocus(backward: true)
+        #expect(editor.focusedPane == .timeline)
+        window.makeFirstResponder(work.overflow)
+        editor.focusedPane = .panel
+        shell.movePaneFocus(backward: false)
+        #expect(editor.focusedPane == .transcript)
     }
 
     /// Full-screen entry at a Split View width collapses both columns and the window

@@ -27,6 +27,18 @@ import AppKit
 
     func tearDown() { observation?.cancel() }
 
+    /// The status bar is F6's last stop (impl-plan §3.2): F6 gives it keyboard focus, with
+    /// the focus ring inside its bounds; a click does not.
+    @discardableResult func takeFocus() -> Bool {
+        focusRequested = true
+        defer { focusRequested = false }
+        return window?.makeFirstResponder(self) ?? false
+    }
+    private var focusRequested = false
+    override var acceptsFirstResponder: Bool { focusRequested || window?.firstResponder === self }
+    override var focusRingMaskBounds: NSRect { bounds }
+    override func drawFocusRingMask() { bounds.insetBy(dx: 2, dy: 2).fill() }
+
     private func render() {
         let editor = shell.showsHome ? nil : shell.editor
         // The summary follows the project, which only projectRevision makes observable.
