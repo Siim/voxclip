@@ -42,7 +42,11 @@ actor WaveformCache {
         }
         if let task = pending[key] { return await task.value }
         let task = Task<WaveformData?, Never>.detached(priority: .utility) {
-            if let cached = Self.readEnvelope(key) { return cached }
+            // Eviction leaves the entry alone while its envelope is read (architecture §8.2).
+            let lease = await CacheKeyRegistry.shared(cache: key.cache).lease(key.contentKey)
+            let cached = Self.readEnvelope(key)
+            lease.release()
+            if let cached { return cached }
             return try? await Self.decode(key.source)
         }
         pending[key] = task

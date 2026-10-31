@@ -130,6 +130,9 @@ import VoxClipMedia
         running = true; error = nil; prompt = nil
         model.workTask = Task {
             defer { running = false; model.progress = nil; model.progressFraction = nil; model.progressStage = nil }
+            // From extraction to the transcript, eviction leaves this source's cache entry alone (architecture §8.2).
+            let lease = await model.app.cacheKeys.lease(model.project.media.source.contentKey)
+            defer { lease.release() }
             do {
                 let terms = keyterms.split(whereSeparator: { $0 == "," || $0.isNewline }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
                 guard terms.count <= 100, !terms.contains(where: { $0.count > 50 }) else { error = "Use at most 100 keyterms, each up to 50 characters."; return }

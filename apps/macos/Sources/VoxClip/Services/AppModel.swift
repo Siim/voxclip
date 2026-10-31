@@ -161,7 +161,41 @@ extension ProviderChoice {
         detectedConnectorStatus[provider.id] = result
         return result
     }
-    var openProjectKeys: [String: String] = [:]
+    /// Each open project's content key by project id, in every window. Each one holds a lease in `cacheKeys`, so
+    /// eviction never strips or removes an open project's cache entry, and opening it marks the entry used
+    /// (architecture §8.2).
+    var openProjectKeys: [String: String] = [:] { didSet { leaseOpenProjectKeys() } }
+    @ObservationIgnored private var openProjectLeases: [String: CacheKeyLease] = [:]
+    /// The last `lastAccessAt` update for a project that opened; each waits for the one before it.
+    @ObservationIgnored private(set) var cacheTouches: Task<Void, Never>?
+    private func leaseOpenProjectKeys() {
+        for (id, lease) in openProjectLeases where openProjectKeys[id] != lease.key {
+            lease.release()
+            openProjectLeases[id] = nil
+        }
+        for (id, key) in openProjectKeys where openProjectLeases[id] == nil {
+            openProjectLeases[id] = cacheKeys.leaseNow(key)
+            let store = CacheStore(locations: locations), previous = cacheTouches
+            cacheTouches = Task.detached(priority: .utility) {
+                await previous?.value
+                await store.touch(contentKey: key)
+            }
+        }
+    }
+    /// The content keys in use in this data folder's cache (architecture §8.2).
+    var cacheKeys: CacheKeyRegistry { CacheKeyRegistry.shared(cache: locations.cache) }
+    /// Background eviction and Clear cache for this data folder (architecture §8.2). Tests may replace it before launch.
+    @ObservationIgnored lazy var cacheEviction = CacheEvictionScheduler(store: CacheStore(locations: locations), log: log, limitBytes: { [weak self] in
+        await self?.cacheLimitBytes ?? CacheEvictionScheduler.defaultLimitBytes
+    })
+    /// Settings → General → "Cache size limit" in bytes.
+    var cacheLimitBytes: Int64 { CacheEvictionScheduler.limitBytes(gigabytes: number("cache.limitGB", fallback: 5)) }
+    /// A background eviction pass, after each import and when the limit is lowered (architecture §8.2). Harness sessions
+    /// keep their cache, as they skip the launch pass and the scratch sweep.
+    func requestCacheEviction() {
+        guard !Self.isTestSession else { return }
+        cacheEviction.requestRun()
+    }
     let log: RedactingLogger
     let secrets: SecretStore
     let settingsStore: any SettingsStore
@@ -171,7 +205,7 @@ extension ProviderChoice {
     let projectStore: JSONProjectStore
     let updates: any UpdateChecking
     let shared: SharedResources?
-    let locations = DataLocations()
+    let locations: DataLocations
     private var settingsTask: Task<Void, Never>?
     private var startupTask: Task<Void, Never>?
     private var voiceRecoveryTask: Task<Void, Never>?
@@ -197,9 +231,12 @@ extension ProviderChoice {
     @ObservationIgnored lazy var exportLedger = ExportLedger(file: locations.root.appendingPathComponent("exports.json"))
     @ObservationIgnored lazy var appleSpeechAssets = AppleSpeechAssetLibrary(app: self)
 
+    /// `locations` defaults to the user's data folder, or `VOXCLIP_DATA_DIR`; tests pass their own.
     public init(settingsStore: (any SettingsStore)? = nil, updates: any UpdateChecking = UpdateChecker(), modelDownloader: (any ModelDownloader)? = nil,
-                developmentDefaults: Bool = false) {
-        let directory = DataLocations().logs
+                developmentDefaults: Bool = false, locations: DataLocations? = nil) {
+        let data = locations ?? DataLocations()
+        self.locations = data
+        let directory = data.logs
         let logger = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path, directory: directory) { entry in
             let logger = os.Logger(subsystem: "com.voxconvo.voxclip", category: entry.category)
             switch entry.level {
@@ -211,7 +248,7 @@ extension ProviderChoice {
         }
         log = logger
         secrets = SecretStore(log: logger)
-        self.settingsStore = settingsStore ?? JSONSettingsStore(locations: locations, logger: logger)
+        self.settingsStore = settingsStore ?? JSONSettingsStore(locations: data, logger: logger)
         unsetDefaults = developmentDefaults && settingsStore == nil ? VoiceLabGate.developmentDefaults(internalBuild: RewriteEntryPolicy.buildEnabled) : [:]
         projectStore = JSONProjectStore(logger: logger)
         self.updates = updates
@@ -263,6 +300,8 @@ extension ProviderChoice {
             let exports = [ExportSelection.folder(string("export.folder", fallback: "~/Movies/VoxClip"))]
                 + exportLedger.records.map { URL(fileURLWithPath: $0.outputPath).deletingLastPathComponent() }
             _ = await Task.detached(priority: .utility) { ScratchCleanup.sweep(registry: registry, cache: cache, temporary: temporary, exportDirectories: exports) }.value
+            // The cache size limit is kept in the background, first 30 s after launch (architecture §8.2).
+            cacheEviction.scheduleAfterLaunch()
         }
         restoreCachedUpdate()
         startVoiceRecovery()
@@ -317,7 +356,10 @@ extension ProviderChoice {
         if key == "editing.pauseBreath", settingsLoaded, settings.values[key] != value { pauseBreathRevision += 1 }
         if key == "llm.connector" || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") { refreshConnectorReadiness() }
         let serverHost = key.hasPrefix("llm.baseUrl.") ? LocalServerAddress.remoteHost(string(key)) : nil
+        // A lower cache limit is enforced at once, in the background (architecture §8.2).
+        let lowersCacheLimit = if key == "cache.limitGB", case .number(let limit) = value { limit < number(key, fallback: 5) } else { false }
         settings.values[key] = value
+        if lowersCacheLimit { requestCacheEviction() }
         if key.hasPrefix("llm.baseUrl."), LocalServerAddress.remoteHost(string(key)) != serverHost {
             let consent = "llm.cloudConsent.\(key.dropFirst("llm.baseUrl.".count))"
             if bool(consent) { set(consent, .bool(false)) }
