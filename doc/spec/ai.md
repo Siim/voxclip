@@ -332,8 +332,8 @@ Before the first request of a connector whose `privacy` is `thirdPartyCloud`, sh
 
 The sheet words the action that triggers it; one answer covers every action of that connector. The sentences above are for Find clips. When Rewrite (voice-lab.md) triggers the sheet:
 
-- API keys: "Rewrite sends these {n} words (no audio or video) to {label} using your API key." {n} counts the passage's words.
-- Claude Code and Codex: the first sentence is unchanged, and the second names the words instead of the transcript: "These words are sent to Anthropic and count toward your Claude plan's usage." or "These words are sent to Anthropic and billed to the API key Claude Code is signed in with." For Codex: "These words are sent to OpenAI and count toward your ChatGPT plan's usage." or "These words are sent to OpenAI and billed to the API key Codex is signed in with."
+- API keys: "Rewrite sends these {n} words (no audio or video) to {label} using your API key." for a selection. When the scope is a clip, the sheet names the words of the clip you rewrite: "Rewrite sends the {n} words of the clip you rewrite (no audio or video) to {label} using your API key." For Full take: "Rewrite sends the {n} words of this video (no audio or video) to {label} using your API key." {n} counts the scope's words (`doc/design.md` §6.3).
+- Claude Code and Codex: the first sentence is unchanged, and the second names the words instead of the transcript: "These words are sent to Anthropic and count toward your Claude plan's usage." or "These words are sent to Anthropic and billed to the API key Claude Code is signed in with." For Codex: "These words are sent to OpenAI and count toward your ChatGPT plan's usage." or "These words are sent to OpenAI and billed to the API key Codex is signed in with." For a clip, "These words" reads "The words of the clip you rewrite"; for Full take, "The words of this video".
 
 When Settings → **Test** triggers the sheet:
 
@@ -1121,9 +1121,11 @@ Status lines update on pane open and after **Test**. The catalog `label` is plai
 4. On an error: orange "Failed: {user message from §5}".
 5. Test never stores the result and never runs automatically.
 
-### 10.3 Clip and tighten UI hooks (owned by the editor spec)
+### 10.3 Clip, tighten and Rewrite UI hooks (owned by the editor spec)
 
 Find Clips (its popover or flyout and the sidebar's Suggested rows) and the tighten review are specified in design.md §6.2 and §6.4. This spec fixes only their AI-specific behaviour, in §11.8 and §12.6.
+
+Rewrite's hooks now live in design.md §6.3: the scope bar, its AI picker, the Rewrite panel, and the inline fixes for a signed-out CLI, a missing key or a stopped local server. The picker writes `llm.connector`, the value the §10.1 pane shows, and runs detection only when it opens (§7.1 rule 5). Rewrite's requests are voice-lab.md §8.1; whether a send starts at once or asks first is voice-lab.md §3.1.
 
 ### 10.4 Headless `voxclip-cli`
 
