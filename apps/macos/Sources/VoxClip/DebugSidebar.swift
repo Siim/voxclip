@@ -667,24 +667,24 @@ import VoxClipCore
         await shell.attachForTesting(VoxClipDocument(project: five, demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         let kept = editor.keptClips
-        let full = editor.summaryLine
-        check("the full take reads \"2:10 after cuts · 8 cuts\" (\(full))", editor.cutCount == 8 && full == "2:10 after cuts · 8 cuts" && editor.subtitle == full)
+        let full = editor.statusSummary.text
+        check("the full take's status summary reads \"Full Take · 2:10 · 8 cuts\" (\(full))", editor.cutCount == 8 && full == "Full Take · 2:10 · 8 cuts")
         let detail = editor.summaryDetail
         check("the edit summary's detail reads \"2:23 source · 19 words cut in 5 places · 3 pauses cut\" (\(detail))", detail == "2:23 source · 19 words cut in 5 places · 3 pauses cut")
         check("Export reads Export Video… for the full take and gives the demo reason", editor.exportTitle == "Export Video…" && editor.exportUnavailable == "Demo projects have no video to export.")
         shell.selection = .clip(kept[1].id)
-        let second = editor.summaryLine, secondDetail = editor.summaryDetail
-        check("a clip reads \"Clip 2 · 0:20 after cuts · 2 cuts\" (\(second))", second == "Clip 2 · 0:20 after cuts · 2 cuts" && editor.exportTitle == "Export Clip…")
+        let second = editor.statusSummary.text, secondDetail = editor.summaryDetail
+        check("a clip reads \"Clip 2 · 0:20 · 2 cuts\" (\(second))", second == "Clip 2 · 0:20 · 2 cuts" && editor.exportTitle == "Export Clip…")
         check("a clip's detail reads \"0:21 source · 2 words cut in 2 places · 0 pauses cut\" (\(secondDetail))", secondDetail == "0:21 source · 2 words cut in 2 places · 0 pauses cut")
         shell.selection = .clip(kept[3].id)
-        let fourth = editor.summaryLine
+        let fourth = editor.statusSummary.text
         check("a clip with no cuts reads \"Clip 4 · 0:11 · No cuts yet\" (\(fourth))", fourth == "Clip 4 · 0:11 · No cuts yet")
         if let bounds = editor.scopeBounds, bounds.count > 2 {
             let pair = [editor.words[bounds.lowerBound + 1].id, editor.words[bounds.lowerBound + 2].id]
             editor.apply(.cutSelection(ids: pair), name: "Cut selection")
-            let one = editor.summaryLine
+            let one = editor.statusSummary.text
             editor.apply(.restoreSelection(ids: pair), name: "Restore selection")
-            check("two adjacent cut words are one cut: \"Clip 4 · {edited} after cuts · 1 cut\" (\(one))", one.hasPrefix("Clip 4 · ") && one.hasSuffix(" after cuts · 1 cut"))
+            check("two adjacent cut words are one cut: \"Clip 4 · {edited} · 1 cut\" (\(one))", one.hasPrefix("Clip 4 · ") && one.hasSuffix(" · 1 cut"))
         } else { check("clip 4 has words to cut", false) }
         shell.selection = .fullTake
         if let pause = editor.pauses.first(where: { !editor.cutPauseIDs.contains($0.id) }) {
@@ -867,7 +867,7 @@ import VoxClipCore
         app.connectorOverride = { _ in FixtureClipConnector(spans: [(20, 70), (95, 145), (170, 220)]) }
         shell.layout.explorerVisible = false
         let steps = model.undoSteps
-        let playhead = model.playhead, exportTitle = model.exportTitle, subtitle = model.subtitle
+        let playhead = model.playhead, exportTitle = model.exportTitle, summary = model.statusSummary
         // The sidebar opens once the send is authorized, inside the run (VS), so read it when the run ends.
         model.findClips()
         await model.findTask?.value
@@ -875,9 +875,9 @@ import VoxClipCore
         check("Find Clips adds three suggestions and keeps none", model.suggestedClips.count == 3 && model.keptClips.isEmpty && model.project.ai.results.count == 1 && model.clipError == nil)
         check("a run shows the hidden sidebar for its progress", revealed)
         let first = model.suggestedClips.first?.id
-        check("Find Clips focuses its first new suggestion without selecting it, in one undo step: the scope, playhead, Export and subtitle stay",
+        check("Find Clips focuses its first new suggestion without selecting it, in one undo step: the scope, playhead, Export and status summary stay",
               first != nil && model.focusedSuggestion == first && model.project.edits.activeClipId == nil && shell.selection == .fullTake
-              && model.playhead == playhead && model.exportTitle == exportTitle && model.subtitle == subtitle && model.undoSteps == steps + 1)
+              && model.playhead == playhead && model.exportTitle == exportTitle && model.statusSummary == summary && model.undoSteps == steps + 1)
         model.undoManager?.undo()
         check("one undo removes the three suggestions and their AI result", model.suggestedClips.isEmpty && model.project.ai.results.isEmpty && shell.selection == .fullTake)
         model.undoManager?.redo()
@@ -933,8 +933,8 @@ import VoxClipCore
             "And yeah, I, I, um, I mess up a lot. That's fine. I pause, take a breath and say the line again. Then I cut the bad take, which, uh, which is the worst part. Then I cut the bad take in the transcript. It takes seconds, because I'm deleting words, not hunting through a waveform.",
             "The best thirty seconds of your week are already on your phone. Post those. One habit for a bad week: film anyway, and keep only the sentence that still sounds true."
         ]
-        // Each paragraph's pace makes the summaries read the checklist's acceptance values
-        // (step 8): "2:10 after cuts · 8 cuts", "Clip 2 · 0:20 after cuts · 2 cuts" and
+        // Each paragraph's pace makes the status bar's summaries read the checklist's acceptance
+        // values (step 8): "Full Take · 2:10 · 8 cuts", "Clip 2 · 0:20 · 2 cuts" and
         // "Clip 4 · 0:11 · No cuts yet". Gaps stay under the pause threshold inside a paragraph.
         let paces = [1.33, 1.33, 1.33, 1.33, 0.92, 1.33, 2.14]
         var words: [TimedWord] = []

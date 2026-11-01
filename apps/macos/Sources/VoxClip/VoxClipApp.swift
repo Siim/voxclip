@@ -527,7 +527,7 @@ import VoxClipCore
         command(view, "Hide Timeline", 56, "j")
         let frame = NSMenuItem(title: "Frame", action: nil, keyEquivalent: "")
         let frameMenu = NSMenu(title: "Frame")
-        for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect == .source ? "Original" : aspect.rawValue, 52 + offset, "", []) }
+        for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect.frameName, 52 + offset, "", []) }
         frame.submenu = frameMenu
         view.addItem(frame)
         command(view, "Bigger Text", 18, "+")

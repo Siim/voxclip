@@ -370,6 +370,14 @@ Export statuses come from an app-local export ledger (§6.2), not from the proje
 
 ### 3.5 Toolbar (macOS) and command row (Windows)
 
+**v2 Mac status bar (V11a, 2026-11-01).** The v2 shell carries this information in a full-width, 24 pt row on `bg.statusBar`, with a `line.default` hairline above it. This replaces the Mac subtitle and toolbar summary described below. Items use 11 pt system text; only durations use SF Mono. The bar has 8 pt outer padding, 7 pt item padding, 2 pt between items and 6 pt between a dot or icon and its text.
+
+- Leading: the chosen AI's dot, short name and model; its billing only after detection has run in this app session; then the running task. Before detection the dot is a neutral ring and there is no billing claim. A CLI detected on its plan reads "No extra cost on your plan", a local AI "No extra cost", and an API-key AI "Billed to your key". Rendering the bar never starts detection.
+- Running work reads the Director task's own headline and start time, or "Finding clips… 0:12" for Hook and Find Clips. Transcription retains its progress text. A spinner accompanies running work unless Reduce Motion is on.
+- Trailing: "Clip 1 · 0:43 · 8 cuts · 5 changes to review", "16:9 · 1080p30", then the export state. Full Take names itself. Cuts retain the counting rule below. The review count appears only when Rewrite supplies proposal data for this tab, excluding items already left out; V14/V15 will supply the pending-hunk lifecycle. The summary's tooltip and accessibility help retain `summaryDetail`.
+- Frame opens the same choices as View › Frame (9:16, 1:1, 16:9, Original), checks the current aspect and changes it through `setAspect` as one undo step. It only reads in a Versions window or while media is unavailable. The resolution and frame rate describe the export output; audio-only projects show the aspect alone.
+- The row is one VoiceOver group, "Status", with named items and spoken values; billing belongs to the AI's value. Home has no status items. At narrow widths the bar drops billing, Frame, export, AI and task in that order, retaining the summary and truncating it last. F6 still reaches the status group.
+
 **Edit summary**, scoped to the selected row. It is the subtitle on macOS and the second line of the heading on Windows.
 
 - **Full take:** "{edited} after cuts · {n} cuts", for example "2:10 after cuts · 8 cuts".

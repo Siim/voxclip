@@ -174,7 +174,10 @@ struct EditorRenderSnapshot {
     /// The suggestion that has keyboard focus after Find Clips, without being selected
     /// (design §6.2): Return keeps it and ⌫ dismisses it.
     var focusedSuggestion: String?
-    var finding = false
+    /// A Find Clips run (Hook's or the popover's) is under way; `findingSince` is when it started, for the status bar's
+    /// elapsed time (impl-plan V11a).
+    var finding = false { didSet { if finding != oldValue { findingSince = finding ? Date() : nil } } }
+    private(set) var findingSince: Date?
     var exportProgress: ExportProgress?
     var exports: [ExportResult] = []
     /// Each exported target's share disclosure line (voice-lab.md §11.3), keyed like `ExportLedger.targetID`.
@@ -343,21 +346,6 @@ struct EditorRenderSnapshot {
     var selectedIDs: [String] { words.filter { selectedWordIDs.contains($0.id) }.map(\.id) }
     var sourceDuration: Double { project.media.source.durationSeconds }
     var duration: Double { renderTimeline?.duration ?? sourceDuration }
-    var subtitle: String {
-        if exporting { return "Rendering \(exportIndex) of \(max(1, exportClipIDs.count))" }
-        if let progress { return progress }
-        if !editingAvailable && !words.isEmpty { return "Editing is not available in this build. Your video and edits are still here." }
-        if voiceLabPlan == nil && !summary.canExport && !words.isEmpty { return "Keep at least one word before exporting." }
-        return summaryLine
-    }
-    /// The edit summary for the selected row (design §3.5): "{edited} after cuts · {n}
-    /// cuts", "Clip {k} · " first for a clip or suggestion, and "{edited} · No cuts yet"
-    /// when nothing in the scope is cut.
-    var summaryLine: String {
-        let scope = activeClip.flatMap { clipNumber($0.id) }.map { "Clip \($0) · " } ?? ""
-        let edited = durationLabel(duration), cuts = cutCount
-        return cuts == 0 ? "\(scope)\(edited) · No cuts yet" : "\(scope)\(edited) after cuts · \(cuts == 1 ? "1 cut" : "\(cuts) cuts")"
-    }
     /// Cuts in the scope (design §3.5): the maximal runs of consecutive cut words, plus
     /// the cut pauses between the scope's words.
     var cutCount: Int { let cuts = scopeCuts; return cuts.runs + cuts.pauses }
@@ -375,7 +363,7 @@ struct EditorRenderSnapshot {
         let cutPauses = pauses.filter { cutPauseIDs.contains($0.id) && range.lowerBound <= $0.afterIndex && $0.afterIndex < range.upperBound }.count
         return (cut, runs, cutPauses)
     }
-    /// The edit summary's detail (design §3.5), which VoiceOver reads after the subtitle:
+    /// The edit summary's detail (design §3.5), which VoiceOver reads after the status bar's summary (`statusSummary`):
     /// "{source} source · {w} words cut in {r} places · {p} pauses cut".
     var summaryDetail: String {
         let cuts = scopeCuts
@@ -1217,7 +1205,7 @@ extension EditorModel {
                     next.edits = changed.projectEdits
                     replace(next, name: "Find clips")
                     // The first new suggestion in transcript order is focused, not selected
-                    // (design §6.2): the scope, playhead, Export and subtitle stay.
+                    // (design §6.2): the scope, playhead, Export and status summary stay.
                     focusedSuggestion = added.min { (index($0.startWordId) ?? .max) < (index($1.startWordId) ?? .max) }?.id
                     fallbackNote = usedFallback ? "Answered by \(result.model) because \(selectedModel) was busy." : nil
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))

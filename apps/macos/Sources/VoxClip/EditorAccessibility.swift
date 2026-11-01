@@ -54,6 +54,20 @@ enum EditorIconAction: CaseIterable {
     }
 }
 
+extension StatusItem.Kind {
+    /// The status item's VoiceOver name (impl-plan V11a); its value is what the item shows, in words.
+    var name: String {
+        switch self {
+        case .harness: "AI"
+        case .billing: "Billing"
+        case .task: "In progress"
+        case .summary: "Edit summary"
+        case .frame: "Frame"
+        case .export: "Export"
+        }
+    }
+}
+
 struct SidebarActionTarget: ViewModifier {
     func body(content: Content) -> some View {
         content.frame(minWidth: EditorAccessibilityPolicy.minimumTarget, minHeight: EditorAccessibilityPolicy.minimumTarget)
