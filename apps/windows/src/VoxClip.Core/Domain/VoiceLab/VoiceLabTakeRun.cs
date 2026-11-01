@@ -120,6 +120,9 @@ public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabRece
     public IReadOnlySet<Guid> AcceptedRequestIds => Accepted.Concat(Receipt is null ? [] : new[] { Receipt.ActionId })
         .Concat(QaReceipt is null ? [] : new[] { QaReceipt.ActionId }).ToHashSet();
     public string DisplayName => "Take " + (Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    /// <summary>An interrupted take retains paid request IDs without claiming its speech failed QA.</summary>
+    public bool Stopped => Failure is OperationCanceledException or VoxClip.Core.Services.VoiceLab.VoiceLabRunInvalidatedException
+        or VoiceLabException { Kind: VoiceLabErrorKind.Cancelled };
     public bool Selectable => Failure is null && Qa?.Passed == true && Audio is not null;
     public bool Fits => Audio?.Fit is VoiceLabFitResult.Exact;
 }

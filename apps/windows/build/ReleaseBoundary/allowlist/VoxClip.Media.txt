@@ -1763,6 +1763,7 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public .ctor(System
 member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public ApproveAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch)
 member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public DiscardAsync(int)
 member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public ExecuteAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch,int,System.Func`2<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow>,System.Threading.Tasks.Task>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public ExecuteAsync(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeBatch,int,VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch,System.Func`2<System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow>,System.Threading.Tasks.Task>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public PrepareAsync(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabTakeInput>,System.Nullable`1<System.Guid>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabTakeBatchRun :: method public get_Runs()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRenderer :: method private Invalid()
@@ -1786,6 +1787,7 @@ member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: field private storage
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: field private store
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: field private sync
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal .ctor(VoxClip.Core.Services.VoiceLab.ElevenLabsVoiceLab,VoxClip.Core.Services.VoiceLab.VoiceConsentStore,VoxClip.Media.VoiceLab.VoiceLabTakeStorage,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchGate,System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task`1<bool>>,VoxClip.Media.VoiceLab.VoiceLabTakeRunChecks)
+member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal get_PreparedSetId()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal get_Suspension()
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method internal set_Suspension(System.Func`2<string,System.Threading.Tasks.Task>)
 member VoxClip.Media.VoiceLab.VoiceLabTakeRun :: method private Check(long,VoxClip.Core.Services.VoiceLab.VoiceLabDispatchBinding,System.Threading.CancellationToken)

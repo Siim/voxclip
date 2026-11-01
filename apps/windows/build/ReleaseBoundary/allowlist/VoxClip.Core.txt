@@ -7182,8 +7182,8 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone :: method public set_Source
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone :: method public set_SourceStartSample(long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRoomToneSelection :: field private RunFrames
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRoomToneSelection :: method public Select(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,VoxClip.Core.Domain.Transcript.AudioEnvelope,double,long)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public .ctor(System.Func`2<System.Threading.CancellationToken,System.Threading.Tasks.Task>,System.Action`1<System.Action>)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public AuthorizeAsync(System.Threading.CancellationToken)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public .ctor(System.Func`3<System.Guid,System.Threading.CancellationToken,System.Threading.Tasks.Task>,System.Action`1<System.Action>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public AuthorizeAsync(System.Guid,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public Start`1(System.Func`1<System.Threading.Tasks.Task`1<!!0>>,System.Threading.CancellationToken)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch :: method public WithStart(System.Action`1<System.Action>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabSeam :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabSeam)
@@ -7648,6 +7648,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_Receipt
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_Score()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_Seed()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_Selectable()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public get_Stopped()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow,VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabTakeRow :: method public set_Accepted(System.Collections.Generic.IReadOnlySet`1<System.Guid>)

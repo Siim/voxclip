@@ -49,6 +49,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             record.RecordId, speech, request, true, ct: ct, binding: binding, modelRevision: model),
             (samples, rate, ct) => speaker.EmbeddingAsync(VoiceConsentAudio.Resample(samples, rate), ct));
     }
+    internal Guid? PreparedSetId { get { lock (sync) return pending?.Quote.Id; } }
     public VoiceLabTakeScratch? Scratch(Guid id) { lock (sync) return scratches.GetValueOrDefault(id); }
     public VoiceLabAsset? PaidAsset(Guid id) { lock (sync) return paidAssets.GetValueOrDefault(id); }
     public async Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default)
@@ -133,7 +134,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
     {
         if (!approved) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-        return ExecuteWithDispatchAsync(quote, new(_ => Task.CompletedTask, action => action()), progress, ct);
+        return ExecuteWithDispatchAsync(quote, new((_, _) => Task.CompletedTask, action => action()), progress, ct);
     }
     public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
@@ -184,7 +185,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             if (value.ApprovedAhead is null && !client.QuotesAreFresh(quote.Actions)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             await ValidateAsync(value, token).ConfigureAwait(false);
             await Checkpoint("validation", value, token).ConfigureAwait(false);
-            await dispatch.AuthorizeAsync(token).ConfigureAwait(false);
+            await dispatch.AuthorizeAsync(quote.Takes[0].Synthesis.Review.RequestId, token).ConfigureAwait(false);
             var approvals = value.ApprovedAhead?.Select(approval => approval.ForDispatch(dispatch)).ToArray()
                 ?? client.ApproveTakeRun(quote, dispatch);
             await Checkpoint("approval", value, token).ConfigureAwait(false);

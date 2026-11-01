@@ -33,12 +33,17 @@ public sealed class VoiceLabTakeBatchRun(IReadOnlyList<VoiceLabTakeRun> runs)
         }
         catch { await DiscardAsync(0).ConfigureAwait(false); throw; }
     }
-    public async Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeBatch batch, int window,
+    public Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeBatch batch, int window,
+        Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default) =>
+        ExecuteAsync(batch, window, new VoiceLabRunDispatch((_, _) => Task.CompletedTask, action => action()), progress, ct);
+
+    /// <summary>Runs one approved window through the App's request-specific cost and launch checks.</summary>
+    public async Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeBatch batch, int window, VoiceLabRunDispatch dispatch,
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
     {
         if (batch.Windows.Count != Runs.Count || window < 0 || window >= Runs.Count) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         VoiceLabTakeRunResult result;
-        try { result = await Runs[window].ExecuteAsync(batch.Windows[window].Quote, true, progress, ct).ConfigureAwait(false); }
+        try { result = await Runs[window].ExecuteWithDispatchAsync(batch.Windows[window].Quote, dispatch, progress, ct).ConfigureAwait(false); }
         catch { await DiscardAsync(window).ConfigureAwait(false); throw; }
         if (result.End is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop)) await DiscardAsync(window).ConfigureAwait(false);
         return result;

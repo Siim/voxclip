@@ -86,7 +86,7 @@ internal sealed partial class RewriteGeneration
             _ => ReviewPhase()
         };
         Announcement = BestTakeId is null ? TakeRowPresentation.NonePassed :
-            TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable));
+            TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable && !row.Stopped));
         Notify();
     }
     internal async Task<bool> SelectTakeAsync(Guid id)

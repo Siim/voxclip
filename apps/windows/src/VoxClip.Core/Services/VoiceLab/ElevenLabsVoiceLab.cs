@@ -625,7 +625,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (policy is not null) RequirePermit(policy);
             if (policy?.DispatchPermit is { } bound && bound.RequestId != billing?.Review.RequestId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (policy is not null && billing?.Review.ConsentRecordId is { } consent && consent != policy.RecordId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            if (billing?.RunDispatch is { } checking) await checking.AuthorizeAsync(deadline.Token).ConfigureAwait(false);
+            if (billing?.RunDispatch is { } checking) await checking.AuthorizeAsync(billing.Review.RequestId, deadline.Token).ConfigureAwait(false);
             Task<HttpResponseMessage> Start()
             {
                 lock (discoveredGate)
