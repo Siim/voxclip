@@ -27,7 +27,7 @@ struct PaidSendKeyGuard {
     init(now: TimeInterval = ProcessInfo.processInfo.systemUptime) { appearedAt = now }
     mutating func reset(now: TimeInterval = ProcessInfo.processInfo.systemUptime) { appearedAt = now }
     func accepts(timestamp: TimeInterval, now: TimeInterval, isRepeat: Bool, command: Bool) -> Bool {
-        !isRepeat && (command || timestamp >= appearedAt && now - appearedAt >= 0.5)
+        !isRepeat && (command || timestamp >= appearedAt + 0.5 && now >= timestamp)
     }
 }
 
@@ -78,7 +78,7 @@ struct PaidSendKeyGuard {
     private func finish(_ approved: Bool) {
         let pending = continuation, callback = onFinish
         let existed = prompt != nil
-        continuation = nil; prompt = nil; requestID = nil; save = nil
+        continuation = nil; prompt = nil; requestID = nil; save = nil; current = { true }
         key = ""; keyError = nil; savingKey = false
         pending?.resume(returning: approved)
         if existed { callback?(approved) }

@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Mac: inline approvals reject delayed early Return events; transcription preserves post-approval edits and keeps cancelled-upload estimates isolated from later runs.
 - Mac: Transcribe now runs inline in the transcript, with editable model downloads, Apple Speech first for English, priced ElevenLabs approval on every run, and inline Transcribe Again.
 - Mac confirms API-key AI sends and first-use privacy inline below the clip bar. Saving a key makes no request, and every billed retry asks again.
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).

@@ -3,69 +3,136 @@ import VoxClipCore
 import VoxClipMedia
 
 extension InlineTranscription {
-    func performRun(plan: TranscriptionPlan, cost: Double?, request: Int) async {
+    @MainActor final class ApprovedRun {
+        let revision: Int
+        let project: Project
+        let plan: TranscriptionPlan
+        let cost: Double?
+        let approvedAt = Date()
+        let evidence = TranscriptionEvidence()
+        var cancelled = false
+        var watch: Task<Void, Never>?
+        var spendRecorded = false
+
+        init(revision: Int, project: Project, plan: TranscriptionPlan, cost: Double?) {
+            self.revision = revision; self.project = project; self.plan = plan; self.cost = cost
+        }
+    }
+
+    func isCurrent(_ request: ApprovedRun) -> Bool { request.revision == revision && activeRun === request }
+
+    func validate(_ request: ApprovedRun) throws {
+        try Task.checkCancellation()
+        guard isCurrent(request), !request.cancelled else { throw CancellationError() }
+        guard request.project == model.project, model.capabilities.writable, model.capabilities.media else {
+            throw VoxClipError.transcriptionFailed("The project changed while transcribing. Your current edits are kept. Try again when you are ready.")
+        }
+    }
+
+    func performRun(_ request: ApprovedRun) async {
         // From extraction through replacement, eviction leaves this source's cache entry alone (architecture §8.2).
-        let lease = await model.app.cacheKeys.lease(model.project.media.source.contentKey)
+        let contentKey = request.project.media.source.contentKey
+        let lease: CacheKeyLease
+        #if DEBUG
+        if let leaseOverride { lease = await leaseOverride(contentKey) }
+        else { lease = await model.app.cacheKeys.lease(contentKey) }
+        #else
+        lease = await model.app.cacheKeys.lease(contentKey)
+        #endif
         defer { lease.release() }
-        let before = model.project
-        var fromCache = false
         var succeeded = false
         do {
+            try validate(request)
             model.progress = "Reading video…"; model.progressStage = .readingVideo
-            let transcript: Transcript
+            let result: TranscriptionResult
             #if DEBUG
-            if let runOverride { transcript = try await runOverride(plan) }
-            else { (transcript, fromCache) = try await transcribe(plan: plan) }
+            if let requestRunOverride { result = try await requestRunOverride(request) }
+            else if let runOverride { result = TranscriptionResult(transcript: try await runOverride(request.plan)) }
+            else { result = try await transcribe(request) }
             #else
-            (transcript, fromCache) = try await transcribe(plan: plan)
+            result = try await transcribe(request)
             #endif
-            try Task.checkCancellation()
-            guard request == revision else { return }
-            guard before == model.project, model.capabilities.writable else {
-                throw VoxClipError.transcriptionFailed("The project changed while transcribing. Your current edits are kept. Try again when you are ready.")
-            }
+            if result.fromCache { request.evidence.recordCacheHit() }
+            try validate(request)
+            let transcript = result.transcript
             model.replaceTranscript(transcript)
             completedAt = Date()
-            completion = "Transcribed \(cost == nil ? "on this Mac" : "with ElevenLabs") · \(transcript.words.count) words"
+            completion = "Transcribed \(request.cost == nil ? "on this Mac" : "with ElevenLabs") · \(transcript.words.count) words"
+            if result.fromCache && request.cost != nil { completion = "Using the earlier ElevenLabs transcript of this file (no charge)." }
             model.announce(completion ?? "Transcribed")
-            if fromCache && cost != nil { completion = "Using the earlier ElevenLabs transcript of this file (no charge)." }
             succeeded = true
-        } catch is CancellationError { cancelledNote = cancellationNote(cost: cost) }
-        catch VoxClipError.cancelled { cancelledNote = cancellationNote(cost: cost) }
-        catch {
-            self.error = await model.app.safeError(error)
-            if let failure = error as? VoxClipError, (failure.code == .keyRejected || failure.code == .keyPermissionMissing) { hasKey = false }
-            model.announce(self.error ?? "Transcription failed")
+        } catch is CancellationError {
+            if isCurrent(request) { cancelledNote = cancellationNote(request) }
+        } catch VoxClipError.cancelled {
+            if isCurrent(request) { cancelledNote = cancellationNote(request) }
+        } catch {
+            if isCurrent(request) {
+                let message: String
+                #if DEBUG
+                if let runErrorOverride { message = await runErrorOverride(error) }
+                else { message = await model.app.safeError(error) }
+                #else
+                message = await model.app.safeError(error)
+                #endif
+                if isCurrent(request), request.cancelled || Task.isCancelled {
+                    cancelledNote = cancellationNote(request)
+                } else if isCurrent(request) {
+                    self.error = message
+                    if let failure = error as? VoxClipError, (failure.code == .keyRejected || failure.code == .keyPermissionMissing) { hasKey = false }
+                    model.announce(message)
+                }
+            }
         }
-        if let cost, !fromCache, uploadStarted {
-            let total = await model.app.transcriptionSpend.record(cost, uncertain: !succeeded)
-            spendToday = total.amount; spendUncertain = total.uncertain
+        request.watch?.cancel(); await request.watch?.value; request.watch = nil
+        let evidence = request.evidence.snapshot
+        if let cost = request.cost, !evidence.fromCache, evidence.uploadStarted, !request.spendRecorded {
+            request.spendRecorded = true
+            let total = await model.app.transcriptionSpend.record(cost, uncertain: !succeeded, at: request.approvedAt)
+            if isCurrent(request) { spendToday = total.amount; spendUncertain = total.uncertain }
         }
-        guard request == revision else { return }
+        guard isCurrent(request) else { return }
         pendingCost = nil; model.progress = nil; model.progressFraction = nil; model.progressStage = nil
         phase = succeeded ? .hidden : cancelledNote != nil ? (again ? .hidden : .folded) : .choosing
-        keyGuard.reset()
+        keyGuard.reset(); activeRun = nil
     }
-    func cancellationNote(cost: Double?) -> String {
-        if cost != nil && uploadStarted {
-            return "Cancelled. ElevenLabs may still bill audio it already received. Up to \(Self.money(cost ?? 0)) for this request. Your video is still here."
+    func cancellationNote(_ request: ApprovedRun) -> String {
+        let evidence = request.evidence.snapshot
+        if let cost = request.cost, evidence.uploadStarted, !evidence.fromCache {
+            return "Cancelled. ElevenLabs may still bill audio it already received. Up to \(Self.money(cost)) for this request. Your video is still here."
         }
-        return cost != nil ? "Cancelled. Nothing has been sent and nothing is billed. Your video is still here." : "Cancelled. Your video is still here."
+        return request.cost != nil ? "Cancelled. Nothing has been sent and nothing is billed. Your video is still here." : "Cancelled. Your video is still here."
     }
-    private func transcribe(plan: TranscriptionPlan) async throws -> (Transcript, Bool) {
-        let engine = await adapter()
+    private func transcribe(_ request: ApprovedRun) async throws -> TranscriptionResult {
+        let engine = await adapter(for: request.plan)
+        try validate(request)
         model.progress = "Extracting audio…"; model.progressStage = .extractingAudio; runStage = 1
-        let audio = try await CacheStore(locations: model.app.locations).extractAudio(sourceURL: model.sourceURL, contentKey: model.project.media.source.contentKey, durationSeconds: model.sourceDuration, using: AVAudioExtractor()) { _ in }
-        try Task.checkCancellation()
+        let source = request.project.media.source
+        let audio = try await CacheStore(locations: model.app.locations).extractAudio(sourceURL: URL(fileURLWithPath: source.absolutePath), contentKey: source.contentKey, durationSeconds: source.durationSeconds, using: AVAudioExtractor()) { _ in }
+        try validate(request)
         runStage = 2
-        let service = TranscriptionService()
-        let watch = Task { [weak self] in
+        let service = TranscriptionService(locations: model.app.locations)
+        let stream = await service.progress()
+        try validate(request)
+        let watch = watchProgress(stream, request: request)
+        request.watch = watch
+        do {
+            let result = try await service.transcribeResult(TranscriptionRequest(plan: request.plan, audio: audio.audio, contentKey: source.contentKey), using: engine, envelope: audio.envelope,
+                evidence: request.evidence, validate: { try await self.validate(request) })
+            watch.cancel(); await watch.value; request.watch = nil
+            return result
+        } catch {
+            watch.cancel(); await watch.value; request.watch = nil
+            throw error
+        }
+    }
+    func watchProgress(_ stream: AsyncStream<TranscriptionProgress>, request: ApprovedRun) -> Task<Void, Never> {
+        Task { [weak self] in
             guard let self else { return }
             var announced = -1
             var previousStage: TranscriptionStage?
-            for await value in await service.progress() {
+            for await value in stream {
                 guard !Task.isCancelled else { return }
-                updateProgress(value)
+                guard updateProgress(value, request: request) else { continue }
                 let percent = Int((overallFraction ?? 0) * 100)
                 if value.stage != previousStage || percent / 10 != announced {
                     previousStage = value.stage; announced = percent / 10
@@ -74,11 +141,13 @@ extension InlineTranscription {
                 }
             }
         }
-        defer { watch.cancel() }
-        let result = try await service.transcribeResult(TranscriptionRequest(plan: plan, audio: audio.audio, contentKey: model.project.media.source.contentKey), using: engine, envelope: audio.envelope)
-        return (result.transcript, result.fromCache)
     }
-    func updateProgress(_ value: TranscriptionProgress) {
+    @discardableResult func updateProgress(_ value: TranscriptionProgress, request: ApprovedRun) -> Bool {
+        let paid = request.plan.engine == .elevenlabs
+        if paid, value.stage == .uploading { request.evidence.recordUploadStarted() }
+        guard isCurrent(request), !request.cancelled else { return false }
+        let evidence = request.evidence.snapshot
+        uploadStarted = evidence.uploadStarted && !evidence.fromCache
         progress = value
         let percent = Int((overallFraction ?? 0) * 100)
         model.progressFraction = overallFraction
@@ -95,6 +164,7 @@ extension InlineTranscription {
             model.progress = overallFraction.map { "\(label) · \(Int($0 * 100))%" } ?? "\(label)…"
         case .aligning: runStage = paid ? 4 : 3; model.progress = "Aligning words…"
         }
+        return true
     }
 }
 

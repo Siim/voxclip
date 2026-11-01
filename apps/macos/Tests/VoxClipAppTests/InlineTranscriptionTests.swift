@@ -24,15 +24,35 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
     func save(_ value: String, for provider: String) { keyed = true; saves += 1 }
 }
 
+@MainActor private final class InlineRunBarrier {
+    private var entered = false
+    private var released = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var observer: CheckedContinuation<Void, Never>?
+    func suspend() async {
+        guard !released else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation; entered = true
+            observer?.resume(); observer = nil
+        }
+    }
+    func waitUntilEntered() async {
+        guard !entered else { return }
+        await withCheckedContinuation { observer = $0 }
+    }
+    func release() { released = true; continuation?.resume(); continuation = nil }
+}
+
 @Suite("Inline Transcribe", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
 @MainActor struct InlineTranscriptionTests {
-    private func editor(transcribed: Bool = false) throws -> EditorModel {
+    private func editor(transcribed: Bool = false, locations: DataLocations? = nil) throws -> EditorModel {
         _ = NSApplication.shared
         let shared = try SharedResources.locate()
         var project = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         project.id = UUID().uuidString.lowercased(); project.media.source.durationSeconds = 326
         if !transcribed { project.transcript = nil; project.edits = ProjectEdits() }
-        let app = AppModel(settingsStore: RegressionSettingsStore())
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: locations)
+        app.providerKeyStoreOverride = InlineTranscriptionKeys()
         app.set("transcription.language", .string("en"))
         let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         model.mediaResolved = true
@@ -165,10 +185,24 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         for delta in [0, 0.08, 0.49] { flow.pressReturn(timestamp: at + delta, now: at + delta, repeatKey: false, command: false) }
         flow.pressReturn(timestamp: at + 1, now: at + 1, repeatKey: true, command: true)
         flow.pressReturn(timestamp: at - 1, now: at + 1, repeatKey: false, command: false)
+        flow.pressReturn(timestamp: at + 0.1, now: at + 0.6, repeatKey: false, command: false)
         #expect(flow.phase == .choosing && sends == 0)
         flow.pressReturn(timestamp: at + 0.1, now: at + 0.1, repeatKey: false, command: true)
         await model.workTask?.value
         #expect(sends == 1)
+    }
+    @Test func aGenuinelyFreshReturnCanApproveThePaidRun() async throws {
+        let model = try editor(); defer { model.close() }
+        let flow = model.transcription
+        model.app.set("transcription.engineMode", .string("elevenlabs"))
+        await flow.open(); flow.hasKey = true
+        let result = try transcript()
+        var sends = 0
+        flow.runOverride = { _ in sends += 1; return result }
+        let opened = flow.keyGuard.appearedAt
+        flow.pressReturn(timestamp: opened + 0.5, now: opened + 0.6, repeatKey: false, command: false)
+        await model.workTask?.value
+        #expect(sends == 1 && model.project.transcript == result)
     }
     @Test(arguments: [false, true])
     func cancellationExplainsWhatCanBeBilled(uploaded: Bool) async throws {
@@ -177,18 +211,20 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         await model.transcription.open()
         let flow = model.transcription
         flow.hasKey = true
-        flow.runOverride = { _ in
-            if uploaded { flow.updateProgress(TranscriptionProgress(stage: .uploading, fraction: 0.4)) }
-            while !Task.isCancelled { await Task.yield() }
+        let barrier = InlineRunBarrier()
+        defer { barrier.release(); flow.requestRunOverride = nil }
+        flow.requestRunOverride = { request in
+            if uploaded { flow.updateProgress(TranscriptionProgress(stage: .uploading, fraction: 0.4), request: request) }
+            await barrier.suspend()
             throw CancellationError()
         }
         flow.activate()
-        for _ in 0..<10_000 where uploaded && !flow.uploadStarted { await Task.yield() }
+        await barrier.waitUntilEntered()
         #expect(flow.cancelCopy == (uploaded ? "If you cancel now, ElevenLabs may still bill audio it already received." : "Nothing has been sent yet. Cancel now and nothing is billed."))
         let content = StatusBarContent.make(app: model.app, editor: model, now: Date())
         #expect(content[.billing] == nil && content[.spend]?.text.contains("pending") == true)
         #expect(content[.summary]?.text.contains("Transcribing") == true)
-        flow.cancel(); await model.workTask?.value
+        flow.cancel(); barrier.release(); await model.workTask?.value
         #expect(model.project.transcript == nil && flow.phase == .folded)
         #expect(flow.cancelledNote?.contains(uploaded ? "may still bill" : "nothing is billed") == true)
         #expect(flow.pendingCost == nil)
@@ -227,6 +263,7 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         #expect(flow.warning == "This replaces the transcript and removes 3 cuts, 1 correction, 1 clip and the AI suggestions.")
         #expect(flow.primaryTitle == "Transcribe Again" + (paid ? " · " + flow.price : ""))
         flow.pressReturn(timestamp: 100, now: 100, repeatKey: false, command: true)
+        flow.pressReturn(timestamp: flow.keyGuard.appearedAt + 1, now: flow.keyGuard.appearedAt + 1, repeatKey: false, command: true, focusedPrimary: true)
         #expect(!flow.isRunning && model.project == before)
         flow.notNow(); #expect(model.project == before && flow.phase == .hidden)
         await flow.open(again: true)
@@ -242,10 +279,12 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         }
         let button = try #require(primary(host))
         #expect(!button.accented && button.title == flow.primaryTitle && host.window == nil)
+        let undoSteps = model.undoSteps
         button.spaceHandler?()
         if paid { #expect(!flow.isRunning); button.actionHandler() }
         await model.workTask?.value
         #expect(flow.phase == .hidden)
+        #expect(model.undoSteps == undoSteps + 1)
         #expect(model.project.edits.cutWordIds.isEmpty && model.project.edits.cutPauseIds.isEmpty && model.project.edits.corrections.isEmpty && model.project.edits.clips.isEmpty)
         #expect(model.project.ai == ProjectAI() && model.openRewrite == nil && model.proposal == nil)
     }
@@ -273,6 +312,214 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         #expect(model.openRewrite === rewrite && rewrite.isOpen)
         #expect(model.proposal?.id == proposal.id)
     }
+    @Test(arguments: ["cut", "correction", "clip", "source"], [false, true])
+    func approvalBaselineRejectsEditsBeforeTheWorkerOrDuringItsLease(edit: String, waitingForLease: Bool) async throws {
+        let model = try editor(transcribed: true); defer { model.close() }
+        let flow = model.transcription
+        let review = RewriteSession(editor: model, scope: .fullTake, envelope: nil, connector: nil)
+        model.openRewrite = review
+        try review.receivePassage(RewriteSession.corrected(model.project).dropLast().map(\.text).joined(separator: " "))
+        review.finishRun(seconds: 1)
+        let proposalID = try #require(model.proposal?.id)
+        model.app.set("transcription.engineMode", .string("elevenlabs"))
+        await flow.open(again: true); flow.hasKey = true
+        let before = model.project
+        let barrier = InlineRunBarrier()
+        defer { barrier.release(); flow.leaseOverride = nil; flow.runOverride = nil }
+        var leasedKey: String?
+        if waitingForLease {
+            flow.leaseOverride = { key in
+                leasedKey = key
+                await barrier.suspend()
+                return await model.app.cacheKeys.lease(key)
+            }
+        }
+        var sends = 0
+        let result = try transcript()
+        flow.runOverride = { _ in sends += 1; return result }
+        let undoSteps = model.undoSteps
+        flow.activate()
+        let request = try #require(flow.activeRun)
+        #expect(request.project == before && request.plan.engine == .elevenlabs)
+        if waitingForLease { await barrier.waitUntilEntered() }
+        var changed = model.project
+        let words = try #require(changed.transcript?.words)
+        switch edit {
+        case "cut": changed.edits.cutWordIds.append(words.last!.id)
+        case "correction": changed.edits.corrections[words[0].id] = "Keep my new correction"
+        case "clip": changed.edits.clips.append(ClipRange(id: "post-approval", startWordId: words[0].id, endWordId: words[2].id))
+        default:
+            changed.media.source.absolutePath = "/synthetic/new-source.mp4"
+            changed.media.source.contentKey = "post-approval-source"
+            changed.media.source.durationSeconds += 30
+        }
+        model.document.replaceProject(changed)
+        if waitingForLease { barrier.release() }
+        await model.workTask?.value
+        #expect(request.project == before && model.project == changed && sends == 0)
+        #expect(!waitingForLease || leasedKey == before.media.source.contentKey)
+        #expect(flow.error?.contains("project changed") == true && flow.phase == .choosing)
+        #expect(model.project.transcript == before.transcript && model.openRewrite === review)
+        #expect(model.proposal?.id == proposalID && model.undoSteps == undoSteps)
+        #expect(!request.evidence.snapshot.uploadStarted && !request.spendRecorded)
+    }
+
+    @Test func postApprovalEditsDuringASimulatedDownloadAreNotRebasedIntoTheRun() async throws {
+        let model = try editor(transcribed: true); defer { model.close() }
+        let flow = model.transcription
+        await flow.open(again: true)
+        flow.engine = "local"; flow.selectedModel = nil
+        flow.readiness = .needsModels(ids: ["synthetic-not-installed"], bytes: 1)
+        let before = model.project
+        let barrier = InlineRunBarrier()
+        defer { barrier.release(); flow.leaseOverride = nil }
+        flow.leaseOverride = { key in await barrier.suspend(); return await model.app.cacheKeys.lease(key) }
+        let result = try transcript()
+        var sends = 0
+        flow.runOverride = { _ in sends += 1; return result }
+        flow.activate()
+        #expect(!flow.isDownloading && flow.phase == .choosing)
+        var changed = model.project
+        changed.edits.corrections[changed.transcript!.words[0].id] = "Edited during download"
+        model.document.replaceProject(changed)
+        await flow.finishedDownload(installed: true, failure: nil)
+        await barrier.waitUntilEntered()
+        let request = try #require(flow.activeRun)
+        #expect(request.project == before && request.plan.engine == .whispercpp)
+        barrier.release(); await model.workTask?.value
+        #expect(model.project == changed && sends == 0 && flow.error?.contains("project changed") == true)
+    }
+
+    @Test func editingAfterTheSendAlsoPreservesThePriorTranscriptAndReview() async throws {
+        let model = try editor(transcribed: true); defer { model.close() }
+        let flow = model.transcription
+        let review = RewriteSession(editor: model, scope: .fullTake, envelope: nil, connector: nil)
+        model.openRewrite = review
+        try review.receivePassage(RewriteSession.corrected(model.project).dropLast().map(\.text).joined(separator: " "))
+        review.finishRun(seconds: 1)
+        let proposalID = try #require(model.proposal?.id)
+        await flow.open(again: true)
+        let barrier = InlineRunBarrier(), result = try transcript()
+        defer { barrier.release(); flow.runOverride = nil }
+        flow.runOverride = { _ in await barrier.suspend(); return result }
+        flow.activate(); await barrier.waitUntilEntered()
+        var changed = model.project
+        changed.edits.corrections[changed.transcript!.words[0].id] = "Edited while running"
+        model.document.replaceProject(changed)
+        let undoSteps = model.undoSteps
+        barrier.release(); await model.workTask?.value
+        #expect(model.project == changed && model.openRewrite === review && model.proposal?.id == proposalID)
+        #expect(flow.error?.contains("project changed") == true && model.undoSteps == undoSteps)
+    }
+
+    @Test(arguments: ["accepted", "cancelled", "keyRejected", "cached", "preupload"], [false, true])
+    func oldWorkersCannotMutateANewRunOrBorrowItsUploadEvidence(outcome: String, newUploaded: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-inline-overlap-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = try editor(transcribed: true, locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        defer { model.close() }
+        let flow = model.transcription
+        model.app.set("transcription.engineMode", .string("elevenlabs"))
+        await flow.open(again: true); flow.hasKey = true
+        let oldBarrier = InlineRunBarrier(), newBarrier = InlineRunBarrier()
+        let oldStream = AsyncStream<TranscriptionProgress>.makeStream()
+        let newStream = AsyncStream<TranscriptionProgress>.makeStream()
+        defer {
+            oldBarrier.release(); newBarrier.release()
+            oldStream.continuation.finish(); newStream.continuation.finish()
+            flow.requestRunOverride = nil
+        }
+        let result = try transcript()
+        var oldRequest: InlineTranscription.ApprovedRun?
+        flow.requestRunOverride = { request in
+            oldRequest = request
+            request.watch = flow.watchProgress(oldStream.stream, request: request)
+            if outcome != "preupload" { flow.updateProgress(TranscriptionProgress(stage: .uploading, fraction: 0.3), request: request) }
+            await oldBarrier.suspend()
+            flow.updateProgress(TranscriptionProgress(stage: .aligning, fraction: 1), request: request)
+            switch outcome {
+            case "accepted": return TranscriptionResult(transcript: result)
+            case "cached": return TranscriptionResult(transcript: result, fromCache: true)
+            case "keyRejected": throw VoxClipError.keyRejected("elevenlabs")
+            default: throw CancellationError()
+            }
+        }
+        flow.activate()
+        let oldWorker = try #require(model.workTask)
+        await oldBarrier.waitUntilEntered()
+        let oldRun = try #require(oldRequest), oldCost = try #require(oldRun.cost)
+        let oldWatch = try #require(oldRun.watch)
+        flow.close(); await oldWatch.value
+        #expect(oldWatch.isCancelled)
+        var next = model.project
+        next.media.source.contentKey = "new-upload-source"; next.media.source.durationSeconds *= 2
+        model.document.replaceProject(next)
+        await flow.open(again: true); flow.hasKey = true
+        flow.requestRunOverride = { request in
+            request.watch = flow.watchProgress(newStream.stream, request: request)
+            if newUploaded { flow.updateProgress(TranscriptionProgress(stage: .uploading, fraction: 0.6), request: request) }
+            await newBarrier.suspend()
+            throw VoxClipError.offline
+        }
+        flow.activate()
+        let newWorker = try #require(model.workTask), newRun = try #require(flow.activeRun)
+        await newBarrier.waitUntilEntered()
+        let newCost = try #require(newRun.cost)
+        let displayedProgress = model.progress, displayedFraction = model.progressFraction, displayedStage = model.progressStage
+        let guardTime = flow.keyGuard.appearedAt, announcements = model.announcements, displayedSpend = flow.spendToday
+        oldStream.continuation.yield(TranscriptionProgress(stage: .uploading, fraction: 1))
+        oldBarrier.release(); await oldWorker.value
+        #expect(oldRun.watch == nil && oldRun.project.media.source.contentKey != newRun.project.media.source.contentKey)
+        #expect(flow.activeRun === newRun && flow.phase == .running && flow.pendingCost == newCost)
+        #expect(flow.error == nil && flow.cancelledNote == nil && flow.completion == nil && flow.completedAt == nil && flow.hasKey)
+        #expect(flow.uploadStarted == newUploaded && newRun.evidence.snapshot.uploadStarted == newUploaded)
+        #expect(model.progress == displayedProgress && model.progressFraction == displayedFraction && model.progressStage == displayedStage)
+        #expect(model.announcements == announcements && flow.keyGuard.appearedAt == guardTime && flow.spendToday == displayedSpend)
+        let oldCharge = outcome == "cached" || outcome == "preupload" ? 0 : oldCost
+        let afterOld = await model.app.transcriptionSpend.total(at: oldRun.approvedAt)
+        #expect(abs(afterOld.amount - oldCharge) < 0.000001 && afterOld.uncertain == (oldCharge > 0))
+        #expect(oldRun.spendRecorded == (oldCharge > 0))
+        newBarrier.release(); await newWorker.value
+        let total = await model.app.transcriptionSpend.total(at: newRun.approvedAt)
+        let expected = oldCharge + (newUploaded ? newCost : 0)
+        #expect(abs(total.amount - expected) < 0.000001 && total.uncertain == (expected > 0))
+        #expect(newRun.watch == nil && newRun.spendRecorded == newUploaded)
+        #expect(flow.phase == .choosing && flow.error != nil && flow.cancelledNote == nil && flow.hasKey)
+        #expect(model.project == next)
+    }
+
+    @Test func oldErrorRedactionCannotRejectTheNewKeyOrAnnounceIntoItsRun() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-inline-redaction-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = try editor(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
+        defer { model.close() }
+        let flow = model.transcription
+        model.app.set("transcription.engineMode", .string("elevenlabs"))
+        await flow.open(); flow.hasKey = true
+        let redaction = InlineRunBarrier(), current = InlineRunBarrier()
+        defer { redaction.release(); current.release(); flow.requestRunOverride = nil; flow.runErrorOverride = nil }
+        flow.requestRunOverride = { request in request.evidence.recordUploadStarted(); throw VoxClipError.keyRejected("elevenlabs") }
+        flow.runErrorOverride = { _ in await redaction.suspend(); return "Old request rejected its key" }
+        flow.activate()
+        let oldWorker = try #require(model.workTask), oldRun = try #require(flow.activeRun)
+        await redaction.waitUntilEntered()
+        flow.close(); await flow.open(); flow.hasKey = true
+        flow.runErrorOverride = nil
+        flow.requestRunOverride = { _ in await current.suspend(); throw VoxClipError.offline }
+        flow.activate()
+        let newWorker = try #require(model.workTask), newRun = try #require(flow.activeRun)
+        await current.waitUntilEntered()
+        let announcements = model.announcements, guardTime = flow.keyGuard.appearedAt
+        redaction.release(); await oldWorker.value
+        #expect(flow.activeRun === newRun && flow.hasKey && flow.error == nil && flow.cancelledNote == nil)
+        #expect(flow.phase == .running && flow.pendingCost == newRun.cost && flow.keyGuard.appearedAt == guardTime)
+        #expect(model.announcements == announcements && !flow.uploadStarted && oldRun.spendRecorded)
+        let total = await model.app.transcriptionSpend.total(at: oldRun.approvedAt)
+        #expect(abs(total.amount - (oldRun.cost ?? 0)) < 0.000001 && total.uncertain)
+        current.release(); await newWorker.value
+        #expect(flow.phase == .choosing && flow.hasKey && !newRun.spendRecorded)
+    }
+
     @Test func replacementWarningLeavesOutZeroEdits() throws {
         let model = try editor(); defer { model.close() }
         #expect(AppDelegate.retranscriptionWarning(for: model.project) == "This replaces the transcript and removes the AI suggestions.")
@@ -307,7 +554,7 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
             flow.readiness = state == "download" ? .needsModels(ids: ["fixture"], bytes: 574_000_000) : .ready
             flow.error = state == "failed" ? "You're offline." : nil
             if state == "folded" { flow.phase = .folded }
-            if state == "running" { flow.phase = .running; flow.pendingCost = 0.02; flow.updateProgress(TranscriptionProgress(stage: .uploading, fraction: 0.8)) }
+            if state == "running" { flow.phase = .running; flow.pendingCost = 0.02; flow.progress = TranscriptionProgress(stage: .uploading, fraction: 0.8); flow.uploadStarted = true; flow.runStage = 2 }
             for width in [652, 440] {
                 let host = NSHostingView(rootView: InlineTranscriptionView(transcription: flow).frame(width: CGFloat(width), alignment: .topLeading).environment(model.app).environment(\.colorScheme, .dark))
                 host.safeAreaRegions = []

@@ -74,13 +74,55 @@ import Testing
             #expect(row.isPresented)
         }
         _ = row.pressReturn(timestamp: opened + 1, now: opened + 1, isRepeat: true, command: false)
+        _ = row.pressReturn(timestamp: opened + 1, now: opened + 1, isRepeat: true, command: true)
         #expect(row.isPresented)
         _ = row.pressReturn(timestamp: opened - 0.1, now: opened + 1, isRepeat: false, command: false)
+        #expect(row.isPresented)
+        _ = row.pressReturn(timestamp: opened + 0.1, now: opened + 0.6, isRepeat: false, command: false)
         #expect(row.isPresented)
         _ = row.pressReturn(timestamp: opened + 0.1, now: opened + 0.1, isRepeat: false, command: true)
         #expect(await task.value && !row.isPresented)
         let fresh = PaidSendKeyGuard(now: 20)
+        #expect(!fresh.accepts(timestamp: 20.49, now: 21, isRepeat: false, command: false))
+        #expect(fresh.accepts(timestamp: 20.5, now: 20.6, isRepeat: false, command: false))
         #expect(fresh.accepts(timestamp: 20.6, now: 20.6, isRepeat: false, command: false))
+        let next = Task { await row.present(prompt, isCurrent: { true }, saveKey: { _ in }) }
+        try await waitForRow(row)
+        let nextOpened = row.keyGuard.appearedAt
+        _ = row.pressReturn(timestamp: nextOpened + 0.6, now: nextOpened + 0.6, isRepeat: false, command: false)
+        #expect(await next.value && !row.isPresented)
+    }
+    @Test(arguments: ["approve", "cancel", "close"])
+    func finishingTheRequestReleasesItsCapturedEditorAndSession(action: String) async throws {
+        let (app, _, _) = app()
+        let shared = try SharedResources.locate()
+        let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
+        var editor: EditorModel? = DebugConnectorRequests.makeEditor(fixture: fixture, app: app)
+        var session: RewriteSession? = RewriteSession(editor: editor!, scope: .fullTake, envelope: nil, connector: nil)
+        editor?.openRewrite = session
+        weak var weakEditor = editor
+        weak var weakSession = session
+        let row = editor!.sendConfirmation
+        let prompt = ConnectorSendPrompt(reason: .cost, title: "Confirm send", message: "Text only", confirm: "Send")
+        var pending: Task<Bool, Never>? = Task { [owner = editor!, review = session!] in
+            await row.present(prompt, isCurrent: { owner.openRewrite === review }, saveKey: { _ in })
+        }
+        try await waitForRow(row)
+        if action == "approve" { row.approve() }
+        else if action == "cancel" { row.cancel() }
+        else { editor?.close() }
+        #expect(await pending?.value == (action == "approve"))
+        pending = nil
+        editor?.close()
+        await editor?.waveformTask?.value
+        await editor?.waitForPendingPreviewForAudit()
+        await editor?.rewriteOpenTask?.value
+        await session?.waitForSend()
+        await session?.actionTask?.value
+        await session?.takesTask?.value
+        session = nil; editor = nil
+        #expect(!row.isPresented && row.requestID == nil)
+        #expect(weakEditor == nil && weakSession == nil)
     }
     @Test func missingKeySaveRevealsSendAndRestartsItsGuardWithoutSending() async throws {
         let row = ConnectorConfirmation()
