@@ -22,6 +22,8 @@ extension RewriteSession {
         } catch { generationProblem(error) }
     }
     func prepareTakes() async {
+        // A review being built again after an edit outside the scope may move the window the takes are made for.
+        if let reviewing { await reviewing.value }
         guard current, let generation, let review, review.budget.copy == nil else { return }
         guard review.voiceHunks.count == 1, let hunk = review.voiceHunks.first, let window = hunk.window,
               let text = hunk.patchText else {

@@ -168,6 +168,9 @@ struct RewriteChange: Equatable, Sendable {
     /// The session applies its own changes (Apply, Use Takes): the edit that follows is not an edit in its scope. Set only
     /// around the synchronous edit (`ownEdit`), so an edit the user makes while takes publish is still followed.
     @ObservationIgnored private var applying = false
+    /// The review being built again, off the main actor, after an edit outside the scope moved the session on (`move`).
+    /// Make Takes and Use Takes wait for it.
+    @ObservationIgnored private(set) var reviewing: Task<Void, Never>?
 
     init(editor: EditorModel, scope rewriteScope: RewriteScope, instruction: String = "", envelope: AudioEnvelope?, connector: RewriteConnector?,
          prices: VoiceLabPriceCatalog? = nil, synthesisModel: String? = nil,
@@ -373,24 +376,28 @@ struct RewriteChange: Equatable, Sendable {
             guard await ConnectorConsentWait().confirm(consent) else { return false }
             guard !Task.isCancelled, current, revision == expected else { return false }
             sendRun()
-            let found: [RewriteChange]
+            let checked: Checked
             switch prepared {
             case .passage(let input, let quote, let service):
                 let result = try await service.propose(input, connector: connector.connector, model: connector.model,
                     authorization: VoiceRewriteAuthorization(quote: quote, approved: true))
                 guard !Task.isCancelled, current, revision == expected else { return false }
                 advanceRun(to: 3)
-                found = try VoiceLabWordDiff.diff(source: source, newText: result.proposedText).hunks.map { RewriteChange(hunk: $0) }
+                let source = source, text = result.proposedText
+                checked = try await check { try VoiceLabWordDiff.diff(source: source, newText: text).hunks.map { RewriteChange(hunk: $0) } }
             case .scope(let plan, let quote, let service):
                 let result = try await service.propose(plan.request, connector: connector.connector, model: connector.model,
                     authorization: PatchRewriteAuthorization(quote: quote, approved: true))
                 guard !Task.isCancelled, current, revision == expected else { return false }
                 advanceRun(to: 3)
-                found = try ScopeRewriteDiff.hunks(plan: plan, proposal: result).map {
-                    RewriteChange(hunk: $0.hunk, insertionAfterItemID: $0.insertionAfterItemID, checkThis: $0.checkThis, lines: $0.lines, reasons: $0.reasons)
+                checked = try await check {
+                    try ScopeRewriteDiff.hunks(plan: plan, proposal: result).map {
+                        RewriteChange(hunk: $0.hunk, insertionAfterItemID: $0.insertionAfterItemID, checkThis: $0.checkThis, lines: $0.lines, reasons: $0.reasons)
+                    }
                 }
             }
-            receive(found)
+            guard !Task.isCancelled, current, revision == expected else { return false }
+            receive(checked)
             let elapsed = started.duration(to: .now).components
             finishRun(seconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
             return true
@@ -404,33 +411,85 @@ struct RewriteChange: Equatable, Sendable {
             return false
         }
     }
+    /// The request a run sends, made off the main actor: placing a selection and planning a clip or Full take read the
+    /// whole take (impl-plan §3.1). The quote is the service's.
     private func prepareSend(_ connector: RewriteConnector) async throws -> PreparedSend {
+        let project = project, rewriteScope = rewriteScope, envelope = envelope
         let language = project.transcript?.language ?? "en"
         let asked = RewriteSuggestions.suggestion(for: instruction).instruction
         switch rewriteScope {
         case .selection:
             guard let service = passageService else { throw VoxClipError.sharedResourcesMissing }
-            guard let envelope, let first = source.first(where: { $0.kind == .word }), let last = source.last(where: { $0.kind == .word }) else {
-                throw RewriteSessionError.noSourceAudio
+            let source = source, transcript = transcript, scope = scope
+            let range = try await offMain {
+                try Self.passageRange(project: project, scope: scope, envelope: envelope, source: source, transcript: transcript)
             }
-            let window = try VoiceLabWindowPlanner.place(project: project, scope: scope, envelope: envelope, firstWordId: first.id, lastWordId: last.id)
-            let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window)
-            let rate = try VoiceLabLengthBudget.rate(transcript: transcript).charactersPerSecond
-            let range = try VoiceLabLengthBudget.passage(window: window, transcript: transcript, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, rate: rate)
             let input = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: source.filter { $0.kind == .word }, instruction: asked,
                 language: language, targetSeconds: range.targetSeconds, minChars: range.minChars, maxChars: range.maxChars)
             return .passage(input, try await service.prepare(input, connector: connector.connector.id, model: connector.model), service)
         case .clip, .fullTake:
             guard let service = scopeService else { throw VoxClipError.sharedResourcesMissing }
-            let plan = try ScopeRewritePlan.make(project: project, scope: rewriteScope, instruction: asked, language: language, envelope: envelope)
+            let plan = try await offMain {
+                try ScopeRewritePlan.make(project: project, scope: rewriteScope, instruction: asked, language: language, envelope: envelope)
+            }
             return .scope(plan, try await service.prepare(plan.request, connector: connector.connector.id, model: connector.model), service)
         }
     }
-    /// The reply's changes: the review of their voice changes, and the proposal (`finishRun`). Also how the DEBUG scenes show
-    /// a proposal.
+    /// A selection's length range (voice-lab.md §8.9.1): its words placed as one window, or, as C1 does for a line, the
+    /// span of its items when there is no envelope or the window is refused. Text Rewrite never needs the placement, which
+    /// only voice changes do (`RewriteReview`); a refusal saying the scope does not render as it stands stays the run's.
+    nonisolated static func passageRange(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope?, source: [TimedWord],
+                                         transcript: [TimedWord]) throws -> VoiceLabLengthRange {
+        let rate = try VoiceLabLengthBudget.rate(transcript: transcript).charactersPerSecond
+        if let envelope, let first = source.first(where: { $0.kind == .word }), let last = source.last(where: { $0.kind == .word }) {
+            do {
+                let window = try VoiceLabWindowPlanner.place(project: project, scope: scope, envelope: envelope, firstWordId: first.id, lastWordId: last.id)
+                let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window)
+                return try VoiceLabLengthBudget.passage(window: window, transcript: transcript, incomingSilence: silence.incoming,
+                                                        outgoingSilence: silence.outgoing, rate: rate)
+            } catch let refusal as VoiceLabGeometryError {
+                if case .invalidInput(let segmentId) = refusal, segmentId != nil { throw refusal }
+            } catch {}
+        }
+        return try VoiceLabLengthBudget.fullTake(transcript: source, rate: rate)
+    }
+    /// Runs Core's pure work off the main actor: a long take's plan or review never holds up R1 or an edit (§3.1).
+    private func offMain<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        #if DEBUG
+        let probe = editor.rewriteWorkProbe
+        #else
+        let probe: (@Sendable (Bool) -> Void)? = nil
+        #endif
+        return try await Task.detached(priority: .userInitiated) {
+            probe?(pthread_main_np() != 0)
+            return try work()
+        }.value
+    }
+    /// A reply's changes with their review, or why the review was refused.
+    private typealias Checked = (changes: [RewriteChange], review: Result<RewriteReview, any Error>)
+    /// R1's "Check that each change fits", off the main actor: the reply's diff, then the review of its voice changes.
+    private func check(_ diff: @escaping @Sendable () throws -> [RewriteChange]) async throws -> Checked {
+        let inputs = reviewInputs
+        return try await offMain {
+            let found = try diff()
+            return (found, Result { try RewriteReview.build(found.map(\.hunk), inputs) })
+        }
+    }
+    /// What the review reads now.
+    var reviewInputs: RewriteReview.Inputs {
+        RewriteReview.Inputs(transcript: transcript, project: project, scope: scope, envelope: envelope, prices: prices, synthesisModel: synthesisModel)
+    }
+    private func receive(_ checked: Checked) {
+        changes = checked.changes
+        switch checked.review {
+        case .success(let built): review = built
+        case .failure(let error): review = nil; problem = Self.refusal(error)
+        }
+    }
+    /// The reply's changes and their review, on the main actor: how the DEBUG scenes and tests show a proposal.
     func receive(_ found: [RewriteChange]) {
-        changes = found
-        refreshReview()
+        let inputs = reviewInputs
+        receive((found, Result { try RewriteReview.build(found.map(\.hunk), inputs) }))
     }
     /// A selection's reply as the AI wrote it: its diff against the selected words.
     func receivePassage(_ text: String) throws {
@@ -439,10 +498,7 @@ struct RewriteChange: Equatable, Sendable {
     private func invalidate() {
         generation?.invalidate(); generation = nil
         revision += 1; sending?.cancel()
-    }
-    private func refreshReview() {
-        do { review = try RewriteReview.build(self) }
-        catch { review = nil; problem = Self.refusal(error) }
+        reviewing?.cancel(); reviewing = nil
     }
 
     // MARK: The proposal
@@ -484,8 +540,10 @@ struct RewriteChange: Equatable, Sendable {
         focusTranscript(in: editor.window)
         return true
     }
-    /// Uses the selected take with the free changes, one undo step (Use Takes), and closes Rewrite.
+    /// Uses the selected take with the free changes, one undo step (Use Takes), and closes Rewrite. It waits for a review
+    /// being built again: when that moved a window, the takes no longer fit and are not used.
     @discardableResult func acceptTakes() async -> Bool {
+        if let reviewing { await reviewing.value }
         guard current, let generation else { return false }
         let accepted = await generation.accept(into: editor, localCommands: localCommands) { [self] edit in try ownEdit(edit) }
         if accepted { editor.closeRewrite() }
@@ -533,18 +591,14 @@ struct RewriteChange: Equatable, Sendable {
         let unchanged = inside(next) == inside(project)
         if task.state == .changed {
             guard unchanged else { return }
-            project = next; derive()
+            move(to: next)
             if let setAside {
                 self.setAside = nil
                 task.show(.proposal(setAside.changes), headline: setAside.headline)
             }
             return
         }
-        guard !unchanged else {
-            project = next; derive()
-            if !changes.isEmpty { refreshReview() }
-            return
-        }
+        guard !unchanged else { move(to: next); return }
         switch task.state {
         case .proposal(let set):
             setAside = (set, task.headline)
@@ -554,7 +608,31 @@ struct RewriteChange: Equatable, Sendable {
             setAside = nil
             showChanged()
         default:
-            project = next; derive()
+            move(to: next)
+        }
+    }
+    /// Moves the session on to `next`, past an edit outside the scope, which never waits for Core (impl-plan §3.1). A
+    /// voice change's window can read the kept words and pauses beside the scope, so the review is built again off the
+    /// main actor (`reviewing`); when a window or patch text moved, takes made for the old ones no longer fit
+    /// (`inputsChanged`). Cuts and fixes read nothing outside the scope.
+    private func move(to next: Project) {
+        guard next != project else { return }
+        project = next; derive()
+        guard let previous = review, !previous.voiceHunks.isEmpty else { return }
+        reviewing?.cancel()
+        let hunks = changes.map(\.hunk), inputs = reviewInputs, version = revision
+        reviewing = Task { [self] in
+            guard let built = try? await offMain({ Result { try RewriteReview.build(hunks, inputs) } }),
+                  !Task.isCancelled, isOpen, revision == version else { return }
+            reviewing = nil
+            switch built {
+            case .success(let fresh):
+                review = fresh
+                if !fresh.makesTheSameTakes(as: previous) { generation?.inputsChanged() }
+            case .failure(let error):
+                review = nil; problem = Self.refusal(error)
+                generation?.inputsChanged()
+            }
         }
     }
     private static func scopeExists(_ scope: RewriteScope, in project: Project) -> Bool {
@@ -612,7 +690,7 @@ struct RewriteChange: Equatable, Sendable {
         editor.announce(words.changed + ".")
     }
 
-    static func refusal(_ error: any Error) -> String {
+    nonisolated static func refusal(_ error: any Error) -> String {
         if let error = error as? VoiceConsentError { return error.localizedDescription }
         if let error = error as? VoiceLabSourceAudioError, let reason = error.errorDescription { return reason + " Your edits are saved." }
         if let error = error as? VoiceLabError, error == .unauthorized { return "ElevenLabs rejected the key (401). Your edits are saved." }
@@ -636,6 +714,6 @@ struct RewriteChange: Equatable, Sendable {
 }
 
 enum RewriteSessionError: Error, Equatable {
-    /// A selection's voice placement needs the video's audio envelope.
+    /// Placing a voice change needs the video's audio envelope.
     case noSourceAudio
 }

@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import Foundation
+import Synchronization
 import Testing
 @_spi(Testing) @testable import VoxClipCore
 @testable import VoxClipMedia
@@ -54,6 +55,13 @@ private struct ScopeTakeKeys: KeyProvider {
     func resume() { release?.resume(); release = nil }
 }
 
+/// Where Rewrite's Core work ran, as `EditorModel.rewriteWorkProbe` reports it: true on the main thread.
+private final class WorkThreads: Sendable {
+    let onMain = Mutex<[Bool]>([])
+    var values: [Bool] { onMain.withLock { $0 } }
+    func record(_ main: Bool) { onMain.withLock { $0.append(main) } }
+}
+
 /// The sheets a run's route showed, answered yes.
 @MainActor private final class Sheets {
     var shown: [LLMSendSheet] = []
@@ -79,14 +87,16 @@ private struct ScopeTakeKeys: KeyProvider {
         return (app, sheets)
     }
     /// A take of `count` words one second apart ("word{i}", a sentence ending at every 20th), with clip 1 over words
-    /// 10–45 and clip 2 over 50–70, open on `tab`.
-    private func editor(_ app: AppModel, words count: Int = 80, tab: String? = "c1", waveform: Bool = true, events: Set<Int> = []) throws -> (EditorModel, UndoManager) {
+    /// 10–45 and clip 2 over 50–70, open on `tab`. Each word lasts 0.4 s, or the whole second when `contiguous`, as in
+    /// speech with no pause between words.
+    private func editor(_ app: AppModel, words count: Int = 80, tab: String? = "c1", waveform: Bool = true, events: Set<Int> = [],
+                        contiguous: Bool = false) throws -> (EditorModel, UndoManager) {
         let shared = try SharedResources.locate()
         var project = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         project.id = UUID().uuidString.lowercased()
         project.edits = ProjectEdits()
         project.transcript?.words = (0..<count).map { index in
-            TimedWord(id: "w\(index)", text: index % 20 == 19 ? "word\(index)." : "word\(index)", start: Double(index) + 1, end: Double(index) + 1.4)
+            TimedWord(id: "w\(index)", text: index % 20 == 19 ? "word\(index)." : "word\(index)", start: Double(index) + 1, end: Double(index) + (contiguous ? 2 : 1.4))
         }
         for index in events { project.transcript?.words[index].kind = .event; project.transcript?.words[index].text = "[laughter]" }
         project.transcript?.durationSeconds = Double(count) + 2
@@ -243,6 +253,66 @@ private struct ScopeTakeKeys: KeyProvider {
         let session = try await rewrite(editor)
         #expect(session.task.state == .error(.message("Clip 1 has no words left to rewrite. Your edits are saved.")))
         #expect(await stub.requests.isEmpty)
+    }
+
+    /// With Voice Lab off, a selection beside a cut still rewrites (design.md §8). In speech with no pause between words
+    /// the placement refuses its window, as a seam's fade would cross the cut; that only stops its phrase in your voice,
+    /// and the request takes the selection's span as its length, as C1's lines do. With no waveform the same holds, and the
+    /// phrase says what it needs.
+    @Test func aSelectionNeedsNoVoicePlacement() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        let (editor, undo) = try editor(app, contiguous: true)
+        defer { editor.close() }
+        #expect(!app.voiceLabRewriteEnabled)
+        step(undo) { editor.apply(.cutSelection(ids: ["w40"]), name: "Cut selection") }
+        editor.selectedWordIDs = ["w41", "w42", "w43"]
+        let session = try await rewrite(editor)
+        #expect(proposal(session) != nil && session.problem.isEmpty)
+        #expect(await stub.requests.map(\.tag) == ["voice-rewrite"])
+        #expect(session.review?.voiceHunks.first?.refusal == "This change can't be placed in this take. Your edits are saved.")
+
+        editor.closeRewrite(returnFocus: false)
+        editor.selectedWordIDs = ["w12", "w13", "w14"]
+        let connector = RewriteConnector(connector: stub, model: "fixture-local", name: "Ollama", group: "local", plan: "")
+        let silent = RewriteSession(editor: editor, scope: .selection(12...14), envelope: nil, connector: connector, consent: { true })
+        editor.rewrite = silent
+        #expect(await silent.run())
+        #expect(proposal(silent) != nil)
+        #expect(await stub.requests.count == 2)
+        #expect(silent.review?.voiceHunks.map(\.refusal) == ["Find the original video before rewriting speech. Your edits are saved."])
+    }
+
+    /// Rewrite's Core work runs off the main actor (impl-plan §3.1): the selection's placement and the reply's review on a
+    /// run, and the review again after an edit outside the scope, which returns before it is built. A far cut and one
+    /// beside the passage both end in the review the edited take gives; cuts and fixes alone build nothing again.
+    @Test func coreWorkRunsOffTheMainActor() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        let (editor, undo) = try editor(app, tab: nil)
+        defer { editor.close() }
+        let threads = WorkThreads()
+        editor.rewriteWorkProbe = { threads.record($0) }
+        editor.selectedWordIDs = ["w62", "w63", "w64"]
+        let session = try await rewrite(editor)
+        #expect(session.scope == .full && session.review?.voiceHunks.count == 1 && proposal(session) != nil)
+        #expect(threads.values == [false, false])
+        for cut in ["w20", "w61"] {
+            step(undo) { editor.apply(.cutSelection(ids: [cut]), name: "Cut selection") }
+            let reviewing = try #require(session.reviewing, "\(cut) is reviewed again after the edit returns")
+            #expect(session.current && proposal(session) != nil)
+            await reviewing.value
+            let fresh = try RewriteReview.build(session.changes.map(\.hunk), session.reviewInputs)
+            #expect(session.reviewing == nil && session.review.map { fresh.makesTheSameTakes(as: $0) } == true)
+        }
+        #expect(threads.values == [false, false, false, false])
+
+        editor.selectedWordIDs = []
+        #expect(editor.setScope("c1"))
+        let clip = try await rewrite(editor)
+        #expect(clip.review?.voiceHunks.isEmpty == true && threads.values.count == 6 && !threads.values.contains(true))
+        step(undo) { editor.apply(.cutSelection(ids: ["w60"]), name: "Cut selection") }
+        #expect(clip.reviewing == nil && clip.current && threads.values.count == 6)
     }
 
     /// A change reads its removed words in transcript order, with the event a phrase in your voice absorbs.
@@ -478,6 +548,31 @@ private struct ScopeTakeKeys: KeyProvider {
         let session = try await rewrite(editor)
         #expect(proposal(session) != nil && editor.panelRewrite === session && session.current)
         #expect(!session.generationIsCurrent(region: .default))
+    }
+
+    /// A voice change's window reads the words beside the passage, so a cut there, outside the scope, can move it: the
+    /// review built again says so, and the takes made for the old window can no longer be used. Use Takes waits for that
+    /// review; a cut far away leaves the takes ready.
+    @Test func aCutBesideThePassageRetiresItsTakes() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        enableVoiceLab(app)
+        let (editor, undo) = try editor(app, tab: nil, contiguous: true)
+        defer { editor.close() }
+        editor.selectedWordIDs = ["w62", "w63", "w64"]
+        let session = try await rewrite(editor)
+        #expect(session.scope == .full && session.review?.voiceHunks.first?.window != nil)
+        let generation = try giveTake(session, editor: editor)
+        var published = 0
+        generation.publishForTests = { _, _, _ in published += 1; throw CancellationError() }
+        step(undo) { editor.apply(.cutSelection(ids: ["w20"]), name: "Cut selection") }
+        await session.reviewing?.value
+        #expect(generation.readyToAccept && session.review?.voiceHunks.first?.window != nil)
+        step(undo) { editor.apply(.cutSelection(ids: ["w61"]), name: "Cut selection") }
+        #expect(session.reviewing != nil && proposal(session) != nil && session.current)
+        #expect(await session.acceptTakes() == false)
+        #expect(published == 0 && !generation.readyToAccept && !generation.rows.isEmpty)
+        #expect(session.review?.voiceHunks.first?.window == nil && session.review?.voiceHunks.first?.refusal == "This change can't be placed in this take. Your edits are saved.")
     }
 
     // MARK: Ask

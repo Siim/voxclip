@@ -70,6 +70,8 @@ struct EditorRenderSnapshot {
     var showVoiceLabOptIn = false
     @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
     #if DEBUG
+    /// Tests learn where Rewrite's Core work (a plan, a placement, a review) ran: true on the main thread.
+    @ObservationIgnored var rewriteWorkProbe: (@Sendable (Bool) -> Void)?
     /// Tests answer "Discard these {c} changes?" with the count it asked about; true discards.
     @ObservationIgnored var discardAnswerForTests: ((Int) -> Bool)?
     #endif
