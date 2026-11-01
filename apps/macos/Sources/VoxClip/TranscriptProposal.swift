@@ -252,6 +252,40 @@ private struct TranscriptChangeReader {
         }
         return (old, absorbed, before, after, inserted)
     }
+    /// What a change removes and inserts as the transcript reads them, in reading order: the transcript's rotor and the
+    /// panel's change list read the same words.
+    func words(_ change: TranscriptChange) -> (removed: [String], inserted: [String]) {
+        let layout = layout(change)
+        let removed = (change.span + layout.absorbed).filter(layout.old.contains)
+            .sorted { (wordIndex[$0] ?? .max) < (wordIndex[$1] ?? .max) }
+        return (removed.map(text), layout.inserted)
+    }
+}
+
+extension TranscriptChange {
+    /// "Proposed change 1 of 5: removed to, to the; inserted your, in the", with ", left out" or ", kept" after a review;
+    /// the panel's list says "Change 1 of 5: …" (design.md §6.3.5: one ordinal for both).
+    func description(prefix: String = "Proposed change", count: Int, removed: [String], inserted: [String]) -> String {
+        func trimmed(_ text: String) -> String { text.hasSuffix(",") || text.hasSuffix(";") ? String(text.dropLast()) : text }
+        var parts: [String] = []
+        if !removed.isEmpty { parts.append("removed " + trimmed(removed.joined(separator: " "))) }
+        if !inserted.isEmpty { parts.append("inserted " + inserted.map(trimmed).joined(separator: ", ")) }
+        let reviewed = state == .excluded ? ", left out" : state == .kept ? ", kept" : ""
+        return "\(prefix) \(ordinal) of \(count): " + parts.joined(separator: "; ") + reviewed
+    }
+}
+
+/// A change as the Rewrite job's change list reads it (impl-plan V15): the words it removes and inserts, the words it
+/// would leave, and whether the project already holds it or it only moves punctuation.
+struct TranscriptChangeReading: Equatable {
+    let change: TranscriptChange
+    let removed: [String]
+    let inserted: [String]
+    /// Its span as it would read: `EditorModel.changeText(_:)`.
+    let text: String
+    /// A cut or fix whose words the project already holds.
+    let applied: Bool
+    let punctuationOnly: Bool
 }
 
 extension EditorModel {
@@ -277,7 +311,7 @@ extension EditorModel {
             }
             // What it removes and inserts, in every state: the rotor reads a change left out too.
             let layout = reader.layout(change)
-            let removed = (change.span + layout.absorbed).filter(layout.old.contains).map(reader.text), inserted = layout.inserted
+            let (removed, inserted) = reader.words(change)
             var positions: [Int] = change.span.compactMap { index[$0] }
             if change.state == .excluded {
                 for id in change.span { display.marks[id] = mark(.slot) }
@@ -297,15 +331,10 @@ extension EditorModel {
                 switch anchor { case .after(let id), .before(let id): positions += index[id].map { [$0] } ?? [] }
             }
             let lower = positions.min() ?? 0, upper = positions.max() ?? lower
-            func trimmed(_ text: String) -> String { text.hasSuffix(",") || text.hasSuffix(";") ? String(text.dropLast()) : text }
-            var parts: [String] = []
-            if !removed.isEmpty { parts.append("removed " + trimmed(removed.joined(separator: " "))) }
-            if !inserted.isEmpty { parts.append("inserted " + inserted.map(trimmed).joined(separator: ", ")) }
-            let state = change.state == .excluded ? ", left out" : change.state == .kept ? ", kept" : ""
             // The ordinal the change list shares (design.md §6.3.5), of all the proposal's changes.
             let count = proposal.changes.count
             display.shown.append(.init(ordinal: change.ordinal, kind: change.kind, state: change.state, count: count,
-                                       description: "Proposed change \(change.ordinal) of \(count): " + parts.joined(separator: "; ") + state, words: lower...upper))
+                                       description: change.description(count: count, removed: removed, inserted: inserted), words: lower...upper))
         }
         if let focused = display.focused, capabilities.edit, let change = proposal[focused] {
             switch change.state {
@@ -330,6 +359,18 @@ extension EditorModel {
             words += layout.after[id] ?? []
         }
         return words.joined(separator: " ")
+    }
+
+    /// Every change of the proposal as the Rewrite job's change list reads it, in transcript order (impl-plan V15): kept
+    /// and left-out changes too, which the transcript no longer draws.
+    var changeReadings: [TranscriptChangeReading] {
+        guard let proposal else { return [] }
+        let reader = TranscriptChangeReader(self)
+        return proposal.changes.map { change in
+            let (removed, inserted) = reader.words(change)
+            return TranscriptChangeReading(change: change, removed: removed, inserted: inserted, text: changeText(change.ordinal),
+                                           applied: reader.isApplied(change), punctuationOnly: reader.isPunctuationOnly(change))
+        }
     }
 
     /// The take time each pending change spans, from its first word to its last, for the
@@ -382,8 +423,8 @@ extension EditorModel {
         } else if display.shown(ordinal) == nil { proposal.focused = display.shown.first?.ordinal }
         self.proposal = proposal
     }
-    /// The cuts and corrections that apply a change's free parts.
-    private func commands(_ change: TranscriptChange) -> [EditCommand] {
+    /// The cuts and corrections that apply a change's free parts; Use Takes applies the pending ones with the take.
+    func commands(_ change: TranscriptChange) -> [EditCommand] {
         let reader = TranscriptChangeReader(self)
         var commands: [EditCommand] = []
         for part in change.parts {
