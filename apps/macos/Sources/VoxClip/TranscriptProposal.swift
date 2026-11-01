@@ -282,7 +282,9 @@ extension EditorModel {
             func mark(_ role: TranscriptChangeMark.Role) -> TranscriptChangeMark {
                 TranscriptChangeMark(ordinal: change.ordinal, kind: change.kind, role: role, pending: change.state == .pending, focused: focused)
             }
-            var removed: [String] = [], inserted: [String] = []
+            // What it removes and inserts, in every state: the rotor reads a change left out too.
+            let layout = reader.layout(change)
+            let removed = (change.span + layout.absorbed).filter(layout.old.contains).map(reader.text), inserted = layout.inserted
             var positions: [Int] = change.span.compactMap { index[$0] }
             if change.state == .excluded {
                 for id in change.span { display.marks[id] = mark(.slot) }
@@ -290,15 +292,13 @@ extension EditorModel {
                     switch anchor { case .after(let id), .before(let id): display.marks[id] = mark(.slot) }
                 }
             } else {
-                let layout = reader.layout(change)
                 for id in change.span + layout.absorbed {
-                    if layout.old.contains(id) { display.marks[id] = mark(.old); removed.append(reader.text(id)) }
+                    if layout.old.contains(id) { display.marks[id] = mark(.old) }
                     else if change.parts.contains(where: { $0.sourceWordIDs.contains(id) }) { display.marks[id] = mark(.kept) }
                 }
                 positions += layout.absorbed.compactMap { index[$0] }
                 for (id, runs) in layout.before { display.before[id, default: []] += runs.map { .init(mark: mark(.new), text: $0) } }
                 for (id, runs) in layout.after { display.after[id, default: []] += runs.map { .init(mark: mark(.new), text: $0) } }
-                inserted = layout.inserted
             }
             if positions.isEmpty, let anchor = change.anchor {
                 switch anchor { case .after(let id), .before(let id): positions += index[id].map { [$0] } ?? [] }

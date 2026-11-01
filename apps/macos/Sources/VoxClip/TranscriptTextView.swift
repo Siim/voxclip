@@ -1037,8 +1037,6 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
     func spoken(_ span: TranscriptSpan) -> String {
         if span.kind == .fold, let model { return model.foldDescription(span.ids) }
-        // A proposed change's new words, and the words it removes: "in the, proposed", "to, proposed removal".
-        if span.kind == .inserted { return (string as NSString).substring(with: span.range) + ", proposed" }
         let states = accessibilityStates(span)
         if span.pause, !states.isEmpty { return states.joined(separator: ", ") }
         return ([(string as NSString).substring(with: span.range)] + states).joined(separator: ", ")
@@ -1052,6 +1050,9 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
     private func accessibilityStates(_ span: TranscriptSpan) -> [String] {
         guard let model else { return [] }
+        // A proposed change's new words, and the words it removes: "in the, proposed", "to, proposed
+        // removal", read alike by word and as a line's attributed text.
+        if span.kind == .inserted { return ["proposed"] }
         if span.pause {
             guard let pause = model.pauseIndex[span.id] else { return [] }
             return ["pause \(toFixed1(pause.duration)) seconds"] + (model.cutPauseIDs.contains(span.id) ? ["cut"] : [])

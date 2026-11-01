@@ -218,6 +218,23 @@ import Testing
         #expect(model.proposal == next && model.cutWordIDs.contains(id(model, 91)))
     }
 
+    /// VoiceOver hears what a change left out would have done, and new words as proposed when
+    /// it reads a line as attributed text, as it does word by word.
+    @Test func anExcludedChangeAndNewWordsReadInFull() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
+        defer { pane.close() }
+        let text = pane.text
+        let inserted = try #require(text.map.spans.first { $0.kind == .inserted })
+        let removed = try #require(text.map.span(id: id(model, 34)))
+        let line = text.accessibilityAttributedString(for: NSRange(location: 0, length: (text.string as NSString).length))
+        #expect(line?.attribute(.accessibilityCustomText, at: inserted.range.location, effectiveRange: nil) as? [String] == ["proposed"])
+        #expect(line?.attribute(.accessibilityCustomText, at: removed.range.location, effectiveRange: nil) as? [String] == ["proposed removal"])
+        #expect(text.spoken(inserted) == "your, proposed")
+        model.excludeChange(1)
+        #expect(model.proposalDisplay?.shown(1)?.description == "Proposed change 1 of 5: removed to, to the; inserted your, in the, left out")
+    }
+
     @Test func aFocusMoveWritesOnlyTheParagraphsOfTheTwoChanges() throws {
         let model = try editor(); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
