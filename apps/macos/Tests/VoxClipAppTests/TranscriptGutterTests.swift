@@ -5,8 +5,9 @@ import Testing
 @testable import VoxClip
 
 /// The v2 transcript (impl-plan V6), headless: the measure and gutter geometry, display
-/// paragraphs, out-of-clip styles, the scope restyle, the overview ruler's marks and the
-/// Clips rotor. The DEBUG pixel checks (DebugTranscriptPixels) draw the same pane.
+/// paragraphs, out-of-clip styles, the scope restyle, the AI waveform's place at every zoom,
+/// the overview ruler's marks and the Clips rotor. The DEBUG pixel checks
+/// (DebugTranscriptPixels) draw the same pane.
 @Suite("Transcript gutter, band and paragraphs", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."))
 @MainActor struct TranscriptGutterTests {
     /// Three speakers' paragraphs of 6, 4 and 5 words, a kept clip over the second paragraph
@@ -128,6 +129,47 @@ import Testing
             return found
         }
         #expect(redrawn(0) && redrawn(2) && !redrawn(1), "a rendering attribute on the old and new paragraphs' first characters redraws their gutters")
+    }
+
+    /// Draws the layout fragment holding `character` as the text view does, onto black, and
+    /// returns the rows of `line` (text view coordinates) with ai.tint ink at x 49–63.
+    private func glyphInk(_ text: TranscriptNSTextView, atCharacter character: Int, line: CGRect) throws -> ClosedRange<CGFloat>? {
+        let manager = try #require(text.textLayoutManager), content = try #require(manager.textContentManager)
+        let location = try #require(content.location(content.documentRange.location, offsetBy: character))
+        let fragment = try #require(manager.textLayoutFragment(for: location))
+        let origin = text.textContainerOrigin, frame = fragment.layoutFragmentFrame
+        let top = origin.y + frame.minY, width = 96, height = Int(frame.height.rounded(.up))
+        let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try #require(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4, space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.translateBy(x: 0, y: CGFloat(height)); context.scaleBy(x: 1, y: -1)
+        NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance { fragment.draw(at: CGPoint(x: origin.x + frame.minX, y: 0), in: context) }
+        let pixels = try #require(context.data).assumingMemoryBound(to: UInt8.self)
+        let rows = (max(0, Int(line.minY - top))..<min(height, Int((line.maxY - top).rounded(.up)))).filter { row in
+            (49...63).contains { column in
+                let pixel = pixels + row * width * 4 + column * 4
+                return Int(pixel[2]) - Int(pixel[0]) > 60
+            }
+        }
+        guard let first = rows.first, let last = rows.last else { return nil }
+        return (CGFloat(first) + top)...(CGFloat(last + 1) + top)
+    }
+
+    @Test(arguments: [13.0, 15.0, 28.0]) func theAIWaveformIsCentredOnItsLineAtEveryTextSize(size: Double) throws {
+        let shared = try SharedResources.locate()
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.textSize = size; model.refresh()
+        let (text, renderer, _, _) = try pane(model)
+        let ai = try #require(text.map.spans.first { renderer.aiWordIDs.contains($0.id) })
+        let line = try #require(text.lineBox(atCharacter: ai.range.location))
+        #expect(abs(line.height - (size * 26 / 15).rounded()) < 0.5, "the line is \(line.height) high at \(size) pt")
+        let ink = try #require(try glyphInk(text, atCharacter: ai.range.location, line: line), "the waveform draws on the AI line")
+        let centre = (ink.lowerBound + ink.upperBound) / 2
+        #expect(abs(centre - line.midY) <= 1, "the waveform's ink centre \(centre) sits on the line's centre \(line.midY) at \(size) pt")
+        #expect(TranscriptGutter.glyphBox(left: 0, line: line) == CGRect(x: 49, y: line.midY - 7, width: 14, height: 14))
     }
 
     @Test func theOverviewRulerMarksTheClipTheSelectionAndAIWordsByTakeTime() throws {

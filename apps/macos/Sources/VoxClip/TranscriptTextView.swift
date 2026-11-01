@@ -178,7 +178,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             TranscriptGutter.drawTimecode(TranscriptGutter.timecode(renderer.paragraphs[index].start), color: color, right: left + TranscriptGutter.timecodeRight, box: box, in: context)
         }
         if text.map.intersecting(lineRange).contains(where: { renderer.aiWordIDs.contains($0.id) && NSIntersectionRange($0.range, lineRange).length > 0 }) {
-            GutterGlyph.aiVoice.draw(in: CGRect(x: left + TranscriptGutter.glyphX, y: box.minY + TranscriptGutter.glyphTop, width: TranscriptGutter.glyphSize, height: TranscriptGutter.glyphSize), context: context)
+            GutterGlyph.aiVoice.draw(in: TranscriptGutter.glyphBox(left: left, line: box), context: context)
         }
     }
 

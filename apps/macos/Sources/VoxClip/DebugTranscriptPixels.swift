@@ -451,25 +451,38 @@ extension DebugTranscriptPixels {
         return view.subviews.lazy.compactMap { transcript(in: $0) }.first
     }
 
-    /// Lines holding AI-voiced words show the waveform glyph in the gutter's glyph column.
+    /// Lines holding AI-voiced words show the waveform glyph in the gutter's glyph column,
+    /// centred on the line at the default size and at the largest zoom.
     private static func aiGlyph(app: AppModel, directory: URL) throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw CocoaError(.fileNoSuchFile) }
         let project = try JSONProjectStore.decode(Data(contentsOf: root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
         let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
-        model.textSize = DesignValues.transcriptTextSize; model.refresh()
-        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
-        defer { pane.close() }
-        let bitmap = try pane.bitmap("v2-transcript-ai-dark", directory: directory)
-        let text = pane.text
-        guard let ai = text.map.spans.first(where: { pane.renderer.aiWordIDs.contains($0.id) }), let line = text.lineBox(atCharacter: ai.range.location) else {
-            return [.init(name: "the AI passage is in the transcript", passed: false)]
+        var results: [DebugUISuite.Result] = []
+        for size in [DesignValues.transcriptTextSize, DesignValues.transcriptZoom.upperBound] {
+            model.textSize = size; model.refresh()
+            let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
+            defer { pane.close() }
+            let text = pane.text
+            guard let ai = text.map.spans.first(where: { pane.renderer.aiWordIDs.contains($0.id) }), let line = text.lineBox(atCharacter: ai.range.location) else {
+                results.append(.init(name: "the AI passage is in the transcript at \(Int(size)) pt", passed: false)); continue
+            }
+            pane.scroll(toCharacter: ai.range.location)
+            let bitmap = try pane.bitmap(size == DesignValues.transcriptTextSize ? "v2-transcript-ai-dark" : "v2-transcript-ai-\(Int(size))-dark", directory: directory)
+            let blue: (NSColor) -> Bool = { $0.blueComponent - $0.redComponent > 0.2 }
+            // The glyph's box is centred on the line's words; the column above and below it stays clear.
+            let glyph = CGRect(x: 49, y: line.midY - 7, width: 14, height: 14)
+            let inside = pane.count(bitmap, in: glyph, where: blue)
+            let offCentre = pane.count(bitmap, in: CGRect(x: 49, y: line.minY, width: 14, height: glyph.minY - 1 - line.minY), where: blue)
+                + pane.count(bitmap, in: CGRect(x: 49, y: glyph.maxY + 1, width: 14, height: line.maxY - glyph.maxY - 1), where: blue)
+            // A visible line holding no AI-voiced word shows no waveform.
+            let aiLines = Set(text.map.spans.filter { pane.renderer.aiWordIDs.contains($0.id) }.compactMap { text.lineBox(atCharacter: $0.range.location).map { Int($0.minY.rounded()) } })
+            let plain = text.map.spans.lazy.compactMap { text.lineBox(atCharacter: $0.range.location) }.first { !aiLines.contains(Int($0.minY.rounded())) && pane.scroll.contentView.documentVisibleRect.contains($0) }
+            let others = plain.map { pane.count(bitmap, in: CGRect(x: 49, y: $0.minY, width: 14, height: $0.height), where: blue) }
+            results.append(.init(name: "at \(Int(size)) pt a line holding AI-voiced words shows the ai.tint waveform at x 49–63 centred on the line (\(inside) pixels, \(offCentre) off centre), other lines none (\(others.map(String.init) ?? "no plain line"))",
+                                 passed: inside >= 4 && offCentre == 0 && others.map { $0 == 0 } ?? true))
         }
-        let glyph = CGRect(x: 49, y: line.minY + 6, width: 14, height: 14)
-        let blue = pane.count(bitmap, in: glyph) { $0.blueComponent - $0.redComponent > 0.2 }
-        let plain = text.map.spans.first { !pane.renderer.aiWordIDs.contains($0.id) && text.lineBox(atCharacter: $0.range.location).map { abs($0.minY - line.minY) > 1 } == true }
-        let others = plain.flatMap { text.lineBox(atCharacter: $0.range.location) }.map { pane.count(bitmap, in: CGRect(x: 49, y: $0.minY + 6, width: 14, height: 14)) { $0.blueComponent - $0.redComponent > 0.2 } }
-        return [.init(name: "a line holding AI-voiced words shows the ai.tint waveform at x 49–63, other lines none (\(blue), \(others.map(String.init) ?? "no plain line"))", passed: blue >= 4 && others.map { $0 == 0 } ?? true)]
+        return results
     }
 }
 

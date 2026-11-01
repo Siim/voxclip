@@ -17,7 +17,12 @@ enum TranscriptGutter {
     static let timecodeRight: CGFloat = 42
     static let glyphX: CGFloat = 49
     static let glyphSize: CGFloat = 14
-    static let glyphTop: CGFloat = 6
+
+    /// A line's glyph box: 14 pt at x 49 from the gutter's `left` edge, centred on the line's
+    /// words (`box` from `visualBox(of:font:)`), so the glyph stays on its line at every zoom.
+    static func glyphBox(left: CGFloat, line box: CGRect) -> CGRect {
+        CGRect(x: left + glyphX, y: box.midY - glyphSize / 2, width: glyphSize, height: glyphSize)
+    }
 
     /// A paragraph's take time, `m:ss` (notes.md §5), whole seconds rounded down.
     static func timecode(_ seconds: Double) -> String {
