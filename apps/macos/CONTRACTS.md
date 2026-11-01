@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+## Voice lane foundations — Core C7/C4 and C3 merge (1 Nov 2026)
+
+- Base: origin/lead/v2-rewrite at c34e88bd. Merged exact Mac commits 063e51bd and 39284621; no moving Core branch or Windows WIP.
+- Conflicts: RewriteSession keeps both the current included-phrase identity and C4 placement preflight; refusal copy retains missing-source plus the new scope/fade refusals. Fixture README keeps both C4 and C3 sections; drift coverage keeps enrollment, acceptance-review and both window files byte-exact (accept-all remains tolerant as Core specifies).
+- Merge regression: RewriteScopeTests' fabricated fit plan used 1–2 s against a 21–22.4 s source window. C4 now correctly refuses that before publication, stranding the test's barrier. Aligned the test plan with its window; the publication concurrency test and isolated model-store suite pass. No production placement guard was weakened.
+- Baseline: broad Core 831 tests completed with nine model-download timeout/assertion issues under concurrent execution; App reached a waiting publication test. Serial reruns recorded in voice-evidence. No live provider calls or real-window runs.
+
+
 ### 2026-11-01 — lead — Rewrite-loop review fixes
 
 - **What.** The review of the Rewrite-loop merge (da519783..3c23b504) found two P2s and four P3s. Both P2s and three P3s are fixed here, each with a headless test that fails without its fix; the fourth P3 (bisect) is answered below. Commits 50829785, c9b71c77, 84384e1d, fce80e58.
