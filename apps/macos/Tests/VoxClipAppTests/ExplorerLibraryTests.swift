@@ -187,6 +187,8 @@ import Testing
         #expect(texts["explorer.header.voices"] == nil && texts["explorer.voice"] == nil)
         #expect(texts["explorer.header.exports"] == "Exports, 1 item")
         #expect(texts["explorer.export"] == editor.exportsList.rows.first?.accessibilityLabel)
+        #expect(texts["explorer.export.duration"] == "0:38")
+        #expect(texts["explorer.export.facts"]?.hasPrefix("1080p · ") == true)
         #expect(frames["explorer.export"]?.height == 28)
         editor.app.settings.values["voiceLab.enabled"] = .bool(true)
         (texts, frames) = drawn()

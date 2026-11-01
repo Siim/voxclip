@@ -1,6 +1,11 @@
 # macOS implementation contracts
 
 
+### 2026-11-01 — V2b review: export metadata type
+
+- Only the duration uses SF Mono 11. Resolution, size and wall-clock time use the system 11 pt font, per notes.md §2. Separate production layout probes exercise the duration/facts split in the library regression.
+
+
 ### 2026-11-01 — V2b review: retain the last successful export
 
 - Failed/cancelled attempts retain the previous output path, fingerprint, output facts and timestamp, plus failure/retry state. A first failure has an empty fingerprint so older clients classify it as edited. Export rows retain thumbnail/reveal/open access to that previous file.

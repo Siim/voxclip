@@ -86,7 +86,12 @@ import VoxClipCore
             ExplorerExportThumbnail(editor: editor, row: row)
             VStack(alignment: .leading, spacing: 0) {
                 Text(row.title).font(.system(size: 13)).frame(height: 15)
-                Text(row.metadata).font(DesignValues.mono(11)).foregroundStyle(DesignValues.color("text.tertiary")).frame(height: 13)
+                HStack(spacing: 0) {
+                    Text(row.duration).font(DesignValues.mono(11)).fixedSize()
+                        .columnLayoutEvidence("explorer.export.duration", text: row.duration)
+                    Text(" · " + [row.resolution, row.size, row.time].joined(separator: " · ")).font(.system(size: 11))
+                        .columnLayoutEvidence("explorer.export.facts", text: [row.resolution, row.size, row.time].joined(separator: " · "))
+                }.foregroundStyle(DesignValues.color("text.tertiary")).frame(height: 13)
             }.lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 0)
             if row.status.warning {
