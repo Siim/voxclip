@@ -301,6 +301,13 @@ struct TranscriptAppearance: Equatable {
     private(set) var paragraphReplacements = 0
     /// Storage edits rebuilds made: one per replaced paragraph up to `separateEdits`, else one.
     private(set) var storageEdits = 0
+    /// Exact character writes in the latest rebuild, before TextKit expands its edited
+    /// range to include paragraph delimiters while fixing attributes or selections.
+    private(set) var characterEdits: [(range: NSRange, change: Int)] = []
+    private func replaceCharacters(in range: NSRange, with value: NSAttributedString, storage: NSTextStorage) {
+        characterEdits.append((NSRange(location: range.location, length: value.length), value.length - range.length))
+        storage.replaceCharacters(in: range, with: value)
+    }
     /// The most changed paragraphs a rebuild writes one edit each; more are written in one
     /// edit over their extent. A TextKit edit costs time in proportion to the document's
     /// rendering attributes, about 1 ms at 10,000 words, and one edit over many paragraphs
@@ -309,8 +316,13 @@ struct TranscriptAppearance: Equatable {
     /// Span styles a rebuild computed: the spans of replaced paragraphs, and words that
     /// became or stopped being AI words. Untouched paragraphs keep theirs.
     private(set) var rebuildStyles = 0
-    /// Rendering attributes set on spans, by `update` and by the validator.
+    /// All actual rendering-attribute writes, including TextKit validation. Performance
+    /// and zero-restyle tick checks keep measuring this total.
     private(set) var attributeUpdates = 0
+    /// Writes requested by appearance/rebuild updates. TextKit may independently
+    /// validate a fragment again after storage processing or caret layout; those native
+    /// passes (including deferred repairs) must not inflate an incremental-edit count.
+    private(set) var appearanceUpdates = 0
     /// Spans whose style a scope change recomputed: only those whose in-clip state changed.
     private(set) var scopeRestyles = 0
     private var gutterRevision = 0
@@ -331,6 +343,7 @@ struct TranscriptAppearance: Equatable {
     /// switch styles each span once rather than once here and again in the scope restyle.
     func rebuild(model: EditorModel, appearance pending: TranscriptAppearance? = nil) {
         guard let text, let storage = text.textStorage else { return }
+        characterEdits = []
         let styling = pending ?? appearance
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.minimumLineHeight = (model.textSize * DesignValues.transcriptLineHeightRatio).rounded()
@@ -394,6 +407,7 @@ struct TranscriptAppearance: Equatable {
             // without it the untouched paragraphs keep theirs.
             for index in pending == nil ? changed : Array(contents.indices) { styled.formUnion(style(paragraph: index, state: styling)) }
             editing = true
+            characterEdits.append((NSRange(location: 0, length: value.length), value.length - storage.length))
             storage.setAttributedString(value)
             finishEdits()
             documentRebuilds += 1
@@ -419,9 +433,9 @@ struct TranscriptAppearance: Equatable {
                 blocks[index] = (contents[index], built.text.length)
                 styled.formUnion(style(paragraph: index, state: styling))
                 if let batch { batch.replaceCharacters(in: NSRange(location: range.location - start, length: range.length), with: built.text) }
-                else { storage.replaceCharacters(in: range, with: built.text); storageEdits += 1 }
+                else { replaceCharacters(in: range, with: built.text, storage: storage); storageEdits += 1 }
             }
-            if let batch { storage.replaceCharacters(in: extent, with: batch); storageEdits += 1 }
+            if let batch { replaceCharacters(in: extent, with: batch, storage: storage); storageEdits += 1 }
             paragraphReplacements += changed.count
         }
         builtTextSize = model.textSize
@@ -762,34 +776,36 @@ struct TranscriptAppearance: Equatable {
         return result
     }
 
-    private func apply(_ span: TranscriptSpan) {
+    private func apply(_ span: TranscriptSpan, validation: Bool = false) {
         guard let manager = text?.textLayoutManager, let attributes = attributes[span.id], let range = textRange(span.range) else { return }
         manager.setRenderingAttributes(attributes.filter { $0.key == .foregroundColor || $0.key == .backgroundColor }, for: range)
         attributeUpdates += 1
+        if !validation { appearanceUpdates += 1 }
     }
 
     /// Applies the styles of the spans in a fragment TextKit just laid out: every paragraph
     /// when the document is new, and a replaced paragraph after a rebuild.
     /// TextKit can lay a fragment out while a storage edit is still being processed (a
-    /// selection the edit moved asks for it), and the edit then drops what the validator
-    /// applied. Those spans are applied again once the edit is done (`finishEdits`).
+    /// selection the edit moved asks for it). Defer its layout-neutral colour writes
+    /// until that edit finishes: storage processing would discard them, requiring a
+    /// second write. The final map then supplies the span's final character range.
     func validate(_ fragment: NSTextLayoutFragment) {
         guard let manager = fragment.textLayoutManager, let content = manager.textContentManager, let elementRange = fragment.textElement?.elementRange, let text else { return }
         let offset = content.offset(from: content.documentRange.location, to: elementRange.location)
         let length = content.offset(from: elementRange.location, to: elementRange.endLocation)
         guard offset != NSNotFound, length > 0 else { return }
         for span in text.map.intersecting(NSRange(location: offset, length: length)) {
-            apply(span)
             if editing { validatedDuringEdits.insert(span.id) }
+            else { apply(span, validation: true) }
         }
     }
     private var editing = false
     private var validatedDuringEdits: Set<String> = []
-    /// Applies again the spans TextKit validated during the edits just made.
+    /// Applies once the spans TextKit validated during the edits just made.
     private func finishEdits() {
         editing = false
         guard !validatedDuringEdits.isEmpty, let text else { return }
-        for id in validatedDuringEdits { if let span = text.map.span(id: id) { apply(span) } }
+        for id in validatedDuringEdits { if let span = text.map.span(id: id) { apply(span, validation: true) } }
         validatedDuringEdits = []
     }
     func hasCorrection(_ id: String) -> Bool { corrections[id] != nil }

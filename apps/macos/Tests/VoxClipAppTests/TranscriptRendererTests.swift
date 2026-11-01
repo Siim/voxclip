@@ -56,18 +56,10 @@ import Testing
         (paragraph + 1 < renderer.paragraphs.count ? renderer.paragraphs[paragraph + 1].offset - 1 : text.string.utf16.count) - renderer.paragraphs[paragraph].offset
     }
 
-    /// Records the character edits the text storage processes, in order.
-    private final class EditLog: @unchecked Sendable {
-        var edits: [(range: NSRange, change: Int)] = []
-        var token: NSObjectProtocol?
-        init(_ storage: NSTextStorage) {
-            token = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification, object: storage, queue: nil) { [weak self] notification in
-                guard let storage = notification.object as? NSTextStorage, storage.editedMask.contains(.editedCharacters) else { return }
-                self?.edits.append((storage.editedRange, storage.changeInLength))
-            }
-        }
-        func stop() { token.map(NotificationCenter.default.removeObserver); token = nil }
-    }
+    // Assert the ranges passed to the renderer's storage writes, rather than
+    // didProcessEditing's coalesced range: TextKit may add the trailing newline
+    // during selection/attribute validation. Actual text and rendering attributes
+    // are still compared with a fresh build below.
 
     /// The same model built from scratch has the same text, paragraphs, spans and styles.
     private func expectFreshBuild(_ model: EditorModel, _ text: TranscriptNSTextView, _ renderer: TranscriptRenderer) throws {
@@ -107,13 +99,12 @@ import Testing
         defer { withExtendedLifetime(coordinator) {} }
         let before = text.string.components(separatedBy: "\n")
         #expect(before.count == 6 && before[2].hasPrefix(TranscriptFold.text) && text.map.span(id: "r20")?.ids == ["r20"])
-        let log = EditLog(try #require(text.textStorage)); defer { log.stop() }
         model.apply(.toggle(id: "r21"), name: "Cut")
         render(model, renderer)
         let after = text.string.components(separatedBy: "\n")
         #expect(after[2].hasPrefix(TranscriptFold.text + "word") && text.map.span(id: "r21")?.ids == ["r20", "r21"], "the cut joins r20's fold")
         #expect(after.indices.filter { after[$0] != before[$0] } == [2])
-        #expect(log.edits.map(\.range) == [NSRange(location: renderer.paragraphs[2].offset, length: length(renderer, text, paragraph: 2))], "one edit, exactly the third paragraph")
+        #expect(renderer.characterEdits.map(\.range) == [NSRange(location: renderer.paragraphs[2].offset, length: length(renderer, text, paragraph: 2))], "one edit, exactly the third paragraph")
         try expectFreshBuild(model, text, renderer)
     }
 
@@ -121,14 +112,13 @@ import Testing
         let model = try editor(showCuts: false); defer { model.close() }
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
-        let log = EditLog(try #require(text.textStorage)); defer { log.stop() }
         model.apply(.cutSelection(ids: ["r11", "r46"]), name: "Cut")
         render(model, renderer)
         // The later paragraph is written first, so the earlier paragraph's offset still holds.
-        #expect(log.edits.count == 2, "two edits rather than one over the four paragraphs between")
-        guard log.edits.count == 2 else { return }
-        #expect(log.edits[1].range == NSRange(location: renderer.paragraphs[1].offset, length: length(renderer, text, paragraph: 1)))
-        #expect(log.edits[0].range == NSRange(location: renderer.paragraphs[4].offset - log.edits[1].change, length: length(renderer, text, paragraph: 4)))
+        #expect(renderer.characterEdits.count == 2, "two edits rather than one over the four paragraphs between")
+        guard renderer.characterEdits.count == 2 else { return }
+        #expect(renderer.characterEdits[1].range == NSRange(location: renderer.paragraphs[1].offset, length: length(renderer, text, paragraph: 1)))
+        #expect(renderer.characterEdits[0].range == NSRange(location: renderer.paragraphs[4].offset - renderer.characterEdits[1].change, length: length(renderer, text, paragraph: 4)))
         #expect(renderer.paragraphReplacements == 6 + 2 && renderer.documentRebuilds == 1, "the first build and two paragraphs")
         try expectFreshBuild(model, text, renderer)
     }
@@ -138,13 +128,11 @@ import Testing
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
         #expect(renderer.paragraphs.count == 16)
-        let storage = try #require(text.textStorage), limit = TranscriptRenderer.separateEdits
+        let limit = TranscriptRenderer.separateEdits
         // Up to the limit each changed paragraph is its own edit, as for a single cut.
-        var log = EditLog(storage)
         model.apply(.cutSelection(ids: (0..<limit).map { "r\($0 * 20 + 2)" }), name: "Cut")
         render(model, renderer)
-        log.stop()
-        #expect(log.edits.count == limit)
+        #expect(renderer.characterEdits.count == limit)
         // One more, spread like Cut Fillers or Show Pauses over every second paragraph from the
         // second: one edit from the first to the last, since every TextKit edit costs time in
         // proportion to the whole document. That is still at most half the paragraphs.
@@ -153,19 +141,19 @@ import Testing
         let rebuilds = renderer.documentRebuilds
         for (restore, name) in [(false, "Cut"), (true, "Restore")] {
             layOut(text)
-            let applied = renderer.attributeUpdates
-            log = EditLog(storage)
+            let applied = renderer.appearanceUpdates, styled = renderer.rebuildStyles
             model.apply(restore ? .restoreSelection(ids: ids) : .cutSelection(ids: ids), name: name)
             render(model, renderer)
-            log.stop()
             let end = renderer.paragraphs[last].offset + length(renderer, text, paragraph: last)
-            #expect(log.edits.map(\.range) == [NSRange(location: renderer.paragraphs[1].offset, length: end - renderer.paragraphs[1].offset)], "\(name): one edit, from the second paragraph to the last changed one")
+            #expect(renderer.characterEdits.map(\.range) == [NSRange(location: renderer.paragraphs[1].offset, length: end - renderer.paragraphs[1].offset)], "\(name): one edit, from the second paragraph to the last changed one")
             #expect(renderer.documentRebuilds == rebuilds, "\(name): \(ids.count) of 16 paragraphs is not a whole-document write")
             layOut(text)
-            // The update applies the changed words, and the validator the extent's spans; the
-            // paragraphs before and after it keep their rendering attributes.
+            // Explicit updates write only changed words and compute styles within
+            // the edited extent. Native fragment validation is counted separately;
+            // fresh-build checks below still verify every actual rendering attribute.
             let extent = (1...last).reduce(0) { $0 + text.map.spans(inParagraph: $1).count }
-            #expect(renderer.attributeUpdates - applied <= extent + ids.count, "\(name): \(renderer.attributeUpdates - applied) applied, at most \(extent + ids.count)")
+            #expect(renderer.appearanceUpdates - applied <= ids.count, "\(name): only the changed words request appearance writes")
+            #expect(renderer.rebuildStyles - styled <= extent, "Only edited paragraphs compute new styles")
             try expectRenderingAttributes(text, renderer, name)
             try expectFreshBuild(model, text, renderer)
         }
@@ -189,16 +177,55 @@ import Testing
         #expect(text.backdrop?.band?.suggested == true, "undoing Keep All dashes the bar again")
     }
 
+    @Test func validationDuringAStorageEditDefersItsWrites() throws {
+        let model = try editor(showCuts: false); defer { model.close() }
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        let storage = try #require(text.textStorage)
+        // A selection adjustment can ask TextKit to validate while replaceCharacters
+        // is processing. Force that ordering independently of other AppKit suites.
+        @MainActor final class Validations {
+            let text: TranscriptNSTextView
+            let renderer: TranscriptRenderer
+            var count = 0
+            var eagerWrites = 0
+            init(text: TranscriptNSTextView, renderer: TranscriptRenderer) { self.text = text; self.renderer = renderer }
+            func validate() {
+                guard let storage = text.textStorage, let manager = text.textLayoutManager,
+                      storage.editedMask.contains(.editedCharacters) else { return }
+                let before = renderer.attributeUpdates
+                manager.enumerateTextLayoutFragments(from: manager.documentRange.location, options: [.ensuresLayout]) { fragment in
+                    count += 1
+                    renderer.validate(fragment)
+                    return true
+                }
+                eagerWrites += renderer.attributeUpdates - before
+            }
+        }
+        let validations = Validations(text: text, renderer: renderer)
+        let token = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification, object: storage, queue: nil) { _ in
+            MainActor.assumeIsolated { validations.validate() }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+        model.apply(.toggle(id: "r21"), name: "Cut")
+        render(model, renderer)
+        #expect(validations.count > 0, "The validator ran inside the storage write")
+        #expect(validations.eagerWrites == 0, "Colour writes wait for storage processing to finish")
+        layOut(text)
+        try expectRenderingAttributes(text, renderer, "validation inside an edit")
+        try expectFreshBuild(model, text, renderer)
+    }
+
     @Test func untouchedParagraphsKeepTheirStyles() throws {
         let model = try editor(showCuts: false); defer { model.close() }
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
-        let applied = renderer.attributeUpdates, styles = renderer.rebuildStyles
+        let applied = renderer.appearanceUpdates, styles = renderer.rebuildStyles
         model.apply(.toggle(id: "r21"), name: "Cut")
         render(model, renderer)
         layOut(text)
         let spans = text.map.spans(inParagraph: 2).count
-        #expect(renderer.attributeUpdates - applied <= spans + 1, "the third paragraph's spans and the cut, not \(text.map.count) spans (\(renderer.attributeUpdates - applied))")
+        #expect(renderer.appearanceUpdates - applied <= 1, "Only the changed word requests an appearance write")
         #expect(renderer.rebuildStyles - styles == spans, "only the replaced paragraph's spans are styled again")
         try expectRenderingAttributes(text, renderer, "after a fold edit")
     }
