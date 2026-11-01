@@ -492,7 +492,134 @@ actor RewriteFixtureConnector: LLMConnector {
         check("placement fallback exact copy", RewriteSession.refusal(VoiceLabGeometryError.reversedWords) == "This change can't be placed in this take. Your edits are saved.")
         check("take start refusal uses Core edge and exact copy", RewriteSession.refusal(VoiceLabGeometryError.seamFadeOutsideTake(isStart: true)) == "This change is too close to the start of the take to blend in. Re-record this sentence instead.")
         check("take end refusal uses Core edge and exact copy", RewriteSession.refusal(VoiceLabGeometryError.seamFadeOutsideTake(isStart: false)) == "This change is too close to the end of the take to blend in. Re-record this sentence instead.")
+        results += await directorChecks(app: app, fixture: fixture)
         return results
+    }
+}
+
+/// Keys for the Director scenes and tests: in memory, never the Keychain.
+actor DirectorFixtureKeys: ProviderKeyStore {
+    private(set) var saved: [String: String] = [:]
+    init(_ keys: [String: String] = [:]) { saved = keys }
+    func hasKey(for provider: String) -> Bool { !(saved[provider] ?? "").isEmpty }
+    func save(_ value: String, for provider: String) { saved[provider] = value }
+}
+
+/// One Director scene: the Rewrite job in one state (impl-plan V12m), and the editor it lives in.
+struct DirectorScene {
+    let name: String
+    let task: DirectorTask
+    let editor: EditorModel?
+}
+
+extension DebugRewrite {
+    /// The Rewrite job's states on the Director task, from real sessions over stub connectors: R0 with AIs and with
+    /// none, R1, and each R1x. Nothing is sent and no setting is written; the app's overrides are put back. Close
+    /// each scene's editor when done.
+    static func directorScenes(app: AppModel, fixture: Project) async -> [DirectorScene] {
+        let previousOverride = app.connectorOverride, previousKeys = app.providerKeyStoreOverride
+        defer { app.connectorOverride = previousOverride; app.providerKeyStoreOverride = previousKeys }
+        let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 100_000))
+        func session(_ id: ConnectorID?, name: String = "", group: String = "local", model: String = "fixture-local") -> (EditorModel, RewriteSession) {
+            let editor = DebugConnectorRequests.makeEditor(fixture: fixture, app: app)
+            let connector = id.map { RewriteConnector(connector: ConsentFixtureConnector(id: $0), model: model, name: name, group: group, plan: $0 == .codex ? "ChatGPT plan" : "Claude plan") }
+            let session = RewriteSession(editor: editor, range: 3...9, envelope: envelope, connector: connector)
+            editor.rewrite = session; editor.rewriteRange = 3...9
+            return (editor, session)
+        }
+        var scenes: [DirectorScene] = []
+        // R0: Claude Code signed in on a plan, Codex signed out, Ollama answering; no API key, so Anthropic offers its field.
+        let readiness: [String: ConnectorStatus] = ["claude-code": .ready, "codex": .cliSignedOut, "ollama": .ready, "lmstudio": .notRunning(url: "http://127.0.0.1:1234"), "apple-foundation": .unavailable(reason: "Off")]
+        app.connectorOverride = { id in ConsentFixtureConnector(id: ConnectorID(rawValue: id) ?? .ollama, readiness: readiness[id] ?? .cliMissing, authMethod: "claude.ai") }
+        app.providerKeyStoreOverride = DirectorFixtureKeys()
+        let (chooser, r0) = session(nil)
+        await r0.showChooser()
+        scenes.append(DirectorScene(name: "r0", task: r0.task, editor: chooser))
+        app.connectorOverride = { id in ConsentFixtureConnector(id: ConnectorID(rawValue: id) ?? .ollama, readiness: .cliMissing) }
+        let (none, r0none) = session(nil)
+        await r0none.showChooser()
+        scenes.append(DirectorScene(name: "r0-none", task: r0none.task, editor: none))
+        // R1 on Claude Code with a plan: the send went, and it waits for the answer.
+        if let claude = app.providers.first(where: { $0.id == "claude-code" }) {
+            _ = await app.connectorStatus(claude, using: ConsentFixtureConnector(id: .claudeCode, authMethod: "claude.ai"))
+        }
+        let (running, r1) = session(.claudeCode, name: "Claude Code", group: "cli", model: "sonnet")
+        r1.beginRun(); r1.advanceRun(to: 2)
+        scenes.append(DirectorScene(name: "r1", task: r1.task, editor: running))
+        // R1x: each error with its fix.
+        let errors: [(String, ConnectorID, String, String, PanelError)] = [
+            ("r1x-message", .claudeCode, "Claude Code", "cli", .message(LLMError.timeout.userMessage(label: "Claude Code", feature: .voiceRewrite) ?? "")),
+            ("r1x-signed-out", .codex, "Codex", "cli", .signedOut(cli: "Codex", command: "codex login")),
+            ("r1x-no-key", .anthropic, "Anthropic", "apiKey", .noKey(provider: "anthropic", name: "Anthropic")),
+            ("r1x-not-running", .ollama, "Ollama", "local", .notRunning(server: "Ollama")),
+            ("r1x-refused", .claudeCode, "Claude Code", "cli", .refused),
+        ]
+        for (name, id, label, group, error) in errors {
+            let (editor, failed) = session(id, name: label, group: group, model: id == .anthropic ? "claude-opus-5-5" : "sonnet")
+            failed.fail(error)
+            scenes.append(DirectorScene(name: name, task: failed.task, editor: editor))
+        }
+        // R1x over Rewrite's limits, on the scopes that reach them (V13 opens them): Full take offers Find Clips, a clip only Close.
+        for (name, scope, words, error, findClips) in [
+            ("r1x-too-many-words", RewriteScope.fullTake, DirectorScope(kind: .fullTake, wordCount: 3_412), PanelError.tooManyEntries(count: 3_412), true),
+            ("r1x-too-much-text", RewriteScope.clip("five-2"), DirectorScope(kind: .clip(number: 2), wordCount: 2_900), PanelError.tooMuchText, false),
+        ] {
+            let task = DirectorTask(scope: scope, words: words, state: .ready, close: PanelAction(id: "close", title: "Close Rewrite") {})
+            let (headline, cards, footer) = RewriteSession.tooLarge(error, words: words, findClips: findClips ? PanelAction(id: "findClips", title: "Find Clips") {} : nil)
+            task.show(.error(error), headline: headline, cards: cards, footer: footer)
+            scenes.append(DirectorScene(name: name, task: task, editor: nil))
+        }
+        return scenes
+    }
+
+    /// The scene runner's checks on one scene laid out in `host`: every action the task offers is drawn, and no button
+    /// it draws is disabled (design.md §6.3.4: no disabled buttons).
+    static func directorSceneChecks(_ scene: DirectorScene, host: NSView, width: Int) -> [DebugUISuite.Result] {
+        let texts = DebugRightColumn.texts(in: host)
+        let buttons = texts.filter { $0.key.hasPrefix("director.button.") }
+        var expected = [scene.task.close, scene.task.headline.stop, scene.task.footer.link, scene.task.footer.primary].compactMap { $0 }
+        for case .chooser(_, let saveKey?) in scene.task.cards { expected.append(saveKey) }
+        let drawn = expected.allSatisfy { buttons["director.button.\($0.id)"] == $0.title }
+        let disabled = buttons.filter { $0.value.hasPrefix(DirectorPanel.disabledPrefix) }.map(\.key).sorted()
+        return [
+            .init(name: "v2-rewrite-\(scene.name) at \(width) draws every action of its task (\(expected.map(\.title)))", passed: drawn),
+            .init(name: "v2-rewrite-\(scene.name) at \(width) shows no disabled button (\(disabled))", passed: disabled.isEmpty && !buttons.isEmpty),
+            .init(name: "v2-rewrite-\(scene.name) at \(width) shows its headline", passed: texts["director.headline"] == scene.task.headline.text),
+        ]
+    }
+
+    /// The Director scenes laid out offscreen at the panel body's 404 and the narrowest column's 300, with the checks
+    /// above, and R1's and R1x's announcements.
+    static func directorChecks(app: AppModel, fixture: Project) async -> [DebugUISuite.Result] {
+        let scenes = await directorScenes(app: app, fixture: fixture)
+        defer { scenes.forEach { $0.editor?.close() } }
+        var results: [DebugUISuite.Result] = []
+        for scene in scenes {
+            for width in [404, 300] {
+                let host = NSHostingView(rootView: DirectorPanel(task: scene.task).frame(width: CGFloat(width), height: 265).environment(app))
+                host.frame = CGRect(x: 0, y: 0, width: width, height: 265)
+                host.layoutSubtreeIfNeeded()
+                results += directorSceneChecks(scene, host: host, width: width)
+            }
+        }
+        let announced = Dictionary(scenes.compactMap { scene in scene.editor.map { (scene.name, $0.announcements) } }, uniquingKeysWith: { first, _ in first })
+        results.append(.init(name: "R1 announces \"Rewriting these words\" once", passed: announced["r1"] == ["Rewriting these words"]))
+        results.append(.init(name: "R1x announces its headline", passed: announced["r1x-refused"] == ["Couldn't rewrite these words."]))
+        return results
+    }
+
+    /// `-sceneAudit`: each Director scene in the panel body's 404 × 265 and at the 300 minimum, named v2-rewrite-*.
+    static func directorCaptures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
+        let scenes = await directorScenes(app: app, fixture: fixture)
+        defer { scenes.forEach { $0.editor?.close() } }
+        for scene in scenes {
+            for width in [404, 300] {
+                let name = "v2-rewrite-\(scene.name)" + (width == 404 ? "" : "-\(width)")
+                try await DebugUISuite.snapshot(DirectorPanel(task: scene.task).environment(app), name: name,
+                                                size: NSSize(width: width, height: 265), appearance: .darkAqua, directory: directory)
+            }
+        }
+        return [.init(name: "captured \(scenes.count * 2) v2-rewrite scenes", passed: true)]
     }
 }
 #endif

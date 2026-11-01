@@ -635,6 +635,7 @@ import ApplicationServices
             results += try await DebugShell.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTabs.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: interview, directory: destination, native: true)
+            results += try await DebugRewrite.directorCaptures(app: app, fixture: interview, directory: destination)
         } catch {
             results.append(Result(name: "scene audit: \(error.localizedDescription)", passed: false))
         }
