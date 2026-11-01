@@ -85,6 +85,8 @@ extension EditorModel {
 
     /// The selection's take range: its words and pauses, or nil when nothing is selected.
     var selectionSourceRange: ClosedRange<Double>? {
+        // Read observable collections once per selection frame, rather than once per ID.
+        let words = words, wordIndex = wordIndex, pauseIndex = pauseIndex
         var lower = Double.infinity, upper = -Double.infinity
         for id in selectedWordIDs {
             guard let index = wordIndex[id] else { continue }
@@ -148,16 +150,22 @@ extension EditorModel {
         if first <= last { span = first...last }
         else if let word = word(at: (sourceLower + sourceUpper) / 2, nearest: true), let index = index(word.id) { span = index...index }
         else { return nil }
+        let words = words, pauses = pauseByAfterIndex, cutPauses = cutPauseIDs
         selectedWordIDs = Set(words[span].map(\.id))
-        selectedPauseIDs = Set(span.dropLast().compactMap { pauseByAfterIndex[$0]?.id }.filter(cutPauseIDs.contains))
+        selectedPauseIDs = Set(span.dropLast().compactMap { pauses[$0]?.id }.filter(cutPauses.contains))
         return snap ? timelineSelection(on: axis) : lower...upper
     }
 
     private func timelineSelectionBoundary(source: Double, start: Bool, on axis: TimelineAxis) -> Int? {
+        // Snapshot once: per-word Observation reads dominate an hour-long drag otherwise.
+        let words = words, cuts = cutWordIDs
         let scope = axis == .edited ? scopeBounds ?? 0...(words.count - 1) : 0...(words.count - 1)
-        return scope.filter { axis == .source || !cutWordIDs.contains(words[$0].id) }.min {
-            abs((start ? words[$0].start : words[$0].end) - source) < abs((start ? words[$1].start : words[$1].end) - source)
+        var best: Int?, distance = Double.infinity
+        for index in scope where axis == .source || !cuts.contains(words[index].id) {
+            let candidate = abs((start ? words[index].start : words[index].end) - source)
+            if best == nil || candidate < distance { best = index; distance = candidate }
         }
+        return best
     }
 
     /// Timeline navigation is confined to the active tab's scope. Edited skips folded
