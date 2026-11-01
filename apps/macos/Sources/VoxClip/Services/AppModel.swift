@@ -37,9 +37,8 @@ extension ProviderChoice {
         return plans.contains(method) ? "plan" : nil
     }
     func consentCopy(action: ConnectorConsentAction, wordCount: Int, authMethod: String? = nil, serverHost: String? = nil) -> String {
-        if id == "claude-code" || id == "codex" {
-            let name = id == "claude-code" ? "Claude Code" : "Codex"
-            let vendor = id == "claude-code" ? "Anthropic" : "OpenAI"
+        if let name = cliName {
+            let vendor = pricingName
             let plan = id == "claude-code" ? "Claude" : "ChatGPT"
             let subject = action == .rewrite ? "These words are sent" : action == .test ? "A short test request is sent" : "The transcript is sent"
             guard let key = detectedBillingMethod(authMethod) else { return "" }
@@ -219,7 +218,8 @@ extension ProviderChoice {
     @ObservationIgnored private var library: ModelLibrary?
     @ObservationIgnored private let modelDownloader: (any ModelDownloader)?
     @ObservationIgnored var connectorOverride: ((String) -> any LLMConnector)?
-    @ObservationIgnored var connectorConsentOverride: (@MainActor (ProviderChoice, ConnectorConsentAction, String) async -> Bool)?
+    /// Answers the send sheets (`LLMSendSheet`: the privacy consent and the cost confirmation) in harness sessions and tests.
+    @ObservationIgnored var connectorConsentOverride: (@MainActor (ProviderChoice, ConnectorConsentAction, LLMSendSheet) async -> Bool)?
     var testingProviders: Set<String> = []
     @ObservationIgnored var providerKeyStoreOverride: (any ProviderKeyStore)?
     var providerKeyStore: any ProviderKeyStore { providerKeyStoreOverride ?? secrets }

@@ -25,7 +25,10 @@ actor ConsentFixtureConnector: LLMConnector {
 }
 
 @MainActor private final class ConsentObservation {
+    /// The privacy consents' copy, in order.
     var copies: [String] = []
+    /// The cost confirmations, in order.
+    var costs: [LLMSendSheet] = []
     var detectedBeforeSheet = true
     var zeroRequestsBeforeSheet = true
 }
@@ -53,11 +56,13 @@ actor ConsentFixtureConnector: LLMConnector {
                     app.set("voiceLab.enabled", .bool(true))
                     app.set("llm.cloudConsent.\(id)", .bool(choice == "granted"))
                     let observation = ConsentObservation()
-                    app.connectorConsentOverride = { _, _, copy in
-                        observation.copies.append(copy)
+                    // "granted" has consented before; it and "continue" approve the cost sheet, "cancel" declines both.
+                    app.connectorConsentOverride = { _, _, sheet in
                         let sends = await fake.sends, statuses = await fake.statuses
-                        observation.zeroRequestsBeforeSheet = sends == 0
-                        observation.detectedBeforeSheet = statuses > 0
+                        observation.zeroRequestsBeforeSheet = observation.zeroRequestsBeforeSheet && sends == 0
+                        observation.detectedBeforeSheet = observation.detectedBeforeSheet && statuses > 0
+                        if sheet.reason == .cost { observation.costs.append(sheet); return choice != "cancel" }
+                        observation.copies.append(sheet.message)
                         return choice == "continue"
                     }
                     let editor = makeEditor(fixture: fixture, app: app)
@@ -71,7 +76,7 @@ actor ConsentFixtureConnector: LLMConnector {
                         await wait { editor.rewrite != nil }
                         if let session = editor.rewrite {
                             await session.detectConnector(); await session.prepare()
-                            if let quote = session.quote { session.markEstimateShown(quote.id); _ = await session.propose(quote, affirmative: true) }
+                            if let quote = session.quote { session.markEstimateShown(quote.id); _ = await session.propose(quote) }
                         }
                     case .test:
                         _ = await testProvider(provider, app: app)
@@ -79,11 +84,18 @@ actor ConsentFixtureConnector: LLMConnector {
                     let sends = await fake.sends
                     let known = method != nil && method != "unrecognized"
                     let expected = choice == "cancel" || !known ? 0 : 1
+                    // An API key, or a CLI signed in with one, confirms every send after the consent (VS, C8).
+                    let confirms = known && (provider.group == "apiKey" || method == "api_key")
                     let prefix = "\(id) \(action) \(method ?? "unknown") \(choice)"
                     check("\(prefix) detects before sheet and sends only after consent", observation.detectedBeforeSheet && observation.zeroRequestsBeforeSheet && sends == expected && observation.copies.count == (choice == "granted" || !known ? 0 : 1))
+                    check("\(prefix) confirms the cost only on an API key, after the consent", observation.costs.count == (confirms && choice != "cancel" ? 1 : 0))
+                    if let cost = observation.costs.first {
+                        let vendor = id == "codex" ? "OpenAI" : "Anthropic"
+                        check("\(prefix) cost sheet ends with the unknown-price sentence", cost.message.hasSuffix("\n\nVoxClip can't tell what this costs. Check \(vendor)'s pricing."))
+                    }
                     check("\(prefix) leaves no run or lease held", !editor.finding && !editor.llmRuns.isBusy && app.testingProviders.isEmpty)
                     if !known {
-                        check("\(prefix) unknown method never defaults to plan wording", provider.consentCopy(action: action, wordCount: 3, authMethod: method).isEmpty && observation.copies.isEmpty && app.detectedConnectorStatus[id] == .cliSignedOut)
+                        check("\(prefix) unknown method never defaults to plan wording", provider.consentCopy(action: action, wordCount: 3, authMethod: method).isEmpty && observation.copies.isEmpty && observation.costs.isEmpty && app.detectedConnectorStatus[id] == .cliSignedOut)
                     } else if choice != "granted" {
                         let copy = observation.copies.first ?? ""
                         let billing = provider.group != "cli" || (method == "api_key" ? copy.contains("billed to the API key") && !copy.contains("plan's usage") : copy.contains("plan's usage") && !copy.contains("billed to the API key"))
@@ -119,7 +131,10 @@ actor ConsentFixtureConnector: LLMConnector {
                     app.set("llm.baseUrl.ollama", .string(base))
                     app.set("llm.cloudConsent.ollama", .bool(choice == "granted"))
                     let observation = ConsentObservation()
-                    app.connectorConsentOverride = { _, _, copy in observation.copies.append(copy); return choice == "continue" }
+                    app.connectorConsentOverride = { _, _, sheet in
+                        if sheet.reason == .cost { observation.costs.append(sheet); return true }
+                        observation.copies.append(sheet.message); return choice == "continue"
+                    }
                     let editor = makeEditor(fixture: fixture, app: app)
                     defer { editor.close(); app.connectorConsentOverride = nil; app.connectorOverride = nil }
                     if action == .findClips { editor.findClips(); await wait { !editor.finding } } else { _ = await testProvider(provider, app: app) }
@@ -127,6 +142,7 @@ actor ConsentFixtureConnector: LLMConnector {
                     let asked = host != nil && choice != "granted"
                     let prefix = "ollama at \(host ?? "loopback") \(action) \(choice)"
                     check("\(prefix) asks first only off this Mac and sends only after consent", observation.copies.count == (asked ? 1 : 0) && sends == (asked && choice == "cancel" ? 0 : 1))
+                    check("\(prefix) never confirms the cost", observation.costs.isEmpty)
                     check("\(prefix) consent names the server, not an API key", observation.copies.allSatisfy { $0.contains("to the Ollama server at 192.168.1.20") && !$0.contains("API key") })
                     let footnote = FindClipsPopover.footnote(provider, serverHost: app.localServerHost(provider))
                     check("\(prefix) Find clips footnote says where the transcript goes", footnote == (host.map { "Sends transcript text with word numbers to \($0). No audio or video." } ?? "Runs on this Mac. Nothing leaves it."))
