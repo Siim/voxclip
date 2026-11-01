@@ -566,8 +566,8 @@ enum VCTokens {
     static let spacingInspectorSectionGap: CGFloat = 20
     static let spacingTileGap: CGFloat = 8
     static let spacingClipRowPadding: CGFloat = 12
-    static let spacingTranscriptParagraphGap: CGFloat = 18
-    static let spacingTranscriptGutter: CGFloat = 84
+    static let spacingTranscriptParagraphGap: CGFloat = 14
+    static let spacingTranscriptGutter: CGFloat = 80
     static let spacingWordHitSlopVertical: CGFloat = 2
     static let radiusXs: CGFloat = 4
     static let radiusControl: CGFloat = 6
@@ -676,11 +676,11 @@ enum VCTokens {
     static let typographyTitleSystemStyle: String = "title"
     static let typographyTranscriptFontFamily: String = "system"
     static let typographyTranscriptFontWeight: CGFloat = 400
-    static let typographyTranscriptFontSize: CGFloat = 19
-    static let typographyTranscriptLineHeight: CGFloat = 32
+    static let typographyTranscriptFontSize: CGFloat = 15
+    static let typographyTranscriptLineHeight: CGFloat = 26
     static let typographyTranscriptZoomMin: CGFloat = 13
     static let typographyTranscriptZoomMax: CGFloat = 28
-    static let typographyTranscriptLineHeightMultiplier: CGFloat = 1.6842
+    static let typographyTranscriptLineHeightMultiplier: CGFloat = 1.7333
     static let typographyPauseTokenFontFamily: String = "SF Mono"
     static let typographyPauseTokenFontWeight: CGFloat = 400
     static let typographyPauseTokenFontSize: CGFloat = 11

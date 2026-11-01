@@ -146,7 +146,7 @@ import VoxClipCore
     static func monoFont(_ size: Double = 12, weight: NSFont.Weight = .regular) -> NSFont { .monospacedSystemFont(ofSize: size, weight: weight) }
     static func mono(_ size: Double = 12, weight: Font.Weight = .regular) -> Font { .system(size: size, weight: weight, design: .monospaced) }
 
-    // Transcript type (design C4): 19/32 with an 18 paragraph gap; zoom keeps 32/19.
+    // Transcript type (notes.md §2): 15/26 with a 14 paragraph gap; zoom keeps 26/15.
     static let transcriptTextSize = Double(VCTokens.typographyTranscriptFontSize)
     static let transcriptLineHeightRatio = Double(VCTokens.typographyTranscriptLineHeight / VCTokens.typographyTranscriptFontSize)
     static let transcriptParagraphGap = Double(VCTokens.spacingTranscriptParagraphGap)

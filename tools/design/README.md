@@ -45,7 +45,7 @@ timestamps or host-dependent paths in the outputs.
   name as a suffix.
 - A dimension's `$value` is the macOS value. A `windows` value in its
   extensions replaces it in `Tokens.xaml` only, so both apps use one name:
-  `spacing.transcriptGutter` is `spacingTranscriptGutter` 84 in Swift and
+  `spacing.transcriptGutter` is `spacingTranscriptGutter` 80 in Swift and
   `VcSpacingTranscriptGutter` 76 in XAML.
 - Durations remain milliseconds. Bezier points flatten to `X1/Y1/X2/Y2`;
   compound sizes flatten to width/height or min/ideal/max. Typography constants
