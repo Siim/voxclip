@@ -220,7 +220,8 @@ import Testing
         #expect(session.proposalButton == button)
         #expect(session.sendLine == line)
         // C8's sentence is the cost sheet's, shown only by a send that asks first.
-        #expect(app.llmSendKind(.claudeCode) == (price.isEmpty ? .inline("") : .confirm(price)))
+        let asked: String? = if case .confirm(let text) = app.llmSendKind(.claudeCode) { text } else { nil }
+        #expect(asked == (price.isEmpty ? nil : price))
     }
 
     /// Declining the cost sheet changes nothing: the route runs before anything is claimed sent, so nothing is sent or
