@@ -94,6 +94,11 @@ import VoxClipCore
         let size = NSSize(width: 1056, height: 216)
         for axis in [TimelineAxis.edited, .source] {
             model.showsCuts = axis == .source
+            // The playhead a third of the way into the clip before the canvas follows it,
+            // so the fitted view keeps In in sight.
+            let inOut = model.timelineInOut(on: axis) ?? 0...model.duration
+            let source = model.timelineSourceTime(axis == .edited ? model.duration / 3 : inOut.lowerBound + (inOut.upperBound - inOut.lowerBound) / 3, on: axis)
+            model.sourceTime = source; model.playhead = model.timelineTime(source: source, on: .edited)
             let name = "v2-timeline-\(axis.rawValue)-dark"
             let host = ShellHost.controller(TimelinePanel(model: model, shell: shell), app: app)
             host.view.frame = NSRect(origin: .zero, size: size)
@@ -112,34 +117,24 @@ import VoxClipCore
                 continue
             }
             canvas.renderContent()
-            // The playhead a third of the way into the clip, inside the view.
-            let inOut = model.timelineInOut(on: axis) ?? 0...model.duration
-            let source = model.timelineSourceTime(axis == .edited ? model.duration / 3 : inOut.lowerBound + (inOut.upperBound - inOut.lowerBound) / 3, on: axis)
-            model.sourceTime = source; model.playhead = model.timelineTime(source: source, on: .edited)
             canvas.followPlayhead()
             canvas.layoutSubtreeIfNeeded(); canvas.displayIfNeeded()
             let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed]
             lanes.forEach { $0.layer?.displayIfNeeded() }
-            let bitmap = try render(canvas)
+            // cacheDisplay draws the lanes and composites the overlay's layers, the right way up.
+            let bitmap = try capture(canvas, name: "\(name)-lanes", directory: directory)
             let scale = CGFloat(bitmap.pixelsWide) / canvas.bounds.width
             func color(_ x: CGFloat, _ y: CGFloat) -> [Double] { pixel(bitmap, x: Int(x * scale), y: Int(y * scale)) }
             func matches(_ actual: [Double], _ token: String, alpha: CGFloat = 1, over ground: String? = nil) -> Bool {
-                var expected: [Double] = []
-                NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance {
-                    let top = DesignValues.nsColor(token).usingColorSpace(.sRGB) ?? .black
-                    let base = ground.flatMap { DesignValues.nsColor($0).usingColorSpace(.sRGB) } ?? .black
-                    let a = Double(top.alphaComponent * alpha)
-                    expected = [(top.redComponent, base.redComponent), (top.greenComponent, base.greenComponent), (top.blueComponent, base.blueComponent)]
-                        .map { Double($0.0) * a + Double($0.1) * (1 - a) }
-                }
-                return actual.count == 3 && zip(actual, expected).allSatisfy { abs($0 - $1) < 3.0 / 255 }
+                guard let expected = try? swatch(token, alpha: alpha, over: ground) else { return false }
+                return actual.count == 3 && expected.count == 3 && zip(actual, expected).allSatisfy { abs($0 - $1) < 3.0 / 255 }
             }
             let viewport = canvas.viewport
             let playX = TimelineMetrics.header + viewport.x(model.timelinePlayhead(on: axis))
             let lineY = TimelineMetrics.tracks[1].y + 10
             check("\(name) draws the playhead as a 1 pt tint line through the tracks", matches(color(playX, lineY), "tint.default"))
             check("\(name) draws the playhead's head in the ruler's lower half", matches(color(playX, TimelineMetrics.ruler.y + 14), "tint.default"))
-            let inX = TimelineMetrics.header + viewport.x(inOut.lowerBound), outX = TimelineMetrics.header + viewport.x(inOut.upperBound)
+            let inX = TimelineMetrics.header + viewport.x(inOut.lowerBound)
             check("\(name) draws the In bracket the full ruler height in clip.label", matches(color(inX + 0.75, TimelineMetrics.ruler.y + 12), "clip.label"))
             check("\(name) draws the ruler inside In/Out on chrome", matches(color(inX + 3, TimelineMetrics.ruler.y + 13), "bg.window"))
             if inX - 8 > TimelineMetrics.header {
@@ -173,7 +168,6 @@ import VoxClipCore
             let spoken = sliders.compactMap { attribute($0, kAXValueDescriptionAttribute) as? String }
             check("\(name) reaches VoiceOver with the playhead's spoken value", ax.isEmpty || spoken.contains(model.timelineAccessibilityValue))
             check("\(name) shows the toolbar's timecode readout", ax.isEmpty || ax.contains { attribute($0, kAXIdentifierAttribute) as? String == "voxclip.timeline.time" })
-            if let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: directory.appendingPathComponent("\(name)-lanes.png")) }
             if DebugUISuite.sessionLocked {
                 results.append(.init(name: "capture \(name)", passed: true, skipped: "the console session is locked"))
             } else {
@@ -193,23 +187,6 @@ import VoxClipCore
         guard (try? process.run()) != nil else { return false }
         while process.isRunning { try? await Task.sleep(for: .milliseconds(20)) }
         return process.terminationStatus == 0 && FileManager.default.fileExists(atPath: directory.appendingPathComponent("\(name).png").path)
-    }
-
-    /// The canvas's layer tree, lanes and playhead layers together, as sRGB pixels.
-    private static func render(_ view: NSView) throws -> NSBitmapImageRep {
-        guard let layer = view.layer, let space = CGColorSpace(name: CGColorSpace.sRGB) else { throw CocoaError(.coderInvalidValue) }
-        let scale = view.window?.backingScaleFactor ?? 2
-        let width = Int(view.bounds.width * scale), height = Int(view.bounds.height * scale)
-        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: space,
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw CocoaError(.coderInvalidValue) }
-        context.scaleBy(x: scale, y: scale)
-        if !layer.isGeometryFlipped && view.isFlipped {
-            context.translateBy(x: 0, y: view.bounds.height)
-            context.scaleBy(x: 1, y: -1)
-        }
-        NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance { layer.render(in: context) }
-        guard let image = context.makeImage() else { throw CocoaError(.coderInvalidValue) }
-        return NSBitmapImageRep(cgImage: image)
     }
 
     /// A red pixel: red well above green and blue (notes.md §3: no red anywhere).
@@ -483,6 +460,12 @@ import VoxClipCore
         return results
     }
     private static func capture(_ view: NSView, name: String, directory: URL) throws -> NSBitmapImageRep {
+        let bitmap = try sRGBBitmap(of: view)
+        if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("\(name).png")) }
+        return bitmap
+    }
+    /// `view` as its window draws it (lanes and their layers), read back in sRGB.
+    static func sRGBBitmap(of view: NSView) throws -> NSBitmapImageRep {
         view.layoutSubtreeIfNeeded()
         guard let cached = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.coderInvalidValue) }
         view.cacheDisplay(in: view.bounds, to: cached)
@@ -491,11 +474,31 @@ import VoxClipCore
                                       space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw CocoaError(.coderInvalidValue) }
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         guard let converted = context.makeImage() else { throw CocoaError(.coderInvalidValue) }
-        let bitmap = NSBitmapImageRep(cgImage: converted)
-        if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("\(name).png")) }
-        return bitmap
+        return NSBitmapImageRep(cgImage: converted)
     }
-    private static func pixel(_ bitmap: NSBitmapImageRep, x: Int, y: Int) -> [Double] {
+    /// What `token`, at `alpha` over `ground`, reads back as through the same path as a
+    /// lane: a view filled with it in a window like the panel's. Colour management treats
+    /// both alike, so pixel checks compare like with like.
+    static func swatch(_ token: String, alpha: CGFloat = 1, over ground: String? = nil, appearance: NSAppearance.Name = .darkAqua) throws -> [Double] {
+        final class Swatch: NSView {
+            var paint: () -> Void = {}
+            override func draw(_ dirtyRect: NSRect) { paint() }
+        }
+        let view = Swatch(frame: NSRect(x: 0, y: 0, width: 8, height: 8))
+        view.paint = {
+            if let ground { DesignValues.nsColor(ground).setFill(); view.bounds.fill() }
+            DesignValues.nsColor(token).withAlphaComponent(DesignValues.nsColor(token).alphaComponent * alpha).setFill()
+            view.bounds.fill(using: .sourceOver)
+        }
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 8, height: 8), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: appearance)
+        window.contentView = view
+        defer { window.close() }
+        let bitmap = try sRGBBitmap(of: view)
+        return pixel(bitmap, x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)
+    }
+    static func pixel(_ bitmap: NSBitmapImageRep, x: Int, y: Int) -> [Double] {
         guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return [] }
         return [color.redComponent, color.greenComponent, color.blueComponent]
     }
