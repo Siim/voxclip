@@ -196,6 +196,38 @@ import Testing
         editor.finishExportJob()
         #expect(shell.panelJob(for: editor) == .captions && !PanelJob.available(in: editor).contains(.export))
     }
+    /// Every Export entry opens the right panel's Export job on its own target, over an open Rewrite, which stays in
+    /// the switcher: the title row's Export (File › Export… calls the same `presentExport`) on the active tab, and an
+    /// Explorer EXPORTS row's Export again and Retry on the row's clip, from another tab. Done goes back to Rewrite.
+    @Test func everyExportEntryOpensTheJobOnItsTargetOverAnOpenRewrite() async throws {
+        let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
+        defer { editor.close() }
+        shell.choose(.clip("five-1"))
+        let session = RewriteSession(editor: editor, scope: .selection(0...2), envelope: nil, connector: nil)
+        editor.rewrite = session
+        #expect(shell.panelJob(for: editor) == .rewrite)
+        let controller = EditorWorkController(model: editor, shell: shell)
+        defer { controller.tearDown() }
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1280, height: 800), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false; window.contentView = controller.view
+        defer { window.contentView = nil; window.close() }
+        controller.export.performClick(nil)
+        #expect(shell.panelJob(for: editor) == .export && editor.exportJob.requestedIDs == ["five-1"] && shell.viewerShown)
+        #expect(PanelJob.available(in: editor) == [.captions, .rewrite, .export] && window.attachedSheet == nil)
+        editor.finishExportJob()
+        #expect(shell.panelJob(for: editor) == .rewrite && !editor.exportJob.isOpen)
+        let failed = ExportRecord(projectID: editor.project.id, targetID: "five-2", exportedAt: Date(timeIntervalSince1970: 1),
+            planFingerprint: "", styleId: editor.project.captions.styleId, aspect: editor.project.export.aspect, outputPath: "",
+            failed: true, retryFolder: "/fixture")
+        let row = try #require(ExportsListModel(project: editor.project, records: [failed]).rows.first)
+        editor.presentExport(row)
+        #expect(shell.panelJob(for: editor) == .export && editor.exportJob.requestedIDs == ["five-2"] && editor.exportJobContext == "Clip 2")
+        editor.presentExport(row, retry: true)
+        #expect(shell.panelJob(for: editor) == .export && editor.exportJob.requestedIDs == ["five-2"] && editor.exportJob.folderOverride?.path == "/fixture")
+        #expect(!editor.exporting && editor.activeClip?.id == "five-1" && editor.rewrite === session)
+        editor.finishExportJob()
+        #expect(shell.panelJob(for: editor) == .rewrite)
+    }
     @Test func failedExportOffersTryAgainAndExplorerRetryOpensSetupWithTargetAndFolder() async throws {
         let exporter = RegressionExporter(failure: .exportFailed("Fixture failure"))
         let shell = try await shell(exporter: exporter), editor = try #require(shell.editor)
