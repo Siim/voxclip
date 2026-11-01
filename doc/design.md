@@ -630,7 +630,7 @@ No other zoom in v1. Full take always fits.
 **Accessibility.**
 
 - The strip is one slider (macOS: `Canvas` with `.accessibilityRepresentation { Slider }`; Windows: a `RangeValue` automation peer). Its name is "Playhead", and its value reads like "22 seconds of 2 minutes 10 after cuts, 8 cuts". ← and → step by one word, ⇧← and ⇧→ by one sentence, Home and End go to the ends.
-- The trim handles are separate adjustable elements, "Clip 2 start" and "Clip 2 end", that step by one word.
+- Escape during a mouse trim cancels its preview without an edit or undo step. The trim handles are separate adjustable elements, "Clip 2 start" and "Clip 2 end", that step by one word.
 - Edited | Source is a two-option picker named "Timeline time".
 
 ### 5.3 Compact transport (viewer collapsed)
@@ -1802,7 +1802,7 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Show / hide timeline | ⌘J | Ctrl+J (planned) | The v2 bottom panel. It stays while the right column is hidden, until the viewer has its hover transport |
 | Selection bar focus | Tab or ⌃F6 | Shift+F10 or Menu key | |
 | Move focus to the next pane | ⌃F6 | F6 (Shift+F6 goes back) | Order in §15 |
-| Transcript text bigger / smaller / reset | ⌘+ / ⌘− / ⌘0 | Ctrl+= / Ctrl+− / Ctrl+0 | |
+| Timeline zoom / transcript text size | ⌘= / ⌘− (⌘+ also increases) | Ctrl+= / Ctrl+− / Ctrl+0 | Mac: both directions zoom the timeline when it has focus, and resize transcript text elsewhere. One visible View item per direction follows that focus. ⌘0 resets transcript text in the key editor, including Versions windows. The timeline toolbar exposes the single adjustable “Timeline zoom” slider; the canvas exposes playhead and edge controls. |
 | Export… | ⌘E | Ctrl+E | |
 | Import / open | ⌘O | Ctrl+O | |
 | New project | ⌘N (New Project from Video…, movie picker, main window) | Ctrl+N (new main window on Home) | Replaces "New window" |

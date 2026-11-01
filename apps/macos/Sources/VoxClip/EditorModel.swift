@@ -40,6 +40,14 @@ struct EditorRenderSnapshot {
     var showsCuts = false
     /// Show Pauses: the lengths of uncut pauses in the open clip. An opt-in, off by default.
     var showPauses = false
+    /// The A1 track header's speaker (impl-plan V9, item 9): the preview plays without sound.
+    /// A view setting: no undo step and no document change.
+    var previewMuted = false { didSet { nativePreview?.player.isMuted = previewMuted } }
+    /// The pages of the preview's caption layout, for the timeline's CC lane (impl-plan V9):
+    /// empty until the first preview load; CC also reads them as empty while captions are off.
+    var captionPages: [CaptionPage] = []
+    var timelineZoomStep = 0
+    var timelineSnapping = true
     /// The selection's first and last word or pause in reading order (a pause follows the
     /// word before it), one id when they are the same. A fold opens while one of them is in
     /// it (`openFoldEnds`), so what is selected always shows.
@@ -626,6 +634,7 @@ struct EditorRenderSnapshot {
             }.map(\.id))
         }
         if transcriptChanged {
+            captionPages = []
             summaryCache.removeAll(keepingCapacity: true)
             wordIndex = Dictionary(uniqueKeysWithValues: words.enumerated().map { ($0.element.id, $0.offset) })
         }
@@ -681,6 +690,7 @@ struct EditorRenderSnapshot {
         transcriptRevision += 1
         followWaveformKey()
         if edits.activeClipId != renderedActiveClipID {
+            captionPages = []
             renderedActiveClipID = edits.activeClipId
             onActiveClipChange?(edits.activeClipId)
         }
@@ -1290,6 +1300,7 @@ struct EditorRenderSnapshot {
         do {
             let request = try await renderRequest()
             guard revision == previewRevision, !Task.isCancelled else { return }
+            captionPages = request.captionLayout?.pages.map(\.page) ?? []
             if load { try await preview.load(request) } else { try await preview.update(request) }
             guard revision == previewRevision, !Task.isCancelled else { return }
             previewError = nil

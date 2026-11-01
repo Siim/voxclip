@@ -27,6 +27,7 @@ import VoxClipCore
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         func item(_ menu: String, _ title: String) -> NSMenuItem? {
             let items = NSApp.mainMenu?.item(withTitle: menu)?.submenu
+            if menu == "View", let tag = ["Bigger Text": 18, "Smaller Text": 19][title] { return items?.item(withTag: tag) }
             return items?.item(withTitle: title)
                 ?? (title == "Close Project" ? items?.item(withTitle: "Close Tab") ?? items?.item(withTitle: "Close") : nil)
                 ?? (title.hasPrefix("Rewrite") ? items?.item(withTag: 38) : nil)
@@ -56,7 +57,7 @@ import VoxClipCore
             ("Clip", "Dismiss Suggestion", String(UnicodeScalar(NSDeleteCharacter)!), []),
             ("Clip", "Rename Clip…", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),
             ("Clip", "Remove Clip", String(UnicodeScalar(NSDeleteCharacter)!), []),
-            ("View", "Hide Timeline", "j", .command), ("View", "Bigger Text", "+", .command), ("View", "Smaller Text", "-", .command), ("View", "Actual Size", "0", .command),
+            ("View", "Hide Timeline", "j", .command), ("View", "Bigger Text", "=", .command), ("View", "Smaller Text", "-", .command), ("View", "Actual Size", "0", .command),
             ("VoxClip", "Settings…", ",", .command)
         ]
         for (menu, title, key, modifiers) in bindings {
