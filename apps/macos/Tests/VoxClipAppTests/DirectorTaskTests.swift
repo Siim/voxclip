@@ -703,7 +703,7 @@ private actor RefusingKeys: ProviderKeyStore {
         let reviews = session.task.changes?.items.map(\.state)
         panel.press(key, keyCode: key == "\r" ? 36 : 49)
         #expect(answered == ["keep"] && session.task.confirm == nil && session.task.changes?.items.map(\.state) == reviews && session.isOpen)
-        await panel.settle(until: startHasKeyboard)
+        await panel.settle { startHasKeyboard() && !session.task.keyboardInPanel }
         #expect(startHasKeyboard() && !session.task.keyboardInPanel, "Keep Working gives the keyboard back: \(panel.state(session.task))")
     }
 

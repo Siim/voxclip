@@ -138,18 +138,17 @@ extension WorkspaceShell {
 
     var body: some View {
         let job = shell.panelJob(for: model)
+        let showsTask = (job == .rewrite || job == .voice) && !(job == .voice && (model.hasVoiceJob || model.currentVoiceFeedback != nil))
         VStack(spacing: 0) {
             viewer
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if let task = model.panelTask, task.confirm != nil { DirectorPanel(task: task, model: model) }
+                if let task = model.panelTask, task.confirm != nil || showsTask { DirectorPanel(task: task, model: model) }
                 else if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
                 else if job == .voice, let feedback = model.currentVoiceFeedback { VoiceRewriteDone(model: model, feedback: feedback) }
                 else if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
-                else if (job == .rewrite || job == .voice), let session = model.rewrite {
-                    DirectorPanel(task: session.task, model: model)
-                } else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+                else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)

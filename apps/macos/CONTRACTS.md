@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## V18/V19 integration seam — keep the task host through questions (1 Nov 2026)
+
+- The full App run exposed an inherited conditional-host identity loss: asking and dismissing an inline question replaced `DirectorPanel`, throwing away the prior keyboard responder. `PanelHost` now uses one task branch for the ordinary task and its question, retaining the existing question override over other jobs. No focus policy or assertion was relaxed.
+- The strict Return/Space × transcript/field regression first failed both cases, including after an observation-only wait change; diagnostics proved the saved responder disappeared with the view. After the host fix, Director task and Voice session coverage passes 54 tests / 3 suites. The test waits for both existing focus predicates, without sleeps. Re-run the full App suite before integrating; preserve this shared identity when merging inline `f9b273eb`.
+
 ## V18/V19 handoff review — fresh voice discovery and input lifetime (1 Nov 2026)
 
 - Finishing creation returns to the existing Rewrite session and consent-respectfully refreshes its generation voice cache, selecting the new active voice without a legacy manual refresh or rebuilt proposal. A voice still needing provider verification remains unselected with explicit guidance; no takes are sent. No discovery occurs if provider consent was revoked.
