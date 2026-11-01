@@ -426,9 +426,13 @@ extension ProviderChoice {
         let provider = providers.first { context == "ai:\($0.label)" || context == "ai-test:\($0.label)" }
         let message = UserMessages.message(error, context: context, model: provider.map { string("llm.model.\($0.id)", fallback: $0.defaultModel ?? "the selected model") } ?? "the selected model", installHint: provider?.cli?.installHint, signInHint: provider?.cli?.signInHint, connectorID: provider?.id)
         guard !message.isEmpty else { return "" }
+        await logFailure(error, context: context)
+        return await log.redact(message)
+    }
+    /// Writes a failure's code to the app log, never its text: "llm: code=operationFailed" for an AI context.
+    func logFailure(_ error: any Error, context: String) async {
         let category = context.hasPrefix("ai") ? "llm" : context == "export" ? "export" : "settings"
         await log.write(LogEntry(level: .error, category: category, message: "code=\((error as? VoxClipError)?.code.rawValue ?? (error is LLMError ? "llmFailure" : "operationFailed"))"))
-        return await log.redact(message)
     }
     func checkUpdates(manual: Bool) async {
         do {

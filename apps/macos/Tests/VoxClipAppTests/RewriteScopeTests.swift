@@ -74,9 +74,10 @@ private final class WorkThreads: Sendable {
 /// connectors and in-memory settings only; the app model never starts.
 @Suite("Rewrite takes a scope", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; only stub connectors are called."))
 @MainActor struct RewriteScopeTests {
-    /// An app whose AI is `connector` on the stub, with every sheet answered yes and logged.
-    private func app(_ connector: String, stub: ScopeStub) -> (AppModel, Sheets) {
-        let app = AppModel(settingsStore: RegressionSettingsStore())
+    /// An app whose AI is `connector` on the stub, with every sheet answered yes and logged. `locations` gives it its own
+    /// data folder, so its log is its own.
+    private func app(_ connector: String, stub: ScopeStub, locations: DataLocations? = nil) -> (AppModel, Sheets) {
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: locations)
         app.connectorOverride = { _ in stub }
         app.providerKeyStoreOverride = DirectorFixtureKeys()
         let sheets = Sheets()
@@ -244,15 +245,20 @@ private final class WorkThreads: Sendable {
     }
 
     /// A clip whose every word is cut has nothing to send: R1x says so, and nothing is sent.
+    /// The failure goes to the app log by its code, never its words.
     @Test func aClipWithEveryWordCutSaysSo() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-rewrite-log-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
         let stub = ScopeStub()
-        let (app, _) = app("ollama", stub: stub)
+        let (app, _) = app("ollama", stub: stub, locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
         let (editor, undo) = try editor(app)
         defer { editor.close() }
         step(undo) { editor.apply(.cutSelection(ids: (10...45).map { "w\($0)" }), name: "Cut selection") }
         let session = try await rewrite(editor)
         #expect(session.task.state == .error(.message("Clip 1 has no words left to rewrite. Your edits are saved.")))
         #expect(await stub.requests.isEmpty)
+        let log = (try? String(contentsOf: app.locations.logs.appendingPathComponent("voxclip.log"), encoding: .utf8)) ?? ""
+        #expect(log.contains("[error] llm: code=operationFailed") && !log.contains("word10"))
     }
 
     /// With Voice Lab off, a selection beside a cut still rewrites (design.md §8). In speech with no pause between words

@@ -222,12 +222,14 @@ extension RewriteSession {
 
     /// The error a failed send shows, nil for a cancelled one, which is silent.
     func panelError(_ error: any Error) async -> PanelError? {
+        if let plan = error as? ScopeRewritePlanError, let size = PanelError(plan) { return size }
+        // The rest is a failure the app log keeps by its code: a plan Core refused, a placement, a quote the service
+        // refused, missing resources. Each shows the session's own copy. An AI's error is its connector's to log.
+        if !(error is LLMError) { await editor.app.logFailure(error, context: "ai:\(aiName)") }
         if let plan = error as? ScopeRewritePlanError {
-            if let size = PanelError(plan) { return size }
             return .message(plan == .empty ? "\(task.words.subject) has no words left to rewrite. Your edits are saved."
                                             : "\(task.words.subject) can't be rewritten as it stands. Your edits are saved.")
         }
-        // Voice placement, a quote the service refused, missing resources: the session's own copy.
         guard let error = error as? LLMError else { return .message(await editor.app.log.redact(Self.refusal(error))) }
         switch error {
         case .cancelled: return nil
