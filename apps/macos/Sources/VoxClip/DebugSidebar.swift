@@ -742,9 +742,9 @@ import VoxClipCore
         check("the right column starts at 444 at 1440 and 404 at 1280, within 300-560, narrowed to 352 at 1180 and 300 at 1128 so the editor keeps 604 beside the Explorer, and 340 at 1024 without it",
               WorkspaceLayout.rightColumnWidth(windowWidth: 1440) == 444 && WorkspaceLayout.rightColumnWidth(windowWidth: 1280) == 404 && WorkspaceLayout.rightColumnWidth(windowWidth: 1180) == 352
               && WorkspaceLayout.rightColumnWidth(windowWidth: 1128) == 300 && WorkspaceLayout.rightColumnWidth(windowWidth: 1024, explorer: 0) == 340 && WorkspaceLayout.rightColumnWidth(windowWidth: 2400) == 560)
-        check("beside a 224 Explorer and the starting right column the transcript measure is 656 at 1440 and 536 at 1280, 480 at the 596 minimum and never wider than the pane after its gutter",
-              TranscriptNSTextView.measure(forPane: 1440 - 224 - 444) == 656 && TranscriptNSTextView.measure(forPane: 1280 - 224 - 404) == 536
-              && TranscriptNSTextView.measure(forPane: 596) == 480 && TranscriptNSTextView.measure(forPane: 500) == 416)
+        check("beside a 224 Explorer and the starting right column the transcript measure is 648 at 1440 and 528 at 1280, 480 at the 604 minimum and never wider than the pane after its gutter",
+              TranscriptNSTextView.measure(forPane: 1440 - 224 - 444) == 648 && TranscriptNSTextView.measure(forPane: 1280 - 224 - 404) == 528
+              && TranscriptNSTextView.measure(forPane: 604) == 480 && TranscriptNSTextView.measure(forPane: 500) == 420)
         // The narrow-size rule (impl-plan §3.5): the Explorer collapses below 1,128, the right
         // column below 904, and each shows over the editor on request.
         let rule = WorkspaceShell(app: app)
