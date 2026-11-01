@@ -564,7 +564,6 @@ struct TimelineOverviewLabel: Equatable {
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     static let labelFont = VCType.label.nsMono()
-    static let labelWidth = width("00:00:00:00", font: labelFont)
 
     private func x(_ time: Double) -> CGFloat { TimelineMetrics.header + CGFloat(state.viewport.x(time)) }
 
@@ -640,11 +639,11 @@ struct TimelineOverviewLabel: Equatable {
     private(set) var playheadMoves = 0
     override init(frame: NSRect) {
         super.init(frame: frame)
-        wantsLayer = true
-        layerContentsRedrawPolicy = .never
+        // A layer-hosting view: its layers are its content.
         let root = CALayer()
         root.isGeometryFlipped = true
         layer = root
+        wantsLayer = true
         for layer in [wash, playhead, head, line, overviewPlayhead] { layer.actions = ["position": NSNull(), "bounds": NSNull(), "transform": NSNull(), "hidden": NSNull(), "frame": NSNull(), "path": NSNull()] }
         // The head: 10.5 × 10.6 in the ruler's lower half; the line: 1 pt from the ruler's
         // foot through the tracks (notes.md §6). Both hang from x 0 of `playhead`.
