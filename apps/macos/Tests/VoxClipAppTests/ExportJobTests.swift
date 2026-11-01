@@ -18,6 +18,85 @@ import Testing
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         return try String(contentsOf: root.appendingPathComponent("Sources/VoxClip/" + name), encoding: .utf8)
     }
+    @Test(arguments: [false, true])
+    func exportEntryRetargetsAnOpenIdleJobWithoutDone(finished: Bool) async throws {
+        let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
+        defer { editor.close() }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        shell.choose(.clip("five-1")); editor.presentExport()
+        if finished { editor.beginExport(targets: [.clip("five-1")], folder: folder); await editor.exportTask?.value; #expect(editor.exports.count == 1) }
+        shell.choose(.clip("five-2")); editor.presentExport()
+        #expect(editor.exportJob.requestedIDs == ["five-2"] && editor.exportClipIDs == ["five-2"])
+        #expect(editor.exportJobContext == "Clip 2" && editor.exports.isEmpty)
+        shell.choose(.fullTake); editor.presentExport()
+        #expect(editor.exportJob.requestedIDs.isEmpty && editor.exportJobContext == "Full Edit")
+    }
+    @Test func aNewRewriteAndANewTurnBringTheirJobForwardWhileExportStaysAvailable() async throws {
+        let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
+        defer { editor.close() }
+        editor.app.set("voiceLab.enabled", .bool(true)); editor.app.set("voiceLab.betaNoticeAccepted", .bool(true))
+        editor.presentExport()
+        let session = RewriteSession(editor: editor, range: 0...2, envelope: nil, connector: nil)
+        editor.rewrite = session
+        #expect(shell.panelJob(for: editor) == .rewrite && PanelJob.available(in: editor).contains(.export))
+        shell.choosePanelJob(.export, for: editor)
+        session.task.show(.running, headline: PanelHeadline(text: "Rewriting"))
+        #expect(shell.panelJob(for: editor) == .rewrite)
+        shell.choosePanelJob(.export, for: editor)
+        editor.finishExportJob()
+        #expect(shell.panelJob(for: editor) == .rewrite)
+    }
+    @Test func confirmingDifferentMediaRelinksTheCurrentScopeAndKeepsEdits() async throws {
+        let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
+        defer { editor.close() }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        try Data("different media".utf8).write(to: url); defer { try? FileManager.default.removeItem(at: url) }
+        await editor.prepareMediaRelink(url: url, probe: MediaProbeResult(durationSeconds: editor.project.media.source.durationSeconds, isPlayable: true))
+        #expect(editor.mediaRelinkCandidate != nil)
+        #expect(editor.announcements.contains("This file looks different. Use it anyway? \(url.lastPathComponent)"))
+        shell.choose(.clip("five-2"))
+        var current = editor.project; current.export.quality = .high; editor.replace(current, name: "Change export quality")
+        await editor.confirmMediaRelink()
+        #expect(editor.project.media.source.absolutePath == url.path && editor.mediaRelinkCandidate == nil)
+        #expect(editor.project.export.quality == .high && editor.activeClip?.id == "five-2")
+    }
+    @Test func aRefusedRelinkKeepsTheBannerAndExplainsWhy() async throws {
+        let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
+        defer { editor.close() }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        try Data("different media".utf8).write(to: url); defer { try? FileManager.default.removeItem(at: url) }
+        await editor.prepareMediaRelink(url: url, probe: MediaProbeResult(durationSeconds: editor.project.media.source.durationSeconds, isPlayable: true))
+        editor.isLeaving = true
+        await editor.confirmMediaRelink()
+        #expect(editor.mediaRelinkCandidate != nil && editor.previewError?.isEmpty == false)
+    }
+    @Test func choosingThisClipCapturesItsTargetForTheHeaderAndExport() async throws {
+        let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
+        defer { editor.close() }
+        editor.presentExport()
+        shell.choose(.clip("five-2"))
+        editor.exportJob.selectScope(.thisClip, model: editor)
+        #expect(editor.exportJob.requestedIDs == ["five-2"])
+        #expect(editor.exportJobContext == "Clip 2")
+        #expect(editor.exportTargets(editor.exportJob.scope, requestedIDs: editor.exportJob.requestedIDs) == [.clip("five-2")])
+    }
+    @Test func copyFeedbackResetsAndRestartsItsTimer() throws {
+        let job = ExportJobState()
+        job.captionCopied(); #expect(job.copied)
+        let timer = try #require(job.captionCopyTimer)
+        job.captionCopied(); #expect(!timer.isValid)
+        let next = try #require(job.captionCopyTimer)
+        next.fire(); #expect(!job.copied && job.captionCopyTimer == nil)
+    }
+    @Test func shareOpeningRequiresHTTPS() throws {
+        for host in ["x.com", "www.linkedin.com"] {
+            #expect(ShareText.allowsOpening(try #require(URL(string: "https://\(host)/"))))
+            #expect(!ShareText.allowsOpening(try #require(URL(string: "http://\(host)/"))))
+        }
+        #expect(!ShareText.allowsOpening(try #require(URL(string: "https://example.com/"))))
+    }
+
     @Test func exportEntryShowsTheRightPanelForItsRequestedClip() async throws {
         _ = NSApplication.shared
         let shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
@@ -60,6 +139,7 @@ import Testing
         while await exporter.jobs.isEmpty { await Task.yield() }
         #expect(editor.exporting)
         shell.choosePanelJob(.captions, for: editor); shell.choose(.clip("five-2"))
+        editor.presentExport()
         #expect(editor.exporting && editor.exportJob.requestedIDs == ["five-1"])
         shell.choosePanelJob(.export, for: editor)
         #expect(editor.exportJobContext == "Clip 1" && editor.exportJob.fileNamePattern == "custom-{clip}")

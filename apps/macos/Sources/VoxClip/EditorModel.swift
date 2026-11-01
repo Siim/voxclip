@@ -204,13 +204,15 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var onFinishExport: (() -> Void)?
     func presentExport(clipIDs: [String]? = nil, folder: URL? = nil) {
         guard capabilities.writable, mediaExportable else { return }
-        // Reopening the active job resumes it; an explicit row target starts new setup.
-        if !exporting && (!exportJob.isOpen || clipIDs != nil) {
+        // An idle entry follows the active tab; only a render in flight keeps its
+        // captured target regardless of where the user has navigated.
+        let requestedIDs = clipIDs ?? activeClip.map { [$0.id] } ?? []
+        if !exporting && (!exportJob.isOpen || clipIDs != nil || exportJob.requestedIDs != requestedIDs) {
             let previous = exportJob.previousJob
             exportJob.draft.commit(model: self)
             exportJob = ExportJobState(); exportJob.previousJob = previous
             exports = []; exportDisclosureLines = [:]; exportError = nil
-            exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? []
+            exportClipIDs = requestedIDs
             exportJob.requestedIDs = exportClipIDs
             exportJob.scope = exportClipIDs.isEmpty ? .fullVideo : .thisClip
             exportJob.folderOverride = folder
@@ -704,7 +706,6 @@ struct EditorRenderSnapshot {
     /// The relink flow for missing media (editing §10.3): choose the file, confirm a
     /// different-looking one, and attach it as one "Locate media" step.
     struct MediaRelinkCandidate {
-        let project: Project
         let url: URL
         let probe: MediaProbeResult
     }
@@ -739,7 +740,8 @@ struct EditorRenderSnapshot {
                     return
                 }
                 guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
-                mediaRelinkCandidate = MediaRelinkCandidate(project: base, url: url, probe: probe)
+                mediaRelinkCandidate = MediaRelinkCandidate(url: url, probe: probe)
+                announce("This file looks different. Use it anyway? \(url.lastPathComponent)")
                 return
             }
             guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
@@ -750,13 +752,28 @@ struct EditorRenderSnapshot {
     func confirmMediaRelink() async {
         guard let candidate = mediaRelinkCandidate else { return }
         let revision = mediaRelinkRevision
-        mediaRelinkCandidate = nil
-        guard candidate.project == project, !isLeaving, !cacheLeaseEnded else { return }
+        guard !isLeaving, !cacheLeaseEnded else {
+            previewError = "This project is closing. Reopen it before locating the video. Edits are saved."
+            return
+        }
         do {
-            let next = try await app.projectStore.relink(candidate.project, to: candidate.url, probe: candidate.probe, confirmedDifferent: true)
-            guard revision == mediaRelinkRevision, candidate.project == project, !isLeaving, !cacheLeaseEnded else { return }
-            await applyMediaRelink(next)
-        } catch { previewError = await app.safeError(error) }
+            let next = try await app.projectStore.relink(project, to: candidate.url, probe: candidate.probe, confirmedDifferent: true)
+            // Cancel or Choose Another deliberately retires this candidate. Otherwise
+            // a refusal stays in the banner, with an explanation beside its actions.
+            guard revision == mediaRelinkRevision else { return }
+            guard !isLeaving, !cacheLeaseEnded else {
+                previewError = "This project is closing. Reopen it before locating the video. Edits are saved."
+                return
+            }
+            // Hashing may suspend while another edit or tab switch lands. Only the
+            // media reference changes; keep the current title, edits and scope.
+            var current = project
+            current.media.source = next.media.source
+            mediaRelinkCandidate = nil
+            await applyMediaRelink(current)
+        } catch {
+            if revision == mediaRelinkRevision { previewError = await app.safeError(error) }
+        }
     }
     private func applyMediaRelink(_ next: Project) async {
         mediaResolved = true; mediaUnreadable = false; previewError = nil

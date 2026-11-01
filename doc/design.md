@@ -30,7 +30,7 @@ There are no Transcript and Clips modes and no inspector tabs.
 4. Make a clip. Select words. A small action bar appears beside the selection. Choose **Make Clip** (⌘K / Ctrl+K). The new clip appears in the sidebar and is selected.
 5. Find clips. Choose **Find Clips** (⇧⌘K / Ctrl+Shift+K) and pick a preset. The results appear in the sidebar under **Suggested**, each with Keep and Dismiss.
 6. Shape a clip. Select its row. The transcript marks it, the viewer plays only that clip, and the timeline zooms to it. Choose a Frame (9:16) and a caption style.
-7. Export. **Export Clip…** (⌘E / Ctrl+E) opens the export sheet with that clip already chosen.
+7. Export. **Export Clip…** (⌘E / Ctrl+E) opens the Mac right-panel Export job with that clip already chosen. Windows opens its Export dialog.
 8. Rewrite a clip. Select its row and choose **Rewrite** (⇧⌘R / Ctrl+R), with or without an instruction in the bar above the transcript. The proposed changes show in the transcript and in a panel that replaces Captions. Apply the cuts and fixes at once, or, with Voice Lab on, make your voice from the clip and use takes for the new phrases (§6.3). The new words show inline in the transcript with an AI marker.
 9. Choose Home (⌘1 / Ctrl+1) to see the library. The open project stays in the sidebar. Opening another project saves the open one and replaces it in place.
 
@@ -130,9 +130,9 @@ Main window (macOS: exactly one. Windows: one per process window; Ctrl+N opens a
 │     │     Tighten Pauses · Restore Cuts · Find Clips · Export Video… / Export Clip… · viewer toggle
 │     ├─ Scope bar (above the transcript): scope label · instruction field · Rewrite · AI picker  (§6.3.1)
 │     ├─ Transcript page (centre) + selection bar: Make Clip · Cut · Restore · Rewrite
-│     ├─ Right column: Viewer (stage, viewer bar, Frame) over Captions, or the Rewrite panel while a task is open (§6.3.4)
+│     ├─ Right column: Viewer over Captions, Rewrite (§6.3.4), or the Mac Export job (§8)
 │     └─ Timeline strip (bottom, under the centre and right columns)
-├─ Transient: Find Clips popover/flyout · Import sheet (§7.1) · Export sheet (§8) ·
+├─ Transient: Find Clips popover/flyout · Import sheet (§7.1) · Windows Export dialog (§8) ·
 │     Voice Lab consent and cost confirmations · Keyboard shortcuts
 └─ Settings window (⌘, / Ctrl+,): General · Transcription · AI · Export · Accounts (M2) ·
       Voice Lab (M3 beta) · About
@@ -442,7 +442,7 @@ The column background is the page (`bg.surface` on Windows). On macOS it is the 
 | Transcript pane would drop below 596 (macOS) or 588 (Windows), about 1150 window width | The right column collapses first. "Show Viewer" (⌥⌘I) and View > Show Viewer bring it back; showing it at this width hides the sidebar to make room. The timeline gains the compact transport (§5.3). Below a window width of 1100 the toolbar capsule is icon-only (§3.5) | The right column collapses first. The Viewer toggle brings it back, and showing it hides the pane (`IsPaneOpen = false`). The timeline gains the compact transport. `CommandBar` overflow takes Tighten pauses and Restore cuts |
 | < 960 | Only reachable in full screen or Split View. The sidebar collapses (`columnVisibility = .detailOnly`); the toolbar sidebar button brings it back as an overlay | `NavigationView` goes `LeftMinimal`; the `TitleBar` pane toggle opens it as an overlay |
 
-The sidebar collapses last, because it holds the clips. While the viewer is collapsed, caption styling is unavailable until Show Viewer. The Export sheet still offers the caption style picker.
+The sidebar collapses last, because it holds the clips. While the viewer is collapsed, caption styling is unavailable until Show Viewer. Opening the Mac Export job reveals the right panel and its caption style picker. The Windows Export dialog also offers caption style.
 
 ---
 
@@ -1645,17 +1645,17 @@ Setup uses the Captions job's flat spacing, 16 pt inset, 24 pt property rows, 12
 - **Quality:** **Standard / High**, the engine's real option. f14's resolution/frame-rate rows map to read-only derived output size and fps. No new encoding options or persisted size/fps fields are introduced.
 - **Save to:** current folder and **Choose…** using the permitted system directory picker.
 - **File name:** editable job-specific pattern, initialized from Settings. `{project}-{clip}-{aspect}` uses the existing base-name sanitization, 100-character cap, fallback, safe folder containment and collision suffixes (` 2`, ` 3`). `{clip}` is `full` for a full edit.
-- Aspect, quality, SRT, folder and caption style edit the existing project settings. The file-name pattern and requested target belong to the job. Panel/tab switches preserve all setup state and share drafts.
+- Aspect, quality, SRT, folder and caption style edit the existing project settings. The file-name pattern and requested target belong to the job. Panel/tab switches preserve setup state and share drafts. Calling Export again while idle re-targets to the active tab when it differs and clears the old result; a running export resumes its captured target. Choosing This clip captures the active clip for both the header and render.
 - **AI speech:** when an export includes AI voice, the read-aloud notice remains “This video contains AI-modified speech. It will show AI MODIFIED.” The mandatory burned-in video label and provenance are unchanged. The post line is optional, separately controlled below.
 - Footer: **0:38 · about 24 MB · H.264**, estimated from target edited duration and the resolved video/audio bitrates. The primary reads **Export Clip 1**, **Export 4 Clips** or **Export Full Edit**; after failure it reads **Try again**.
 
 While running, inline progress reads “Rendering 1 of 2 · 42% · about 1 min left” and exposes **Cancel**. The status bar continues showing its export progress. Switching panel or tab leaves the editor-owned export task running. Errors appear inline, and Retry in the Explorer opens setup for the failed target and folder. A successful target still records the export ledger (§6.2).
 
-After export the result is **Exported · file name · Show in Finder · Done**. **Done** returns to the previous available panel job, falling back to Captions. Sharing is optional: **Share to X or LinkedIn…** starts collapsed, and its open/closed state is remembered in `ui.export.shareExpanded`. Done never prompts about sharing.
+After export the result is **Exported · file name · Show in Finder · Done**. **Done** returns to the previous available panel job, falling back to Captions. A new Rewrite session or turn brings Rewrite forward while Export remains available in the switcher. Sharing is optional: **Share to X or LinkedIn…** starts collapsed, and its open/closed state is remembered in `ui.export.shareExpanded`. Done never prompts about sharing.
 
-Inside that section, the editable caption retains the X weight (`/280`) and LinkedIn scalar (`/3,000`) counters, **Copy caption**, **Open X**, **Open LinkedIn**, drag-out files, and “VoxClip copies the caption and reveals the file. Add the video in the browser; nothing is posted automatically.” For targets with a generated AI-voice disclosure line, the plain toggle **Add 'AI MODIFIED' line to the post** is **OFF by default always**, including AI-voiced exports. Turning it on adds the exact line from the rendered export after a blank paragraph; turning it off removes it with no interstitial or warning. Only an export with AI-voiced phrases shows “Your video still shows the AI MODIFIED label.” A target without AI voice has no generated post-line control or hint. The burned-in video label remains unchanged. Optional post text and truncation rules are in voice-lab.md §11.3 and publishing.md §2.1.
+Inside that section, the editable caption retains the X weight (`/280`) and LinkedIn scalar (`/3,000`) counters, **Copy caption**, **Open X**, **Open LinkedIn**, drag-out files, and “VoxClip copies the caption and reveals the file. Add the video in the browser; nothing is posted automatically.” For targets with a generated AI-voice disclosure line, the plain toggle **Add 'AI MODIFIED' line to the post** is **OFF by default always**, including AI-voiced exports. Turning it on adds the exact line from the rendered export after a blank paragraph, with an uncut fallback if share-text rules are unavailable; turning it off removes it with no interstitial or warning. Only an export with AI-voiced phrases shows “Your video still shows the AI MODIFIED label.” A target without AI voice has no generated post-line control or hint. The burned-in video label remains unchanged. “Caption copied.” resets after two seconds. Browser opening accepts only HTTPS URLs at X or LinkedIn. Optional post text and truncation rules are in voice-lab.md §11.3 and publishing.md §2.1.
 
-Missing-media relinking uses an inline work-area banner: “This file looks different. Use it anyway?” and the candidate file name, **Use It**, **Choose Another…**, and **Cancel**. Only Use It confirms different media. Cancel or cancelling the system picker leaves the project unchanged. Duration mismatches beyond 0.05 seconds still refuse; a successful relink is one undo step. A stale candidate cannot change a project that has changed or is leaving.
+Missing-media relinking uses an inline work-area banner: “This file looks different. Use it anyway?” and the candidate file name, **Use It**, **Choose Another…**, and **Cancel**. Only Use It confirms different media. Cancel or cancelling the system picker leaves the project unchanged. Duration mismatches beyond 0.05 seconds still refuse; a successful relink is one undo step. VoiceOver announces the banner and candidate name when it appears. Use It relinks the current project, preserving any intervening edits or tab scope changes. Cancel or Choose Another retires the candidate; a closing/closed project cannot relink, and a refused confirmation keeps its banner with an inline explanation.
 
 M2's future Export & post remains scoped by publishing.md §3; its final post call is never retried automatically.
 
@@ -1869,9 +1869,9 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Everything cut | Editor, Export | Export disabled; status "Keep at least one word before exporting." |
 | Suggestion selected, Export pressed | Export tooltip | "Keep this clip to export it." |
 | Edit summary | toolbar subtitle / command row | §3.5 grammar: "{edited} after cuts · {n} cuts", "Clip {k} · {edited} after cuts · {n} cuts", "Clip {k} · {edited} · No cuts yet" |
-| Export progress | Export sheet; sidebar row | sheet: "Rendering {i} of {n} · {p}% · about {t} left" [Cancel]; row: "Exporting {p}%" with a ring. Announce "Exporting {n} video(s)", then "Rendering {i} of {n} · {p}%" at 25, 50 and 75% |
-| Export done | Export sheet | "Saved {n} video(s) to {folder}" + share buttons. Announce it with the folder's name; Copy caption announces "Caption copied." |
-| Export failure | Export sheet; sidebar row | sheet: "Export stopped: {reason}. Your edits are saved." [Try again]; row: "⚠ Export failed" [Retry]. Announce the sheet message; a cancelled export is silent |
+| Export progress | Mac Export job / Windows dialog; Explorer row | job/dialog: "Rendering {i} of {n} · {p}% · about {t} left" [Cancel]; row: "Exporting {p}%" with a ring. Announce "Exporting {n} video(s)", then "Rendering {i} of {n} · {p}%" at 25, 50 and 75% |
+| Export done | Mac Export job / Windows dialog | Mac: "Exported" + file name, Show in Finder and Done; sharing is optional and collapsed by default. Windows: "Saved {n} video(s) to {folder}" + share buttons. Announce the saved result with the folder's name; Copy caption announces "Caption copied." |
+| Export failure | Mac Export job / Windows dialog; Explorer row | job/dialog: "Export stopped: {reason}. Your edits are saved." [Try again]; row: "⚠ Export failed" [Retry]. Announce the inline error; a cancelled export is silent |
 | Export destination conflict | Export failure reason | "A file named {name} appeared in the export folder. Export again to replace it, or choose another name." Never silently replace a file which appeared or changed after the export was approved. |
 | Exported, then edited | sidebar row, second line | "⚠ Edited since export" in `status.warning` |
 | No encoder (Windows) | Export | "No H.264 encoder is available on this PC. Install the Media Feature Pack or update your graphics driver." (Error) |
@@ -1882,7 +1882,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Update ready (Windows) | InfoBar | "VoxClip {version} is ready. Restart to update." [Restart now]; during transcription, clip search or export the button is disabled with "Finish the current task first." |
 | Up to date | manual check | "VoxClip {version} is the latest version." |
 | Update check offline | manual check | "Couldn't check for updates. You're offline." |
-| Post failure (M2) | Export sheet | "Saved to {folder}. Posting to VoxConvo failed: {reason}." [Try again] (render reused, never auto-retried) |
+| Post failure (M2) | Mac Export job / Windows dialog | "Saved to {folder}. Posting to VoxConvo failed: {reason}." [Try again] (render reused, never auto-retried) |
 | Camera or mic denied (M2) | Record view | "Camera access is off. Turn it on in System Settings → Privacy & Security → Camera." [Open Settings] |
 | Unsaved changes | — | Projects autosave. macOS: an untitled project (never saved under a name) gets the system keep/delete prompt on close; named projects close silently. Windows: projects always have a file (architecture.md §2.6), so closing never prompts. |
 | Project can't be saved (Windows: leaving, closing or quitting) | Editor InfoBar (Error); navigation stays put | "Couldn't save this project. Your edits are still open. Check the folder or use Save project as…, then try again." (macOS shows the system save error) |
@@ -2087,7 +2087,7 @@ Typography uses the system font: the transcript at 19/32 (SF Pro; Segoe UI Varia
 | Rewrite takes per phrase | `Picker(.segmented)` | `Segmented` (CommunityToolkit) |
 | Status / errors | inline callout row | `InfoBar` |
 | Home | `.dropDestination(for: URL.self)`, `.searchable(placement: .toolbar)`, `LazyVGrid(.adaptive)` | `AllowDrop`, `AutoSuggestBox`, `GridView` |
-| Export | `.sheet` | `ContentDialog` |
+| Export | right-panel `ExportJobView` | `ContentDialog` |
 | Settings | `Settings`-style window with `TabView`, `.formStyle(.grouped)` | Settings window + `NavigationView` + `SettingsCard` / `SettingsExpander` |
 | Key field / storage | `SecureField` / Keychain | `PasswordBox` / DPAPI |
 | Shortcuts | `.keyboardShortcut`, menus, `onKeyPress` | `KeyboardAccelerator` |

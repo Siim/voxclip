@@ -24,6 +24,18 @@ import Testing
         }
     }
 
+    @Test func optingInKeepsTheLineWhenShareTextRulesAreUnavailable() throws {
+        let model = try editor(); defer { model.close() }; exported(model, [.fullEdit])
+        var draft = ShareCaptionDraft(); draft.load(target: "full", model: model)
+        let original = draft.captionDraft
+        draft.setDisclosure(true, format: { _, _ in throw VoxClipError.sharedResourcesMissing })
+        #expect(draft.addDisclosure && draft.captionDraft == original + "\n\n" + line)
+        draft.setDisclosure(true, format: { _, _ in throw VoxClipError.sharedResourcesMissing })
+        #expect(draft.captionDraft == original + "\n\n" + line)
+        draft.setDisclosure(false, format: { _, _ in throw VoxClipError.sharedResourcesMissing })
+        #expect(!draft.addDisclosure && draft.captionDraft == original)
+    }
+
     @Test func postDisclosureAlwaysDefaultsOffIncludingAIVoice() throws {
         let model = try editor(); defer { model.close() }
         exported(model, [.fullEdit, .clip("clip-main")])

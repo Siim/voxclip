@@ -67,7 +67,6 @@ extension WorkspaceShell {
         let jobs = PanelJob.available(in: model)
         let task = model.openRewrite?.task
         if let choice = panelChoice, jobs.contains(choice.job) {
-            if choice.job == .export { return .export }
             if choice.task === task, choice.turn == (task?.turn ?? 0) { return choice.job }
         }
         return model.panelTask?.job ?? .captions
@@ -75,6 +74,8 @@ extension WorkspaceShell {
     /// The switcher's pick.
     func choosePanelJob(_ job: PanelJob, for model: EditorModel) {
         guard PanelJob.available(in: model).contains(job) else { return }
+        let current = panelJob(for: model)
+        if job == .export, current != .export { model.exportJob.previousJob = current }
         let task = model.openRewrite?.task
         panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0)
     }

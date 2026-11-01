@@ -14,6 +14,26 @@ import VoxClipCore
     var draft = ShareCaptionDraft()
     var drafts: [String: ShareCaptionDraft] = [:]
     var copied = false
+    @ObservationIgnored private(set) var captionCopyTimer: Timer?
+    func captionCopied() {
+        captionCopyTimer?.invalidate()
+        copied = true
+        let timer = Timer(timeInterval: 2, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.copied = false
+                self?.captionCopyTimer = nil
+            }
+        }
+        captionCopyTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+    func selectScope(_ scope: ExportScope, model: EditorModel) {
+        if scope == .thisClip, requestedIDs.isEmpty {
+            guard let clip = model.activeClip else { return }
+            requestedIDs = [clip.id]
+        }
+        self.scope = scope
+    }
     var opening = false
     var showsXTip = false
     var previousJob = PanelJob.captions
@@ -95,7 +115,7 @@ import VoxClipCore
                 Text("\(job.draft.captionDraft.unicodeScalars.count)/3,000 LinkedIn").foregroundStyle(.secondary)
             }.font(.system(size: 11, design: .monospaced))
             HStack {
-                Button(job.copied ? "Caption copied." : "Copy caption") { copyText(job.draft.captionDraft); job.draft.commit(model: model); job.copied = true; model.announce("Caption copied.") }
+                Button(job.copied ? "Caption copied." : "Copy caption") { copyText(job.draft.captionDraft); job.draft.commit(model: model); job.captionCopied(); model.announce("Caption copied.") }
                 Button("Open X") { openShare("x") }.disabled(job.opening)
                 Button("Open LinkedIn") { openShare("linkedin") }.disabled(job.opening)
             }
@@ -106,7 +126,7 @@ import VoxClipCore
     private var setup: some View {
         VStack(alignment: .leading, spacing: 10) {
             CaptionPropertyRow("What", marker: "export.what") {
-                Picker("What", selection: Binding(get: { job.scope }, set: { job.scope = $0 })) {
+                Picker("What", selection: Binding(get: { job.scope }, set: { job.selectScope($0, model: model) })) {
                     if !model.exportTargets(.thisClip, requestedIDs: job.requestedIDs).isEmpty { Text(model.exportScopeLabel(.thisClip, requestedIDs: job.requestedIDs)).tag(ExportScope.thisClip) }
                     Text(model.exportScopeLabel(.allClips)).tag(ExportScope.allClips).disabled(model.keptClips.isEmpty)
                     Text(model.exportScopeLabel(.fullVideo)).tag(ExportScope.fullVideo)
@@ -175,7 +195,7 @@ import VoxClipCore
             defer { job.opening = false }
             do {
                 guard let url = try await Task.detached(priority: .userInitiated, operation: { try ShareText.url(destination, caption: caption, disclosureLine: line) }).value,
-                      ["x.com", "www.linkedin.com"].contains(url.host ?? "") else { return }
+                      ShareText.allowsOpening(url) else { return }
                 NSWorkspace.shared.open(url)
             } catch { model.exportError = await model.app.safeError(error) }
         }
@@ -196,10 +216,13 @@ import VoxClipCore
         captionDraft = SharePostText.capCaption(value); edited = true
         if addDisclosure, let line = disclosureLine, !ShareDisclosure.isPresent(captionDraft, line: line) { addDisclosure = false }
     }
-    mutating func setDisclosure(_ enabled: Bool) {
+    mutating func setDisclosure(_ enabled: Bool, format: (String, String?) throws -> String = { try SharePostText.fieldText($0, line: $1) }) {
         addDisclosure = enabled && disclosureLine != nil
         let base = Self.removingLine(disclosureLine, from: captionDraft)
-        captionDraft = (try? SharePostText.fieldText(base, line: enabled ? disclosureLine : nil)) ?? base
+        let line = addDisclosure ? disclosureLine : nil
+        // If the shared text rules cannot load, keep the user's opt-in honest. The
+        // uncut caption is still available to copy or open in LinkedIn.
+        captionDraft = (try? format(base, line)) ?? (line.map { base + "\n\n" + $0 } ?? base)
         edited = true
     }
     private static func removingLine(_ line: String?, from text: String) -> String {
@@ -238,6 +261,9 @@ enum ExportSelection {
 }
 
 enum ShareText {
+    static func allowsOpening(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "https" && ["x.com", "www.linkedin.com"].contains(url.host?.lowercased() ?? "")
+    }
     /// nil only when shared/data/share-text.json failed the launch check, which Home already reports.
     static func weight(_ text: String) -> Int? { try? SharePostText.xWeight(text) }
     /// X truncation keeps the disclosure line whole and last (voice-lab.md §11.3); LinkedIn gets the caption as it is.

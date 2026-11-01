@@ -3,7 +3,10 @@
 User-facing changes, newest first, one line each. The release scripts read the section whose heading starts with `## <version>` (doc/release.md section 4); replace "Unreleased" with the release date (`YYYY-MM-DD`) in the release commit.
 
 ## 0.1.0 - Unreleased
-- Export now opens in the right panel instead of a window
+
+- Export now opens in the right panel instead of a window.
+- The AI MODIFIED line in a post is now off by default.
+- Relinking a moved video asks in a banner instead of a dialog.
 - The Mac Explorer has compact Take, Clips, Outline and Suggested sections, preview tabs on single click, pinned tabs on double-click, and paragraph navigation with AI voice indicators.
 - The Mac editor's status bar shows your AI and its billing after detection, running work, the open clip's duration and cuts, available Rewrite changes, the export frame and export state. Choose an aspect directly from the status bar's Frame menu.
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
