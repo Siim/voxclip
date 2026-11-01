@@ -156,6 +156,7 @@ import VoxClipCore
             Text(parts.value).foregroundStyle(DesignValues.color("text.primary"))
         }
             .font(VCType.body.mono(.medium)).tracking(0.13).fixedSize()
+            .columnLayoutEvidence("timeline.readout", text: parts.dimPrefix + parts.value)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Playback time")
             .accessibilityValue("\(timecode(floor(time))) of \(timecode(model.timelineLength(on: axis)))")

@@ -212,6 +212,24 @@ import Testing
         #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
     }
 
+    /// The hover transport shows the timeline toolbar's readout (`TimelineReadout`,
+    /// HH:MM:SS:FF on the timeline's axis), and its Edited / Source is Show cuts, so one
+    /// switch flips the timeline, the transport and the transcript together.
+    @Test func theHoverTransportReadsTheTimelinesTimecodeAndFollowsShowCuts() async throws {
+        let (_, editor) = try await openShell()
+        defer { editor.close() }
+        editor.playhead = 14.8
+        editor.sourceTime = 74.4
+        let host = NSHostingView(rootView: ViewerSection(model: editor, columnWidth: 404, timelineVisible: false, hovering: true))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 227)
+        func time() -> String? { DebugRightColumn.texts(in: host)["timeline.readout"] }
+        await settle(host) { time() != nil }
+        #expect(editor.timelineAxis == .edited && time() == "00:00:14:24")
+        editor.toggleShowsCuts()
+        await settle(host) { time() == "00:01:14:12" }
+        #expect(editor.timelineAxis == .source && time() == "00:01:14:12")
+    }
+
     /// The transport is never only a hover target: keyboard focus inside the viewer (the box
     /// that takes its keys, Play, Edited / Source) keeps it, though the pane's own focus
     /// (`isFocused`, the nearest focusable ancestor) is off then.
