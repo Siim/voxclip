@@ -279,6 +279,27 @@ import Testing
         #expect(!shell.tabsShown && !shell.closesTab)
     }
 
+    /// DebugTabs' close checks: once an edit is saved (here cleared, as a save clears it),
+    /// closing tabs, inactive, an active preview and a clip, makes no undo step and leaves
+    /// the document clean.
+    @Test func closingTabsAfterASavedEditLeavesTheDocumentClean() async throws {
+        let (shell, editor, undo) = try await openShell()
+        defer { editor.close() }
+        let document = editor.document
+        let cut = try #require(editor.words.first { $0.text == "nobody" }).id
+        step(undo) { editor.apply(.cutSelection(ids: [cut]), name: "Cut selection") }
+        #expect(document.isDocumentEdited && document.hasUnautosavedChanges)
+        document.updateChangeCount(.changeCleared)
+        let steps = editor.undoSteps
+        for id in ["five-1", "five-2", "five-5"] { shell.selection = .clip(id) }
+        shell.closeTab(.clip("five-1"))
+        shell.closeTab(.suggestion("five-5"))
+        #expect(shell.tabs.active == .fullTake)
+        shell.closeTab(.clip("five-2"))
+        #expect(shell.tabs.open == [.fullTake] && editor.undoSteps == steps)
+        #expect(!document.isDocumentEdited && !document.hasUnautosavedChanges)
+    }
+
     /// The tab row's last 32 pt stay the title row's, so it moves the window there even
     /// when six tabs shrink to fit and when they overflow and scroll behind the chevron.
     @Test func theTabRowKeepsADragGapAfterItsTabs() async throws {

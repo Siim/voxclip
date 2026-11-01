@@ -100,6 +100,9 @@ import VoxClipCore
             second.edits.clips.append(extra)
         }
         step { editor.replace(second, name: "Add suggestion fixture") }
+        // The fixture edit is set-up, not under test: the document starts clean again, so
+        // the close checks below see only what closing tabs does to it.
+        document.updateChangeCount(.changeCleared)
         shell.selection = .clip("tabs-suggestion")
         settle()
         check("the next preview replaces the first (\(shell.tabs.open))",
@@ -121,7 +124,8 @@ import VoxClipCore
         settle()
         check("× on the active tab closes it and selects the tab before it (\(shell.tabs.active))",
               !shell.tabs.open.contains(.suggestion("tabs-suggestion")) && shell.tabs.active == .clip(kept[1]) && shell.selection == .clip(kept[1]) && editor.project.edits.activeClipId == kept[1])
-        check("closing tabs adds no undo step", editor.undoSteps == steps + 1 && !document.hasUnautosavedChanges)
+        check("closing tabs adds no undo step and leaves the document clean",
+              editor.undoSteps == steps + 1 && !document.isDocumentEdited && !document.hasUnautosavedChanges)
 
         // ⌘W (impl-plan item 5), the Window menu and ⌃Tab, in this window.
         results += try commandChecks(window: window, shell: shell, kept: kept)
