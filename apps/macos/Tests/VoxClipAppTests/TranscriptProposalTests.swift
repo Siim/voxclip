@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import Foundation
 import Testing
@@ -360,3 +361,4 @@ private actor CannedConnector: LLMConnector {
     func contextTokens(model: String) async -> Int? { 64_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion { RawCompletion(text: output, model: model, stop: .complete) }
 }
+#endif
