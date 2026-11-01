@@ -65,6 +65,8 @@ struct EditorRenderSnapshot {
     var correctionText = ""
     var rewriteRange: ClosedRange<Int>?
     var rewrite: RewriteSession?
+    /// A Rewrite proposal shown in the transcript as tracked changes (`TranscriptProposal`).
+    var proposal: TranscriptProposal?
     var focusedPane = EditorPane.transcript
     var paneFocusRequest = 0
     var scopeScrollRevision = 0
