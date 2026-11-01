@@ -1346,6 +1346,13 @@ enum TrackHeight: String, CaseIterable {
     private var images: [Int64: CGImage] = [:]
     private var generation = 0
     private var requested: [Int64] = []
+    private var requestedTolerance: Int64?
+    private let cacheFactory: @MainActor (FilmstripSource) -> FilmstripCache
+    init(frame: NSRect = .zero, cacheFactory: @escaping @MainActor (FilmstripSource) -> FilmstripCache = { FilmstripCache(source: $0) }) {
+        self.cacheFactory = cacheFactory
+        super.init(frame: frame)
+    }
+    required init?(coder: NSCoder) { nil }
     private var requestTask: Task<Void, Never>?
     #if DEBUG
     var everyFrame: CGImage? { didSet { invalidate() } }
@@ -1359,12 +1366,13 @@ enum TrackHeight: String, CaseIterable {
         guard source != next else { return }
         cancelLoads()
         source = next; images = [:]; requested = []
-        cache = next.map { FilmstripCache(source: $0) }
+        cache = next.map(cacheFactory)
         invalidate()
     }
-    func cancelLoads() {
+    @discardableResult func cancelLoads() -> Task<Void, Never>? {
+        generation += 1; requested = []; requestedTolerance = nil
         requestTask?.cancel(); requestTask = nil
-        if let cache { Task { await cache.cancelAll() } }
+        return cache.map { cache in Task { await cache.cancelAll() } }
     }
     private struct Span { let axis: Range<Double>; let source: Range<Double>; var opacity = 1.0; var coalesced = false }
     private func spans() -> [Span] {
@@ -1441,15 +1449,16 @@ enum TrackHeight: String, CaseIterable {
         let frames = spans().flatMap { tileLayout($0, rect: rect($0)) }.map(\.frame)
         var seen = Set<Int64>()
         let wanted = frames.filter { seen.insert($0).inserted }
-        guard wanted != requested else { return }
-        requested = wanted; generation += 1
-        images = images.filter { seen.contains($0.key) }
-        let generation = generation, source = source
         let tolerance = max(0.1, Double(TimelineFilmstrip.cellFrames(tileWidth: 40, ptPerSecond: state.viewport.ptPerSecond)) / 60)
+        let toleranceClass = FilmstripFrameKey(0, tolerance: tolerance).toleranceTicks
+        guard wanted != requested || toleranceClass != requestedTolerance else { return }
+        images = toleranceClass == requestedTolerance ? images.filter { seen.contains($0.key) } : [:]
+        requested = wanted; requestedTolerance = toleranceClass; generation += 1
+        let generation = generation, source = source
         requestTask?.cancel()
         requestTask = Task { [weak self] in
             await cache.want(wanted, tolerance: tolerance, generation: generation) { [weak self] frame, image in
-                guard let self, self.source == source, self.requested.contains(frame) else { return }
+                guard let self, self.generation == generation, self.source == source, self.requested.contains(frame) else { return }
                 self.images[frame] = image; self.invalidate()
             }
         }
