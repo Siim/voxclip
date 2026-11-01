@@ -32,8 +32,9 @@ enum PanelJob: String, CaseIterable, Sendable {
     }
 
     /// The jobs that can act in `model` now, in switcher order (design: "a control that
-    /// cannot act is not shown"). Captions always, and the job of the task open on the
-    /// active tab (Rewrite; Voice and Takes with V16–V18, Director with Phase 1).
+    /// cannot act is not shown"). Captions always, the job of the task open on the active
+    /// tab (Rewrite; Voice and Takes with V16–V18, Director with Phase 1), and Export while
+    /// its job is open (VX), which a render keeps open on any tab.
     @MainActor static func available(in model: EditorModel) -> [PanelJob] {
         var jobs: [PanelJob] = [.captions]
         if let task = model.panelTask { jobs.append(task.job) }
@@ -57,24 +58,30 @@ extension EditorModel {
 
 extension WorkspaceShell {
     /// The panel's job for `model` in this window: the open task's job while it asks a
-    /// question (`PanelConfirm`), else the job picked in the switcher while it can act and the
+    /// question (`PanelConfirm`), else the job picked in the switcher while it can act and
+    /// either no task is open (a Rewrite closed under Export leaves Export showing) or the
     /// task and turn it was picked beside are still the open ones, else the open task's job,
-    /// else Captions. In memory only, per window: no undo step and no document change
-    /// (impl-plan §3.3).
+    /// else Captions. A job that does not show keeps its own state: an export renders on
+    /// behind Captions, Rewrite or its question. In memory only, per window: no undo step and
+    /// no document change (impl-plan §3.3).
     func panelJob(for model: EditorModel) -> PanelJob {
         let jobs = PanelJob.available(in: model)
         let task = model.openRewrite?.task
         if let asking = model.panelTask, asking.confirm != nil { return asking.job }
-        if let choice = panelChoice, choice.task === task, choice.turn == (task?.turn ?? 0), jobs.contains(choice.job) { return choice.job }
+        if let choice = panelChoice, jobs.contains(choice.job), task == nil || choice.task === task && choice.turn == task?.turn { return choice.job }
         return model.panelTask?.job ?? .captions
     }
-    /// The switcher's pick.
+    /// The switcher's pick. Picking Export records the job it was opened from for its Done.
     func choosePanelJob(_ job: PanelJob, for model: EditorModel) {
         guard PanelJob.available(in: model).contains(job) else { return }
         let current = panelJob(for: model)
-        if job == .export, current != .export { model.exportJob.previousJob = current }
+        if job == .export, current != .export { exportReturnJob = current }
         let task = model.openRewrite?.task
         panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0)
+    }
+    /// The Export job's Done: back to the job it was opened from while that can act, else Captions.
+    func leaveExportJob(for model: EditorModel) {
+        choosePanelJob(PanelJob.available(in: model).contains(exportReturnJob) ? exportReturnJob : .captions, for: model)
     }
 }
 

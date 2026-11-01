@@ -155,6 +155,47 @@ import Testing
         editor.finishExportJob()
         #expect(shell.panelJob(for: editor) == .captions && !editor.exportJob.isOpen)
     }
+    /// The right panel's one job model (MVP integration): an export renders on while the panel shows another job. A new
+    /// Rewrite brings its job forward and its discard question takes the panel while it waits, without touching the
+    /// render; answered, Export shows again, and a Rewrite closed under Export leaves Export showing. The status bar's
+    /// export item and the percent follow the render throughout, and Done goes back to Captions once Rewrite is gone.
+    @Test func anExportRendersOnBehindTheRewriteJobAndItsQuestion() async throws {
+        let exporter = RegressionExporter(); await exporter.pauseFirstTarget()
+        let shell = try await shell(exporter: exporter), editor = try #require(shell.editor)
+        defer { editor.close() }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        shell.choose(.clip("five-1")); editor.presentExport()
+        editor.beginExport(targets: [.clip("five-1")], folder: directory)
+        while await exporter.jobs.isEmpty { await Task.yield() }
+        for _ in 0..<2_000 where editor.exportPercent != 25 { await Task.yield() }
+        func rendering() -> Bool {
+            editor.exporting && editor.exportTask != nil && editor.exportPercent == 25 && editor.statusExport.text == "Exporting 25%"
+                && editor.exportJob.isOpen && editor.exportJob.requestedIDs == ["five-1"] && PanelJob.available(in: editor).contains(.export)
+        }
+        #expect(rendering() && shell.panelJob(for: editor) == .export)
+        let session = RewriteSession(editor: editor, scope: .selection(0...2), envelope: nil, connector: nil)
+        editor.rewrite = session
+        #expect(shell.panelJob(for: editor) == .rewrite && rendering())
+        shell.choosePanelJob(.export, for: editor)
+        #expect(shell.panelJob(for: editor) == .export && shell.exportReturnJob == .rewrite)
+        var answered: [String] = []
+        session.task.ask(PanelConfirm(question: "Discard this change?",
+                                      cancel: PanelAction(id: "keepWorking", title: "Keep Working") { answered.append("keep"); session.task.dismissConfirm() },
+                                      confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { answered.append("discard") }))
+        #expect(shell.panelJob(for: editor) == .rewrite && rendering())
+        // Done can't end a render, and the question keeps the panel.
+        editor.finishExportJob()
+        #expect(shell.panelJob(for: editor) == .rewrite && rendering())
+        session.task.confirm?.cancel.perform()
+        #expect(answered == ["keep"] && shell.panelJob(for: editor) == .export && rendering())
+        editor.closeRewrite(returnFocus: false)
+        #expect(editor.rewrite == nil && shell.panelJob(for: editor) == .export && rendering())
+        await exporter.releaseFirstTarget(); await editor.exportTask?.value
+        #expect(!editor.exporting && editor.exports.count == 1 && editor.statusExport.text == "Exported")
+        editor.finishExportJob()
+        #expect(shell.panelJob(for: editor) == .captions && !PanelJob.available(in: editor).contains(.export))
+    }
     @Test func failedExportOffersTryAgainAndExplorerRetryOpensSetupWithTargetAndFolder() async throws {
         let exporter = RegressionExporter(failure: .exportFailed("Fixture failure"))
         let shell = try await shell(exporter: exporter), editor = try #require(shell.editor)

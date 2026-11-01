@@ -98,6 +98,9 @@ enum SidebarItem: Hashable {
     /// The panel job picked in the right column's switcher (impl-plan V4, §3.4), until the
     /// project closes; `panelJob(for:)` reads it.
     var panelChoice: PanelJobChoice?
+    /// The job the Export job was opened from, where its Done goes back to (VX); with
+    /// `panelChoice`, the right panel's whole host state.
+    var exportReturnJob = PanelJob.captions
     /// Below `explorerCollapseWidth` (1,128) the Explorer shows over the editor on request
     /// (impl-plan §3.5): the Explorer toggle, View > Show Sidebar and Find Clips. Escape or
     /// a click on a row hides it again.
@@ -536,14 +539,12 @@ enum SidebarItem: Hashable {
         model.onNeedsSidebar = { [weak self] in self?.revealSidebar() }
         model.onPresentExport = { [weak self, weak model] in
             guard let self, let model else { return }
-            let current = self.panelJob(for: model)
-            if current != .export { model.exportJob.previousJob = current }
             self.choosePanelJob(.export, for: model)
             if !self.viewerShown { self.toggleViewer() }
         }
         model.onFinishExport = { [weak self, weak model] in
             guard let self, let model else { return }
-            self.choosePanelJob(PanelJob.available(in: model).contains(model.exportJob.previousJob) ? model.exportJob.previousJob : .captions, for: model)
+            self.leaveExportJob(for: model)
         }
         model.onNeedsSuggestions = { [weak self] in self?.setExplorerExpanded(.suggested, true) }
         next.editorModel = model
@@ -552,6 +553,7 @@ enum SidebarItem: Hashable {
         rightOverlay = false
         tabs.reset()
         panelChoice = nil
+        exportReturnJob = .captions
         outlineHasPendingHunk = { [weak model] words in model?.hasUnreviewedChange(inWords: words) ?? false }
         document = next
         editor = model
@@ -585,6 +587,7 @@ enum SidebarItem: Hashable {
         started = nil
         tabs.reset()
         panelChoice = nil
+        exportReturnJob = .captions
         windowController?.window?.title = title
         (windowController as? MainWindowController)?.restorationDidChange()
     }

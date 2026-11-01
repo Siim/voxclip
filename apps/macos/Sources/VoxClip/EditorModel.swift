@@ -277,9 +277,8 @@ struct EditorRenderSnapshot {
         // captured target regardless of where the user has navigated.
         let requestedIDs = clipIDs ?? activeClip.map { [$0.id] } ?? []
         if !exporting && (!exportJob.isOpen || clipIDs != nil || exportJob.requestedIDs != requestedIDs) {
-            let previous = exportJob.previousJob
             exportJob.draft.commit(model: self)
-            exportJob = ExportJobState(); exportJob.previousJob = previous
+            exportJob = ExportJobState()
             exports = []; exportDisclosureLines = [:]; exportError = nil
             exportClipIDs = requestedIDs
             exportJob.requestedIDs = exportClipIDs

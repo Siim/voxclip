@@ -36,7 +36,6 @@ import VoxClipCore
     }
     var opening = false
     var showsXTip = false
-    var previousJob = PanelJob.captions
 
     func openedX() -> Bool {
         showsXTip = draft.disclosureLine != nil
