@@ -19,6 +19,15 @@
       "outcome": "statementMismatch"
     },
     {
+      "id": "create-fail",
+      "events": [
+        "plan",
+        "verify",
+        "create"
+      ],
+      "outcome": "creationPending"
+    },
+    {
       "id": "speaker-mismatch",
       "events": [],
       "outcome": "speakerMismatch"

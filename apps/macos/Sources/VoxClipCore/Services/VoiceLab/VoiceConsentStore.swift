@@ -37,6 +37,7 @@ public actor VoiceConsentStore {
             let directory = try directory(id)
             guard !(try hasOperation(id)) else { continue }
             if try auditTombstone(recordID: id) != nil { continue }
+            if try enrollmentRecovery(recordID: id) != nil { continue }
             let recordFile = try file("record.json", in: directory)
             if manager.fileExists(atPath: recordFile.path) {
                 let stored = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: recordFile))
@@ -51,6 +52,7 @@ public actor VoiceConsentStore {
     }
     public func abandonEnrollment(recordID: String) throws {
         if !(try hasOperation(recordID)), let record = try? load(recordID), record.voiceId != "pending" { return }
+        try clearEnrollmentRecovery(recordID: recordID)
         try withdrawCreation(recordID: recordID)
         liveEnrollments.remove(recordID)
     }

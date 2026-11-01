@@ -6,7 +6,7 @@ platforms: a hosted Ubuntu runner and an Apple silicon Mac disagree by 1 ULP on 
 ~1e-13 on accumulated loudness values. Such a file passes when its structure, strings, booleans and integers are
 identical and every float agrees within REL_TOL / ABS_TOL; the committed bytes are then restored so the
 byte-exact `git diff --exit-code` that follows checks only the other generators. Continuity, scope rewrite plan
-and diff, LLM send cost, training span and take batch vectors have an explicit byte-exact expectation, never float
+and diff, LLM send cost, training span, enrollment and take batch vectors have an explicit byte-exact expectation, never float
 tolerance. Run from the repository root, after the generators."""
 import json
 import math

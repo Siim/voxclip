@@ -219,7 +219,7 @@ struct VoiceConsentTests {
         for _ in 0..<3 { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now) }
         await #expect(throws: VoiceConsentError.tooManyAttempts) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now.addingTimeInterval(599)) }
         try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now.addingTimeInterval(600))
-        #expect(transcriptions.value.withLock { $0 } == 4)
+        #expect(transcriptions.value.withLock { $0 } == 0) // Compatibility staging is now local; Create verifies once.
     }
     @Test func unavailableSpeakerNeverCreates() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
@@ -247,15 +247,17 @@ struct VoiceConsentTests {
     @Test func mismatchedSpeakerNeverUploadsSamples() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        let transcriptions = ConsentTranscriptionCount()
         _ = try await client.plan()
         let check = VoiceSpeakerCheck(embedder: LengthEmbedding(), calibratedThreshold: 0.8)
-        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let service = enroll(store: store, client: client, check: check, raw: try await raw(), calls: transcriptions)
         let id = UUID().uuidString
         try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
         let silent = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 240_000)
         let samples = (0..<4).map { _ in VoiceTrainingSample(wav: silent, speech16k: [], seconds: 15, source: "readAloud", snrDb: 25) }
         await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true) }
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
+        #expect(transcriptions.value.withLock { $0 } == 0)
     }
     struct LengthEmbedding: SpeakerEmbedder {
         let modelID = "fixture-calibrated"
@@ -1086,6 +1088,11 @@ extension VoiceConsentTests {
         if shouldSave {
             #expect(try await restarted.load(id).status == .active)
             #expect(try await restarted.statement(recordID: id) == wav)
+        } else if [VoiceConsentCheckpoint.saveDraft, .creationIntent, .creationDispatched].contains(step) {
+            // Verification is durable but creation was never dispatched: offer Create again, with no automatic send.
+            #expect(try await restarted.statement(recordID: id) == wav)
+            #expect(try await restarted.recoverableEnrollments() == [id])
+            #expect(!remote.value.withLock { $0.present })
         } else {
             #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(id)/statement.wav").path))
             #expect(!remote.value.withLock { $0.present })

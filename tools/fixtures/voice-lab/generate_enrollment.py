@@ -11,6 +11,7 @@ def main():
     for name, events, outcome in [
         ("success", ["plan", "verify", "create"], "created"),
         ("verify-fail", ["plan", "verify"], "statementMismatch"),
+        ("create-fail", ["plan", "verify", "create"], "creationPending"),
         ("speaker-mismatch", [], "speakerMismatch"),
         ("declined", [], "consentRequired"),
         ("disabled", [], "consentRequired"),

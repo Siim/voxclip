@@ -9,7 +9,8 @@ case is replayed, plus the attempt-window boundaries. Expected outputs are not g
 
 - `flows`: preparation runs the speaker match without any HTTP. One in-app approval runs plan,
   Scribe, then create. Refused approval, disabled gate and speaker mismatch send nothing; failed
-  plan and statement checks stop before the next step. Successful records retain the full live
+  plan and statement checks stop before the next step. A dispatched creation with an uncertain
+  response retains only the remote-operation audit, with no enrollment WAV journal. Successful records retain the full live
   statement, nonce, SHA-256, Scribe evidence, attestations, training hashes and speaker evidence.
 - `mutations`: only `same` accepts the combined quote. Each other row changes exactly the named
   binding, including position and role as well as file bytes. Name trimming follows §6.1.

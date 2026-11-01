@@ -5,6 +5,73 @@ package enum VoiceConsentCheckpoint: String, Sendable, CaseIterable {
     case saveDraft, removeDraft, saveRecord, tombstoneRecord, creationIntent, creationDispatched, creationResult, saveCreation, clearCreation
     case withdrawing, withdrawn, deletionIntent, remoteDeleted, removeStatement, audioRemoved, saveTombstone, clearDeletion
     case retryScheduled, abandoned, saveAudit
+    case enrollmentVerified
+}
+
+/// Durable boundary after Scribe passed and before creation dispatch. Never an authorization to send.
+package struct VoiceEnrollmentRecovery: Codable, Sendable {
+    package let quote: EnrollmentQuote
+    package let request: VoiceLabCloneRequest
+    package let record: VoiceConsentRecord
+    package let trainingSeconds: Double
+    package init(quote: EnrollmentQuote, request: VoiceLabCloneRequest, record: VoiceConsentRecord, trainingSeconds: Double) {
+        self.quote = quote; self.request = request; self.record = record; self.trainingSeconds = trainingSeconds
+    }
+}
+
+extension VoiceConsentStore {
+    package func validateEnrollmentStart(recordID: String) throws {
+        guard !(try operations()).contains(where: { $0.recordID == recordID && !$0.finished }),
+              !FileManager.default.fileExists(atPath: try file("record.json", in: directory(recordID)).path) else { throw VoiceConsentError.creationPending }
+    }
+    package func saveEnrollmentRecovery(_ value: VoiceEnrollmentRecovery) throws {
+        try validateEnrollmentRecovery(value)
+        let url = try file("enrollment.json", in: directory(value.record.id, create: true))
+        try writePrivate(JSONEncoder().encode(value), to: url)
+        try checkpoint(.enrollmentVerified)
+    }
+    private func validateEnrollmentRecovery(_ value: VoiceEnrollmentRecovery) throws {
+        let record = value.record
+        try record.validate()
+        let statement = VoiceConsentStatement(language: record.statement.language, text: record.statement.text, nonce: record.statement.nonce)
+        try value.quote.validate(request: value.request, statement: statement)
+        guard record.voiceId == "pending", value.request.recoveryNonce == record.id,
+              value.request.samples.count == record.samples.count + 1,
+              value.request.samples.first?.wav == (try self.statement(recordID: record.id)),
+              value.request.samples.first.map({ VoiceLabFingerprint.bytes($0.wav) }) == record.statement.audioSha256,
+              value.trainingSeconds.isFinite, (10...120).contains(value.trainingSeconds) else { throw VoiceConsentError.invalidRecord }
+        for (sample, audit) in zip(value.request.samples.dropFirst(), record.samples) {
+            guard sample.role == .training, VoiceLabFingerprint.bytes(sample.wav) == audit.sha256 else { throw VoiceConsentError.invalidRecord }
+        }
+    }
+    package func enrollmentRecovery(recordID: String) throws -> VoiceEnrollmentRecovery? {
+        let url = try file("enrollment.json", in: directory(recordID))
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 600 * 1_024 * 1_024 else { throw VoiceConsentError.invalidRecord }
+        let value = try JSONDecoder().decode(VoiceEnrollmentRecovery.self, from: Data(contentsOf: url))
+        guard value.record.id == recordID else { throw VoiceConsentError.invalidRecord }
+        try validateEnrollmentRecovery(value)
+        return value
+    }
+    public func recoverableEnrollments() throws -> [String] {
+        guard FileManager.default.fileExists(atPath: root.path) else { return [] }
+        let operations = try operations()
+        return try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).compactMap { entry in
+            let id = entry.lastPathComponent
+            guard UUID(uuidString: id) != nil,
+                  !operations.contains(where: { $0.recordID == id && ($0.wasDispatched || $0.state != .intent) }),
+                  try enrollmentRecovery(recordID: id) != nil else { return nil }
+            return id
+        }.sorted()
+    }
+    package func clearEnrollmentRecovery(recordID: String) throws {
+        let dir = try directory(recordID)
+        let url = try file("enrollment.json", in: dir)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+            try synchronizeDirectory(dir)
+        }
+    }
 }
 
 public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
@@ -336,6 +403,7 @@ extension VoiceConsentStore {
               !(try operations()).contains(where: { $0.id != requestID && $0.blocksCreation }),
               VoiceLabFingerprint.bytes(try statement(recordID: recordID)) == statementHash else { throw VoiceConsentError.invalidRecord }
         _ = try transition(requestID, to: .dispatched, at: Date())
+        try clearEnrollmentRecovery(recordID: recordID)
     }
     package func validateCreation(recordID: String, requestID: UUID, statementHash: String) throws {
         let value = try operation(requestID)

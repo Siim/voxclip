@@ -222,6 +222,27 @@ public actor ElevenLabsVoiceLab {
                          fields: cloneUpload(request, policy).fields, units: 1)
     }
 
+    /// C7 fixes the files locally before approval. The plan is checked by execute, before Scribe.
+    func prepareEnrollmentClone(_ request: VoiceLabCloneRequest, policy: OwnVoicePolicy, requestID: UUID) throws -> VoiceLabQuote {
+        try policy.validate()
+        return try quote(.createClone, requestID: requestID, endpoint: "v1/voices/add",
+                         fields: cloneUpload(request, policy).fields, units: 1)
+    }
+
+    /// Restores an unsent creation only. A restart cannot extend its original five-minute lifetime.
+    func restoreEnrollmentCreation(_ value: VoiceLabQuote, request: VoiceLabCloneRequest, policy: OwnVoicePolicy) throws -> Bool {
+        guard value.operation == .createClone, value.region == region,
+              value.fingerprint == (try VoiceLabFingerprint.fields(cloneUpload(request, policy).fields)),
+              try estimate(.createClone, modelID: nil, units: 1) == value.estimate else { return false }
+        if prepared[value.id] != nil { return fresh(value) }
+        let age = now().timeIntervalSince(value.preparedAt)
+        guard age >= 0, age < 300 else { return false }
+        prepared[value.id] = value
+        preparedOrder.append(value.id)
+        deadlines[value.id] = monotonic() + .seconds(300 - age)
+        return true
+    }
+
     public func prepareDelete(voiceID: String, policy: OwnVoicePolicy, requestID: UUID) throws -> VoiceLabQuote {
         try policy.validate()
         guard policy.cloneVoiceID == voiceID, Self.safeID(voiceID), let voice = discoveredVoices[voiceID],
