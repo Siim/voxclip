@@ -70,7 +70,7 @@ test('font URLs, missing-file fallbacks and dimensional resources are generated'
 
 test('a windows extension replaces a dimension in Tokens.xaml only', () => {
   const output = buildOutputs(source);
-  assert.ok(output.swift.includes('static let spacingTranscriptGutter: CGFloat = 84'));
+  assert.ok(output.swift.includes('static let spacingTranscriptGutter: CGFloat = 80'));
   assert.ok(output.xaml.includes('<x:Double x:Key="VcSpacingTranscriptGutter">76</x:Double>'));
   assert.ok(output.xaml.includes('<Thickness x:Key="VcSpacingTranscriptGutterThickness">76</Thickness>'));
   assert.ok(output.swift.includes('static let sizeSidebarIdeal: CGFloat = 224'));

@@ -991,7 +991,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
   - **Instructions**: a field reading "Anything specific? (optional)", or "Describe the clips you want" for Custom (at most 500 characters, Return runs it);
   - the footnote "Sends transcript text with word numbers. No audio or video." For loopback local connectors it reads "Runs on this {Mac/PC}. Nothing leaves it."; for a configured remote local-server connector it reads "Sends these {count} words to {host}.";
   - **[Find Clips]** as the default button.
-- **Consent.** The first cloud use runs the existing consent alert (ai.md §4.8).
+- **Consent.** The first cloud use runs the existing consent alert (ai.md §4.8). A send on an API key, or on a CLI signed in with one, then asks on every send; every other send starts at once (ai.md §4.8).
 - **While it runs:** the popover closes. The sidebar shows a "Finding clips…" row under the Suggested header, with a spinner (Windows: a fixed-width `ProgressRing`), **Cancel**, and the connector line "{connector} · reading {duration} of transcript" in 11 `text.secondary`. On macOS, Clip > Cancel Finding Clips (⌘.) and Esc in the sidebar also cancel; cancelling is silent.
 - **Results:** the new suggestions appear under Suggested and the first is focused (not selected). Announce "Found 3 clips".
 - **No connector:** the popover is replaced by an inline callout under the sidebar actions. Copy is in §13, with **Set Up AI…** and the line "You can also select words and press ⌘K to make a clip yourself."

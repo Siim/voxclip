@@ -23,19 +23,12 @@ import VoxClipCore
         let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
         results.append(.init(name: "new editor initializes transcript capabilities before keyboard input", passed: model.capabilities.edit))
-        let coordinator = TranscriptTextView.Coordinator(model: model)
-        let text = TranscriptNSTextView(usingTextLayoutManager: true)
-        text.frame = CGRect(x: 0, y: 0, width: 720, height: 500)
-        text.textContainerInset = CGSize(width: 84, height: 8)
-        text.textContainer?.containerSize = CGSize(width: 600, height: CGFloat.greatestFiniteMagnitude)
-        text.textContainer?.widthTracksTextView = false
-        text.model = model; text.delegate = coordinator; text.textLayoutManager?.delegate = coordinator
-        coordinator.text = text; coordinator.renderer.text = text
-        coordinator.renderer.rebuild(model: model)
-        text.textLayoutManager?.ensureLayout(for: text.textLayoutManager!.documentRange)
-        let textWindow = NSWindow(contentRect: text.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        textWindow.isReleasedWhenClosed = false; textWindow.contentView = text
-        defer { textWindow.close() }
+        // The editor's transcript pane from makeScrollView, in an offscreen window that is never shown.
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 720, height: 500))
+        defer { pane.close() }
+        let text = pane.text, coordinator = pane.coordinator, textWindow = pane.window
+        results.append(.init(name: "the selection bar checks run in the editor's transcript pane: text at the \(Int(TranscriptGutter.width)) pt gutter, no line padding, in its scroll view (x \(text.textContainerOrigin.x))",
+                             passed: text.textContainerOrigin.x == TranscriptGutter.width && text.textContainer?.lineFragmentPadding == 0 && text.enclosingScrollView === pane.scroll))
         let words = Array(model.words.prefix(3))
         model.selectedWordIDs = Set(words.map(\.id))
         let escapeProject = model.project
@@ -45,6 +38,9 @@ import VoxClipCore
         text.selectedRanges = words.compactMap { text.map.span(id: $0.id).map { NSValue(range: $0.range) } }
         if let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48) { text.keyDown(with: tab) }
         results.append(.init(name: "keyboard Tab reveals the selection bar without a pointer", passed: text.selectionBarVisible))
+        let bar = text.selectionBarAuditView?.frame ?? .zero
+        results.append(.init(name: "the selection bar sits in the pane's visible rect, clear of the selected words' lines (\(bar))",
+                             passed: !bar.isEmpty && text.visibleRect.contains(bar) && !text.selectedLineRects().contains { $0.intersects(bar) }))
         text.hideSelectionBar(dismissed: true)
         if let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .shift, timestamp: 0, windowNumber: textWindow.windowNumber, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48) { text.keyDown(with: tab) }
         results.append(.init(name: "Shift-Tab never re-enters the selection bar", passed: !text.selectionBarVisible))

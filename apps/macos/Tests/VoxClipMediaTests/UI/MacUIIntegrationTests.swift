@@ -294,24 +294,47 @@ final class MacUIRenderPerformanceTests: XCTestCase {
         let directory = try UIProcessHarness.run(mode: "-uiPerformanceTest", name: "performance")
         defer { UIProcessHarness.cleanTemporary(directory) }
         struct Metrics: Decodable {
+            let fixture: String
             let wordCount: Int
             let cutMedianMS: Double
             let cutP95MS: Double
             let cutMaximumMS: Double
             let scrollP95MS: Double
             let storageRebuildsDuringCuts: Int
+            let tabSwitchMaximumMS: Double
+            let foldCutMaximumMS: Double
+            let paragraphsReplacedPerCut: Int
+            let documentRebuildsDuringCuts: Int
+            let showCutsToggleMaximumMS: Double
+            let bulkEditMaximumMS: Double
+            let rulerSpanMedianMS: Double
         }
-        let metrics = try JSONDecoder().decode(Metrics.self, from: Data(contentsOf: directory.appendingPathComponent("transcript-performance.json")))
-        XCTAssertEqual(metrics.wordCount, 10_000)
-        XCTAssertLessThan(metrics.cutMaximumMS, 50)
-        XCTAssertLessThan(metrics.scrollP95MS, 1000 / 60)
-        XCTAssertEqual(metrics.storageRebuildsDuringCuts, 0)
+        // One entry per 10,000-word fixture: speakers alternating, and one speaker throughout.
+        let measured = try JSONDecoder().decode([Metrics].self, from: Data(contentsOf: directory.appendingPathComponent("transcript-performance.json")))
+        XCTAssertEqual(measured.map(\.fixture), ["speaker-alternating", "single-speaker"])
+        for metrics in measured {
+            XCTAssertEqual(metrics.wordCount, 10_000, metrics.fixture)
+            XCTAssertLessThan(metrics.cutMaximumMS, 50, metrics.fixture)
+            XCTAssertLessThan(metrics.scrollP95MS, 1000 / 60, metrics.fixture)
+            XCTAssertEqual(metrics.storageRebuildsDuringCuts, 0, metrics.fixture)
+            XCTAssertLessThanOrEqual(metrics.tabSwitchMaximumMS, 50, metrics.fixture)
+            // Fold edits rebuild at most two paragraphs, never the document (impl-plan V8a).
+            XCTAssertLessThan(metrics.foldCutMaximumMS, 50, metrics.fixture)
+            XCTAssertLessThanOrEqual(metrics.paragraphsReplacedPerCut, 2, metrics.fixture)
+            XCTAssertEqual(metrics.documentRebuildsDuringCuts, 0, metrics.fixture)
+            XCTAssertLessThanOrEqual(metrics.showCutsToggleMaximumMS, 150, metrics.fixture)
+            // A bulk fold edit (Cut Fillers) is at most one full rebuild, and the ruler's span is per frame.
+            XCTAssertLessThanOrEqual(metrics.bulkEditMaximumMS, 150, metrics.fixture)
+            XCTAssertLessThanOrEqual(metrics.rulerSpanMedianMS, 0.05, metrics.fixture)
+        }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         for result in report {
             if let reason = result.skipped { print("SKIP: \(result.name): \(reason)") }
             else { XCTAssertTrue(result.passed, result.name) }
         }
-        print("10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; scroll p95=\(metrics.scrollP95MS)ms")
+        for metrics in measured {
+            print("\(metrics.fixture): 10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; fold edit max=\(metrics.foldCutMaximumMS)ms; Show cuts toggle max=\(metrics.showCutsToggleMaximumMS)ms; bulk fold edit max=\(metrics.bulkEditMaximumMS)ms; ruler span median=\(metrics.rulerSpanMedianMS)ms; scroll p95=\(metrics.scrollP95MS)ms; tab switch max=\(metrics.tabSwitchMaximumMS)ms")
+        }
     }
 }
 

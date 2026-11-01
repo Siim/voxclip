@@ -250,7 +250,8 @@ import Testing
     /// The consent before words go to a connector follows the session, not the tab or the
     /// project as it was when the session opened. After an edit in another clip, on another
     /// tab, it still asks and the words go. A connector change, or an edit inside the
-    /// session's clip, while it asks refuses: nothing is sent and no consent is kept.
+    /// session's clip, while it asks refuses: nothing is sent and no consent is kept. An
+    /// API-key send also confirms its cost on every send, after the privacy consent (VS).
     @Test func rewriteConsentFollowsTheSessionAcrossTabs() async throws {
         let (shell, editor, undo) = try await openShell()
         defer { editor.close() }
@@ -286,8 +287,8 @@ import Testing
         await session.prepare()
         let quote = try #require(session.quote)
         session.markEstimateShown(quote.id)
-        #expect(await session.propose(quote, affirmative: true))
-        #expect(asks.count == 1 && app.bool(consent) && session.newWords == "A clearer passage")
+        #expect(await session.propose(quote))
+        #expect(asks.count == 2 && app.bool(consent) && session.newWords == "A clearer passage")
         #expect(await fake.sends == 1)
 
         app.settings.values[consent] = .bool(false)
@@ -298,8 +299,8 @@ import Testing
             app.settings.values["llm.model.anthropic"] = .string("fixture-other")
             return true
         }
-        #expect(await session.propose(again, affirmative: true) == false)
-        #expect(asks.count == 2 && !app.bool(consent))
+        #expect(await session.propose(again) == false)
+        #expect(asks.count == 3 && !app.bool(consent))
         #expect(await fake.sends == 1)
 
         app.settings.values["llm.model.anthropic"] = .string("fixture-local")
@@ -311,8 +312,8 @@ import Testing
             self.step(undo) { editor.apply(.cutSelection(ids: [editor.words[lower + 1].id]), name: "Cut selection") }
             return true
         }
-        #expect(await session.propose(again, affirmative: true) == false)
-        #expect(asks.count == 3 && !app.bool(consent) && !session.isOpen && editor.openRewrite == nil)
+        #expect(await session.propose(again) == false)
+        #expect(asks.count == 4 && !app.bool(consent) && !session.isOpen && editor.openRewrite == nil)
         #expect(await fake.sends == 1)
     }
 

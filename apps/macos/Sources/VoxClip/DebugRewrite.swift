@@ -88,7 +88,7 @@ actor RewriteFixtureConnector: LLMConnector {
         let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
         func make(_ fake: RewriteFixtureConnector? = nil, group: String = "local", range: ClosedRange<Int> = 3...5,
                   words: [TimedWord]? = nil, withoutEnvelope: Bool = false, prices: VoiceLabPriceCatalog? = nil, synthesisModel: String? = nil,
-                  consent: @escaping @MainActor () async -> Bool = { false }, current: @escaping @MainActor () -> Bool = { true }) -> (EditorModel, RewriteSession) {
+                  consent: @escaping @MainActor () async -> Bool = { true }, current: @escaping @MainActor () -> Bool = { true }) -> (EditorModel, RewriteSession) {
             var input = project
             if let words { input.transcript?.words = words }
             let editor = EditorModel(document: VoxClipDocument(project: input), app: app, preview: DemoPreviewEngine())
@@ -127,7 +127,7 @@ actor RewriteFixtureConnector: LLMConnector {
             check("\(provider.id) Rewrite opening and Retry detect without sending", prepared.discoveries == 2 && prepared.sends == 0)
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
-                _ = await session.propose(quote, affirmative: true)
+                _ = await session.propose(quote)
             }
             let denied = await rewriteFake.counts()
             check("\(provider.id) declined Rewrite sends nothing after detection", denied.discoveries == 2 && denied.sends == 0)
@@ -135,7 +135,7 @@ actor RewriteFixtureConnector: LLMConnector {
             await session.prepare()
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
-                _ = await session.propose(quote, affirmative: true)
+                _ = await session.propose(quote)
             }
             let rewriteStatuses = await rewriteFake.statuses
             check("\(provider.id) granted Rewrite request follows explicit detection", rewriteStatuses == 3)
@@ -268,7 +268,13 @@ actor RewriteFixtureConnector: LLMConnector {
         }
         for group in ["local", "apiKey", "cli"] {
             for granted in [false, true] {
-                let fake = RewriteFixtureConnector()
+                // The connector decides how the send presents its cost (C8): Ollama, and Codex signed in on a plan, start at
+                // once; OpenAI asks first. Every group asks `consent`, the editor's route to the send authorization.
+                let id: ConnectorID = group == "local" ? .ollama : group == "apiKey" ? .openai : .codex
+                if group == "cli", let codex = app.providers.first(where: { $0.id == "codex" }) {
+                    _ = await app.connectorStatus(codex, using: RewriteFixtureConnector(id: .codex))
+                }
+                let fake = RewriteFixtureConnector(id: id)
                 let probe = RewriteTestState()
                 let (editor, session) = make(fake, group: group, consent: {
                     probe.consentCalls += 1
@@ -281,21 +287,19 @@ actor RewriteFixtureConnector: LLMConnector {
                 let counts2 = await fake.counts()
                 check("\(group) preparing quote never discovers or sends", counts2.discoveries == 0 && counts2.sends == 0)
                 guard let quote = session.quote else { check("\(group) prepares quote", false); continue }
-                let hidden = await session.propose(quote, affirmative: true)
+                let hidden = await session.propose(quote)
                 let counts3 = await fake.counts()
                 check("\(group) cannot send undisplayed estimate", !hidden && counts3.sends == 0)
                 session.markEstimateShown(quote.id)
-                let declined = await session.propose(quote, affirmative: false)
-                let counts4 = await fake.counts()
-                check("\(group) cannot send unapproved estimate", !declined && counts4.sends == 0)
-                let approved = await session.propose(quote, affirmative: true)
-                let expected = group == "local" || granted
+                let approved = await session.propose(quote)
                 let counts5 = await fake.counts()
-                check("\(group) consent \(granted) gates send and releases lease", approved == expected && counts5.sends == (expected ? 1 : 0) && !editor.llmRuns.isBusy)
-                check("\(group) consent precedes every discovery", group == "local" ? probe.consentCalls == 0 : probe.consentCalls == 1 && probe.beforeDiscovery)
+                check("\(group) consent \(granted) gates send and releases lease", approved == granted && counts5.sends == (granted ? 1 : 0) && !editor.llmRuns.isBusy)
+                check("\(group) consent precedes every discovery", probe.consentCalls == 1 && probe.beforeDiscovery)
                 check("proposals are inert project data", editor.project == project)
-                if group == "local" { check("local exact no-charge title", session.proposalButton == "Rewrite · No charge") }
-                if group == "cli" { check("CLI has no header amount and names plan", session.proposalButton == "Rewrite" && session.sendLine.contains("ChatGPT plan")) }
+                let asks = group == "apiKey"
+                check("\(group) button is the action, with an ellipsis only when the send asks first", session.proposalButton == (asks ? "Rewrite…" : "Rewrite"))
+                check("\(group) states the unknown price only when the send asks first", session.estimateCopy == (asks ? "VoxClip can't tell what this costs. Check OpenAI's pricing." : ""))
+                if group == "cli" { check("CLI on a plan names the plan", session.sendLine.contains("ChatGPT plan")) }
             }
         }
         for boundary in ["panel", "editor", "leave"] {
@@ -306,7 +310,7 @@ actor RewriteFixtureConnector: LLMConnector {
             await session.prepare()
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
-                let task = Task { await session.propose(quote, affirmative: true) }
+                let task = Task { await session.propose(quote) }
                 let clock = ContinuousClock()
                 let deadline = clock.now.advanced(by: .seconds(5))
                 while !held.started && clock.now < deadline { await Task.yield() }
@@ -329,7 +333,7 @@ actor RewriteFixtureConnector: LLMConnector {
             await session.prepare()
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
-                let task = Task { await session.propose(quote, affirmative: true) }
+                let task = Task { await session.propose(quote) }
                 let clock = ContinuousClock()
                 let deadline = clock.now.advanced(by: .seconds(5))
                 while await fake.sends == 0 && clock.now < deadline { await Task.yield() }
@@ -360,7 +364,7 @@ actor RewriteFixtureConnector: LLMConnector {
             await session.prepare()
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
-                let sent = await session.propose(quote, affirmative: true)
+                let sent = await session.propose(quote)
                 let counts6 = await fake.counts()
                 check("\(change) during consent never discovers or sends", !sent && counts6.discoveries == 0 && counts6.sends == 0 && !editor.llmRuns.isBusy)
             } else { check("consent race prepares quote", false) }
@@ -378,11 +382,10 @@ actor RewriteFixtureConnector: LLMConnector {
             while session.quote == nil && clock.now < deadline { await Task.yield() }
             check("New words edit offers a fresh estimate and leaves lease free", session.quote != nil && session.quote?.id != previous && !editor.llmRuns.isBusy)
             if let fresh = session.quote {
-                let unshown = await session.propose(fresh, affirmative: true)
-                session.markEstimateShown(fresh.id)
-                let denied = await session.propose(fresh, affirmative: false)
+                let unshown = await session.propose(fresh)
                 let counts = await fake.counts()
-                check("new estimate requires display and affirmative approval before send", !unshown && !denied && session.canPropose && counts.sends == 0)
+                session.markEstimateShown(fresh.id)
+                check("new estimate requires display before send", !unshown && session.canPropose && counts.sends == 0)
             }
         }
         do {
@@ -393,13 +396,13 @@ actor RewriteFixtureConnector: LLMConnector {
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
                 session.setInstruction("new instruction")
-                let stale = await session.propose(quote, affirmative: true)
+                let stale = await session.propose(quote)
                 let counts7 = await fake.counts()
                 check("changed instruction invalidates displayed quote without discovery", !stale && counts7.discoveries == 0)
                 await session.prepare()
                 if let fresh = session.quote {
                     session.markEstimateShown(fresh.id)
-                    let task = Task { await session.propose(fresh, affirmative: true) }
+                    let task = Task { await session.propose(fresh) }
                     for _ in 0..<500 { if await fake.sends > 0 { break }; await Task.yield() }
                     check("Rewrite holds the same project lease as Find Clips", editor.llmRuns.isBusy && !editor.capabilities.ai)
                     editor.findClips()
@@ -426,7 +429,7 @@ actor RewriteFixtureConnector: LLMConnector {
             await session.prepare()
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
-                let sent = await session.propose(quote, affirmative: true)
+                let sent = await session.propose(quote)
                 check("failed proposal retains inline error and releases lease", !sent && !session.problem.isEmpty && !editor.llmRuns.isBusy)
             }
             if let lease = editor.llmRuns.acquire() {
@@ -456,7 +459,7 @@ actor RewriteFixtureConnector: LLMConnector {
                 session.markEstimateShown(quote.id)
                 editor.findClips()
                 check("real Find Clips entry acquires shared project lease first", editor.finding && editor.llmRuns.isBusy)
-                let proposal = await session.propose(quote, affirmative: true)
+                let proposal = await session.propose(quote)
                 check("Find Clips first refuses approved Rewrite without a second send", !proposal && !session.isProposing)
                 for _ in 0..<5_000 { if await fake.sends > 0 { break }; await Task.yield() }
                 let before = await fake.counts()

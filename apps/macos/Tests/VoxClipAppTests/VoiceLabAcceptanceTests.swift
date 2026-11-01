@@ -56,16 +56,18 @@ private struct AcceptanceTestKeys: KeyProvider {
         let text = TranscriptNSTextView(usingTextLayoutManager: true), renderer = TranscriptRenderer()
         text.model = model; renderer.text = text
         let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        // The band's clip ranges: a clip edge inside an accepted passage, which reads as one
+        // span, reaches the whole passage; with the passage off it is the word's own edge.
         func assertMarkers(ai: Bool) throws {
             renderer.rebuild(model: model)
-            let leading = try #require(text.map.span(id: "clip-start:inside-start"))
-            let trailing = try #require(text.map.span(id: "clip-end:inside-end"))
-            let word = try #require(text.map.span(id: "w4"))
-            #expect(text.map.spans.filter { $0.id == leading.id || $0.id == trailing.id }.count == 2)
+            let leading = try #require(renderer.clipMarks["inside-start"])
+            let trailing = try #require(renderer.clipMarks["inside-end"])
+            let word = try #require(text.map.span(id: "w4")), next = try #require(text.map.span(id: "w5"))
             if ai {
-                #expect(NSMaxRange(leading.range) <= word.range.location)
-                #expect(trailing.range.location >= NSMaxRange(word.range))
-                #expect(text.map.span(id: "w5")?.range == word.range)
+                #expect(next.range == word.range)
+                #expect(leading.range.location == word.range.location && NSMaxRange(trailing.range) == NSMaxRange(word.range))
+            } else {
+                #expect(leading.range.location == next.range.location && NSMaxRange(trailing.range) == NSMaxRange(word.range))
             }
         }
         try assertMarkers(ai: true)

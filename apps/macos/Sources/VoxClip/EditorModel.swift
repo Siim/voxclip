@@ -229,7 +229,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var renderedEdits: ProjectEdits?
     @ObservationIgnored private var renderedMedia: ProjectMedia?
     @ObservationIgnored private var renderedVoiceLab: ProjectVoiceLab?
-    @ObservationIgnored private var fillerCandidateIDs: Set<String> = []
+    @ObservationIgnored private(set) var fillerCandidateIDs: Set<String> = []
     @ObservationIgnored private var planningSegments: [EditSegment]?
     @ObservationIgnored private var planningWordIndex: [String: Int] = [:]
     @ObservationIgnored private var summaryCache: [(edits: ProjectEdits, summary: EditSummary)] = []

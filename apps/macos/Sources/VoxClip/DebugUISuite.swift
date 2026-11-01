@@ -634,6 +634,7 @@ import ApplicationServices
             let interview = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
             results += try await DebugShell.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTabs.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugTranscriptPixels.scenes(app: app, fixture: interview, directory: destination, native: true)
         } catch {
             results.append(Result(name: "scene audit: \(error.localizedDescription)", passed: false))
         }
@@ -1008,6 +1009,7 @@ import ApplicationServices
             try await snapshot(OnboardingView().environment(app), name: "onboarding-dark", size: NSSize(width: 616, height: 536), appearance: .darkAqua, directory: destination)
             results += try await DebugShell.run(app: app, fixture: project, directory: destination)
             results += try await DebugTabs.run(app: app, fixture: project, directory: destination)
+            results += try await DebugTranscriptPixels.scenes(app: app, fixture: project, directory: destination)
             model.close()
         } catch { results.append(Result(name: "suite: \(error.localizedDescription)", passed: false)) }
         let fallbacks = cachedMainWindowCaptures

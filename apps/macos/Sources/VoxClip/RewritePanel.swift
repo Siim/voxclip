@@ -140,16 +140,10 @@ import VoxClipCore
         }
         return Text(result)
     }
+    /// The send asks for consent and, on an API key, confirms the cost itself (`RewriteSession.propose`).
     private func approveAndPropose() {
         guard let quote = session.quote, session.canPropose else { return }
-        approvalTask = Task {
-            var approved = true
-            if case .confirm(let copy) = session.estimate {
-                guard let window = session.editor.window else { return }
-                approved = await RewriteApprovalSheet(title: "Rewrite", copy: copy, parent: window).confirm()
-            }
-            await session.propose(quote, affirmative: approved)
-        }
+        approvalTask = Task { await session.propose(quote) }
     }
     private func generate() {
         guard let generation = session.generation, generation.canExecute else { return }

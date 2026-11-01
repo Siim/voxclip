@@ -58,10 +58,11 @@ struct RewriteConnector {
 @MainActor final class RewriteApprovalSheet {
     private let alert = NSAlert()
     private let parent: NSWindow
-    init(title: String, copy: String, parent: NSWindow) {
+    /// `confirm` is the default button's title; Cancel is the other button.
+    init(title: String, copy: String, confirm: String = "Continue", parent: NSWindow) {
         self.parent = parent
         alert.messageText = title; alert.informativeText = copy
-        alert.addButton(withTitle: "Continue"); alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: confirm); alert.addButton(withTitle: "Cancel")
     }
     func confirm() async -> Bool {
         await withTaskCancellationHandler {
@@ -153,22 +154,27 @@ struct RewriteConnector {
     /// a session belongs to its tab and keeps working while another tab shows (impl-plan §3.3).
     var current: Bool { isOpen && editor.capabilities.edit && editor.project.scoped(to: project.edits.activeClipId) == project && connectorIsCurrent() && editor.app.voiceLabRewriteEnabled }
     var canPropose: Bool { current && !isProposing && !editor.llmRuns.isBusy && quote != nil && shownQuoteID == quote?.id }
+    /// "Rewrite", or "Rewrite…" when the send asks first (design §6.3.1): an API key, or a CLI signed in with one.
     var proposalButton: String {
-        guard let connector, let estimate else { return "Rewrite" }
-        if connector.group == "cli" { return "Rewrite" }
-        if connector.group == "local" { return "Rewrite · No charge" }
-        return VoiceLabCostPresentation.buttonTitle("Rewrite", kind: estimate)
+        if case .confirm = estimate { return "Rewrite…" }
+        return "Rewrite"
     }
+    /// C8's unknown-price sentence for a send that asks first; empty for a send that costs nothing extra.
     var estimateCopy: String {
-        guard let estimate else { return "" }
-        switch estimate { case .inline(let text): return text.isEmpty ? "No charge." : text; case .confirm(let text): return text }
+        if case .confirm(let text) = estimate { return text }
+        return ""
     }
     var sendLine: String {
         guard let connector else { return "Choose a connector in Settings → AI." }
         let count: Int = source.filter { $0.kind == .word }.count
         switch connector.group {
         case "apiKey": return "Sends these \(count) words to \(connector.name) with your key."
-        case "cli": return "Sends these \(count) words to \(connector.name) with your sign-in. Counts toward your \(connector.plan)."
+        case "cli":
+            switch editor.app.cliSignIn(connector.connector.id) {
+            case .plan: return "Sends these \(count) words to \(connector.name) with your sign-in. Counts toward your \(connector.plan)."
+            case .apiKey: return "Sends these \(count) words to \(connector.name), billed to the API key it is signed in with."
+            case nil: return "Sends these \(count) words to \(connector.name) with your sign-in."
+            }
         default:
             if connector.connector.id.rawValue == "apple-foundation" { return "Runs on this Mac. Nothing leaves it." }
             let id = connector.connector.id.rawValue
@@ -224,7 +230,8 @@ struct RewriteConnector {
             let prepared = try await service.prepare(input, connector: connector.connector.id, model: connector.model)
             guard !Task.isCancelled, current, revision == expected else { return }
             request = input; quote = prepared
-            estimate = VoiceLabCostPresentation.kind(prepared.estimate, isLipSync: false, providerName: connector.name)
+            // Shown on the button and under it; the send itself asks again with a fresh detection (VS).
+            estimate = editor.app.llmSendKind(connector.connector.id)
         } catch is CancellationError {} catch {
             if current && revision == expected { problem = Self.refusal(error) }
         }
@@ -232,8 +239,10 @@ struct RewriteConnector {
     func markEstimateShown(_ id: UUID) {
         if current && quote?.id == id { shownQuoteID = id }
     }
-    @discardableResult func propose(_ approvedQuote: VoiceRewriteQuote, affirmative: Bool) async -> Bool {
-        guard canPropose, affirmative, quote == approvedQuote, let input = request, let connector, let service,
+    /// Sends the shown quote. Every connector goes through `consent`, the editor's route to
+    /// `AppModel.authorizeConnectorRequest`: the one-time privacy consent, then a confirmation when the send asks first.
+    @discardableResult func propose(_ approvedQuote: VoiceRewriteQuote) async -> Bool {
+        guard canPropose, quote == approvedQuote, let input = request, let connector, let service,
               let lease = editor.llmRuns.acquire() else { return false }
         let runs = editor.llmRuns
         let expected = revision
@@ -242,7 +251,7 @@ struct RewriteConnector {
         let task = Task { [self] () -> Bool in
             defer { runs.release(lease); isProposing = false }
             do {
-                if connector.group != "local", !(await ConnectorConsentWait().confirm(consent)) { return false }
+                guard await ConnectorConsentWait().confirm(consent) else { return false }
                 guard !Task.isCancelled, current, revision == expected, quote == approvedQuote, request?.id == input.id else { return false }
                 let result = try await service.propose(input, connector: connector.connector, model: connector.model,
                     authorization: VoiceRewriteAuthorization(quote: approvedQuote, approved: true))
