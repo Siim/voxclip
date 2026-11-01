@@ -525,6 +525,10 @@ struct RewriteChange: Equatable, Sendable {
         default: return 0
         }
     }
+    /// The proposal has phrases in your voice and Voice Lab is on: the Beta badge, the takes and the AI MODIFIED line show.
+    var showsVoiceLab: Bool { review?.voiceHunks.isEmpty == false && editor.app.voiceLabRewriteEnabled }
+    /// The proposal has phrases in your voice and Voice Lab is off: R2's Turn On Voice Lab… (design.md §6.3.6).
+    var offersVoiceLab: Bool { review?.voiceHunks.isEmpty == false && !editor.app.voiceLabRewriteEnabled }
     /// Applies the included cuts and fixes as one undo step named for the scope ("Rewrite clip 1", design.md R2), announces
     /// "Applied {c} changes", closes Rewrite and moves focus to the first changed word.
     @discardableResult func applyFreeChanges() -> Bool {

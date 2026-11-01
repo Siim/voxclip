@@ -58,7 +58,7 @@ import VoxClipCore
                 if let summary = review.summary, !review.voiceHunks.isEmpty { Text(summary.copy).font(.system(size: 11)).foregroundStyle(.secondary) }
             }
             if !session.problem.isEmpty { InlineNotice(text: session.problem) }
-            if session.review?.voiceHunks.isEmpty == false, editor.app.voiceLabRewriteEnabled {
+            if session.showsVoiceLab {
                 Divider()
                 if let generation = session.generation { RewriteTakesView(session: session, generation: generation, generate: generate) }
                 else { Button("Choose Voice…") { approvalTask = Task { await session.discoverVoices() } } }
@@ -67,10 +67,12 @@ import VoxClipCore
     }
     var footer: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if session.review?.voiceHunks.isEmpty == false {
+            if session.showsVoiceLab {
                 Label("Exports show AI MODIFIED on the video and in the post.", systemImage: "info.circle")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
+            // design.md R2 "Voice changes, Voice Lab off": the one-time beta sheet turns it on.
+            if session.offersVoiceLab { Button("Turn On Voice Lab…") { editor.showVoiceLabOptIn = true } }
             if let title = session.applyTitle {
                 Button(title) { session.applyFreeChanges() }
                     .disabled(!session.current || session.isProposing)
@@ -113,7 +115,7 @@ import VoxClipCore
         HStack(spacing: 6) {
             Image(systemName: "pencil")
             Text(session.task.words.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-            if session.review?.voiceHunks.isEmpty == false && editor.app.voiceLabRewriteEnabled {
+            if session.showsVoiceLab {
                 Text("Beta").font(.system(size: 11)).padding(.horizontal, 4).overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary.opacity(0.5)))
             }
             Spacer(minLength: 4)

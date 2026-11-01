@@ -66,7 +66,7 @@ struct EditorRenderSnapshot {
     var lastStyleId: String?
     @ObservationIgnored private var galleryKey = ""
     @ObservationIgnored private var galleryPages: [String: CaptionGalleryPages] = [:]
-    /// Voice Lab's one-time beta sheet (voice-lab.md §5); R2's Turn On Voice Lab… opens it (V15).
+    /// Voice Lab's one-time beta sheet (voice-lab.md §5); R2's Turn On Voice Lab… opens it.
     var showVoiceLabOptIn = false
     @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
     #if DEBUG

@@ -575,6 +575,26 @@ private final class WorkThreads: Sendable {
         #expect(session.review?.voiceHunks.first?.window == nil && session.review?.voiceHunks.first?.refusal == "This change can't be placed in this take. Your edits are saved.")
     }
 
+    /// A phrase in your voice with Voice Lab off shows no Beta badge, takes or AI MODIFIED line, and offers Turn On Voice
+    /// Lab…, which opens the one-time sheet; its Turn on shows them (design.md R2 "Voice changes, Voice Lab off").
+    @Test func voiceLabPartsFollowTheSetting() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        let (editor, _) = try editor(app)
+        defer { editor.close() }
+        editor.selectedWordIDs = ["w12", "w13", "w14"]
+        let session = try await rewrite(editor)
+        #expect(session.review?.voiceHunks.isEmpty == false && !app.voiceLabRewriteEnabled)
+        #expect(!session.showsVoiceLab && session.offersVoiceLab)
+        editor.showVoiceLabOptIn = true
+        editor.enableVoiceLab()
+        #expect(app.voiceLabRewriteEnabled && !editor.showVoiceLabOptIn && session.showsVoiceLab && !session.offersVoiceLab && session.isOpen)
+
+        editor.selectedWordIDs = []
+        let clip = try await rewrite(editor)
+        #expect(clip.review?.voiceHunks.isEmpty == true && !clip.showsVoiceLab && !clip.offersVoiceLab)
+    }
+
     // MARK: Ask
 
     /// design.md §6.3.1's suggestions: the four presets, then the project's last three distinct typed instructions, most
