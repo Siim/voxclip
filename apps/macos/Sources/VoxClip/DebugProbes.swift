@@ -184,7 +184,7 @@ import VoxClipCore
         }
         if let root = app.shared?.root,
            let fixture = try? DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip")),
-           let project = try? DebugSidebar.fiveQuestions(from: fixture) {
+           let project = try? DebugExplorer.fiveQuestions(from: fixture) {
             let document = VoxClipDocument(project: project)
             NSDocumentController.shared.addDocument(document)
             if await shell.replaceProject(with: document) {

@@ -72,6 +72,8 @@ struct EditorRenderSnapshot {
     var focusedPane = EditorPane.transcript
     var paneFocusRequest = 0
     var scopeScrollRevision = 0
+    /// The Outline target for the existing scope-scroll revision, cleared on a scope change.
+    var outlineScrollWordID: String?
     var lastStyleId: String?
     var showVoiceLabOptIn = false
     var rewriteInsertionAfterID: String?
@@ -79,7 +81,7 @@ struct EditorRenderSnapshot {
     /// The clip bar's Ask field (impl-plan V3b): the instruction the next Rewrite asks; empty asks Fix mistakes. In memory only.
     var rewriteInstruction = ""
     private var pendingRewriteSelection: Set<String> = []
-    func beginRewrite(inserting: Bool = false, entry: RewriteEntry = .selection) {
+    func beginRewrite(inserting: Bool = false, entry: RewriteEntry = .selection, selectionAnchored: Bool = false) {
         let action = RewriteEntryPolicy.resolve(inserting ? .insertWords : entry, enabled: app.bool("voiceLab.enabled"),
             noticeAccepted: app.bool("voiceLab.betaNoticeAccepted"), editable: capabilities.ai, selection: !selectedIDs.isEmpty)
         if action == .turnOnVoiceLab { pendingRewriteSelection = selectedWordIDs; showVoiceLabOptIn = true; return }
@@ -96,7 +98,7 @@ struct EditorRenderSnapshot {
             guard let self else { return }
             if waveform == nil { await loadWaveform() }
             guard !Task.isCancelled, capabilities.ai, app.voiceLabRewriteEnabled, project == snapshot,
-                  selectedWordIDs == selection, selectedPauseIDs == pauses, sourceTime == caret,
+                  selectedWordIDs == selection, selectedPauseIDs == pauses, (selectionAnchored || sourceTime == caret),
                   rewriteConnectorSignature == signature else { return }
             openRewriteSession(range: lower...upper, instruction: instruction)
         }
@@ -810,6 +812,7 @@ struct EditorRenderSnapshot {
         if let message { announce(message) }
         else if project.edits.activeClipId != previous { announce(scopeName(project.edits.activeClipId)) }
         if project.edits.activeClipId == clip?.id {
+            outlineScrollWordID = nil
             seekToActiveClip()
             if previous != clip?.id { scopeScrollRevision += 1 }
         }

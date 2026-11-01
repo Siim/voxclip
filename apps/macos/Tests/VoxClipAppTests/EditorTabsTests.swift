@@ -15,7 +15,7 @@ import Testing
     private func project() throws -> Project {
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
-        return try DebugSidebar.fiveQuestions(from: base)
+        return try DebugExplorer.fiveQuestions(from: base)
     }
     /// A shell with the fixture open on Full Take, its media treated as found, and one undo
     /// group per action, so "no undo step" means none.

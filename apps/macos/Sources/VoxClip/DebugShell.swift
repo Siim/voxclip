@@ -28,7 +28,7 @@ import VoxClipCore
         app.settings.values[WorkspaceLayout.retiredRightWidthKey] = .number(500)
 
         let shell = WorkspaceShell(app: app)
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()
@@ -322,7 +322,7 @@ import VoxClipCore
         func label(_ text: String) -> Expectation { (text, { $0.label.contains(text) }) }
         func button(_ title: String) -> Expectation { ("the \(title) button", { $0.role == kAXButtonRole && $0.label == title }) }
 
-        let five = try DebugSidebar.fiveQuestions(from: fixture)
+        let five = try DebugExplorer.fiveQuestions(from: fixture)
         let shell = WorkspaceShell(app: app)
         await shell.attachForTesting(VoxClipDocument(project: five, demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
@@ -366,7 +366,7 @@ import VoxClipCore
     private static func versionChecks(app: AppModel, fixture: Project) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
-        let version = VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true)
+        let version = VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true)
         version.versionForTesting = true
         version.makeWindowControllers()
         defer { version.close() }
@@ -418,7 +418,7 @@ import VoxClipCore
     static func sceneCaptures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         guard !DebugUISuite.sessionLocked else { throw CocoaError(.userCancelled) }
         let shell = WorkspaceShell(app: app)
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()

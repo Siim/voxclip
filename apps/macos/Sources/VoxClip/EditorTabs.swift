@@ -62,7 +62,7 @@ enum EditorTab: Hashable, Sendable {
         var tabs: [EditorTab] = []
         for tab in clipTabs.compactMap(current) where !tabs.contains(tab) { tabs.append(tab) }
         var nextPreview = preview.flatMap(current)
-        if let tab = nextPreview, case .clip = tab {
+        if let tab = nextPreview, case .clip = tab, case .suggestion = preview {
             if !tabs.contains(tab) { tabs.append(tab) }
             nextPreview = nil
         }
@@ -97,6 +97,13 @@ enum EditorTab: Hashable, Sendable {
         if clipTabs.contains(tab) { clipTabs.removeAll { $0 == tab } }
         if dirty.contains(tab) { dirty.remove(tab) }
     }
+    /// Explorer selection previews kept clips as well as suggestions. An already pinned
+    /// tab stays pinned; the next preview replaces only the temporary tab.
+    func openPreview(_ tab: EditorTab) {
+        guard tab.closable, !clipTabs.contains(tab) else { return }
+        preview = tab
+    }
+
     /// A double-click keeps the preview tab open: it stops being the preview and joins
     /// the clip tabs, so the next preview opens beside it.
     func keepOpen(_ tab: EditorTab) {

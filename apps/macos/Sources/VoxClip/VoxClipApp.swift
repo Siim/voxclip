@@ -307,8 +307,11 @@ import VoxClipCore
     /// 9:16 · 1:1 · 16:9 · Original, tags 52–55.
     static let frameAspects: [AspectRatio] = [.portrait, .square, .landscape, .source]
     private var selectedClipID: String? {
-        guard case .clip(let id) = model.shell.selection else { return nil }
-        return id
+        switch model.shell.selection {
+        case .clip(let id): return id
+        case .outline: return model.shell.editor?.activeClip?.id
+        default: return nil
+        }
     }
     @objc private func checkUpdates(_ sender: Any?) {
         if let url = model.update?.htmlURL, url.host == "github.com" { NSWorkspace.shared.open(url) }
@@ -359,11 +362,12 @@ import VoxClipCore
     /// row, so those keys reach them only from the Explorer's list: never while text is typed (the clip bar's Ask field,
     /// the transcript, another field), a clip is renamed or an input method composes. Keep Suggestion's hidden ⇧⌘↩, the
     /// clip bar's Keep (impl-plan §3.2, V3b), works from anywhere in the window on a suggestion's tab.
-    static func clipRowKeyEnabled(_ item: NSMenuItem, event: NSEvent?, pane: EditorPane, renaming: Bool, responder: NSResponder?) -> Bool {
+    static func clipRowKeyEnabled(_ item: NSMenuItem, event: NSEvent?, pane: EditorPane, renaming: Bool, responder: NSResponder?, row: SidebarItem? = nil) -> Bool {
         guard event?.type == .keyDown, [40, 41, 43, 44].contains(item.tag) else { return true }
         if renaming { return false }
         if let input = responder as? any NSTextInputClient, input.hasMarkedText() { return false }
         guard item.keyEquivalentModifierMask.isDisjoint(with: [.command, .control, .option]) else { return true }
+        if case .outline = row { return false }
         return pane == .sidebar && !(responder is NSText)
     }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -398,7 +402,7 @@ import VoxClipCore
             if editor.mutationEnabled(item.tag) == false { return false }
             if NSApp.currentEvent?.type == .keyDown, Self.focusedControlKeepsKey(item, responder: NSApp.keyWindow?.firstResponder) { return false }
             if !Self.clipRowKeyEnabled(item, event: NSApp.currentEvent, pane: editor.focusedPane, renaming: model.shell.renaming != nil,
-                                       responder: NSApp.keyWindow?.firstResponder) { return false }
+                                       responder: NSApp.keyWindow?.firstResponder, row: model.shell.selection) { return false }
             if [1, 2, 3, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33, 38, 46].contains(item.tag) {
                 guard editor.correctionID == nil else { return false }
                 let responder = NSApp.keyWindow?.firstResponder

@@ -24,7 +24,7 @@ import VoxClipCore
         mark("prepare model")
         results += trimEndpoints(app: app, fixture: fixture)
         mark("trim endpoints complete")
-        let project = try DebugSidebar.fiveQuestions(from: fixture)
+        let project = try DebugExplorer.fiveQuestions(from: fixture)
         let shell = WorkspaceShell(app: app)
         mark("attach model")
         await shell.attachForTesting(VoxClipDocument(project: project, demo: true), selection: .fullTake)

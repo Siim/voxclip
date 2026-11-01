@@ -566,7 +566,7 @@ struct EditorShellState: Equatable {
         let root = ShellStackView(fill: "bg.window")
         root.identifier = NSUserInterfaceItemIdentifier("voxclip.shell")
         view = root
-        let list = ShellHost.controller(WorkspaceSidebar(shell: shell), app: shell.app)
+        let list = ShellHost.controller(ExplorerView(shell: shell), app: shell.app)
         let explorerView = ShellStackView(fill: "bg.window")
         explorerView.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.explorer")
         explorerView.shellGroup("Explorer")

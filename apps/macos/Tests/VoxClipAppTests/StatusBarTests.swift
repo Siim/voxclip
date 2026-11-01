@@ -15,7 +15,7 @@ import Testing
     private func fiveQuestions() throws -> Project {
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
-        var project = try DebugSidebar.fiveQuestions(from: base)
+        var project = try DebugExplorer.fiveQuestions(from: base)
         project.export.aspect = .landscape
         return project
     }

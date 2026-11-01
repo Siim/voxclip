@@ -298,7 +298,7 @@ import VoxClipMedia
                     && abs($0.midY - measurement.header.maxY - 20) <= 0.5 && abs(heading.minX - CaptionsPanelMetrics.inset) <= 0.5 } } == true))
         }
         results += try await captionsSwitchIdentity(app: app, fixture: fixture)
-        // Window-free only: the native divider drag runs in the UI self-test (DebugSidebar).
+        // Window-free only: the native divider drag runs in the UI self-test (DebugExplorer).
         results += try await measureHeights(app: app, directory: directory)
         results += try await measureResizes(app: app, fixture: fixture, directory: directory)
         for viewport: CGFloat in [399.5, 272, 264] {

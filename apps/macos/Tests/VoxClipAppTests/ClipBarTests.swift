@@ -52,7 +52,7 @@ private actor HookFixtureConnector: LLMConnector {
     private func fiveQuestions() throws -> Project {
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
-        return try DebugSidebar.fiveQuestions(from: base)
+        return try DebugExplorer.fiveQuestions(from: base)
     }
     /// A shell with `project` open on Full Take, its media treated as found, one undo group per action, and a bar.
     private func open(_ project: Project, app: AppModel = AppModel(settingsStore: RegressionSettingsStore())) async throws -> (WorkspaceShell, EditorModel, UndoManager, ClipBarView) {

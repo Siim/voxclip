@@ -50,9 +50,14 @@ import VoxClipCore
         scroll.overviewRuler.marks = TranscriptOverviewRuler.marks(model: model)
         Self.select(model: model, in: text)
         coordinator.updating = false; text.updateCorrection(); text.refreshSelectionBar()
+        Self.scrollIfRequested(model, coordinator: coordinator, in: text)
+    }
+
+    /// Scope and Outline jumps share the existing scroll API; neither changes word selection.
+    static func scrollIfRequested(_ model: EditorModel, coordinator: Coordinator, in text: TranscriptNSTextView) {
         if coordinator.scopeScrollRevision != model.scopeScrollRevision {
             coordinator.scopeScrollRevision = model.scopeScrollRevision
-            let id = model.activeClip?.startWordId ?? model.words.first?.id
+            let id = model.outlineScrollWordID ?? model.activeClip?.startWordId ?? model.words.first?.id
             if let id, let span = text.map.span(id: id) {
                 NSAnimationContext.runAnimationGroup { context in
                     context.duration = EditorAccessibilityPolicy.system.transcriptScrollDuration

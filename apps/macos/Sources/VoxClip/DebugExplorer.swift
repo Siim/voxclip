@@ -3,16 +3,57 @@ import AppKit
 import SwiftUI
 import VoxClipCore
 
+/// V11a still consumes this shared fixture name; the implementation and checks live here.
+typealias DebugSidebar = DebugExplorer
+
 /// The sidebar (step 5) on the "Five questions" fixture from the design mockups: four
 /// kept clips and one AI suggestion, with clip numbering, Keep, Keep All, Dismiss,
 /// Remove, Rename and row scoping, and light and dark captures.
-@MainActor enum DebugSidebar {
+@MainActor enum DebugExplorer {
+    /// V2's model and geometry checks are headless; the ported checks below retain their names.
+    static func explorerChecks(shell: WorkspaceShell) -> [DebugUISuite.Result] {
+        guard let editor = shell.editor else { return [.init(name: "Explorer has an editor", passed: false)] }
+        var results: [DebugUISuite.Result] = []
+        func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        let paragraphs: [Range<Int>] = TranscriptParagraphs.split(words: editor.words)
+        let entries = shell.outlineEntries
+        check("Explorer Outline entries equal TranscriptParagraphs", entries.map(\.words) == paragraphs)
+        check("Explorer headers name their groups and counts", ExplorerSection.clips.accessibilityLabel(count: editor.keptClips.count) == "Clips, \(editor.keptClips.count) items"
+              && ExplorerSection.take.accessibilityLabel(count: 1) == "Take, 1 item")
+        check("Explorer rows are 28, Outline rows 24 and thumbnails 36 by 20", ExplorerMetrics.rowHeight == 28 && ExplorerMetrics.outlineHeight == 24
+              && ExplorerMetrics.thumbnailSize == CGSize(width: 36, height: 20))
+        check("Explorer disclosures and row actions have at least 24 point targets", ExplorerMetrics.rowHeight >= EditorAccessibilityPolicy.minimumTarget
+              && ExplorerMetrics.outlineHeight >= EditorAccessibilityPolicy.minimumTarget)
+        return results
+    }
+
+    static func sceneCaptures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
+        let saved = app.settings
+        defer { app.settings = saved }
+        for section in ExplorerSection.allCases { app.settings.values[section.key] = .bool(true) }
+        for key in [WorkspaceLayout.explorerWidthKey, WorkspaceLayout.rightWidthKey, WorkspaceLayout.timelineHeightKey] { app.settings.values[key] = nil }
+        let shell = WorkspaceShell(app: app)
+        await shell.attachForTesting(VoxClipDocument(project: try fiveQuestions(from: fixture), demo: true), selection: .fullTake)
+        guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
+        defer { editor.close() }
+        editor.mediaResolved = true; editor.refresh()
+        var results: [DebugUISuite.Result] = []
+        for (name, row) in [("take", SidebarItem.fullTake), ("clip", .clip("five-1")), ("suggested", .clip("five-5"))] {
+            shell.choose(row)
+            try await DebugUISuite.snapshot(WorkspaceView(shell: shell).environment(app), name: "v2-explorer-\(name)",
+                size: NSSize(width: 1280, height: 800), appearance: .darkAqua, directory: directory, active: true, mainWindow: true, native: true)
+            results.append(.init(name: "v2 Explorer \(name) scene", passed: true))
+        }
+        return results
+    }
+
     static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         let shell = WorkspaceShell(app: app)
         await shell.attachForTesting(VoxClipDocument(project: try fiveQuestions(from: fixture), demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
+        results += explorerChecks(shell: shell)
         let kept = editor.keptClips, suggested = editor.suggestedClips
         check("Five questions has four kept clips and one suggestion numbered 5", kept.count == 4 && suggested.count == 1 && suggested.first.flatMap { editor.clipNumber($0.id) } == 5
               && kept.map(\.title) == ["Think in sentences", "It has to work on mute", "And yeah, I mess up a lot", "The best thirty seconds"])
@@ -24,7 +65,7 @@ import VoxClipCore
         }
 
         for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            try await DebugUISuite.snapshot(SidebarRowsPreview(shell: shell).environment(app), name: "sidebar-rows-\(suffix)", size: NSSize(width: 252, height: 640), appearance: appearance, directory: directory, active: true)
+            try await DebugUISuite.snapshot(ExplorerRowsPreview(shell: shell).environment(app), name: "sidebar-rows-\(suffix)", size: NSSize(width: 252, height: 640), appearance: appearance, directory: directory, active: true)
         }
         results += try await editorLayout(app: app, shell: shell, directory: directory)
         let rowSteps = editor.undoSteps
@@ -201,7 +242,7 @@ import VoxClipCore
             check("an untranscribed take reads \"Not transcribed\" and its actions say \"Transcribe the video to select words.\"",
                   SidebarStyle.fullTakeMeta(model) == "Not transcribed" && SidebarStyle.untranscribedReason(model) == "Transcribe the video to select words.")
             for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                try await DebugUISuite.snapshot(SidebarRowsPreview(shell: untranscribed).environment(app), name: "sidebar-untranscribed-\(suffix)", size: NSSize(width: 252, height: 240), appearance: appearance, directory: directory, active: true)
+                try await DebugUISuite.snapshot(ExplorerRowsPreview(shell: untranscribed).environment(app), name: "sidebar-untranscribed-\(suffix)", size: NSSize(width: 252, height: 240), appearance: appearance, directory: directory, active: true)
             }
             model.close()
         } else { check("an untranscribed take opens", false) }
@@ -703,7 +744,14 @@ import VoxClipCore
         guard let located = real.editor, let suggestion = located.suggestedClips.first else { throw CocoaError(.coderInvalidValue) }
         check("a missing video disables Export: \"Locate the video to export.\"", !located.mediaResolved && located.exportUnavailable == "Locate the video to export.")
         real.selection = .clip(suggestion.id)
+        check("a missing video permits a tab scope change (V3a)", real.selection == .clip(suggestion.id) && located.project.edits.activeClipId == suggestion.id)
+        real.selection = .fullTake
+        // V3a allows scope changes with missing media. Exercise the retained refusal
+        // check while the missing-media editor is leaving, which still refuses them.
+        located.isLeaving = true
+        real.selection = .clip(suggestion.id)
         check("a row change the editor refuses (missing video) returns the selection to Full Take", real.selection == .fullTake && located.project.edits.activeClipId == nil)
+        located.isLeaving = false
         located.mediaResolved = true
         check("with the video found, Export Video… is available", located.exportUnavailable == nil && located.canExport)
         real.selection = .clip(suggestion.id)
@@ -726,8 +774,11 @@ import VoxClipCore
         }
         check("a system accent's text colour mixes toward text.primary until it reads at 4.5:1 on bg.surface", readable)
         // The transcript's selection is its own tint at text height (ux/v2 notes.md §5), never the platform's.
-        let transcript = TranscriptTextView.makeScrollView(model: located, coordinator: TranscriptTextView.Coordinator(model: located)).documentView as? TranscriptNSTextView
-        check("selected transcript words draw the tint.selection layer, not the platform selection", transcript?.selectedTextAttributes.isEmpty == true && transcript?.selectionLayer != nil)
+        let coordinator = TranscriptTextView.Coordinator(model: located)
+        let transcript = TranscriptTextView.makeScrollView(model: located, coordinator: coordinator).documentView as? TranscriptNSTextView
+        withExtendedLifetime(coordinator) {
+            check("selected transcript words draw the tint.selection layer, not the platform selection", transcript?.selectedTextAttributes.isEmpty == true && transcript?.selectionLayer != nil)
+        }
         return results
     }
 
@@ -831,7 +882,7 @@ import VoxClipCore
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         func capture(_ shell: WorkspaceShell, _ name: String) async throws {
             for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                try await DebugUISuite.snapshot(SidebarRowsPreview(shell: shell).environment(app), name: "\(name)-\(suffix)", size: NSSize(width: 252, height: 520), appearance: appearance, directory: directory, active: true)
+                try await DebugUISuite.snapshot(ExplorerRowsPreview(shell: shell).environment(app), name: "\(name)-\(suffix)", size: NSSize(width: 252, height: 520), appearance: appearance, directory: directory, active: true)
             }
         }
         let keys = ["llm.connector", "llm.model.ollama", "llm.clips.snapToLines"]

@@ -28,7 +28,7 @@ import VoxClipCore
         app.settings.values["llm.connector"] = .string("apple-foundation")
 
         let shell = WorkspaceShell(app: app)
-        let document = VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true)
+        let document = VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true)
         await shell.attachForTesting(document, selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
@@ -277,7 +277,7 @@ import VoxClipCore
         app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         app.settings.values["llm.connector"] = .string("claude-code")
         let shell = WorkspaceShell(app: app)
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()

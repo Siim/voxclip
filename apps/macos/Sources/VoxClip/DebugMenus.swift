@@ -88,7 +88,7 @@ import VoxClipCore
         let previousContent = commandWindow?.contentViewController
         commandWindow?.contentViewController = NSViewController()
         defer { commandWindow?.contentViewController = previousContent }
-        let project = try DebugSidebar.fiveQuestions(from: fixture)
+        let project = try DebugExplorer.fiveQuestions(from: fixture)
         let document = VoxClipDocument(project: project, demo: true)
         await app.shell.attachForTesting(document, selection: .fullTake)
         guard let editor = app.shell.editor, let window = app.shell.windowController?.window else { throw CocoaError(.coderInvalidValue) }
