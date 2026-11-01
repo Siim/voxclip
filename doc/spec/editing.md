@@ -581,7 +581,7 @@ For AI-linked clip additions, the macOS history entry point is `EditHistory.appl
 | `setActiveClip(clipId?)` | Set `activeClipId`. Nothing else changes. Fixtures call it `previewClip` with an index pair or null. |
 | `addClip(startIndex, endIndex, origin, …)` | Append a `ClipRange` with a new id and `selected = true`. Manual clips come from a word selection and need no AI key. |
 | `addAIClips(resultId, clips)` | One undo step named "Find clips": for each result clip in order, append a `ClipRange { origin: ai, aiResultId: resultId, aiClipIndex: k, title, selected: true }`, skipping a clip whose `(startWordId, endWordId)` equals an existing clip's. Never removes or changes existing clips (ai.md 11.8). |
-| `updateClip(id, startIndex, endIndex)` | Nudge or reselect the edges, keeping `0 <= start <= end < count`. The timeline's trim handles and I / O call it (design.md §5.2, §6.2). If it is the active clip, the range layer follows. Edits are untouched. |
+| `updateClip(id, startIndex, endIndex)` | Nudge or reselect the edges, keeping `0 <= start <= end < count`. The timeline's trim handles and I / O call it (design.md §5.2, §6.2). Mac v2 requires 3 pt of pointer movement before a handle becomes a trim; a click or smaller jitter changes no clip and records no undo step. If it is the active clip, the range layer follows. Edits are untouched. |
 | `renameClip(id, title?)` | Set the title (JS-trimmed; empty means null). |
 | `setClipSelected(id, selected)` | Set `selected` (design.md §2): kept (`true`) or, for an AI clip, a suggestion (`false`). Nothing else changes. |
 | `removeClip(id)` | Remove the clip and its `share.captions` entry. If it was active, `activeClipId = null`. The AI result it came from stays. |

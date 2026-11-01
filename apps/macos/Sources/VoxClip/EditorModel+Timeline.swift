@@ -114,10 +114,9 @@ extension EditorModel {
         seek(source: source)
     }
 
-    /// Seeks to `time` on `axis`; with `snap`, to the start of the word nearest it.
-    func seekTimeline(_ time: Double, on axis: TimelineAxis, snap: Bool = false) {
-        let source = timelineSourceTime(time, on: axis)
-        if snap, let word = word(at: source, nearest: true) { seek(source: word.start) } else { seek(source: source) }
+    /// Seeks to `time` on the displayed axis.
+    func seekTimeline(_ time: Double, on axis: TimelineAxis) {
+        seek(source: timelineSourceTime(time, on: axis))
     }
 
     /// Shared word selection with the transcript. Edited endpoints map through the render

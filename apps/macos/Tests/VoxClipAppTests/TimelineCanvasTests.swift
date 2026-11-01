@@ -191,7 +191,7 @@ private actor TimelineTestSettings: SettingsStore {
         model.activate(nil)
         canvas.renderContent()
         #expect(canvas.content.inOut == nil && canvas.content.scope == nil)
-        #expect(canvas.accessibilityChildren()?.compactMap { $0 as? TimelineSliderElement }.count == 2)
+        #expect(canvas.accessibilityChildren()?.compactMap { $0 as? TimelineSliderElement }.count == 1)
     }
 
     @Test func showCutsIsAViewSettingOffByDefault() throws {
@@ -1142,9 +1142,26 @@ private actor TimelineTestSettings: SettingsStore {
         text.selectedRanges = ranges.map { NSValue(range: $0) }
         coordinator.textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification, object: text))
         #expect(model.selectedWordIDs == timelineIDs, "The hidden cut's IDs are shared through transcript folds")
+        // Drive a different real transcript selection, then inspect the drawn ruler
+        // and wash against fixture times, independently of timelineSelection().
+        let nextFirst = try #require(text.map.span(id: "t20")), nextLast = try #require(text.map.span(id: "t23"))
+        text.selectedRanges = [NSValue(range: NSRange(location: nextFirst.range.location, length: NSMaxRange(nextLast.range) - nextFirst.range.location))]
+        coordinator.textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification, object: text))
+        #expect(model.selectedWordIDs == Set((20...23).map { "t\($0)" }))
         canvas.renderContent()
-        #expect(canvas.content.selection == model.timelineSelection(on: axis))
-        #expect(canvas.ruler.state.selection == canvas.content.selection)
+        let expected: ClosedRange<Double> = axis == .source ? 20...23.8 : 8.1...11.9
+        let selected = try #require(canvas.content.selection)
+        #expect(abs(selected.lowerBound - expected.lowerBound) < 0.000001 && abs(selected.upperBound - expected.upperBound) < 0.000001)
+        #expect(canvas.ruler.state.selection == selected)
+        canvas.auditViewport(.init(axis: axis, ptPerSecond: 20, origin: axis == .source ? 18 : 6, width: canvas.viewport.width))
+        let lower = canvas.viewport.x(expected.lowerBound), upper = canvas.viewport.x(expected.upperBound)
+        #expect(!canvas.overlay.wash.isHidden && abs(canvas.overlay.wash.frame.minX - lower) < 0.001 && abs(canvas.overlay.wash.frame.width - (upper - lower)) < 0.001)
+        canvas.ruler.layer?.displayIfNeeded()
+        let pixels = try Pixels(canvas.ruler)
+        let tint = try DebugTimeline.swatch("tint.default")
+        #expect(try pixels.shows(canvas.headerWidth + (lower + upper) / 2, 20, "tint.default"), "The transcript span draws the 3 pt ruler bar: \(pixels.at(canvas.headerWidth + (lower + upper) / 2, 20)); expected \(tint)")
+        #expect(try !pixels.shows(canvas.headerWidth + lower - 2, 20, "tint.default"), "The bar starts at the selected word")
+        #expect(try !pixels.shows(canvas.headerWidth + upper + 2, 20, "tint.default"), "The bar stops after the selected word")
         #expect(model.undoSteps == 0 && !model.document.isDocumentEdited)
         withExtendedLifetime((coordinator, scroll)) {}
     }
@@ -1207,6 +1224,44 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.activeClip.map { start ? $0.startWordId : $0.endWordId } == (start ? "t13" : "t26"))
     }
 
+    @Test(arguments: [TimelineAxis.edited, .source]) func canvasAccessibilityMatchesBothAuditScenes(_ axis: TimelineAxis) throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        model.showsCuts = axis == .source
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let results = DebugTimeline.canvasAccessibilityChecks(canvas, clipNumber: 1, name: "headless")
+        #expect(results.count == 2)
+        for result in results { #expect(result.passed, "\(result.name)") }
+    }
+
+    @Test(arguments: [TimelineAxis.edited, .source], [true, false]) func clickingAnEdgeWithoutDraggingAddsNoUndo(_ axis: TimelineAxis, _ start: Bool) throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        model.showsCuts = axis == .source
+        let clip = try #require(model.activeClip), undo = UndoManager()
+        model.undoManager = undo
+        defer { undo.removeAllActions() }
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        // At close zoom a few pixels can mean the same word and hide this bug.
+        canvas.auditViewport(.init(axis: axis, ptPerSecond: 5, origin: axis == .source ? 9 : -1, width: canvas.viewport.width))
+        let edges = try #require(canvas.content.inOut)
+        let edge = start ? edges.lowerBound : edges.upperBound
+        let press = NSPoint(x: canvas.headerWidth + canvas.viewport.x(edge) + (start ? 4 : -4), y: TimelineMetrics.ruler.y + 11)
+        for jitter in [0.0, 2.0] {
+            let release = NSPoint(x: press.x + (start ? jitter : -jitter), y: press.y)
+            canvas.mouseDown(with: try mouse(.leftMouseDown, press, in: canvas))
+            canvas.mouseUp(with: try mouse(.leftMouseUp, release, in: canvas))
+            #expect(model.activeClip == clip, "\(axis) \(start) jitter \(jitter): \(String(describing: model.activeClip?.startWordId))…\(String(describing: model.activeClip?.endWordId))")
+            #expect(model.undoSteps == 0)
+            #expect(!undo.canUndo)
+            #expect(!model.document.isDocumentEdited)
+        }
+    }
+
     @Test func voiceOverAdjustsEachEdgeBothWaysAndHasSelectionAndZoom() throws {
         let app = try app(), model = editor(app, project: try project())
         defer { model.close() }
@@ -1236,11 +1291,7 @@ private actor TimelineTestSettings: SettingsStore {
         model.selectedWordIDs = ["t12", "t13"]
         let summary = try #require(children.compactMap { $0 as? TimelineSelectionElement }.first)
         #expect((summary.accessibilityValue() as? String)?.hasPrefix("2 words,") == true)
-        let zoom = try slider("canvas.zoom"), oldZoom = canvas.viewport.ptPerSecond
-        #expect(zoom.accessibilityPerformIncrement())
-        #expect(canvas.viewport.ptPerSecond > oldZoom)
-        #expect(zoom.accessibilityPerformDecrement())
-        #expect(abs(canvas.viewport.ptPerSecond - oldZoom) < 0.001)
+        #expect(!children.compactMap { $0 as? TimelineSliderElement }.contains { $0.accessibilityLabel() == "Timeline zoom" }, "Zoom is exposed once by the toolbar")
         #expect(canvas.accessibilityRole() == .group && canvas.accessibilityLabel() == "Timeline")
     }
 

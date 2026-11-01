@@ -15,7 +15,7 @@ import VoxClipCore
     private enum Drag {
         case overview
         case range(anchor: Double, point: NSPoint, moved: Bool)
-        case trim(clip: ClipRange, start: Bool, index: Int?, time: Double?)
+        case trim(clip: ClipRange, start: Bool, point: NSPoint, index: Int?, time: Double?)
     }
     private var drag: Drag?
     private var context: Context?
@@ -31,7 +31,7 @@ import VoxClipCore
     func cancel() { drag = nil; context = nil; selection = nil }
     func reconcile() { if active, context != current { cancel() } }
     func inOut(_ range: ClosedRange<Double>?) -> ClosedRange<Double>? {
-        guard let range, case .trim(_, let start, _, let time?)? = drag else { return range }
+        guard let range, case .trim(_, let start, _, _, let time?)? = drag else { return range }
         return start ? min(time, range.upperBound)...range.upperBound : range.lowerBound...max(time, range.lowerBound)
     }
     private func time(_ point: NSPoint) -> Double { canvas.viewport.time(atX: Double(point.x - canvas.headerWidth)) }
@@ -47,7 +47,7 @@ import VoxClipCore
             drag = .overview
             seekOverview(point)
         } else if point.y < TimelineMetrics.ruler.maxY, let target = trimTarget(point) {
-            drag = .trim(clip: target.0, start: target.1, index: nil, time: nil)
+            drag = .trim(clip: target.0, start: target.1, point: point, index: nil, time: nil)
         } else if event.clickCount == 2, point.y >= TimelineMetrics.ruler.maxY {
             model.restoreCut(at: time(point), on: model.timelineAxis, tolerance: Double(TimelineMetrics.reach) / canvas.viewport.ptPerSecond)
         } else {
@@ -68,12 +68,13 @@ import VoxClipCore
             selection = model.selectTimeline(from: anchor, to: time(point), on: model.timelineAxis, snap: snaps(event))
             // Update immediately; Observation will take the same IDs on its next turn.
             canvas.renderContent()
-        case .trim(let clip, let start, _, _)?:
+        case .trim(let clip, let start, let press, _, let preview)?:
+            guard preview != nil || hypot(point.x - press.x, point.y - press.y) >= 3 else { return }
             let snap = snaps(event)
             let index = model.timelineTrimIndex(clip, start: start, time: time(point), on: model.timelineAxis, snap: snap)
             let edge = index.map { model.timelineTime(source: start ? model.words[$0].start : model.words[$0].end, on: model.timelineAxis) }
             let raw = time(point).clamped(to: 0...max(0, model.timelineLength(on: model.timelineAxis)))
-            drag = .trim(clip: clip, start: start, index: index, time: snap ? edge : raw)
+            drag = .trim(clip: clip, start: start, point: press, index: index, time: snap ? edge : raw)
             canvas.apply()
         case nil: break
         }
@@ -84,7 +85,7 @@ import VoxClipCore
         if active { mouseDragged(event) }
         let ended = drag
         cancel()
-        if case .trim(let clip, let start, let index?, _)? = ended {
+        if case .trim(let clip, let start, _, let index?, _)? = ended {
             model.trimClip(clip, start: start, index: index)
             canvas.renderContent(keepingZoom: true)
         } else { canvas.renderContent() }

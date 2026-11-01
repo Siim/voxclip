@@ -143,7 +143,6 @@ struct TimelineContent: Equatable {
     private let playheadElement = TimelineSliderElement()
     private let inElement = TimelineSliderElement()
     private let outElement = TimelineSliderElement()
-    private let zoomElement = TimelineSliderElement()
     private let selectionElement = TimelineSelectionElement()
 
     init(model: EditorModel, shell: WorkspaceShell? = nil) {
@@ -428,9 +427,7 @@ struct TimelineContent: Equatable {
     override func keyDown(with event: NSEvent) {
         if !interaction.keyDown(event) { super.keyDown(with: event) }
     }
-    @discardableResult static func handleKey(_ code: UInt16, shift: Bool, model: EditorModel) -> Bool {
-        TimelineInteraction.handleKey(code, shift: shift, model: model)
-    }
+
 
     // MARK: Accessibility
 
@@ -449,14 +446,6 @@ struct TimelineContent: Equatable {
             return (self.model.timelinePlayhead(on: axis), 0...max(0, self.model.timelineLength(on: axis)), self.model.timelineAccessibilityValue)
         }
         playheadElement.adjust = { [weak self] up in _ = self?.model.stepTimeline(up ? 1 : -1, sentence: false) }
-        zoomElement.setAccessibilityParent(self)
-        zoomElement.setAccessibilityLabel("Timeline zoom")
-        zoomElement.setAccessibilityIdentifier("voxclip.timeline.canvas.zoom")
-        zoomElement.read = { [weak self] in
-            guard let self else { return (0, 0...1, "") }
-            return (self.zoomValue, 0...1, "\(Int((self.zoomValue * 100).rounded())) percent")
-        }
-        zoomElement.adjust = { [weak self] up in self?.zoom(by: up ? 1.4 : 1 / 1.4) }
         selectionElement.setAccessibilityParent(self)
         selectionElement.setAccessibilityIdentifier("voxclip.timeline.selection")
         selectionElement.read = { [weak self] in
@@ -480,7 +469,6 @@ struct TimelineContent: Equatable {
         let inOut = shownInOut
         let playheadX = headerWidth + viewport.x(playheadTime).clamped(to: 0...laneWidth)
         playheadElement.setAccessibilityFrameInParentSpace(NSRect(x: playheadX - 5, y: TimelineMetrics.ruler.y, width: 10, height: max(22, trackClip.frame.maxY - TimelineMetrics.ruler.y)))
-        zoomElement.setAccessibilityFrameInParentSpace(NSRect(x: headerWidth, y: 0, width: laneWidth, height: TimelineMetrics.overview.height))
         let laneRuler = NSRect(x: headerWidth, y: TimelineMetrics.ruler.y, width: laneWidth, height: TimelineMetrics.ruler.height)
         let selection = content.selection.map { NSRect(x: headerWidth + viewport.x($0.lowerBound), y: laneRuler.minY, width: max(1, viewport.x($0.upperBound) - viewport.x($0.lowerBound)), height: laneRuler.height).intersection(laneRuler) } ?? laneRuler
         selectionElement.setAccessibilityFrameInParentSpace(selection.isNull ? laneRuler : selection)
@@ -496,7 +484,7 @@ struct TimelineContent: Equatable {
 
     override func accessibilityChildren() -> [Any]? {
         let times: [Any] = content.inOut == nil || model.activeClip == nil ? [playheadElement] : [playheadElement, inElement, outElement]
-        return times + [selectionElement, zoomElement] + headers + [horizontalScroller, verticalScroller].filter { !$0.isHidden }
+        return times + [selectionElement] + headers + [horizontalScroller, verticalScroller].filter { !$0.isHidden }
     }
 }
 

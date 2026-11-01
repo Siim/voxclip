@@ -209,6 +209,17 @@ import VoxClipCore
         return results
     }
 
+    /// The same semantic checks run headless and inside both real-window gates.
+    /// Zoom belongs to the toolbar; the overview strip is a pointer seek control.
+    static func canvasAccessibilityChecks(_ canvas: TimelineCanvasView, clipNumber: Int, name: String) -> [DebugUISuite.Result] {
+        let children = canvas.accessibilityChildren()?.compactMap { $0 as? TimelineSliderElement } ?? []
+        let labels = children.compactMap { $0.accessibilityLabel() }
+        return [
+            .init(name: "\(name) exposes the Playhead slider with the design's spoken value", passed: children.first?.accessibilityLabel() == "Playhead" && children.first?.accessibilityValueDescription() == canvas.model.timelineAccessibilityValue),
+            .init(name: "\(name) exposes Clip \(clipNumber)'s start and end handles without a duplicate zoom slider", passed: labels == ["Playhead", "Clip \(clipNumber) start", "Clip \(clipNumber) end"])
+        ]
+    }
+
     /// The panel at notes.md's 1056 × 216 in Edited and Source view, Clip 2 open, dark: the
     /// lanes' pixels, the playhead slider and the trim handles for VoiceOver, and a playhead
     /// tick that moves only the playhead layers. Captures `v2-timeline-edited-dark` and
@@ -301,11 +312,7 @@ import VoxClipCore
             check("\(name) moves the playhead layer on a tick without redrawing a lane (draws \(draws) → \(lanes.map(\.draws)))",
                   draws.allSatisfy { $0 >= 1 } && lanes.map(\.draws) == draws && canvas.overlay.playheadMoves > moves && canvas.overlay.playhead.transform.m41 > before)
             // VoiceOver: the playhead slider keeps design §5.2's spoken value; In and Out adjust a word at a time.
-            let children = canvas.accessibilityChildren()?.compactMap { $0 as? TimelineSliderElement } ?? []
-            let labels = children.compactMap { $0.accessibilityLabel() }
-            check("\(name) exposes the Playhead slider with the design's spoken value",
-                  children.first?.accessibilityLabel() == "Playhead" && children.first?.accessibilityValueDescription() == model.timelineAccessibilityValue)
-            check("\(name) exposes Clip \(number)'s start and end handles", labels == ["Playhead", "Clip \(number) start", "Clip \(number) end"])
+            results += canvasAccessibilityChecks(canvas, clipNumber: number, name: name)
             let ax = accessibility(window)
             let sliders = ax.filter { attribute($0, kAXRoleAttribute) as? String == kAXSliderRole }
             let spoken = sliders.compactMap { attribute($0, kAXValueDescriptionAttribute) as? String }

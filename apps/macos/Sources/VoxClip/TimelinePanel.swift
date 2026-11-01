@@ -29,7 +29,7 @@ import VoxClipCore
             }
             guard press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
             let handled = zoom.canvas?.interaction.key(code, shift: press.modifiers.contains(.shift))
-                ?? TimelineCanvasView.handleKey(code, shift: press.modifiers.contains(.shift), model: model)
+                ?? TimelineInteraction.handleKey(code, shift: press.modifiers.contains(.shift), model: model)
             return handled ? .handled : .ignored
         }
     }
