@@ -2,6 +2,7 @@
 import Foundation
 import Testing
 @testable import VoxClipCore
+@testable import VoxClipMedia
 @testable import VoxClip
 
 /// The sheets one routed send showed, and the action each was for.
@@ -11,6 +12,11 @@ import Testing
     /// Answers a sheet; true approves it.
     var answer: (LLMSendSheet) -> Bool = { _ in true }
     func take() -> [LLMSendSheet.Reason] { defer { sheets = []; actions = [] }; return sheets.map(\.reason) }
+}
+
+/// Voice Lab's ElevenLabs client in these tests never reaches for a key: no take is generated or priced.
+private struct NoVoiceLabKeys: KeyProvider {
+    func key(for provider: String) async throws -> String? { Issue.record("Routing tests must not ask for credentials"); return nil }
 }
 
 /// Every LLM send (Find clips, Rewrite and Settings → Test) asks C8's `kind(forLLMSendTo:signIn:providerName:)` after
@@ -222,6 +228,59 @@ import Testing
         await session.prepare()
         #expect(session.proposalButton == button)
         #expect(session.sendLine == line)
+    }
+
+    /// A take that passes review, so Voice Lab's Accept is ready.
+    private func readyTake() -> VoiceLabTakeRow {
+        let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
+            trimStartFrame: 0, trimEndFrame: 24_000, windowStart: 1, windowEnd: 2, windowStartSample: 24_000, windowEndSample: 48_000,
+            outputFrames: 24_000, words: [VoiceLabWord(text: "Hello", start: 0.1, end: 0.9, synthetic: true)])
+        let audio = VoiceLabTakeAudio(sampleRate: 24_000, trimmed: [0.1], mixed: [0.1], patchRange: 0..<1, seams: [], gainDb: 0, roomTone: nil, fit: .exact(plan))
+        let qa = VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -20, speakerScore: 0.8), failures: [])
+        return VoiceLabTakeRow(id: UUID(), index: 0, seed: 0, audio: audio, qa: qa, score: 1, failure: nil)
+    }
+
+    /// Declining the cost sheet changes nothing: the route runs before `propose` touches the session, so no spinner shows
+    /// behind the sheet, Voice Lab's reviewed take stays acceptable and unpriced again, and the same estimate can be sent.
+    @Test func decliningTheRewriteCostSheetLeavesVoiceLabAndTheEstimateAsTheyWere() async throws {
+        let (app, fake, log) = try setUp("codex", authMethod: "api_key")
+        app.set("llm.cloudConsent.codex", .bool(true))
+        app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
+        let editor = try editor(app)
+        defer { editor.close() }
+        editor.beginRewrite()
+        await editor.rewriteOpenTask?.value
+        let session = try #require(editor.rewrite)
+        await session.detectConnector(); await session.prepare()
+        session.configureGeneration(client: ElevenLabsVoiceLab(keys: NoVoiceLabKeys(), region: .default),
+            store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
+        let generation = try #require(session.generation)
+        var quoteRequests = 0
+        generation.prepareQuote = { quoteRequests += 1 }
+        let take = readyTake()
+        generation.review(.init(rows: [take], end: .completed))
+        #expect(generation.readyToAccept)
+        let quote = try #require(session.quote)
+        session.markEstimateShown(quote.id)
+        var proposingBehindSheet = false
+        log.answer = { _ in proposingBehindSheet = session.isProposing; return false }
+        let declined = await session.propose(quote)
+        await generation.finishQuotePreparationForTests()
+        #expect(!declined)
+        #expect(log.take() == [.cost])
+        #expect(await fake.sends == 0)
+        #expect(!proposingBehindSheet)
+        #expect(generation.readyToAccept && generation.selectedID == take.id && generation.rows == [take])
+        #expect(quoteRequests == 0)
+        #expect(session.quote == quote && session.canPropose && session.problem.isEmpty && !editor.llmRuns.isBusy)
+        log.answer = { _ in true }
+        let approved = await session.propose(quote)
+        await generation.finishQuotePreparationForTests()
+        #expect(approved)
+        #expect(log.take() == [.cost])
+        #expect(await fake.sends == 1)
+        #expect(!generation.readyToAccept && quoteRequests > 0)
+        session.close()
     }
 }
 #endif

@@ -129,7 +129,7 @@ struct RewriteConnector {
     @ObservationIgnored private let consent: @MainActor () async -> Bool
     @ObservationIgnored private var request: VoiceRewriteRequest?
     @ObservationIgnored private var preparing: Task<Void, Never>?
-    @ObservationIgnored private var sending: Task<Bool, Never>?
+    @ObservationIgnored private var sending: Task<Proposal, Never>?
 
     init(editor: EditorModel, range: ClosedRange<Int>, envelope: AudioEnvelope?, connector: RewriteConnector?,
          prices: VoiceLabPriceCatalog? = nil, synthesisModel: String? = nil,
@@ -236,44 +236,49 @@ struct RewriteConnector {
     func markEstimateShown(_ id: UUID) {
         if current && quote?.id == id { shownQuoteID = id }
     }
+    /// How a `propose` ended. `declined`: the route said no or could not run, and nothing in the session changed.
+    private enum Proposal { case declined, failed, proposed }
     /// Sends the shown quote. Every connector goes through `consent`, the editor's route to
     /// `AppModel.authorizeConnectorRequest`: the one-time privacy consent, then a confirmation when the send asks first.
+    /// The route runs first, holding only the project's LLM lease, so a declined send leaves the estimate, the problem
+    /// line and Voice Lab's takes as they were (no spinner behind the sheet, no `inputsChanged`, no new quote).
     @discardableResult func propose(_ approvedQuote: VoiceRewriteQuote) async -> Bool {
         guard canPropose, quote == approvedQuote, let input = request, let connector, let service,
               let lease = editor.llmRuns.acquire() else { return false }
         let runs = editor.llmRuns
         let expected = revision
-        isProposing = true; shownQuoteID = nil; problem = ""
-        generation?.inputsChanged()
-        let task = Task { [self] () -> Bool in
+        let task = Task { [self] () -> Proposal in
             defer { runs.release(lease); isProposing = false }
+            guard await ConnectorConsentWait().confirm(consent),
+                  !Task.isCancelled, current, revision == expected, quote == approvedQuote, request?.id == input.id else { return .declined }
+            isProposing = true; shownQuoteID = nil; problem = ""
+            generation?.inputsChanged()
             do {
-                guard await ConnectorConsentWait().confirm(consent) else { return false }
-                guard !Task.isCancelled, current, revision == expected, quote == approvedQuote, request?.id == input.id else { return false }
                 let result = try await service.propose(input, connector: connector.connector, model: connector.model,
                     authorization: VoiceRewriteAuthorization(quote: approvedQuote, approved: true))
-                guard !Task.isCancelled, current, revision == expected else { return false }
+                guard !Task.isCancelled, current, revision == expected else { return .failed }
                 newWords = result.proposedText
                 quote = nil; estimate = nil; request = nil
                 refreshReview()
-                return true
-            } catch is CancellationError { return false } catch {
+                return .proposed
+            } catch is CancellationError { return .failed } catch {
                 if current && revision == expected {
                     if let error = error as? LLMError {
                         problem = await editor.app.log.redact(Self.proposalError(error, provider: connector.name, model: connector.model))
                     } else { problem = await editor.app.safeError(error, context: "ai:\(connector.name)") }
                 }
-                return false
+                return .failed
             }
         }
         sending = task
         let result = await task.value
+        guard result != .declined else { return false }
         generation?.requestQuote()
         if current && revision == expected {
             quote = nil; estimate = nil; request = nil
             await prepare(revision: expected)
         }
-        return result
+        return result == .proposed
     }
     func edit(_ text: String) {
         guard isOpen else { return }
