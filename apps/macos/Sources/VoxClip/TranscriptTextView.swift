@@ -666,10 +666,14 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         }?.change?.ordinal
     }
     /// Shows a change's edit popover under its last line, or above its first when the pane has
-    /// no room below, with its words in the field.
+    /// no room below, with its words in the field. A change out of view (scrolled away, or a
+    /// new proposal's first) comes into view first, and so does the popover, whose field takes
+    /// the keys, so nothing is typed into a field off screen.
     func showChangePopover(_ ordinal: Int) {
-        guard let model, let renderer, let range = renderer.changeRange(ordinal),
-              let first = lineBox(atCharacter: range.location), let last = lineBox(atCharacter: max(range.location, NSMaxRange(range) - 1)) else { return }
+        guard let model, let renderer, let range = renderer.changeRange(ordinal) else { return }
+        scrollRangeToVisible(range)
+        textLayoutManager?.textViewportLayoutController.layoutViewport()
+        guard let first = lineBox(atCharacter: range.location), let last = lineBox(atCharacter: max(range.location, NSMaxRange(range) - 1)) else { return }
         hideFoldPopover(); hideSelectionBar(); hideChangePopover(refocus: false)
         let view = ChangeEditPopover(ordinal: ordinal, words: model.changeText(ordinal), fit: { [weak model] text in model?.changeFit(ordinal, text: text) },
                                      save: { [weak self] text in self?.hideChangePopover(); self?.model?.editChange(ordinal, text: text) },
@@ -684,6 +688,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         let below = last.maxY + 2, above = first.minY - 2 - size.height
         let y = below + size.height <= visible.maxY || above < visible.minY ? below : above
         host.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
+        scrollToVisible(host.frame)
         popoverChange = ordinal
     }
     func hideChangePopover(refocus: Bool = true) {

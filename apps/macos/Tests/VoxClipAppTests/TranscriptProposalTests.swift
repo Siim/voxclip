@@ -139,6 +139,24 @@ import Testing
         text.hideChangePopover(refocus: false)
     }
 
+    /// F2 on a focused change scrolled out of view brings it and its popover into view, so the
+    /// field that takes the keys is never off screen.
+    @Test func editingAChangeOutOfViewBringsItAndItsPopoverIntoView() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 240))
+        defer { pane.close() }
+        let text = pane.text
+        pane.scroll(toCharacter: (text.string as NSString).length - 1)
+        let range = try #require(pane.renderer.changeRange(1))
+        let line = try #require(text.lineBox(atCharacter: range.location))
+        #expect(!text.visibleRect.intersects(line), "change 1 starts out of view")
+        text.keyDown(with: key(120))
+        let popover = try #require(text.changePopoverAuditView)
+        let shown = try #require(text.lineBox(atCharacter: range.location))
+        #expect(text.popoverChange == 1 && text.visibleRect.contains(popover.frame) && text.visibleRect.intersects(shown), "\(popover.frame) in \(text.visibleRect)")
+        text.hideChangePopover(refocus: false)
+    }
+
     /// notes.md §5: after Keep the change is gone like a commit. Restoring its words or
     /// correcting them again never brings it back, and Keep All never applies it again.
     @Test func aKeptCutOrFixStaysKeptWhenItsWordsChangeAgain() throws {
