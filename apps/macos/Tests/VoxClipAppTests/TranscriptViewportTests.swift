@@ -119,13 +119,20 @@ import Testing
     }
 
     /// At the take's top, where TextKit keeps the scroll position as lines rewrap.
-    @Test func aResizeRewrapsWhatFollowsTheLines() throws {
+    @Test(arguments: [NSScroller.Style.overlay, .legacy])
+    func aResizeRewrapsWhatFollowsTheLines(style: NSScroller.Style) throws {
         let model = try editor(paragraph: 2); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488)); defer { pane.close() }
+        pane.scroll.scrollerStyle = style
+        pane.layout()
         let before = try overlays(pane)
         #expect(!before.bandHidden && !before.caretHidden && before.selection.count == 2, "\(before)")
-        pane.window.setContentSize(NSSize(width: 820, height: 488))
+        // Legacy scrollbars reserve 17 pt on the hosted Mac; overlay scrollbars reserve
+        // none. Resize to the same document width under either user preference.
+        let chrome = pane.scroll.bounds.width - pane.scroll.contentView.bounds.width
+        pane.window.setContentSize(NSSize(width: 820 + chrome, height: 488))
         layoutPass(pane)
+        #expect(pane.scroll.contentView.bounds.width == 820, "the fixture supplies 820 pt of document width")
         #expect(pane.text.bounds.width == 820 && pane.text.textContainer?.containerSize.width == 680, "the 680 measure at 820")
         #expect(!pane.text.needsLayout)
         let (shown, measured) = try current(pane)

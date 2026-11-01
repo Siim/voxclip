@@ -183,27 +183,36 @@ import Testing
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
         let storage = try #require(text.textStorage)
-        // A selection adjustment can ask TextKit to validate while replaceCharacters
-        // is processing. Force that ordering independently of other AppKit suites.
+        // A selection adjustment can ask the renderer to validate while replaceCharacters
+        // is processing. Retain a real, unchanged fragment before the edit: asking TextKit
+        // to enumerate its mutating content storage is invalid on macOS 26 and can throw.
+        let manager = try #require(text.textLayoutManager)
+        var fragments: [NSTextLayoutFragment] = []
+        manager.enumerateTextLayoutFragments(from: manager.documentRange.location, options: [.ensuresLayout]) { fragment in
+            fragments.append(fragment)
+            return false // The first paragraph precedes the edit in paragraph three.
+        }
+        try #require(fragments.count == 1)
         @MainActor final class Validations {
             let text: TranscriptNSTextView
             let renderer: TranscriptRenderer
+            let fragments: [NSTextLayoutFragment]
             var count = 0
             var eagerWrites = 0
-            init(text: TranscriptNSTextView, renderer: TranscriptRenderer) { self.text = text; self.renderer = renderer }
+            init(text: TranscriptNSTextView, renderer: TranscriptRenderer, fragments: [NSTextLayoutFragment]) {
+                self.text = text; self.renderer = renderer; self.fragments = fragments
+            }
             func validate() {
-                guard let storage = text.textStorage, let manager = text.textLayoutManager,
-                      storage.editedMask.contains(.editedCharacters) else { return }
+                guard let storage = text.textStorage, storage.editedMask.contains(.editedCharacters) else { return }
                 let before = renderer.attributeUpdates
-                manager.enumerateTextLayoutFragments(from: manager.documentRange.location, options: [.ensuresLayout]) { fragment in
+                for fragment in fragments {
                     count += 1
                     renderer.validate(fragment)
-                    return true
                 }
                 eagerWrites += renderer.attributeUpdates - before
             }
         }
-        let validations = Validations(text: text, renderer: renderer)
+        let validations = Validations(text: text, renderer: renderer, fragments: fragments)
         let token = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification, object: storage, queue: nil) { _ in
             MainActor.assumeIsolated { validations.validate() }
         }
