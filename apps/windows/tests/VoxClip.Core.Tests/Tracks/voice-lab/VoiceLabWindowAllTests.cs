@@ -63,6 +63,7 @@ public sealed class VoiceLabWindowAllTests
         {
             Edits = project.Edits with { CutWordIds = [.. project.Edits.CutWordIds, .. hunks.Where(hunk => hunk.Kind == VoiceLabDiffHunkKind.Cut).SelectMany(hunk => hunk.SourceWordIds)] },
         };
+        var planningProject = rendered;
         long? lastEnd = null;
         for (int position = 0; position < results.Count; position++)
         {
@@ -76,6 +77,7 @@ public sealed class VoiceLabWindowAllTests
                 ExactWindow(raw.GetProperty("window"), placed.Window);
                 Assert.True(lastEnd is null || lastEnd < placed.Window.StartSample, name);
                 lastEnd = placed.Window.EndSample;
+                VoiceLabRenderContract.ValidatePlacement(rendered, scope, placed.Window);
                 rendered = AddWindow(rendered, "all-" + indices[0], placed.Window, null, true, false);
                 VoiceLabProject.Validate(rendered);
                 _ = VoiceLabRenderContract.Prepare(rendered, scope, VoiceLabLabelPosition.TopLeft);
@@ -106,6 +108,26 @@ public sealed class VoiceLabWindowAllTests
                     Assert.Null(refused.Reason.Copy);
                 }
             }
+        }
+        var segments = rendered.VoiceLab.Segments.Skip(planningProject.VoiceLab.Segments.Count).ToArray();
+        if (segments.Length > 0)
+        {
+            var assets = rendered.VoiceLab.Assets!.Skip(planningProject.VoiceLab.Assets!.Count).ToArray();
+            var history = new VoiceLabEditHistory(planningProject);
+            var accepted = history.Apply(segments, assets, planningProject.VoiceLab.Voices![0], scope,
+                scope == VoiceLabOutputScope.Full ? "Rewrite full take" : "Rewrite clip 1", planningProject.ModifiedAt.AddSeconds(1));
+            Assert.Single(accepted.UndoStack);
+            Assert.Empty(accepted.RedoStack);
+            Assert.True(accepted.IsDirty);
+            Assert.Equal(ProjectSerialization.Serialize(rendered with { ModifiedAt = accepted.Present.ModifiedAt }), ProjectSerialization.Serialize(accepted.Present));
+            Assert.Same(project.Transcript, accepted.Present.Transcript);
+            _ = VoiceLabRenderContract.Prepare(accepted.Present, scope, VoiceLabLabelPosition.TopLeft);
+            var undone = accepted.Undo();
+            Assert.Equal(ProjectSerialization.Serialize(planningProject), ProjectSerialization.Serialize(undone.Present));
+            Assert.Empty(undone.UndoStack);
+            Assert.Single(undone.RedoStack);
+            Assert.False(undone.IsDirty);
+            Assert.Equal(ProjectSerialization.Serialize(accepted.Present), ProjectSerialization.Serialize(undone.Redo().Present));
         }
     }
 
@@ -185,7 +207,11 @@ public sealed class VoiceLabWindowAllTests
                 Clips = edits.GetProperty("clips").EnumerateArray().Select(clip => new ClipRange(Text(clip, "id"), Text(clip, "startWordId"), Text(clip, "endWordId"),
                     null, ClipOrigin.Manual, null, null, true)).ToArray(), ActiveClipId = null,
             },
-            VoiceLab = project.VoiceLab with { Segments = [], Assets = [] },
+            VoiceLab = project.VoiceLab with
+            {
+                Segments = [], Assets = [],
+                Voices = project.VoiceLab.Voices!.Select(voice => voice with { Status = VoiceLabVoiceStatus.Active }).ToArray(),
+            },
         };
         VoiceLabRoomTone? roomTone = tone.ValueKind == JsonValueKind.Null ? null
             : new VoiceLabRoomTone(Integer(tone, "sourceStartSample"), Integer(tone, "sourceEndSample"), Number(tone, "gainDb"));

@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Windows Core now combines scoped Rewrite, collision-aware phrase placement and atomic take acceptance with the shared v2 transcript and timeline math; paid voice creation remains blocked until native speaker parity is verified.
+
 - Inline transcription, API-key approval and Voice review now share the integrated workspace without extra sheets; quotes track pending corrections, in-flight paid work retains its discard protection, chosen takes survive retries, playback and audition stop each other, and monthly spend updates during review.
 
 - Inline review questions keep their panel alive and return the keyboard to the transcript or field after Keep Working.

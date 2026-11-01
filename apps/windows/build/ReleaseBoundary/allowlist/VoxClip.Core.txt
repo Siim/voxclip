@@ -1,8 +1,8 @@
-#   dotnet run --project apps/windows/build/ReleaseBoundary -c Release -- update <Release assembly> <this file>
 # Release allowlist for VoxClip.Core. Every hand-written type, member, tagged member, friend
-# Toolchain output (WinUI XAML compiler, CsWinRT, source generators, Windows App SDK sources) is
 # assembly and switch-like literal in the shipping Release assembly must appear here; nothing else may.
+# Toolchain output (WinUI XAML compiler, CsWinRT, source generators, Windows App SDK sources) is
 # classified from the PDB and recorded only as evidence. Regenerate after a reviewed product change:
+#   dotnet run --project apps/windows/build/ReleaseBoundary -c Release -- update <Release assembly> <this file>
 # then review the diff. Fakes, harnesses, probes, seams and DEBUG-only helpers belong under #if DEBUG.
 attribute VoxClip.Core.Domain.Captions.CaptionAnimation :: method public .ctor(VoxClip.Core.Domain.Captions.CaptionAnimationSpec,VoxClip.Core.Domain.Captions.CaptionAnimationSpec,VoxClip.Core.Domain.Captions.CaptionAnimationSpec,VoxClip.Core.Domain.Captions.CaptionAnimationSpec) @ System.Text.Json.Serialization.JsonConstructorAttribute()
 attribute VoxClip.Core.Domain.Captions.CaptionAnimation :: property ActiveIn @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
