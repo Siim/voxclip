@@ -39,6 +39,28 @@ private actor TimelineTestSettings: SettingsStore {
         EditorModel(document: VoxClipDocument(project: project, demo: demo), app: app, preview: DemoPreviewEngine())
     }
 
+    /// The lanes as the panel sizes them, in a dark window that is never shown.
+    private func windowed(_ model: EditorModel) -> (canvas: TimelineCanvasView, window: NSWindow) {
+        let canvas = TimelineCanvasView(model: model)
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: TimelineMetrics.height), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = canvas
+        return (canvas, window)
+    }
+
+    /// A left-button event at `point` in the canvas (top-left origin).
+    private func mouse(_ type: NSEvent.EventType, _ point: NSPoint, in canvas: NSView, clicks: Int = 1) throws -> NSEvent {
+        try #require(NSEvent.mouseEvent(with: type, location: canvas.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+                                        windowNumber: canvas.window?.windowNumber ?? 0, context: nil, eventNumber: 0, clickCount: clicks, pressure: 1))
+    }
+
+    /// A horizontal trackpad swipe of `points`.
+    private func swipe(_ points: Int32) throws -> NSEvent {
+        let event = try #require(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: points, wheel3: 0))
+        return try #require(NSEvent(cgEvent: event))
+    }
+
     // MARK: Viewport
 
     @Test func fittingKeepsASecondOfLaneEachSideAsInF1() {
@@ -179,6 +201,70 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.timelineTrimIndex(clip, start: false, time: 9_999, on: .edited) == 29)
         // On Source a drag can widen the clip.
         #expect(model.timelineTrimIndex(clip, start: true, time: 3.1, on: .source) == 3)
+    }
+
+    /// While nothing has moved it, Edited stays fitted to the clip through cuts and
+    /// restores, so Out never leaves the lane and no empty ruler trails it; an edge dropped
+    /// on the timeline keeps the zoom it was dropped at; a pan that moves the view ends the fit.
+    @Test func aFittedEditedViewFitsAgainWhenTheClipsLengthChanges() throws {
+        let app = try app()
+        let model = editor(app, project: try project())
+        defer { model.close() }
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let lane = Double(canvas.bounds.width - TimelineMetrics.header)
+        func fit() -> TimelineViewport { TimelineViewport.fitting(0...model.duration, width: lane, axis: .edited) }
+        #expect(canvas.viewport == fit())
+        // A swipe the fitted view has no room for moves nothing and keeps the fit.
+        let push = try swipe(-40)
+        #expect(push.scrollingDeltaX != 0)
+        canvas.scrollWheel(with: push)
+        #expect(canvas.viewport == fit())
+        // Restore Cuts lengthens the clip by its two cut words: Out stays on the lane.
+        let cut = model.duration
+        model.apply(.restoreCuts, name: "Restore cuts")
+        canvas.renderContent()
+        #expect(model.duration > cut + 1.5)
+        #expect(canvas.viewport == fit())
+        #expect(canvas.viewport.x(try #require(canvas.content.inOut).upperBound) <= lane - Double(TimelineMetrics.trailing) + 1e-9)
+        // A cut shortens it: the clip still ends at the lane's end.
+        model.selectedWordIDs = ["t20", "t21", "t22"]
+        model.cutSelection()
+        canvas.renderContent()
+        #expect(canvas.viewport == fit())
+        // Out dragged 3 s in on the ruler lands under the pointer at the zoom it was dropped at.
+        let zoom = canvas.viewport
+        let outX = TimelineMetrics.header + CGFloat(zoom.x(model.duration)), y = TimelineMetrics.ruler.y + 11
+        let drop = outX - CGFloat(3 * zoom.ptPerSecond)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: outX, y: y), in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: drop, y: y), in: canvas))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: drop, y: y), in: canvas))
+        // The model's observation takes the same change again.
+        canvas.renderContent()
+        #expect(model.activeClip?.endWordId == "t26")
+        #expect(canvas.viewport == zoom)
+        #expect(abs(TimelineMetrics.header + CGFloat(canvas.viewport.x(model.duration)) - drop) < CGFloat(zoom.ptPerSecond) / 2)
+        // The next change fits again.
+        model.selectedWordIDs = ["t12"]
+        model.cutSelection()
+        canvas.renderContent()
+        #expect(canvas.viewport == fit())
+        // A pan that moves the view (Source has the take to move through) ends the fit:
+        // back on Edited a cut keeps that zoom.
+        model.showsCuts = true
+        canvas.renderContent()
+        let source = canvas.viewport
+        canvas.scrollWheel(with: try swipe(-200))
+        #expect(canvas.viewport.origin != source.origin)
+        model.showsCuts = false
+        canvas.renderContent()
+        let kept = canvas.viewport
+        #expect(kept.axis == .edited && kept.ptPerSecond == source.ptPerSecond)
+        model.selectedWordIDs = ["t11"]
+        model.cutSelection()
+        canvas.renderContent()
+        #expect(canvas.viewport == kept)
     }
 
     /// The panel lays out in a window that is never shown: the toolbar's readout resolves

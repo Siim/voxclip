@@ -104,7 +104,8 @@ struct TimelineContent: Equatable {
     let overlay = TimelineOverlayView()
     private(set) var viewport = TimelineViewport(axis: .edited, ptPerSecond: 20, origin: -TimelineViewport.margin, width: 944)
     private(set) var content = TimelineContent()
-    /// The viewport is the fitted one; a pan ends that until the scope or the axis changes.
+    /// The viewport fits the scope's Edited length and follows it; a pan that moves the
+    /// view ends that until the scope or the take changes.
     private var fitted = true
     private var observations: [ShellObservation] = []
     private var drag: Drag?
@@ -171,8 +172,12 @@ struct TimelineContent: Equatable {
     // MARK: Following the model
 
     /// Takes what the lanes show from the model. A new scope or take fits the viewport
-    /// again; a new axis keeps its zoom. It reads no playhead, so playback never runs it.
-    func renderContent() {
+    /// again. While it is fitted, Edited fits again when its length changes (a cut, a
+    /// restore or a trim) or when it comes back from Source; `keepingZoom` skips that once,
+    /// so an edge dropped on the timeline stays under the pointer. Source is take time,
+    /// which cuts and trims do not move, so it keeps its view. A new axis keeps the zoom.
+    /// It reads no playhead, so playback never runs it.
+    func renderContent(keepingZoom: Bool = false) {
         _ = model.transcriptRevision
         let axis = model.timelineAxis
         var next = TimelineContent()
@@ -189,6 +194,8 @@ struct TimelineContent: Equatable {
         if !rendered || next.scope != previous.scope || next.takeLength != previous.takeLength {
             rendered = true
             fitted = true
+            viewport = fittedViewport(for: next)
+        } else if fitted, !keepingZoom, next.axis == .edited, next.axis != previous.axis || next.length != previous.length {
             viewport = fittedViewport(for: next)
         } else if next.axis != previous.axis {
             viewport = viewport.switched(to: next.axis, start: next.axis == .source ? next.scopeSource?.lowerBound ?? 0 : 0)
@@ -299,9 +306,15 @@ struct TimelineContent: Equatable {
     }
 
     override func mouseUp(with event: NSEvent) {
-        defer { drag = nil; apply() }
-        guard case .trim(let clip, let start, let index)? = drag, let index else { return }
-        model.trimClip(clip, start: start, index: index)
+        let ended = drag
+        drag = nil
+        if case .trim(let clip, let start, let index?)? = ended {
+            model.trimClip(clip, start: start, index: index)
+            // The trimmed clip at the zoom it was dropped at, so the edge stays under the pointer.
+            renderContent(keepingZoom: true)
+        } else {
+            apply()
+        }
     }
 
     /// The open clip's In or Out under `x` in the ruler, within 5 pt, while it can be trimmed.
@@ -321,8 +334,11 @@ struct TimelineContent: Equatable {
     override func scrollWheel(with event: NSEvent) {
         let delta = event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : event.scrollingDeltaX * 10
         guard delta != 0 else { super.scrollWheel(with: event); return }
+        let panned = viewport.panned(by: -Double(delta), within: 0...max(content.length, 1))
+        // A swipe against the content's end moves nothing and keeps the fit.
+        guard panned != viewport else { return }
         fitted = false
-        viewport = viewport.panned(by: -Double(delta), within: 0...max(content.length, 1))
+        viewport = panned
         apply()
     }
 
