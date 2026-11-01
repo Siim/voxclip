@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- The Mac Captions panel keeps scrollbars inside its column, local AI errors name the server URL, and the viewer transport shows current time and scope length.
 - Export now opens in the right panel instead of a window.
 - The AI MODIFIED line in a post is now off by default.
 - Relinking a moved video asks in a banner instead of a dialog.

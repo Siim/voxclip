@@ -282,7 +282,7 @@ private actor HookFixtureConnector: LLMConnector {
         #expect(trailing("claude-code") == "Sonnet (latest) · no extra cost")
         #expect(trailing("codex") == "Not signed in")
         #expect(trailing("ollama") == "llama4:16b · free")
-        #expect(trailing("lmstudio") == "Not running")
+        #expect(trailing("lmstudio") == "LM Studio isn't answering at http://127.0.0.1:1234.")
         #expect(trailing("apple-foundation") == "free · English")
         #expect(trailing("anthropic") == "asks before each send")
         #expect(trailing("openai") == "Add Key…")

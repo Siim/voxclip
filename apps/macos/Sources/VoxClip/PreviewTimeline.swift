@@ -225,13 +225,13 @@ enum ViewerTag: Equatable {
             .columnLayoutEvidence("viewer.axis")
         }
     }
-    /// The timeline toolbar's readout, and the speed when it is not 1×. One accessible element,
+    /// The timeline readout's compact current / length, and the speed when it is not 1×. One accessible element,
     /// `voxclip.viewer.time`: the time on the timeline's axis over that axis' length, then the speed.
     private func playbackTime(rate showsRate: Bool) -> some View {
         let axis = model.timelineAxis
         let current = model.timelinePlayhead(on: axis), total = model.timelineLength(on: axis)
         return HStack(spacing: 6) {
-            TimelineReadout(model: model)
+            TimelineReadout(model: model, includesLength: true)
             if showsRate && model.playbackRate != 1 {
                 Text("\(model.playbackRate.formatted())×").font(VCType.callout.mono()).monospacedDigit()
                     .foregroundStyle(DesignValues.color("overlay.foreground").opacity(0.66))

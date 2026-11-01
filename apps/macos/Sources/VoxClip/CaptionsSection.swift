@@ -473,7 +473,8 @@ extension EditorModel {
                     fineTuneDisclosure.id("captions.fineTune")
                     if fineTune { fineTuneControls }
                 }
-                .padding(.horizontal, Metrics.inset)
+                .padding(.leading, Metrics.inset)
+                .padding(.trailing, Metrics.inset - 1)
                 .padding(.bottom, Metrics.propertiesBottomInset)
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -483,6 +484,10 @@ extension EditorModel {
             .onChange(of: fineTune) { _, expanded in
                 if expanded { reader.scrollTo("captions.fineTune", anchor: .top) }
             }
+            // Legacy NSScroller's AX frame extends 1 pt past its native frame. Keep
+            // that frame inside the column at the right and bottom window edges,
+            // including when Show scroll bars is Always. The gallery is already inset.
+            .padding([.trailing, .bottom], 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("voxclip.captions.properties")

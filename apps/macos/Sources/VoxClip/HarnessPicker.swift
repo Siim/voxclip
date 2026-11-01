@@ -89,7 +89,7 @@ extension AppModel {
             if case .confirm = llmSendKind(id) { return .asksFirst }
             return .ready
         case .needsKey: return .unavailable("no key")
-        case .notRunning: return .unavailable("not running")
+        case .notRunning(let url): return .unavailable(UserMessages.localServerUnavailable(name: provider.shortName, url: url))
         case .noModels: return .unavailable("no model loaded")
         case .cliMissing: return .unavailable("not installed")
         case .cliSignedOut: return .unavailable("not signed in")

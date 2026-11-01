@@ -150,7 +150,7 @@ extension RewriteSession {
             let model = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
             return row(model.isEmpty ? "\(place.prefix(1).uppercased() + place.dropFirst()) · free" : "\(model) \(place) · free")
         case .noModels: return row("No model loaded. Load one, then choose Check Again.", ready: false)
-        case .notRunning: return keeping ? row("Not running. Start \(name), then choose Check Again.", ready: false) : nil
+        case .notRunning(let url): return keeping ? row(UserMessages.localServerUnavailable(name: name, url: url) + " Start it, then choose Check Again.", ready: false) : nil
         default: return nil
         }
     }
@@ -221,7 +221,7 @@ extension RewriteSession {
         case .cancelled: return nil
         case .cliSignedOut: return .signedOut(cli: aiName, command: provider?.id == "codex" ? "codex login" : "claude")
         case .missingKey: return .noKey(provider: provider?.id ?? "", name: aiName)
-        case .notRunning: return .notRunning(server: aiName)
+        case .notRunning(let url): return .notRunning(server: aiName, url: url)
         case .refused: return .refused
         default: return .message(await editor.app.log.redact(Self.proposalError(error, provider: connector?.name ?? aiName, model: connector?.model ?? "")))
         }
@@ -254,7 +254,8 @@ extension RewriteSession {
                 actionTask?.cancel()
                 actionTask = Task { await self.saveKeyAndTryAgain(provider) }
             }
-        case .notRunning(let server): cards = [.text("\(server) isn't running. Start it, then choose Try Again.")]
+        case .notRunning(let server, let url):
+            cards = [.text(UserMessages.localServerUnavailable(name: server, url: url) + " Start it, then choose Try Again.")]
         case .refused:
             cards = [.text("The model declined to rewrite this recording.")]
             footer = PanelFooter(primary: PanelAction(id: "askElse", title: "Ask for Something Else") { [weak self] in self?.askForSomethingElse() })

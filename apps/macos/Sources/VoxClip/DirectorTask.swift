@@ -222,7 +222,7 @@ enum PanelError: Equatable, Sendable {
     /// An API-key connector with no key.
     case noKey(provider: String, name: String)
     /// A local server that does not answer: "Ollama", "LM Studio".
-    case notRunning(server: String)
+    case notRunning(server: String, url: String)
     /// The model declined.
     case refused
     /// More than 3,000 entries (voice-lab.md §8.1); `count` is the scope's kept items.

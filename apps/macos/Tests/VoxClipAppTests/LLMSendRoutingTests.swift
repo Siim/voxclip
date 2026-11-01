@@ -333,11 +333,33 @@ private struct NoVoiceLabKeys: KeyProvider {
         #expect(editor.clipError == "Load or download a model in LM Studio, then refresh. Your edits are saved.")
     }
 
+    @Test(arguments: [("lmstudio", "LM Studio", "http://localhost:1234"),
+                      ("ollama", "Ollama", "http://127.0.0.1:11434")])
+    func stoppedLocalServerKeepsItsURLAcrossSendSurfaces(connector: String, name: String, url: String) async throws {
+        let (app, fake, log) = try setUp(connector, authMethod: nil, readiness: .notRunning(url: url))
+        let editor = try editor(app)
+        defer { editor.close() }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(editor.clipError?.contains("\(name) isn't answering at \(url).") == true)
+        #expect(app.harnessStatus.stateWords?.contains(url) == true)
+        let rewriteEditor = try self.editor(app)
+        defer { rewriteEditor.close() }
+        try await send(.rewrite, editor: rewriteEditor, app: app)
+        let session = try #require(rewriteEditor.rewrite)
+        let messages = session.task.cards.compactMap { card -> String? in
+            if case .text(let text) = card { return text }; return nil
+        }
+        #expect(messages.contains { $0.contains("\(name) isn't answering at \(url).") })
+        #expect(await fake.sends == 0)
+        #expect(log.sheets.isEmpty)
+    }
+
     /// The Rewrite panel's readiness error names the chosen connector, as Find clips does: the route now runs for local
     /// connectors too, and LM Studio's server is off until the user starts it. The error is R1x on the session's task
     /// (V12m), with nothing sent, no sheet and the passage panel's problem line untouched.
     @Test(arguments: [
-        ("lmstudio", ConnectorStatus.notRunning(url: "http://localhost:1234"), PanelError.notRunning(server: "LM Studio")),
+        ("lmstudio", ConnectorStatus.notRunning(url: "http://localhost:1234"), PanelError.notRunning(server: "LM Studio", url: "http://localhost:1234")),
         ("lmstudio", .noModels, .message("Load or download a model in LM Studio, then refresh. Your edits are saved.")),
         ("claude-code", .cliSignedOut, .signedOut(cli: "Claude Code", command: "claude")),
         ("openai", .needsKey, .noKey(provider: "openai", name: "OpenAI")),
