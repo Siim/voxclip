@@ -6,17 +6,19 @@ platforms: a hosted Ubuntu runner and an Apple silicon Mac disagree by 1 ULP on 
 ~1e-13 on accumulated loudness values. Such a file passes when its structure, strings, booleans and integers are
 identical and every float agrees within REL_TOL / ABS_TOL; the committed bytes are then restored so the
 byte-exact `git diff --exit-code` that follows checks only the other generators. Continuity, scope rewrite plan
-and diff, LLM send cost, training span and take batch vectors have an explicit byte-exact expectation, never float
+and diff, LLM send cost, training span, take batch and v2 display vectors have an explicit byte-exact expectation, never float
 tolerance. Run from the repository root, after the generators."""
 import json
 import math
 import subprocess
 import sys
+from pathlib import Path
 
 TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json']
 EXACT = ['shared/fixtures/voice-lab/continuity-cases.json', 'shared/fixtures/voice-lab/scope-rewrite-plan-cases.json',
          'shared/fixtures/voice-lab/scope-rewrite-diff-cases.json', 'shared/fixtures/voice-lab/llm-send-cost-cases.json',
-         'shared/fixtures/voice-lab/training-spans.json', 'shared/fixtures/voice-lab/take-batch-cases.json']
+         'shared/fixtures/voice-lab/training-spans.json', 'shared/fixtures/voice-lab/take-batch-cases.json',
+         'shared/fixtures/v2/paragraphs.json', 'shared/fixtures/v2/timeline-cases.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
 
@@ -40,6 +42,9 @@ def differences(committed, regenerated, where='$'):
 
 
 def main():
+    # CI enumerates the older voice-lab generator directory; include the independent WC1 generator here.
+    root = Path(__file__).resolve().parents[3]
+    subprocess.run([sys.executable, str(root / "tools/fixtures/v2/generate_v2.py")], check=True)
     failed = False
     for path in EXACT:
         committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout
