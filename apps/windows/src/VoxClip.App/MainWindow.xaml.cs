@@ -14,7 +14,7 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Shared;
 namespace VoxClip.App;
 
-/// <summary>Mica window with a TitleBar over a NavigationView: Home, the open project's clips and Recent; design §2 and §3.3.</summary>
+/// <summary>Native title bar, Explorer, document tabs and full-window status routing.</summary>
 public sealed partial class MainWindow : Window, IUpdateRestartWindow
 {
     internal string? ProjectPath { get; private set; }
@@ -28,12 +28,14 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private readonly HomePage home = new();
     private readonly CancellationTokenSource lifetime = new();
     private readonly WindowEffects effects;
+    private readonly ShellTextFocus textFocus;
     private readonly SemaphoreSlim navigation = new(1, 1);
     private bool closingApproved;
     private bool closingInProgress;
     private bool restartPrepared;
     private EditorPage? editor;
     private bool syncingSelection;
+    private DateTimeOffset? shellModifiedAt;
     private string? dropName;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer takeRefresh;
     private CancellationTokenSource takeLoads = new();
@@ -60,9 +62,9 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         InitializeComponent();
         if (Content is not FrameworkElement || Root is null || ContentFrame is null || AppTitleBar is null)
             throw new InvalidOperationException("MainWindow XAML root did not load. Check the app PRI and compiled XAML.");
+        textFocus = new(Root);
         effects = new WindowEffects(AppWindow.Id, DispatcherQueue);
         Title = "VoxClip";
-        SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
@@ -85,7 +87,19 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number1, VirtualKeyModifiers.Control, () => ShowHome(ShellPath.HomeShortcut)));
         Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Number2, VirtualKeyModifiers.Control, () => ShowScope(null, via: ShellPath.EditorShortcut)));
         Root.KeyboardAccelerators.Add(Accelerator((VirtualKey)191, VirtualKeyModifiers.Control, () => _ = ShowKeyboardHelpAsync()));
-        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, () => _ = RequestCloseAsync(ShellPath.CloseShortcut)));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.W, VirtualKeyModifiers.Control, CloseShellTab));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.K, VirtualKeyModifiers.Control, OpenCommandPalette));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.B, VirtualKeyModifiers.Control, ToggleExplorer));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.J, VirtualKeyModifiers.Control, () => { if (!ShowingHome) editor?.ToggleShellTimeline(); }));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.C, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, () => { if (!ShowingHome) editor?.ToggleShellCuts(); }));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.K, VirtualKeyModifiers.Control | VirtualKeyModifiers.Menu, () => { if (!ShowingHome) editor?.MakeClipFromPane(); }));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Tab, VirtualKeyModifiers.Control, () => CycleShellTab(1)));
+        Root.KeyboardAccelerators.Add(Accelerator(VirtualKey.Tab, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => CycleShellTab(-1)));
+        Palette.Dismissed += (_, _) => CloseCommandPalette(true);
+        Palette.CommandInvoking += (_, _) => CloseCommandPalette(true);
+        RenameTitle.TextCompositionStarted += (_, _) => renameInput.CompositionStarted();
+        RenameTitle.TextCompositionEnded += (_, _) => { renameInput.CompositionEnded(); renameCompositionJustEnded = true; };
+        RenameTitle.KeyUp += (_, _) => renameCompositionJustEnded = false;
         AppWindow.Closing += (appWindow, args) =>
         {
             if (App.Restart.IsPreparing) { args.Cancel = true; return; }
@@ -94,6 +108,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             _ = RequestCloseAsync(ShellPath.CloseWindow);
         };
         Closed += WindowClosed;
+        Closed += (_, _) => textFocus.Dispose();
         Root.SizeChanged += RootSizeChanged;
         // F6 is the window's, wherever focus is; a page that handles the key first doesn't stop the cycle.
         Root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(RegionKeyDown), true);
@@ -170,6 +185,8 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
     private void BusyChanged(object? sender, EventArgs args)
     {
+        if (Palette.Visibility == Visibility.Visible) Palette.UpdateCommands(CurrentShellCommands());
+        RefreshShellStatus();
         if (updateRestart is null) return;
         updateRestart.IsEnabled = !App.Services.IsBusy;
         ToolTipService.SetToolTip(updateRestart, App.Services.IsBusy ? "Finish the current task first." : "Restart to update VoxClip.");
@@ -187,6 +204,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         };
         accelerator.Invoked += (_, args) =>
         {
+            if (textFocus.OwnsComposition) return;
             if (editor is { } page && !ShowingHome && FocusInPane() && !InputState.IsTextFocus(FocusManager.GetFocusedElement(Root.XamlRoot))
                 && page.InvokeFromPane(gesture)) args.Handled = true;
         };
@@ -207,15 +225,24 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private SidebarRow? FocusedRow()
     {
         for (var element = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject; element is not null; element = VisualTreeHelper.GetParent(element))
-            if (element is NavigationViewItem item) return Nav.MenuItemFromContainer(item) as SidebarRow;
+            if (element is ListViewItem item) return Nav.MenuItemFromContainer(item) as SidebarRow;
         return null;
     }
-    internal static KeyboardAccelerator Accelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
+    internal KeyboardAccelerator Accelerator(VirtualKey key, VirtualKeyModifiers modifiers, Action action)
     {
         var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
         accelerator.Invoked += (_, args) =>
         {
-            if (InputState.Down(VirtualKey.Control) && InputState.Down(VirtualKey.Menu)) return;
+            if (textFocus.OwnsComposition || FocusInDialog()) return;
+            if (InputState.Down(VirtualKey.Control) && InputState.Down(VirtualKey.Menu) && !modifiers.HasFlag(VirtualKeyModifiers.Menu)) return;
+            if (Palette.Visibility == Visibility.Visible)
+            {
+                args.Handled = true;
+                if (key is VirtualKey.K or VirtualKey.W && Palette.MayDismiss) CloseCommandPalette(true);
+                return;
+            }
+            if (modifiers.HasFlag(VirtualKeyModifiers.Menu) && modifiers.HasFlag(VirtualKeyModifiers.Control)
+                && InputState.IsTextFocus(FocusManager.GetFocusedElement(Root.XamlRoot))) return;
             action(); args.Handled = true;
         };
         return accelerator;
@@ -295,6 +322,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
                     WindowNotice.IsOpen = true;
                 }
             }
+            if (renaming is not null) FinishInlineRename(false, restoreFocus: false);
             incoming = new EditorPage();
             ProjectPath = fullPath;
             ContentFrame.Content = incoming;
@@ -366,7 +394,12 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         catch (Exception exception) { App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "settings", exception.GetType().Name); }
     }
     /// <summary>Showing the viewer where the transcript has no room closes the pane (delta §3.7).</summary>
-    internal void CloseNavigationPane() => Nav.IsPaneOpen = false;
+    internal void CloseNavigationPane()
+    {
+        var restore = FocusInPane();
+        Nav.IsPaneOpen = false;
+        if (restore) editor?.FocusTranscript();
+    }
     /// <summary>Show Home without leaving the project: playback pauses and the editor page stays alive (ADR-R29).</summary>
     internal void ShowHome(ShellPath via)
     {
@@ -424,6 +457,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
     private void ShowContent(Page page)
     {
+        if (RenameEditor.Visibility == Visibility.Visible) FinishInlineRename(false, restoreFocus: false);
         if (page is HomePage) home.Refresh();
         ContentFrame.Content = page;
         UpdateShell();
@@ -437,6 +471,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         Shell.Update(editor?.ViewModel, ShowingHome, home.ViewModel.RecentProjects, ProjectPath);
         if (Shell.Callout is null || ShowingHome) CalloutTip.IsOpen = false;
         SyncSelection();
+        UpdateShellChrome();
     }
     /// <summary>Keep the selected row equal to the shown page and the editor's activeClipId, without re-entering selection.</summary>
     private void SyncSelection()
@@ -447,12 +482,13 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         try
         {
             Nav.SelectedItem = target;
-            if (Nav.ContainerFromMenuItem(target) is NavigationViewItem item) item.IsSelected = true;
+            if (Nav.ContainerFromMenuItem(target) is ListViewItem item) item.IsSelected = true;
         }
         finally { syncingSelection = false; }
     }
     private void Watch(EditorPage? previous, EditorPage next)
     {
+        shellModifiedAt = next.ViewModel.Project.ModifiedAt;
         if (previous?.ViewModel is { } old) { old.Changed -= EditorEdited; old.SelectionChanged -= EditorChanged; old.PropertyChanged -= EditorPropertyChanged; old.ExportStatesChanged -= EditorChanged; }
         if (previous is not null) { previous.FindClips.Changed -= EditorChanged; previous.FindClips.Found -= SuggestionsFound; previous.FindClips.CalloutShown -= CalloutShown; }
         next.FindClips.Changed += EditorChanged;
@@ -477,7 +513,15 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void EditorEdited(object? sender, EventArgs args)
     {
         UpdateShell();
-        takeRefresh.Start();
+        if (editor is { } page && !page.ViewModel.IsScopeChange)
+        {
+            if (shellModifiedAt != page.ViewModel.Project.ModifiedAt)
+            {
+                page.Tabs.PinActive();
+                shellModifiedAt = page.ViewModel.Project.ModifiedAt;
+            }
+            takeRefresh.Start();
+        }
     }
     /// <summary>The Full take row's thumbnail (design §5.4): the take's poster frame, else its caption card, with its status.
     /// Made off the UI thread when the project opens and again after edits or placeholder settings change.</summary>
@@ -558,7 +602,17 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// <summary>A row's keys (F2, Delete, Ctrl+Enter) act only while focus is in that row, never from the transcript.</summary>
     private void ScopeRowKeys(object sender, RoutedEventArgs args)
     {
-        if (sender is UIElement row) foreach (var accelerator in row.KeyboardAccelerators) accelerator.ScopeOwner = row;
+        if (sender is FrameworkElement row)
+        {
+            DependencyObject? container = row;
+            while (container is not null && container is not ListViewItem) container = VisualTreeHelper.GetParent(container);
+            foreach (var accelerator in row.KeyboardAccelerators) accelerator.ScopeOwner = container as UIElement ?? row;
+            if (container is ListViewItem item && row.ContextFlyout is { } menu)
+            {
+                row.ContextFlyout = null;
+                item.ContextFlyout = menu;
+            }
+        }
         DispatcherQueue.TryEnqueue(SyncSelection);
     }
     private void KeepClicked(object sender, RoutedEventArgs args) { if (sender is FrameworkElement { Tag: string id }) ClipCommand(id, model => model.Keep(id)); }
@@ -624,32 +678,28 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         if (sender is FrameworkElement { Tag: string id } && editor?.ViewModel.Clips.FirstOrDefault(clip => clip.Id == id) is { } clip) ShareHelpers.Copy(clip.Excerpt);
     }
     private async void ExportClipClicked(object sender, RoutedEventArgs args) { if (editor is not null && sender is FrameworkElement { Tag: string id } && RowEdits(id)) await editor.ExportClipAsync(id); }
-    private async Task RenameClipAsync(string id)
+    private Task RenameClipAsync(string id)
     {
-        if (!RowEdits(id) || editor?.ViewModel is not { } model || model.Clips.FirstOrDefault(clip => clip.Id == id) is not { } clip) return;
-        // A title is at most 120 code points; a longer one keeps the dialog open with the reason under the box. MaxLength
-        // counts UTF-16 units, so it only stops a paste far past the limit.
-        var name = new TextBox { Header = "Clip title", Text = clip.Title, MaxLength = 2 * Core.Domain.Editing.EditingLimits.MaxClipTitleCodePoints };
-        var problem = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = Ui.ThemeBrush(Root, "VcStatusDangerForegroundBrush"), Visibility = Visibility.Collapsed };
-        name.SelectAll();
-        name.TextChanged += (_, _) => problem.Visibility = Visibility.Collapsed;
-        var body = new StackPanel { Spacing = 8 };
-        body.Children.Add(name);
-        body.Children.Add(problem);
-        var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "Rename clip", Content = body, PrimaryButtonText = "Rename", CloseButtonText = "Cancel", DefaultButton = ContentDialogButton.Primary };
-        dialog.PrimaryButtonClick += (_, args) =>
-        {
-            if (EditorViewModel.ClipTitleProblem(name.Text) is not { } reason) return;
-            args.Cancel = true;
-            problem.Text = reason;
-            problem.Visibility = Visibility.Visible;
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetHelpText(name, reason);
-            Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.FromElement(name)?.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
-                Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.MostRecent, reason, "rename");
-        };
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary && name.Text.Trim() != clip.Title && !model.Rename(id, name.Text))
-            model.Notice = "This clip couldn't be renamed. Your edits are still here.";
-        FocusRow(Shell.Rows.FirstOrDefault(row => row.ClipId == id));
+        if (!RowEdits(id) || editor?.ViewModel is not { } model || model.IsReadOnly || model.Busy || model.IsLeaving
+            || model.Clips.FirstOrDefault(clip => clip.Id == id) is not { } clip) return Task.CompletedTask;
+        renameInput.CompositionEnded();
+        renameCompositionJustEnded = false;
+        renaming = (model, id, clip.Title);
+        RenameTitle.Text = clip.Title;
+        RenameProblem.Text = "";
+        RenameEditor.Visibility = Visibility.Visible;
+        RenameTitle.Focus(FocusState.Keyboard);
+        RenameTitle.SelectAll();
+        return Task.CompletedTask;
+    }
+    private void RenameSaveClicked(object sender, RoutedEventArgs args) => FinishInlineRename(true);
+    private void RenameCancelClicked(object sender, RoutedEventArgs args) => FinishInlineRename(false);
+    private void RenameKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (!renameInput.MaySubmit(renameCompositionJustEnded)) return;
+        if (args.Key is not (VirtualKey.Enter or VirtualKey.Escape)) return;
+        args.Handled = true;
+        FinishInlineRename(args.Key == VirtualKey.Enter);
     }
     /// <summary>Whether a row's commands may act: only rows that edit (<see cref="SidebarRow.Edits"/>). While Home shows, the
     /// project's rows only navigate, so a key or click that still reaches one is ignored and nothing changes in the hidden
@@ -688,35 +738,46 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
         if (args.PropertyName is nameof(EditorViewModel.Busy) or nameof(EditorViewModel.CanExport)) UpdateShell();
+        else if (args.PropertyName is nameof(EditorViewModel.TimeLabel) or nameof(EditorViewModel.Notice)) RefreshShellStatus();
     }
-    private void NavSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    private void NavSelectionChanged(object sender, SelectionChangedEventArgs args)
     {
-        if (syncingSelection || args.SelectedItem is not SidebarRow row) return;
+        if (syncingSelection || Nav.SelectedItem is not SidebarRow row) return;
         switch (row.Kind)
         {
             case SidebarKind.Home: ShowHome(ShellPath.SidebarHome); break;
             case SidebarKind.FullTake: ShowScope(null); break;
             case SidebarKind.Clip or SidebarKind.Suggestion: ShowScope(row.ClipId); break;
+            case SidebarKind.Outline:
+                ShowScope(editor?.ViewModel.State?.ActiveClipId, keepSelection: true);
+                editor?.RevealOutline(row.WordIndex);
+                SyncSelection();
+                break;
+            default: SyncSelection(); break;
         }
     }
-    private async void NavItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    private async void NavItemInvoked(object sender, ItemClickEventArgs args)
     {
-        if (args.InvokedItemContainer is not null && sender.MenuItemFromContainer(args.InvokedItemContainer) is SidebarRow row) await InvokeRowAsync(row);
+        if (args.ClickedItem is SidebarRow row) await InvokeRowAsync(row);
     }
     /// <summary>Rows that do not select: a Recent project opens in place through OpenPathAsync; actions run on the editor.</summary>
     private async Task InvokeRowAsync(SidebarRow row)
     {
+        if (!row.IsEnabled) return;
         if (row.Kind == SidebarKind.Recent && row.Recent is { } recent) await OpenPathAsync(recent.Path, ShellPath.RecentRow);
         else if (row.Key == "action:make") editor?.MakeClipFromPane();
         else if (row.Key == "action:find") editor?.ShowFindClips(Nav.ContainerFromMenuItem(row) as FrameworkElement);
     }
-    private void PaneToggleRequested(TitleBar sender, object args) => Nav.IsPaneOpen = !Nav.IsPaneOpen;
+    private void PaneToggleRequested(TitleBar sender, object args) => ToggleExplorer();
     private void RootSizeChanged(object sender, SizeChangedEventArgs args)
     {
-        var mode = args.NewSize.Width >= (double)Application.Current.Resources["VcSizeBreakpointStack"] ? NavigationViewPaneDisplayMode.Left : NavigationViewPaneDisplayMode.LeftMinimal;
-        if (Nav.PaneDisplayMode != mode) Nav.PaneDisplayMode = mode;
+        if (args.NewSize.Width < 1000 && args.PreviousSize.Width >= 1000) Nav.IsPaneOpen = false;
+        if (Workspace.ActualHeight > 0) Palette.MaxHeight = Math.Max(120, Workspace.ActualHeight - 32);
     }
     private void SettingsClicked(object sender, RoutedEventArgs args) => App.OpenSettings();
+    private void WindowNoticeClosed(InfoBar sender, object args) => RefreshShellStatus();
+    private void CommandPaletteClicked(object sender, RoutedEventArgs args) => OpenCommandPalette();
+    private void ExplorerClicked(object sender, RoutedEventArgs args) => ToggleExplorer();
     internal void ShowError(Exception exception, string action)
     {
         var message = UiError.Message(exception, action);
@@ -724,11 +785,13 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         WindowNotice.Severity = InfoBarSeverity.Warning;
         WindowNotice.Message = message;
         WindowNotice.IsOpen = true;
+        RefreshShellStatus();
         App.Services.Log.Write(Core.Services.Logging.LogLevel.Warn, "import", $"action={action} code={(exception is VoxClipException known ? known.WireCode : exception.GetType().Name)} inner={exception.GetBaseException().GetType().Name} hresult=0x{exception.GetBaseException().HResult:X8}");
     }
     /// <summary>Whole-window drop target: overlay copy from design §7 and §13.</summary>
     private async void FileDragOver(object sender, DragEventArgs args)
     {
+        if (Palette.Visibility == Visibility.Visible) { args.AcceptedOperation = DataPackageOperation.None; return; }
         if (!args.DataView.Contains(StandardDataFormats.StorageItems)) return;
         args.AcceptedOperation = DataPackageOperation.Copy;
         args.DragUIOverride.Caption = editor is null ? "Import video in this window" : "Open in this window after saving";
@@ -746,6 +809,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     private void FileDragLeave(object sender, DragEventArgs args) { DropOverlay.Visibility = Visibility.Collapsed; dropName = null; }
     private async void FileDropped(object sender, DragEventArgs args)
     {
+        if (Palette.Visibility == Visibility.Visible) return;
         DropOverlay.Visibility = Visibility.Collapsed;
         dropName = null;
         try
@@ -777,25 +841,25 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     /// F6 from the pane lands on the command row. A region that can't take focus, such as a closed pane, is skipped.</summary>
     private void RegionKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (args.Key != VirtualKey.F6 || InputState.Down(VirtualKey.Control) || InputState.Down(VirtualKey.Menu)) return;
+        if (Palette.Visibility == Visibility.Visible) return;
+        if (args.Key != VirtualKey.F6 || textFocus.OwnsComposition || FocusInDialog() || InputState.Down(VirtualKey.Control) || InputState.Down(VirtualKey.Menu)) return;
         var regions = new List<(FrameworkElement[] Areas, Func<Control?> Target)>
             { ([], () => Nav.SelectedItem is { } selected ? Nav.ContainerFromMenuItem(selected) as Control : null) };
         if (ContentFrame.Content is EditorPage page) regions.AddRange(page.FocusRegions());
         else if (ContentFrame.Content is HomePage shown) regions.Add(([shown], () => FocusManager.FindFirstFocusableElement(shown) as Control));
+        regions.Add(([ShellStatusBar], () => FocusManager.FindFirstFocusableElement(ShellStatusBar) as Control));
         var focused = FocusManager.GetFocusedElement(Root.XamlRoot) as DependencyObject;
         var current = Math.Max(0, regions.FindIndex(region => region.Areas.Any(area => InputState.DescendsFrom(focused, area))));
         foreach (var index in FocusCycle.NextIndices(current, regions.Count, InputState.Down(VirtualKey.Shift)))
             if (regions[index].Target() is { IsEnabled: true, Visibility: Visibility.Visible } target && target.Focus(FocusState.Keyboard)) break;
         args.Handled = true;
     }
-    internal async Task ShowKeyboardHelpAsync()
+    internal Task ShowKeyboardHelpAsync()
     {
-        await new ContentDialog
-        {
-            XamlRoot = Root.XamlRoot, Title = "Keyboard shortcuts", CloseButtonText = "Done",
-            Content = new ScrollViewer { MaxHeight = 520, Content = new TextBlock { Text = KeyboardHelp.Text(
-                App.Services.Settings.GetBool("voiceLab.enabled") == true, App.Services.Settings.GetBool("voiceLab.betaNoticeAccepted") == true), TextWrapping = TextWrapping.Wrap } }
-        }.ShowAsync();
+        OpenCommandPalette();
+        if (Palette.Visibility == Visibility.Visible) Palette.ShowKeyboardHelp(KeyboardHelp.Text(
+            App.Services.Settings.GetBool("voiceLab.enabled") == true, App.Services.Settings.GetBool("voiceLab.betaNoticeAccepted") == true));
+        return Task.CompletedTask;
     }
 #if DEBUG
     internal string DebugNotice => WindowNotice.IsOpen ? WindowNotice.Message : "";

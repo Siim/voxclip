@@ -3,7 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace VoxClip.App.ViewModels;
 
-public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent, Empty, Finding, Callout, NoneFound }
+public enum SidebarKind { Home, Separator, Project, FullTake, Clip, SuggestedHeader, Suggestion, Action, RecentHeader, Recent, Empty, Finding, Callout, NoneFound, ClipsHeader, OutlineHeader, Outline }
 
 /// <summary>A callout under the sidebar actions (design §13): no connector, or a problem finding clips. See <see cref="ClipCallouts"/>.</summary>
 public sealed record SidebarCallout(string Title, string Message, string Action);
@@ -43,9 +43,10 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public string ExportDetail => ExportState is ClipExportState.ChangedSinceExport or ClipExportState.Failed ? new ExportRowState(ExportState).Label : "";
     public bool HasExportDetail => ExportDetail.Length > 0;
     public bool ShowsRetry => ExportState == ClipExportState.Failed && Edits;
-    public double RowHeight => HasExportDetail ? 76 : Kind == SidebarKind.FullTake ? 44 : 60;
+    public double RowHeight => HasExportDetail ? 52 : 28;
     public SidebarKind Kind { get; } = kind;
     public string Key { get; } = key;
+    public int WordIndex { get; set; } = -1;
     /// <summary>The clip id of a clip or suggestion row.</summary>
     public string? ClipId { get; init; }
     /// <summary>The recent project shown by a Recent row.</summary>
@@ -57,7 +58,19 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     /// font. Either part may be empty: "Not transcribed" and "Transcribing · 42%" have no duration.</summary>
     public string Meta => metaTime + metaStatus;
     public string MetaTime { get => metaTime; set { if (SetProperty(ref metaTime, value)) OnPropertyChanged(nameof(Meta)); } }
-    public string MetaStatus { get => metaStatus; set { if (SetProperty(ref metaStatus, value)) OnPropertyChanged(nameof(Meta)); } }
+    public string MetaStatus
+    {
+        get => metaStatus;
+        set
+        {
+            if (!SetProperty(ref metaStatus, value)) return;
+            OnPropertyChanged(nameof(Meta));
+            OnPropertyChanged(nameof(MetaLine));
+            OnPropertyChanged(nameof(HasMetaStatus));
+        }
+    }
+    public string MetaLine => MetaStatus.TrimStart(' ', '·');
+    public bool HasMetaStatus => MetaStatus.Length > 0;
     /// <summary>A callout's one action: "Set up AI…", "Sign-in help" or "Retry"; empty for none.</summary>
     public string Action { get => action; set { if (SetProperty(ref action, value)) OnPropertyChanged(nameof(HasAction)); } }
     /// <summary>The Full take row offers Cancel while its video transcribes (design §3.4).</summary>
@@ -161,10 +174,14 @@ public sealed class ShellViewModel
             var active = editor.State?.ActiveClipId;
             var kept = editor.Clips.Where(clip => !IsSuggestion(clip)).ToArray();
             var suggested = editor.Clips.Where(IsSuggestion).ToArray();
+            var clipsHeader = Row(SidebarKind.ClipsHeader, "clips");
+            clipsHeader.Title = "CLIPS";
+            clipsHeader.AccessibleName = "Clips";
+            next.Add(clipsHeader);
             if (editor.HasTranscript && editor.Clips.Count == 0 && Finding is null)
             {
                 var empty = Row(SidebarKind.Empty, "empty");
-                empty.Title = "No clips yet. Select words and press Ctrl+K.";
+                empty.Title = "No clips yet. Select words and press Ctrl+Alt+K.";
                 empty.AccessibleName = empty.Title;
                 next.Add(empty);
             }
@@ -217,11 +234,27 @@ public sealed class ShellViewModel
             }
             if (!showingHome)
             {
+                if (editor.Paragraphs.Count > 0)
+                {
+                    var outline = Row(SidebarKind.OutlineHeader, "outline");
+                    outline.Title = "OUTLINE";
+                    outline.AccessibleName = "Transcript outline";
+                    next.Add(outline);
+                    foreach (var paragraph in editor.Paragraphs)
+                    {
+                        var row = Row(SidebarKind.Outline, "outline:" + editor.Words[paragraph.StartIndex].Id);
+                        row.WordIndex = paragraph.StartIndex;
+                        row.Title = string.Join(" ", editor.Words.Skip(paragraph.StartIndex).Take(Math.Min(8, paragraph.Count)).Select(editor.DisplayText));
+                        row.Detail = paragraph.Timecode;
+                        row.AccessibleName = $"Paragraph at {paragraph.Timecode}, {row.Title}";
+                        next.Add(row);
+                    }
+                }
                 next.Add(Row(SidebarKind.Separator, "separator:actions"));
                 var make = Row(SidebarKind.Action, "action:make");
                 make.Title = "New clip from selection";
-                make.Detail = "Ctrl+K";
-                make.ToolTip = editor.HasTranscript ? "Make a clip from the selected words (Ctrl+K)" : TranscribeFirst;
+                make.Detail = "Ctrl+Alt+K";
+                make.ToolTip = editor.HasTranscript ? "Make a clip from the selected words (Ctrl+Alt+K)" : TranscribeFirst;
                 make.AccessibleName = "New clip from selection";
                 make.IsEnabled = editor.HasTranscript && editor.HasSelection && !editor.Busy && !editor.IsLeaving;
                 next.Add(make);

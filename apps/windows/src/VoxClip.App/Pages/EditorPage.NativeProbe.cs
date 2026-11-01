@@ -30,8 +30,8 @@ public sealed partial class EditorPage
         }
         try
         {
-            foreach (var item in new[] { (1440, 900, 388, ElementTheme.Light), (1440, 900, 388, ElementTheme.Dark),
-                (1280, 800, 348, ElementTheme.Light), (1440, 900, 300, ElementTheme.Light),
+            foreach (var item in new[] { (1440, 900, 444, ElementTheme.Light), (1440, 900, 444, ElementTheme.Dark),
+                (1280, 800, 404, ElementTheme.Light), (1440, 900, 300, ElementTheme.Light),
                 (1440, 900, 560, ElementTheme.Light), (760, 600, 300, ElementTheme.Light), (1000, 800, 0, ElementTheme.Light) })
             {
                 if (Environment.GetEnvironmentVariable("VOXCLIP_NATIVE_DIAGNOSTIC") == "bounds-critical" &&
@@ -45,14 +45,14 @@ public sealed partial class EditorPage
                 if (item.Item3 is 300 or 560) RightColumn.Width = new(item.Item3);
                 await Task.Delay(100);
                 UpdateLayout();
-                NativeRequire(Math.Abs(CommandRow.ActualHeight - 56) <= 4 && Math.Abs(Timeline.ActualHeight - 72) <= 4,
+                NativeRequire(Math.Abs(ClipBarHost.ActualHeight - Math.Max(Commands.DesiredSize.Height, ExportHost.DesiredSize.Height)) <= 4 && Math.Abs(TimelineHost.ActualHeight - 216) <= 4,
                     "Native command row/timeline differ from the mockups by more than 4 epx.");
                 var expectedRight = item.Item3;
                 if (expectedRight > 0)
                     NativeRequire(RightPane.Visibility == Visibility.Visible && Math.Abs(RightColumn.ActualWidth - expectedRight) <= 4,
                         "Native right column differs from the mockup by more than 4 epx.");
                 else NativeRequire(RightPane.Visibility == Visibility.Collapsed, "Compact mockup did not collapse the viewer first.");
-                observations.Add(new { Width = item.Item1, Theme = item.Item4.ToString(), Command = CommandRow.ActualHeight,
+                observations.Add(new { Width = item.Item1, Theme = item.Item4.ToString(), Command = ClipBarHost.ActualHeight,
                     Timeline = Timeline.ActualHeight, Right = RightColumn.ActualWidth, expectedRight, RightVisible = RightPane.Visibility.ToString() });
                 var label = $"layout-{item.Item1}-{item.Item3}-{item.Item4}";
                 if (expectedRight > 0)
@@ -257,7 +257,7 @@ public sealed partial class EditorPage
         }
         NativeRequire(focus.Contains("What should change?"), "F6 skipped the open Rewrite panel.");
         var geometry = new { Window = new { window.AppWindow.Size.Width, window.AppWindow.Size.Height },
-            CommandRow = new { CommandRow.ActualWidth, CommandRow.ActualHeight }, Timeline = new { Timeline.ActualWidth, Timeline.ActualHeight },
+            ClipBarHost = new { ClipBarHost.ActualWidth, ClipBarHost.ActualHeight }, Timeline = new { Timeline.ActualWidth, Timeline.ActualHeight },
             RightColumn = new { RightPane.ActualWidth, RightPane.ActualHeight }, Rewrite = new { panel.ActualWidth, panel.ActualHeight },
             focus, Diff = rewrite.Review?.AccessibleDescription, Absorbed = rewrite.Review?.Diff.Hunks.SelectMany(hunk => hunk.AbsorbedItemIds).ToArray() };
         await File.WriteAllTextAsync(Path.Combine(output, "rewrite-geometry.json"), JsonSerializer.Serialize(geometry, new JsonSerializerOptions { WriteIndented = true }));

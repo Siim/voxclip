@@ -253,7 +253,7 @@ public sealed class RoundThreeTests
     [Fact]
     public void FocusCycleHasTheRequiredOrderAndWrapsBothWays()
     {
-        Assert.Equal(new[] { EditorFocusRegion.Pane, EditorFocusRegion.CommandBar, EditorFocusRegion.Transcript, EditorFocusRegion.Viewer, EditorFocusRegion.Captions, EditorFocusRegion.Timeline }, FocusCycle.Regions(true));
+        Assert.Equal(new[] { EditorFocusRegion.Pane, EditorFocusRegion.Tabs, EditorFocusRegion.CommandBar, EditorFocusRegion.Transcript, EditorFocusRegion.Viewer, EditorFocusRegion.Captions, EditorFocusRegion.Timeline, EditorFocusRegion.Status }, FocusCycle.Regions(true));
         Assert.Equal(new[] { 1, 2, 3, 4, 5, 0 }, FocusCycle.NextIndices(0, 6, false));
         Assert.Equal(new[] { 5, 4, 3, 2, 1, 0 }, FocusCycle.NextIndices(0, 6, true));
         Assert.DoesNotContain(EditorFocusRegion.Viewer, FocusCycle.Regions(false));

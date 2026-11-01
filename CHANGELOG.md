@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Windows gains an Explorer workspace, preview/pinned clip tabs, local one-step Tighten, inline Rename and a Ctrl+K command palette; changing tabs no longer dirties a project or consumes Undo.
+
 - Inline transcription, API-key approval and Voice review now share the integrated workspace without extra sheets; quotes track pending corrections, in-flight paid work retains its discard protection, chosen takes survive retries, playback and audition stop each other, and monthly spend updates during review.
 
 - Inline review questions keep their panel alive and return the keyboard to the transcript or field after Keep Working.

@@ -1,18 +1,10 @@
 <Page x:Class="VoxClip.App.Pages.EditorPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:VoxClip.App.Controls" xmlns:local="using:VoxClip.App.Pages" xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
-    <!-- Rows (delta §3.3): the command row (56), the work area and the timeline (72). -->
     <Grid x:Name="EditorRoot" KeyDown="EditorKeyDown" SizeChanged="EditorSizeChanged">
-        <Grid.RowDefinitions><RowDefinition Height="56"/><RowDefinition Height="*"/><RowDefinition Height="72"/></Grid.RowDefinitions>
-        <!-- Command row (delta §3.5): the title over the edit summary, the commands, then the one accent Export. -->
-        <Grid x:Name="CommandRow" Padding="16,0" ColumnSpacing="12" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,0,0,1">
-            <!-- The bar takes the star column so its dynamic overflow sees the room it has; the heading truncates past 360. -->
-            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MaxWidth="360"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="{x:Bind ViewModel.Title, Mode=OneWay}" Style="{StaticResource TitleTextBlockStyle}" FontSize="18" LineHeight="24" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-                <TextBlock Text="{x:Bind ViewModel.SummaryLine, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.SummaryTooltip, Mode=OneWay}" FontSize="12" LineHeight="16"
-                    Foreground="{ThemeResource VcTextSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-            </StackPanel>
-            <CommandBar x:Name="Commands" Grid.Column="1" DefaultLabelPosition="Right" IsDynamicOverflowEnabled="True" Background="Transparent" VerticalAlignment="Center" HorizontalAlignment="Right">
-                <CommandBar.Resources>
+        <Grid.RowDefinitions><RowDefinition Height="Auto" MinHeight="34"/><RowDefinition Height="*"/><RowDefinition x:Name="TimelineRow" Height="216" MinHeight="72"/></Grid.RowDefinitions>
+        <Grid x:Name="ClipBarHost" Padding="8,0" ColumnSpacing="8" Background="{ThemeResource VcBgSurfaceBrush}" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,0,0,1">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <controls:ClipBar x:Name="Commands" DefaultLabelPosition="Right" IsDynamicOverflowEnabled="True" Background="Transparent" VerticalAlignment="Center" HorizontalAlignment="Stretch">
+                <controls:ClipBar.Resources>
                     <ResourceDictionary>
                         <!-- The checked Viewer toggle takes the subtle fill, so the page keeps one accent block (delta §3.5). -->
                         <ResourceDictionary.ThemeDictionaries>
@@ -42,12 +34,17 @@
                             </ResourceDictionary>
                         </ResourceDictionary.ThemeDictionaries>
                     </ResourceDictionary>
-                </CommandBar.Resources>
+                </controls:ClipBar.Resources>
                 <!-- Restore cuts, then Tighten pauses, move to the overflow first as the row narrows (delta §3.7). -->
-                <AppBarButton Icon="Cut" Label="{x:Bind ViewModel.FillerLabel, Mode=OneWay}" IsEnabled="{x:Bind ViewModel.Summary.CanCutFillers, Mode=OneWay}" Click="FillersClicked" ToolTipService.ToolTip="Cut fillers (Ctrl+Shift+U)" DynamicOverflowOrder="3"/>
-                <AppBarButton Icon="Clock" Label="Tighten pauses" IsEnabled="{x:Bind ViewModel.Summary.CanTighten, Mode=OneWay}" Click="PausesClicked" ToolTipService.ToolTip="Tighten pauses (Ctrl+Shift+P)" DynamicOverflowOrder="2"/>
-                <AppBarButton Icon="Undo" Label="Restore cuts" IsEnabled="{x:Bind ViewModel.Summary.HasEdits, Mode=OneWay}" Click="RestoreClicked" ToolTipService.ToolTip="Restore cuts (Ctrl+Shift+R)" DynamicOverflowOrder="1"/>
-                <AppBarSeparator/>
+                <AppBarButton x:Name="TightenCommand" Icon="Trim" Label="Tighten" Click="TightenClicked" ToolTipService.ToolTip="Cut fillers and tighten pauses in this scope (local, one Undo)" DynamicOverflowOrder="2"/>
+                <AppBarButton x:Name="HookCommand" Icon="Find" Label="Hook" Click="HookClicked" IsEnabled="False" DynamicOverflowOrder="3"/>
+                <AppBarElementContainer x:Name="AskHost" DynamicOverflowOrder="1">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock Text="Ask" VerticalAlignment="Center" FontSize="13"/>
+                        <TextBox x:Name="ShellAsk" MinWidth="120" MaxWidth="220" PlaceholderText="What should change?" AutomationProperties.Name="Ask about the current scope" KeyDown="ShellAskKeyDown"/>
+                        <Button x:Name="AskButton" Content="Rewrite" Click="ShellAskClicked" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Open Rewrite with this instruction"/>
+                    </StackPanel>
+                </AppBarElementContainer>
                 <AppBarButton x:Name="FindClipsCommand" Label="Find clips" Click="FindClipsClicked" ToolTipService.ToolTip="Find clips (Ctrl+Shift+K)" DynamicOverflowOrder="4">
                     <AppBarButton.Icon><FontIcon Glyph="&#xE721;"/></AppBarButton.Icon>
                 </AppBarButton>
@@ -55,8 +52,12 @@
                     <ProgressRing x:Name="FindClipsBusy" Width="16" Height="16" Margin="4,0" IsActive="False" Foreground="{ThemeResource VcAccentTextBrush}" AutomationProperties.Name="Finish the current task first."/>
                 </AppBarElementContainer>
                 <AppBarToggleButton x:Name="Viewer" Icon="OpenPane" Label="Viewer" IsChecked="True" Click="ViewerClicked" ToolTipService.ToolTip="Show or hide the viewer (Ctrl+Shift+I)" DynamicOverflowOrder="5"/>
-                <CommandBar.SecondaryCommands>
-                    <AppBarButton x:Name="MakeClipCommand" Label="Make clip" KeyboardAcceleratorTextOverride="Ctrl+K" IsEnabled="False" Click="MakeClipClicked"/>
+                <controls:ClipBar.SecondaryCommands>
+                    <AppBarButton Label="Cut fillers" Click="FillersClicked" KeyboardAcceleratorTextOverride="Ctrl+Shift+U"/>
+                    <AppBarButton Label="Tighten pauses" Click="PausesClicked" KeyboardAcceleratorTextOverride="Ctrl+Shift+P"/>
+                    <AppBarButton Label="Restore cuts" Click="RestoreClicked" KeyboardAcceleratorTextOverride="Ctrl+Shift+R"/>
+                    <AppBarButton Label="Show or hide timeline" Click="TimelineClicked" KeyboardAcceleratorTextOverride="Ctrl+J"/>
+                    <AppBarButton x:Name="MakeClipCommand" Label="Make clip" KeyboardAcceleratorTextOverride="Ctrl+Alt+K" IsEnabled="False" Click="MakeClipClicked"/>
                     <AppBarButton x:Name="RewriteCommand" Label="Rewrite…" KeyboardAcceleratorTextOverride="Ctrl+R" IsEnabled="False" Visibility="Collapsed" Click="RewriteClicked"/>
                     <AppBarButton Label="Cut selection" KeyboardAcceleratorTextOverride="Delete" Click="CutSelectionClicked"/>
                     <AppBarButton Label="Restore selection" KeyboardAcceleratorTextOverride="Shift+Backspace" Click="RestoreSelectionClicked"/>
@@ -64,8 +65,8 @@
                     <AppBarButton Label="Play from here" KeyboardAcceleratorTextOverride="Shift+Space" Click="PlayFromHereClicked"/>
                     <AppBarButton x:Name="PreviewCutCommand" Label="Preview This Cut" KeyboardAcceleratorTextOverride="P" IsEnabled="False" Click="PreviewCutClicked"/>
                     <AppBarButton Label="Forward 3 seconds" Click="ForwardClicked"/>
-                    <AppBarToggleButton x:Name="ShowCuts" Label="Show cut words" KeyboardAcceleratorTextOverride="Ctrl+Shift+H" IsChecked="True" Click="DisplayChanged"/>
-                    <AppBarToggleButton x:Name="ShowPauses" Label="Show pauses" IsChecked="True" Click="DisplayChanged"/>
+                    <AppBarToggleButton x:Name="ShowCuts" Label="Show cuts" KeyboardAcceleratorTextOverride="Ctrl+Alt+C" IsChecked="False" Click="DisplayChanged"/>
+                    <AppBarToggleButton x:Name="ShowPauses" Label="Show pauses" IsChecked="False" Click="DisplayChanged"/>
                     <AppBarButton Label="Find" KeyboardAcceleratorTextOverride="Ctrl+F" Click="FindClicked"/>
                     <AppBarButton Label="Undo" KeyboardAcceleratorTextOverride="Ctrl+Z" Click="UndoClicked"/>
                     <AppBarButton Label="Redo" KeyboardAcceleratorTextOverride="Ctrl+Y" Click="RedoClicked"/>
@@ -74,11 +75,11 @@
                     <AppBarButton Label="Show project file" Click="ShowProjectClicked"/>
                     <AppBarButton Label="Transcribe again…" Click="TranscribeAgainClicked"/>
                     <AppBarButton Label="Keyboard shortcuts" KeyboardAcceleratorTextOverride="F1" Click="ShortcutsClicked"/>
-                </CommandBar.SecondaryCommands>
-            </CommandBar>
+                </controls:ClipBar.SecondaryCommands>
+            </controls:ClipBar>
             <!-- A disabled button shows no tooltip, so the reason sits on this host. -->
-            <Border x:Name="ExportHost" Grid.Column="2" Background="Transparent" VerticalAlignment="Center">
-                <Button x:Name="ExportButton" Content="Export video…" Style="{StaticResource AccentButtonStyle}" Height="40" Padding="16,0" CornerRadius="{StaticResource VcRadiusControlCornerRadius}" Click="ExportClicked"/>
+            <Border x:Name="ExportHost" Grid.Column="1" Background="Transparent" VerticalAlignment="Center">
+                <Button x:Name="ExportButton" Content="Export video…" Style="{StaticResource AccentButtonStyle}" MinHeight="32" Padding="8,0" CornerRadius="{StaticResource VcRadiusControlCornerRadius}" Click="ExportClicked"/>
             </Border>
         </Grid>
         <!-- Work area (delta §3.3): the transcript, the viewer splitter, then the right column (300-560). -->
@@ -86,7 +87,7 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="TranscriptColumn" Width="*" MinWidth="{StaticResource VcLayoutTranscriptMinWidth}"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition x:Name="RightColumn" Width="388" MinWidth="{StaticResource VcSizeRightColumnMin}" MaxWidth="{StaticResource VcSizeRightColumnMax}"/>
+                <ColumnDefinition x:Name="RightColumn" Width="404" MinWidth="{StaticResource VcSizeRightColumnMin}" MaxWidth="{StaticResource VcSizeRightColumnMax}"/>
             </Grid.ColumnDefinitions>
             <Grid x:Name="TranscriptPane" RowSpacing="8">
                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
@@ -193,7 +194,7 @@
                 <Grid x:Name="CaptionsHost" Grid.Row="2" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,1,0,0"/>
             </Grid>
         </Grid>
-        <Border Grid.Row="2" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,1,0,0">
+        <Border x:Name="TimelineHost" Grid.Row="2" BorderBrush="{ThemeResource VcLineDefaultBrush}" BorderThickness="0,1,0,0">
             <controls:TimelineView x:Name="Timeline"/>
         </Border>
     </Grid>

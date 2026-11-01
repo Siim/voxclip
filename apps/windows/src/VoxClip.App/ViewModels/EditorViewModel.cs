@@ -135,7 +135,8 @@ public sealed class EditorViewModel : ObservableObject
     }
 
     public Project Project => project;
-    private static string DirtyIdentity(Project snapshot) => System.Text.Json.JsonSerializer.Serialize(snapshot, ProjectJsonContext.Default.Project);
+    private static string DirtyIdentity(Project snapshot) => System.Text.Json.JsonSerializer.Serialize(
+        snapshot with { Edits = snapshot.Edits with { ActiveClipId = null } }, ProjectJsonContext.Default.Project);
     public bool IsDirty => !ReferenceEquals(project, savedProject) && DirtyIdentity(project) != savedJson;
     internal void MarkSaved(Project snapshot)
     {
@@ -265,8 +266,22 @@ public sealed class EditorViewModel : ObservableObject
 
     public bool Apply(EditOperation operation)
     {
+        if (operation is EditOperation.SetActiveClip scope) return !IsReadOnly && SetScope(scope.Id);
         if (!ApplyBatch([operation])) return false;
         Announcement?.Invoke(this, operation is EditOperation.RestoreCuts ? "Restored all cuts, corrections kept" : SummaryLine);
+        return true;
+    }
+
+    internal bool IsScopeChange { get; private set; }
+    public bool SetScope(string? clipId)
+    {
+        if (isLeaving || state is null || state.ActiveClipId == clipId || clipId is not null && !state.Clips.Any(clip => clip.Id == clipId)) return false;
+        CaptionDrag.Cancel();
+        state = state with { ActiveClipId = clipId };
+        project = project with { Edits = project.Edits with { ActiveClipId = clipId } };
+        IsScopeChange = true;
+        try { Refresh(); }
+        finally { IsScopeChange = false; }
         return true;
     }
 
@@ -359,13 +374,13 @@ public sealed class EditorViewModel : ObservableObject
     public string? MakeClip()
     {
         if (!HasSelection) { Notice = "Select words to make a clip. No key or account is needed."; return null; }
-        if (isLeaving) return null;
+        if (isLeaving || IsReadOnly || Busy) return null;
         var start = Words[SelectionStart].Id;
         var end = Words[SelectionEnd].Id;
         if (Clips.FirstOrDefault(clip => clip.Clip.StartWordId == start && clip.Clip.EndWordId == end) is { } existing)
         {
             Notice = "";
-            ApplyBatch([new EditOperation.SetActiveClip(existing.Id)]);
+            SetScope(existing.Id);
             Announcement?.Invoke(this, $"Clip {Number(existing.Id)} already covers these words.");
             return existing.Id;
         }
@@ -453,7 +468,7 @@ public sealed class EditorViewModel : ObservableObject
         if (kept.Count == 0) return;
         var active = kept.ToList().FindIndex(clip => clip.Id == state?.ActiveClipId);
         var next = Math.Clamp(active + delta, 0, kept.Count - 1);
-        Apply(new EditOperation.SetActiveClip(kept[next].Id)); Select(Index(kept[next].Clip.StartWordId));
+        SetScope(kept[next].Id); Select(Index(kept[next].Clip.StartWordId));
     }
     public void SetShareCaption(string targetId, string text)
     {

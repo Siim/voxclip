@@ -341,12 +341,12 @@ public sealed class ViewModelTests
     {
         // Design §11.1: these act from the sidebar pane while an editor is attached; single-letter keys and text shortcuts
         // (Ctrl+A, Ctrl+C, Ctrl+F) stay with the editor.
-        Assert.Equal(["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+R", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"], ShortcutPolicy.PaneGestures);
+        Assert.Equal(["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+R", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"], ShortcutPolicy.PaneGestures);
         // EditorPage files each accelerator under VirtualKey.ToString() and its modifiers; MainWindow parses the same strings.
         Assert.Equal("Ctrl+Shift+Z", ShortcutPolicy.Gesture("Z", true, true));
         Assert.Equal("Ctrl+E", ShortcutPolicy.Gesture("E", true, false));
         Assert.Equal("F1", ShortcutPolicy.Gesture("F1", false, false));
-        Assert.True(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("K", true, false)));
+        Assert.False(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("K", true, false)));
         Assert.True(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("R", true, true)));
         foreach (var gesture in new[] { "Ctrl+A", "Ctrl+C", "Ctrl+F", "Ctrl+Shift+H", "Delete", "Space", "K", "I", "O", "ctrl+z", "Shift+Z" })
             Assert.False(ShortcutPolicy.PaneForwards(gesture), gesture);

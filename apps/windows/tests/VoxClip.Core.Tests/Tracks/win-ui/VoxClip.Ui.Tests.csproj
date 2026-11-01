@@ -53,6 +53,7 @@
     <Compile Include="RelinkViewModelTests.cs" />
     <Compile Include="CaptionTileStateTests.cs" />
     <Compile Include="ShellViewModelTests.cs" />
+    <Compile Include="WindowsShellV2Tests.cs" />
     <Compile Include="ShellNavigationTests.cs" />
     <Compile Include="HomeViewModelTests.cs" />
     <Compile Include="ClipSemanticsTests.cs" />

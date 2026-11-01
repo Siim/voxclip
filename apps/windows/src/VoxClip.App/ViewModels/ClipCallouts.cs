@@ -14,7 +14,7 @@ public static class ClipCallouts
 
     /// <summary>§13 "Clips: no connector".</summary>
     public static SidebarCallout NoConnector { get; } = new("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.",
-        "You can also select words and press Ctrl+K to make a clip yourself.", SetUp);
+        "You can also select words and press Ctrl+Alt+K to make a clip yourself.", SetUp);
 
     /// <summary>The connector llm.connector names now (AI spec §11 gate 4), from the catalogue's entries; null when the setting
     /// is empty or names no connector this PC offers, which is §13 "Clips: no connector".</summary>

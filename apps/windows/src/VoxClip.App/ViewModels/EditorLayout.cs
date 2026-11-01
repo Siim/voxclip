@@ -12,9 +12,8 @@ public static class EditorLayout
     /// <summary>The Frame row's order, 9:16 · 1:1 · 16:9 · Original; export.aspect keeps its persisted values.</summary>
     public static IReadOnlyList<ExportAspect> Frames { get; } = [ExportAspect.Portrait, ExportAspect.Square, ExportAspect.Landscape, ExportAspect.Source];
 
-    /// <summary>The right column's default width, clamp(388 − (1440 − W) × 0.25, min, max) for window width W:
-    /// 388 at 1440 and 348 at 1280.</summary>
-    public static double RightColumnWidth(double windowWidth, double min, double max) => Math.Clamp(388 - (1440 - windowWidth) * 0.25, min, max);
+    /// <summary>The v2 right column follows 404 + (W − 1280) × 0.25 within the existing native splitter limits.</summary>
+    public static double RightColumnWidth(double windowWidth, double min, double max) => Math.Clamp(404 + (windowWidth - 1280) * 0.25, min, max);
 
     /// <summary>The width ui.rightColumnWidth holds, kept to the column's own range (300–560 from the tokens; the schema
     /// allows 240–720), or null when the user has never moved the splitter and the column follows

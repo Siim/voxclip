@@ -87,7 +87,7 @@ public sealed class EditorLayoutTests
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
         var page = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.NativeProbe.cs"));
         var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.FitProbe.cs"));
-        Assert.Contains("(1280, 800, 348", page);
+        Assert.Contains("(1280, 800, 404", page);
         Assert.Contains("(1440, 900, 300", page);
         Assert.Contains("(1440, 900, 560", page);
         Assert.Contains("(760, 600, 300", page);
@@ -121,12 +121,12 @@ public sealed class EditorLayoutTests
     }
 
     // Tokens.xaml: VcSizeRightColumnMin, VcSizeRightColumnMax; Workspace.xaml: VcLayoutTranscriptMinWidth; the splitter is 12.
-    private const double Min = 300, Max = 560, TranscriptMin = 588, Splitter = 12, Pane = 264;
+    private const double Min = 300, Max = 560, TranscriptMin = 588, Splitter = 12, Pane = 224;
 
     [Theory]
-    [InlineData(1440, 388)]
-    [InlineData(1280, 348)]
-    [InlineData(1024, 300)]
+    [InlineData(1440, 444)]
+    [InlineData(1280, 404)]
+    [InlineData(1024, 340)]
     [InlineData(2400, 560)]
     public void RightColumnFollowsTheWindowWidth(double window, double expected) => Assert.Equal(expected, EditorLayout.RightColumnWidth(window, Min, Max));
 
@@ -172,9 +172,8 @@ public sealed class EditorLayoutTests
     [Fact]
     public void AtTheDefaultWidthsTheMeasuresMatchTheBoard()
     {
-        // editor-light.png: the right column is 388 at 1440; editor-1280-light.png: 348, leaving the transcript 1280 − 264 − 12 − 348.
-        Assert.Equal(656, 1280 - Pane - Splitter - EditorLayout.RightColumnWidth(1280, Min, Max));
-        Assert.Equal(776, 1440 - Pane - Splitter - EditorLayout.RightColumnWidth(1440, Min, Max));
+        Assert.Equal(640, 1280 - Pane - Splitter - EditorLayout.RightColumnWidth(1280, Min, Max));
+        Assert.Equal(760, 1440 - Pane - Splitter - EditorLayout.RightColumnWidth(1440, Min, Max));
     }
 
     [Theory]

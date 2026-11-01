@@ -115,8 +115,7 @@ public sealed partial class EditorPage : Page
         pauseBreath = App.Services.Get("editing.pauseBreath", "natural");
         App.Services.SettingsChanged += EditorSettingsChanged;
         Transcript.Attach(ViewModel);
-        Transcript.RewriteRequested += (_, _) => _ = RunAsync(() => OpenRewriteAsync(false), "Rewrite");
-        Transcript.InsertWordsRequested += (_, _) => _ = RunAsync(() => OpenRewriteAsync(true), "Rewrite");
+        Transcript.RewriteRequested += (_, _) => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
         Timeline.Attach(ViewModel);
         CaptionDrag.Attach(ViewModel);
         Transcript.SeekRequested += (_, _) => _ = RunAsync(() => SeekSourceAsync(ViewModel.SourceTime), "Preview");
@@ -151,6 +150,7 @@ public sealed partial class EditorPage : Page
         }
         if (mediaPath is null || demo) ViewModel.Notice = EditorMediaPresentation.Notice(mediaState, EditorMediaPresentation.FileName(project.Media.Source.AbsolutePath));
         ready = true;
+        InitializeShell();
         projectWrites.Mark(ViewModel.Project);
         UpdateAiTag();
         UpdateExport();
@@ -299,13 +299,20 @@ public sealed partial class EditorPage : Page
     /// <summary>Make clip needs words selected (design §6.2).</summary>
     private void SelectionChanged(object? sender, EventArgs args)
     {
-        MakeClipCommand.IsEnabled = ViewModel.HasSelection;
+        MakeClipCommand.IsEnabled = ViewModel.HasSelection && !ViewModel.IsReadOnly && !ViewModel.Busy && !ViewModel.IsLeaving;
         PreviewCutCommand.IsEnabled = ViewModel.CanPreviewCut;
         UpdateRewriteCommand();
+        UpdateShellChrome();
         if (ready && ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
     }
     private void UpdateRewriteCommand()
     {
+        if (shellInitialized && shellJobs is not null)
+        {
+            RewriteCommand.Visibility = Visibility.Visible;
+            RewriteCommand.IsEnabled = ShellJobAvailable(ShellJob.Rewrite);
+            return;
+        }
         RewriteCommand.Visibility = App.Services.VoiceLabEnabled ? Visibility.Visible : Visibility.Collapsed;
         RewriteCommand.IsEnabled = App.Services.VoiceLabEnabled && Transcript.CanRewrite;
     }
@@ -344,9 +351,10 @@ public sealed partial class EditorPage : Page
         UpdateAiTag();
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         UpdateFindClips();
+        UpdateShellChrome();
         _ = RunAsync(UpdatePreviewAsync, "Preview");
         if (ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
-        if (!ViewModel.IsRelinking) SaveRequested(sender, args);
+        if (!ViewModel.IsRelinking && !ViewModel.IsScopeChange) SaveRequested(sender, args);
     }
     private void SaveRequested(object? sender, EventArgs args)
     {
@@ -393,6 +401,7 @@ public sealed partial class EditorPage : Page
         try
         {
             var path = owner.ProjectPath;
+            if (projectWrites.HasChanges && !ViewModel.IsReadOnly) projectWrites.Mark(ViewModel.Project);
             if (path is not null) await projectWrites.FlushAsync((project, token) => App.Services.Projects.SaveAsync(project, path, token), ct);
         }
         finally { saves.Release(); }
@@ -499,6 +508,11 @@ public sealed partial class EditorPage : Page
         catch (Exception exception) { if (!disposed) ViewModel.Notice = UiError.Message(exception, label); }
     }
     private void FillersClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.CutFillers());
+    private void TightenClicked(object sender, RoutedEventArgs args) => TightenScope();
+    private void TimelineClicked(object sender, RoutedEventArgs args) => ToggleShellTimeline();
+    private void HookClicked(object sender, RoutedEventArgs args) => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Hook), "Hook");
+    private void ShellAskClicked(object sender, RoutedEventArgs args) => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
+    private void ShellAskKeyDown(object sender, KeyRoutedEventArgs args) => HandleShellAskKeyDown(sender, args);
     private void PausesClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.TightenPauses());
     private void RestoreClicked(object sender, RoutedEventArgs args) => ViewModel.Apply(new EditOperation.RestoreCuts());
     private void UndoClicked(object sender, RoutedEventArgs args) => ViewModel.Undo();
@@ -506,17 +520,17 @@ public sealed partial class EditorPage : Page
     /// <summary>Make a clip, then select its pane row; the transcript keeps its selection (design §6.2).</summary>
     private void MakeClipAndReveal()
     {
+        if (!ready || ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving) return;
         if (ViewModel.MakeClip() is { } id) owner.RevealClip(id);
     }
     private void MakeClipClicked(object sender, RoutedEventArgs args) => MakeClipAndReveal();
     private async void RewriteClicked(object sender, RoutedEventArgs args)
     {
-        if (!App.Services.VoiceLabEnabled) return;
-        await RunAsync(() => { Transcript.RequestRewrite(); return Task.CompletedTask; }, "Rewrite");
+        await RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite");
     }
-    private async Task OpenRewriteAsync(bool insertion)
+    private async Task OpenRewriteAsync(bool insertion, string? instruction = null)
     {
-        if (!App.Services.VoiceLabEnabled ||
+        if (!App.Services.VoiceLabEnabled || insertion ||
             ViewModel.IsReadOnly || ViewModel.Busy || ViewModel.IsLeaving || rightContent is null ||
             (insertion ? Transcript.InsertionAfterIndex < 0 : !ViewModel.HasSelection)) return;
         rewrite?.Dispose();
@@ -552,6 +566,7 @@ public sealed partial class EditorPage : Page
                 (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model));
         ConfigureRewriteGeneration(rewrite);
         var panel = new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner);
+        if (instruction is not null && panel.FocusTarget is TextBox field) field.Text = instruction;
         panel.Closed += (_, _) =>
         {
             var insidePanel = InputState.DescendsFrom(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject, panel);
@@ -699,7 +714,7 @@ public sealed partial class EditorPage : Page
     internal void MakeClipFromPane() => MakeClipAndReveal();
     /// <summary>Open Find clips at the control that asked for it: the pane action, its callout or the page's button.</summary>
     internal void ShowFindClips(FrameworkElement? anchor) =>
-        _ = RunAsync(() => FindClips.ShowAsync(anchor ?? (FindClipsCommand.IsInOverflow ? Commands : FindClipsCommand)), "Find clips");
+        _ = RunAsync(() => OpenShellJobAsync(ShellJob.FindClips, anchor: anchor), "Find clips");
     /// <summary>The F6 regions after the sidebar (design §16): the command row, the transcript, the viewer (with its splitter
     /// and frame row) and Captions while the right column shows, then the timeline. MainWindow runs the cycle.</summary>
     internal IEnumerable<(FrameworkElement[] Areas, Func<Control?> Target)> FocusRegions()
@@ -708,7 +723,8 @@ public sealed partial class EditorPage : Page
         {
             switch (region)
             {
-                case EditorFocusRegion.CommandBar: yield return ([CommandRow], () => FocusManager.FindFirstFocusableElement(Commands) as Control ?? ExportButton); break;
+                case EditorFocusRegion.Tabs: yield return ([Tabs], () => Tabs.SelectedItem as Control); break;
+                case EditorFocusRegion.CommandBar: yield return ([ClipBarHost], () => FocusManager.FindFirstFocusableElement(Commands) as Control ?? ExportButton); break;
                 case EditorFocusRegion.Transcript: yield return ([TranscriptPane], () => Transcript); break;
                 case EditorFocusRegion.Viewer: yield return ([ViewerSplitter, PreviewPane, FrameRow], () => PreviewPlay); break;
                 case EditorFocusRegion.Captions: if (rightContent is { } column) yield return ([CaptionsHost], () => column.FocusTarget); break;
@@ -723,6 +739,7 @@ public sealed partial class EditorPage : Page
     private void UpdateFindClips()
     {
         FindClipsCommand.IsEnabled = ViewModel.CanFindClips;
+        if (shellInitialized && shellJobs is not null) FindClipsCommand.IsEnabled = ShellJobAvailable(ShellJob.FindClips);
         FindClipsBusy.IsActive = ViewModel.LlmRuns.IsBusy;
         FindClipsBusyHost.Visibility = ViewModel.LlmRuns.IsBusy ? Visibility.Visible : Visibility.Collapsed;
         UpdateRewriteCommand();
@@ -734,7 +751,7 @@ public sealed partial class EditorPage : Page
     /// the transcript keeps its selection, as after making a clip.</summary>
     internal void SelectScope(string? clipId, bool keepSelection = false)
     {
-        ViewModel.Apply(new EditOperation.SetActiveClip(clipId));
+        ViewModel.SetScope(clipId);
         if (!keepSelection && clipId is not null && ViewModel.State?.ActiveClipId == clipId && ViewModel.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } row)
         {
             ViewModel.Select(ViewModel.Index(row.Clip.StartWordId));
@@ -758,7 +775,11 @@ public sealed partial class EditorPage : Page
         previewStop = range.End;
         await preview.PlayAsync(lifetime.Token);
     }
-    private void DisplayChanged(object sender, RoutedEventArgs args) => Transcript.SetDisplay(ShowCuts.IsChecked == true, ShowPauses.IsChecked == true);
+    private void DisplayChanged(object sender, RoutedEventArgs args)
+    {
+        Transcript.SetDisplay(ShowCuts.IsChecked == true, ShowPauses.IsChecked == true);
+        timelineShowCuts?.Invoke(ShowCuts.IsChecked == true);
+    }
     private void FindClicked(object sender, RoutedEventArgs args) { FindBar.Visibility = Visibility.Visible; SearchText.Focus(FocusState.Programmatic); }
     private void CloseFindClicked(object sender, RoutedEventArgs args) { FindBar.Visibility = Visibility.Collapsed; Transcript.Focus(FocusState.Programmatic); }
     private IReadOnlyList<string> Matches() => string.IsNullOrWhiteSpace(SearchText.Text) ? [] : ViewModel.Words.Where(word => ViewModel.DisplayText(word).Contains(SearchText.Text, StringComparison.OrdinalIgnoreCase)).Select(word => word.Id).ToArray();
@@ -791,10 +812,10 @@ public sealed partial class EditorPage : Page
     }, "Save project");
     private void ShowProjectClicked(object sender, RoutedEventArgs args) { if (owner.ProjectPath is { } path) ShareHelpers.Reveal(path); }
     /// <summary>Export video… for Full take; Export clip… opens Export with only the active clip chosen (design §2 step 7).</summary>
-    private async void ExportClicked(object sender, RoutedEventArgs args) => await ExportAsync(ViewModel.State?.ActiveClipId);
+    private async void ExportClicked(object sender, RoutedEventArgs args) => await OpenExportTargetAsync(ViewModel.State?.ActiveClipId);
     /// <summary>A kept clip row's "Export clip…": Export opens with only that clip chosen (design §6.2).</summary>
-    internal Task ExportClipAsync(string clipId) => ExportAsync(clipId);
-    internal Task RetryExportAsync(string? clipId) => ExportAsync(clipId);
+    internal Task ExportClipAsync(string clipId) => OpenExportTargetAsync(clipId);
+    internal Task RetryExportAsync(string? clipId) => OpenExportTargetAsync(clipId);
     private Task ExportAsync(string? clipId) => RunAsync(async () =>
     {
         // Ctrl+E and the row's Export clip… stop where the button is disabled, and say why. A row's clip need not be the
@@ -851,8 +872,7 @@ public sealed partial class EditorPage : Page
         Add(VirtualKey.Z, VirtualKeyModifiers.Control, ViewModel.Undo);
         Add(VirtualKey.Y, VirtualKeyModifiers.Control, ViewModel.Redo);
         Add(VirtualKey.Z, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, ViewModel.Redo);
-        Add(VirtualKey.K, VirtualKeyModifiers.Control, MakeClipAndReveal);
-        Add(VirtualKey.R, VirtualKeyModifiers.Control, Transcript.RequestRewrite);
+        Add(VirtualKey.R, VirtualKeyModifiers.Control, () => _ = RunAsync(() => OpenShellJobAsync(ShellJob.Rewrite, ShellAsk.Text), "Rewrite"));
         Add(VirtualKey.U, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.CutFillers()));
         Add(VirtualKey.P, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.TightenPauses()));
         Add(VirtualKey.R, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => ViewModel.Apply(new EditOperation.RestoreCuts()));
@@ -874,7 +894,7 @@ public sealed partial class EditorPage : Page
     }
     private async void EditorKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (!ready || args.Key == VirtualKey.F6) return;
+        if (!ready || args.Handled || args.Key == VirtualKey.F6) return;
         if (args.Key == VirtualKey.Escape && CaptionDrag.IsDragging) { CaptionDrag.Cancel(); args.Handled = true; return; }
         var focused = FocusManager.GetFocusedElement(XamlRoot);
         var editorFocus = InputState.DescendsFrom(focused as DependencyObject, Transcript) || InputState.DescendsFrom(focused as DependencyObject, PreviewPane) || InputState.DescendsFrom(focused as DependencyObject, Timeline);
@@ -910,6 +930,7 @@ public sealed partial class EditorPage : Page
         var active = ViewModel.Clips.FirstOrDefault(clip => clip.Id == ViewModel.State?.ActiveClipId);
         var label = active is null ? "Export video…" : "Export clip…";
         var reason = ViewModel.ExportBlocked(demo, MediaPath is null || media is null, active?.Id);
+        if (reason is null && shellInitialized && !ShellJobAvailable(ShellJob.Export)) reason = "Finish the current task first.";
         ExportButton.Content = label;
         ExportButton.IsEnabled = reason is null;
         ToolTipService.SetToolTip(ExportHost, reason ?? $"{label} (Ctrl+E)");

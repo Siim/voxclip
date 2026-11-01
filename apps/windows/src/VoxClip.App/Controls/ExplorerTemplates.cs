@@ -4,8 +4,8 @@ using VoxClip.App.ViewModels;
 
 namespace VoxClip.App.Controls;
 
-/// <summary>Picks the NavigationView item template for each sidebar row; design §3.4. The templates live in MainWindow.xaml.</summary>
-public sealed partial class SidebarItems : DataTemplateSelector
+/// <summary>Picks the Explorer row template for each sidebar row; design §3.4. The templates live in MainWindow.xaml.</summary>
+public sealed partial class ExplorerTemplates : DataTemplateSelector
 {
     public DataTemplate? Home { get; set; }
     public DataTemplate? Separator { get; set; }
@@ -21,6 +21,7 @@ public sealed partial class SidebarItems : DataTemplateSelector
     public DataTemplate? Finding { get; set; }
     public DataTemplate? Callout { get; set; }
     public DataTemplate? NoneFound { get; set; }
+    public DataTemplate? Outline { get; set; }
 
     /// <summary>Fluent glyph for an action row: New clip from selection, or Find clips with AI.</summary>
     public static string ActionGlyph(string key) => key == "action:find" ? "\uE721" : "\uE710";
@@ -30,6 +31,9 @@ public sealed partial class SidebarItems : DataTemplateSelector
         SidebarKind.Home => Home,
         SidebarKind.Separator => Separator,
         SidebarKind.Project => Project,
+        SidebarKind.ClipsHeader => RecentHeader,
+        SidebarKind.OutlineHeader => RecentHeader,
+        SidebarKind.Outline => Outline,
         SidebarKind.FullTake => FullTake,
         SidebarKind.Clip => Clip,
         SidebarKind.SuggestedHeader => SuggestedHeader,

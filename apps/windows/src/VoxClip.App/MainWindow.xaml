@@ -5,79 +5,51 @@
     xmlns:vm="using:VoxClip.App.ViewModels">
     <Grid x:Name="Root" AllowDrop="True" DragEnter="FileDragOver" DragOver="FileDragOver" DragLeave="FileDragLeave" Drop="FileDropped">
         <Grid.Resources>
-            <!-- The default NavigationViewItemHeader shows Content only as text, and its theme style, which still applies under
-                 this one, disables it and hides it from Narrator. This keeps its pane states, hosts content and keeps the
-                 content's buttons enabled and named (design §3.4, §13). -->
-            <Style x:Key="SidebarHeaderStyle" TargetType="NavigationViewItemHeader">
-                <Setter Property="Foreground" Value="{ThemeResource NavigationViewItemHeaderForeground}" />
-                <Setter Property="IsEnabled" Value="True" />
-                <Setter Property="AutomationProperties.AccessibilityView" Value="Content" />
-                <Setter Property="IsTabStop" Value="False" />
-                <Setter Property="MinHeight" Value="0" />
-                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="NavigationViewItemHeader">
-                            <Grid x:Name="NavigationViewItemHeaderRootGrid">
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroup x:Name="PaneStates">
-                                        <VisualState x:Name="HeaderTextVisible" />
-                                        <VisualState x:Name="HeaderTextCollapsed">
-                                            <VisualState.Setters>
-                                                <Setter Target="HeaderContent.Visibility" Value="Collapsed" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                    </VisualStateGroup>
-                                </VisualStateManager.VisualStateGroups>
-                                <ContentPresenter x:Name="HeaderContent" Margin="{ThemeResource NavigationViewItemInnerHeaderMargin}" MinHeight="40"
-                                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Content="{TemplateBinding Content}" />
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
             <!-- Sidebar rows, design §3.4. Clip rows carry their number on the thumbnail badge. Thumbnails are media tiles: a
                  frame, else the downscaled caption card with no plates, else stage black (design §5.4). -->
             <DataTemplate x:Key="HomeRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItem Content="{x:Bind Title, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="Home (Ctrl+1)">
-                    <NavigationViewItem.Icon><SymbolIcon Symbol="Home"/></NavigationViewItem.Icon>
-                </NavigationViewItem>
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" Content="{x:Bind Title, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="Home (Ctrl+1)">
+                </ContentControl>
             </DataTemplate>
             <DataTemplate x:Key="SeparatorRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItemSeparator/>
+                <Border Height="1" Margin="0,8" Background="{ThemeResource VcLineDefaultBrush}"/>
             </DataTemplate>
             <DataTemplate x:Key="ProjectRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <StackPanel Padding="0,10,0,6">
                         <TextBlock Text="{x:Bind Title, Mode=OneWay}" Style="{StaticResource BodyStrongTextBlockStyle}" Foreground="{ThemeResource TextFillColorPrimaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                         <TextBlock Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="Normal" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                     </StackPanel>
-                </NavigationViewItemHeader>
+                </ContentControl>
             </DataTemplate>
             <DataTemplate x:Key="FullTakeRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItem MinHeight="{x:Bind RowHeight, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="Full take (Ctrl+2)">
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" MinHeight="{x:Bind RowHeight, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="Full take (Ctrl+2)">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <controls:MediaThumbnail Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutTakeThumbHeight}" CornerRadius="3" Surface="Sidebar" Media="{x:Bind Media, Mode=OneWay}"/>
+                        <controls:MediaThumbnail Width="24" Height="24" CornerRadius="3" Surface="Sidebar" Media="{x:Bind Media, Mode=OneWay}"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" FontSize="14"/>
+                                <TextBlock Grid.Column="1" Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center"/>
+                            </Grid>
                             <!-- Meta (design §3.4): only the duration is Cascadia Mono; the status is UI text. -->
-                            <StackPanel Orientation="Horizontal" Spacing="4"><ProgressRing Width="12" Height="12" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsExporting, Mode=OneWay}" Visibility="{x:Bind IsExporting, Mode=OneWay}" AutomationProperties.Name="Exporting"/><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcTextSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}"/><Run Text="{x:Bind MetaStatus, Mode=OneWay}"/></TextBlock></StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind HasMetaStatus, Mode=OneWay}"><ProgressRing Width="12" Height="12" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsExporting, Mode=OneWay}" Visibility="{x:Bind IsExporting, Mode=OneWay}" AutomationProperties.Name="Exporting"/><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcTextSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind MetaLine, Mode=OneWay}"/></TextBlock></StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind HasExportDetail, Mode=OneWay}"><TextBlock Text="{x:Bind ExportDetail, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource VcStatusWarningBrush}"/><HyperlinkButton Content="Retry" Tag="{x:Bind ClipId}" FontSize="11" Padding="0" Click="RetryExportClicked" Tapped="RowButtonTapped" Visibility="{x:Bind ShowsRetry, Mode=OneWay}"/></StackPanel>
                         </StackPanel>
                         <HyperlinkButton Grid.Column="2" Content="Cancel" Height="32" Padding="6,0" VerticalAlignment="Center" Click="CancelTakeTranscriptionClicked" Tapped="RowButtonTapped"
                             Visibility="{x:Bind ShowsCancel, Mode=OneWay}" AutomationProperties.Name="{x:Bind CancelName, Mode=OneWay}"/>
                     </Grid>
-                </NavigationViewItem>
+                </ContentControl>
             </DataTemplate>
             <DataTemplate x:Key="ClipRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItem MinHeight="{x:Bind RowHeight, Mode=OneWay}" Tag="{x:Bind ClipId}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" MinHeight="{x:Bind RowHeight, Mode=OneWay}" Tag="{x:Bind ClipId}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
                     KeyboardAcceleratorPlacementMode="Hidden" Loaded="ScopeRowKeys">
-                    <NavigationViewItem.KeyboardAccelerators>
+                    <ContentControl.KeyboardAccelerators>
                         <KeyboardAccelerator Key="F2" Invoked="RenameClipInvoked"/>
                         <KeyboardAccelerator Key="Delete" Invoked="RemoveClipInvoked"/>
-                    </NavigationViewItem.KeyboardAccelerators>
-                    <NavigationViewItem.ContextFlyout>
+                    </ContentControl.KeyboardAccelerators>
+                    <ContentControl.ContextFlyout>
                         <MenuFlyout>
                             <!-- On Home the project's rows only navigate: the commands that act on the hidden editor are disabled. -->
                             <MenuFlyoutItem Text="Export clip…" Tag="{x:Bind ClipId}" Click="ExportClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
@@ -86,12 +58,12 @@
                             <MenuFlyoutSeparator/>
                             <MenuFlyoutItem Text="Remove clip" KeyboardAcceleratorTextOverride="Delete" Tag="{x:Bind ClipId}" Click="RemoveClipClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                         </MenuFlyout>
-                    </NavigationViewItem.ContextFlyout>
+                    </ContentControl.ContextFlyout>
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <!-- A 27x48 media tile in a 32 column; the 16 badge sits over its top-left corner at -4 with a 1 px page ring. -->
-                        <Grid Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutClipThumbHeight}">
-                            <controls:MediaThumbnail Width="{StaticResource VcLayoutClipThumbWidth}" Height="{StaticResource VcLayoutClipThumbHeight}" HorizontalAlignment="Right" CornerRadius="4" Surface="ClipRow" Media="{x:Bind Media, Mode=OneWay}"/>
+                        <Grid Width="24" Height="24">
+                            <controls:MediaThumbnail Width="24" Height="24" HorizontalAlignment="Right" CornerRadius="4" Surface="ClipRow" Media="{x:Bind Media, Mode=OneWay}"/>
                             <Border Width="16" Height="16" Margin="1,-4,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="4" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}" Background="{ThemeResource VcClipBadgeBackgroundBrush}" Visibility="{x:Bind IsNeutral, Mode=OneWay}">
                                 <TextBlock Text="{x:Bind Number, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="{StaticResource VcLayoutBadgeFontSize}" FontWeight="SemiBold" Foreground="{ThemeResource VcTextSecondaryBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
@@ -100,39 +72,43 @@
                             </Border>
                         </Grid>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-                            <StackPanel Orientation="Horizontal" Spacing="4"><ProgressRing Width="12" Height="12" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsExporting, Mode=OneWay}" Visibility="{x:Bind IsExporting, Mode=OneWay}" AutomationProperties.Name="Exporting"/><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcTextSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}"/><Run Text="{x:Bind MetaStatus, Mode=OneWay}"/></TextBlock></StackPanel>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" FontSize="14"/>
+                                <TextBlock Grid.Column="1" Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center"/>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind HasMetaStatus, Mode=OneWay}"><ProgressRing Width="12" Height="12" Foreground="{ThemeResource VcAccentTextBrush}" IsActive="{x:Bind IsExporting, Mode=OneWay}" Visibility="{x:Bind IsExporting, Mode=OneWay}" AutomationProperties.Name="Exporting"/><TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource VcTextSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind MetaLine, Mode=OneWay}"/></TextBlock></StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="4" Visibility="{x:Bind HasExportDetail, Mode=OneWay}"><TextBlock Text="{x:Bind ExportDetail, Mode=OneWay}" FontSize="11" Foreground="{ThemeResource VcStatusWarningBrush}"/><HyperlinkButton Content="Retry" Tag="{x:Bind ClipId}" FontSize="11" Padding="0" Click="RetryExportClicked" Tapped="RowButtonTapped" Visibility="{x:Bind ShowsRetry, Mode=OneWay}"/></StackPanel>
                         </StackPanel>
                     </Grid>
-                </NavigationViewItem>
+                </ContentControl>
             </DataTemplate>
             <DataTemplate x:Key="SuggestedHeaderRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <TextBlock Text="{x:Bind Title, Mode=OneWay}" VerticalAlignment="Center"/>
                         <HyperlinkButton Grid.Column="1" Content="Keep all" Height="32" Padding="6,0" Click="KeepAllClicked" Visibility="{x:Bind ShowsKeepAll, Mode=OneWay}" IsEnabled="{x:Bind Edits, Mode=OneWay}" AutomationProperties.Name="Keep all suggested clips"/>
                     </Grid>
-                </NavigationViewItemHeader>
+                </ContentControl>
             </DataTemplate>
             <DataTemplate x:Key="SuggestionRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItem MinHeight="{StaticResource VcLayoutClipRowHeight}" Tag="{x:Bind ClipId}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" MinHeight="28" Tag="{x:Bind ClipId}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}"
                     KeyboardAcceleratorPlacementMode="Hidden" Loaded="ScopeRowKeys">
-                    <NavigationViewItem.KeyboardAccelerators>
+                    <ContentControl.KeyboardAccelerators>
                         <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="KeepSuggestionInvoked"/>
                         <KeyboardAccelerator Key="Delete" Invoked="DismissSuggestionInvoked"/>
-                    </NavigationViewItem.KeyboardAccelerators>
-                    <NavigationViewItem.ContextFlyout>
+                    </ContentControl.KeyboardAccelerators>
+                    <ContentControl.ContextFlyout>
                         <MenuFlyout>
                             <MenuFlyoutItem Text="Keep clip" KeyboardAcceleratorTextOverride="Ctrl+Enter" Tag="{x:Bind ClipId}" Click="KeepClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                             <MenuFlyoutItem Text="Dismiss" KeyboardAcceleratorTextOverride="Delete" Tag="{x:Bind ClipId}" Click="DismissClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                         </MenuFlyout>
-                    </NavigationViewItem.ContextFlyout>
+                    </ContentControl.ContextFlyout>
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <Grid Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutClipThumbHeight}">
-                            <controls:MediaThumbnail Width="{StaticResource VcLayoutClipThumbWidth}" Height="{StaticResource VcLayoutClipThumbHeight}" HorizontalAlignment="Right" CornerRadius="4" Surface="ClipRow" Media="{x:Bind Media, Mode=OneWay}"/>
+                        <Grid Width="24" Height="24">
+                            <controls:MediaThumbnail Width="24" Height="24" HorizontalAlignment="Right" CornerRadius="4" Surface="ClipRow" Media="{x:Bind Media, Mode=OneWay}"/>
                             <Border Width="16" Height="16" Margin="1,-4,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="4" BorderThickness="1" BorderBrush="{ThemeResource VcBgSurfaceBrush}">
                                 <Grid>
                                     <Rectangle Fill="{ThemeResource VcBgSurfaceBrush}" Stroke="{ThemeResource VcLineStrongBrush}" StrokeThickness="1" StrokeDashArray="2,2" RadiusX="4" RadiusY="4"/>
@@ -141,8 +117,12 @@
                             </Border>
                         </Grid>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"><Run Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}"/><Run Text="{x:Bind MetaStatus, Mode=OneWay}"/></TextBlock>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" FontSize="14"/>
+                                <TextBlock Grid.Column="1" Text="{x:Bind MetaTime, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center"/>
+                            </Grid>
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" Visibility="{x:Bind HasMetaStatus, Mode=OneWay}"><Run Text="{x:Bind MetaLine, Mode=OneWay}"/></TextBlock>
                         </StackPanel>
                         <!-- Keep and Dismiss: 32x32 subtle icon buttons that never select the row. -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -152,16 +132,16 @@
                                 ToolTipService.ToolTip="Dismiss (Delete)" AutomationProperties.Name="{x:Bind DismissName, Mode=OneWay}"><FontIcon Glyph="&#xE711;" FontSize="14"/></Button>
                         </StackPanel>
                     </Grid>
-                </NavigationViewItem>
+                </ContentControl>
             </DataTemplate>
             <DataTemplate x:Key="EmptyRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <TextBlock Text="{x:Bind Title, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="Normal" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
-                </NavigationViewItemHeader>
+                </ContentControl>
             </DataTemplate>
             <!-- While Find clips runs: under Suggested, a fixed-width ring, Cancel and the connector line (design §6.2). -->
             <DataTemplate x:Key="FindingRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <ProgressRing Width="16" Height="16" IsActive="True" VerticalAlignment="Center" AutomationProperties.Name="Finding clips"/>
@@ -171,28 +151,28 @@
                         </StackPanel>
                         <HyperlinkButton Grid.Column="2" Content="Cancel" Height="32" Padding="6,0" Click="CancelFindingClicked" AutomationProperties.Name="Cancel finding clips"/>
                     </Grid>
-                </NavigationViewItemHeader>
+                </ContentControl>
             </DataTemplate>
             <!-- The last Find clips run found nothing: the prompt file's message with Find clips…, under Suggested (design §13). -->
             <DataTemplate x:Key="NoneFoundRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <StackPanel Padding="0,4">
                         <TextBlock Text="{x:Bind Title, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" FontWeight="Normal" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
                         <HyperlinkButton Content="Find clips…" Height="32" Padding="6,0" Margin="-6,0,0,0" Click="FindClipsAgainClicked" IsEnabled="{x:Bind Edits, Mode=OneWay}"/>
                     </StackPanel>
-                </NavigationViewItemHeader>
+                </ContentControl>
             </DataTemplate>
             <!-- No connector, or a problem finding clips: a callout under the actions with its one action (design §13). -->
             <DataTemplate x:Key="CalloutRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItemHeader Style="{StaticResource SidebarHeaderStyle}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}">
                     <InfoBar IsOpen="True" Severity="Informational" Title="{x:Bind Title, Mode=OneWay}" Message="{x:Bind Detail, Mode=OneWay}" CloseButtonClick="CalloutClosed">
                         <InfoBar.ActionButton><Button Content="{x:Bind Action, Mode=OneWay}" Click="CalloutActionClicked" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" Visibility="{x:Bind HasAction, Mode=OneWay}"/></InfoBar.ActionButton>
                     </InfoBar>
-                </NavigationViewItemHeader>
+                </ContentControl>
             </DataTemplate>
             <!-- A disabled item shows no tooltip, so the reason is also its help text (design §7.1). -->
             <DataTemplate x:Key="ActionRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItem SelectsOnInvoked="False" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" AutomationProperties.AcceleratorKey="{x:Bind Detail, Mode=OneWay}"
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" IsEnabled="{x:Bind IsEnabled, Mode=OneWay}" AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}" AutomationProperties.AcceleratorKey="{x:Bind Detail, Mode=OneWay}"
                     AutomationProperties.HelpText="{x:Bind ToolTip, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ToolTip, Mode=OneWay}">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -200,17 +180,16 @@
                         <TextBlock Grid.Column="1" Margin="0,0,8,0" Text="{x:Bind Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                         <TextBlock Grid.Column="2" Text="{x:Bind Detail, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
                     </Grid>
-                    <NavigationViewItem.Icon><FontIcon Glyph="{x:Bind controls:SidebarItems.ActionGlyph(Key)}"/></NavigationViewItem.Icon>
-                </NavigationViewItem>
+                </ContentControl>
             </DataTemplate>
             <DataTemplate x:Key="RecentHeaderRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItemHeader Content="{x:Bind Title}" AutomationProperties.Name="{x:Bind AccessibleName}"/>
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" Content="{x:Bind Title}" AutomationProperties.Name="{x:Bind AccessibleName}"/>
             </DataTemplate>
             <DataTemplate x:Key="RecentRow" x:DataType="vm:SidebarRow">
-                <NavigationViewItem SelectsOnInvoked="False" MinHeight="{StaticResource VcLayoutNavRowHeight}" AutomationProperties.Name="{x:Bind Recent.AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind Recent.Path}">
+                <ContentControl IsTabStop="False" HorizontalContentAlignment="Stretch" MinHeight="{StaticResource VcLayoutNavRowHeight}" AutomationProperties.Name="{x:Bind Recent.AccessibleName, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind Recent.Path}">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <controls:MediaThumbnail Width="{StaticResource VcLayoutRowThumbColumnWidth}" Height="{StaticResource VcLayoutTakeThumbHeight}" CornerRadius="3" Surface="Sidebar" Media="{x:Bind Recent.Media, Mode=OneWay}"/>
+                        <controls:MediaThumbnail Width="24" Height="24" CornerRadius="3" Surface="Sidebar" Media="{x:Bind Recent.Media, Mode=OneWay}"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <TextBlock Text="{x:Bind Recent.Title, Mode=OneWay}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
@@ -221,31 +200,48 @@
                         <HyperlinkButton Grid.Column="2" Content="Cancel" Height="32" Padding="6,0" VerticalAlignment="Center" Tag="{x:Bind Recent.Path}" Click="CancelRecentTranscriptionClicked" Tapped="RowButtonTapped"
                             Visibility="{x:Bind Recent.ShowsCancel, Mode=OneWay}" AutomationProperties.Name="{x:Bind Recent.CancelName, Mode=OneWay}"/>
                     </Grid>
-                </NavigationViewItem>
+                </ContentControl>
             </DataTemplate>
-            <controls:SidebarItems x:Key="SidebarTemplates" Home="{StaticResource HomeRow}" Separator="{StaticResource SeparatorRow}" Project="{StaticResource ProjectRow}"
+            <DataTemplate x:Key="OutlineRow" x:DataType="vm:SidebarRow">
+                <Grid ColumnSpacing="8" ToolTipService.ToolTip="{x:Bind AccessibleName, Mode=OneWay}">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock Text="{x:Bind Detail, Mode=OneWay}" FontFamily="{StaticResource VcMonoFontFamily}" FontSize="12" Foreground="{ThemeResource VcTextSecondaryBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="{x:Bind Title, Mode=OneWay}" FontSize="13" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                </Grid>
+            </DataTemplate>
+            <controls:ExplorerTemplates x:Key="SidebarTemplates" Home="{StaticResource HomeRow}" Separator="{StaticResource SeparatorRow}" Project="{StaticResource ProjectRow}" Outline="{StaticResource OutlineRow}"
                 FullTake="{StaticResource FullTakeRow}" Clip="{StaticResource ClipRow}" SuggestedHeader="{StaticResource SuggestedHeaderRow}" Suggestion="{StaticResource SuggestionRow}"
                 Action="{StaticResource ActionRow}" RecentHeader="{StaticResource RecentHeaderRow}" Recent="{StaticResource RecentRow}"
                 Empty="{StaticResource EmptyRow}" Finding="{StaticResource FindingRow}" Callout="{StaticResource CalloutRow}" NoneFound="{StaticResource NoneFoundRow}"/>
         </Grid.Resources>
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-        <TitleBar x:Name="AppTitleBar" Title="VoxClip" IsBackButtonVisible="False" IsPaneToggleButtonVisible="True" PaneToggleRequested="PaneToggleRequested">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TitleBar x:Name="AppTitleBar" Title="VoxClip" IsBackButtonVisible="False" IsPaneToggleButtonVisible="True" PaneToggleRequested="PaneToggleRequested" Background="{ThemeResource VcBgWindowBrush}">
             <TitleBar.IconSource><ImageIconSource ImageSource="ms-appx:///Assets/VoxClip.ico"/></TitleBar.IconSource>
-            <TitleBar.RightHeader><Button Click="SettingsClicked" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Settings (Ctrl+,)" ToolTipService.ToolTip="Settings (Ctrl+,)"><SymbolIcon Symbol="Setting" /></Button></TitleBar.RightHeader>
+            <TitleBar.RightHeader>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button x:Name="CommandLauncher" Content="Commands  Ctrl+K" Click="CommandPaletteClicked" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Commands (Ctrl+K)"/>
+                    <Button Click="SettingsClicked" Style="{ThemeResource SubtleButtonStyle}" AutomationProperties.Name="Settings (Ctrl+,)" ToolTipService.ToolTip="Settings (Ctrl+,)"><SymbolIcon Symbol="Setting"/></Button>
+                </StackPanel>
+            </TitleBar.RightHeader>
         </TitleBar>
-        <NavigationView x:Name="Nav" Grid.Row="1" PaneDisplayMode="Left" OpenPaneLength="{StaticResource VcSizeSidebar}" IsSettingsVisible="False" IsBackButtonVisible="Collapsed"
-            IsPaneToggleButtonVisible="False" IsTitleBarAutoPaddingEnabled="False" MenuItemsSource="{x:Bind Shell.Rows}" MenuItemTemplateSelector="{StaticResource SidebarTemplates}"
-            SelectionChanged="NavSelectionChanged" ItemInvoked="NavItemInvoked" AutomationProperties.Name="Library and clips">
-            <NavigationView.Resources>
-                <!-- The content layer below draws the page, its corner and its stroke (design §3.3). -->
-                <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent"/>
-                <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent"/>
-            </NavigationView.Resources>
-            <Grid x:Name="ContentLayer" Background="{ThemeResource VcBgSurfaceBrush}" CornerRadius="10,0,0,0" BorderThickness="1,1,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
-                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                <InfoBar x:Name="WindowNotice" IsOpen="False" />
-                <Frame x:Name="ContentFrame" Grid.Row="1" />
-                <Grid x:Name="DropOverlay" Grid.RowSpan="2" Margin="12" Visibility="Collapsed" IsHitTestVisible="False">
+        <ContentControl x:Name="WorkspaceGate" Grid.Row="1" IsTabStop="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <Grid x:Name="Workspace" Background="{ThemeResource VcBgWindowBrush}">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <controls:ExplorerPane x:Name="Nav" Width="224" ItemsSource="{x:Bind Shell.Rows}" ItemTemplateSelector="{StaticResource SidebarTemplates}"
+                SelectionChanged="NavSelectionChanged" ItemClick="NavItemInvoked" AutomationProperties.Name="Explorer" BorderThickness="0,0,1,0" BorderBrush="{ThemeResource VcLineDefaultBrush}"/>
+            <Grid x:Name="ContentLayer" Grid.Column="1" Background="{ThemeResource VcBgSurfaceBrush}">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <InfoBar x:Name="WindowNotice" IsOpen="False" Closed="WindowNoticeClosed"/>
+                <Grid x:Name="RenameEditor" Grid.Row="1" Visibility="Collapsed" Padding="12" ColumnSpacing="8" RowSpacing="4" Background="{ThemeResource VcBgInputBrush}">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <TextBox x:Name="RenameTitle" Header="Clip title" KeyDown="RenameKeyDown" MaxLength="240"/>
+                    <Button Grid.Column="1" Content="Rename" Click="RenameSaveClicked" VerticalAlignment="Bottom"/>
+                    <Button Grid.Column="2" Content="Cancel" Click="RenameCancelClicked" VerticalAlignment="Bottom"/>
+                    <TextBlock x:Name="RenameProblem" Grid.Row="1" Grid.ColumnSpan="3" TextWrapping="Wrap" Foreground="{ThemeResource VcTextSecondaryBrush}" AutomationProperties.LiveSetting="Polite"/>
+                </Grid>
+                <Frame x:Name="ContentFrame" Grid.Row="2"/>
+                <Grid x:Name="DropOverlay" Grid.RowSpan="3" Margin="12" Visibility="Collapsed" IsHitTestVisible="False">
                     <Border Background="{ThemeResource VcOverlayDropBrush}" CornerRadius="14"/>
                     <Rectangle Stroke="{ThemeResource VcOverlayDropBorderBrush}" StrokeThickness="2" StrokeDashArray="3,2" RadiusX="14" RadiusY="14"/>
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
@@ -255,7 +251,17 @@
                     </StackPanel>
                 </Grid>
             </Grid>
-        </NavigationView>
+        </Grid>
+        </ContentControl>
+        <ContentControl x:Name="StatusGate" Grid.Row="2" IsTabStop="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <Grid x:Name="ShellStatusBar" Background="{ThemeResource VcBgStatusBarBrush}" MinHeight="24" Padding="8,0" ColumnSpacing="8">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Button Content="Explorer" Click="ExplorerClicked" Style="{ThemeResource SubtleButtonStyle}" Padding="4,0" MinHeight="24" AutomationProperties.Name="Toggle Explorer (Ctrl+B)"/>
+            <TextBlock x:Name="ShellStatus" Grid.Column="1" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource VcTextSecondaryBrush}"/>
+            <Button Grid.Column="2" Content="Commands" Click="CommandPaletteClicked" Style="{ThemeResource SubtleButtonStyle}" Padding="4,0" MinHeight="24" AutomationProperties.Name="Commands (Ctrl+K)"/>
+        </Grid>
+        </ContentControl>
+        <controls:CommandPalette x:Name="Palette" Grid.Row="1" Visibility="Collapsed" Margin="16" Canvas.ZIndex="10"/>
         <!-- Points at the Find clips callout when Find clips was asked for away from the pane (design §13). -->
         <TeachingTip x:Name="CalloutTip" Grid.Row="1" PreferredPlacement="Right" IsLightDismissEnabled="True" ActionButtonClick="CalloutTipActionClicked"/>
     </Grid>
