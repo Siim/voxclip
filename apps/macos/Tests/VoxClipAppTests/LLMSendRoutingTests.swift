@@ -211,9 +211,14 @@ private struct NoVoiceLabKeys: KeyProvider {
         }
     }
 
-    @Test(arguments: [("claude.ai", "Rewrite", "Sends these 3 words to Fixture with your sign-in. Counts toward your Claude plan."),
-                      ("api_key", "Rewrite…", "Sends these 3 words to Fixture, billed to the API key it is signed in with.")])
-    func theRewriteButtonAndSendLineFollowTheDetectedSignIn(method: String, button: String, line: String) async throws {
+    /// Only a send that asks first reads "Rewrite…" with C8's sentence (design §6.3.1). A CLI with no known sign-in (not
+    /// detected yet, signed out, or a method VoxClip does not recognise) never asks: its send fails with the sign-in error.
+    @Test(arguments: [("claude.ai", "Rewrite", "Sends these 3 words to Fixture with your sign-in. Counts toward your Claude plan.", ""),
+                      ("api_key", "Rewrite…", "Sends these 3 words to Fixture, billed to the API key it is signed in with.",
+                       "VoxClip can't tell what this costs. Check Anthropic's pricing."),
+                      ("third_party", "Rewrite", "Sends these 3 words to Fixture with your sign-in.", ""),
+                      ("none", "Rewrite", "Sends these 3 words to Fixture with your sign-in.", "")])
+    func theRewriteButtonAndSendLineFollowTheDetectedSignIn(method: String, button: String, line: String, price: String) async throws {
         let (app, fake, _) = try setUp("claude-code", authMethod: method)
         let provider = try #require(app.providers.first { $0.id == "claude-code" })
         let editor = try editor(app)
@@ -224,11 +229,13 @@ private struct NoVoiceLabKeys: KeyProvider {
         defer { session.close() }
         await session.prepare()
         #expect(session.sendLine == "Sends these 3 words to Fixture with your sign-in.")
-        #expect(session.proposalButton == "Rewrite…")
+        #expect(session.proposalButton == "Rewrite")
+        #expect(session.estimateCopy == "")
         _ = await app.connectorStatus(provider, using: fake)
         await session.prepare()
         #expect(session.proposalButton == button)
         #expect(session.sendLine == line)
+        #expect(session.estimateCopy == price)
     }
 
     /// A take that passes review, so Voice Lab's Accept is ready.
