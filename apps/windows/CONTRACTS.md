@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-11-01 - track/v2-core: shipping Release inventory refresh
+
+- The `windows-release-boundary-inventories` artifact from CI run `41309332000` (source `8948971b`) has byte-identical x64/arm64 candidates for App, Core, Media and CLI. Every shipping identity/source check passed; only unapproved/stale allowlist entries differed. App/Core/Media lists now match those inventories; the CLI list was already exact.
+- The reviewed changes are the W4 enrollment/recovery API, W2b scoped acceptance/history/preflight, and removal of the superseded clone quote path and unused backend transcriber. Synthetic enrollment speakers and their adapter namespace are absent from shipping Media. No debug or forbidden content was approved and no checker exemptions changed.
+
 ### 2026-11-01 - W4: enrollment order and recovery (track/v2-core)
 
 - `VoiceEnrollment.PreparePlanAsync` completes the local speaker match before preparing the combined `EnrollmentQuote`; `ExecuteAsync` binds the exact statement SHA/nonce, ordered files and roles, name, language, creation time and creator, checks plan/slots, then consumes one approval for Scribe and creation. A mismatch sends nothing; failed verification creates nothing; a consumed plan cannot create twice. Attempts count distinct statement SHA + nonce pairs in the monotonic ten-minute window, including repeated local preparations and expired-quote retries only once.
