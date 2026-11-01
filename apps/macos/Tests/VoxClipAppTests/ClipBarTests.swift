@@ -98,6 +98,10 @@ private actor HookFixtureConnector: LLMConnector {
         bar.render()
         #expect(shows(bar.toast) && !shows(bar.tighten) && bar.toast.cuts == 3 && bar.toast.label.stringValue == "3 cuts ·")
         #expect(bar.toast.undo.accessibilityLabel() == "Undo Tighten clip 1")
+        // Its Undo is a 24 pt target (impl-plan §3.7) that fills the toast's height.
+        lay(bar, width: 652)
+        bar.toast.layoutSubtreeIfNeeded()
+        #expect(bar.toast.frame.height == 24 && bar.toast.undo.frame.height == 24 && bar.toast.undo.frame.minY == 0)
         bar.undoTighten()
         #expect(editor.project.edits.cutWordIds.isEmpty && editor.project.edits.cutPauseIds.isEmpty && editor.project.edits.activeClipId == "tight-1")
         bar.render()
@@ -284,9 +288,11 @@ private actor HookFixtureConnector: LLMConnector {
         let verbs: [NSView] = [bar.rewrite, bar.tighten, bar.hook, bar.ask, bar.picker]
         #expect(verbs.allSatisfy { $0.isHidden })
         #expect(bar.keep.accessibilityLabel() == "Keep suggested clip 5" && bar.dismiss.accessibilityLabel() == "Dismiss suggested clip 5" && bar.keep.hint == "⇧⌘↩")
-        // f5: the label at the bar's start, Keep 6 past it, Dismiss beside it, both 22 high.
+        // f5: the label at the bar's start, Keep 6 past it, Dismiss beside it, both drawn 22 high in 24 pt targets (impl-plan §3.7).
         #expect(bar.suggestionLabel.frame.minX == ClipBarMetrics.leading && bar.keep.frame.minX == bar.suggestionLabel.frame.maxX + ClipBarMetrics.gap + ClipBarMetrics.keepMargin)
-        #expect(bar.keep.frame.height == 22 && bar.dismiss.frame.minX == bar.keep.frame.maxX + ClipBarMetrics.gap)
+        #expect(bar.dismiss.frame.minX == bar.keep.frame.maxX + ClipBarMetrics.gap)
+        #expect(bar.keep.frame.height == 24 && bar.dismiss.frame.height == 24 && abs(bar.keep.frame.midY - 16.5) <= 0.5)
+        #expect(bar.keep.chip.height == 22 && bar.keep.chip.midY == bar.keep.bounds.midY && bar.dismiss.chip.height == 22)
         let steps = editor.undoSteps
         undo.beginUndoGrouping(); bar.keep.performClick(nil); undo.endUndoGrouping()
         #expect(editor.undoSteps == steps + 1 && editor.keptClips.contains { $0.id == "five-5" })

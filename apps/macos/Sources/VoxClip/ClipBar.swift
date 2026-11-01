@@ -10,9 +10,6 @@ import VoxClipCore
 // the field's text as the instruction; Tighten cuts the scope's fillers and pauses as one undo
 // step; Hook finds hook clips in the take with one click.
 
-/// The bar's verbs (impl-plan V3b).
-enum ClipBarVerb: String, CaseIterable { case rewrite, tighten, hook }
-
 /// What the bar holds: nothing, a scope's verbs (the tab's clip, nil for Full Take), or a suggestion's Keep and Dismiss.
 enum ClipBarVariant: Equatable {
     case hidden
@@ -23,6 +20,7 @@ enum ClipBarVariant: Equatable {
 /// The mockup's `.cbar`, `.verb`, `.ask` and `.btn` measurements, in points.
 enum ClipBarMetrics {
     static let leading: CGFloat = 12, trailing: CGFloat = 10, gap: CGFloat = 2
+    /// Every control's target is 24 high (impl-plan §3.7); Keep's and Dismiss's drawn `.btn` chip is 22 inside it.
     static let control: CGFloat = 24, suggestionButton: CGFloat = 22
     /// The Ask field starts 6 past the gap after Hook; its text 8 + 13 (sparkles) + 7 in; the picker 3 from its end.
     static let askMargin: CGFloat = 6, askLeading: CGFloat = 8, askIcon: CGFloat = 13, askIconGap: CGFloat = 7, askTrailing: CGFloat = 3
@@ -358,9 +356,9 @@ enum ClipBarMetrics {
 
 /// A clip-bar button. `verb` (notes.md `.verb`): a 14 pt icon in text.tertiary and a 13 pt label in text.secondary,
 /// 24 high, 8 pt padding, 6 between, radius 5, the selected-row fill when on, pressed or under the pointer; icon-only
-/// it is 24 × 24 with its name as the tooltip. `bordered` (`.btn`, 22 high): bg.muted with a line.edge outline, a
-/// 13 pt medium text.primary label, radius 6, and an SF Mono 10 key hint. `ghost`: the same without fill or outline,
-/// in text.secondary.
+/// it is 24 × 24 with its name as the tooltip. `bordered` (`.btn`, a 22 high chip): bg.muted with a line.edge outline,
+/// a 13 pt medium text.primary label, radius 6, and an SF Mono 10 key hint. `ghost`: the same without fill or outline,
+/// in text.secondary. Every style's target is 24 high (impl-plan §3.7); the 22 pt chip is centred in it.
 @MainActor final class ClipBarButton: NSButton {
     enum Style { case verb, bordered, ghost }
     let style: Style
@@ -393,7 +391,11 @@ enum ClipBarMetrics {
     /// Icon-only verbs carry their name in the tooltip (impl-plan §3.5).
     private func updateTip() { super.toolTip = iconOnly && baseTip == nil ? label : baseTip }
 
-    var height: CGFloat { style == .verb ? ClipBarMetrics.control : ClipBarMetrics.suggestionButton }
+    /// The drawn chip: the whole target for a verb, 22 high and centred for `.btn` and ghost.
+    var chip: NSRect {
+        let height = style == .verb ? ClipBarMetrics.control : ClipBarMetrics.suggestionButton
+        return NSRect(x: bounds.minX, y: bounds.minY + ((bounds.height - height) / 2).rounded(), width: bounds.width, height: min(height, bounds.height))
+    }
     private var padding: CGFloat { style == .verb ? 8 : 10 }
     private var iconSize: CGFloat { style == .verb ? 14 : 12 }
     private var labelFont: NSFont { style == .verb ? VCType.body.nsFont() : VCType.body.nsFont(.medium) }
@@ -411,11 +413,11 @@ enum ClipBarMetrics {
         var width = padding * 2 + ceil((label as NSString).size(withAttributes: [.font: labelFont]).width)
         if symbol != nil { width += iconSize + 6 }
         if let hint { width += 4 + ceil((hint as NSString).size(withAttributes: hintAttributes).width) }
-        return NSSize(width: width.rounded(.up), height: height)
+        return NSSize(width: width.rounded(.up), height: ClipBarMetrics.control)
     }
     private var shape: NSBezierPath {
         let radius: CGFloat = style == .verb ? 5 : 6
-        return NSBezierPath(roundedRect: style == .bordered ? bounds.insetBy(dx: 0.5, dy: 0.5) : bounds, xRadius: radius, yRadius: radius)
+        return NSBezierPath(roundedRect: style == .bordered ? chip.insetBy(dx: 0.5, dy: 0.5) : chip, xRadius: radius, yRadius: radius)
     }
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
