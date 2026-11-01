@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-11-01 - W4/W2b hosted Swift test portability (track/v2-core)
+
+- The first complete Xcode 26 run exposed Core timeouts from concurrent large audio fixtures. `VoiceConsentTests` and `VoiceLabServiceTests` now serialize their cases, as the newer enrollment/take suites already do. The normal parallel Core run passes all 830 tests locally; no assertion, timeout or explicit concurrency scenario changed. Excluding only those two suites also passed all 743 remaining tests, while excluding C7 alone reproduced the timeouts.
+- Offscreen transcript/timeline pixel checks use a fixed 2x raster, so their one-point strokes have the same coverage on 1x hosted displays and Retina development displays. The resize test explicitly delivers the container frame before AppKit's layout pass. It still checks TextKit's own viewport updates without forcing them manually.
+- The headless Director focus fixture keeps its transcript stand-in outside the panel's SwiftUI hierarchy, recognizes a focused descendant rather than one concrete hosting view, drains ready run-loop work without sleeping, and waits for the mounted panel's initial quote before preparing its test send. All keyboard ownership, Escape and reply assertions remain. These are DEBUG/test harness changes; no production view, copy or paid-send rule changed.
+- Native real-window behavior remains owed; these checks create only never-shown offscreen windows. Windows inventory drift from the same run is resolved using the matching x64/arm64 artifact in the Windows contracts.
+
 ### 2026-11-01 - track/v2-core: first hosted CI compatibility
 
 - C7 enrollment replays cache their immutable statement/training WAV fixture bytes instead of rebuilding minute-long audio arrays at every preparation; the sample bytes and all replay assertions are unchanged.

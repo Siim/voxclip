@@ -5,7 +5,8 @@ import Testing
 @testable import VoxClipCore
 @_spi(Testing) @testable import VoxClipMedia
 
-@Suite("Voice Lab offline service", .timeLimit(.minutes(1)))
+// Audio fixture validation is CPU-heavy; keep cases from starving unrelated async suites.
+@Suite("Voice Lab offline service", .serialized, .timeLimit(.minutes(1)))
 struct VoiceLabServiceTests {
     private let key = "synthetic-voice-lab-key"
     private let speech = VoiceLabSpeechOptions(seed: 7)

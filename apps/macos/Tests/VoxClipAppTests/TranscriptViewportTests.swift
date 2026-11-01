@@ -125,6 +125,8 @@ import Testing
         let before = try overlays(pane)
         #expect(!before.bandHidden && !before.caretHidden && before.selection.count == 2, "\(before)")
         pane.window.setContentSize(NSSize(width: 820, height: 488))
+        // Deliver the host's frame as SwiftUI does; macOS 26 need not resize hidden window content synchronously.
+        pane.scroll.setFrameSize(NSSize(width: 820, height: 488))
         layoutPass(pane)
         #expect(pane.text.bounds.width == 820 && pane.text.textContainer?.containerSize.width == 680, "the 680 measure at 820")
         #expect(!pane.text.needsLayout)
