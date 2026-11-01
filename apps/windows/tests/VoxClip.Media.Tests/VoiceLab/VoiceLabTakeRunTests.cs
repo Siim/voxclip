@@ -18,6 +18,95 @@ namespace VoxClip.Media.Tests.VoiceLab;
 
 public sealed class VoiceLabTakeRunTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BatchPinsTheUnionAndDiscardsTheCorrectRemainder(bool fatalSecond)
+    {
+        await using var fixture = new Fixture();
+        await fixture.Client.DiscoverModelsAsync(Token); await fixture.Client.DiscoverVoicesAsync(Token);
+        var runs = Enumerable.Range(0, 3).Select(index => new VoiceLabTakeRun(fixture.Client, fixture.Store,
+            new(Guid.NewGuid().ToString("D"), Path.Combine(fixture.Root, "Paid"), Path.Combine(fixture.Root, "batch" + index)),
+            new VoiceLabDispatchGate(), _ => Task.FromResult(fixture.Current), fixture.Checks)).ToArray();
+        var samples = Enumerable.Range(0, 3).SelectMany(_ => fixture.Samples).ToArray();
+        var items = Enumerable.Range(0, 3).SelectMany(index => fixture.Input.Items.Select(item => item with
+            { Id = item.Id + index, Start = item.Start + index * 8, End = item.End + index * 8 })).ToArray();
+        var inputs = Enumerable.Range(0, 3).Select(index =>
+        {
+            var old = fixture.Input.Window; long offset = index * 8 * 24000;
+            var window = old with { FirstWordId = "old" + index, LastWordId = "old" + index,
+                Start = old.Start + index * 8, End = old.End + index * 8, StartSample = old.StartSample + offset, EndSample = old.EndSample + offset,
+                LeftSeam = old.LeftSeam with { Time = old.LeftSeam.Time + index * 8, Sample = old.LeftSeam.Sample + offset },
+                RightSeam = old.RightSeam with { Time = old.RightSeam.Time + index * 8, Sample = old.RightSeam.Sample + offset } };
+            return new VoiceLabTakeInput("Hello", fixture.Input.ModelId, fixture.Input.RecordId, "en", 7, fixture.Input.ContentKey,
+                samples, 24000, items, new HashSet<string>(), window, null, null, false, true);
+        }).ToArray();
+        var runner = new VoiceLabTakeBatchRun(runs);
+        try
+        {
+            var batch = await runner.PrepareAsync(inputs, ct: Token);
+            Assert.Empty(fixture.Remote.Seeds);
+            await runner.ApproveAsync(batch); Assert.Empty(fixture.Remote.Seeds);
+            fixture.Remote.Mismatches = fatalSecond ? 0 : 4;
+            var progress = new VoiceLabTakeBatchProgress(batch);
+            var first = await runner.ExecuteAsync(batch, 0, ct: Token);
+            Assert.Equal(fatalSecond ? VoiceLabTakeRunEnd.EarlyStop : VoiceLabTakeRunEnd.Completed, first.End);
+            Assert.Equal(fatalSecond ? 1 : 3, first.Rows.Count); progress.Finish(0, first);
+            fixture.Clock.Advance(600); // Later windows outlive quote TTL under the union's approval.
+            fixture.Remote.MissingAlignment = fatalSecond;
+            var second = await runner.ExecuteAsync(batch, 1, ct: Token);
+            if (fatalSecond)
+            {
+                progress.Finish(1, second);
+                Assert.Equal(VoiceLabTakeRunEnd.Fatal, second.End); Assert.Null(progress.Window);
+                Assert.Equal(3, progress.Sent.Count); Assert.Equal(15, progress.Discarded.Count);
+                Assert.False(fixture.Client.QuotesAreFresh(batch.Windows[2].Quote.Actions));
+                await Assert.ThrowsAsync<VoiceLabException>(() => runner.ExecuteAsync(batch, 2, ct: Token));
+                Assert.Equal(2, fixture.Remote.Seeds.Count); Assert.True(runs[0].Scratch(first.Best!.Id)!.IsValid);
+                Assert.Equal(progress.SentEstimate.Usd, (await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token))!.Usd);
+                return;
+            }
+            Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, second.End); Assert.Equal(2, second.Rows.Count); progress.Finish(1, second);
+            Assert.Equal(2, progress.Window); Assert.Equal(2, progress.Discarded.Count);
+            Assert.False(fixture.Client.QuotesAreFresh(batch.Windows[1].Quote.Actions));
+            var third = await runner.ExecuteAsync(batch, 2, ct: Token);
+            Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, third.End); Assert.Single(third.Rows); progress.Finish(2, third);
+            Assert.Null(progress.Window); Assert.Equal(12, progress.Sent.Count); Assert.Equal(6, progress.Discarded.Count);
+            Assert.Equal(6, fixture.Remote.Seeds.Count); Assert.Equal(6, fixture.Remote.Qa);
+            var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
+            Assert.Equal(progress.SentEstimate.Usd, total!.Usd);
+            var scratch = runs[1].Scratch(second.Best!.Id)!;
+            await runner.DiscardAsync(1); Assert.True(scratch.IsValid);
+            _ = await runs[1].PublishForAcceptanceAsync(second.Best.Id, DateTimeOffset.UnixEpoch, Token);
+        }
+        finally { foreach (var run in runs) await run.CancelAsync(); }
+    }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task BatchApprovalIsAllOrNothingAndFatalAcceptedRepliesAreCounted(bool stale)
+    {
+        await using var fixture = new Fixture();
+        var quote = await fixture.Prepare();
+        var runner = new VoiceLabTakeBatchRun([fixture.Run]);
+        var batch = new VoiceLabTakeBatch([new(fixture.Input, quote)]);
+        if (stale)
+        {
+            fixture.Clock.Advance(300);
+            await Assert.ThrowsAsync<VoiceLabException>(() => runner.ApproveAsync(batch));
+            Assert.False(fixture.Client.QuotesAreFresh(quote.Actions)); Assert.Empty(fixture.Remote.Seeds);
+            await Assert.ThrowsAsync<VoiceLabException>(() => runner.ExecuteAsync(batch, 0, ct: Token));
+            return;
+        }
+        await runner.ApproveAsync(batch);
+        fixture.Remote.MissingAlignment = true;
+        var result = await runner.ExecuteAsync(batch, 0, ct: Token);
+        var progress = new VoiceLabTakeBatchProgress(batch); progress.Finish(0, result);
+        Assert.Equal(VoiceLabTakeRunEnd.Fatal, result.End); Assert.Null(progress.Window);
+        Assert.Null(result.Rows[0].Receipt); Assert.Single(progress.Sent); Assert.Equal(5, progress.Discarded.Count);
+        var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
+        Assert.Equal(progress.SentEstimate.Usd, total!.Usd);
+    }
     [Fact]
     public async Task UnreadableSpendAtTransportKeepsReviewAndExposesPreparationRetry()
     {
@@ -353,6 +442,7 @@ public sealed class VoiceLabTakeRunTests
         internal readonly ElevenLabsVoiceLab Client;
         internal readonly VoiceLabSpendLedger Ledger;
         internal readonly VoiceLabTakeRun Run;
+        internal readonly VoiceLabTakeRunChecks Checks;
         internal readonly VoiceLabTakeInput Input;
         internal readonly float[] Samples;
         internal readonly VoiceConsentRecord Record;
@@ -373,7 +463,7 @@ public sealed class VoiceLabTakeRunTests
             Store.SaveStatement(wav, Record.RecordId); Store.Save(Record);
             Ledger = new(locations);
             Client = ElevenLabsVoiceLab.ForTesting(Keys, Remote, ElevenLabsRegion.Default, clock: Clock, spend: Ledger);
-            var checks = new VoiceLabTakeRunChecks(_ => { }, (record, speech, request, binding, model, ct) =>
+            var checks = Checks = new VoiceLabTakeRunChecks(_ => { }, (record, speech, request, binding, model, ct) =>
             {
                 ct.ThrowIfCancellationRequested(); Store.ValidateUse(record);
                 lock (Speech) Speech.Add(speech);
@@ -806,7 +896,8 @@ public sealed class VoiceLabTakeRunTests
         await using var fixture = new Fixture();
         fixture.Remote.Duration = seconds; fixture.Remote.MissingAlignment = missing;
         var result = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
-        Assert.Equal(3, result.Rows.Count);
+        Assert.Equal(missing ? 1 : 3, result.Rows.Count);
+        Assert.Equal(missing ? VoiceLabTakeRunEnd.Fatal : VoiceLabTakeRunEnd.Completed, result.End);
         if (seconds == 4.5) Assert.All(result.Rows, row => { Assert.True(row.Selectable); Assert.False(row.Fits); });
         else Assert.All(result.Rows, row => Assert.False(row.Selectable));
         if (seconds == 2 || missing) Assert.Equal(0, fixture.Remote.Qa);
