@@ -65,6 +65,11 @@ public enum VoiceLabOutputPlanner {
     /// Geometry-only projection for pre-payment placement checks. No synthetic recipe, asset or consent is invented.
     static func build(_ project: Project, scope: VoiceLabOutputScope, placing window: VoiceLabWindow?,
                       pendingID: String?) throws -> VoiceLabOutputPlan {
+        try build(project, scope: scope, placing: window.flatMap { window in pendingID.map { [(window, $0)] } } ?? [])
+    }
+
+    static func build(_ project: Project, scope: VoiceLabOutputScope,
+                      placing windows: [(VoiceLabWindow, String)]) throws -> VoiceLabOutputPlan {
         try VoiceLabProject.validate(project)
         guard let transcript = project.transcript else { throw VoiceLabProjectError.invalidScope }
         let duration = project.media.source.durationSeconds
@@ -100,7 +105,7 @@ public enum VoiceLabOutputPlanner {
         }
         var replacements = enabled.map { Replacement(id: $0.id, start: $0.replace.start, end: $0.replace.end,
                                                      duration: $0.outDuration, audio: $0.audio) }
-        if let window, let pendingID {
+        for (window, pendingID) in windows {
             guard window.start.isFinite, window.end.isFinite, window.start >= 0,
                   window.end <= duration, window.end > window.start else { throw VoiceLabProjectError.invalidRange }
             if let clipRange, window.start < clipRange.start || window.end > clipRange.end {
@@ -165,7 +170,7 @@ public enum VoiceLabOutputPlanner {
             try append(.source, position, interval.endSample, interval.endSample - position)
         }
         var plan = VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces, captions: [], scope: scope)
-        if window != nil { return plan }
+        if !windows.isEmpty { return plan }
         if enabled.isEmpty {
             return VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces,
                                       captions: captionCopy(segments, plan: base), scope: scope)
