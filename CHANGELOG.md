@@ -41,7 +41,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - On Mac a clip bar sits under the tabs. Tighten cuts the open clip's fillers and long pauses in one undo step, with an Undo beside it; Hook finds hook clips in the take with one click; and Rewrite and its Ask field work on the open clip, the full take or the words you select, with what you type as the instruction. The AI menu at its end shows each AI with what it costs, checks them as it opens and is the same choice as AI settings. A suggestion's tab shows Keep (⇧⌘↩) and Dismiss instead.
 - The Mac editor's status bar shows your AI and its billing after detection, running work, the open clip's duration and cuts, available Rewrite changes, the export frame and export state. Choose an aspect directly from the status bar's Frame menu.
 - The Mac Explorer has compact Take, Clips, Outline and Suggested sections, preview tabs on single click, pinned tabs on double-click, and paragraph navigation with AI voice indicators.
-- On Mac, Rewrite asks in its panel, not in an alert, before a new run would discard takes or changes you edited: Keep Working or Discard Changes. Undoing a Keep no longer brings back a change you left out after it.
+- On Mac, Rewrite asks in its panel, not in an alert, before a new run would discard takes or changes you edited: Keep Working or Discard Changes, with the keyboard on Keep Working. Undoing a Keep no longer brings back a change you left out after it.
 - Export now opens in the right panel instead of a window.
 - The AI MODIFIED line in a post is now off by default.
 - Relinking a moved video asks in a banner instead of a dialog.
