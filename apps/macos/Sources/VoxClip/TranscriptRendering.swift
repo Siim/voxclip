@@ -452,8 +452,9 @@ struct TranscriptAppearance: Equatable {
     /// In the open clip (every word in Full Take), each run of removed words and pauses is one
     /// fold (notes.md §5), or, under Show cuts and in an opened fold, its words and pause
     /// lengths. A run reaches over the pauses that show nothing and stops at a paragraph
-    /// break, before a clip's first word and after a clip's last word, so a band never starts
-    /// or ends inside a fold. A comma that only exists because a filler follows folds with
+    /// break and at the open clip's edges, where its removals end, so the band never starts
+    /// or ends inside a fold; other clips' edges do not split it. A comma that only exists
+    /// because a filler follows folds with
     /// it (`DisplayPunctuation`). Uncut pauses show only with Show Pauses. Outside the open
     /// clip the words read as said: no folds, no struck words and no pauses.
     private func contents(model: EditorModel, replacements: [VoiceLabSegment]) -> [TranscriptParagraphContent] {
@@ -461,8 +462,6 @@ struct TranscriptAppearance: Equatable {
         let cutWords = model.cutWordIDs, cutPauses = model.cutPauseIDs, fillers = model.fillerCandidateIDs
         let showsCuts = model.showsCuts, expanded = model.expandedFolds, scope = model.scopeBounds
         let pauses = model.pauseByAfterIndex, showPauses = model.showPauses
-        let clips = model.sortedClips
-        let clipStarts = Set(clips.map(\.startWordId)), clipEnds = Set(clips.map(\.endWordId))
         var segments: [String: VoiceLabSegment] = [:]
         for segment in replacements where segments[segment.replace.firstWordId] == nil { segments[segment.replace.firstWordId] = segment }
         func inside(_ position: Int) -> Bool { scope?.contains(position) ?? true }
@@ -490,16 +489,12 @@ struct TranscriptAppearance: Equatable {
                     /// An uncut pause shown after the run (Show Pauses) ends it and follows the fold.
                     var trailing: TranscriptParagraphContent.Piece?
                     if let pause = pendingPause { ids.append(pause.id); items.append(pausePiece(pause)); pendingPause = nil }
-                    while position < paragraph.upperBound, removed(position), ids.isEmpty || !clipStarts.contains(words[position].id) {
+                    while position < paragraph.upperBound, removed(position) {
                         let word = words[position]
                         ids.append(word.id)
                         items.append(.init(kind: .word, id: word.id, text: corrections[word.id] ?? word.text))
                         filler = filler || fillers.contains(word.id)
                         position += 1
-                        if clipEnds.contains(word.id) {
-                            if let pause = pause(after: position - 1), cutPauses.contains(pause.id) { ids.append(pause.id); items.append(pausePiece(pause)) }
-                            break
-                        }
                         // The pause after a removed word: a cut one joins the run, an uncut one shown with Show Pauses ends it.
                         guard let pause = pause(after: position - 1) else { continue }
                         if cutPauses.contains(pause.id) { ids.append(pause.id); items.append(pausePiece(pause)) }
@@ -532,7 +527,7 @@ struct TranscriptAppearance: Equatable {
                 position += 1
                 if let pause = pause(after: position - 1) {
                     if cutPauses.contains(pause.id) {
-                        // A cut pause before the next clip's first word, or at the paragraph's end, is still a run of its own.
+                        // A cut pause starts a run, also at the paragraph's end.
                         pendingPause = pause
                     } else if showPauses { content.pieces.append(pausePiece(pause)) }
                 }

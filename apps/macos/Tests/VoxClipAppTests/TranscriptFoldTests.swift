@@ -264,6 +264,22 @@ import Testing
         #expect(text.selectionRects().isEmpty)
     }
 
+    // MARK: Review fixes
+
+    @Test func aRunOfRemovalsIsOneFoldAcrossAnotherClipsEdge() throws {
+        let model = try editor(); defer { model.close() }
+        var project = model.project
+        project.edits.clips = [ClipRange(id: "starts-in-a-fold", startWordId: id(model, 9), endWordId: id(model, 19), title: "A"),
+                               ClipRange(id: "ends-in-a-fold", startWordId: id(model, 20), endWordId: id(model, 36), title: "B")]
+        model.document.replaceProject(project); model.refresh()
+        let (text, _, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        #expect(DebugTranscriptPixels.displayed(text) == ["So•while you're speaking,•it•examines your•app, makes videos, and adds clip in between your speech.",
+                                                          "And one cool feature I added is when you want to represent your project, you include•source directory."])
+        #expect(text.map.span(id: id(model, 9))?.ids == ["pause-after-\(id(model, 8))", id(model, 9), "pause-after-\(id(model, 9))"])
+        #expect(text.map.span(id: id(model, 36))?.ids == [id(model, 36), "pause-after-\(id(model, 36))", id(model, 37)])
+    }
+
     @Test func theFoldScenePassesEveryCheck() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-v8b-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
