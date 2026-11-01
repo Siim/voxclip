@@ -759,6 +759,8 @@ extension DebugRewrite {
         window.isReleasedWhenClosed = false
         let controller = DebugShellWindowController(window: window, shell: shell)
         defer { window.close(); withExtendedLifetime(controller) {} }
+        // The editor attached before this window: it is the editor's window, as the main window is (sheets, the transcript).
+        editor.window = window
         window.appearance = NSAppearance(named: .darkAqua)
         EditorShellController.prepare(window)
         let host = NSHostingController(rootView: WorkspaceView(shell: shell).environment(app).sceneAccent())
@@ -834,6 +836,43 @@ extension DebugRewrite {
         let proposed = if case .proposal = third.task.state { true } else { false }
         check("a reply that arrives while the user works in the transcript leaves the keyboard there (first responder \(responder()))",
               proposed && window.firstResponder is TranscriptNSTextView)
+        editor.closeRewrite(returnFocus: false)
+
+        // R2 with the keyboard in the panel (design.md §10, V15 review): Return edits the focused change in the transcript
+        // and never runs the footer's primary; ⌘Return runs it. Full take's fixture reply cuts a word: Apply 1 Change.
+        func transcript() -> TranscriptNSTextView? {
+            func find(_ view: NSView) -> TranscriptNSTextView? { view as? TranscriptNSTextView ?? view.subviews.lazy.compactMap(find).first }
+            return window.contentView.flatMap(find)
+        }
+        func returnKey(_ flags: NSEvent.ModifierFlags) {
+            if let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                          context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36) {
+                window.sendEvent(key)
+            }
+        }
+        fake = RewriteFixtureConnector(id: .ollama)
+        _ = focusTranscript(in: window)
+        editor.selectedWordIDs = []
+        editor.runRewrite()
+        await editor.rewriteOpenTask?.value
+        guard let fourth = editor.openRewrite else { return results + [.init(name: "⇧⌘R opens Rewrite on Full take", passed: false)] }
+        await fourth.actionTask?.value
+        let before = editor.project
+        let applies = fourth.task.footer.primary?.id == "apply"
+        editor.focusedPane = .panel
+        editor.paneFocusRequest += 1
+        try await until { paneHasKeyboard() }
+        returnKey([])
+        try await until { transcript()?.changePopoverVisible == true }
+        check("Return on R2's change list edits the focused change and applies nothing (first responder \(responder()))",
+              applies && transcript()?.changePopoverVisible == true && editor.project == before && fourth.isOpen)
+        transcript()?.hideChangePopover()
+        editor.focusedPane = .panel
+        editor.paneFocusRequest += 1
+        try await until { paneHasKeyboard() }
+        returnKey(.command)
+        try await until { !fourth.isOpen }
+        check("⌘Return in R2's panel runs its primary, Apply", applies && !fourth.isOpen && editor.project != before)
         editor.closeRewrite(returnFocus: false)
         return results
     }

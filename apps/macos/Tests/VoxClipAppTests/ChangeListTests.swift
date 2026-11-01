@@ -256,5 +256,27 @@ import Testing
         await settle { session.task.cards.count == 1 }
         #expect(session.task.cards.count == 1)
     }
+
+    /// The change list's keys (design.md §10, "Rewrite without a pointer"): Return edits the focused change and never runs
+    /// the footer's primary, Space leaves the focused change out or keeps it, and ⌘Return runs the primary.
+    @Test func returnEditsSpaceReviewsAndCommandReturnApplies() throws {
+        let (editor, session, undo, scenes) = try scene("r2-free")
+        defer { scenes.forEach { $0.editor?.close() } }
+        let before = editor.project
+        session.review(2, .focus)
+        step(undo) { #expect(session.task.pressReturn(command: false)) }
+        #expect(editor.project == before && session.isOpen && editor.proposal?.focused == 2 && undo.undoActionName.isEmpty)
+        #expect(changes(session)?.items.map(\.state) == [.pending, .pending])
+        #expect(session.task.pressSpace())
+        #expect(changes(session)?.items.map(\.state) == [.pending, .excluded] && editor.project == before && changes(session)?.focused == 1)
+        session.review(2, .focus)
+        step(undo) { #expect(session.task.pressSpace()) }
+        #expect(changes(session)?.items.map(\.state) == [.pending, .kept] && undo.undoActionName == "Keep change 2")
+        // A kept fix is in the project: Space leaves it there.
+        session.review(2, .focus)
+        #expect(!session.task.pressSpace() && changes(session)?.items.last?.state == .kept)
+        step(undo) { #expect(session.task.pressReturn(command: true)) }
+        #expect(!session.isOpen && editor.cutWordIDs.contains("r2-12") && undo.undoActionName == "Rewrite clip 1")
+    }
 }
 #endif

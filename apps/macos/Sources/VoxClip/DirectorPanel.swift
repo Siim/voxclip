@@ -42,11 +42,16 @@ import VoxClipCore
         .focused($keyboardWithin)
         // Esc and ⌘. (design.md §8): Stop while the task runs, which closes it too, else Close.
         .onExitCommand { (task.headline.stop ?? task.close).perform() }
-        // ⌘Return from anywhere in the panel, Return outside a text field: the primary.
+        // ⌘Return from anywhere in the panel: the primary. Return outside a text field edits the focused change of a change
+        // list, else runs the primary; Space leaves the focused change out or keeps it (`DirectorTask.pressReturn`).
         .onKeyPress(keys: [.return]) { press in
-            guard let primary = task.footer.primary, press.modifiers.contains(.command) || !keyFieldFocused && !askFocused else { return .ignored }
-            primary.perform()
-            return .handled
+            let command = press.modifiers.contains(.command)
+            guard command || !keyFieldFocused && !askFocused else { return .ignored }
+            return task.pressReturn(command: command) ? .handled : .ignored
+        }
+        .onKeyPress(keys: [.space]) { press in
+            guard press.modifiers.isEmpty, !keyFieldFocused, !askFocused else { return .ignored }
+            return task.pressSpace() ? .handled : .ignored
         }
         .onKeyPress(keys: [.upArrow, .downArrow]) { press in
             guard !keyFieldFocused, !askFocused else { return .ignored }
@@ -57,7 +62,7 @@ import VoxClipCore
                 return .handled
             }
             // ↑ and ↓ walk the change list, as ⌥↑ and ⌥↓ walk the hunks.
-            guard let changes, !changes.items.isEmpty else { return .ignored }
+            guard let changes = task.changes, !changes.items.isEmpty else { return .ignored }
             let index = changes.items.firstIndex { $0.ordinal == changes.focused } ?? -1
             let next = press.key == .upArrow ? max(0, index - 1) : min(changes.items.count - 1, index + 1)
             task.review?(changes.items[next].ordinal, .focus)
@@ -77,10 +82,6 @@ import VoxClipCore
 
     private var chooserRows: [ConnectorChoice]? {
         for case .chooser(let rows, _) in task.cards { return rows }
-        return nil
-    }
-    private var changes: ChangeSet? {
-        for case .changes(let set) in task.cards { return set }
         return nil
     }
 

@@ -269,13 +269,14 @@ extension RewriteSession {
         }
     }
 
-    /// A row's Keep, Undo or focus (impl-plan item 7): the transcript's own review, so the list and the hunks agree.
+    /// A row's Keep, Undo, focus or edit (impl-plan item 7): the transcript's own review, so the list and the hunks agree.
     func review(_ ordinal: Int, _ review: ChangeReview) {
         guard isOpen, case .proposal = task.state, ownProposal != nil else { return }
         switch review {
         case .focus: editor.focusChange(ordinal, announcing: false)
         case .keep: editor.keepChange(ordinal)
         case .undo: editor.excludeChange(ordinal)
+        case .edit: editChange(ordinal)
         }
         // The list shows the review at once; a review in the transcript reaches it through `showProposal`'s observation.
         if isOpen, case .proposal = task.state { showProposal() }
@@ -286,6 +287,16 @@ extension RewriteSession {
         guard current, !isProposing, ownProposal != nil else { return }
         editor.keepAllChanges()
         if isOpen, case .proposal = task.state { showProposal() }
+    }
+    /// Return on a row (design.md §6.3.5): focuses the change and opens its edit popover in the transcript, which takes
+    /// the keyboard, as Return on the focused change there does. A change with no review, or a kept cut or fix, has none.
+    private func editChange(_ ordinal: Int) {
+        editor.focusChange(ordinal, announcing: false)
+        guard editor.proposalDisplay?.focused == ordinal, editor.proposalDisplay?.actions.isEmpty == false, focusTranscript(in: editor.window),
+              let transcript = editor.window?.firstResponder as? TranscriptNSTextView else { return }
+        // The focused change keeps its buttons' blank in the text: lay it out before the popover is placed under it.
+        transcript.renderNow()
+        _ = transcript.accessibleEditChange()
     }
     /// Make Takes: finds the consented voices first (asking for ElevenLabs once), then makes takes of the included voice
     /// change, asking first when the cost confirms (voice-lab.md §3.1). A footer drawn before the list's inclusions
@@ -331,14 +342,14 @@ extension RewriteSession {
     let focused: Bool
     let review: (ChangeReview) -> Void
 
-    /// Keep and Undo where they can act: a waiting change both, a change left out Keep, a kept voice change Undo. A kept
-    /// cut or fix is in the project; ⌘Z takes it back.
+    /// Keep and Undo where they can act, then Edit, as the transcript offers them: a waiting change Keep and Undo, a change
+    /// left out Keep, a kept voice change Undo. A kept cut or fix is in the project; ⌘Z takes it back.
     private var actions: [ChangeReview] {
         guard item.reviewable else { return [] }
         switch item.state {
-        case .pending: return [.keep, .undo]
-        case .excluded: return [.keep]
-        case .kept: return item.kind == .voice ? [.undo] : []
+        case .pending: return [.keep, .undo, .edit]
+        case .excluded: return [.keep, .edit]
+        case .kept: return item.kind == .voice ? [.undo, .edit] : []
         }
     }
     private var glyph: String {
@@ -361,6 +372,7 @@ extension RewriteSession {
         case .keep: "Keep change \(ordinal)"
         case .undo: "Undo change \(ordinal)"
         case .focus: "Show change \(ordinal)"
+        case .edit: "Edit change \(ordinal)"
         }
     }
 
@@ -393,7 +405,9 @@ extension RewriteSession {
         .contentShape(Rectangle())
         .onTapGesture { review(.focus) }
         .contextMenu {
-            ForEach(actions, id: \.self) { action in Button(action == .keep ? "Keep Change" : "Undo Change") { review(action) } }
+            ForEach(actions, id: \.self) { action in
+                Button(action == .keep ? "Keep Change" : action == .undo ? "Undo Change" : "Edit Change") { review(action) }
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(item.spoken)
@@ -404,7 +418,8 @@ extension RewriteSession {
     }
 }
 
-/// The row's VoiceOver actions, "Keep change {i}" and "Undo change {i}", as the transcript's custom actions name them.
+/// The row's VoiceOver actions, "Keep change {i}", "Undo change {i}" and "Edit change {i}", as the transcript's custom
+/// actions name them.
 private struct ChangeRowActions: ViewModifier {
     let actions: [ChangeReview]
     let ordinal: Int

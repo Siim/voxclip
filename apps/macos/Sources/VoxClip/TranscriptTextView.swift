@@ -694,9 +694,9 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         let box = TranscriptGutter.visualBox(of: line, font: renderer.font).offsetBy(dx: origin.x + fragment.layoutFragmentFrame.minX, dy: origin.y + fragment.layoutFragmentFrame.minY)
         layer.show(renderer.spacerActions, blank: x, line: box)
     }
-    /// Renders the model now, as `updateNSView` would, so a change focused from a click or the
-    /// rotor has its place in the text before it is measured.
-    private func renderNow() {
+    /// Renders the model now, as `updateNSView` would, so a change focused from a click, the
+    /// rotor or the Rewrite job's change list has its place in the text before it is measured.
+    func renderNow() {
         guard let model, let coordinator = delegate as? TranscriptTextView.Coordinator else { return }
         coordinator.updating = true
         TranscriptTextView.render(model, coordinator: coordinator)

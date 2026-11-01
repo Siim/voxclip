@@ -321,7 +321,7 @@ enum PanelError: Equatable, Sendable {
     let close: PanelAction
     /// The harness line's borderless action: R2's "Ask again" (notes.md §7).
     private(set) var contextAction: PanelAction?
-    /// Keeps, undoes or focuses a change of a `.changes` card, by ordinal (impl-plan item 7).
+    /// Keeps, undoes, focuses or edits a change of a `.changes` card, by ordinal (impl-plan item 7).
     @ObservationIgnored var review: (@MainActor (Int, ChangeReview) -> Void)?
     /// The row picked in a chooser card.
     private(set) var choice: String?
@@ -403,7 +403,39 @@ enum PanelError: Equatable, Sendable {
         for case .activity(let steps) in cards { return steps }
         return []
     }
+    /// The change list on the panel, if it shows one.
+    var changes: ChangeSet? {
+        for case .changes(let set) in cards { return set }
+        return nil
+    }
+
+    /// Return in the panel, outside a text field (design.md §10, "Rewrite without a pointer"): with a change list, Return
+    /// edits the focused change and ⌘Return runs the primary, so walking the list never applies, makes takes or pays;
+    /// elsewhere either runs the primary. False when nothing acts.
+    func pressReturn(command: Bool) -> Bool {
+        if let changes, !command {
+            guard let focused = changes.focused, let review else { return false }
+            review(focused, .edit)
+            return true
+        }
+        guard let primary = footer.primary else { return false }
+        primary.perform()
+        return true
+    }
+    /// Space on the change list: leaves the focused change out, or keeps one left out, as its row's checkbox would
+    /// (design.md R2). A kept cut or fix is in the project; ⌘Z takes it back. False when nothing acts.
+    func pressSpace() -> Bool {
+        guard let changes, let review, let item = changes.items.first(where: { $0.ordinal == changes.focused }), item.reviewable else { return false }
+        switch item.state {
+        case .pending: review(item.ordinal, .undo)
+        case .excluded: review(item.ordinal, .keep)
+        case .kept:
+            guard item.kind == .voice else { return false }
+            review(item.ordinal, .undo)
+        }
+        return true
+    }
 }
 
 /// What a change list row asks of its change.
-enum ChangeReview: Sendable { case focus, keep, undo }
+enum ChangeReview: Sendable { case focus, keep, undo, edit }
