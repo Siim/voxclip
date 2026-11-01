@@ -14,8 +14,12 @@ import VoxClipCore
     #endif
     func value(project: Project, target: ExportTarget, revision: Int, labelPosition: VoiceLabLabelPosition) -> String? {
         let next = "\(project.id)|\(revision)|\(labelPosition.rawValue)"
-        if stamp != next || captions != project.captions || export != project.export {
-            values = [:]; stamp = next; captions = project.captions; export = project.export
+        // Aspect is part of each target key. It must not evict other aspects while
+        // projecting a ledger with 16:9 and 9:16 outputs in the same revision.
+        var exportSettings = project.export
+        exportSettings.aspect = .source
+        if stamp != next || captions != project.captions || export != exportSettings {
+            values = [:]; stamp = next; captions = project.captions; export = exportSettings
         }
         let key = Target(id: ExportLedger.targetID(target), aspect: project.export.aspect)
         if let value = values[key] { return value.fingerprint }
@@ -98,4 +102,9 @@ extension EditorModel {
             setAspect(row.aspect)
         }
     }
+}
+
+/// Both library surfaces use this projection and the same row actions.
+extension ExportsListModel {
+    var accessibilityLabel: String { "Exports, \(rows.count) \(rows.count == 1 ? "item" : "items")" }
 }

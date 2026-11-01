@@ -221,14 +221,15 @@ import Testing
         let shell = try await shell(), editor = try #require(shell.editor)
         defer { editor.close() }
         try editor.app.exportLedger.record(record(editor.project))
+        try editor.app.exportLedger.record(record(editor.project, aspect: .portrait))
         shell.setExplorerExpanded(.exports, false)
         let host = NSHostingView(rootView: ExplorerLibrarySections(shell: shell, editor: editor))
         host.frame = NSRect(x: 0, y: 0, width: 224, height: 100); host.layoutSubtreeIfNeeded()
-        #expect(editor.exportsCount >= 1 && editor.exportsFingerprintCache.computations == 0)
+        #expect(editor.exportsCount == 2 && editor.exportsFingerprintCache.computations == 0)
         _ = editor.exportsList
         let computed = editor.exportsFingerprintCache.computations
         _ = editor.exportsList
-        #expect(computed > 0 && editor.exportsFingerprintCache.computations == computed)
+        #expect(computed == 2 && editor.exportsFingerprintCache.computations == computed)
         var changed = editor.project; changed.edits.corrections[editor.words[0].id] = "Changed"
         editor.document.replaceProject(changed); editor.refresh()
         _ = editor.exportsList
