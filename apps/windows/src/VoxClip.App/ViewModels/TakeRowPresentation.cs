@@ -14,6 +14,8 @@ public sealed record TakeRowPresentation(string Title, string Duration, string N
     {
         var number = (row.Index + 1).ToString(CultureInfo.InvariantCulture);
         var title = "Take " + number;
+        if (row.Stopped)
+            return new(title, "", "", title + ", stopped", "", "", false, false, title + " stopped.");
         if (!row.Selectable)
             return new(title, "", "", title + ", didn't pass the speech check", "", "", false, false,
                 title + " didn't pass the speech check.");

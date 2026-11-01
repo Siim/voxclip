@@ -288,6 +288,13 @@ public static class VoiceLabWindowPlanner
         return sorted;
     }
 
+    internal static bool[] ReplacedItems(Project project, VoiceLabOutputScope scope, AudioEnvelope? envelope)
+    {
+        var take = Take.Of(project);
+        VoiceLabGeometry.Check(take.Rate, take.Total, envelope, take.Words);
+        return new ScopeSource(project, scope, take).Replaced;
+    }
+
     public static VoiceLabWindow Place(Project project, VoiceLabOutputScope scope, AudioEnvelope envelope, string afterWordId)
         => throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InsertionUnsupported);
 

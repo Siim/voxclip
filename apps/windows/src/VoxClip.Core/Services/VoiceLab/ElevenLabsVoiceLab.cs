@@ -217,7 +217,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
                 new(VoiceLabLanguageModeKind.Explicit, language), null, recordId));
     }
     public async Task<VoiceLabQaTranscript> TranscribeQaAsync(float[] samples, int rate, string language, OwnVoicePolicy policy,
-        VoiceLabAuthorization authorization, CancellationToken ct = default)
+        VoiceLabAuthorization authorization, CancellationToken ct = default, VoiceLabRequestAcceptance? acceptance = null)
     {
         if (rate != 24000 || !CloneLanguage.IsMatch(language)) throw Invalid();
         policy.Validate();
@@ -225,7 +225,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var id = actions.Claim(authorization, QaFingerprint(language, policy.RecordId), VoiceLabOperation.SpeechToText, authorization.Review.RequestId);
         using var body = Multipart(NewBoundary(), [new("model_id", "scribe_v2"), new("language_code", language), new("tag_audio_events", "false"),
             new("diarize", "false"), new("timestamps_granularity", "word"), new("file", null, "qa.wav", wav)]);
-        using var reply = await SendAsync(HttpMethod.Post, "/v1/speech-to-text", body, 4 * 1024 * 1024, ct, billing: authorization, policy: policy).ConfigureAwait(false);
+        using var reply = await SendAsync(HttpMethod.Post, "/v1/speech-to-text", body, 4 * 1024 * 1024, ct, billing: authorization, policy: policy, acceptance: acceptance).ConfigureAwait(false);
         using var json = Parse(reply.Bytes);
         var root = json.RootElement;
         var detected = RequiredString(root, "language_code");
@@ -353,7 +353,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     }
 
     public async Task<VoiceLabAudioResult> SynthesizeAsync(string text, string modelId, VoiceLabVoiceChoice voice,
-        string language, VoiceLabSpeechOptions options, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId)
+        string language, VoiceLabSpeechOptions options, VoiceLabAuthorization authorization, CancellationToken ct, Guid requestId, VoiceLabRequestAcceptance? acceptance = null)
     {
         var model = SelectedModel(modelId, language, true);
         SelectedVoice(voice);
@@ -373,7 +373,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
         var jsonBody = Encoding.UTF8.GetBytes(payload.ToJsonString());
         var id = actions.Claim(authorization, SynthesisFingerprint(text, modelId, voice, language, options), VoiceLabOperation.TextToSpeech, requestId);
         using var reply = await SendAsync(HttpMethod.Post, path, new ByteArrayContent(jsonBody) { Headers = { ContentType = new MediaTypeHeaderValue("application/json") } }, MaxJsonAudio, ct,
-            billing: authorization, policy: voice.Policy).ConfigureAwait(false);
+            billing: authorization, policy: voice.Policy, acceptance: acceptance).ConfigureAwait(false);
         if (reply.ContentType is { } contentType && !contentType.Equals("application/json", StringComparison.OrdinalIgnoreCase)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         using var json = Parse(reply.Bytes);
         if (json.RootElement.ValueKind != JsonValueKind.Object || !json.RootElement.TryGetProperty("audio_base64", out var audio) || audio.ValueKind != JsonValueKind.String) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
@@ -598,7 +598,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
     /// estimate is recorded once from then on however the body ends, and the record finishes before this returns or throws; Voice Lab
     /// §3.1.</summary>
     private async Task<Reply> SendAsync(HttpMethod method, string path, HttpContent? body, int limit, CancellationToken ct, bool allowNotFound = false,
-        VoiceLabAuthorization? billing = null, OwnVoicePolicy? policy = null, VoiceConsentCreator? creator = null)
+        VoiceLabAuthorization? billing = null, OwnVoicePolicy? policy = null, VoiceConsentCreator? creator = null, VoiceLabRequestAcceptance? acceptance = null)
     {
         ct.ThrowIfCancellationRequested();
         var origin = Region.BaseUri();
@@ -625,7 +625,7 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (policy is not null) RequirePermit(policy);
             if (policy?.DispatchPermit is { } bound && bound.RequestId != billing?.Review.RequestId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             if (policy is not null && billing?.Review.ConsentRecordId is { } consent && consent != policy.RecordId) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            if (billing?.RunDispatch is { } checking) await checking.AuthorizeAsync(deadline.Token).ConfigureAwait(false);
+            if (billing?.RunDispatch is { } checking) await checking.AuthorizeAsync(billing.Review.RequestId, deadline.Token).ConfigureAwait(false);
             Task<HttpResponseMessage> Start()
             {
                 lock (discoveredGate)
@@ -642,7 +642,11 @@ public sealed class ElevenLabsVoiceLab : IDisposable
             if (response.RequestMessage?.RequestUri is { } final && (final.Scheme != url.Scheme || final.Host != url.Host || final.Port != url.Port || final.AbsolutePath != url.AbsolutePath))
                 throw new VoiceLabException(VoiceLabErrorKind.ProviderFailure);
             // The provider has billed once it answers 2xx: a cancelled, broken or oversized body is still recorded.
-            if (billing is not null && response.IsSuccessStatusCode) recording = Record(billing, start);
+            if (billing is not null && response.IsSuccessStatusCode)
+            {
+                acceptance?.MarkAccepted();
+                recording = Record(billing, start);
+            }
             if (response.Content.Headers.ContentLength is { } length && length > limit) throw new VoiceLabException(VoiceLabErrorKind.ResponseTooLarge);
             await using var stream = await response.Content.ReadAsStreamAsync(deadline.Token).ConfigureAwait(false);
             using var output = new MemoryStream();
