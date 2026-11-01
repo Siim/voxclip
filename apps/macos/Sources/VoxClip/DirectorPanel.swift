@@ -15,9 +15,8 @@ import VoxClipCore
     @FocusState private var askFocused: Bool
     /// The keyboard is in the panel: on the pane itself (F6, a handover) or a field inside it.
     @FocusState private var keyboardWithin: Bool
-    /// The pane itself has the keyboard, as `EditorPaneFocus` holds it. The handover sets it
-    /// too: on hosted CI's macOS 26, `keyboardWithin` alone did not move the focus to the pane.
-    @State private var paneHolds = false
+    /// The handover's focus took, once; after that the user may move it away.
+    @State private var handoverTook = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,7 +42,7 @@ import VoxClipCore
         .accessibilityElement(children: .contain)
         .accessibilityLabel(task.words.title)
         .accessibilityIdentifier("voxclip.director")
-        .modifier(EditorPaneFocus(model: model, pane: .panel, holds: $paneHolds))
+        .modifier(EditorPaneFocus(model: model, pane: .panel))
         // Whether the keyboard is anywhere in the panel, for the handover between the panel's views.
         .focused($keyboardWithin)
         // Esc and ⌘. (design.md §8): the safe answer to a question the panel asks, Stop while the task runs, which closes
@@ -79,23 +78,31 @@ import VoxClipCore
             if task.cards.contains(where: { if case .ask = $0 { true } else { false } }) { askFocused = true } else { keyFieldFocused = true }
         }
         .onChange(of: keyboardWithin) { _, _ in reportKeyboard() }
-        .onChange(of: paneHolds) { _, _ in reportKeyboard() }
         .onChange(of: keyFieldFocused) { _, _ in reportKeyboard() }
         .onChange(of: askFocused) { _, _ in reportKeyboard() }
         // Replacing the passage panel that had the keyboard, it takes it, so Esc, ⌘. and Return still act (design.md R1).
-        // Then the producer's own work as the panel appears (Rewrite detects its AI).
+        // macOS 26 drops the request made as the passage panel's field lets go of the keyboard (hosted CI's 26.6 left
+        // the window first responder) and takes one a moment later, so it asks again until the focus takes, for half
+        // a second at most, and never once it took: the user may have moved it since.
         .task {
-            if task.takeKeyboardHandover() {
-                if task.cards.contains(where: { if case .keyField = $0 { true } else { false } }) { keyFieldFocused = true } else { keyboardWithin = true; paneHolds = true }
+            guard task.takeKeyboardHandover() else { return }
+            let keyField = task.cards.contains(where: { if case .keyField = $0 { true } else { false } })
+            for _ in 0..<25 {
+                if handoverTook || Task.isCancelled { return }
+                if keyField { keyFieldFocused = true } else { keyboardWithin = true }
+                try? await Task.sleep(for: .milliseconds(20))
             }
-            await task.appeared?()
         }
+        // The producer's own work as the panel appears (Rewrite detects its AI), beside the handover's.
+        .task { await task.appeared?() }
         .columnLayoutEvidence("director.panel")
     }
 
-    /// Tells the task whether the keyboard is anywhere in the panel.
+    /// Tells the task whether the keyboard is anywhere in the panel; once it is, the handover took.
     private func reportKeyboard() {
-        task.keyboardInPanel = keyboardWithin || paneHolds || keyFieldFocused || askFocused
+        let within = keyboardWithin || keyFieldFocused || askFocused
+        task.keyboardInPanel = within
+        if within { handoverTook = true }
     }
 
     private var chooserRows: [ConnectorChoice]? {

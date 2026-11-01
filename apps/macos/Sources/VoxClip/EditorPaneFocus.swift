@@ -39,10 +39,6 @@ enum EditorPane: CaseIterable {
 @MainActor struct EditorPaneFocus: ViewModifier {
     let model: EditorModel?
     let pane: EditorPane
-    /// The pane's own focus, for a pane that takes the keyboard itself (the Director panel's
-    /// handover): set true, the pane takes focus without the keyboard ring, and it follows the
-    /// focus back. On hosted CI's macOS 26 a binding outside this modifier did not take it.
-    var holds: Binding<Bool>? = nil
     @FocusState private var focused: Bool
     /// The whole-pane ring marks a pane reached from the keyboard (⌃F6, Tab), not the focus a launch or a click gives it.
     @State private var ringVisible = false
@@ -53,11 +49,7 @@ enum EditorPane: CaseIterable {
                 if model?.focusedPane == pane { ringVisible = true; focused = true }
             }
             .onChange(of: focused) { _, value in
-                if holds?.wrappedValue != value { holds?.wrappedValue = value }
                 if value { model?.focusedPane = pane; ringVisible = ringVisible || NSApp.currentEvent?.type == .keyDown } else { ringVisible = false }
-            }
-            .onChange(of: holds?.wrappedValue == true) { _, take in
-                if take, !focused { focused = true }
             }
     }
 }
