@@ -8,10 +8,10 @@ import VoxClipCore
 /// a double-click keeping it open; × and a middle click; ⌘W, ⌃Tab and the Window menu;
 /// tab switches that add no undo step and leave the document clean; Undo that keeps the
 /// tab; the open clip's removal falling back to Full Take; a Rewrite session surviving a
-/// tab switch and edits outside its clip; a Versions window; the tab metrics against f1,
-/// the shrink to 96 and the overflow chevron; the active tab covering the row's hairline;
-/// and VoiceOver's tab group. Captures `v2-tabs-*` offscreen; `sceneCaptures` takes the
-/// real-window `v2-tabs-1280.png`.
+/// tab switch and edits outside its clip, and closing with its tab; a Versions window;
+/// the tab metrics against f1, the shrink to 96 and the overflow chevron, with the drag
+/// gap after them; the active tab covering the row's hairline; and VoiceOver's tab group.
+/// Captures `v2-tabs-*` offscreen; `sceneCaptures` takes the real-window `v2-tabs-1280.png`.
 @MainActor enum DebugTabs {
     struct Frame: Codable { let tab: String; let frame: CGRect }
     /// The harness windows' controllers, which their windows do not retain, until `run` ends.
@@ -350,7 +350,9 @@ import VoxClipCore
         root.layoutSubtreeIfNeeded()
         let widths = bar.order.compactMap { bar.items[$0]?.frame.width }
         check("at 1280 six tabs shrink to fit, none under 96, with no chevron (\(widths.map { Int($0) }))",
-              widths.count == 6 && widths.allSatisfy { $0 >= EditorTabMetrics.minimumWidth } && widths.reduce(0, +) <= bar.bounds.width + 0.5 && !bar.overflowing && bar.overflowButton.isHidden)
+              widths.count == 6 && widths.allSatisfy { $0 >= EditorTabMetrics.minimumWidth } && widths.reduce(0, +) <= bar.tabRoom + 0.5 && !bar.overflowing && bar.overflowButton.isHidden)
+        check("at 1280 the shrunk tabs leave the row's end to the title row, which moves the window (\(dragGapHit(bar, in: root).map { String(describing: type(of: $0)) } ?? "nothing"))",
+              (dragGapHit(bar, in: root) as? ShellBand)?.movesWindow == true)
         window.setContentSize(NSSize(width: 960, height: 600))
         shell.windowWidth = 960
         // SwiftUI applies the narrow layout (the Explorer folds away) a pass or two later.
@@ -368,6 +370,8 @@ import VoxClipCore
               activeFrame.minX >= -0.5 && activeFrame.maxX <= bar.overflowButton.frame.minX + 0.5)
         check("the chevron's menu lists every tab, the active one checked",
               bar.overflowMenu().items.map(\.title) == bar.order.map(bar.name(for:)) && bar.overflowMenu().items.filter { $0.state == .on }.map(\.title) == [bar.name(for: shell.tabs.active)])
+        check("at 960 the row's end after the chevron still moves the window (\(dragGapHit(bar, in: root).map { String(describing: type(of: $0)) } ?? "nothing"))",
+              (dragGapHit(bar, in: root) as? ShellBand)?.movesWindow == true && bar.overflowButton.frame.maxX <= bar.tabRoom + 0.5)
         window.setContentSize(NSSize(width: 1280, height: 800))
         shell.windowWidth = 1280
         for _ in 0..<40 where !shell.layout.explorerVisible || bar.overflowing {
@@ -375,6 +379,14 @@ import VoxClipCore
             try await Task.sleep(for: .milliseconds(25))
         }
         return results
+    }
+
+    /// What a click 16 pt from the tab bar's end, the middle of its 32 pt drag gap,
+    /// reaches, hit-tested from the window's content as AppKit does.
+    private static func dragGapHit(_ bar: EditorTabBarView, in root: NSView) -> NSView? {
+        guard let container = root.superview else { return nil }
+        let point = bar.convert(NSPoint(x: bar.bounds.maxX - 16, y: bar.bounds.midY), to: nil)
+        return root.hitTest(container.convert(point, from: nil))
     }
 
     /// A Versions window switches tabs and never writes them.

@@ -188,12 +188,16 @@ enum EditorTabMetrics {
     /// impl-plan §3.5: tabs shrink to 96 each, then the row scrolls.
     static let minimumWidth: CGFloat = 96
     static let overflowButton: CGFloat = 24
+    /// The row's end the tabs never take, even shrunk or scrolling, so the title row can
+    /// always move the window there (impl-plan V3a: drag area after the tabs).
+    static let dragGap: CGFloat = 32
 }
 
 /// The tab row's tabs (impl-plan V3a): an AppKit tab group of tab buttons at their
 /// natural widths, shrinking together toward 96 when the row is short and then scrolling,
-/// with a chevron menu of every tab. Its empty space falls through to the title row,
-/// which moves the window and runs the double-click action.
+/// with a chevron menu of every tab. Its empty space, and always the last 32 pt
+/// (`EditorTabMetrics.dragGap`), falls through to the title row, which moves the window
+/// and runs the double-click action.
 @MainActor final class EditorTabBarView: NSView {
     private let shell: WorkspaceShell
     private let model: EditorModel
@@ -295,9 +299,9 @@ enum EditorTabMetrics {
         items[target]?.takeFocus()
     }
 
-    /// Every tab at its natural width when they fit (impl-plan §3.5). Otherwise the widest
-    /// shrink together, never under 96; when even 96 each is too wide, each is at most 96
-    /// and the row scrolls.
+    /// Every tab at its natural width when they fit in `available`, the row less its drag
+    /// gap (impl-plan §3.5). Otherwise the widest shrink together, never under 96; when
+    /// even 96 each is too wide, each is at most 96 and the row scrolls.
     static func widths(_ naturals: [CGFloat], available: CGFloat) -> [CGFloat] {
         guard naturals.reduce(0, +) > available else { return naturals }
         let floor = EditorTabMetrics.minimumWidth
@@ -313,12 +317,16 @@ enum EditorTabMetrics {
         return naturals.map { min($0, cap) }
     }
 
+    /// The room for the tabs and the chevron: all but the drag gap at the row's end.
+    var tabRoom: CGFloat { max(0, bounds.width - EditorTabMetrics.dragGap) }
+
     override func layout() {
         super.layout()
-        let widths = Self.widths(order.map { items[$0]?.naturalWidth ?? EditorTabMetrics.minimumWidth }, available: bounds.width)
+        let room = tabRoom
+        let widths = Self.widths(order.map { items[$0]?.naturalWidth ?? EditorTabMetrics.minimumWidth }, available: room)
         let content = widths.reduce(0, +)
-        overflowing = content > bounds.width + 0.5
-        let viewport = max(0, overflowing ? bounds.width - EditorTabMetrics.overflowButton - 4 : bounds.width)
+        overflowing = content > room + 0.5
+        let viewport = max(0, overflowing ? room - EditorTabMetrics.overflowButton - 4 : room)
         if revealsActive, let index = order.firstIndex(of: shell.tabs.active) {
             let start = widths[..<index].reduce(0, +), end = start + widths[index]
             if start < offset { offset = start } else if end > offset + viewport { offset = end - viewport }

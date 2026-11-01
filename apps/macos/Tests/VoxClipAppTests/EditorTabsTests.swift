@@ -279,6 +279,38 @@ import Testing
         #expect(!shell.tabsShown && !shell.closesTab)
     }
 
+    /// The tab row's last 32 pt stay the title row's, so it moves the window there even
+    /// when six tabs shrink to fit and when they overflow and scroll behind the chevron.
+    @Test func theTabRowKeepsADragGapAfterItsTabs() async throws {
+        let (shell, editor, _) = try await openShell()
+        defer { editor.close() }
+        for id in ["five-1", "five-2", "five-3", "five-4", "five-5"] { shell.selection = .clip(id) }
+        let bar = EditorTabBarView(shell: shell, model: editor)
+        defer { bar.tearDown() }
+        let row = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "tabBar")
+        row.set(leading: [bar], trailing: [])
+        row.fillsLeading = bar
+        // A 624 pt row leaves the tabs 616, as at 1280 with the Explorer and the right column shown.
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: 624, height: ShellMetrics.titleRow))
+        host.addSubview(row)
+        for (width, overflows) in [(CGFloat(624), false), (400, true)] {
+            host.frame.size.width = width
+            row.frame = host.bounds
+            bar.render()
+            row.needsLayout = true
+            row.layoutSubtreeIfNeeded()
+            bar.layoutSubtreeIfNeeded()
+            #expect(bar.order.count == 6 && bar.frame.width == width - 8 && bar.overflowing == overflows)
+            // Any point in the last 32 pt: its start, middle and end.
+            for inset in [CGFloat(31), 16, 1] {
+                let point = NSPoint(x: bar.frame.maxX - inset, y: bar.frame.midY)
+                #expect(row.hitTest(point) === row && row.movesWindow, "width \(width), \(inset) from the end: \(row.hitTest(point).map { String(describing: type(of: $0)) } ?? "nothing")")
+            }
+            let ends = overflows ? [bar.overflowButton.frame.maxX] : bar.order.compactMap { bar.items[$0]?.frame.maxX }
+            #expect(ends.allSatisfy { $0 <= bar.bounds.width - 32 + 0.5 })
+        }
+    }
+
     @Test func aVersionsWindowSwitchesTabsAndNeverWritesThem() throws {
         _ = NSApplication.shared
         let version = VoxClipDocument(project: try project(), demo: true)
