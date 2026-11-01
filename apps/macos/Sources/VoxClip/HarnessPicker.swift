@@ -321,6 +321,42 @@ extension AppModel {
             title.append(NSAttributedString(string: "\t" + name, attributes: [.font: detailFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: paragraph]))
             model.attributedTitle = title
         }
+        refreshInlineRows(menu)
+    }
+    /// The native menu keeps its keyboard navigation while these inline rows update after detection.
+    private func refreshInlineRows(_ menu: NSMenu) {
+        for item in menu.items where item.identifier?.rawValue.hasPrefix("voxclip.harness.inline.") == true { menu.removeItem(item) }
+        var offset = menu.items.firstIndex { $0.identifier == Self.modelItem || $0.title == "AI Settings…" } ?? menu.items.count
+        var serial = 0
+        func append(_ item: NSMenuItem) {
+            item.identifier = .init("voxclip.harness.inline.\(serial)"); serial += 1
+            menu.insertItem(item, at: offset); offset += 1
+        }
+        let chosen = app.string("llm.connector")
+        if let provider = app.providers.first(where: { $0.id == chosen }), provider.cli != nil,
+           app.detectedConnectorStatus[chosen] == .cliSignedOut || app.harnessSignIn.providerID == chosen {
+            append(.sectionHeader(title: app.harnessSignIn.completed ? "Signed in to " + provider.shortName : "Sign in to " + provider.shortName))
+            let instructions = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            let text = [app.harnessSignIn.completed ? nil : provider.cli?.signInHint, app.harnessSignIn.message(for: provider)].compactMap { $0 }.joined(separator: "\n")
+            let label = NSTextField(wrappingLabelWithString: text)
+            label.font = VCType.small.nsFont()
+            label.frame = NSRect(x: 0, y: 0, width: 340, height: app.harnessSignIn.message(for: provider) == nil ? 38 : 66)
+            instructions.view = label; instructions.isEnabled = false
+            instructions.identifier = .init("voxclip.harness.signIn.message")
+            append(instructions)
+            if !app.harnessSignIn.completed {
+            for (title, action) in [("Sign In…", #selector(signIn)), ("Check Sign-In", #selector(checkSignIn))] {
+                let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+                item.target = self; item.isEnabled = !app.harnessSignIn.checking
+                append(item)
+            }
+            }
+        }
+        if let line = app.monthlySpendLine {
+            let spend = NSMenuItem(title: line, action: nil, keyEquivalent: "")
+            spend.isEnabled = false; spend.identifier = .init("voxclip.harness.spend")
+            append(spend)
+        }
     }
     /// An AI's trailing text now: its billing once detected, "Checking…" while detection runs.
     func billing(for id: String) -> String {
@@ -335,6 +371,10 @@ extension AppModel {
         openMenu = menu
         needsDisplay = true
         startDetection()
+        Task { [weak self] in
+            guard let self else { return }; await app.refreshMonthlySpend()
+            if let openMenu { refresh(openMenu) }
+        }
     }
     func menuDidClose(_ menu: NSMenu) {
         guard menu === openMenu else { return }
@@ -377,6 +417,14 @@ extension AppModel {
         guard let pair = item.representedObject as? [String], pair.count == 2 else { return }
         app.set("llm.model.\(pair[0])", .string(pair[1]))
         render()
+    }
+    @objc private func signIn() {
+        guard let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
+        Task { await app.harnessSignIn.signIn(provider) }
+    }
+    @objc private func checkSignIn() {
+        guard let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
+        Task { await app.harnessSignIn.check(provider) }
     }
     @objc private func openSettings() { openVoxClipSettings(pane: "ai") }
 }

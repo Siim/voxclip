@@ -27,7 +27,7 @@ There are no Transcript and Clips modes and no inspector tabs.
 1. Launch. The window is titled "VoxClip" and shows Home: a drop bar, an AI callout only when one is useful, and recent projects as thumbnails.
 2. Drop or import a video. The project opens in the same window. The sidebar shows the project's section with **Full take** selected. The video plays at once, and the transcript shows a skeleton until the words arrive.
 3. Cut by words. Select words and press ⌫ / Delete, or use Cut Fillers and Tighten Pauses in the toolbar.
-4. Make a clip. Select words. A small action bar appears beside the selection. Choose **Make Clip** (⌘K / Ctrl+K). The new clip appears in the sidebar and is selected.
+4. Make a clip. Select words. A small action bar appears beside the selection. Choose **Make Clip** (⌥⌘K / Ctrl+K). The new clip appears in the sidebar and is selected.
 5. Find clips. Choose **Find Clips** (⇧⌘K / Ctrl+Shift+K) and pick a preset. The results appear in the sidebar under **Suggested**, each with Keep and Dismiss.
 6. Shape a clip. Select its row. The transcript marks it, the viewer plays only that clip, and the timeline zooms to it. Choose a Frame (9:16) and a caption style.
 7. Export. **Export Clip…** (⌘E / Ctrl+E) opens the Mac right-panel Export job with that clip already chosen. Windows opens its Export dialog.
@@ -85,7 +85,7 @@ Where a mockup and this specification disagree, the specification wins. Some moc
    - **Windows 11:** Mica, `TitleBar`, `NavigationView`, `CommandBar`, `InfoBar`.
    - **Type:** SF Pro and SF Mono on macOS; Segoe UI Variable and Cascadia Mono on Windows. Bundled fonts appear only inside rendered video (captions and the AI MODIFIED label).
    - **Identity:** VoxConvo's identity shows through the paper-and-ink palette, whose accent is the ink itself, with the icon's coral as the only hue, kept for cuts, the 19/32 transcript page and the voice of the copy. There are no custom chrome materials, gradients or glows, and no card nested inside another card.
-4. **Every primary action has a key** (Space, J/K/L, Delete, ⌘K, ⌘E, ⌘Z). Single-letter keys work only when focus is not in a text field.
+4. **Every primary action has a key** (Space, J/K/L, Delete, ⌥⌘K, ⌘E, ⌘Z). Single-letter keys work only when focus is not in a text field.
 5. **A cut is instant.** The preview skips a new cut on the next frame. There is no "prepare preview" step.
 6. **Local-first.** Import, on-device transcription, cutting, captions, export and manual clips work with no key, no account and no network.
 7. **Say what leaves the machine.** Every provider action states what it sends, next to the control that sends it ("Sends transcript text only. No audio or video.").
@@ -121,7 +121,7 @@ Main window (macOS: exactly one. Windows: one per process window; Ctrl+N opens a
 │  │  ├─ 1 … n   kept clips, in transcript order .......... [ / ]
 │  │  ├─ Suggested                                   [Keep All]
 │  │  │  └─ n+1 … m   AI suggestions, each with Keep and Dismiss
-│  │  └─ actions (editor only): New Clip from Selection ⌘K · Find Clips with AI ⇧⌘K
+│  │  └─ actions (editor only): New Clip from Selection ⌥⌘K · Find Clips with AI ⇧⌘K
 │  └─ Recent  (Home only: up to 12 recent projects, excluding the open one)
 ├─ Detail
 │  ├─ Home: drop bar · AI callout (when useful) · Recent projects grid  (§7)
@@ -215,12 +215,12 @@ There is no Windows footer status row. The edit summary lives under the title.
 ││ 1 ▯ Think in sente…  │   0:16.6 │ [1] The trick is to stop thinking in videos…     │ └──────────────────────────┘│
 ││     0:17 · ✓ Exported│          │ said [cleanly,] with a clear start…  ‖ 0.9s      │ 0:22.3 / 2:10.1    ↺3  ▶  ↻3│
 ││ 2 ▯ It has to work…  │          │ …it isn't a clip yet. ]  ‖ 1.6s                  │ Frame      [9:16|1:1|16:9|Original]│
-││ 3 ▯ And yeah, I mess…│   0:34.9   ┌[⌗ Make Clip ⌘K][✂ Cut ⌫][↺ Restore ⇧⌫]│[≋ Rewrite… ⇧⌘R]┐ │ ─────────────────────────── │
+││ 3 ▯ And yeah, I mess…│   0:34.9   ┌[⌗ Make Clip ⌥⌘K][✂ Cut ⌫][↺ Restore ⇧⌫]│[≋ Rewrite… ⇧⌘R]┐ │ ─────────────────────────── │
 ││ 4 ▯ The best thirty… │   0:39.5   ▓I write five questions on a card, the kind▓…   │ Captions [chip] Box highlight Edited (●)│
 ││ ✦ Suggested Keep All │                                                             │          › Paper · As said · 3 words│
 ││ 5 ▯ One habit for…   │                                                             │ Word by word                 │
 ││     0:16      [✓] ✕  │                                                             │ [ tile ][ tile ]  (2 columns)│
-││ + New Clip from Selection ⌘K                                                       │ Phrase …                     │
+││ + New Clip from Selection ⌥⌘K                                                       │ Phrase …                     │
 ││ ✦ Find Clips with AI ⇧⌘K                                                           │                              │
 │╰──────────────────────╯ ├──────────────────────────────────────────────────────────┴──────────────────────────────│
 │                         │ [Edited|Source]  ▕╱╱▏waveform ▕╱╱╱▏ waveform … brackets 1 2 3 4 ┄5┄, playhead ▼         │
@@ -327,7 +327,7 @@ A single click previews a clip or suggestion in the one temporary tab. Double-cl
 | Suggestion row | 28 high, with a dashed range bar; Keep and Dismiss in the clip bar, context menu and accessibility actions; Return/⌫ retained | as a clip row; two trailing 32×32 subtle icon buttons ✓ and ✕ (tooltips "Keep (Ctrl+Enter)" and "Dismiss (Delete)"). Their `Tapped` handler sets `e.Handled = true` |
 | Actions | borderless `Button`s in the section footer (not rows, never selectable, never arrow-key stops): 28 high, label 13, glyph `text.secondary`, key hint SF Mono 11 `text.secondary`. Disabled: label and glyph `text.tertiary` at 55% | `NavigationViewItem`s with `SelectsOnInvoked="False"`, the shortcut as trailing 12 `text.secondary` text, `IsEnabled` bound |
 
-**Windows meta line grammar.** On macOS v2 the row shows duration, with AI speech as a blue waveform glyph. Until V2b’s Exports section, a clip whose export state is "Edited since export" or "Export failed" shows a trailing 11 pt `exclamationmark.triangle` in `status.warning`. Exported and Not exported show no glyph. Export status remains in row help and VoiceOver, with Retry export in the failed clip’s context menu. Rows keep their 28 pt height; V2b moves this warning indication to the Exports section.
+**Windows meta line grammar.** On macOS v2 the row shows duration, with AI speech as a blue waveform glyph. Export warnings live in the EXPORTS rows (§7), with the same status in help and VoiceOver. Clip rows show no export glyph.
 
 The duration, a separator, then one status:
 
@@ -507,7 +507,7 @@ Live transcript while recording (M2): partial words in `text.muted` italic; a "J
 | ⌫ / Delete on a selection | **Cut.** If the whole selection is already cut, **restore** it (toggle, like VoxConvo's tap to cut, tap again to restore) |
 | ⇧⌫ / Shift+Backspace | Restore the selection |
 | ⌥-click / Alt-click | Play from that word |
-| Right-click | Context menu: Rewrite (⇧⌘R) · Type New Words… · Make Clip (⌘K) · Cut · Restore · Correct Spelling… · Play from Here · Preview This Cut (P) · Copy Text. With a caret between words and Voice Lab on: Insert Words… (§6.3.6) |
+| Right-click | Context menu: Rewrite (⇧⌘R) · Type New Words… · Make Clip (⌥⌘K) · Cut · Restore · Correct Spelling… · Play from Here · Preview This Cut (P) · Copy Text. With a caret between words and Voice Lab on: Insert Words… (§6.3.6) |
 | Drop a file on the window | The whole-window overlay (§7). With a project open, it is saved first, then the new video opens in its place |
 
 After every cut the edit summary updates (§3.5) and VoiceOver or Narrator announces "Cut 'um'". Undo groups by command: one Cut Fillers is one undo step.
@@ -526,7 +526,7 @@ When the user selects one or more whole words with the pointer or the keyboard a
 | | macOS | Windows |
 |---|---|---|
 | Control | custom glass bar: an overlay in the `NSScrollView` document view's coordinates with `.glassEffect(.regular, in: .rect(cornerRadius: 10))`, 36 high | `CommandBarFlyout` on Acrylic, radius 10, 40 high |
-| Items | **Make Clip** ⌘K (default, highlighted with the neutral fill of an unfocused sidebar selection) · **Cut** ⌫ · **Restore** ⇧⌫ · divider · **Rewrite** ⇧⌘R. Labels 13 with SF Mono 11 key hints in `text.secondary` | **Make clip** (labelled) · **Cut** and **Restore** (icon only, tooltips "Cut (Delete)" and "Restore (Shift+Backspace)") · separator · **Rewrite** (labelled, Ctrl+R). The flyout is restyled so the two primary commands keep their labels |
+| Items | **Make Clip** ⌥⌘K (default, highlighted with the neutral fill of an unfocused sidebar selection) · **Cut** ⌫ · **Restore** ⇧⌫ · divider · **Rewrite** ⇧⌘R. Labels 13 with SF Mono 11 key hints in `text.secondary` | **Make clip** (labelled) · **Cut** and **Restore** (icon only, tooltips "Cut (Delete)" and "Restore (Shift+Backspace)") · separator · **Rewrite** (labelled, Ctrl+R). The flyout is restyled so the two primary commands keep their labels |
 
 Rewrite shows whenever the editor allows AI actions (`capabilities.ai`, the same gate as Find Clips), with Voice Lab on or off; it rewrites the selection (§6.3). Restore is disabled when nothing in the selection is cut. When the selection already equals a clip, Make Clip's tooltip reads "Clip 2 already covers these words", and choosing it selects that clip (§6.2).
 
@@ -976,7 +976,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 
 **Making a clip.**
 
-- **Ways in:** the selection bar's Make Clip, ⌘K or Ctrl+K, the transcript context menu, the sidebar's New Clip from Selection, and Clip > Make Clip from Selection.
+- **Ways in:** the selection bar's Make Clip, ⌥⌘K or Ctrl+K, the transcript context menu, the sidebar's New Clip from Selection, and Clip > Make Clip from Selection.
 - **Result:** one `addClip` undo step ("Make clip from selection"). The title is the first seven words of the selection, which the user can rename.
 - **After making it:** the new row is selected and scrolled into view. The transcript keeps its scroll position and the selection. The timeline zooms to the clip. Announce "Clip 3 made".
 - **When the selection already equals a clip:** select that row and announce "Clip 2 already covers these words".
@@ -1016,7 +1016,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 - **Consent.** The first cloud use runs the existing consent alert (ai.md §4.8). A send on an API key, or on a CLI signed in with one, then asks on every send; every other send starts at once (ai.md §4.8).
 - **While it runs:** the popover closes. The sidebar shows a "Finding clips…" row under the Suggested header, with a spinner (Windows: a fixed-width `ProgressRing`), **Cancel**, and the connector line "{connector} · reading {duration} of transcript" in 11 `text.secondary`. On macOS, Clip > Cancel Finding Clips (⌘.) and Esc in the sidebar also cancel; cancelling is silent.
 - **Results:** the new suggestions appear under Suggested and the first is focused (not selected). Announce "Found 3 clips".
-- **No connector:** the popover is replaced by an inline callout under the sidebar actions. Copy is in §13, with **Set Up AI…** and the line "You can also select words and press ⌘K to make a clip yourself."
+- **No connector:** the popover is replaced by an inline callout under the sidebar actions. Copy is in §13, with **Set Up AI…** and the line "You can also select words and press ⌥⌘K to make a clip yourself."
 - **Failures** show in the same place with **Retry** (§13).
 
 **Export ledger** (app-local, not in the project).
@@ -1693,10 +1693,10 @@ Step 2 of 3   Find clips with AI (optional)
               ( ) On this computer       Apple Intelligence · Ollama · LM Studio
               ( ) Installed CLI          ( ) Claude Code ● Ready   ( ) Codex ● Not found
               Sends transcript text only. No audio or video.
-              You can always make clips yourself: select words, press ⌘K.   [[ Not now ]] [ Continue ]
+              You can always make clips yourself: select words, press ⌥⌘K.   [[ Not now ]] [ Continue ]
 
 Step 3 of 3   Five keys to know
-              Space play · ⌫ cut · ⌘K clip · ⌘Z undo · ⌘E export
+              Space play · ⌫ cut · ⌥⌘K clip · ⌘Z undo · ⌘E export
               [ Open a video… ]                                                     [ Done ]
 ```
 
@@ -1754,6 +1754,12 @@ Single-letter keys (J K L I O P C [ ]) and bare Space, ⌫ and arrows act on the
 
 On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). Use Ctrl+Shift.
 
+**Mac command field (V11b).** The right title row and Home have “Search or run a command ⌘K”. It opens an in-window combo box and a scrollable list of enabled native menu commands with their menu paths and key hints. Filtering matches words in the title, path or shortcut. Validation never runs a command; Return revalidates and runs the selection after restoring the original responder, and Esc closes and restores focus. Palette choices validate and run as explicit menu choices even while Return or ⌘K is the current event; bare Explorer keys retain their focus rules outside the palette. Repeating ⌘K, clicking the launcher or choosing Help › Keyboard Shortcuts refocuses an open field and keeps its query. Moving focus or clicking outside closes it without restoring the old focus. VoiceOver hears a debounced results count and the selected command on arrow moves; the field links to the results table. Help › Keyboard Shortcuts opens this field; the former Shortcuts sheet is removed. The Welcome Tour remains a sheet for now. In a Versions window commands belong to that window. With the right column hidden, ⌘K remains available from the keyboard and View menu.
+
+**Mac monthly spend and sign-in (V11b).** When Voice Lab is on, the status bar and harness picker show the ElevenLabs estimate from the local ledger for **this month**, including the count of unpriced actions. It refreshes when Voice Lab work finishes, the app becomes active, the date changes, or the picker opens. It is an estimate, not a provider invoice. Home uses the same harness picker before a project is open. For a signed-out Claude Code or Codex it contains instructions, **Sign In…**, **Check Sign-In**, and the result in place. Sign In opens Terminal with the catalogue's existing sign-in command (`claude` or `codex login`); it makes no model request. The Home sign-in alert is removed. Home shows the picker row only while the selected CLI is signed out or has a result to show; the first-run hero retains no callouts. Returning from Sign In checks once. A ready result hides the sign-in actions immediately, clears on the following activation, and triggers no further probe. Announcements occur only when the result changes.
+
+**Mac timeline EXPORTS (V11b).** The bottom panel has TIMELINE and EXPORTS tabs. EXPORTS reuses the Explorer's `ExportsListModel`, 40 pt two-line rows, metadata and actions (Show in Finder, Open, Export again, Retry). Empty copy: “No exports yet. Export a clip or the full edit to see it here.” Selecting EXPORTS hides the timeline transport; Hide Timeline still works. It adds no sheet.
+
 ### 11.2 Map
 
 | Action | macOS | Windows | Notes |
@@ -1778,7 +1784,8 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Restore all cuts | ⌥⌘R | Ctrl+Shift+R | Keeps corrections |
 | Show / hide cuts | ⌥⌘C | Ctrl+Shift+H | macOS: View › Show Cuts, the tab row's toggle, or the timeline's Edited / Source (one switch for both views); Windows: Show/Hide Cut Words |
 | Find / next / previous | ⌘F / ⌘G / ⇧⌘G | Ctrl+F / F3 / Shift+F3 | "Cut all N" in the find bar |
-| Make clip from selection | ⌘K | Ctrl+K | Also the selection bar's default |
+| Search or run a command (Mac) | ⌘K | — | In-window field and menu results; Return runs, Esc closes |
+| Make clip from selection | ⌥⌘K | Ctrl+K | Also the selection bar's default |
 | Find clips | ⇧⌘K | Ctrl+Shift+K | Opens the Find Clips popover or flyout |
 | Rewrite the scope | ⇧⌘R | Ctrl+R | The selection, else the selected clip, else Full take (§6.3). Needs no Voice Lab |
 | Stop a running Rewrite | ⌘. or Esc | Esc | Also the panel's **Stop** |
@@ -1819,9 +1826,9 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 - **Edit:** Undo, Redo, Cut, Copy, Paste, Select All, Cut Selection, Restore Selection, Correct Word, Rewrite {scope} (⇧⌘R; the title follows the scope: "Rewrite Selection", "Rewrite Clip {n}" or "Rewrite Full Take", and gains "…" when the send asks first; §6.3), Type New Words…, Copy Text, Find…, Find Next, Find Previous, Cut Fillers, Tighten Pauses, Restore All Cuts, Transcribe Again…; Insert Words… (Voice Lab on; hidden until Core can place an insertion, §6.3); M2: Tighten with AI…, Clean Audio…; M3: Change Voice….
 - **View:** Show Cuts (⌥⌘C, a checkmark item; it works in a Versions window too), Show/Hide Pauses, Show/Hide Viewer (⌥⌘I), Home (⌘1), Full Take (⌘2), Show/Hide Sidebar (⌃⌘S), Show/Hide Timeline (⌘J), Frame (9:16 · 1:1 · 16:9 · Original, a checkmark on the project's frame), Bigger/Smaller/Actual Size, Enter Full Screen. Each Show/Hide title describes the current action.
 - **Playback:** Play/Pause, Play from Selection, Preview Cut, Back 3 Seconds (J), Forward 3 Seconds, Shuttle Back/Stop/Forward, Go to Start/End.
-- **Clip:** Make Clip from Selection (⌘K), Find Clips… (⇧⌘K), Cancel Finding Clips (⌘., only while finding), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Export Clip….
+- **Clip:** Make Clip from Selection (⌥⌘K), Find Clips… (⇧⌘K), Cancel Finding Clips (⌘., only while finding), Keep Suggestion, Dismiss Suggestion, Keep All Suggestions, Rename Clip…, Remove Clip, Set Start (I), Set End (O), Previous Clip ([), Next Clip (]), Export Clip….
 - **Window:** standard items, plus "VoxClip" (brings back the main window).
-- **Help:** Keyboard Shortcuts, Welcome Tour, What Leaves This Mac, Reveal Logs, Copy Diagnostics.
+- **Help:** Keyboard Shortcuts opens the same command field; Welcome Tour, What Leaves This Mac, Reveal Logs, Copy Diagnostics.
 
 ---
 
@@ -1867,7 +1874,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Stage, loading under Reduce Motion | stage | "Loading video…" |
 | Placeholder words | Settings → General | "Show transcript words on placeholders" (on); help "When off, placeholders show the project title instead of its first words." |
 | Relinked file differs | Editor | "This file looks different. Use it anyway?" [Use it] [Choose another] |
-| Clips: no connector | callout under the sidebar actions | "Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI." [Set Up AI…], plus "You can also select words and press ⌘K to make a clip yourself." (Windows: Ctrl+K) |
+| Clips: no connector | callout under the sidebar actions | "Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI." [Set Up AI…], plus "You can also select words and press ⌥⌘K to make a clip yourself." (Windows: Ctrl+K) |
 | Clips: CLI not found | callout under the sidebar actions | "{Claude Code/Codex} isn't installed. {installHint}" (hint from the catalogue) |
 | Clips: CLI not signed in | callout under the sidebar actions | "{cli} isn't signed in. {signInHint}" [Sign-in help] |
 | Clips: Apple model locale | callout under the sidebar actions | "Apple's on-device model doesn't support {language}. Use an API key, a CLI or a local model for this project." |
@@ -1876,7 +1883,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Clips: finding | sidebar, under Suggested | "Finding clips…" [Cancel], with "{connector} · reading {m:ss} of transcript". Announce "Finding clips", then "Found 1 clip." or "Found {n} clips."; when none are found, announce the "Clips: none found" message |
 | Clips: none found | sidebar, under Suggested | the prompt file's `messages` text (VoxConvo: "No clips matched. Try another style or describe what you want.") [Find Clips…] |
 | Clips: any other AI failure | callout under the sidebar actions | the AI spec section 5 message for the error, followed by "Your edits are saved." [Retry] |
-| Project with no clips | sidebar, under Full take | "No clips yet. Select words and press ⌘K." (Windows: Ctrl+K), 11 `text.secondary` |
+| Project with no clips | sidebar, under Full take | "No clips yet. Select words and press ⌥⌘K." (Windows: Ctrl+K), 11 `text.secondary` |
 | Clip already exists | announcement, selection bar tooltip | "Clip {k} already covers these words." |
 | Clip made / kept / dismissed / removed | announcement | "Clip {k} made." / "Clip {k} kept." / "Suggestion dismissed." / "Clip {k} removed." |
 | Everything cut | Editor, Export | Export disabled; status "Keep at least one word before exporting." |

@@ -16,9 +16,8 @@ struct PopUpInventoryTests {
         "LocalModelsView.swift": (1, "the model download confirmation; Settings › Models (origin .settings) and VT's transcription sheet"),
         "SpeakerModelLibrary.swift": (1, "the own-voice check download confirmation in Settings; V16 makes it an inline row in the Voice job"),
         "VoiceLabSettings.swift": (4, "Settings › Voice Lab's Turn on Voice Lab? alert (V16, low priority); CreateVoiceSheet and VoiceLabRequestSheet (V16, V17)"),
-        "EditorView.swift": (4, "TranscriptionSheet (VT), the Voice Lab opt-in sheet (V16), the shortcuts sheet (V11b's ⌘K) and the tour (Home frame 7)"),
+        "EditorView.swift": (3, "TranscriptionSheet (VT), the Voice Lab opt-in sheet (V16), and the tour (Home frame 7); V11b replaced shortcuts with the inline command field"),
         "TranscriptionSheet.swift": (1, "the transcription consent sheet (VT)"),
-        "HomeView.swift": (2, "the Sign in to {provider} NSAlert (V11b: an inline row in the harness picker)"),
         "VoxClipApp.swift": (6, "Open's NSOpenPanel; Help › What Leaves This Mac, an NSAlert and its runModal (no owner yet); Transcribe again? (VT, v5 f25)"),
         "RewriteSession.swift": (2, "RewriteApprovalSheet: API-key sends and the privacy consent (V12), takes and ElevenLabs (V18)"),
     ]

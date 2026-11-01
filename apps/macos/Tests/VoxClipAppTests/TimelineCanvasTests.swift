@@ -1079,7 +1079,8 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(delegate.validateMenuItem(actual))
         _ = delegate.perform(action, with: actual)
         #expect(editor.textSize == DesignValues.transcriptTextSize, "Actual Size targets Versions too")
-        #expect(ShortcutsView.lines.contains { $0.hasPrefix("⌘= / ⌘−|") && $0.contains("Timeline zoom") })
+        #expect(menu.items.filter { $0.tag == 18 && !$0.isHidden }.map(\.keyEquivalent) == ["="])
+        #expect(menu.items.filter { $0.tag == 18 && $0.isHidden }.map(\.keyEquivalent) == ["+"])
         #expect(!version.isDocumentEdited && !version.hasUnautosavedChanges)
     }
 

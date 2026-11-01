@@ -16,7 +16,8 @@ import VoxClipCore
     /// The opt-in tour's Help item. DebugMenus checks it by this name, so the checklist's
     /// obsolete-workspace search finds only the item itself.
     nonisolated static let tourTitle = "Welcome Tour"
-    private let model = AppModel.sharedModel
+    private let model: AppModel
+    init(model: AppModel = AppModel.sharedModel) { self.model = model; super.init() }
     private var bufferedURLs: [URL] = []
     private var settingsWindow: NSWindow?
     private var terminating = false
@@ -169,7 +170,14 @@ import VoxClipCore
 
     #if DEBUG
     weak var commandWindowForTesting: NSWindow?
+    var commandEventForTesting: NSEvent?
     #endif
+    private var commandEvent: NSEvent? {
+        #if DEBUG
+        if let commandEventForTesting { return commandEventForTesting }
+        #endif
+        return NSApp.currentEvent
+    }
     private var mainWindowIsKey: Bool {
         #if DEBUG
         if let commandWindowForTesting { return commandWindowForTesting === model.shell.windowController?.window }
@@ -264,15 +272,18 @@ import VoxClipCore
             if editor.focusedPane == .timeline { editor.timelineZoomStep += direction }
             else { editor.zoom(Double(direction)) }
             return
-        // Help works on Home and with no project open; both sheets belong to the main window.
-        case 35: MainWindowController.shared.show(); shell.showShortcuts = true; return
+        // Commands belong to the active window; Help also works with no project open.
+        case 35, 61:
+            if let keyShell { keyShell.openCommandPalette() }
+            else { MainWindowController.shared.show(); shell.openCommandPalette() }
+            return
         case 36: MainWindowController.shared.show(); model.showTour = true; return
         default: break
         }
         guard let editor, validateMenuItem(item) else { return }
         switch item.tag {
         case 1:
-            if NSApp.currentEvent?.type == .keyDown { editor.toggleSelectionCut() }
+            if !MenuCommandIndex.isInvoking, commandEvent?.type == .keyDown { editor.toggleSelectionCut() }
             else { editor.cutSelection() }
         case 2: editor.cutSelection(restore: true)
         case 3: editor.beginCorrection()
@@ -374,7 +385,7 @@ import VoxClipCore
     /// the transcript, another field), a clip is renamed or an input method composes. Keep Suggestion's hidden ⇧⌘↩, the
     /// clip bar's Keep (impl-plan §3.2, V3b), works from anywhere in the window on a suggestion's tab.
     static func clipRowKeyEnabled(_ item: NSMenuItem, event: NSEvent?, pane: EditorPane, renaming: Bool, responder: NSResponder?, row: SidebarItem? = nil) -> Bool {
-        guard event?.type == .keyDown, [40, 41, 43, 44].contains(item.tag) else { return true }
+        guard !MenuCommandIndex.isInvoking, event?.type == .keyDown, [40, 41, 43, 44].contains(item.tag) else { return true }
         if renaming { return false }
         if let input = responder as? any NSTextInputClient, input.hasMarkedText() { return false }
         guard item.keyEquivalentModifierMask.isDisjoint(with: [.command, .control, .option]) else { return true }
@@ -402,7 +413,7 @@ import VoxClipCore
                 let shell = model.shell
                 item.title = shell.layout.timelineVisible ? "Hide Timeline" : "Show Timeline"
                 return mainWindowIsKey && shell.editor != nil && !shell.showsHome && (shell.layout.rightVisible || !shell.layout.timelineVisible)
-            case 35, 36: return true
+            case 35, 36, 61: return true
             case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
             case 20: return keyEditor != nil
             case 18, 19:
@@ -417,8 +428,8 @@ import VoxClipCore
             }
             guard let editor else { return false }
             if editor.mutationEnabled(item.tag) == false { return false }
-            if NSApp.currentEvent?.type == .keyDown, Self.focusedControlKeepsKey(item, responder: NSApp.keyWindow?.firstResponder) { return false }
-            if !Self.clipRowKeyEnabled(item, event: NSApp.currentEvent, pane: editor.focusedPane, renaming: model.shell.renaming != nil,
+            if !MenuCommandIndex.isInvoking, commandEvent?.type == .keyDown, Self.focusedControlKeepsKey(item, responder: NSApp.keyWindow?.firstResponder) { return false }
+            if !Self.clipRowKeyEnabled(item, event: commandEvent, pane: editor.focusedPane, renaming: model.shell.renaming != nil,
                                        responder: NSApp.keyWindow?.firstResponder, row: model.shell.selection) { return false }
             if [1, 2, 3, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33, 38, 46].contains(item.tag) {
                 guard editor.correctionID == nil else { return false }
@@ -438,7 +449,7 @@ import VoxClipCore
             case 49: return editor.finding
             case 43, 44: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.capabilities.edit
             case 45: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.canExport && editor.mediaExportable
-            case 46: return editor.mediaResolved && Self.backStepEnabled(item, event: NSApp.currentEvent, responder: NSApp.keyWindow?.firstResponder)
+            case 46: return editor.mediaResolved && Self.backStepEnabled(item, event: commandEvent, responder: NSApp.keyWindow?.firstResponder)
             case 47: return editor.mediaResolved
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
             case 8: return editor.capabilities.edit && editor.summary.canTighten
@@ -551,6 +562,7 @@ import VoxClipCore
         command(view, "Show Cuts", 60, "c", [.command, .option])
         command(view, "Show Pauses", 11)
         command(view, "Hide Viewer", 12, "i", [.command, .option])
+        command(view, "Search or Run a Command…", 61, "k")
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")
         command(view, "Hide Sidebar", 16, "s", [.command, .control])
@@ -574,7 +586,7 @@ import VoxClipCore
         command(playback, "Back 3 Seconds", 46, "j", [])
         command(playback, "Forward 3 Seconds", 47)
         let clip = menu("Clip")
-        command(clip, "Make Clip from Selection", 29, "k")
+        command(clip, "Make Clip from Selection", 29, "k", [.command, .option])
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
         command(clip, "Cancel Finding Clips", 49, ".")
         command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])

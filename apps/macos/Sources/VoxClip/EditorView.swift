@@ -31,6 +31,7 @@ import VoxClipCore
             } isTargeted: { shell.dropTargeted = $0 }
             .overlay { if shell.dropTargeted { DropOverlay(savedFirst: shell.isHome ? nil : shell.projectTitle) } }
             .onChange(of: shell.app.pauseBreathRevision) { _, _ in applyPauseBreath() }
+            .modifier(WorkspaceServiceUpdates(shell: shell))
             .frame(minWidth: 640, minHeight: 480)
             .onGeometryChange(for: Double.self) { $0.size.width } action: { shell.windowWidth = $0 }
     }
@@ -47,14 +48,13 @@ import VoxClipCore
             .ignoresSafeArea()
             .preferredColorScheme(shell.app.appearance)
     }
-    /// Transcribe Again, Keyboard Shortcuts and the tour.
+    /// Transcribe Again and the tour.
     private func sheets(on content: some View) -> some View {
         content
             .sheet(isPresented: editorFlag(\.showTranscribe)) { if let editor = shell.editor { TranscriptionSheet(model: editor) } }
             .sheet(isPresented: editorFlag(\.showVoiceLabOptIn)) {
                 if let editor = shell.editor { VoiceLabOptInView(editor: editor) }
             }
-            .sheet(isPresented: $shell.showShortcuts) { ShortcutsView() }
             .sheet(isPresented: Binding(get: { shell.app.showTour }, set: { shell.app.showTour = $0 })) { OnboardingView() }
     }
     /// A changed pause breath setting applies to the open project as one undo step.
@@ -71,6 +71,27 @@ import VoxClipCore
     /// A sheet or panel flag on the open editor; false while no project is open.
     private func editorFlag(_ flag: ReferenceWritableKeyPath<EditorModel, Bool>) -> Binding<Bool> {
         Binding(get: { shell.editor?[keyPath: flag] ?? false }, set: { shell.editor?[keyPath: flag] = $0 })
+    }
+}
+
+/// Keep service observations outside the workspace's layout expression for Xcode 26.
+@MainActor private struct WorkspaceServiceUpdates: ViewModifier {
+    let shell: WorkspaceShell
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: shell.app.voiceLabSession.busy) { _, busy in
+                if !busy { Task { await shell.app.refreshMonthlySpend() } }
+            }
+            .onChange(of: shell.editor?.rewrite?.generation?.phase) { _, _ in
+                Task { await shell.app.refreshMonthlySpend() }
+            }
+            .task(id: shell.app.bool("voiceLab.enabled")) { await shell.app.refreshMonthlySpend() }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+                Task { await shell.app.refreshMonthlySpend() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                Task { await shell.app.refreshMonthlySpend(); await shell.app.harnessSignIn.checkPending() }
+            }
     }
 }
 

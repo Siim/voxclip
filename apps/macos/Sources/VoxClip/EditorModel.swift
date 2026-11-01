@@ -946,7 +946,7 @@ struct EditorRenderSnapshot {
         let restore: Bool = !ids.isEmpty && ids.allSatisfy { (id: String) -> Bool in cutWordIDs.contains(id) || cutPauseIDs.contains(id) }
         cutSelection(restore: restore)
     }
-    /// Make Clip (⌘K, design §3.4): one undo step adds the clip and selects its row. A
+    /// Make Clip (⌥⌘K, design §3.4): one undo step adds the clip and selects its row. A
     /// selection an existing clip already covers selects that clip instead.
     func makeClip() {
         guard let start = selectedIDs.first, let end = selectedIDs.last else { return }

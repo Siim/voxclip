@@ -51,7 +51,7 @@ The follow-up idea: "it can make clips continuously from live stream once someth
 2. **Send from your phone**: a QR code opens a small page served by VoxClip on the LAN. The page uploads chosen videos with resumable chunks (a tus 1.0 subset).
 3. **Import from a connected camera**: USB or microSD import with a "DJI camera connected" prompt. This is the wired fallback and the fastest path for 4K originals.
 4. **Camera inbox**: a watched folder. It is generic (AirDrop, iCloud Drive, OneDrive and sync folders all work). The DJI Camera Cloud Service setup guide is shown only after hardware test H8 passes.
-5. **Clips while you stream** (section 9): press **Clip that** (⌘K / Ctrl+K), a global shortcut or the phone page's button, or say "clip that" when a live transcript runs, and the last 45 seconds, snapped back to a sentence or a pause, render with captions into a "Clips from this stream" tray while the camera keeps streaming. In M2.x, **AI watching** checks the live transcript about once a minute with the user's API-key or local model and proposes strong, finished moments, within a per-stream budget; it is off until the user turns it on for each stream. Nothing is posted or uploaded automatically.
+5. **Clips while you stream** (section 9): press **Clip that** (⌥⌘K / Ctrl+K), a global shortcut or the phone page's button, or say "clip that" when a live transcript runs, and the last 45 seconds, snapped back to a sentence or a pause, render with captions into a "Clips from this stream" tray while the camera keeps streaming. In M2.x, **AI watching** checks the live transcript about once a minute with the user's API-key or local model and proposes strong, finished moments, within a per-stream budget; it is off until the user turns it on for each stream. Nothing is posted or uploaded automatically.
 
 Not in v1: SRT (no Pocket camera speaks it), phone-free Bluetooth control of the camera, offload from the camera's own Wi-Fi access point, DisplayPort capture, Bonjour discovery, HTTPS on the LAN (section 21).
 
@@ -123,7 +123,7 @@ The receiver does not care which camera sends. The **Pocket 3** (the US baseline
 | 6 | Camera inbox (watched folder) | M2 | generic; the DJI setup guide needs H8 |
 | 7 | Webcam (UVC) | M2, as part of Recording (design.md §12) | H9 |
 | 8 | SRT, Bluetooth camera control, camera access-point offload, in-place original-file swap (live clips have their own path to the camera file, item 12) | not planned (section 21) | — |
-| 9 | **"Clip that"** while live from the button, ⌘K / Ctrl+K, a global shortcut and the phone page; drafts rendered during the stream; the "Clips from this stream" tray; clips into the take's project (section 9) | M2, with item 4 | none for the feature (it works with any RTMP app); H14 before release copy quotes its speed |
+| 9 | **"Clip that"** while live from the button, ⌥⌘K / Ctrl+K, a global shortcut and the phone page; drafts rendered during the stream; the "Clips from this stream" tray; clips into the take's project (section 9) | M2, with item 4 | none for the feature (it works with any RTMP app); H14 before release copy quotes its speed |
 | 10 | Voice "clip that" (section 9.4.2) | M2 with item 5; later if item 5 is later | recording spec |
 | 11 | **AI watching** (the rolling clip finder) and Find clips now (section 9.5) | M2.x | needs item 5; H14 |
 | 12 | Live clips onto the camera's own recording (section 9.8.2) | M2.x | H7 |
@@ -703,7 +703,7 @@ Milestones are in section 9.14, constants in section 5, settings keys in section
 ```text
  16 kHz feed (7.4) ─┬─▶ live engine (M2 Recording spec) ── final words, processed time ──┐
                     └─▶ LiveSilenceFinder (Core) ── silence runs ─────────────────────────┤
- Clip that button, ⌘K / Ctrl+K, global shortcut, phone POST /s/{t}/clip ── triggers ──────┤
+ Clip that button, ⌥⌘K / Ctrl+K, global shortcut, phone POST /s/{t}/clip ── triggers ──────┤
                                                                                           ▼
                                      LiveClipEngine (Core, sans-I/O, clock = take time from the feed)
                    LLMRequest ◀───────────┤   │ render jobs                 │ clips, watch state, notices
@@ -764,7 +764,7 @@ silenceSince(t)  = feedTime − max(t, start of the quiet run still open at the 
 | Source | How | Default |
 |---|---|---|
 | Voice | a trigger phrase in the final words (9.4.2) | on when a live engine runs (`ingest.liveClips.voiceTrigger`) |
-| Button | **Clip that** in the Receive toolbar, and ⌘K / Ctrl+K while the Receive window is key (the editor's "Make clip" shortcut; there is no word selection while live) | always on |
+| Button | **Clip that** in the Receive toolbar, and ⌥⌘K / Ctrl+K while the Receive window is key (the editor's "Make clip" shortcut; there is no word selection while live) | always on |
 | Global shortcut | a shortcut the user records in Settings → Receive, registered only while a take is live or reconnecting. macOS: Carbon `RegisterEventHotKey`, which needs no Accessibility permission. Windows: `RegisterHotKey`; combinations with the Windows key are refused because Windows reserves them, and F12 is refused because it is reserved for debuggers ([RegisterHotKey](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-registerhotkey)) | off (`ingest.liveClips.globalShortcut` = null) |
 | Phone | **Clip that** on the stream helper page (10.7), which sends `POST /s/{helperToken}/clip` | on (`ingest.liveClips.phoneButton`) |
 
@@ -999,7 +999,7 @@ A success resets `n`. A paused finder resumes only through **Try again** in the 
 |---|---|
 | AI watching | off at the start of every stream; never stored |
 | Voice "clip that" | on, when a live engine runs |
-| **Clip that** button and ⌘K / Ctrl+K | always on |
+| **Clip that** button and ⌥⌘K / Ctrl+K | always on |
 | Phone **Clip that** button | on |
 | Global shortcut | off |
 | Notifications for strong AI clips | on; permission is asked when AI watching is first turned on |
@@ -1081,7 +1081,7 @@ Whether the camera records internally while it streams is hardware test H7, so t
 
 ### 9.9 UX: the tray, AI watching, notifications and exact copy
 
-Voice and conventions as in section 15. `{⌘K/Ctrl+K}` is ⌘K on macOS and Ctrl+K on Windows.
+Voice and conventions as in section 15. `{⌥⌘K/Ctrl+K}` is ⌥⌘K on macOS and Ctrl+K on Windows.
 
 #### 9.9.1 Layout
 
@@ -1135,8 +1135,8 @@ Hints and transient messages:
 
 | Situation | Copy |
 |---|---|
-| Empty, live engine running | "Say “clip that”, press {⌘K/Ctrl+K} or tap Clip that on your phone to save the last {n} seconds." |
-| Empty, no live engine | "Press {⌘K/Ctrl+K} or tap Clip that on your phone to save the last {n} seconds." |
+| Empty, live engine running | "Say “clip that”, press {⌥⌘K/Ctrl+K} or tap Clip that on your phone to save the last {n} seconds." |
+| Empty, no live engine | "Press {⌥⌘K/Ctrl+K} or tap Clip that on your phone to save the last {n} seconds." |
 | Empty, AI watching on | "AI is watching for strong moments. Clips appear here for you to review. Nothing is posted." |
 | Trigger accepted | "Saving the last {n} seconds." (transient, 3 s) |
 | Trigger with nothing recorded | "Nothing to clip yet." (transient, 3 s) |
@@ -1554,7 +1554,7 @@ live/
 
 | Part | Milestone | Why |
 |---|---|---|
-| "Clip that" from the button, {⌘K/Ctrl+K}, the global shortcut and the phone page; silence snapping; clip transcription for captions; drafts while live; the tray; Keep, Share…, Discard, ±15 s; clips into the project at take end | **M2, with the receiver** (section 3.1 item 9) | No LLM, no cost and no new privacy surface. It reuses the export path, the helper server and the batch engines, and it is useful with any RTMP app the day the receiver ships |
+| "Clip that" from the button, {⌥⌘K/Ctrl+K}, the global shortcut and the phone page; silence snapping; clip transcription for captions; drafts while live; the tray; Keep, Share…, Discard, ±15 s; clips into the project at take end | **M2, with the receiver** (section 3.1 item 9) | No LLM, no cost and no new privacy surface. It reuses the export path, the helper server and the batch engines, and it is useful with any RTMP app the day the receiver ships |
 | Voice "clip that" | M2, with the live transcript (item 5) | Needs final live words and nothing else |
 | AI watching and Find clips now | **M2.x** | Needs a live engine, which M2 may not have; needs threshold and timing tuning on real streams (H14); carries cost, consent and rate-limit risk that must not hold up the receiver |
 | Clips onto the camera's own recording (9.8.2) | M2.x, after H7 | Depends on whether the camera records internally while it streams |
@@ -1828,7 +1828,7 @@ The window opens like the Record view (design.md §12): a new project window tha
 ```
 
 - The address uses Geist Mono 500 at the transcript text size, selectable. The QR button shows the helper-page QR code with "Scan with your phone to copy this address there and to clip from your phone."
-- Toolbar while live: the REC pill (as in Recording), the stats line, an audio level meter, the **AI watching** pill and switch (section 9.6.2), **Clip that** (⌘K / Ctrl+K, tooltip "Save the last {n} seconds"), the tray button and **End take** (Space). Esc does nothing.
+- Toolbar while live: the REC pill (as in Recording), the stats line, an audio level meter, the **AI watching** pill and switch (section 9.6.2), **Clip that** (⌥⌘K / Ctrl+K, tooltip "Save the last {n} seconds"), the tray button and **End take** (Space). Esc does nothing.
 - Under the preview while live: "This is the live stream, up to 1080p at 30 fps. The camera's own recording is sharper."
 - The "Clips from this stream" tray is a trailing column of this window; its layout, rows, AI watching states, consent sheet, notifications and copy are in section 9.9.
 
@@ -2448,7 +2448,7 @@ Setup: Pocket 4 on the latest firmware (v01.04.12.16 or newer), an iPhone with t
 | H11 | iPhone Safari (iOS 26/27): QR page, Photos picker with Automatic and Current, Files, screen lock and app switch mid-upload, reload mid-upload, `execCommand` copy on the helper page; Android Chrome; an 8 GB file | Page copy, resume behaviour |
 | H12 | Import of real Pocket 4 files: 4K HEVC 10-bit D-Log, with and without a DJI Mic (two tracks), slow motion with its separate AAC file | M1 compatibility claim |
 | H13 | Pocket 3 → Mimo RTMP (H.264, classic RTMP) | US baseline works |
-| H14 | Live clipping on a real 30-minute Pocket 4 stream, on a base M1 Mac and a mid-range Windows PC: "clip that" by voice in English and Estonian, by ⌘K / Ctrl+K and by the phone page, and AI watching with one cloud and one local connector. Measure trigger-to-ready time for a 45 s 9:16 clip, false and missed voice triggers, how many AI clips were kept, and the receiver's stats compared with a stream without clipping | Release copy about live clips; `liveEvalMinInterval`, `liveSettleSeconds`, `minScore` and `maxPerHour` defaults |
+| H14 | Live clipping on a real 30-minute Pocket 4 stream, on a base M1 Mac and a mid-range Windows PC: "clip that" by voice in English and Estonian, by ⌥⌘K / Ctrl+K and by the phone page, and AI watching with one cloud and one local connector. Measure trigger-to-ready time for a 45 s 9:16 clip, false and missed voice triggers, how many AI clips were kept, and the receiver's stats compared with a stream without clipping | Release copy about live clips; `liveEvalMinInterval`, `liveSettleSeconds`, `minScore` and `maxPerHour` defaults |
 
 ---
 
@@ -2459,7 +2459,7 @@ This spec only adds `doc/spec/ingest.md`. The owners of these documents apply th
 | Document | Change |
 |---|---|
 | `doc/architecture.md` | §1.1 spec-map row for this file; §1 layout: `shared/ingest/web/`, `shared/ingest/live-clip-triggers.json`, `shared/fixtures/ingest/`, `tools/fixtures/ingest/`; §2 placement of the `Ingest` and `Ingest/LiveClips` folders (section 4.2); §2.5 the Received folder, `<data>/Ingest/` and `<data>/Cache/LiveClips/`; §5.1 and §6.4 the live clip renderer as a second caller of the one compose path (section 9.7); §7.1 the preview-renderer hand-off as an allowed exception with its invariant, and `LiveClipCoordinator` / `LiveClipRenderer` in the actor list; §7.2 the `vc-live-render` thread; §9.2 `ingest` subcommands, including `live-replay` and the `--clip-at` / `--live-words-out` options; §9.3 exit code 8; §10.2 the codes in section 17.1; §11.1 log category `ingest`; §11.3 both "What leaves this device" lines (section 14 rule 10); §11.4 secret account `ingest-rtmp-key`; §12 the fixtures-job line |
-| `doc/design.md` | §2 information architecture (From camera or phone); §7 Welcome / Home menu button and sections; §10 Settings → Receive pane, including the Clip that and AI watching rows; §11.2 ⌘K / Ctrl+K as **Clip that** in the Receive window, and the optional global shortcut; §11.3 File menu items; §13 the states in sections 9.9 and 15 |
+| `doc/design.md` | §2 information architecture (From camera or phone); §7 Welcome / Home menu button and sections; §10 Settings → Receive pane, including the Clip that and AI watching rows; §11.2 ⌥⌘K / Ctrl+K as **Clip that** in the Receive window, and the optional global shortcut; §11.3 File menu items; §13 the states in sections 9.9 and 15 |
 | `doc/decisions.md` | ING-1 to ING-15 as refinements of ADR-027 |
 | `doc/release.md` | Info.plist `NSLocalNetworkUsageDescription` (section 13.3); `bundle.sh` copies `shared/ingest` (its list today is `design fonts captions prompts schemas models`); entitlement check unchanged (notifications and Carbon hot keys need no entitlement); Windows notes on the firewall helper, the leftover rule after uninstall, and `AppNotificationManager` registration in the unpackaged app (W-7) |
 | `THIRD_PARTY_NOTICES.md` and About → Licences | QRCoder (MIT) for Windows; Moblin (MIT) only if code is copied. Live clipping adds no dependency |

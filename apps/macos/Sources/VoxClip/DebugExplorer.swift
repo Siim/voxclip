@@ -147,7 +147,7 @@ import VoxClipCore
         editor.undoManager = undo
         func step(_ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
 
-        // Make Clip (⌘K): one undo step adds the clip and selects its row.
+        // Make Clip (⌥⌘K): one undo step adds the clip and selects its row.
         let words = editor.words
         guard let start = words.firstIndex(where: { $0.text == "One" }), start + 3 < words.count else { throw CocoaError(.coderInvalidValue) }
         editor.select(words[start].id); editor.select(words[start + 3].id, extend: true)
@@ -375,13 +375,11 @@ import VoxClipCore
         if let shortcuts, let action = shortcuts.action {
             if modal == nil { NSApp.sendAction(action, to: shortcuts.target, from: shortcuts) } else { _ = menuDelegate?.perform(action, with: shortcuts) }
         }
-        let showedShortcuts = app.shell.showShortcuts
-        app.shell.showShortcuts = false
+        let showedShortcuts = app.shell.showCommandPalette
+        app.shell.showCommandPalette = false
         check("Help > Keyboard Shortcuts and Workspace Tour are enabled with no editor", enabled)
-        check("Help > Keyboard Shortcuts opens its sheet with no editor, through \(modal.map { "its handler (app-modal \($0) open)" } ?? "the menu action")", showedShortcuts)
-        check("the shortcuts sheet lists the current bindings", ShortcutsView.lines.contains("⌘1 / ⌘2|Home / Full Take") && ShortcutsView.lines.contains("⇧⌘K|Find clips")
-              && ShortcutsView.lines.contains("⌥⌘I|Show / hide viewer") && ShortcutsView.lines.contains("⌃⌘S|Show / hide sidebar")
-              && !ShortcutsView.lines.contains { $0.contains("⌘3") || $0.contains("caption inspector") })
+        check("Help > Keyboard Shortcuts opens the command field with no editor, through \(modal.map { "its handler (app-modal \($0) open)" } ?? "the menu action")", showedShortcuts)
+        check("the command field replaces the shortcuts sheet", NSApp.mainMenu?.item(withTitle: "View")?.submenu?.items.contains { $0.tag == 61 && $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command } == true)
 
         // The transcript takes keyboard focus when a project opens; returning from Home
         // with the sidebar list focused leaves focus in the list (C4).
