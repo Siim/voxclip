@@ -1,7 +1,7 @@
 import Foundation
 import VoxClipCore
 
-// The editor's side of the v2 timeline (impl-plan V7a): which axis it shows, where the
+// The editor's side of the v2 timeline (impl-plan V7a, V7b): which axis it shows, where the
 // playhead is on it, and how a time on it maps back to the take.
 extension EditorModel {
     /// Source while Show cuts is on, else Edited (notes.md §6).
@@ -51,6 +51,21 @@ extension EditorModel {
     func timelineInOut(on axis: TimelineAxis) -> ClosedRange<Double>? {
         guard let source = scopeSourceRange else { return nil }
         return axis == .edited ? 0...max(0, duration) : source
+    }
+
+    /// Source view's removed ranges in the scope (notes.md §6): take time between In and Out,
+    /// or in the whole take on Full Take, that no piece plays: cut words, and the cut part of
+    /// a cut pause (the planner keeps a little of it, so one can end just inside Out).
+    func timelineRemovedRanges(_ pieces: TimelinePieces) -> [Range<Double>] {
+        pieces.gaps(within: scopeSourceRange.map { $0.lowerBound..<$0.upperBound } ?? 0..<max(0, sourceDuration))
+    }
+
+    /// The scope's kept words in take time, in order: A1's stand-in when there is no
+    /// waveform (design §5.4.10).
+    var timelineKeptWords: [Range<Double>] {
+        let indices = scopeBounds ?? 0...max(0, words.count - 1)
+        guard !words.isEmpty else { return [] }
+        return words[indices].filter { !cutWordIDs.contains($0.id) && $0.end > $0.start }.map { $0.start..<$0.end }
     }
 
     /// The selection's take range: its words and pauses, or nil when nothing is selected.
@@ -122,7 +137,7 @@ extension EditorModel {
         for index in pieces.indices(overlapping: (time - tolerance)..<(time + tolerance), on: .edited).dropFirst() {
             let before = pieces.pieces[index - 1], after = pieces.pieces[index]
             let distance = abs(after.edited.lowerBound - time)
-            guard distance <= tolerance, after.source.lowerBound - before.source.upperBound > 1e-6,
+            guard distance <= tolerance, pieces.isSeam(at: index),
                   nearest.map({ distance < $0.distance }) ?? true else { continue }
             nearest = (distance, before.source.upperBound..<after.source.lowerBound)
         }

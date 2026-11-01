@@ -2,10 +2,10 @@ import AppKit
 import QuartzCore
 import VoxClipCore
 
-// The v2 timeline's AppKit lanes (ux/v2 notes.md §6, impl-plan V7a): the overview strip, the
-// ruler with In/Out, the track bed and the playhead. No view is wider than the panel: the
-// viewport maps time to points, and each lane draws only what it shows. The playhead is
-// its own layer, moved by transform, so playback never redraws a lane.
+// The v2 timeline's AppKit lanes (ux/v2 notes.md §6, impl-plan V7a and V7b): the overview
+// strip, the ruler with In/Out, the track bed, A1's audio and the playhead. No view is wider
+// than the panel: the viewport maps time to points, and each lane draws only what it shows.
+// The playhead is its own layer, moved by transform, so playback never redraws a lane.
 
 /// The panel's rows below its toolbar, in points from the canvas top (notes.md §6).
 enum TimelineMetrics {
@@ -24,8 +24,9 @@ enum TimelineMetrics {
     static let reach: CGFloat = 5
     static let overview = Row(y: 0, height: 24)
     static let ruler = Row(y: 24, height: 22)
-    /// V1, A1 and CC at the default track height (M). V7b and V9 fill them.
+    /// V1, A1 and CC at the default track height (M). V9 fills V1 and CC.
     static let tracks = [Row(y: 47, height: 36), Row(y: 84, height: 44), Row(y: 129, height: 24)]
+    static var audio: Row { tracks[1] }
     static var tracksEnd: CGFloat { tracks.last?.maxY ?? ruler.maxY }
     /// The panel's default height less the toolbar.
     static let height: CGFloat = 188
@@ -94,6 +95,12 @@ struct TimelineContent: Equatable {
     /// The selection on the axis.
     var selection: ClosedRange<Double>?
     var clips: [TimelineOverviewClip] = []
+    /// The scope's pieces and the take's waveform, for A1, and on Source the cut ranges in it.
+    var pieces = TimelinePieces([])
+    var waveform: WaveformData?
+    var removed: [Range<Double>] = []
+    /// The scope's kept words in take time while there is no waveform (design §5.4.10).
+    var words: [Range<Double>] = []
 }
 
 /// The lanes and the playhead for one editor. It follows the model by itself: content
@@ -103,6 +110,7 @@ struct TimelineContent: Equatable {
     let overview = TimelineOverviewLane()
     let ruler = TimelineRulerLane()
     let bed = TimelineTrackBed()
+    let audio = TimelineAudioLane()
     let overlay = TimelineOverlayView()
     private(set) var viewport = TimelineViewport(axis: .edited, ptPerSecond: 20, origin: -TimelineViewport.margin, width: 944)
     private(set) var content = TimelineContent()
@@ -128,7 +136,7 @@ struct TimelineContent: Equatable {
         wantsLayer = true
         layerContentsRedrawPolicy = .never
         identifier = NSUserInterfaceItemIdentifier("voxclip.timeline.canvas")
-        for lane in [overview, ruler, bed] as [NSView] { addSubview(lane) }
+        for lane in [overview, ruler, bed, audio] as [NSView] { addSubview(lane) }
         addSubview(overlay)
         configureAccessibility()
         toolTip = "Drag to scrub. Shift-drag snaps to word starts. Double-click a cut to restore it."
@@ -165,6 +173,7 @@ struct TimelineContent: Equatable {
         overview.frame = NSRect(x: 0, y: TimelineMetrics.overview.y, width: width, height: TimelineMetrics.overview.height)
         ruler.frame = NSRect(x: 0, y: TimelineMetrics.ruler.y, width: width, height: TimelineMetrics.ruler.height)
         bed.frame = NSRect(x: 0, y: TimelineMetrics.ruler.maxY, width: width, height: max(0, bounds.height - TimelineMetrics.ruler.maxY))
+        audio.frame = NSRect(x: 0, y: TimelineMetrics.audio.y, width: width, height: TimelineMetrics.audio.height)
         overlay.frame = bounds
         if abs(viewport.width - laneWidth) > 0.5 {
             viewport = fitted ? fittedViewport(for: content) : TimelineViewport(axis: viewport.axis, ptPerSecond: viewport.ptPerSecond, origin: viewport.origin, width: laneWidth)
@@ -192,6 +201,10 @@ struct TimelineContent: Equatable {
         next.inOut = model.timelineInOut(on: axis)
         next.selection = model.timelineSelection(on: axis)
         next.clips = model.timelineOverviewClips
+        next.pieces = model.timelinePieces
+        next.waveform = model.waveform
+        next.removed = axis == .source ? model.timelineRemovedRanges(next.pieces) : []
+        next.words = next.waveform == nil ? model.timelineKeptWords : []
         let previous = content
         content = next
         if !rendered || next.scope != previous.scope || next.takeLength != previous.takeLength {
@@ -254,6 +267,8 @@ struct TimelineContent: Equatable {
                                                     takeLabel: durationLabel(content.takeLength))
         ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection)
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
+        audio.state = TimelineAudioLane.State(viewport: viewport, pieces: content.pieces, waveform: content.waveform, removed: content.removed,
+                                              words: content.words, inOut: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength)
         let top = TimelineMetrics.tracks.first?.y ?? TimelineMetrics.ruler.maxY
         overlay.showWash(content.selection.map { range in
             let lower = viewport.x(range.lowerBound), upper = viewport.x(range.upperBound)
@@ -639,15 +654,250 @@ struct TimelineOverviewLabel: Equatable {
     }
 }
 
-/// The track lanes' ground: one flat lane per track row beside the headers. Their content
-/// arrives with V7b (A1) and V9 (V1, CC).
+/// The ground of the track rows A1 does not draw: V1 and CC as flat lanes beside the
+/// headers, until V9 fills them.
 @MainActor final class TimelineTrackBed: TimelineLane {
     struct State: Equatable { var width = 0.0 }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     override func drawLane(in context: CGContext) {
         DesignValues.nsColor("timeline.lane").setFill()
-        for row in TimelineMetrics.tracks {
+        for row in TimelineMetrics.tracks where row != TimelineMetrics.audio {
             NSRect(x: TimelineMetrics.header, y: row.y - TimelineMetrics.ruler.maxY, width: max(0, bounds.width - TimelineMetrics.header), height: row.height).fill()
+        }
+    }
+}
+
+/// A1 (notes.md §6): the scope's audio as pieces on `timeline.audioPiece` with a 1 pt
+/// `timeline.piece` outline, radius 2, 1 pt inside the 44 pt row. The waveform is per-point
+/// columns from the take's pyramid: a peak column (`timeline.wave` at 62%) around an RMS core
+/// (`timeline.wave`), nothing in silence. AI patches are an `ai.tint` 10% fill with no outline.
+/// Edited is a ripple: pieces butt and each cut is one 1 pt `timeline.seam`. Source is take
+/// time: each removed range is empty lane with a dashed `timeline.cutOutline` and its audio
+/// ghosted (`timeline.ghostWave`), and media outside In/Out shows at 32%. With no waveform
+/// (media missing, or on another computer) each kept word is one 8 pt capsule in
+/// `timeline.wave`, 2 pt in from its ends (design §5.4.10).
+@MainActor final class TimelineAudioLane: TimelineLane {
+    struct State: Equatable {
+        var viewport = TimelineViewport(axis: .edited, ptPerSecond: 20, origin: -1, width: 944)
+        var pieces = TimelinePieces([])
+        var waveform: WaveformData?
+        /// Source view's removed ranges (`EditorModel.timelineRemovedRanges`), in take time.
+        var removed: [Range<Double>] = []
+        /// The kept words in take time, drawn as capsules while there is no waveform.
+        var words: [Range<Double>] = []
+        /// The open clip in take time on Source, outside which media dims; nil on Edited and on Full Take.
+        var inOut: ClosedRange<Double>?
+        var takeLength = 0.0
+    }
+    var state = State() { didSet { if state != oldValue { invalidate() } } }
+
+    /// What the last draw put on the lane, in lane points, for the checks.
+    struct Drawn: Equatable {
+        /// The seams' x (each a 1 pt line just left of it).
+        var seams: [CGFloat] = []
+        /// Source view's removed ranges in view, in take time.
+        var gaps: [Range<Double>] = []
+        /// The waveform's columns that drew a peak.
+        var columns = 0
+        /// Word capsules drawn in place of a waveform.
+        var capsules = 0
+    }
+    private(set) var drawn = Drawn()
+
+    /// Media outside In/Out on Source (notes.md §6).
+    static let outsideOpacity: CGFloat = 0.32
+    /// The peak columns' opacity over the core's colour.
+    static let peakOpacity: CGFloat = 0.62
+    /// A piece fills the row less 1 pt above and below; the waveform keeps 1.5 pt more each side.
+    static let pieceInset: CGFloat = 1
+    static let waveInset: CGFloat = 1.5
+    /// Seams closer than this to the last one drawn are left out, so a zoomed-out take with
+    /// cuts every few points stays a waveform rather than a row of seams.
+    static let seamSpacing: CGFloat = 2
+
+    private var laneRight: CGFloat { bounds.width }
+    private func x(_ time: Double) -> CGFloat { TimelineMetrics.header + CGFloat(state.viewport.x(time)) }
+
+    override func drawLane(in context: CGContext) {
+        drawn = Drawn()
+        let lane = NSRect(x: TimelineMetrics.header, y: 0, width: max(0, bounds.width - TimelineMetrics.header), height: bounds.height)
+        DesignValues.nsColor("timeline.lane").setFill()
+        lane.fill()
+        context.saveGState()
+        context.clip(to: lane)
+        if state.viewport.axis == .edited { drawEdited(in: context) } else { drawSource(in: context) }
+        context.restoreGState()
+    }
+
+    /// Pieces butt; a seam at every cut.
+    private func drawEdited(in context: CGContext) {
+        let pieces = state.pieces
+        let visible = state.viewport.visible
+        let shown = pieces.indices(overlapping: visible.lowerBound..<max(visible.lowerBound, visible.upperBound), on: .edited)
+        var kept = Paint(), ai: [CGRect] = []
+        for index in shown {
+            let piece = pieces.pieces[index]
+            let rect = pieceRect(piece.edited)
+            if piece.kind == .ai { ai.append(rect); continue }
+            kept.piece(rect)
+            columns(piece.edited, offset: piece.source.lowerBound - piece.edited.lowerBound, into: &kept)
+        }
+        fillAI(ai, in: context)
+        kept.draw(in: context, wave: "timeline.wave")
+        var seams: [CGRect] = []
+        var last = -CGFloat.infinity
+        for index in shown where pieces.isSeam(at: index) {
+            let seamX = x(pieces.pieces[index].edited.lowerBound)
+            guard seamX - last >= Self.seamSpacing else { continue }
+            last = seamX
+            seams.append(CGRect(x: seamX - 1, y: 0, width: 1, height: bounds.height))
+            drawn.seams.append(seamX)
+        }
+        context.setFillColor(DesignValues.nsColor("timeline.seam").cgColor)
+        context.fill(seams)
+    }
+
+    /// Take time: kept pieces where they are, removed ranges as empty lane with a dashed
+    /// outline and ghosted audio, media outside In/Out dimmed.
+    private func drawSource(in context: CGContext) {
+        let pieces = state.pieces
+        let visible = state.viewport.visible
+        let window = visible.lowerBound..<max(visible.lowerBound, visible.upperBound)
+        if let inOut = state.inOut {
+            var outside = Paint()
+            for range in [0..<inOut.lowerBound, inOut.upperBound..<max(inOut.upperBound, state.takeLength)] where !range.isEmpty && range.overlaps(window) {
+                outside.piece(pieceRect(range))
+                columns(range, offset: 0, into: &outside)
+            }
+            context.saveGState()
+            context.setAlpha(Self.outsideOpacity)
+            context.beginTransparencyLayer(auxiliaryInfo: nil)
+            outside.draw(in: context, wave: "timeline.wave")
+            context.endTransparencyLayer()
+            context.restoreGState()
+        }
+        var ghost = Paint()
+        let outline = CGMutablePath()
+        for gap in state.removed where gap.overlaps(window) {
+            drawn.gaps.append(gap)
+            let rect = pieceRect(gap)
+            if rect.width >= 2 { outline.addRect(rect.insetBy(dx: 0.5, dy: 0.5)) }
+            columns(gap, offset: 0, into: &ghost)
+        }
+        context.addPath(outline)
+        context.setStrokeColor(DesignValues.nsColor("timeline.cutOutline").cgColor)
+        context.setLineWidth(1)
+        context.setLineDash(phase: 0, lengths: [3, 3])
+        context.strokePath()
+        context.setLineDash(phase: 0, lengths: [])
+        ghost.draw(in: context, wave: "timeline.ghostWave")
+        var kept = Paint(), ai: [CGRect] = []
+        for index in pieces.indices(overlapping: window, on: .source) {
+            let piece = pieces.pieces[index]
+            let rect = pieceRect(piece.source)
+            if piece.kind == .ai { ai.append(rect); continue }
+            kept.piece(rect)
+            columns(piece.source, offset: 0, into: &kept)
+        }
+        fillAI(ai, in: context)
+        kept.draw(in: context, wave: "timeline.wave")
+    }
+
+    /// A piece's box for `range` on the axis: 1 pt in from the row's top and bottom, ending
+    /// 1 pt short of the next piece.
+    private func pieceRect(_ range: Range<Double>) -> CGRect {
+        let lower = x(range.lowerBound), upper = x(range.upperBound)
+        return CGRect(x: lower, y: Self.pieceInset, width: max(0, upper - lower - 1), height: bounds.height - 2 * Self.pieceInset)
+    }
+
+    private func fillAI(_ rects: [CGRect], in context: CGContext) {
+        guard !rects.isEmpty else { return }
+        context.setFillColor(DesignValues.nsColor("ai.tint").withAlphaComponent(0.10).cgColor)
+        context.fill(rects)
+    }
+
+    /// The waveform columns of `range` on the axis, whose take time is the axis time plus
+    /// `offset`: one per lane point, each from the pyramid level that fits it. With no
+    /// waveform, the kept words' capsules instead.
+    private func columns(_ range: Range<Double>, offset: Double, into paint: inout Paint) {
+        guard let waveform = state.waveform else { capsules(range, offset: offset, into: &paint); return }
+        guard state.viewport.ptPerSecond > 0 else { return }
+        let lower = max(TimelineMetrics.header, x(range.lowerBound).rounded(.down)), upper = min(laneRight, x(range.upperBound).rounded(.up))
+        guard lower < upper else { return }
+        let mid = bounds.height / 2, half = bounds.height / 2 - Self.pieceInset - Self.waveInset
+        var column = lower
+        while column < upper {
+            let start = max(range.lowerBound, state.viewport.time(atX: Double(column - TimelineMetrics.header)))
+            let end = min(range.upperBound, state.viewport.time(atX: Double(column + 1 - TimelineMetrics.header)))
+            if end > start {
+                let value = waveform.column(from: start + offset, to: end + offset)
+                let peak = CGFloat(value.peak) * half, core = CGFloat(value.core) * half
+                if peak >= 0.5 {
+                    paint.peaks.append(CGRect(x: column, y: mid - peak, width: 1, height: 2 * peak))
+                    drawn.columns += 1
+                }
+                if core >= 0.5 { paint.cores.append(CGRect(x: column, y: mid - core, width: 1, height: 2 * core)) }
+            }
+            column += 1
+        }
+    }
+
+    /// The kept words of `range` on the axis (take time = axis time + `offset`) as capsules.
+    private func capsules(_ range: Range<Double>, offset: Double, into paint: inout Paint) {
+        let words = state.words, lower = range.lowerBound + offset, upper = range.upperBound + offset
+        var index = 0, end = words.count
+        while index < end {
+            let middle = (index + end) / 2
+            if words[middle].lowerBound < lower { index = middle + 1 } else { end = middle }
+        }
+        while index > 0, words[index - 1].upperBound > lower { index -= 1 }
+        let mid = bounds.height / 2
+        while index < words.count, words[index].lowerBound < upper {
+            let word = words[index].clamped(to: lower..<upper)
+            index += 1
+            let left = x(word.lowerBound - offset) + 2, right = x(word.upperBound - offset) - 2
+            guard right - left >= 1 else { continue }
+            let radius = min(4, (right - left) / 2)
+            paint.words.addRoundedRect(in: CGRect(x: left, y: mid - 4, width: right - left, height: 8), cornerWidth: radius, cornerHeight: radius)
+            drawn.capsules += 1
+        }
+    }
+
+    /// Pieces and their waveform, gathered and filled in one pass each.
+    private struct Paint {
+        var boxes = CGMutablePath()
+        var outlines = CGMutablePath()
+        var peaks: [CGRect] = []
+        var cores: [CGRect] = []
+        var words = CGMutablePath()
+        var hasBoxes = false
+        mutating func piece(_ rect: CGRect) {
+            guard rect.width > 0 else { return }
+            hasBoxes = true
+            let radius = min(2, rect.width / 2)
+            boxes.addRoundedRect(in: rect, cornerWidth: radius, cornerHeight: radius)
+            if rect.width >= 3 {
+                let inner = rect.insetBy(dx: 0.5, dy: 0.5), corner = min(1.5, inner.width / 2)
+                outlines.addRoundedRect(in: inner, cornerWidth: corner, cornerHeight: corner)
+            }
+        }
+        @MainActor func draw(in context: CGContext, wave: String) {
+            if hasBoxes {
+                context.addPath(boxes)
+                context.setFillColor(DesignValues.nsColor("timeline.audioPiece").cgColor)
+                context.fillPath()
+                context.addPath(outlines)
+                context.setStrokeColor(DesignValues.nsColor("timeline.piece").cgColor)
+                context.setLineWidth(1)
+                context.strokePath()
+            }
+            let color = DesignValues.nsColor(wave)
+            context.setFillColor(color.withAlphaComponent(color.alphaComponent * TimelineAudioLane.peakOpacity).cgColor)
+            context.fill(peaks)
+            context.setFillColor(color.cgColor)
+            context.fill(cores)
+            context.addPath(words)
+            context.fillPath()
         }
     }
 }

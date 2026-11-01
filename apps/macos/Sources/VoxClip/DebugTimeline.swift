@@ -94,6 +94,17 @@ import VoxClipCore
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         guard let clip = model.activeClip, let number = model.clipNumber(clip.id) else { throw CocoaError(.coderInvalidValue) }
         let size = NSSize(width: 1056, height: 216)
+        // A demo project reads no media: A1 draws a speech envelope made from its words.
+        model.waveform = speech(words: model.words, duration: model.sourceDuration)
+        // Two cuts inside the clip, so Edited has seams and Source removed ranges, and a
+        // selection inside it, as f1 has: the toolbar shows its length.
+        let first = model.index(clip.startWordId) ?? 0
+        let cuts = [first + 7, first + 11].filter { model.words.indices.contains($0) && $0 < (model.index(clip.endWordId) ?? 0) }.map { model.words[$0].id }
+            .filter { !model.cutWordIDs.contains($0) }
+        if !cuts.isEmpty { model.apply(.cutSelection(ids: cuts), name: "Cut") }
+        defer { if !cuts.isEmpty { model.apply(.restoreSelection(ids: cuts), name: "Restore cut") } }
+        let selected = Array(model.words[first...].prefix(6).dropFirst(2))
+        model.selectedWordIDs = Set(selected.map(\.id))
         for axis in [TimelineAxis.edited, .source] {
             model.showsCuts = axis == .source
             // The playhead a third of the way into the clip before the canvas follows it,
@@ -121,7 +132,7 @@ import VoxClipCore
             canvas.renderContent()
             canvas.followPlayhead()
             canvas.layoutSubtreeIfNeeded(); canvas.displayIfNeeded()
-            let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed]
+            let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.audio]
             lanes.forEach { $0.layer?.displayIfNeeded() }
             // cacheDisplay draws the lanes and composites the overlay's layers, the right way up.
             let bitmap = try capture(canvas, name: "\(name)-lanes", directory: directory)
@@ -148,6 +159,7 @@ import VoxClipCore
             check("\(name) draws the open clip's overview block at 42% clip.label",
                   [8, 12, 16].contains { matches(color(open, TimelineMetrics.overview.y + $0), "clip.label", alpha: 0.42, over: "timeline.lane") })
             check("\(name) has no red pixels", !hasRed(bitmap))
+            results += audioChecks(name: name, canvas: canvas, model: model, matches: { matches(color($0, $1), $2, alpha: $3, over: $4) })
             // A playhead tick moves only the playhead layers: no lane draws again.
             let draws = lanes.map(\.draws)
             let moves = canvas.overlay.playheadMoves
@@ -178,6 +190,63 @@ import VoxClipCore
             canvas.tearDown()
         }
         model.showsCuts = false
+        model.selectedWordIDs = []
+        return results
+    }
+
+    /// A1 in a panel scene (notes.md §6), against swatches drawn the same way: on Edited the
+    /// pieces on `timeline.audioPiece`, a seam at every cut in the clip, the waveform's core
+    /// and nothing in silence; on Source each cut range as empty lane, with media outside
+    /// In/Out at 32%.
+    private static func audioChecks(name: String, canvas: TimelineCanvasView, model: EditorModel,
+                                    matches: (CGFloat, CGFloat, String, CGFloat, String?) -> Bool) -> [DebugUISuite.Result] {
+        var results: [DebugUISuite.Result] = []
+        func check(_ label: String, _ passed: Bool) { results.append(.init(name: "\(name) \(label)", passed: passed)) }
+        let lane = canvas.audio, viewport = canvas.viewport, pieces = model.timelinePieces
+        let top = TimelineMetrics.audio.y, mid = top + TimelineMetrics.audio.height / 2
+        func x(_ time: Double) -> CGFloat { TimelineMetrics.header + CGFloat(viewport.x(time)) }
+        let laneEnd = canvas.bounds.width
+        // Away from the selection's wash and the playhead, which draw over the lane.
+        let selection = model.timelineSelection(on: viewport.axis), playhead = x(model.timelinePlayhead(on: viewport.axis))
+        func clear(_ range: ClosedRange<Double>) -> Bool {
+            x(range.lowerBound) > TimelineMetrics.header + 4 && x(range.upperBound) < laneEnd - 4 && !(selection?.overlaps(range) ?? false)
+                && !(x(range.lowerBound) - 2...x(range.upperBound) + 2).contains(playhead)
+        }
+        if viewport.axis == .edited {
+            let inside = pieces.seams.filter { clear($0 - 0.05...$0 + 0.05) }
+            check("draws one seam at each cut in the clip (\(lane.drawn.seams.count) of \(pieces.seams.count))", !pieces.seams.isEmpty && lane.drawn.seams.count == pieces.seams.count)
+            if let seam = inside.first { check("draws the seam in timeline.seam", matches(x(seam) - 0.5, mid, "timeline.seam", 1, nil)) }
+            // A kept word of the clip, clear of the wash and the playhead.
+            let words = (model.scopeBounds.map { Array(model.words[$0]) } ?? model.words).filter { !model.cutWordIDs.contains($0.id) }
+            if let waveform = model.waveform, let word = words.first(where: { word in
+                clear(model.timelineTime(source: word.start, on: .edited)...model.timelineTime(source: word.end, on: .edited))
+            }) {
+                // The word's loudest column: its core in timeline.wave, the piece above it bare.
+                let offset = word.start - model.timelineTime(source: word.start, on: .edited)
+                let columns = stride(from: x(word.start - offset).rounded(.up), to: x(word.end - offset) - 1, by: 1)
+                let loudest = columns.max { lower, upper in
+                    waveform.column(from: viewport.time(atX: Double(lower - TimelineMetrics.header)) + offset, to: viewport.time(atX: Double(lower + 1 - TimelineMetrics.header)) + offset).core
+                        < waveform.column(from: viewport.time(atX: Double(upper - TimelineMetrics.header)) + offset, to: viewport.time(atX: Double(upper + 1 - TimelineMetrics.header)) + offset).core
+                }
+                if let loudest {
+                    check("draws the waveform's core in timeline.wave", matches(loudest + 0.5, mid, "timeline.wave", 1, nil))
+                    check("draws the piece on timeline.audioPiece", matches(loudest + 0.5, top + 2.25, "timeline.audioPiece", 1, nil))
+                }
+            }
+        } else {
+            let inOut = model.scopeSourceRange
+            let window = viewport.visible.lowerBound..<viewport.visible.upperBound
+            let expected = model.timelineRemovedRanges(pieces).filter { $0.overlaps(window) }
+            check("draws each cut range in view as a removed range (\(lane.drawn.gaps.count))", !expected.isEmpty && lane.drawn.gaps == expected)
+            if let gap = expected.first(where: { clear($0.lowerBound...$0.upperBound) && x($0.upperBound) - x($0.lowerBound) > 6 }) {
+                check("leaves a removed range as empty lane", matches(x(gap.lowerBound) + (x(gap.upperBound) - x(gap.lowerBound)) / 2, top + 2.25, "timeline.lane", 1, nil))
+            }
+            let early = viewport.time(atX: 6)
+            if let inOut, inOut.lowerBound - 0.01 > early, clear(early...inOut.lowerBound - 0.01) {
+                check("shows media outside In/Out at 32%", matches(x(inOut.lowerBound) - 4, top + 2.25, "timeline.audioPiece", TimelineAudioLane.outsideOpacity, "timeline.lane"))
+            }
+        }
+        check("has a waveform", lane.drawn.columns > 20)
         return results
     }
 
@@ -249,9 +318,10 @@ import VoxClipCore
         return false
     }
 
-    /// Full redraw and playhead-tick budgets on a 60-minute take with 9,000 words and 1,500
-    /// cuts (impl-plan §3.1): a full redraw within 8 ms and a tick within 1 ms that redraws
-    /// no lane. Enforced in optimized builds (`./bundle.sh profile`); a debug build records them.
+    /// Budgets on a 60-minute take with 9,000 words and 1,500 cuts (impl-plan §3.1): the
+    /// waveform pyramid built off the main thread within 150 ms, a full redraw within 8 ms, a
+    /// playhead tick within 1 ms that redraws no lane, and zoom frames within 16.7 ms at p95.
+    /// Enforced in optimized builds (`./bundle.sh profile`); a debug build records them.
     static func performance(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
         var project = fixture
         let words: [TimedWord] = (0..<9_000).map { index in
@@ -265,6 +335,19 @@ import VoxClipCore
         let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
         model.mediaResolved = true; model.refresh()
+        // The pyramid is built off the main thread, as the cache's load task builds it; the
+        // gate waits for it.
+        final class Built: @unchecked Sendable { var waveform: WaveformData?; var offMain = false }
+        let envelope = speech(words: words, duration: 3_600).fine, built = Built(), done = DispatchSemaphore(value: 0)
+        let pyramidStart = ContinuousClock.now
+        Thread.detachNewThread {
+            built.waveform = WaveformData(fine: envelope)
+            built.offMain = !Thread.isMainThread
+            done.signal()
+        }
+        done.wait()
+        let pyramid = milliseconds(pyramidStart.duration(to: .now)), offMain = built.offMain
+        model.waveform = built.waveform
         let canvas = TimelineCanvasView(model: model)
         defer { canvas.tearDown() }
         let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1056, height: TimelineMetrics.height), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -275,7 +358,7 @@ import VoxClipCore
         canvas.layoutSubtreeIfNeeded()
         canvas.renderContent()
         canvas.displayIfNeeded()
-        let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed]
+        let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.audio]
         // Each lane draws through its layer at once, in or out of a shown window.
         var redraws: [Double] = []
         for _ in 0..<30 {
@@ -297,12 +380,34 @@ import VoxClipCore
         }
         let redrawMaximum = redraws.max() ?? 0, tickP95 = percentile(ticks, 0.95), tickMaximum = ticks.max() ?? 0
         let tickDraws = zip(lanes.map(\.draws), drawn).map { $0 - $1 }.reduce(0, +)
+        // Zoom: from the fitted hour to 100 pt/s and back, on both axes, with the ruler and A1
+        // drawing each frame (V9 adds the controls; the lanes' cost is this).
+        var zooms: [Double] = []
+        let fitted = canvas.viewport
+        for axis in [TimelineAxis.edited, .source] {
+            for frame in 0..<120 {
+                let step = Double(frame < 60 ? frame : 119 - frame) / 59
+                let zoom = fitted.ptPerSecond * pow(100 / fitted.ptPerSecond, step)
+                let center = (axis == .edited ? model.duration : model.sourceDuration) / 2
+                let viewport = TimelineViewport(axis: axis, ptPerSecond: zoom, origin: center - fitted.width / zoom / 2, width: fitted.width)
+                let start = ContinuousClock.now
+                canvas.ruler.state.viewport = viewport
+                canvas.audio.state.viewport = viewport
+                canvas.ruler.layer?.displayIfNeeded()
+                canvas.audio.layer?.displayIfNeeded()
+                zooms.append(milliseconds(start.duration(to: .now)))
+            }
+        }
+        let zoomP95 = percentile(zooms, 0.95)
         let optimized = !_isDebugAssertConfiguration()
         let metrics: [String: Double] = ["words": 9_000, "cuts": Double(project.edits.cutWordIds.count), "fullRedrawMaximumMS": redrawMaximum,
                                          "fullRedrawMedianMS": percentile(redraws, 0.5), "tickP95MS": tickP95, "tickMaximumMS": tickMaximum,
-                                         "laneDrawsDuringTicks": Double(tickDraws), "optimized": optimized ? 1 : 0]
+                                         "laneDrawsDuringTicks": Double(tickDraws), "pyramidMS": pyramid, "zoomFrameP95MS": zoomP95,
+                                         "zoomFrameMaximumMS": zooms.max() ?? 0, "audioColumns": Double(canvas.audio.drawn.columns), "optimized": optimized ? 1 : 0]
         try JSONEncoder().encode(metrics).write(to: directory.appendingPathComponent("timeline-performance.json"), options: .atomic)
         return [
+            .init(name: "60-minute waveform pyramid builds off the main thread within 150 ms (\(String(format: "%.1f", pyramid)) ms)", passed: offMain && (!optimized || pyramid <= 150)),
+            .init(name: "60-minute zoom frames draw the ruler and A1 within 16.7 ms at p95 (\(String(format: "%.2f", zoomP95)) ms)", passed: canvas.audio.drawn.columns > 100 && (!optimized || zoomP95 <= 1000.0 / 60)),
             .init(name: "60-minute timeline full redraw stays within 8 ms (\(String(format: "%.2f", redrawMaximum)) ms)", passed: drawn.allSatisfy { $0 > 1 } && (!optimized || redrawMaximum <= 8)),
             .init(name: "60-minute playhead tick stays within 1 ms (p95 \(String(format: "%.3f", tickP95)) ms)", passed: !optimized || tickP95 <= 1),
             .init(name: "60-minute playhead ticks redraw no lane (\(tickDraws) draws)", passed: tickDraws == 0)

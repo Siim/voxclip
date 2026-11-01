@@ -112,7 +112,9 @@ private actor TimelineTestSettings: SettingsStore {
         canvas.frame = NSRect(x: 0, y: 0, width: 1056, height: TimelineMetrics.height)
         canvas.layoutSubtreeIfNeeded()
         canvas.renderContent()
-        let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed]
+        model.waveform = DebugTimeline.speech(words: model.words, duration: 60)
+        canvas.renderContent()
+        let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.audio]
         // Lanes draw through their layers (the 60-minute budget measures this way).
         lanes.forEach { $0.layer?.displayIfNeeded() }
         let draws = lanes.map(\.draws)
@@ -314,10 +316,12 @@ private actor TimelineTestSettings: SettingsStore {
         canvas.renderContent()
         canvas.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
+        canvas.audio.layer?.displayIfNeeded()
         let pixels = try Pixels(canvas)
         #expect(try pixels.shows(40, y, "bg.window"))
         #expect(try pixels.shows(80, y, "bg.window"))
-        #expect(try pixels.shows(TimelineMetrics.header + 4, y, "tint.wash", over: "timeline.lane"))
+        // V1's bare lane under the wash (A1 draws the take's audio there).
+        #expect(try pixels.shows(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18, "tint.wash", over: "timeline.lane"))
         let zoom = canvas.viewport.ptPerSecond
         canvas.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: 40, y: y), in: canvas))
         #expect(canvas.viewport.visible.contains(early) && canvas.viewport.ptPerSecond == zoom)
@@ -418,7 +422,206 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(!red)
     }
 
+    // MARK: A1
+
+    /// The default project with words 14, 15, 20 and 24 cut, a speech envelope (each word
+    /// voiced, silence between words) and the playhead in word 17, which both axes' fitted
+    /// views show, so neither pages.
+    private func audioModel(_ app: AppModel) throws -> EditorModel {
+        var project = try project()
+        project.edits.cutWordIds = ["t14", "t15", "t20", "t24"]
+        let model = editor(app, project: project)
+        model.waveform = DebugTimeline.speech(words: model.words, duration: 60)
+        model.sourceTime = 17.4
+        model.playhead = model.timelineTime(source: 17.4, on: .edited)
+        return model
+    }
+
+    /// The take-time cut ranges of the scope's plan inside `span`, adjacent ones merged.
+    private func cutRanges(_ model: EditorModel, within span: ClosedRange<Double>) throws -> [Range<Double>] {
+        let plan = try #require(model.plan)
+        var ranges: [Range<Double>] = []
+        for cut in plan.cuts {
+            let lower = max(span.lowerBound, Double(cut.startSample) / plan.sampleRate), upper = min(span.upperBound, Double(cut.endSample) / plan.sampleRate)
+            guard upper > lower else { continue }
+            if let last = ranges.last, abs(last.upperBound - lower) < 1e-9 { ranges[ranges.count - 1] = last.lowerBound..<upper } else { ranges.append(lower..<upper) }
+        }
+        return ranges.filter { $0.upperBound - $0.lowerBound > 0.02 }
+    }
+
+    /// notes.md §6, Edited: pieces butt on `timeline.audioPiece`, each cut in the clip is one
+    /// `timeline.seam`, words draw the waveform's core and the silence between them draws
+    /// nothing, not even a centre line.
+    @Test func editedA1DrawsASeamPerCutAndNothingInSilence() throws {
+        let app = try app()
+        let model = try audioModel(app)
+        defer { model.close() }
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        canvas.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        canvas.audio.layer?.displayIfNeeded()
+        let plan = try #require(model.plan)
+        let first = try #require(plan.kept.first), last = try #require(plan.kept.last)
+        let interior = plan.cuts.filter { $0.startSample > first.startSample && $0.endSample < last.endSample }
+        #expect(interior.count == 3)
+        #expect(canvas.audio.drawn.seams.count == interior.count)
+        #expect(model.timelinePieces.seams.count == interior.count)
+        let pixels = try Pixels(canvas)
+        let viewport = canvas.viewport, top = TimelineMetrics.audio.y, mid = top + TimelineMetrics.audio.height / 2
+        func x(_ time: Double) -> CGFloat { TimelineMetrics.header + CGFloat(viewport.x(time)) }
+        for seam in canvas.audio.drawn.seams { #expect(try pixels.shows(seam - 0.5, mid, "timeline.seam")) }
+        // Word 22 is spoken: its loudest column shows the core in timeline.wave and the peak
+        // around it at 62%. The 0.2 s after it is silence inside the same piece.
+        let waveform = try #require(model.waveform)
+        let half = TimelineMetrics.audio.height / 2 - TimelineAudioLane.pieceInset - TimelineAudioLane.waveInset
+        let columns = stride(from: x(model.timelineTime(source: 22.05, on: .edited)).rounded(.down), to: x(model.timelineTime(source: 22.75, on: .edited)), by: 1).map { column in
+            (column: column, value: waveform.column(from: viewport.time(atX: Double(column - TimelineMetrics.header)) + 22 - model.timelineTime(source: 22, on: .edited),
+                                                    to: viewport.time(atX: Double(column + 1 - TimelineMetrics.header)) + 22 - model.timelineTime(source: 22, on: .edited)))
+        }
+        let loudest = try #require(columns.max { $0.value.core < $1.value.core })
+        let core = CGFloat(loudest.value.core) * half, peak = CGFloat(loudest.value.peak) * half
+        #expect(core >= 3 && peak - core >= 2)
+        let voiced = loudest.column + 0.5
+        #expect(try pixels.shows(voiced, mid, "timeline.wave"))
+        #expect(try pixels.shows(voiced, mid - core + 1, "timeline.wave"))
+        #expect(try pixels.shows(voiced, mid - (core + peak) / 2, "timeline.wave", alpha: TimelineAudioLane.peakOpacity, over: "timeline.audioPiece"))
+        let silent = x(model.timelineTime(source: 22.9, on: .edited)).rounded(.down) + 0.5
+        #expect(try pixels.shows(silent, mid, "timeline.audioPiece"))
+        #expect(try pixels.shows(silent, top + 2.25, "timeline.audioPiece"))
+        // The waveform keeps 2.5 pt of the piece clear above and below it.
+        #expect(try pixels.shows(voiced, top + 2.25, "timeline.audioPiece"))
+    }
+
+    /// notes.md §6, Source: the same zoom on take time; each cut range in the clip is empty
+    /// lane with a dashed `timeline.cutOutline`, kept pieces stand where they are and media
+    /// outside In/Out shows at 32%.
+    @Test func sourceA1GapsCoverExactlyTheCutRanges() throws {
+        let app = try app()
+        let model = try audioModel(app)
+        defer { model.close() }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        canvas.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        canvas.audio.layer?.displayIfNeeded()
+        let scope = try #require(model.scopeSourceRange)
+        let expected = try cutRanges(model, within: scope)
+        #expect(expected.count == 3 && expected.allSatisfy { canvas.viewport.visible.contains($0.upperBound) })
+        #expect(canvas.audio.drawn.gaps == expected)
+        #expect(canvas.audio.drawn.seams.isEmpty)
+        let pixels = try Pixels(canvas)
+        let viewport = canvas.viewport, top = TimelineMetrics.audio.y, mid = top + TimelineMetrics.audio.height / 2
+        func x(_ time: Double) -> CGFloat { TimelineMetrics.header + CGFloat(viewport.x(time)) }
+        // The silence between the cut words 14 and 15 is empty lane; the words show ghosted.
+        #expect(try pixels.shows(x(14.9), mid, "timeline.lane"))
+        #expect(try pixels.shows(x(14.9), top + 2.25, "timeline.lane"))
+        let ghosted = stride(from: x(14.05).rounded(.down) + 0.5, to: x(14.75), by: 1).filter { (try? pixels.shows($0, mid, "timeline.lane")) == false }
+        #expect(ghosted.count > 5)
+        let gap = try #require(expected.first)
+        let dashes = stride(from: x(gap.lowerBound) + 1, to: x(gap.upperBound) - 2, by: 0.5).filter { (try? pixels.shows($0, top + 1.5, "timeline.cutOutline")) == true }
+        #expect(dashes.count > 4)
+        // A kept piece in take time, and the take before In at 32%.
+        #expect(try pixels.shows(x(12.4), top + 2.25, "timeline.audioPiece"))
+        #expect(try pixels.shows(x(scope.lowerBound) - 4, top + 2.25, "timeline.audioPiece", alpha: TimelineAudioLane.outsideOpacity, over: "timeline.lane"))
+    }
+
+    /// A Voice Lab patch on Edited (notes.md §6): an `ai.tint` 10% fill with no outline and no
+    /// seam of its own.
+    @Test func anAIPatchIsABlueFillWithoutSeams() throws {
+        let app = try app()
+        let model = try audioModel(app)
+        defer { model.close() }
+        func piece(_ kind: VoiceLabOutputPieceKind, _ source: (Int64, Int64), _ output: (Int64, Int64)) -> VoiceLabOutputPiece {
+            VoiceLabOutputPiece(kind: kind, sourceStartSample: source.0, sourceEndSample: source.1, outputStartSample: output.0, outputEndSample: output.1,
+                                segmentId: nil, assetId: nil, audio: nil)
+        }
+        // Words 10–29 with 16–18 s spoken by your AI voice in 2.5 s, and 24–25 s cut.
+        model.voiceLabPlan = VoiceLabOutputPlan(sampleRate: 100, totalSourceSamples: 6_000,
+            pieces: [piece(.source, (1_000, 1_600), (0, 600)), piece(.synth, (1_600, 1_800), (600, 850)), piece(.source, (1_800, 2_400), (850, 1_450)),
+                     piece(.source, (2_500, 3_000), (1_450, 1_950))], captions: [], scope: .clip("clip-1"))
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        canvas.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        canvas.audio.layer?.displayIfNeeded()
+        #expect(canvas.audio.drawn.seams.count == 1)
+        let pixels = try Pixels(canvas)
+        let viewport = canvas.viewport, top = TimelineMetrics.audio.y
+        func x(_ time: Double) -> CGFloat { TimelineMetrics.header + CGFloat(viewport.x(time)) }
+        #expect(try pixels.shows(x(7.2), top + 2.25, "ai.tint", alpha: 0.10, over: "timeline.lane"))
+        #expect(try pixels.shows(x(7.2), top + 1.5, "ai.tint", alpha: 0.10, over: "timeline.lane"))
+        #expect(try pixels.shows(x(3), top + 2.25, "timeline.audioPiece"))
+    }
+
+    /// Until the waveform arrives (or with no media to read) A1 draws one capsule per kept
+    /// word (design §5.4.10); when it arrives A1 draws it, and only A1 redraws.
+    @Test func a1RedrawsWhenTheWaveformArrives() throws {
+        let app = try app()
+        var project = try project()
+        project.edits.cutWordIds = ["t12"]
+        let model = editor(app, project: project)
+        defer { model.close() }
+        model.sourceTime = 17.4
+        model.playhead = model.timelineTime(source: 17.4, on: .edited)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        canvas.layoutSubtreeIfNeeded()
+        canvas.audio.layer?.displayIfNeeded()
+        #expect(canvas.audio.drawn.columns == 0 && canvas.audio.drawn.capsules == 19)
+        let pixels = try Pixels(canvas)
+        let mid = TimelineMetrics.audio.y + TimelineMetrics.audio.height / 2
+        func x(_ source: Double) -> CGFloat { TimelineMetrics.header + CGFloat(canvas.viewport.x(model.timelineTime(source: source, on: .edited))) }
+        #expect(try pixels.shows(x(21.4), mid, "timeline.wave"))
+        #expect(try pixels.shows(x(21.4), mid - 5, "timeline.audioPiece"))
+        #expect(try pixels.shows(x(21.9), mid, "timeline.audioPiece"))
+        let ruler = canvas.ruler.invalidations, audio = canvas.audio.invalidations
+        model.waveform = DebugTimeline.speech(words: model.words, duration: 60)
+        canvas.renderContent()
+        #expect(canvas.audio.invalidations == audio + 1 && canvas.ruler.invalidations == ruler)
+        canvas.audio.layer?.displayIfNeeded()
+        #expect(canvas.audio.drawn.columns > 100)
+        // The same load again changes nothing.
+        canvas.renderContent()
+        #expect(canvas.audio.invalidations == audio + 1)
+    }
+
     // MARK: The waveform pyramid
+
+    /// notes.md §6: nothing is drawn in silence, down to one silent 10 ms frame at a zoom
+    /// where a point is 10 ms; the column beside it draws.
+    @Test func aSilentTenMillisecondRunDrawsNothing() throws {
+        var fine = [Float](repeating: 0.08, count: 1_000)
+        fine[300] = 0
+        let waveform = WaveformData(fine: fine)
+        #expect(waveform.column(from: 3.0, to: 3.01) == (0, 0))
+        #expect(waveform.column(from: 2.99, to: 3.0).core > 0)
+        #expect(waveform.column(from: 3.01, to: 3.02).peak > 0)
+        // Quiet room tone 30 dB under the voice is silence too.
+        fine[400] = 0.08 * 0.03
+        #expect(WaveformData(fine: fine).column(from: 4.0, to: 4.01) == (0, 0))
+        // Drawn: at 100 pt/s the silent frame is one blank column of the piece.
+        let lane = TimelineAudioLane()
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: 44), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = lane
+        defer { window.close() }
+        lane.frame = NSRect(x: 0, y: 0, width: 1056, height: 44)
+        lane.state = TimelineAudioLane.State(viewport: TimelineViewport(axis: .edited, ptPerSecond: 100, origin: 2.5, width: 944),
+                                             pieces: TimelinePieces([TimelinePiece(source: 0..<10, edited: 0..<10)]), waveform: waveform, takeLength: 10)
+        lane.layer?.displayIfNeeded()
+        let pixels = try Pixels(lane)
+        let silent = TimelineMetrics.header + 50.5
+        #expect(try pixels.shows(silent, 22, "timeline.audioPiece"))
+        #expect(try pixels.shows(silent - 1, 22, "timeline.wave"))
+        #expect(try pixels.shows(silent + 1, 22, "timeline.wave"))
+    }
 
     /// notes.md §6: typical peaks reach 55–70% of the half-height, and the core sits inside
     /// them. Measured on a minute of speech from a whole take's zoom to 10 ms a point, f1's
