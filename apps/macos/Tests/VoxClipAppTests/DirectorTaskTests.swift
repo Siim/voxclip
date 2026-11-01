@@ -43,6 +43,12 @@ private final class QuoteClock: Sendable {
     func advance(seconds: Int) { time.withLock { $0 += .seconds(seconds) } }
 }
 
+/// A Keychain that refuses every key.
+private actor RefusingKeys: ProviderKeyStore {
+    func hasKey(for provider: String) -> Bool { false }
+    func save(_ value: String, for provider: String) throws { throw SecretError.status(-25293) }
+}
+
 /// The consent and cost sheets of a send, held until the test answers each.
 @MainActor private final class HeldSheets {
     private(set) var asked: [LLMSendSheet.Reason] = []
@@ -211,6 +217,26 @@ private final class QuoteClock: Sendable {
         #expect(await keys.saved == ["anthropic": "sk-ant-fixture"] && task.keyDraft.isEmpty)
         #expect(task.cards.first.map { if case .chooser(let rows, _) = $0 { rows.first { $0.id == "anthropic" }?.needsKey == false } else { false } } == true)
         #expect(task.choice == "anthropic" && task.footer.primary?.title == "Use Anthropic")
+    }
+
+    @Test func aKeyTheKeychainRefusesStaysInTheChooserWithItsReason() async throws {
+        let (app, _) = app(nil, connectors: ["claude-code": StubConnector(id: .claudeCode, readiness: .cliSignedOut, authMethod: nil)])
+        app.providerKeyStoreOverride = RefusingKeys()
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        let task = session.task
+        guard case .chooser(let rows, let saveKey?) = task.cards.first else { Issue.record("no chooser with Save Key"); return }
+        task.keyDraft = "sk-ant-fixture"
+        saveKey.perform()
+        await session.actionTask?.value
+        let reason = "Couldn't save the key. " + UserMessages.message(SecretError.status(-25293))
+        #expect(task.state == .choosingAI && task.headline.text == "Who should rewrite these words?")
+        #expect(task.cards == [.chooser(rows, saveKey: saveKey), .text(reason)] && task.keyDraft == "sk-ant-fixture")
+        #expect(task.footer.primary?.title == "Use Claude Code" && editor.announcements == [reason])
+        // Try Again on a session with no AI goes back to the chooser, never to a passage panel that cannot send.
+        await session.tryAgain()
+        #expect(task.state == .choosingAI && session.connector == nil)
     }
 
     // MARK: R1
@@ -416,6 +442,57 @@ private final class QuoteClock: Sendable {
         await session.actionTask?.value
         if case .proposal = session.task.state {} else { Issue.record("Try Again after 301 s did not propose: \(session.task.state)") }
         #expect(await ollama.sends == 2)
+    }
+
+    /// While Find Clips (or another Rewrite) holds the project's AI lease, Try Again says so and stays.
+    @Test func tryAgainWhileAnotherAIRequestRunsSaysSo() async throws {
+        let ollama = StubConnector(id: .ollama, failure: .timeout)
+        let (app, _) = app("ollama", connectors: ["ollama": ollama])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        _ = await (try await send(session)).value
+        let task = session.task
+        let body = "Ollama took too long to answer. Try again, or pick a faster model. Your edits are saved."
+        #expect(task.state == .error(.message(body)))
+        await ollama.set(failure: nil)
+        let lease = try #require(editor.llmRuns.acquire())
+        for (finding, line) in [(true, "Find Clips is still running. Choose Try Again when it finishes."),
+                                (false, "Another AI request on this project is still running. Choose Try Again when it finishes.")] {
+            editor.finding = finding
+            task.footer.primary?.perform()
+            await session.actionTask?.value
+            #expect(task.state == .error(.message(body)) && texts(task) == [body, line])
+            #expect(task.footer.primary?.title == "Try Again" && editor.announcements.last == line)
+        }
+        editor.finding = false
+        editor.llmRuns.release(lease)
+        #expect(await ollama.sends == 1)
+        task.footer.primary?.perform()
+        await session.actionTask?.value
+        if case .proposal = task.state {} else { Issue.record("Try Again after the lease did not propose: \(task.state)") }
+        #expect(await ollama.sends == 2)
+    }
+
+    @Test func aKeyTheKeychainRefusesInR1xKeepsTheKeyField() async throws {
+        let anthropic = StubConnector(id: .anthropic, readiness: .needsKey)
+        let (app, _) = app("anthropic", connectors: ["anthropic": anthropic])
+        app.providerKeyStoreOverride = RefusingKeys()
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        _ = await (try await send(session)).value
+        let task = session.task
+        let focus = task.focusRequest
+        task.keyDraft = "sk-ant-fixture"
+        task.footer.primary?.perform()
+        await session.actionTask?.value
+        let reason = "Couldn't save the key. " + UserMessages.message(SecretError.status(-25293))
+        #expect(task.state == .error(.noKey(provider: "anthropic", name: "Anthropic")))
+        #expect(task.cards == [.keyField(provider: "anthropic", label: "Anthropic API key"), .text(reason)])
+        #expect(task.footer.primary?.title == "Save Key and Try Again" && task.keyDraft == "sk-ant-fixture" && task.focusRequest == focus + 1)
+        #expect(editor.announcements.last == reason)
+        #expect(await anthropic.sends == 0)
     }
 
     @Test func saveKeyAndTryAgainSavesTheKeyThenSends() async throws {

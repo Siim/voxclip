@@ -56,8 +56,9 @@ extension RewriteSession {
         task.chose = { [weak self] _ in self?.showChoices() }
         showChoices()
     }
-    /// R0 with `choices`, or "No AI is set up yet" when nothing was detected.
-    func showChoices() {
+    /// R0 with `choices`, or "No AI is set up yet" when nothing was detected. `problem` (a key that could not be
+    /// saved) shows under the list and is announced.
+    func showChoices(problem: String? = nil) {
         let checkAgain = PanelAction(id: "checkAgain", title: "Check Again") { [weak self] in
             guard let self else { return }
             actionTask?.cancel()
@@ -76,9 +77,10 @@ extension RewriteSession {
             actionTask = Task { await self.saveChooserKey() }
         } : nil
         task.show(.choosingAI, headline: PanelHeadline(text: "Who should rewrite \(task.words.name)?"),
-                  cards: [.chooser(choices, saveKey: saveKey)],
+                  cards: [.chooser(choices, saveKey: saveKey)] + (problem.map { [.text($0)] } ?? []),
                   footer: PanelFooter(note: "Change it any time from the menu above the transcript.", link: checkAgain,
                                       primary: PanelAction(id: "use", title: "Use \(chosen.shortName)") { [weak editor] in editor?.useRewriteConnector(chosen.id) }))
+        if let problem { editor.announce(problem) }
     }
     private func saveChooserKey() async {
         guard let row = choices.first(where: \.needsKey) else { return }
@@ -90,8 +92,14 @@ extension RewriteSession {
             task.choose(row.id)
             await showChooser()
         } catch is CancellationError {} catch {
-            fail(.message(await editor.app.safeError(error, context: "ai:Rewrite")))
+            let problem = await keyProblem(error)
+            guard isOpen, connector == nil else { return }
+            showChoices(problem: problem)
         }
+    }
+    /// A key the Keychain refused, in the app's words for it: "Couldn't save the key. Keychain access failed (-25293). …".
+    func keyProblem(_ error: any Error) async -> String {
+        "Couldn't save the key. " + (await editor.app.safeError(error))
     }
 
     /// The AIs to offer (design.md R0), CLIs first, then this Mac, then API keys: an installed CLI, a local server that
@@ -223,7 +231,9 @@ extension RewriteSession {
         guard let shown = await panelError(error), isOpen else { return }
         fail(shown)
     }
-    func fail(_ error: PanelError) {
+    /// `problem` adds a line under the fix and is announced instead of the headline: a key that could not be saved, or
+    /// Try Again while another AI request holds the project.
+    func fail(_ error: PanelError, problem: String? = nil) {
         let words = task.words
         let tryAgain = PanelAction(id: "tryAgain", title: sendAsksFirst ? "Try Again…" : "Try Again") { [weak self] in
             guard let self else { return }
@@ -255,9 +265,10 @@ extension RewriteSession {
             } : nil
             (headline, cards, footer) = Self.tooLarge(error, words: words, findClips: findClips)
         }
+        if let problem { cards.append(.text(problem)) }
         task.show(.error(error), headline: headline, cards: cards, footer: footer)
         if case .noKey = error { task.requestFocus() }
-        editor.announce(headline.text + ".")
+        editor.announce(problem ?? headline.text + ".")
     }
     /// R1x for a scope over Rewrite's limits (voice-lab.md §8.1). Full take offers `findClips`;
     /// a clip has no primary, and Close closes.
@@ -270,11 +281,18 @@ extension RewriteSession {
         }
         return (PanelHeadline(text: words.tooLong), [.text(body)], PanelFooter(primary: findClips))
     }
-    /// Sends again with a fresh quote.
+    /// Sends again with a fresh quote. While another AI request holds the project (Find Clips, or a Rewrite in another
+    /// window) it says so and keeps Try Again.
     func tryAgain() async {
         guard isOpen else { return }
+        guard connector != nil else { await showChooser(); return }
         await prepareFreshQuote()
         guard isOpen, !Task.isCancelled else { return }
+        if editor.llmRuns.isBusy, case .error(let error) = task.state {
+            fail(error, problem: editor.finding ? "Find Clips is still running. Choose Try Again when it finishes."
+                                                : "Another AI request on this project is still running. Choose Try Again when it finishes.")
+            return
+        }
         guard let quote else { showReady(); return }
         markEstimateShown(quote.id)
         await propose(quote)
@@ -286,7 +304,9 @@ extension RewriteSession {
             try await editor.app.saveProviderKey(key, for: provider)
             task.keyDraft = ""
         } catch is CancellationError { return } catch {
-            fail(.message(await editor.app.safeError(error, context: "ai:\(aiName)")))
+            let problem = await keyProblem(error)
+            guard isOpen else { return }
+            fail(.noKey(provider: provider, name: aiName), problem: problem)
             return
         }
         await tryAgain()
