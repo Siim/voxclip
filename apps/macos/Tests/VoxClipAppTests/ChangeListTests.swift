@@ -43,7 +43,7 @@ import Testing
         defer { scenes.forEach { $0.editor?.close() } }
         let expected: [String: (note: String, link: String?, primary: String?)] = [
             "r2-free": ("No AI voice needed. Nothing is sent.", nil, "Apply 2 Changes"),
-            "r2-voice-lab-off": ("1 phrase needs your voice. Voice Lab (beta) makes it from this clip.", "Turn On Voice Lab…", "Apply 2 Free Changes"),
+            "r2-voice-lab-off": ("1 phrase needs your voice. Voice Lab (beta) makes it from this clip.", "Turn On Voice Lab", "Apply 2 Free Changes"),
             "r2-make-takes": ("Nothing paid yet.\nTakes < $0.01 on ElevenLabs.", "Keep All", "Make Takes"),
             "r2-make-voice": ("Nothing paid yet. Next: make your voice from this clip. Once.", "Keep All", "Make Your Voice"),
             "r2-use-take": ("Exports show AI MODIFIED on the video and in the post.", nil, "Use Take 1"),
@@ -176,7 +176,11 @@ import Testing
         defer { scenes.forEach { $0.editor?.close() } }
         let voice = try #require(changes(session)?.items.last)
         #expect(voice.kind == .voice && voice.state == .excluded && !voice.reviewable && voice.note == "Needs Voice Lab (beta)" && voice.warns)
-        #expect(editor.proposal?[3]?.state == .excluded && session.task.footer.link?.title == "Turn On Voice Lab…")
+        #expect(editor.proposal?[3]?.state == .excluded && session.task.footer.link?.title == "Turn On Voice Lab")
+        let before = editor.proposal
+        session.task.footer.link?.perform()
+        #expect(editor.hasVoiceJob && editor.app.voiceLabSession.flow.state == .firstUse)
+        #expect(editor.proposal == before && editor.app.voiceLabSession.confirmation == nil)
         editor.app.settings.values["voiceLab.enabled"] = .bool(true)
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         await settle { changes(session)?.items.last?.reviewable == true }

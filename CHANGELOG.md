@@ -4,10 +4,11 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Create your own voice with one priced click after a private on-device check, with explicit creation-only recovery after an interruption.
 - Make your own voice in the right panel, with inline setup, model download, consent and recording.
 - Core preflights Rewrite placement against review cuts before quoting takes, refuses empty acceptance sets, and requires scoped app acceptance for sets (C4 review).
 - Core can accept every Rewrite take, cut and correction together, refuse invalid sets as a whole, and restore the review with one named Undo (C4; v2 Keep wiring follows in V15/V19).
-- Core provides speaker-first enrollment under one approval, with bounded recovery and creation-only recovery pricing; the existing voice sheet keeps its separate Verify and Create approvals until V16/V17 wire the v2 panel.
+- Core provides speaker-first enrollment under one approval, with bounded recovery and creation-only recovery pricing.
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
 - Import a video and transcribe it with word timestamps: ElevenLabs Scribe with your own key, local Whisper models, or Apple Speech on Mac. If a local model is missing, VoxClip offers to download it.
 - Cut by editing words. Remove filler words and tighten long pauses in a click, correct a word's text, and restore anything you cut.

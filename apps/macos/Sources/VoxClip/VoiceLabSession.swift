@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import Observation
 import VoxClipCore
 import VoxClipMedia
@@ -11,6 +12,12 @@ import VoxClipMedia
     var keyChecked = false
     var keyDraft = ""
     var turn = 0
+    var plan: VoiceEnrollmentPlan?
+    var priceAppearedAt: Date?
+    var recoveryIDs: [String] = []
+    var statementSeconds: Double = 0
+    var capWarning: String?
+    var finishedRecord: VoiceConsentRecord?
     @ObservationIgnored weak var owner: EditorModel?
     @ObservationIgnored weak var originTask: DirectorTask?
     var originTurn = 0
@@ -18,10 +25,10 @@ import VoxClipMedia
 
 @MainActor @Observable final class VoiceLabSession {
     enum Request: Identifiable, Equatable {
-        case subscription, verify, create, delete(String), removeLocal(String), stopLooking(UUID)
+        case subscription, delete(String), removeLocal(String), stopLooking(UUID)
         var id: String { String(describing: self) }
         var title: String {
-            switch self { case .subscription: "Check ElevenLabs account"; case .verify: "Verify statement"; case .create: "Create your voice"; case .delete: "Delete voice"; case .removeLocal: "Remove from VoxClip only"; case .stopLooking: "I've checked my ElevenLabs account — stop looking" }
+            switch self { case .subscription: "Check ElevenLabs account"; case .delete: "Delete voice"; case .removeLocal: "Remove from VoxClip only"; case .stopLooking: "I've checked my ElevenLabs account — stop looking" }
         }
         var defaultIsCancel: Bool { switch self { case .delete, .removeLocal, .stopLooking: true; default: false } }
     }
@@ -32,8 +39,6 @@ import VoxClipMedia
     static let projectMismatchCopy = "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead."
     static let projectUnreadableCopy = "VoxClip can't read this project's audio. Record a read-aloud instead."
     static let projectGeneratedCopy = "This project's media is labelled AI modified, so it can't train your voice. Record a read-aloud instead."
-    static let chooseTrainingCopy = "Statement verified. Choose your training audio next."
-    static let readAloudNextCopy = "Statement verified. Record your training read-aloud next."
     /// The Rewrite panel's voice row in a project whose language has no calibrated speaker check (§6.5.2).
     static let languageUnavailableCopy = "Your voice can't be used in this project's language yet. It works in English projects."
     static let noticeCopy = "Your voice clone is created in your ElevenLabs account and stays there. ElevenLabs' terms let it use uploaded content, including your voice, to improve its services; you can opt out of training in your ElevenLabs account, but the opt-out is not retroactive. You can delete the voice at any time from VoxClip or ElevenLabs. ElevenLabs' Prohibited Use Policy applies, including its rules on political content."
@@ -58,14 +63,13 @@ import VoxClipMedia
     var adult = false
     var ownVideosOnly = false
     var statement: VoiceConsentStatement?
-    var verified = false
     var trainingReady = false
     var unsavedRecord: VoiceConsentRecord?
     var recordingTraining = false
     var script = ""
     /// §6.5: where the training samples come from. The live consent statement is recorded and verified either way.
     enum TrainingSource: String, Hashable { case project, readAloud }
-    /// §6.5.2: the editor's project as the sheet found it.
+    /// §6.5.2: the editor's project when the job opened.
     enum ProjectAudio: Equatable {
         /// `generated`: the media carries the AI-modified XMP label, so it may hold generated speech (§6.5.2).
         case noProject, untranscribed, finding, unreadable, generated
@@ -96,10 +100,10 @@ import VoxClipMedia
     @ObservationIgnored private let reconciler: VoiceOperationReconciler
     @ObservationIgnored private var recoveryTask: Task<Void, Never>?
     @ObservationIgnored private var region: ElevenLabsRegion?
+    @ObservationIgnored private var statementPlayer: AVAudioPlayer?
+    @ObservationIgnored private var paidAction: Task<Void, Never>?
     @ObservationIgnored private var statementWAV: Data?
     @ObservationIgnored private var training: [VoiceTrainingSample] = []
-    @ObservationIgnored private var quote: VoiceLabQuote?
-    @ObservationIgnored private var verificationQuote: VoiceLabQuote?
     @ObservationIgnored private var acceptedAt = Date()
     init(app: AppModel) {
         self.app = app; self.store = VoiceConsentStore(locations: app.locations)
@@ -115,7 +119,7 @@ import VoxClipMedia
         self.reconciler = reconciler ?? VoiceOperationReconciler(store: store) { ElevenLabsVoiceLab(keys: secrets, region: $0, logger: logger) }
     }
     @ObservationIgnored private var speakerCheckForTests: VoiceSpeakerCheck?
-    func stageVerificationForTests(statement: VoiceConsentStatement, wav: Data, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck? = nil) {
+    func stageEnrollmentForTests(statement: VoiceConsentStatement, wav: Data, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck? = nil) {
         self.statement = statement; statementWAV = wav
         self.client = client; region = client.region
         speakerCheckForTests = speaker
@@ -139,6 +143,7 @@ import VoxClipMedia
         await app.speakerModelLibrary.load()
         flow.keyReady = await app.providerKeyStore.hasKey(for: "elevenlabs")
         flow.keyChecked = true
+        flow.recoveryIDs = (try? await store.recoverableEnrollments()) ?? []
         if enabled && speakerReady && flow.keyReady && flow.state == .firstUse { continueAfterDownload() }
     }
     func saveVoiceKey() async {
@@ -168,20 +173,26 @@ import VoxClipMedia
     }
     func cancelVoiceAction() {
         if app.speakerModelLibrary.progress != nil { app.speakerModelLibrary.cancelDownload(); return }
+        if busy { paidAction?.cancel(); return }
         if recorder.recording { recorder.discard(); return }
         returnToRewrite()
     }
     func voicePrimary(command: Bool) {
-        if flow.state == .firstUse {
+        guard !busy else { return }
+        if flow.state == .ready {
+            startVoiceCreation(keyboard: true, command: command)
+        } else if flow.state == .firstUse {
             if flow.keyReady { turnOnVoiceJob() } else { Task { await saveVoiceKey() } }
         } else if flow.state == .agree { Task { await prepareVoiceStatement() } }
+        else if flow.state == .finished, unsavedRecord == nil { finishCreation(); returnToRewrite() }
+        else if flow.state == .statement, projectMismatch, trainingSource == .project { useReadAloud() }
         else if flow.state == .statement {
             Task { if recorder.recording { await stopRecording() } else if recordingTraining { await beginTraining() } else { await beginStatement() } }
         }
     }
     func changeVoiceAgreement() {
         guard !busy, !recorder.recording else { return }
-        statement = nil; statementWAV = nil; verified = false; flow.state = .agree
+        statement = nil; statementWAV = nil; flow.state = .agree
     }
     func prepareVoiceStatement() async {
         guard canRecord, let shared = app.shared else { return }
@@ -223,16 +234,14 @@ import VoxClipMedia
             calibratedThreshold: app.speakerModelLibrary.model?.calibratedThreshold(language: enrollmentLanguage), language: enrollmentLanguage)
     }
     var canRecord: Bool { enabled && speakerReady && !busy && ownVoice && adult && ownVideosOnly && (try? VoiceConsentText.displayName(displayName)) != nil }
-    var canCreate: Bool { enabled && speakerReady && !busy && verified && trainingAvailable && unsavedRecord == nil && pendingCreations.isEmpty }
-    private var trainingAvailable: Bool { trainingSource == .project ? projectAudioUsable && !projectMismatch : trainingReady }
-    /// The sheet offers the two-choice picker: a project with a transcript is open.
+    var canCreate: Bool { enabled && speakerReady && !busy && flow.state == .ready && flow.plan?.recordID == recordID && unsavedRecord == nil && pendingCreations.isEmpty }
+    var trainingAvailable: Bool { trainingSource == .project ? projectAudioUsable && !projectMismatch : trainingReady }
+    /// The job offers the two-choice picker: a project with a transcript is open.
     var offersProjectAudio: Bool { projectAudio != .noProject && projectAudio != .untranscribed }
     var projectAudioUsable: Bool {
         if case .found(let selection) = projectAudio { selection.status == .ok } else { false }
     }
     var projectChoiceEnabled: Bool { (projectAudioUsable || projectAudio == .finding) && !projectMismatch }
-    /// After verification: a choice only when the project option can be taken.
-    var verifiedCopy: String { projectChoiceEnabled ? Self.chooseTrainingCopy : Self.readAloudNextCopy }
     /// The §6.5.2 line under the training choice. After a speaker mismatch it says why the project option stays off.
     var projectAudioLine: String {
         if projectMismatch, trainingSource == .readAloud { return Self.projectMismatchCopy }
@@ -303,24 +312,9 @@ import VoxClipMedia
         self.client = client; self.enrollment = enrollment; region = selected
         return (client, enrollment)
     }
-    @discardableResult
-    func request(_ action: Request) -> Task<Void, Never>? {
-        if (action == .verify || action == .create) && !speakerReady { message = VoiceConsentError.speakerUnavailable.localizedDescription; return nil }
-        guard VoiceLabGate.canEnroll(enabled: enabled, busy: busy), !recorder.recording else { return nil }
-        if action == .verify {
-            guard let statementWAV, let statement else { return nil }
-            busy = true
-            return Task {
-                defer { busy = false }
-                do {
-                    let (client, _) = try services()
-                    verificationQuote = try await client.prepareConsentVerification(wav: statementWAV, language: statement.language, requestID: UUID())
-                    if enabled { confirmation = action }
-                } catch { message = await errorMessage(error) }
-            }
-        }
+    func request(_ action: Request) {
+        guard VoiceLabGate.canEnroll(enabled: enabled, busy: busy), !recorder.recording else { return }
         confirmation = action
-        return nil
     }
     func approve(_ action: Request) async {
         guard enabled, !busy else { return }
@@ -333,13 +327,6 @@ import VoxClipMedia
                 message = "Stopped looking. The remote state is unknown; the voice may stay in your ElevenLabs account."
                 return
             }
-            if action == .verify || action == .create {
-                guard speakerReady else { throw VoiceConsentError.speakerUnavailable }
-                let check = try await currentSpeakerCheck()
-                guard check.available else { throw VoiceConsentError.speakerUnavailable }
-                let (_, enrollment) = try services()
-                try await enrollment.setSpeakerCheck(check)
-            }
             let (client, enrollment) = try services()
             app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
             switch action {
@@ -348,20 +335,8 @@ import VoxClipMedia
                 if records.contains(where: { $0.status == .verificationRequired }) {
                     try await store.refreshVerification(client.listOwnClones())
                     await load()
+                    if let id = flow.finishedRecord?.id, let updated = records.first(where: { $0.id == id }) { flow.finishedRecord = updated }
                 }
-            case .verify:
-                guard let statement, let statementWAV else { throw VoiceLabError.invalidInput }
-                let attestations = VoiceConsentRecord.Attestations(ownVoice: ownVoice, adult: adult, ownVideosOnly: ownVideosOnly, acceptedAt: acceptedAt)
-                try await enrollment.verify(recordID: recordID, statement: statement, wav: statementWAV, attestations: attestations, approved: true, enabled: enabled, verificationQuote: verificationQuote)
-                verified = true; recorder.discard()
-                message = verifiedCopy
-            case .create:
-                guard let quote else { throw VoiceConsentError.speakerUnavailable }
-                subscription = try await client.plan()
-                let record = try await enrollment.create(quote: quote, approved: true, enabled: enabled, appVersion: AppModel.version)
-                finishCreation()
-                message = record.status == .verificationRequired ? "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back." : "Your voice is ready."
-                await load()
             case .delete(let id):
                 try await enrollment.delete(recordID: id, approved: true, enabled: enabled)
                 await load(); message = "Voice deleted. Existing rendered takes remain playable and labelled."
@@ -379,24 +354,13 @@ import VoxClipMedia
                 return
             }
             message = await errorMessage(error)
-            if action == .create {
-                let savedStatement = try? await store.statement(recordID: recordID)
-                trainingReady = !training.isEmpty && savedStatement != nil
-                quote = nil; keptSeconds = nil
-                await load(recover: false)
-            }
             if case .delete = action { await load(recover: false) }
-            if action == .verify {
-                verified = false; statementWAV = nil; recorder.discard()
-                try? await enrollment?.cancel(recordID: recordID)
-                statement = nil
-            }
         }
     }
     func beginStatement() async {
         guard speakerReady else { message = VoiceConsentError.speakerUnavailable.localizedDescription; return }
         guard canRecord else { return }
-        if statement == nil { await prepareVoiceStatement() }
+        if statement == nil { await prepareVoiceStatement(); return }
         busy = true; message = nil
         defer { busy = false }
         do {
@@ -405,7 +369,8 @@ import VoxClipMedia
             try await store.abandonEnrollment(recordID: recordID)
             recordID = UUID().uuidString.lowercased()
             guard statement != nil else { return }
-            acceptedAt = Date(); verified = false; trainingReady = false; statementWAV = nil; training = []; recordingTraining = false; keptSeconds = nil
+            acceptedAt = Date(); trainingReady = false; statementWAV = nil; training = []; recordingTraining = false; keptSeconds = nil; flow.plan = nil; flow.priceAppearedAt = nil
+            statementPlayer?.stop(); flow.owner?.transport("k")
             try await recorder.start(maximumSeconds: 30)
         } catch { message = await errorMessage(error) }
     }
@@ -420,7 +385,7 @@ import VoxClipMedia
             return
         }
         guard enabled, !busy, !recorder.recording, !recorder.samples.isEmpty else { return }
-        busy = true; defer { busy = false }
+        busy = true
         let samples = recorder.samples
         do {
             if recordingTraining {
@@ -431,39 +396,134 @@ import VoxClipMedia
                 guard (5...30).contains(Double(samples.count) / 48_000) else { throw VoiceLabError.invalidAudio }
                 let wav = try await Task.detached(priority: .userInitiated) { try VoiceTrainingAudio.wav(samples) }.value
                 try await store.saveStatement(wav, recordID: recordID)
-                statementWAV = wav
-                flow.state = .ready
+                statementWAV = wav; flow.statementSeconds = Double(samples.count) / 48_000
+                recorder.discard()
                 message = "Statement recorded. Nothing was sent."
             }
         } catch { message = await errorMessage(error); if recordingTraining { trainingReady = false } }
+        busy = false
+        if statementWAV != nil { await prepareCreation() }
     }
     func beginTraining() async {
-        guard enabled, verified, !busy, trainingSource == .readAloud else { return }
+        guard enabled, statementWAV != nil, !busy, trainingSource == .readAloud else { return }
         message = nil; trainingReady = false; recordingTraining = true; training = []
-        do { try await recorder.start(maximumSeconds: 90) } catch { message = await errorMessage(error) }
+        do { statementPlayer?.stop(); flow.owner?.transport("k"); try await recorder.start(maximumSeconds: 90) } catch { message = await errorMessage(error) }
     }
     func prepareCreation() async {
-        guard canCreate else { return }
-        busy = true; defer { busy = false }
+        guard enabled, !busy else { return }
+        guard speakerReady else { message = VoiceConsentError.speakerUnavailable.localizedDescription; return }
+        guard !recorder.recording, let statement, let statementWAV,
+              ownVoice, adult, ownVideosOnly, unsavedRecord == nil, pendingCreations.isEmpty else { return }
+        busy = true; flow.state = .checking; flow.plan = nil; flow.priceAppearedAt = nil
+        defer { busy = false }
         message = nil; keptSeconds = nil
         do {
+            if projectAudio == .finding { await analysis?.value }
+            if trainingSource == .readAloud && !trainingReady {
+                recordingTraining = true; flow.state = .statement
+                message = "Statement recorded and kept. Record a read-aloud instead. Nothing was sent."
+                return
+            }
             let (_, enrollment) = try services()
             let check = try await currentSpeakerCheck()
             try await enrollment.setSpeakerCheck(check)
             var samples = training
             if trainingSource == .project {
                 guard case .found(let selection) = projectAudio, let source = trainingProject?.source, let rate = projectRate else { throw VoiceLabError.invalidInput }
-                // Span WAVs stay in memory: the enrollment keeps the prepared request until it is sent or cancelled.
                 do { samples = try await VoiceTrainingAudio.projectSamples(source: source, sampleRate: rate, spans: selection.selected) }
-                catch is CancellationError { return }
-                // The line under the training choice now says so; the message stays empty to avoid repeating it.
-                catch { projectAudio = .unreadable; trainingSource = .readAloud; return }
+                catch is CancellationError { throw CancellationError() }
+                catch { projectAudio = .unreadable; trainingSource = .readAloud; recordingTraining = true; flow.state = .statement; return }
             }
-            let prepared = try await enrollment.prepare(recordID: recordID, displayName: displayName, samples: samples, enabled: enabled)
-            quote = prepared
-            keptSeconds = await enrollment.trainingSeconds(quote: prepared)
-            confirmation = .create
-        } catch { await creationFailed(error) }
+            let attestations = VoiceConsentRecord.Attestations(ownVoice: ownVoice, adult: adult, ownVideosOnly: ownVideosOnly, acceptedAt: acceptedAt)
+            let plan = try await enrollment.preparePlan(recordID: recordID, statement: statement, wav: statementWAV,
+                attestations: attestations, displayName: displayName, samples: samples, enabled: enabled)
+            guard enabled, showEnrollment || flow.owner == nil else { try await enrollment.cancel(recordID: recordID); return }
+            await prepareCapWarning(plan)
+            flow.plan = plan; keptSeconds = plan.trainingSeconds
+            flow.state = .ready; flow.priceAppearedAt = Date()
+            flow.owner?.announce("Ready to create your voice. " + creationCost)
+        } catch is CancellationError { flow.state = .statement }
+        catch { flow.state = .statement; await creationFailed(error) }
+    }
+    /// One explicit paid click, bound to the plan prepared locally. Recovery never repeats the statement check.
+    func createVoice(now: Date = Date(), keyboard: Bool = false, command: Bool = false, repeated: Bool = false) async {
+        guard canCreate, let plan = flow.plan,
+              Self.permitsPaidActivation(keyboard: keyboard, command: command, repeated: repeated, appeared: flow.priceAppearedAt, now: now) else { return }
+        busy = true; flow.state = .creating; message = nil; statementPlayer?.stop()
+        defer { busy = false }
+        app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
+        do {
+            let (_, enrollment) = try services()
+            let record = try await enrollment.execute(plan, approved: true, enabled: enabled, appVersion: AppModel.version)
+            flow.plan = nil; flow.recoveryIDs = []; flow.finishedRecord = record; flow.state = .finished
+            statementWAV = nil; training = []; recorder.discard(); trainingReady = false
+            message = record.status == .verificationRequired ? "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back." : "Your voice is ready."
+            flow.owner?.announce(message!)
+            await load()
+        } catch {
+            flow.plan = nil
+            if let error = error as? VoiceConsentSaveError {
+                unsavedRecord = error.record; flow.finishedRecord = error.record; flow.state = .finished
+                message = "ElevenLabs created your voice, but the local consent record could not be saved. Retry saving or Remove This Voice. Do not create it again."
+                await load(recover: false)
+            } else {
+                message = (error is CancellationError || error as? VoiceLabError == .cancelled) ? "Voice creation stopped. Check recovery before trying again." : await errorMessage(error)
+                flow.state = .statement
+                if error as? VoiceConsentError == .statementMismatch {
+                    self.statement = nil; statementWAV = nil; training = []; trainingReady = false; recordingTraining = false
+                    try? await enrollment?.cancel(recordID: recordID)
+                    // The next recording gets a fresh nonce; no request is repeated.
+                }
+                flow.recoveryIDs = (try? await store.recoverableEnrollments()) ?? []
+                await load(recover: false)
+            }
+        }
+    }
+    func startVoiceCreation(keyboard: Bool = false, command: Bool = false, repeated: Bool = false) {
+        guard paidAction == nil else { return }
+        let activatedAt = Date()
+        paidAction = Task { [weak self] in
+            guard let self else { return }
+            await createVoice(now: activatedAt, keyboard: keyboard, command: command, repeated: repeated)
+            paidAction = nil
+        }
+    }
+    func playStatement() {
+        guard !recorder.recording, !busy, let statementWAV else { return }
+        do { flow.owner?.transport("k"); statementPlayer = try AVAudioPlayer(data: statementWAV); statementPlayer?.play() }
+        catch { message = "This recording couldn't be played. Record it again." }
+    }
+    private func prepareCapWarning(_ plan: VoiceEnrollmentPlan) async {
+        flow.capWarning = nil
+        guard let limit = Decimal(string: app.string("voiceLab.monthlyCapUsd.elevenlabs"), locale: Locale(identifier: "en_US_POSIX")) else { return }
+        guard let total = await VoiceLabSpendLedger(locations: app.locations).total(provider: "elevenlabs", at: Date()) else {
+            flow.capWarning = "Monthly spend couldn't be read. Check your ElevenLabs account before creating your voice."; return
+        }
+        if VoiceLabMonthlyCap(limit: limit, spent: total.usd).isCrossed(by: plan.quote.estimate) {
+            flow.capWarning = VoiceLabCostPresentation.capWarning(cap: limit, providerName: "ElevenLabs")
+        }
+    }
+    static func permitsPaidActivation(keyboard: Bool, command: Bool, repeated: Bool, appeared: Date?, now: Date) -> Bool {
+        guard !repeated else { return false }
+        if keyboard && !command { guard let appeared, now.timeIntervalSince(appeared) >= 0.5 else { return false } }
+        return true
+    }
+    func recoverVoice(_ id: String) async {
+        guard enabled, !busy, speakerReady else { return }
+        busy = true; defer { busy = false }
+        do {
+            let (_, enrollment) = try services()
+            let check = try await currentSpeakerCheck()
+            try await enrollment.setSpeakerCheck(check)
+            let plan = try await enrollment.recoverPlan(recordID: id, enabled: enabled)
+            await prepareCapWarning(plan)
+            recordID = id; flow.plan = plan; keptSeconds = plan.trainingSeconds
+            let wav = try await store.statement(recordID: id)
+            let format = try ElevenLabsVoiceLab.validateWAV(wav, maxBytes: 16 * 1_024 * 1_024)
+            statementWAV = wav; flow.statementSeconds = Double(format.frames) / Double(format.rate)
+            await load(recover: false)
+            flow.state = .ready; flow.priceAppearedAt = Date(); message = "Statement already checked. Only creation remains. Nothing was sent."
+        } catch { message = await errorMessage(error) }
     }
     /// §6.5.2: project spans that fail the speaker match block with the project copy and offer a read-aloud.
     func creationFailed(_ error: any Error) async {
@@ -471,17 +531,19 @@ import VoxClipMedia
             projectMismatch = true; message = Self.projectMismatchCopy
         } else { message = await errorMessage(error) }
     }
-    /// Record a Read-Aloud: switches to §6.5 (b) and keeps the verified statement. The project option stays off: its
+    /// Record a Read-Aloud: switches to §6.5 (b) and keeps the local statement. The project option stays off: its
     /// spans would fail the same match again.
     func useReadAloud() {
         guard !busy, !recorder.recording else { return }
-        trainingSource = .readAloud; message = nil
+        trainingSource = .readAloud; message = nil; flow.plan = nil; recordingTraining = true; flow.state = .statement
     }
     func chooseTrainingSource(_ source: TrainingSource) {
         guard !busy, !recorder.recording, source == .readAloud || projectChoiceEnabled else { return }
-        trainingSource = source; message = nil
+        trainingSource = source; message = nil; flow.plan = nil
+        recordingTraining = source == .readAloud && statementWAV != nil
+        if flow.state == .ready { flow.state = .statement }
     }
-    /// Opens the sheet with the editor's project as the §6.5 (a) default.
+    /// Opens the job with the editor's project as the §6.5 (a) default.
     func openEnrollment() {
         guard let editor = app.shell.editor else { return }
         editor.openVoiceJob()
@@ -524,7 +586,6 @@ import VoxClipMedia
         projectRate = rate; projectAudio = outcome
         guard !projectAudioUsable else { return }
         if trainingSource == .project { trainingSource = .readAloud }
-        if message == Self.chooseTrainingCopy { message = Self.readAloudNextCopy }
     }
     private func closeProjectAudio() {
         analysis?.cancel(); analysis = nil; analysisID = UUID()
@@ -543,24 +604,16 @@ import VoxClipMedia
         return "Checks your plan, then sends the consent recording and training audio to create your own voice. No video is sent. \(cost)"
     }
     var creationCost: String {
-        guard let quote else { return "Check ElevenLabs pricing before creating your voice." }
-        switch VoiceLabCostPresentation.kind(quote.estimate, isLipSync: false, providerName: "ElevenLabs") {
-        case .inline(let amount): return amount.isEmpty ? "This action is free." : amount
-        case .confirm(let copy): return copy
-        }
+        guard let plan = flow.plan else { return "Preparing price…" }
+        guard let usd = plan.quote.estimate.usd else { return "Cost unknown — check ElevenLabs pricing" }
+        return usd == 0 ? "$0" : VoiceLabCostPresentation.format(usd)
     }
-    var verificationCost: String {
-        guard let verificationQuote else { return "VoxClip can't tell what this costs. Check ElevenLabs's pricing." }
-        switch VoiceLabCostPresentation.kind(verificationQuote.estimate, isLipSync: false, providerName: "ElevenLabs") {
-        case .inline(let amount): return amount.isEmpty ? "This action is free." : amount
-        case .confirm(let copy): return copy
-        }
-    }
+    var creationTitle: String { "Create My Voice · " + creationCost }
     func finishCreation() {
         recordID = UUID().uuidString.lowercased()
-        statement = nil; statementWAV = nil; training = []; quote = nil
-        verified = false; trainingReady = false; recordingTraining = false
-        recorder.discard(); showEnrollment = false
+        statement = nil; statementWAV = nil; training = []; flow.plan = nil; flow.recoveryIDs = []; flow.finishedRecord = nil
+        trainingReady = false; recordingTraining = false
+        statementPlayer?.stop(); recorder.discard(); showEnrollment = false
         closeProjectAudio()
     }
     func cancelEnrollment() async {
@@ -572,7 +625,7 @@ import VoxClipMedia
             try await store.abandonEnrollment(recordID: recordID)
         } catch { message = "The statement recording could not be removed. Retry Remove This Voice to finish cleanup."; return }
         unsavedRecord = nil
-        statementWAV = nil; training = []; verified = false; trainingReady = false; statement = nil; quote = nil
+        statementWAV = nil; training = []; trainingReady = false; statement = nil; flow.plan = nil
         showEnrollment = false
         closeProjectAudio()
         await load(force: true)
@@ -591,7 +644,8 @@ import VoxClipMedia
         busy = true; defer { busy = false }
         await load(force: true)
         if let record = unsavedRecord, !operations.contains(where: { $0.recordID == record.id && !$0.finished }) {
-            unsavedRecord = nil; finishCreation()
+            unsavedRecord = nil; flow.state = .finished
+            flow.finishedRecord = records.first { $0.id == record.id }
             let saved = records.contains { $0.id == record.id && $0.status != .deleted }
             message = saved ? "Consent record saved. No create request was repeated." : "Voice removed. No create request was repeated."
         } else { message = "The consent record still could not be saved. Retry saving or Remove This Voice. Do not create it again." }

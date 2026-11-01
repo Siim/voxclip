@@ -1,5 +1,7 @@
 #if DEBUG
 import Foundation
+import SwiftUI
+import AppKit
 import VoxClipCore
 import VoxClipMedia
 
@@ -37,17 +39,18 @@ private actor VoiceLabNoDispatchKeys: KeyProvider {
             return session.canRecord
         }
         session.busy = true
-        session.request(.verify)
+        session.request(.subscription)
         let busy = !session.canRecord && session.confirmation == nil
         session.busy = false
-        let verification = try await verificationApproval(session: session)
+        session.confirmation = nil
+        let verification = try await localPlanApproval(session: session)
         session.confirmation = nil
         session.displayName = String(repeating: "o\u{303}", count: 31)
         let scalarLimit = !session.canRecord
-        session.verified = true; session.trainingReady = true
+        session.trainingReady = true
         app.speakerModelLibrary.installed = false
         session.message = nil
-        session.request(.create)
+
         await session.prepareCreation()
         let unavailable = !session.canCreate && session.confirmation == nil && session.message == VoiceConsentError.speakerUnavailable.localizedDescription
         let shared = try SharedResources.locate()
@@ -65,7 +68,8 @@ private actor VoiceLabNoDispatchKeys: KeyProvider {
         let v1 = session.flow.state.rawValue == "V1"
         session.flow.state = .statement
         let v2 = session.flow.state.rawValue == "V2" && !session.recorder.recording
-        return [
+        let scenes = stateScenes(session: session)
+        return scenes + [
             .init(name: "Voice job V0 key, V1 agreements and V2 inline recording states", passed: v0 && v1 && v2),
             .init(name: "Voice Lab beta off refuses all actions", passed: off && offRequest),
             .init(name: "Voice Lab Settings stays discoverable with beta off", passed: VoiceLabGate.settingsVisible(enabled: false, internalBuild: false)),
@@ -81,25 +85,33 @@ private actor VoiceLabNoDispatchKeys: KeyProvider {
             .init(name: "Voice Lab consent copy contains account training notice", passed: VoiceLabSession.noticeCopy.contains("not retroactive") && VoiceLabSession.providerCopy.contains("traced to your account"))
         ]
     }
-    static func verificationApproval(session: VoiceLabSession) async throws -> DebugUISuite.Result {
+    /// Offscreen SwiftUI scenes: no windows, microphone, model download or provider task.
+    static func stateScenes(session: VoiceLabSession) -> [DebugUISuite.Result] {
+        let original = session.flow.state
+        let wasBusy = session.busy
+        defer { session.flow.state = original; session.busy = wasBusy }
+        let headlines = ["Your voice", "Find your clear speech and agree", "Read the statement aloud", "Checking it's you…", "Ready to create your voice", "Creating your voice…", "Your voice is ready."]
+        return VoiceEnrollmentFlow.State.allCases.enumerated().map { index, state in
+            session.flow.state = state
+            session.busy = state == .checking || state == .creating
+            let host = NSHostingView(rootView: DirectorVoiceSteps(session: session, prepareOnAppear: false))
+            host.frame = CGRect(x: 0, y: 0, width: 324, height: 160)
+            host.layoutSubtreeIfNeeded()
+            let text = DebugRightColumn.texts(in: host)["voice.headline"]
+            let footer = DebugRightColumn.markers(in: host)["voice.footer"]
+            let fits = footer.map { host.bounds.insetBy(dx: -0.5, dy: -0.5).contains($0) } ?? false
+            return .init(name: "Voice job \(state.rawValue) renders its scene and pinned action (\(text ?? "missing"), footer \(String(describing: footer)))", passed: text == headlines[index] && fits)
+        }
+    }
+    static func localPlanApproval(session: VoiceLabSession) async throws -> DebugUISuite.Result {
         let keys = VoiceLabNoDispatchKeys()
         let client = ElevenLabsVoiceLab(keys: keys, region: .default)
         let statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 16_000), rate: 16_000)
-        session.stageVerificationForTests(statement: statement, wav: wav, client: client)
-        let preparation = session.request(.verify)
-        var actual = ["preparation task": preparation != nil, "busy before": session.busy,
-            "confirmation before": session.confirmation != nil, "verified before": session.verified]
-        await preparation?.value
+        session.stageEnrollmentForTests(statement: statement, wav: wav, client: client)
+        session.flow.plan = nil
         let requests = await keys.requests
-        actual["busy after"] = session.busy
-        actual["Verify confirmation after"] = session.confirmation == .verify
-        actual["verified after"] = session.verified
-        actual["credential requested"] = requests != 0
-        return .equal("Voice Lab verification waits for explicit approval", expected: [
-            "preparation task": true, "busy before": true, "confirmation before": false, "verified before": false,
-            "busy after": false, "Verify confirmation after": true, "verified after": false, "credential requested": false
-        ], actual: actual)
+        return .init(name: "Voice Lab has no paid action without a locally matched plan", passed: !session.canCreate && session.confirmation == nil && requests == 0)
     }
 }
 #endif

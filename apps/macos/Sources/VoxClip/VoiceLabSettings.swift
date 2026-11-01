@@ -80,25 +80,7 @@ import VoxClipMedia
                 Button("Remove This Voice", role: .destructive) { Task { await session.cancelEnrollment() } }.disabled(session.busy)
                     .accessibilityLabel(Self.actionAccessibilityLabel("Remove unfinished voice", context: context))
             }
-            ForEach(operations) { operation in
-                let context = contexts["operation-\(operation.id)", default: ""]
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(operation.kind == .create ? "Voice creation" : "Voice removal").fontWeight(.medium)
-                    Text(operation.displayState).font(.caption)
-                    if operation.needsCreatorRecoveryReview, operation.recoveryNeedsReview == true {
-                        Button(VoiceLabSession.Request.stopLooking(operation.id).title) { session.request(.stopLooking(operation.id)) }
-                            .accessibilityLabel(Self.actionAccessibilityLabel(VoiceLabSession.Request.stopLooking(operation.id).title, context: context)).disabled(session.busy)
-                    }
-                    Button("Retry") { Task { await session.load(force: true) } }.disabled(session.busy)
-                        .accessibilityLabel(Self.actionAccessibilityLabel("Retry", context: context))
-                    if operation.kind == .create {
-                        Button("Remove This Voice", role: .destructive) { Task { await session.withdrawOperation(operation) } }.disabled(session.busy)
-                            .accessibilityLabel(Self.actionAccessibilityLabel("Remove unfinished voice", context: context))
-                    }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(context)
-            }
+            VoiceRecoveryRows(session: session, shared: app.shared)
             Text("Make your voice from Rewrite when a phrase needs it.").font(.caption)
             Text(session.speakerMessage).font(.caption).foregroundStyle(.secondary)
         }
@@ -213,6 +195,48 @@ import VoxClipMedia
     }
 }
 
+/// Shared management and inline-job recovery. A retry reconciles existing work; it never creates another voice.
+@MainActor struct VoiceRecoveryRows: View {
+    @Bindable var session: VoiceLabSession
+    let shared: SharedResources?
+    var inline = false
+    @State private var stopLooking: UUID?
+    var body: some View {
+        let operations = session.operations.filter { !$0.finished }
+        let contexts = VoiceLabSettings.accessibilityContexts(records: session.visibleRecords, operations: operations, shared: shared)
+        return Group {
+            ForEach(operations) { operation in
+                let context = contexts["operation-\(operation.id)", default: ""]
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(operation.kind == .create ? "Voice creation" : "Voice removal").fontWeight(.medium)
+                    Text(operation.displayState).font(.caption)
+                    if operation.needsCreatorRecoveryReview, operation.recoveryNeedsReview == true {
+                        Button(VoiceLabSession.Request.stopLooking(operation.id).title) {
+                            if inline { stopLooking = operation.id } else { session.request(.stopLooking(operation.id)) }
+                        }
+                            .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel(VoiceLabSession.Request.stopLooking(operation.id).title, context: context)).disabled(session.busy)
+                    }
+                    if inline, stopLooking == operation.id {
+                        Text("The remote state stays unknown. This stops recovery without deleting a voice from ElevenLabs.")
+                        HStack {
+                            Button("Cancel") { stopLooking = nil }
+                            Button("Stop Looking", role: .destructive) { Task { await session.approve(.stopLooking(operation.id)); stopLooking = nil } }
+                        }
+                    }
+                    Button("Retry") { Task { await session.load(force: true) } }.disabled(session.busy)
+                        .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Retry", context: context))
+                    if operation.kind == .create {
+                        Button("Remove This Voice", role: .destructive) { Task { await session.withdrawOperation(operation) } }.disabled(session.busy)
+                            .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Remove unfinished voice", context: context))
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(context)
+            }
+        }
+    }
+}
+
 @MainActor private struct VoiceLabRequestSheet: View {
     @Bindable var session: VoiceLabSession
     let action: VoiceLabSession.Request
@@ -225,8 +249,6 @@ import VoxClipMedia
             Text(VoiceLabSession.providerCopy)
             switch action {
             case .subscription: Text("Reads your subscription, plan, available voice slots and pending voice verification status. No audio, video or transcript is sent. This check is free.")
-            case .verify: Text("Sends only the statement recording to ElevenLabs Scribe v2. No video is sent. \(session.verificationCost)")
-            case .create: Text(session.creationCopy)
             case .delete: Text("Deletes this voice from ElevenLabs, removes the local statement recording, and marks the local consent record deleted. Existing rendered takes stay playable and labelled. This action is free.")
             case .removeLocal: Text("Removes the local consent statement and records that the remote state is unknown. The voice may stay in your ElevenLabs account. This action is free.")
             case .stopLooking: Text("Stops recovery without deleting any voice from ElevenLabs. Records that the remote state is unknown; the voice may stay in your ElevenLabs account. This action is free.")

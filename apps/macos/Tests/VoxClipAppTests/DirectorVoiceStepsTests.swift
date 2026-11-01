@@ -48,7 +48,7 @@ import Testing
         #expect(session.canRecord)
         await session.prepareVoiceStatement()
         #expect(session.flow.state == .statement && session.statement?.text.contains("Example") == true)
-        #expect(!session.recorder.recording && !session.hasStatementRecording && !session.verified)
+        #expect(!session.recorder.recording && !session.hasStatementRecording)
         session.analysis?.cancel()
     }
     @Test func downloadRequiresItsInlineApprovalAndHasPublisherAndLicence() async throws {
@@ -70,5 +70,34 @@ import Testing
         #expect(!editor.hasVoiceJob)
         #expect(!VoiceLabGate.rewriteEnabled(enabled: false, noticeAccepted: false, internalBuild: false))
     }
+    @Test func pricedActionRejectsEarlyReturnAndRepeats() {
+        let appeared = Date(timeIntervalSince1970: 1_000)
+        for elapsed in [0.0, 0.49] {
+            #expect(!VoiceLabSession.permitsPaidActivation(keyboard: true, command: false, repeated: false, appeared: appeared, now: appeared.addingTimeInterval(elapsed)))
+        }
+        #expect(VoiceLabSession.permitsPaidActivation(keyboard: true, command: false, repeated: false, appeared: appeared, now: appeared.addingTimeInterval(0.5)))
+        #expect(VoiceLabSession.permitsPaidActivation(keyboard: true, command: true, repeated: false, appeared: appeared, now: appeared))
+        #expect(VoiceLabSession.permitsPaidActivation(keyboard: false, command: false, repeated: false, appeared: appeared, now: appeared))
+        #expect(!VoiceLabSession.permitsPaidActivation(keyboard: true, command: true, repeated: true, appeared: appeared, now: appeared.addingTimeInterval(1)))
+    }
+    @Test func allSevenScenesKeepTheirPrimaryInsideTheSmallestPanel() throws {
+        let app = AppModel()
+        let results = DebugVoiceLab.stateScenes(session: app.voiceLabSession)
+        #expect(results.count == 7)
+        for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
+    }
+
+    @Test func firstUseKeepsTheDownloadLicenceAndActionInsideTheSmallestPanel() throws {
+        let app = AppModel(); let session = app.voiceLabSession
+        app.speakerModelLibrary.model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        app.speakerModelLibrary.installed = false
+        session.flow.keyChecked = true; session.flow.keyReady = true
+        let host = NSHostingView(rootView: DirectorVoiceSteps(session: session, prepareOnAppear: false))
+        host.frame = CGRect(x: 0, y: 0, width: 324, height: 160)
+        host.layoutSubtreeIfNeeded()
+        let footer = try #require(DebugRightColumn.markers(in: host)["voice.footer"])
+        #expect(footer.height > 60 && host.bounds.insetBy(dx: -0.5, dy: -0.5).contains(footer))
+    }
+
 }
 #endif

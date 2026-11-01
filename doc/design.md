@@ -1290,7 +1290,7 @@ Phase 0 connectors return one answer, so nothing streams: R1 waits until the rep
   | No changes | Headline "No changes needed"; body "{AI} found nothing to change in clip {n}." | — | **Ask for Something Else** (focuses the field) |
 
 - **Apply…** is one undo step named "Rewrite clip {n}". It announces "Applied {c} changes", closes the panel and moves focus to the first changed word.
-- **Turn On Voice Lab…** opens the one-time beta sheet (voice-lab.md §5). On **Turn on**, the excluded voice rows gain their checkboxes, checked.
+- **Turn On Voice Lab…** opens the inline Voice job on Mac (voice-lab.md §5). Turning it on approves the own-voice model download with the licence visible; voice rows become available after setup. Windows retains its platform first-use presentation until its inline job lands.
 - Announce "{c} changes proposed. {z} need your voice." when R2 appears, and move focus to the first change row.
 
 **R3. The scope changed while the panel was open**
@@ -1317,7 +1317,7 @@ Phase 0 connectors return one answer, so nothing streams: R1 waits until the rep
 **Mac inline job (V16, v3 f10 and v5 f23).** Rewrite's Turn On Voice Lab / Make Your Voice opens the right panel's Voice job, preserving the proposal. First use contains the beta notice, an inline ElevenLabs key field when needed, and the publisher, exact catalogue download size and licence immediately beside Turn On Voice Lab. That click enables the setting and approves that model download; installed models skip it. Progress, Cancel and Retry stay in the job. Nothing is uploaded. After setup, this Mac finds clear speech, shows the three explicit attestations and display name, and prepares the read-aloud statement before recording starts. The statement and recorder live in the job. Back to Rewrite keeps local work. Settings reuses the inline first-use card and is otherwise management (voices, deletion, storage, spend and turn off); it has no Create Your Voice entry or enrollment sheet. The speaker model's Settings row also places its licence and download action inline. The Mac enrollment flow supersedes the old opt-in and CreateVoiceSheet presentations.
 
 
-The steps run inside the panel, and the proposal stays in the transcript. The title is "Your voice", with Beta and "Step {i} of 3" ("of 4" when a read-aloud is needed), plus the back button "Back to rewrite".
+The steps run inside the panel, and the proposal stays in the transcript. On Mac, Beta · Step 1 of 2 covers setup, agreements and recording; Beta · Step 2 of 2 covers the locally prepared quote, creation and result (v3 f10/f11). Back to Rewrite preserves enrollment work. The older three-step numbering below remains a Windows reference until its inline job lands.
 
 The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set to the scope's clip; on device and free; voice-lab.md §6.5.1) starts when R2 appears with voice changes and no voice. V1 therefore usually knows the result already.
 
@@ -1325,13 +1325,13 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 
 - Headline "Add your ElevenLabs key". Text: "Your voice is made and spoken by ElevenLabs, with your own key. Create a key just for VoxClip with a monthly credit limit."
 - A secure field, "ElevenLabs API key".
-- Link **Make a restricted key**: a popover with the permission-list guidance of voice-lab.md §2.2.
+- Link **Make a restricted key** opens ElevenLabs key settings; permission guidance is voice-lab.md §2.2.
 - Primary **Save Key**.
 - Note:
   - macOS: "Saved in the macOS Keychain and used only by VoxClip for Voice Lab. Never passed to Claude Code, Codex or any other AI app. Saving makes no request."
   - Windows: "Saved for your Windows account and used only by VoxClip for Voice Lab. Never passed to Claude Code, Codex or any other AI app. Saving makes no request."
 
-**V1. Agree** (Step 1 of 3)
+**V1. Agree** (Mac Step 1 of 2; Windows Step 1 of 3)
 
 - Headline "Make your voice from this clip". Sub-line: "Your new words are spoken in your own voice. You do this once."
 - The speech row, by the state of the analysis:
@@ -1347,12 +1347,11 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 - Rows that appear only when a requirement is unmet:
   - The own-voice check is missing: "Download the own-voice check (27 MB)" · "Runs on this {Mac/PC}. Licence CC BY 4.0." with **Download**. The third-party download confirmation (§10) comes first, then "Downloading… {p}%" with **Cancel**.
   - Plan: "Instant voice cloning needs an ElevenLabs Starter plan or higher." or "Your ElevenLabs account has no free voice slots.", with the link **Open ElevenLabs**.
-- Note "Checks your ElevenLabs plan. Free; no audio is sent." Primary **Continue**.
-  - Continue stores the provider consent if it was shown, then runs the plan check (`GET /v1/user/subscription`, voice-lab.md §2.3).
-  - Pressed with a box unticked, Continue focuses that box and shows "Tick all three to continue." Nothing is disabled.
+- Mac primary **Read the Statement** prepares the statement locally after the three agreements; recording starts only on **Record**. No provider request is made here. The plan check belongs to the later priced Create My Voice action.
+- Windows legacy presentation, until its inline job lands: "Checks your ElevenLabs plan. Free; no audio is sent." Primary **Continue** stores provider consent and runs the plan check (`GET /v1/user/subscription`, voice-lab.md §2.3). With an unticked box, Continue focuses it and says "Tick all three to continue."
 - **Windows, until its speaker check is enabled** (voice-lab.md §6.6): an informational `InfoBar`, "Making a voice isn't available on Windows yet: the on-device check that it's your voice isn't ready. Your free changes still work." The only primary is **Apply {k} Free Changes**.
 
-**V2. Read aloud** (Step 2 of 3)
+**V2. Read aloud** (Mac Step 1 of 2; Windows Step 2 of 3)
 
 - Rows:
   - the speech row, done, as in V1;
@@ -1360,8 +1359,9 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 - Headline "Read this aloud, in one take".
 - The teleprompter shows the voice-lab.md §6.2 statement, generated per attempt, with the four nonce words emphasised.
 - The recorder:
-  - idle: **Record** (Space);
-  - recording: "Recording {m:ss}", a level meter and **Stop** (Space).
+  - idle: **Record**;
+  - recording: "Recording {m:ss}", a level meter and **Stop**.
+  - Space outside a text field plays or pauses the video. ⌘Return activates the current primary. A priced action never receives focus automatically, ignores repeats, and ignores ordinary Return during its first 0.5 s.
   - With VoiceOver or Narrator running, a note reads: "Using a screen reader? Wear headphones so it isn't recorded."
 - Note: "Stop after the last word (5 to 30 s). Nothing leaves this {Mac/PC} until you choose Create My Voice."
 - Errors show inline while the recorder stays:
@@ -1378,13 +1378,15 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
   - a done row, "Statement recorded and kept" · "You won't need to read it again.";
   - primary **Record a Read-Aloud**;
   - note "Nothing was sent. The check ran on this {Mac/PC}."
-- **Read-aloud** (too little speech, or a mismatch), Step 3 of 4: the headline "Read this aloud, about 90 s", the `scripts-en.txt` text and the same recorder, validated at 60 to 120 s. Then V3 runs again against the read-aloud, with the voice-lab.md §6.6 floor of 10 s. Below that floor: "Some of these recordings don't sound like the voice in your consent statement.", nothing is sent, and the primary is **Record a Read-Aloud** again.
+- **Read-aloud** (too little speech, or a mismatch), Step 3 of 4: the headline "Read this aloud, about 90 s", the `scripts-en.txt` text and the same recorder, validated at 60 to 90 s on Mac (the existing bounded recorder); the Windows design range remains 60 to 120 s. Then V3 runs again against the read-aloud, with the voice-lab.md §6.6 floor of 10 s. Below that floor: "Some of these recordings don't sound like the voice in your consent statement.", nothing is sent, and the primary is **Record a Read-Aloud** again.
 
-**V4. Ready to create** (Step 3 of 3)
+**V4. Ready to create** (Mac Step 2 of 2; Windows Step 3 of 3)
 
 - Headline "Ready to create your voice". A done row: "It's you" · "{m} of this video matches your statement." For a read-aloud: "Your read-aloud matches your statement."
 - Body: "Checks your plan, then sends your statement and {m} of your speech to ElevenLabs to create your voice. No video is sent."
-- Primary **Create My Voice · < $0.01**. The Scribe check costs under a cent and Instant Voice Clone costs $0. One approval covers the statement check and the creation (voice-lab.md §6.4).
+- Primary **Create My Voice · {quote price}**, computed from `preparePlan → plan.quote.estimate`; no hard-coded amount. One click approves plan check, statement verification and creation (voice-lab.md §6.4). Until that click, the statement and training audio stay local. A local mismatch makes no request. Monthly soft-cap warnings appear beside the action without another dialog; an unknown estimate explicitly names ElevenLabs pricing.
+- A recorded statement has **Play Statement**. The plan, statement and creation rows show what the click does. A failed verification returns to recording and creates no voice; there are no separate Verify and Create approval steps.
+- A durable verified enrollment offers **Resume Creation**, which prepares and displays a creation-only quote. It never automatically executes or repeats the statement transcription. Wrong key, changed region, expired or ambiguous journals retain Core C7's guards.
 
 **V5. Creating**
 
@@ -1394,14 +1396,14 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
   - done or running: "Statement read correctly" · "Checked by ElevenLabs";
   - running: "Creating “{name} (VoxClip)” in your ElevenLabs account", with an indeterminate bar;
   - waiting: "Back to clip {n}" · "{z} phrases to voice".
-- Footer note: "Sending your statement and {m} of your speech to ElevenLabs with your key. No video. < $0.01". There is no Cancel after dispatch; the journal owns recovery (voice-lab.md §6.8).
+- Footer note: "Sending your statement and {m} of your speech to ElevenLabs with your key. No video. < $0.01". On Mac, **Stop** requests cancellation; it cannot undo a dispatched request. The journal owns reconciliation and recovery (voice-lab.md §6.8).
 - The statement doesn't match (WER or nonce): "That didn't match the statement. Read it again, clearly, in one take." The panel returns to V2 with a new statement, and nothing is created. After three tries in 10 minutes: "That's three tries in 10 minutes. Try again at {time}."
 - `requires_verification`: "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.", with **Open elevenlabs.io** and **Check Again**.
 - A local save failure, and recovery: the existing copy and actions (voice-lab.md §6.8), including **Remove This Voice**.
 
 **V6. Done.**
 
-- The panel returns to R2. The voice row reads "Your voice is ready", and the primary becomes **Make Takes · ≈ ${x}**. Takes never start by themselves.
+- The job shows "Your voice is ready." with **Back to Rewrite**. Returning shows R2; V18 supplies its priced Make Takes action. Takes never start by themselves.
 - Announce "Your voice is ready."
 
 #### 6.3.8 Takes and Use
@@ -1477,7 +1479,7 @@ Each item goes in the same change that replaces it, on both platforms:
 6. **Choose Voice…** and the separate "Use ElevenLabs?" alert before voice discovery, which fold into V1.
 7. The panel's "What should change?" field, the plain-text **New words** field and the read-only diff line. The scope bar's field and the edit popover replace them.
 8. The separate voice-creation sheet: `CreateVoiceSheet` (macOS), `CreateVoicePage` and `VoiceCreationDialog` (Windows). Their session logic moves into the panel steps; the views are deleted, not kept beside the new ones.
-9. The separate **Verify statement · < $0.01** and **Check ElevenLabs account** buttons, merged into Continue and Create My Voice.
+9. On Mac, the separate **Verify statement · < $0.01** and enrollment **Check ElevenLabs account** buttons, merged into the one priced **Create My Voice** action. Settings retains its account-management check.
 10. The training-source radio group. Project audio is automatic, and the read-aloud appears only when needed.
 11. "Download the own-voice check model in Settings → Voice Lab before creating a voice." The download is inline in V1.
 12. Outlined boxes per line for selections, Rewrite passages and changes in the transcript.
