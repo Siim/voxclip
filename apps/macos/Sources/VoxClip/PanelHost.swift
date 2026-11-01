@@ -30,41 +30,46 @@ enum PanelJob: String, CaseIterable, Sendable {
     }
 
     /// The jobs that can act in `model` now, in switcher order (design: "a control that
-    /// cannot act is not shown"). Captions always; Rewrite while a session is open on the
-    /// active tab. Voice and Takes come with V16–V18 (until then the takes live in the
-    /// Rewrite panel) and Director with Phase 1.
+    /// cannot act is not shown"). Captions always, and the job of the task open on the
+    /// active tab (Rewrite; Voice and Takes with V16–V18, Director with Phase 1).
     @MainActor static func available(in model: EditorModel) -> [PanelJob] {
-        model.panelRewrite == nil ? [.captions] : [.captions, .rewrite]
+        guard let task = model.panelTask else { return [.captions] }
+        return [.captions, task.job]
     }
 }
 
-/// The job picked in the switcher, and the Rewrite session that was open when it was
-/// picked. A session opened later shows Rewrite again, as opening one always has.
+/// The job picked in the switcher, beside the task and the turn that were open then. A task
+/// opened later, or a new run of the same task, shows its job again (the job follows the task).
 struct PanelJobChoice {
     let job: PanelJob
-    weak var session: RewriteSession?
+    weak var task: DirectorTask?
+    let turn: Int
 }
 
 extension EditorModel {
     /// The Rewrite session the panel shows: the one on the active tab, while Voice Lab's
     /// Rewrite is on.
     var panelRewrite: RewriteSession? { app.voiceLabRewriteEnabled ? rewrite : nil }
+    /// The task the panel shows: the active tab's Rewrite session's.
+    var panelTask: DirectorTask? { panelRewrite?.task }
 }
 
 extension WorkspaceShell {
     /// The panel's job for `model` in this window: the job picked in the switcher while it
-    /// can act and the session it was picked beside is still the open one, else Rewrite
-    /// while its session shows, else Captions. In memory only, per window: no undo step
-    /// and no document change (impl-plan §3.3).
+    /// can act and the task and turn it was picked beside are still the open ones, else the
+    /// open task's job, else Captions. In memory only, per window: no undo step and no
+    /// document change (impl-plan §3.3).
     func panelJob(for model: EditorModel) -> PanelJob {
         let jobs = PanelJob.available(in: model)
-        if let choice = panelChoice, choice.session === model.openRewrite, jobs.contains(choice.job) { return choice.job }
-        return jobs.contains(.rewrite) ? .rewrite : .captions
+        let task = model.openRewrite?.task
+        if let choice = panelChoice, choice.task === task, choice.turn == task?.turn, jobs.contains(choice.job) { return choice.job }
+        return model.panelTask?.job ?? .captions
     }
     /// The switcher's pick.
     func choosePanelJob(_ job: PanelJob, for model: EditorModel) {
         guard PanelJob.available(in: model).contains(job) else { return }
-        panelChoice = PanelJobChoice(job: job, session: model.openRewrite)
+        let task = model.openRewrite?.task
+        panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0)
     }
 }
 
@@ -103,8 +108,13 @@ extension WorkspaceShell {
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if job == .rewrite, let session = model.panelRewrite { RewritePanel(session: session) }
-                else { CaptionsSection(model: model, fineTune: fineTune).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+                if job == .rewrite, let session = model.panelRewrite {
+                    // The task's panel, or the passage panel while it waits to send or shows a proposal (until V13 and V15).
+                    switch session.task.state {
+                    case .ready, .proposal: RewritePanel(session: session)
+                    case .choosingAI, .running, .error: DirectorPanel(task: session.task, model: model)
+                    }
+                } else { CaptionsSection(model: model, fineTune: fineTune).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)

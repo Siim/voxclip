@@ -90,21 +90,39 @@ struct EditorRenderSnapshot {
             guard !Task.isCancelled, capabilities.ai, app.voiceLabRewriteEnabled, project == snapshot,
                   selectedWordIDs == selection, selectedPauseIDs == pauses, sourceTime == caret,
                   rewriteConnectorSignature == signature else { return }
-            let provider = app.providers.first { $0.id == app.string("llm.connector") }
-            let connector: RewriteConnector? = provider.map { (provider: ProviderChoice) -> RewriteConnector in
-                RewriteConnector(connector: app.connector(provider.id), model: app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? ""),
-                    name: provider.label, group: provider.group, plan: provider.id == "codex" ? "ChatGPT plan" : "Claude plan")
-            }
-            let envelope = waveform.map { AudioEnvelope(sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
-            openRewriteRange = lower...upper
-            openRewrite = RewriteSession(editor: self, range: lower...upper, envelope: envelope, connector: connector,
-                consent: { [weak self] in
-                    guard let self, let provider else { return false }
-                    return await self.rewriteConsent(provider: provider)
-                }, connectorIsCurrent: { [weak self] in self?.rewriteConnectorSignature == signature })
-            if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
-            transcriptRevision += 1
+            openRewriteSession(range: lower...upper)
         }
+    }
+    /// Opens a Rewrite session on `range` with the AI chosen now; with none, its panel asks which (R0).
+    private func openRewriteSession(range: ClosedRange<Int>, instruction: String = "") {
+        let signature = rewriteConnectorSignature
+        let provider = app.providers.first { $0.id == app.string("llm.connector") }
+        let connector: RewriteConnector? = provider.map { (provider: ProviderChoice) -> RewriteConnector in
+            RewriteConnector(connector: app.connector(provider.id), model: app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? ""),
+                name: provider.shortName, group: provider.group, plan: provider.id == "codex" ? "ChatGPT plan" : "Claude plan")
+        }
+        let envelope = waveform.map { AudioEnvelope(sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
+        openRewriteRange = range
+        let session = RewriteSession(editor: self, range: range, envelope: envelope, connector: connector,
+            consent: { [weak self] in
+                guard let self, let provider else { return false }
+                return await self.rewriteConsent(provider: provider)
+            }, connectorIsCurrent: { [weak self] in self?.rewriteConnectorSignature == signature })
+        openRewrite = session
+        if !instruction.isEmpty { session.setInstruction(instruction) }
+        session.start()
+        if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
+        transcriptRevision += 1
+    }
+    /// R0's Use {name}: writes `llm.connector`, as the AI menu and Settings do, and opens the
+    /// session again on the same words with its instruction, now with that AI.
+    func useRewriteConnector(_ id: String) {
+        guard let session = openRewrite, let range = openRewriteRange else { return }
+        let instruction = session.instruction
+        app.set("llm.connector", .string(id))
+        closeRewrite(returnFocus: false)
+        guard capabilities.ai, app.voiceLabRewriteEnabled else { return }
+        openRewriteSession(range: range, instruction: instruction)
     }
     var rewriteConnectorSignature: [String] {
         let id = app.string("llm.connector")
@@ -125,7 +143,8 @@ struct EditorRenderSnapshot {
                     openRewrite === session && session.current
                 }
         } catch is CancellationError { return false } catch {
-            session.setReadinessProblem(await app.safeError(error, context: "ai:Rewrite"))
+            // R1x: the error's fix shows in the panel; the send returns false and changes nothing.
+            await session.fail(error)
             return false
         }
     }

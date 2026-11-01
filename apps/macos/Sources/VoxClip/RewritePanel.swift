@@ -158,20 +158,11 @@ import VoxClipCore
     let session: RewriteSession
     let propose: () -> Void
     var body: some View {
+        // Running shows R1, and the connector's fixes show in R1x (DirectorPanel), not here.
         VStack(alignment: .leading, spacing: 12) {
             Button(session.proposalButton, action: propose).disabled(!session.canPropose)
                 .accessibilityLabel(session.proposalButton)
-            if session.isProposing { ProgressView().controlSize(.small).accessibilityLabel("Rewriting") }
             Text(session.sendLine).font(.system(size: 11)).foregroundStyle(.secondary)
-            if session.connector != nil {
-                HStack {
-                    Text(FindClipsPopover.statusText(session.readiness)).font(.system(size: 11))
-                    if session.readiness != nil && session.readiness != .ready {
-                        Button("Retry") { Task { await session.detectConnector(); await session.prepare() } }
-                    }
-                }
-            }
-            if session.connector == nil { Button("Open Settings") { openVoxClipSettings(pane: "ai") } }
             if !session.estimateCopy.isEmpty { Text(session.estimateCopy).font(.system(size: 11)).foregroundStyle(.secondary) }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }

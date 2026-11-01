@@ -100,6 +100,12 @@ struct RewriteConnector {
     private(set) var estimate: VoiceLabCostPresentation.Kind?
     private(set) var revision = 0
     private(set) var generation: RewriteGenerationSession?
+    /// The Director task the Rewrite job shows (impl-plan V12m); the session drives it.
+    let task: DirectorTask
+    /// The AIs R0 lists, once detected.
+    var choices: [ConnectorChoice] = []
+    /// The work a panel action started (detection, Try Again); closing the session cancels it.
+    @ObservationIgnored var actionTask: Task<Void, Never>?
     func configureGeneration(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck) {
         generation?.invalidate()
         let region = client.region
@@ -148,7 +154,18 @@ struct RewriteConnector {
         service = editor.app.shared.map(VoiceRewriteService.init)
         newWords = source.filter { $0.kind == .word }.map(\.text).joined(separator: " ")
         header = "\(source.filter { $0.kind == .word }.count) words at \(timecode(source.first?.start ?? 0))"
+        let words = DirectorScope(kind: .selection(inClip: editor.project.edits.activeClipId != nil), wordCount: source.filter { $0.kind == .word }.count)
+        task = DirectorTask(scope: .selection(range), words: words, state: connector == nil ? .choosingAI : .ready,
+                            close: PanelAction(id: "close", title: "Close Rewrite") { [weak editor] in editor?.closeRewrite() })
+        if connector == nil { task.show(.choosingAI, headline: PanelHeadline(text: "Who should rewrite \(words.name)?"), cards: [.text("Checking which AIs are set up…")]) }
         refreshReview()
+        refreshContext()
+    }
+    /// Starts what the panel needs first: R0's detection when no AI is chosen.
+    func start() {
+        guard isOpen, connector == nil else { return }
+        actionTask?.cancel()
+        actionTask = Task { [weak self] in await self?.showChooser() }
     }
     /// The session still matches the editor's project. The editor's tab is not part of it:
     /// a session belongs to its tab and keeps working while another tab shows (impl-plan §3.3).
@@ -164,16 +181,18 @@ struct RewriteConnector {
         if case .confirm(let text) = estimate { return text }
         return ""
     }
+    /// The note beside the button that sends (design.md R1's footer); empty while no AI is chosen (R0).
     var sendLine: String {
-        guard let connector else { return "Choose a connector in Settings → AI." }
+        guard let connector else { return "" }
         let count: Int = source.filter { $0.kind == .word }.count
+        let words = task.words.words
         switch connector.group {
-        case "apiKey": return "Sends these \(count) words to \(connector.name) with your key."
+        case "apiKey": return "Sends \(words) to \(connector.name) with your key."
         case "cli":
             switch editor.app.cliSignIn(connector.connector.id) {
-            case .plan: return "Sends these \(count) words to \(connector.name) with your sign-in. Counts toward your \(connector.plan)."
-            case .apiKey: return "Sends these \(count) words to \(connector.name), billed to the API key it is signed in with."
-            case nil: return "Sends these \(count) words to \(connector.name) with your sign-in."
+            case .plan: return "Sends \(words) to \(connector.name) with your sign-in. Counts toward your \(connector.plan)."
+            case .apiKey: return "Sends \(words) to \(connector.name), billed to the API key it is signed in with."
+            case nil: return "Sends \(words) to \(connector.name) with your sign-in."
             }
         default:
             if connector.connector.id.rawValue == "apple-foundation" { return "Runs on this Mac. Nothing leaves it." }
@@ -211,8 +230,8 @@ struct RewriteConnector {
         } else { result = await connector.connector.status() }
         guard !Task.isCancelled, current else { return }
         readiness = result
+        refreshContext()
     }
-    func setReadinessProblem(_ text: String) { problem = text }
     func prepare(revision expected: Int? = nil) async {
         let expected = expected ?? revision
         guard current, let connector, let service else { return }
@@ -248,29 +267,33 @@ struct RewriteConnector {
         let expected = revision
         isProposing = true; shownQuoteID = nil; problem = ""
         generation?.inputsChanged()
-        let task = Task { [self] () -> Bool in
+        beginRun()
+        let started = ContinuousClock.now
+        let sendTask = Task { [self] () -> Bool in
             defer { runs.release(lease); isProposing = false }
             do {
                 guard await ConnectorConsentWait().confirm(consent) else { return false }
                 guard !Task.isCancelled, current, revision == expected, quote == approvedQuote, request?.id == input.id else { return false }
+                advanceRun(to: 2)
                 let result = try await service.propose(input, connector: connector.connector, model: connector.model,
                     authorization: VoiceRewriteAuthorization(quote: approvedQuote, approved: true))
                 guard !Task.isCancelled, current, revision == expected else { return false }
+                advanceRun(to: 3)
                 newWords = result.proposedText
                 quote = nil; estimate = nil; request = nil
                 refreshReview()
+                let elapsed = started.duration(to: .now).components
+                finishRun(seconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
                 return true
             } catch is CancellationError { return false } catch {
-                if current && revision == expected {
-                    if let error = error as? LLMError {
-                        problem = await editor.app.log.redact(Self.proposalError(error, provider: connector.name, model: connector.model))
-                    } else { problem = await editor.app.safeError(error, context: "ai:\(connector.name)") }
-                }
+                if current && revision == expected { await fail(error) }
                 return false
             }
         }
-        sending = task
-        let result = await task.value
+        sending = sendTask
+        let result = await sendTask.value
+        // A declined sheet or a send that went stale changes nothing: back to the passage panel, silently.
+        if isOpen, task.state == .running { showReady() }
         generation?.requestQuote()
         if current && revision == expected {
             quote = nil; estimate = nil; request = nil
@@ -312,7 +335,7 @@ struct RewriteConnector {
     }
     func close() {
         guard isOpen else { return }
-        isOpen = false; invalidate()
+        isOpen = false; invalidate(); actionTask?.cancel()
     }
     /// An edit outside this session's clip moved the project on (impl-plan §3.3, design.md
     /// R3); the session's words, plan and proposal still hold. It keeps its own tab's scope.

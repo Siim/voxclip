@@ -244,7 +244,7 @@ actor RewriteFixtureConnector: LLMConnector {
             defer { editor.close() }
             session.edit("Sunday word11 word12")
             check("missing windows never invent a meter or amount", session.review?.summary == nil && session.review?.voiceHunks.allSatisfy { $0.window == nil && $0.patchText == nil && $0.refusal != nil } == true)
-            check("no connector uses approved settings fallback and disables proposal", session.sendLine == "Choose a connector in Settings → AI." && !session.canPropose)
+            check("no connector asks which AI in the panel (R0) and cannot send", session.task.state == .choosingAI && session.sendLine.isEmpty && !session.canPropose)
             let (unknownEditor, unknown) = make(range: 10...12, prices: prices, synthesisModel: "unknown-model")
             defer { unknownEditor.close() }
             unknown.edit("Sunday word11 word12")
@@ -430,7 +430,8 @@ actor RewriteFixtureConnector: LLMConnector {
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
                 let sent = await session.propose(quote)
-                check("failed proposal retains inline error and releases lease", !sent && !session.problem.isEmpty && !editor.llmRuns.isBusy)
+                let failed: Bool = { if case .error(.message(let text)) = session.task.state { !text.isEmpty } else { false } }()
+                check("failed proposal shows its error in R1x and releases lease", !sent && failed && !editor.llmRuns.isBusy)
             }
             if let lease = editor.llmRuns.acquire() {
                 check("Find Clips first blocks Rewrite", !session.canPropose)
