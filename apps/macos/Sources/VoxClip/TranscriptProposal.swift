@@ -356,13 +356,18 @@ extension EditorModel {
     }
 
     /// Focuses a change, as ⌥↓, ⌥↑, a click on its new words and the Proposed changes rotor do,
-    /// and reads it out.
+    /// and reads it out. The selection moves with the focus, as a code editor's cursor moves to
+    /// the next change: words selected outside the change are let go, so Return then edits the
+    /// change and not a word left selected elsewhere (design.md §6.3.5).
     func focusChange(_ ordinal: Int, announcing: Bool = true) {
         guard var proposal, proposal[ordinal] != nil else { return }
         proposal.focused = ordinal
         proposal.revealRevision += 1
         self.proposal = proposal
-        if announcing, let shown = proposalDisplay?.shown(ordinal) { announce(shown.description) }
+        let display = proposalDisplay
+        let inside = !selectedWordIDs.isEmpty && selectedWordIDs.allSatisfy { display?.marks[$0]?.ordinal == ordinal }
+        if !inside, !selectedWordIDs.isEmpty || !selectedPauseIDs.isEmpty { selectedWordIDs = []; selectedPauseIDs = [] }
+        if announcing, let shown = display?.shown(ordinal) { announce(shown.description) }
     }
     /// ⌥↓ and ⌥↑ (impl-plan §3.2): the next or previous change shown, from the focused one.
     @discardableResult func focusNextChange(_ step: Int) -> Bool {
@@ -525,13 +530,15 @@ extension EditorModel {
                                                 rate: rate, newWords: trimmed, multipleHunks: voices > 1).copy
         } catch { return nil }
     }
-    /// Which change Return edits (design.md §6.3.5): the focused one with no words selected, or
-    /// the one whose words the selection lies in; nil leaves Return to Correct Spelling.
+    /// Which change Return edits (design.md §6.3.5): the focused one with no words selected, the
+    /// one whose words the selection lies in, or the focused one when the selection spans several
+    /// changes and holds some of its words, as a Rewrite's scope does; nil, for a selection
+    /// outside every change, leaves Return to Correct Spelling.
     var changeForReturn: Int? {
         guard let display = proposalDisplay, let focused = display.focused, !display.actions.isEmpty else { return nil }
         guard !selectedWordIDs.isEmpty else { return focused }
         let ordinals = Set(selectedWordIDs.map { display.marks[$0]?.ordinal })
-        guard ordinals.count == 1, let ordinal = ordinals.first ?? nil else { return nil }
-        return ordinal
+        if ordinals.count == 1, let ordinal = ordinals.first ?? nil { return ordinal }
+        return ordinals.contains(focused) ? focused : nil
     }
 }

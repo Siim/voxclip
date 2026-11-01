@@ -103,6 +103,42 @@ import Testing
         #expect(text.popoverChange == nil && model.correctionID == id(model, 40))
     }
 
+    /// A click leaves a word selected almost always; walking the changes lets it go, so Return
+    /// edits the change walked to, not the word (design.md §6.3.5).
+    @Test func returnAfterWalkingEditsTheFocusedChangeNotAWordLeftSelected() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
+        defer { pane.close() }
+        let text = pane.text
+        model.selectedWordIDs = [id(model, 40)]
+        pane.update()
+        text.keyDown(with: key(125, .option))
+        text.keyDown(with: key(125, .option))
+        #expect(model.proposalDisplay?.focused == 3 && model.selectedWordIDs.isEmpty, "⌥↓ lets go of a word outside the change")
+        pane.update()
+        text.keyDown(with: key(36, [], "\r"))
+        #expect(text.popoverChange == 3 && model.correctionID == nil, "Return edits the change walked to")
+        text.hideChangePopover(refocus: false)
+        // A selection inside the change walked to stays.
+        model.selectedWordIDs = [id(model, 61)]
+        pane.update()
+        text.keyDown(with: key(126, .option))
+        #expect(model.proposalDisplay?.focused == 2 && model.selectedWordIDs == [id(model, 61)])
+        // The rotor's focus lets go of a word outside its change too.
+        model.selectedWordIDs = [id(model, 40)]
+        pane.update()
+        let parameters = NSAccessibilityCustomRotor.SearchParameters()
+        parameters.searchDirection = .next
+        _ = text.rotor(NSAccessibilityCustomRotor(label: "Proposed changes", itemSearchDelegate: text), resultFor: parameters)
+        #expect(model.proposalDisplay?.focused == 1 && model.selectedWordIDs.isEmpty)
+        // A selection over several changes, as a Rewrite's scope is, edits the focused one.
+        model.selectedWordIDs = Set((32...61).map { id(model, $0) })
+        pane.update()
+        text.keyDown(with: key(36, [], "\r"))
+        #expect(text.popoverChange == 1 && model.correctionID == nil)
+        text.hideChangePopover(refocus: false)
+    }
+
     /// notes.md §5: after Keep the change is gone like a commit. Restoring its words or
     /// correcting them again never brings it back, and Keep All never applies it again.
     @Test func aKeptCutOrFixStaysKeptWhenItsWordsChangeAgain() throws {
