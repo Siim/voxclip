@@ -118,6 +118,15 @@ extension WorkspaceShell {
     func syncTabs() {
         guard let editor else { tabs.reset(); return }
         tabs.sync(kept: editor.keptClips.map(\.id), suggested: editor.suggestedClips.map(\.id), active: editor.project.edits.activeClipId)
+        closeRewriteWithoutTab()
+    }
+    /// An open Rewrite session closes with its tab, as Escape closes it: ×, a middle click,
+    /// ⌘W, Close Tab, or a preview tab that the next preview replaces. Left open, it would
+    /// wait unseen with no dot and come back with its words when its clip opened again.
+    private func closeRewriteWithoutTab() {
+        guard let editor, let id = editor.openRewrite?.project.edits.activeClipId,
+              !tabs.open.contains(where: { $0.clipID == id }) else { return }
+        editor.closeRewrite(returnFocus: false)
     }
     /// The tab row shows: an editor shows, not Home.
     var tabsShown: Bool { editor != nil && !showsHome }
@@ -150,9 +159,10 @@ extension WorkspaceShell {
         syncTabs()
     }
     /// ×, a middle click and ⌘W. Closing the active tab scopes the editor to its neighbour.
+    /// The tab's Rewrite session closes with it.
     func closeTab(_ tab: EditorTab) {
         guard tab.closable, tabsShown, tabs.open.contains(tab) else { return }
-        guard tabs.active == tab else { tabs.remove(tab); return }
+        guard tabs.active == tab else { tabs.remove(tab); closeRewriteWithoutTab(); return }
         let next = tabs.neighbour(of: tab)
         tabs.remove(tab)
         selectTab(next)

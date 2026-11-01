@@ -205,6 +205,48 @@ import Testing
         #expect(!session.isOpen && editor.openRewrite == nil)
     }
 
+    /// A Rewrite session closes with its tab, as Escape closes it: the active tab's × and
+    /// an inactive tab's middle click (both `closeTab`), and a preview tab that the next
+    /// preview replaces. Opening its clip again shows no session.
+    @Test func closingASessionsTabClosesTheSession() async throws {
+        let (shell, editor, undo) = try await openShell()
+        defer { editor.close() }
+        func open(on id: String) throws -> RewriteSession {
+            shell.selection = .clip(id)
+            let start = try #require(editor.project.edits.clips.first { $0.id == id }.flatMap { editor.index($0.startWordId) })
+            let session = RewriteSession(editor: editor, range: start...(start + 2), envelope: nil, connector: nil)
+            editor.rewrite = session
+            editor.rewriteRange = start...(start + 2)
+            session.edit("A different opening")
+            return session
+        }
+        let active = try open(on: "five-1")
+        #expect(shell.dirtyTabs == [.clip("five-1")])
+        shell.closeTab(.clip("five-1"))
+        #expect(!active.isOpen && editor.openRewrite == nil && shell.dirtyTabs.isEmpty)
+        shell.selection = .clip("five-1")
+        #expect(editor.rewrite == nil && editor.rewriteRange == nil)
+
+        let inactive = try open(on: "five-1")
+        shell.selection = .clip("five-2")
+        #expect(inactive.isOpen && editor.openRewrite === inactive)
+        shell.closeTab(.clip("five-1"))
+        #expect(!inactive.isOpen && editor.openRewrite == nil && shell.tabs.active == .clip("five-2"))
+
+        // A second suggestion, as DebugTabs adds it, so one preview can replace another.
+        var project = editor.project
+        var extra = try #require(project.edits.clips.first { $0.id == "five-5" })
+        extra.id = "tabs-suggestion"
+        extra.startWordId = project.edits.clips[0].startWordId
+        extra.endWordId = project.edits.clips[0].endWordId
+        project.edits.clips.append(extra)
+        step(undo) { editor.replace(project, name: "Add suggestion fixture") }
+        let preview = try open(on: "five-5")
+        #expect(shell.tabs.preview == .suggestion("five-5") && preview.isOpen)
+        shell.selection = .clip("tabs-suggestion")
+        #expect(shell.tabs.preview == .suggestion("tabs-suggestion") && !preview.isOpen && editor.openRewrite == nil)
+    }
+
     /// A session opened on Full Take has every word in scope: any edit closes it, as before.
     @Test func aFullTakeRewriteSessionClosesOnAnyEdit() async throws {
         let (_, editor, undo) = try await openShell()

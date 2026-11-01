@@ -324,6 +324,16 @@ import VoxClipCore
               !session.isOpen && editor.openRewrite == nil && editor.rewrite == nil && shell.dirtyTabs.isEmpty && bar.items[.clip(kept[0])]?.showsDot == false)
         undo.undo()
         undo.undo()
+        // Closing the session's tab closes the session, as Escape does.
+        shell.selection = .clip(kept[0])
+        let closing = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        editor.rewrite = closing
+        closing.edit("Another opening")
+        shell.closeTab(.clip(kept[0]))
+        shell.selection = .clip(kept[0])
+        bar.render()
+        check("closing the session's tab closes the session, and its clip opens again without it",
+              !closing.isOpen && editor.openRewrite == nil && editor.rewrite == nil && shell.dirtyTabs.isEmpty && bar.items[.clip(kept[0])]?.showsDot == false)
         return results
     }
 
