@@ -113,9 +113,9 @@ extension EditorModel {
     }
 
     /// The open tab's edit summary (notes.md, f1): "Clip 1 · 0:43 · 8 cuts · 5 changes to review", the duration in
-    /// SF Mono; "No cuts yet" with nothing cut, "Not transcribed" without a transcript. The changes are the open
-    /// Rewrite's proposal on this tab (V12m's task). A state of design §3.5's busy list shows instead. VoiceOver reads
-    /// the detail as its help.
+    /// SF Mono; "No cuts yet" with nothing cut, "Not transcribed" without a transcript. The changes are those of the
+    /// transcript's proposal on this tab that wait for a review (V14: kept and undone ones never count). A state of
+    /// design §3.5's busy list shows instead. VoiceOver reads the detail as its help.
     var statusSummary: StatusItem {
         let notice: String? = if !editingAvailable && !words.isEmpty {
             "Editing is not available in this build. Your video and edits are still here."
@@ -129,12 +129,8 @@ extension EditorModel {
             let cuts = cutCount
             details.append(cuts == 0 ? "No cuts yet" : cuts == 1 ? "1 cut" : "\(cuts) cuts")
         }
-        // V12m supplies a proposal only after a reply. V14/V15 must replace this seam with
-        // their pending-hunk count once keeping and undoing individual hunks lands.
-        if let task = rewrite?.task, case .proposal(let changes) = task.state {
-            let pending = changes.items.filter(\.included).count
-            if pending > 0 { details.append(pending == 1 ? "1 change to review" : "\(pending) changes to review") }
-        }
+        let pending = unreviewedChanges(clipID: project.edits.activeClipId).count
+        if pending > 0 { details.append(pending == 1 ? "1 change to review" : "\(pending) changes to review") }
         let tail = details.map { " · " + $0 }.joined()
         return StatusItem(kind: .summary, parts: [StatusText(string: scope + " · "), StatusText(string: durationLabel(duration), mono: true), StatusText(string: tail)],
                           spoken: ([scope, SidebarStyle.spokenDuration(duration)] + details.map { $0.prefix(1).lowercased() + $0.dropFirst() }).joined(separator: ", "), help: summaryDetail)

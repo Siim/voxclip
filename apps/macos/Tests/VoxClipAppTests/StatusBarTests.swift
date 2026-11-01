@@ -123,7 +123,7 @@ import Testing
         // A Rewrite run: the task's own headline and start (V12m), not a copy of them.
         editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
         editor.selectedWordIDs = Set(editor.words[3...5].map(\.id))
-        editor.beginRewrite()
+        editor.runRewrite()
         await editor.rewriteOpenTask?.value
         let session = try #require(editor.openRewrite)
         await session.actionTask?.value
@@ -132,7 +132,7 @@ import Testing
         bar.now = { started.addingTimeInterval(5) }
         bar.render()
         #expect(bar.content[.task]?.text == "Rewriting these words… 0:05" && bar.content[.task]?.spoken == "Rewriting these words, 5 seconds" && bar.content.taskSince == started)
-        session.task.show(.ready, headline: PanelHeadline(text: session.task.words.title))
+        session.task.show(.choosingAI, headline: PanelHeadline(text: session.task.words.title))
         bar.render()
         #expect(bar.content[.task] == nil)
         // Transcription shows its own progress line.
@@ -147,41 +147,39 @@ import Testing
 
     @Test func theSummaryNamesTheTabWithItsDurationCutsAndChanges() async throws {
         let app = app("ollama", ["ollama": ConsentFixtureConnector(id: .ollama, readiness: .ready, authMethod: nil)])
-        app.set("voiceLab.enabled", .bool(true))
-        app.set("voiceLab.betaNoticeAccepted", .bool(true))
-        app.connectorConsentOverride = { _, _, _ in true }
-        let (shell, editor, _, bar) = try await open(app)
+        let (shell, editor, undo, bar) = try await open(app)
         defer { bar.tearDown(); editor.close() }
         #expect(bar.content[.summary]?.text == "Full Take · 2:10 · 8 cuts")
-        // A proposal waiting on this tab adds its changes (V12m's change set).
-        editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
-        editor.selectedWordIDs = Set(editor.words[3...5].map(\.id))
-        editor.beginRewrite()
-        await editor.rewriteOpenTask?.value
-        let session = try #require(editor.openRewrite)
-        await session.actionTask?.value
-        let items = (1...5).map { ProposalItem(ordinal: $0, kind: .cut, sourceWordIDs: [editor.words[$0].id], newWords: []) }
-        session.task.show(.proposal(ChangeSet(items: items)), headline: PanelHeadline(text: "5 changes"))
+        // The transcript's proposal on this tab adds the changes that wait for a review (V14's lifecycle). A
+        // punctuation-only fix and a cut the project already holds never count.
+        let free = editor.words.filter { $0.kind == .word && !editor.cutWordIDs.contains($0.id) }
+        let alreadyCut = try #require(editor.words.first { editor.cutWordIDs.contains($0.id) })
+        var changes = (1...5).map { TranscriptChange(ordinal: $0, parts: [.init(kind: .cut, sourceWordIDs: [free[$0 * 3].id])]) }
+        changes.append(TranscriptChange(ordinal: 6, parts: [.init(kind: .textOnly, sourceWordIDs: [free[20].id], newTokens: [free[20].text + ","], correctedTexts: [free[20].text + ","])]))
+        changes.append(TranscriptChange(ordinal: 7, parts: [.init(kind: .cut, sourceWordIDs: [alreadyCut.id])]))
+        editor.proposal = TranscriptProposal(clipID: nil, title: "Rewrite full take", changes: changes)
         bar.render()
         #expect(bar.content[.summary]?.text == "Full Take · 2:10 · 8 cuts · 5 changes to review")
         #expect(bar.content[.summary]?.spoken == "Full Take, 2 minutes 10 seconds, 8 cuts, 5 changes to review")
-        // Undo on a pending hunk excludes it; excluded items no longer await review (plan item 7).
-        var pending = items
-        for index in 1..<pending.count { pending[index].included = false }
-        session.task.show(.proposal(ChangeSet(items: pending)), headline: PanelHeadline(text: "1 change"))
-        bar.render()
-        #expect(bar.content[.summary]?.text == "Full Take · 2:10 · 8 cuts · 1 change to review")
-        pending[0].included = false
-        session.task.show(.proposal(ChangeSet(items: pending)), headline: PanelHeadline(text: "No changes needed"))
-        bar.render()
-        #expect(bar.content[.summary]?.text == "Full Take · 2:10 · 8 cuts")
-        // A proposal belongs to its own tab, even while the session remains open.
-        session.task.show(.proposal(ChangeSet(items: items)), headline: PanelHeadline(text: "5 changes"))
+        func reviewCount() -> String? { bar.render(); return bar.content[.summary]?.text.components(separatedBy: " · ").last }
+        // Undo leaves a change out and Keep applies one: neither waits any more. ⌘Z of the Keep brings its change back.
+        #expect(editor.excludeChange(2))
+        #expect(reviewCount() == "4 changes to review")
+        undo.beginUndoGrouping(); #expect(editor.keepChange(1)); undo.endUndoGrouping()
+        #expect(reviewCount() == "3 changes to review")
+        undo.undo()
+        #expect(reviewCount() == "4 changes to review" && editor.proposal?[1]?.state == .pending && editor.proposal?[2]?.state == .excluded)
+        // Keep All keeps every change that waits; nothing is left to review.
+        undo.beginUndoGrouping(); editor.keepAllChanges(); undo.endUndoGrouping()
+        #expect(reviewCount()?.hasSuffix("cuts") == true && bar.content[.summary]?.text.contains("to review") == false)
+        undo.undo()
+        #expect(reviewCount() == "4 changes to review")
+        // A proposal belongs to its own tab.
         shell.selection = .clip(editor.keptClips[1].id)
         bar.render()
         #expect(bar.content[.summary]?.text == "Clip 2 · 0:20 · 2 cuts")
         shell.selection = .fullTake
-        editor.closeRewrite(returnFocus: false)
+        editor.proposal = nil
         bar.render()
         #expect(bar.content[.summary]?.text == "Full Take · 2:10 · 8 cuts")
         let kept = editor.keptClips
