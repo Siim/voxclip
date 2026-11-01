@@ -199,10 +199,6 @@ import VoxClipCore
         if let url = item.representedObject as? URL { openFile(url, app: model) }
     }
     func menuNeedsUpdate(_ menu: NSMenu) {
-        if menu.title == "Edit" {
-            menu.items.first { $0.tag == 38 }?.isHidden = !RewriteEntryPolicy.buildEnabled
-            return
-        }
         menu.removeAllItems()
         model.recentProjects.refresh(model.recent)
         for url in model.recent {
@@ -497,9 +493,6 @@ import VoxClipCore
         command(edit, "Correct Word", 3, "c", [])
         // Edit › Rewrite {scope} (design.md §8): `validateMenuItem` retitles it for the scope and the AI.
         command(edit, "Rewrite Full Take", 38, "r", [.command, .shift])
-        edit.delegate = self
-        edit.items.first { $0.tag == 38 }?.isHidden = !RewriteEntryPolicy.buildEnabled
-        edit.items.first { $0.tag == 38 }?.allowsKeyEquivalentWhenHidden = false
         command(edit, "Copy Text", 48)
         command(edit, "Find…", 4, "f")
         command(edit, "Find Next", 5, "g")

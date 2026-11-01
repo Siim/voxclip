@@ -156,9 +156,7 @@ import VoxClipCore
         let stub = ConsentFixtureConnector(id: .ollama)
         app.connectorOverride = { _ in stub }
         app.set("voiceLab.enabled", .bool(false))
-        let editMenu = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu
-        if let editMenu { delegate.menuNeedsUpdate(editMenu) }
-        let rewriteItem = editMenu?.item(withTag: 38)
+        let rewriteItem = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu?.item(withTag: 38)
         let validated = rewriteItem.map(delegate.validateMenuItem) == true
         results.append(.equal("Edit › Rewrite needs no Voice Lab and names the selection", expected: [
             "item exists": "true", "hidden": "false", "validated": "true", "title": "Rewrite Selection"

@@ -390,7 +390,7 @@ private struct ChangeRowActions: ViewModifier {
 @MainActor struct RewriteTakesCard: View {
     let model: EditorModel?
     var body: some View {
-        if let session = model?.panelRewrite, let generation = session.generation {
+        if let session = model?.rewrite, let generation = session.generation {
             RewriteTakesView(session: session, generation: generation, generate: { session.makeTakes() })
         }
     }

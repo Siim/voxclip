@@ -904,7 +904,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         if model?.capabilities.edit == true {
             actions += [NSAccessibilityCustomAction(name: "Make Clip", target: self, selector: #selector(accessibleMakeClip)), NSAccessibilityCustomAction(name: "Cut selected words", target: self, selector: #selector(accessibleCut)), NSAccessibilityCustomAction(name: "Restore selection", target: self, selector: #selector(accessibleRestore)), NSAccessibilityCustomAction(name: "Correct spelling", target: self, selector: #selector(accessibleCorrect))]
         }
-        if model?.capabilities.ai == true && RewriteEntryPolicy.buildEnabled { actions.append(NSAccessibilityCustomAction(name: "Rewrite", target: self, selector: #selector(accessibleRewrite))) }
+        if model?.capabilities.ai == true { actions.append(NSAccessibilityCustomAction(name: "Rewrite", target: self, selector: #selector(accessibleRewrite))) }
         // Keep and Undo are reached here and through the Proposed changes rotor, not the buttons (impl-plan §3.7).
         if let display = model?.proposalDisplay, let focused = display.focused {
             for action in display.actions {
@@ -990,7 +990,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         } else { host.alphaValue = 1 }
     }
     @objc func accessibleMakeClip() -> Bool { guard model?.capabilities.edit == true, model?.selectedIDs.isEmpty == false else { return false }; model?.makeClip(); return true }
-    @objc func accessibleRewrite() -> Bool { guard model?.capabilities.ai == true && RewriteEntryPolicy.buildEnabled, model?.selectedIDs.isEmpty == false else { return false }; model?.runRewrite(); return true }
+    @objc func accessibleRewrite() -> Bool { guard model?.capabilities.ai == true, model?.selectedIDs.isEmpty == false else { return false }; model?.runRewrite(); return true }
     @objc func accessibleCut() -> Bool { guard let model, model.capabilities.edit, !model.selectedIDs.isEmpty || !model.selectedPauseIDs.isEmpty else { return false }; model.cutSelection(); return true }
     @objc func accessibleRestore() -> Bool { guard let model, model.capabilities.edit else { return false }; model.cutSelection(restore: true); return true }
     @objc func accessibleCorrect() -> Bool { guard let model, model.capabilities.edit, !model.selectedIDs.isEmpty else { return false }; model.beginCorrection(); updateCorrection(); return true }
@@ -1193,7 +1193,8 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
         for (title, action) in [("Cut", #selector(cutWords)), ("Restore", #selector(restoreWords)), ("Correct spelling…", #selector(correctWord)), ("Play from here", #selector(playHere)), ("Preview this cut", #selector(previewCut)), ("Make clip from selection", #selector(makeClip)), ("Copy text", #selector(copy(_:)))] { let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
-        if RewriteEntryPolicy.buildEnabled { let item = NSMenuItem(title: model?.rewriteAsksFirst == true ? "Rewrite…" : "Rewrite", action: #selector(rewriteWords), keyEquivalent: "r"); item.keyEquivalentModifierMask = [.command, .shift]; item.target = self; menu.addItem(item) }
+        let rewrite = NSMenuItem(title: model?.rewriteAsksFirst == true ? "Rewrite…" : "Rewrite", action: #selector(rewriteWords), keyEquivalent: "r")
+        rewrite.keyEquivalentModifierMask = [.command, .shift]; rewrite.target = self; menu.addItem(rewrite)
         if let model, model.app.voiceLabRewriteEnabled, let segment = voiceLabSegment {
             let enabled = model.capabilities.edit && !model.capabilities.exporting && !model.capabilities.aiBusy
             menu.addItem(.separator())
@@ -1214,7 +1215,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         if [#selector(toggleVoiceLab), #selector(deleteVoiceLab), #selector(chooseVoiceLab(_:))].contains(item.action) {
             return model?.app.voiceLabRewriteEnabled == true && voiceLabSegment != nil && model?.capabilities.edit == true && model?.capabilities.exporting == false && model?.capabilities.aiBusy == false
         }
-        if item.action == #selector(rewriteWords) { return RewriteEntryPolicy.buildEnabled && model?.capabilities.ai == true && model?.selectedIDs.isEmpty == false }
+        if item.action == #selector(rewriteWords) { return model?.capabilities.ai == true && model?.selectedIDs.isEmpty == false }
         if [#selector(cutWords), #selector(restoreWords)].contains(item.action) {
             return model?.capabilities.edit == true && (model?.selectedIDs.isEmpty == false || model?.selectedPauseIDs.isEmpty == false)
         }

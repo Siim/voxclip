@@ -36,10 +36,8 @@ actor ConsentFixtureConnector: LLMConnector {
 @MainActor enum DebugConnectorRequests {
     static func run(fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
-        results.append(.init(name: "Release shortcuts omit Rewrite without hiding other bindings", passed:
-            !ShortcutsView.bindings(internalBuild: false).contains { $0.contains("Rewrite") || $0.contains("⇧⌘R") }
-                && ShortcutsView.bindings(internalBuild: true).contains("⇧⌘R|Rewrite")
-                && ShortcutsView.lines == ShortcutsView.bindings(internalBuild: RewriteEntryPolicy.buildEnabled)))
+        results.append(.init(name: "Shortcuts list text Rewrite after Find clips", passed:
+            ShortcutsView.lines.firstIndex(of: "⇧⌘R|Rewrite") == ShortcutsView.lines.firstIndex(of: "⇧⌘K|Find clips").map { $0 + 1 }))
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         for id in ["anthropic", "claude-code", "codex"] {
             let methods: [String?] = id == "anthropic" ? ["api_key"] : ["api_key", id == "codex" ? "chatgpt" : "claude.ai", nil, "unrecognized"]

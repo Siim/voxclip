@@ -256,9 +256,9 @@ private final class GenerationDispatchCount: Sendable {
         let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
         defer { editor.close() }
         let session = RewriteSession(editor: editor, scope: .selection(0...0), envelope: nil, connector: nil)
-        let expected = VoiceLabGate.rewriteEnabled(enabled: enabled, noticeAccepted: accepted, internalBuild: RewriteEntryPolicy.buildEnabled)
+        let expected = VoiceLabGate.rewriteEnabled(enabled: enabled, noticeAccepted: accepted, internalBuild: AppModel.internalBuild)
         #expect(app.voiceLabRewriteEnabled == expected)
-        #expect(editor.mutationEnabled(38) == RewriteEntryPolicy.buildEnabled)
+        #expect(editor.mutationEnabled(38) == true)
         #expect(session.generationIsCurrent(region: .default) == expected)
         #expect(!session.generationIsCurrent(region: .eu))
         app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
@@ -266,7 +266,7 @@ private final class GenerationDispatchCount: Sendable {
         let lease = try #require(editor.llmRuns.acquire())
         #expect(editor.mutationEnabled(38) == false)
         editor.llmRuns.release(lease)
-        #expect(editor.mutationEnabled(38) == RewriteEntryPolicy.buildEnabled)
+        #expect(editor.mutationEnabled(38) == true)
         editor.mediaResolved = false
         #expect(editor.mutationEnabled(38) == false)
     }

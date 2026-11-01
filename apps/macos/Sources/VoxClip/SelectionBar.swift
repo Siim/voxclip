@@ -47,7 +47,7 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
             Button { model.cutSelection(restore: true); dismiss() } label: { label("Restore", "⇧⌫") }
                 .disabled(model.selectedWordIDs.isDisjoint(with: model.cutWordIDs) && model.selectedPauseIDs.isDisjoint(with: model.cutPauseIDs))
             // Text Rewrite of the selected words (design.md §8), with no Voice Lab gate.
-            if RewriteEntryPolicy.buildEnabled && !model.selectedIDs.isEmpty {
+            if !model.selectedIDs.isEmpty {
                 Divider().frame(height: 18)
                 Button { model.runRewrite(); dismiss() } label: { label(model.rewriteAsksFirst ? "Rewrite…" : "Rewrite", "⇧⌘R") }.disabled(!model.capabilities.ai)
             }

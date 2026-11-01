@@ -38,9 +38,9 @@ private struct AcceptanceTestKeys: KeyProvider {
         let session = RewriteSession(editor: model, scope: .selection(0...1), envelope: nil, connector: nil)
         model.rewrite = session
         let shell = WorkspaceShell(app: app)
-        #expect(model.panelRewrite === session && shell.panelJob(for: model) == .rewrite && session.generationIsCurrent(region: .default))
+        #expect(model.rewrite === session && shell.panelJob(for: model) == .rewrite && session.generationIsCurrent(region: .default))
         app.settings.values["voiceLab.enabled"] = .bool(false)
-        #expect(model.panelRewrite === session && shell.panelJob(for: model) == .rewrite && session.current)
+        #expect(model.rewrite === session && shell.panelJob(for: model) == .rewrite && session.current)
         #expect(!session.generationIsCurrent(region: .default))
     }
     @Test func wordAccessibilityCoversSourceAndAcceptedSpeechWithoutAWindow() throws {

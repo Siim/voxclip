@@ -47,11 +47,8 @@ struct PanelJobChoice {
 }
 
 extension EditorModel {
-    /// The Rewrite session the panel shows: the one on the active tab. Text Rewrite needs
-    /// no Voice Lab (impl-plan V13); a build without Rewrite never opens one.
-    var panelRewrite: RewriteSession? { RewriteEntryPolicy.buildEnabled ? rewrite : nil }
-    /// The task the panel shows: the active tab's Rewrite session's.
-    var panelTask: DirectorTask? { panelRewrite?.task }
+    /// The task the panel shows: the active tab's Rewrite session's. Text Rewrite needs no Voice Lab (impl-plan V13).
+    var panelTask: DirectorTask? { rewrite?.task }
 }
 
 extension WorkspaceShell {
@@ -108,7 +105,7 @@ extension WorkspaceShell {
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if job == .rewrite, let session = model.panelRewrite {
+                if job == .rewrite, let session = model.rewrite {
                     DirectorPanel(task: session.task, model: model)
                 } else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }

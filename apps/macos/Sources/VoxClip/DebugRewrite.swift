@@ -175,10 +175,9 @@ enum RewriteFixtureReply {
             let rewriteStatuses = await rewriteFake.statuses
             check("\(provider.id) granted Rewrite request follows explicit detection", rewriteStatuses == 3)
         }
-        check("release builds offer no text Rewrite", !RewriteEntryPolicy.canRun(editable: true, scope: .fullTake, internalBuild: false))
         check("text Rewrite needs an editable project and a scope, and no Voice Lab",
-              RewriteEntryPolicy.canRun(editable: true, scope: .clip("clip"), internalBuild: true) && RewriteEntryPolicy.canRun(editable: true, scope: .selection(0...1), internalBuild: true)
-                && !RewriteEntryPolicy.canRun(editable: false, scope: .fullTake, internalBuild: true) && !RewriteEntryPolicy.canRun(editable: true, scope: nil, internalBuild: true))
+              RewriteEntryPolicy.canRun(editable: true, scope: .clip("clip")) && RewriteEntryPolicy.canRun(editable: true, scope: .selection(0...1))
+                && !RewriteEntryPolicy.canRun(editable: false, scope: .fullTake) && !RewriteEntryPolicy.canRun(editable: true, scope: nil))
         do {
             let (editor, _) = make()
             defer { editor.close() }

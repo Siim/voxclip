@@ -8,7 +8,7 @@ import Testing
 @Suite("Voice Lab development defaults", .serialized)
 @MainActor struct VoiceLabDevelopmentDefaultTests {
     @Test func unsetKeysReadAsOnInTheAppsOwnDevelopmentSettings() {
-        #expect(RewriteEntryPolicy.buildEnabled)
+        #expect(AppModel.internalBuild)
         let app = AppModel(developmentDefaults: true)
         #expect(app.bool("voiceLab.enabled") && app.bool("voiceLab.betaNoticeAccepted"))
         #expect(app.voiceLabSession.enabled && app.voiceLabRewriteEnabled)

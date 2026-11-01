@@ -247,7 +247,7 @@ extension ProviderChoice {
         log = logger
         secrets = SecretStore(log: logger)
         self.settingsStore = settingsStore ?? JSONSettingsStore(locations: data, logger: logger)
-        unsetDefaults = developmentDefaults && settingsStore == nil ? VoiceLabGate.developmentDefaults(internalBuild: RewriteEntryPolicy.buildEnabled) : [:]
+        unsetDefaults = developmentDefaults && settingsStore == nil ? VoiceLabGate.developmentDefaults(internalBuild: Self.internalBuild) : [:]
         projectStore = JSONProjectStore(logger: logger)
         self.updates = updates
         self.modelDownloader = modelDownloader

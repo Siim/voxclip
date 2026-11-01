@@ -6,19 +6,10 @@ import VoxClipMedia
 /// Text Rewrite's entry rule (design.md §6.3.6 and §8, impl-plan V13): an editable project with AI and a scope, from the
 /// menu, ⇧⌘R, the selection bar, the transcript's context menu and the clip bar alike. Voice Lab gates only Rewrite's voice
 /// parts (phrases in your voice, making your voice, takes), and Insert Words, which waits for Core to place an insertion,
-/// is never offered. `buildEnabled` keeps text Rewrite in DEBUG builds until V15 turns it on for Release with the
-/// release-boundary allowlists (lead decision on item 26).
+/// is never offered. Text Rewrite ships in Release (lead decision on item 26, V15); its voice parts stay behind the
+/// Voice Lab setting and its beta notice (`AppModel.voiceLabRewriteEnabled`).
 enum RewriteEntryPolicy {
-    static var buildEnabled: Bool {
-        #if DEBUG
-        true
-        #else
-        false
-        #endif
-    }
-    static func canRun(editable: Bool, scope: RewriteScope?, internalBuild: Bool = buildEnabled) -> Bool {
-        internalBuild && editable && scope != nil
-    }
+    static func canRun(editable: Bool, scope: RewriteScope?) -> Bool { editable && scope != nil }
 }
 
 struct RewriteConnector {

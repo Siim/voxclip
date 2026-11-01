@@ -527,8 +527,17 @@ import VoxClipMedia
 }
 
 extension AppModel {
+    /// A development build: Voice Lab reads an unset switch and beta notice as on, and Rewrite's voice parts need no beta
+    /// notice (voice-lab §5). Release builds are never internal; tools/voice-lab/check_release_boundary.py checks it.
+    static var internalBuild: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
     var voiceLabRewriteEnabled: Bool {
-        VoiceLabGate.rewriteEnabled(enabled: bool("voiceLab.enabled"), noticeAccepted: bool("voiceLab.betaNoticeAccepted"), internalBuild: RewriteEntryPolicy.buildEnabled)
+        VoiceLabGate.rewriteEnabled(enabled: bool("voiceLab.enabled"), noticeAccepted: bool("voiceLab.betaNoticeAccepted"), internalBuild: Self.internalBuild)
     }
     var voiceLabLabelPosition: VoiceLabLabelPosition {
         switch string("voiceLab.labelPosition", fallback: "top-right") {
@@ -539,10 +548,6 @@ extension AppModel {
         }
     }
     var voiceLabSettingsVisible: Bool {
-        #if DEBUG
-        VoiceLabGate.settingsVisible(enabled: bool("voiceLab.enabled"), internalBuild: true)
-        #else
-        VoiceLabGate.settingsVisible(enabled: bool("voiceLab.enabled"), internalBuild: false)
-        #endif
+        VoiceLabGate.settingsVisible(enabled: bool("voiceLab.enabled"), internalBuild: Self.internalBuild)
     }
 }

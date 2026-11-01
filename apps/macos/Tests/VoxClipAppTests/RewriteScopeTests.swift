@@ -610,7 +610,7 @@ private final class WorkThreads: Sendable {
         defer { editor.close() }
         #expect(!app.bool("voiceLab.enabled") && !app.voiceLabRewriteEnabled && editor.mutationEnabled(38) == true)
         let session = try await rewrite(editor)
-        #expect(proposal(session) != nil && editor.panelRewrite === session && session.current)
+        #expect(proposal(session) != nil && editor.rewrite === session && session.current)
         #expect(!session.generationIsCurrent(region: .default))
     }
 
