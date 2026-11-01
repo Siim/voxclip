@@ -53,10 +53,19 @@ public sealed record VoiceLabPreparedAction
     public VoiceLabEstimate Estimate { get; }
     public VoiceLabReview Review { get; }
 }
+/// <summary>Tracks a provider's accepted status line even if its response cannot produce a receipt.</summary>
+public sealed class VoiceLabRequestAcceptance
+{
+    private int accepted;
+    public bool Accepted => System.Threading.Volatile.Read(ref accepted) != 0;
+    internal void MarkAccepted() => System.Threading.Interlocked.Exchange(ref accepted, 1);
+}
 public sealed record VoiceLabAuthorization
 {
     internal VoiceLabRunDispatch? RunDispatch { get; init; }
     internal bool IsRunAuthorization { get; init; }
+    /// <summary>Carry a pinned window's authorization through its dispatch boundary.</summary>
+    public VoiceLabAuthorization ForDispatch(VoiceLabRunDispatch dispatch) => this with { RunDispatch = dispatch };
     internal VoiceLabAuthorization(Guid token, string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review)
     { Token = token; Fingerprint = fingerprint; Estimate = estimate; Review = review; }
     internal Guid Token { get; }
