@@ -255,13 +255,6 @@ private struct TranscriptChangeReader {
 }
 
 extension EditorModel {
-    /// A free change is applied once all its parts are in the project; it then shows as the
-    /// project does (kept cuts fold like any cut), and an undo of its Keep shows it again.
-    func isApplied(_ change: TranscriptChange) -> Bool { TranscriptChangeReader(self).isApplied(change) }
-    /// A fix that only moves punctuation: never shown as a hunk (notes.md §5). Keep All still
-    /// applies it, and the change list (V15) still lists it.
-    func isPunctuationOnly(_ change: TranscriptChange) -> Bool { TranscriptChangeReader(self).isPunctuationOnly(change) }
-
     /// The proposal as the open tab shows it, or nil when it belongs to another tab. Shown are
     /// the changes not kept into the project and not already in it whose words are in the take,
     /// less punctuation-only fixes (notes.md §5: never drawn; Keep All still applies them).
