@@ -31,6 +31,19 @@ import VoxClipCore
             } isTargeted: { shell.dropTargeted = $0 }
             .overlay { if shell.dropTargeted { DropOverlay(savedFirst: shell.isHome ? nil : shell.projectTitle) } }
             .onChange(of: shell.app.pauseBreathRevision) { _, _ in applyPauseBreath() }
+            .onChange(of: shell.app.voiceLabSession.busy) { _, busy in
+                if !busy { Task { await shell.app.refreshMonthlySpend() } }
+            }
+            .onChange(of: shell.editor?.rewrite?.generation?.phase) { _, _ in
+                Task { await shell.app.refreshMonthlySpend() }
+            }
+            .task(id: shell.app.bool("voiceLab.enabled")) { await shell.app.refreshMonthlySpend() }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+                Task { await shell.app.refreshMonthlySpend() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                Task { await shell.app.refreshMonthlySpend(); await shell.app.harnessSignIn.checkPending() }
+            }
             .frame(minWidth: 640, minHeight: 480)
             .onGeometryChange(for: Double.self) { $0.size.width } action: { shell.windowWidth = $0 }
     }
@@ -47,7 +60,7 @@ import VoxClipCore
             .ignoresSafeArea()
             .preferredColorScheme(shell.app.appearance)
     }
-    /// Transcribe Again, Keyboard Shortcuts and the tour.
+    /// Transcribe Again and the tour.
     private func sheets(on content: some View) -> some View {
         content
             .sheet(isPresented: editorFlag(\.showTranscribe)) { if let editor = shell.editor { TranscriptionSheet(model: editor) } }

@@ -71,6 +71,8 @@ extension ProviderChoice {
     nonisolated static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
     public var startupError: VoxClipError?
+    let monthlySpend = MonthlySpend()
+    @ObservationIgnored lazy var harnessSignIn = HarnessSignIn(app: self)
     var notice: String?
     var settingErrors: [String: String] = [:]
     var settings = SettingsDocument()

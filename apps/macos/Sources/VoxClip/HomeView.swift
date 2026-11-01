@@ -17,6 +17,7 @@ import VoxClipCore
                 notices
                 if app.recent.isEmpty && shell.isHome {
                     hero
+                    callouts
                 } else {
                     dropBar
                     callouts
@@ -89,6 +90,16 @@ import VoxClipCore
     }
 
     @ViewBuilder private var callouts: some View {
+        if let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }),
+           provider.cli != nil {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(readiness == .cliSignedOut ? "Sign in to \(provider.shortName) in the AI picker to use Find Clips with AI." : "Who does the work")
+                HomeHarnessPicker(app: app).frame(width: 200, height: HarnessPicker.height)
+                if let result = app.harnessSignIn.message(for: provider) { Text(result).font(VCType.small.font()) }
+            }
+            .padding(.top, VCTokens.spacing5)
+            .accessibilityElement(children: .contain).accessibilityLabel("AI sign-in")
+        }
         if let update = app.update {
             HomeCallout(text: "VoxClip \(update.version) is available.", action: "Download") { NSWorkspace.shared.open(update.htmlURL) }
                 .padding(.top, VCTokens.spacing5)
@@ -104,12 +115,7 @@ import VoxClipCore
             return ("Find Clips with AI isn't set up yet. You can still make clips by hand.", "Set Up AI…", { openVoxClipSettings(pane: "ai") })
         }
         switch readiness {
-        case .cliSignedOut:
-            return ("\(provider.label) isn't signed in, so Find Clips with AI can't run. You can still make clips by hand.", "Sign-in Help", {
-                let alert = NSAlert(); alert.messageText = "Sign in to \(provider.label)"
-                alert.informativeText = provider.cli?.signInHint ?? ""
-                alert.runModal()
-            })
+        case .cliSignedOut: return nil // The harness row below owns the instructions, action and result.
         case .needsKey:
             return ("Add your \(provider.label) key to use Find Clips with AI. You can still make clips by hand.", "Set Up AI…", { openVoxClipSettings(pane: "ai") })
         case .notRunning:
