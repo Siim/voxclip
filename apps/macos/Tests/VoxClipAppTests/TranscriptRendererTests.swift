@@ -13,8 +13,8 @@ import Testing
 @MainActor struct TranscriptRendererTests {
     /// `paragraphs` turns of ten words by six speakers in turn, r0–r59 by default, each its own
     /// paragraph. Every fifth word is cut, r23 and r41 are fillers, a 1.2 s pause follows r14,
-    /// and a clip spans the fifth paragraph.
-    private func editor(showCuts: Bool, paragraphs: Int = 6) throws -> EditorModel {
+    /// and a clip spans the fifth paragraph, as an AI suggestion not yet kept with `suggested`.
+    private func editor(showCuts: Bool, paragraphs: Int = 6, suggested: Bool = false) throws -> EditorModel {
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         let count = paragraphs * 10
@@ -25,7 +25,7 @@ import Testing
         project.transcript?.durationSeconds = Double(count) / 2 + 2
         project.media.source.durationSeconds = Double(count) / 2 + 2
         project.edits = ProjectEdits(cutWordIds: stride(from: 0, to: count, by: 5).map { "r\($0)" })
-        project.edits.clips = [ClipRange(id: "fifth", startWordId: "r40", endWordId: "r49", title: "Fifth")]
+        project.edits.clips = [ClipRange(id: "fifth", startWordId: "r40", endWordId: "r49", title: "Fifth", origin: suggested ? .ai : .manual, selected: !suggested)]
         let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
         model.showCuts = showCuts
         return model
@@ -169,6 +169,24 @@ import Testing
             try expectRenderingAttributes(text, renderer, name)
             try expectFreshBuild(model, text, renderer)
         }
+    }
+
+    @Test func keepAllTurnsTheOpenSuggestionsBarSolidAndUndoDashesItAgain() throws {
+        let model = try editor(showCuts: false, suggested: true); defer { model.close() }
+        model.activate(model.project.edits.clips[0])
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        try #require(text.textLayoutManager).textViewportLayoutController.layoutViewport()
+        #expect(text.backdrop?.band?.suggested == true, "a suggestion's bar is dashed")
+        let revision = renderer.storageRevision
+        model.keepAll()
+        render(model, renderer)
+        // Keeping writes no text, so no viewport layout places the backdrop again.
+        #expect(renderer.storageRevision == revision && renderer.clipMarks["fifth"]?.suggested == false)
+        #expect(text.backdrop?.band?.suggested == false, "the kept clip's bar is solid")
+        model.apply(.setClipSelected(id: "fifth", selected: false), name: "Undo Keep All")
+        render(model, renderer)
+        #expect(text.backdrop?.band?.suggested == true, "undoing Keep All dashes the bar again")
     }
 
     @Test func untouchedParagraphsKeepTheirStyles() throws {

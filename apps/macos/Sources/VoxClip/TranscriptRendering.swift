@@ -365,7 +365,12 @@ struct TranscriptAppearance: Equatable {
             guard let first = text.map.span(id: clip.startWordId), let last = text.map.span(id: clip.endWordId), first.range.location <= last.range.location else { continue }
             marks[clip.id] = TranscriptClipMark(range: NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location), suggested: clip.origin == .ai && !clip.selected)
         }
+        let backdropChanged = appearance?.activeClipID.map { marks[$0] != clipMarks[$0] } ?? false
         clipMarks = marks
+        // Keep All, or undoing it, turns the open clip's bar solid or dashed without any
+        // storage edit or viewport layout, and `update` places the backdrop again only when
+        // the scope or the open clip changes.
+        if backdropChanged { text.updateBackdrop() }
     }
 
     private struct BuildStyles {
