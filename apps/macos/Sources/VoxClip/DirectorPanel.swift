@@ -33,7 +33,10 @@ import VoxClipCore
                 .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if task.footer != PanelFooter() { PanelFooterView(footer: task.footer) }
+            // A question (`PanelConfirm`) stands in the footer's place until it is answered: inline, not an alert (§13.1).
+            if let confirm = task.confirm {
+                PanelFooterView(footer: PanelFooter(note: confirm.question, link: confirm.confirm, primary: confirm.cancel), asks: true)
+            } else if task.footer != PanelFooter() { PanelFooterView(footer: task.footer) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.window"))
@@ -43,8 +46,9 @@ import VoxClipCore
         .modifier(EditorPaneFocus(model: model, pane: .panel, holds: $paneHolds))
         // Whether the keyboard is anywhere in the panel, for the handover between the panel's views.
         .focused($keyboardWithin)
-        // Esc and ⌘. (design.md §8): Stop while the task runs, which closes it too, else Close.
-        .onExitCommand { (task.headline.stop ?? task.close).perform() }
+        // Esc and ⌘. (design.md §8): the safe answer to a question the panel asks, Stop while the task runs, which closes
+        // it too, else Close.
+        .onExitCommand { (task.confirm?.cancel ?? task.headline.stop ?? task.close).perform() }
         // ⌘Return from anywhere in the panel: the primary. Return outside a text field edits the focused change of a change
         // list, else runs the primary; Space leaves the focused change out or keeps it (`DirectorTask.pressReturn`).
         .onKeyPress(keys: [.return]) { press in
@@ -358,9 +362,11 @@ import VoxClipCore
 }
 
 /// The pinned footer (notes.md `.pfoot`): a hairline above, the note leading, then the link
-/// and the primary. Where the note would get under 150 pt, it moves above the buttons.
+/// and the primary. Where the note would get under 150 pt, it moves above the buttons. A
+/// question (`asks`) reads as body copy in `text.primary`, not as a tertiary note.
 @MainActor private struct PanelFooterView: View {
     let footer: PanelFooter
+    var asks = false
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
@@ -381,9 +387,10 @@ import VoxClipCore
     }
     @ViewBuilder private var note: some View {
         if let text = footer.note {
-            Text(text).font(VCType.small.font()).lineSpacing(2).foregroundStyle(DesignValues.color("text.tertiary"))
+            Text(text).font(asks ? VCType.callout.font(.medium) : VCType.small.font()).lineSpacing(2)
+                .foregroundStyle(DesignValues.color(asks ? "text.primary" : "text.tertiary"))
                 .fixedSize(horizontal: false, vertical: true)
-                .columnLayoutEvidence("director.note", text: text)
+                .columnLayoutEvidence(asks ? "director.question" : "director.note", text: text)
         }
     }
     @ViewBuilder private var buttons: some View {

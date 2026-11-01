@@ -589,6 +589,17 @@ private actor RefusingKeys: ProviderKeyStore {
         // The same turn's error keeps the user's pick.
         session.fail(.refused)
         #expect(shell.panelJob(for: editor) == .captions)
+        // A question the task asks (impl-plan §13.1: inline, not an alert) brings its job back and stands in the footer's
+        // place, its two answers enabled; answered, the user's pick shows again.
+        var answered: [String] = []
+        session.task.ask(PanelConfirm(question: "Discard these 2 changes?",
+                                      cancel: PanelAction(id: "keepWorking", title: "Keep Working") { answered.append("keep"); session.task.dismissConfirm() },
+                                      confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { answered.append("discard") }))
+        #expect(shell.panelJob(for: editor) == .rewrite)
+        let asking = panel()
+        #expect(asking["director.question"] != nil && asking["director.button.keepWorking"] != nil && asking["director.button.discardChanges"] != nil)
+        #expect(asking["director.footer"] != nil && session.task.pressReturn(command: false) && answered == ["keep"] && session.task.confirm == nil)
+        #expect(shell.panelJob(for: editor) == .captions && panel()["director.question"] == nil)
         shell.choosePanelJob(.rewrite, for: editor)
         #expect(panel()["director.panel"] != nil)
     }

@@ -128,6 +128,15 @@ struct PanelFooter: Equatable {
     var primary: PanelAction? = nil
 }
 
+/// A question the task asks in place of its footer before it drops the user's work (impl-plan §13.1: inline, not an
+/// alert): "Discard these 6 changes?" with the safe answer as the primary ("Keep Working"), which Return and Esc choose,
+/// and the other as the link ("Discard Changes").
+struct PanelConfirm: Equatable {
+    let question: String
+    let cancel: PanelAction
+    let confirm: PanelAction
+}
+
 /// One step of a task's work log: Rewrite's own steps (R1), or one tool call in Phase 1.
 struct ActivityStep: Identifiable, Equatable, Sendable {
     enum Status: Equatable, Sendable { case waiting, running, done }
@@ -318,6 +327,8 @@ enum PanelError: Equatable, Sendable {
     private(set) var headline: PanelHeadline
     private(set) var cards: [PanelCard] = []
     private(set) var footer = PanelFooter()
+    /// The question the panel asks in place of the footer, nil when it asks none. A new step drops it.
+    private(set) var confirm: PanelConfirm?
     /// Closes the task ("Close Rewrite", Esc).
     let close: PanelAction
     /// The harness line's borderless action: R2's "Ask again" (notes.md §7).
@@ -358,9 +369,12 @@ enum PanelError: Equatable, Sendable {
     /// is the same step: the keyboard stays where it is.
     func show(_ state: State, headline: PanelHeadline, cards: [PanelCard] = [], footer: PanelFooter = PanelFooter(), contextAction: PanelAction? = nil) {
         if state == .running, self.state != .running { turn += 1 }
-        if !Self.sameStep(state, self.state) { keyboardHandover = keyboardHandover || keyboardInPanel }
+        if !Self.sameStep(state, self.state) { keyboardHandover = keyboardHandover || keyboardInPanel; confirm = nil }
         self.state = state; self.headline = headline; self.cards = cards; self.footer = footer; self.contextAction = contextAction
     }
+    /// Asks `confirm` in place of the footer until it is answered or the task moves to another step.
+    func ask(_ confirm: PanelConfirm) { self.confirm = confirm }
+    func dismissConfirm() { confirm = nil }
     private static func sameStep(_ lhs: State, _ rhs: State) -> Bool {
         if case .proposal = lhs, case .proposal = rhs { return true }
         return lhs == rhs
@@ -411,8 +425,14 @@ enum PanelError: Equatable, Sendable {
 
     /// Return in the panel, outside a text field (design.md §10, "Rewrite without a pointer"): with a change list, Return
     /// edits the focused change and ⌘Return runs the primary, so walking the list never applies, makes takes or pays;
-    /// elsewhere either runs the primary. False when nothing acts.
+    /// elsewhere either runs the primary. While the panel asks a question, either answers it with its safe choice. False
+    /// when nothing acts.
     func pressReturn(command: Bool) -> Bool {
+        // A question waits for its answer first; Return chooses the safe one, as an alert's default button would.
+        if let confirm {
+            confirm.cancel.perform()
+            return true
+        }
         if let changes, !command {
             guard let focused = changes.focused, let review else { return false }
             review(focused, .edit)

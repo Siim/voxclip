@@ -52,13 +52,15 @@ extension EditorModel {
 }
 
 extension WorkspaceShell {
-    /// The panel's job for `model` in this window: the job picked in the switcher while it
-    /// can act and the task and turn it was picked beside are still the open ones, else the
-    /// open task's job, else Captions. In memory only, per window: no undo step and no
-    /// document change (impl-plan §3.3).
+    /// The panel's job for `model` in this window: the open task's job while it asks a
+    /// question (`PanelConfirm`), else the job picked in the switcher while it can act and the
+    /// task and turn it was picked beside are still the open ones, else the open task's job,
+    /// else Captions. In memory only, per window: no undo step and no document change
+    /// (impl-plan §3.3).
     func panelJob(for model: EditorModel) -> PanelJob {
         let jobs = PanelJob.available(in: model)
         let task = model.openRewrite?.task
+        if let asking = model.panelTask, asking.confirm != nil { return asking.job }
         if let choice = panelChoice, choice.task === task, choice.turn == task?.turn, jobs.contains(choice.job) { return choice.job }
         return model.panelTask?.job ?? .captions
     }

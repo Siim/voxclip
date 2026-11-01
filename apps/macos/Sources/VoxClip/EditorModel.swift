@@ -86,8 +86,6 @@ struct EditorRenderSnapshot {
     #if DEBUG
     /// Tests learn where Rewrite's Core work (a plan, a placement, a review) ran: true on the main thread.
     @ObservationIgnored var rewriteWorkProbe: (@Sendable (Bool) -> Void)?
-    /// Tests answer "Discard these {c} changes?" with the count it asked about; true discards.
-    @ObservationIgnored var discardAnswerForTests: ((Int) -> Bool)?
     #endif
     /// The Ask field's text (design.md §6.3.1): what the next Rewrite asks; empty asks Fix mistakes. The clip bar's field
     /// (V3b) and the Rewrite job's Ask field bind it. In memory only.
@@ -148,33 +146,38 @@ struct EditorRenderSnapshot {
             openRewriteSession(scope: scope, instruction: instruction)
         }
     }
-    /// Sends `session` again, asking `instruction` when given: ⇧⌘R and the menu on its scope, R2's Ask again and R3's
-    /// Rewrite Again. A proposal with takes or a change edited in its popover, R2's or the one R3 set aside, asks first
-    /// (design.md §6.3.1 "Proposal open").
+    /// Sends `session` again, asking `instruction` when given: ⇧⌘R and the menu on its scope, the clip bar, R2's Ask
+    /// again and R3's Rewrite Again. A proposal with takes or a change edited in its popover, R2's or the one R3 set aside,
+    /// asks first (design.md §6.3.1 "Proposal open"), inline in the Rewrite job (impl-plan §13.1): "Discard these {c}
+    /// changes?" in place of its footer, with Keep Working, the primary that Return and Esc choose, and Discard Changes,
+    /// which sends. The job comes to the panel to ask, and VoiceOver hears the question.
     func sendRewriteAgain(_ session: RewriteSession, instruction: String? = nil) {
         guard session.isOpen, !session.isProposing else { return }
         rewriteOpenTask?.cancel()
-        let asks = session.generation?.rows.isEmpty == false || session.hasEditedChanges
         let count = session.proposalCount
-        rewriteOpenTask = Task { [weak self] in
-            guard let self else { return }
-            if asks && count > 0 { guard await confirmDiscard(count) else { return } }
+        guard count > 0, session.generation?.rows.isEmpty == false || session.hasEditedChanges else {
+            sendAgain(session, instruction: instruction)
+            return
+        }
+        let question = count == 1 ? "Discard this change?" : "Discard these \(count) changes?"
+        session.task.ask(PanelConfirm(question: question,
+            cancel: PanelAction(id: "keepWorking", title: "Keep Working") { [weak session] in session?.task.dismissConfirm() },
+            confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { [weak self, weak session] in
+                guard let self, let session, session.task.confirm != nil else { return }
+                session.task.dismissConfirm()
+                sendAgain(session, instruction: instruction)
+            }))
+        if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
+        announce(question)
+    }
+    private func sendAgain(_ session: RewriteSession, instruction: String?) {
+        guard session.isOpen, !session.isProposing else { return }
+        rewriteOpenTask?.cancel()
+        rewriteOpenTask = Task {
             guard !Task.isCancelled, session.isOpen else { return }
             session.actionTask?.cancel()
             session.actionTask = Task { _ = await session.run(instruction: instruction) }
         }
-    }
-    /// "Discard these {c} changes?" with Keep Working, the default, and Discard Changes. True discards.
-    private func confirmDiscard(_ count: Int) async -> Bool {
-        #if DEBUG
-        if let discardAnswerForTests { return discardAnswerForTests(count) }
-        #endif
-        guard let window else { return false }
-        let alert = NSAlert()
-        alert.messageText = count == 1 ? "Discard this change?" : "Discard these \(count) changes?"
-        alert.addButton(withTitle: "Keep Working")
-        alert.addButton(withTitle: "Discard Changes")
-        return await alert.beginSheetModal(for: window) == .alertSecondButtonReturn
     }
     /// Opens a Rewrite session on `scope` with the AI chosen now, which runs at once; with none, its panel asks which (R0).
     private func openRewriteSession(scope: RewriteScope, instruction: String) {

@@ -403,8 +403,9 @@ private final class WorkThreads: Sendable {
         #expect(!editor.announcements.contains("Clip 2 changed."))
     }
 
-    /// In R3, Rewrite Again and ⇧⌘R would drop the takes R3 says are kept: they ask "Discard this change?" for the
-    /// proposal set aside first, and Keep Working sends nothing.
+    /// In R3, Rewrite Again and ⇧⌘R (the clip bar's Rewrite too) would drop the takes R3 says are kept: they ask
+    /// "Discard this change?" for the proposal set aside first, inline in the Rewrite job's footer (impl-plan §13.1, no
+    /// alert), and Keep Working, also Return's answer, sends nothing.
     @Test func rewriteAgainInR3AsksBeforeDiscardingTakes() async throws {
         let stub = ScopeStub()
         let (app, _) = app("ollama", stub: stub)
@@ -417,19 +418,25 @@ private final class WorkThreads: Sendable {
         step(undo) { editor.apply(.cutSelection(ids: ["w20"]), name: "Cut selection") }
         #expect(session.task.state == .changed && session.proposalCount == 1)
         #expect(texts(session.task).first?.hasSuffix("Your takes are kept until you close this.") == true)
-        var asked: [Int] = []
-        editor.discardAnswerForTests = { asked.append($0); return false }
+        let footer = session.task.footer
         session.task.footer.primary?.perform()
-        await editor.rewriteOpenTask?.value
+        let asked = try #require(session.task.confirm)
+        #expect(asked.question == "Discard this change?" && asked.cancel.title == "Keep Working" && asked.confirm.title == "Discard Changes")
+        #expect(editor.announcements.last == "Discard this change?" && session.task.footer == footer)
+        asked.cancel.perform()
+        #expect(session.task.confirm == nil)
         editor.runRewrite()
+        #expect(session.task.confirm?.question == "Discard this change?")
+        #expect(session.task.pressReturn(command: true) && session.task.confirm == nil)
         await editor.rewriteOpenTask?.value
-        #expect(asked == [1, 1] && session.generation === generation && session.task.state == .changed)
+        #expect(session.generation === generation && session.task.state == .changed)
         #expect(await stub.requests.count == 1)
-        editor.discardAnswerForTests = { asked.append($0); return true }
         session.task.footer.primary?.perform()
+        try #require(session.task.confirm).confirm.perform()
+        #expect(session.task.confirm == nil)
         await editor.rewriteOpenTask?.value
         await session.actionTask?.value
-        #expect(asked == [1, 1, 1] && session.generation == nil && proposal(session) != nil)
+        #expect(session.generation == nil && proposal(session) != nil && session.task.confirm == nil)
         #expect(await stub.requests.count == 2)
     }
 
@@ -547,8 +554,9 @@ private final class WorkThreads: Sendable {
         #expect(session.task.turn == 2 && session.ownProposal != nil && session.ownProposal?.id != first.id && editor.openRewrite === session)
     }
 
-    /// A change edited in its popover is the user's work: Ask again asks "Discard this change?" first, and Keep Working
-    /// sends nothing and keeps the proposal.
+    /// A change edited in its popover is the user's work: Ask again asks "Discard this change?" first, in place of R2's
+    /// footer, and Keep Working sends nothing and keeps the proposal. The question stays through a review in the transcript
+    /// and goes with a new step.
     @Test func askAgainAsksBeforeDiscardingAnEditedChange() async throws {
         let stub = ScopeStub()
         let (app, _) = app("ollama", stub: stub)
@@ -557,12 +565,22 @@ private final class WorkThreads: Sendable {
         let session = try await rewrite(editor)
         let first = try #require(session.ownProposal)
         #expect(!session.hasEditedChanges && editor.editChange(1, text: "hello") && session.hasEditedChanges)
-        var asked: [Int] = []
-        editor.discardAnswerForTests = { asked.append($0); return false }
         session.task.contextAction?.perform()
+        #expect(session.task.confirm?.question == "Discard this change?")
+        session.showProposal()
+        let asked = try #require(session.task.confirm)
+        asked.cancel.perform()
         await editor.rewriteOpenTask?.value
-        #expect(asked == [1] && session.ownProposal?.id == first.id && session.isOpen)
+        #expect(session.task.confirm == nil && session.ownProposal?.id == first.id && session.isOpen)
         #expect(await stub.requests.count == 1)
+        // A Discard Changes left from a question answered meanwhile sends nothing.
+        asked.confirm.perform()
+        await editor.rewriteOpenTask?.value
+        #expect(await stub.requests.count == 1)
+        session.task.contextAction?.perform()
+        #expect(session.task.confirm != nil)
+        session.task.show(.running, headline: PanelHeadline(text: session.task.words.title))
+        #expect(session.task.confirm == nil)
     }
 
     /// A declined cost sheet on Ask again replaces nothing: the proposal shows again with its reviews, in the transcript
