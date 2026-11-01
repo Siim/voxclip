@@ -292,9 +292,13 @@ import VoxClipCore
         case 47: editor.seek(source: min(editor.sourceDuration, editor.sourceTime + 3))
         case 48: editor.copySelection()
         case 49: editor.findTask?.cancel()
+        case 52, 53, 54, 55: editor.setAspect(Self.frameAspects[item.tag - 52])
         default: break
         }
     }
+    /// View › Frame (impl-plan V4: the Frame picker left the viewer), in the design's order
+    /// 9:16 · 1:1 · 16:9 · Original, tags 52–55.
+    static let frameAspects: [AspectRatio] = [.portrait, .square, .landscape, .source]
     private var selectedClipID: String? {
         guard case .clip(let id) = model.shell.selection else { return nil }
         return id
@@ -391,6 +395,9 @@ import VoxClipCore
             case 10: item.title = editor.showCuts ? "Hide Cut Words" : "Show Cut Words"
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
             case 12: item.title = model.shell.viewerShown ? "Hide Viewer" : "Show Viewer"
+            case 52, 53, 54, 55:
+                item.state = editor.project.export.aspect == Self.frameAspects[item.tag - 52] ? .on : .off
+                return editor.capabilities.writable && editor.capabilities.media
             default: return true
             }
         }
@@ -486,6 +493,11 @@ import VoxClipCore
         command(view, "Full Take", 14, "2")
         command(view, "Hide Sidebar", 16, "s", [.command, .control])
         command(view, "Source / Edited Timeline", 17)
+        let frame = NSMenuItem(title: "Frame", action: nil, keyEquivalent: "")
+        let frameMenu = NSMenu(title: "Frame")
+        for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect == .source ? "Original" : aspect.rawValue, 52 + offset, "", []) }
+        frame.submenu = frameMenu
+        view.addItem(frame)
         command(view, "Bigger Text", 18, "+")
         command(view, "Smaller Text", 19, "-")
         command(view, "Actual Size", 20, "0")
