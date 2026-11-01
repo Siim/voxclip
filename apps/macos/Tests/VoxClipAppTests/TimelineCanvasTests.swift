@@ -181,6 +181,27 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(model.timelineTrimIndex(clip, start: true, time: 3.1, on: .source) == 3)
     }
 
+    /// The panel lays out in a window that is never shown: the toolbar's readout resolves
+    /// its token colours and the lanes are hosted under it.
+    @Test func thePanelLaysOutWithItsToolbarAndLanes() throws {
+        let app = try app()
+        let model = editor(app, project: try project())
+        defer { model.close() }
+        model.playhead = 14 + 23.0 / 30
+        let host = ShellHost.controller(TimelinePanel(model: model, shell: WorkspaceShell(app: app)), app: app)
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: 216), styleMask: [.borderless], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentViewController = host
+        window.setContentSize(NSSize(width: 1056, height: 216))
+        defer { window.close() }
+        host.view.layoutSubtreeIfNeeded()
+        let canvas = try #require(DebugShell.firstView(TimelineCanvasView.self, in: host.view))
+        #expect(abs(canvas.frame.height - (216 - TimelineMetrics.toolbar)) < 1 && abs(canvas.frame.width - 1056) < 1)
+        _ = host.view.fittingSize
+        canvas.tearDown()
+    }
+
     // MARK: The waveform
 
     /// impl-plan §3.1: the model loads the waveform when the media is there, so a hidden
