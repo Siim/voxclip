@@ -13,6 +13,8 @@ import VoxClipCore
     @FocusState private var keyFieldFocused: Bool
     /// The keyboard is in the panel: on the pane itself (F6, a handover) or a field inside it.
     @FocusState private var keyboardWithin: Bool
+    /// The handover's focus took, once; after that the user may move it away.
+    @State private var handoverTook = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,11 +56,23 @@ import VoxClipCore
             return .handled
         }
         .onChange(of: task.focusRequest) { _, _ in keyFieldFocused = true }
-        .onChange(of: keyboardWithin) { _, within in task.keyboardInPanel = within }
+        .onChange(of: keyboardWithin) { _, within in
+            task.keyboardInPanel = within
+            if within { handoverTook = true }
+        }
+        .onChange(of: keyFieldFocused) { _, focused in if focused { handoverTook = true } }
         // Replacing the passage panel that had the keyboard, it takes it, so Esc, ⌘. and Return still act (design.md R1).
+        // macOS 26 drops the request made as the passage panel's field lets go of the keyboard (hosted CI's 26.6 left
+        // the window first responder) and takes one a moment later, so it asks again until the focus takes, for half
+        // a second at most, and never once it took: the user may have moved it since.
         .task {
             guard task.takeKeyboardHandover() else { return }
-            if task.cards.contains(where: { if case .keyField = $0 { true } else { false } }) { keyFieldFocused = true } else { keyboardWithin = true }
+            let keyField = task.cards.contains(where: { if case .keyField = $0 { true } else { false } })
+            for _ in 0..<25 {
+                if handoverTook || Task.isCancelled { return }
+                if keyField { keyFieldFocused = true } else { keyboardWithin = true }
+                try? await Task.sleep(for: .milliseconds(20))
+            }
         }
         .columnLayoutEvidence("director.panel")
     }
