@@ -470,13 +470,14 @@ extension DebugTranscriptPixels {
             band = window.contentView.flatMap(transcript(in:))?.backdrop?.band
             return nil
         })
-        // The same clip with a proposal of three changes, change 1 focused, beside f3.
+        // The same clip with a proposal of three changes, change 1 focused, beside f3: "that
+        // matters → counts most", "if someone only reads" without "only", "caption," → "captions,".
         let ids = editor.words.map(\.id)
-        let fix = editor.words[start + 20]
+        guard editor.words.count > start + 28, editor.words[start + 4].text == "matters", editor.words[start + 25].text == "only", editor.words[start + 28].text == "caption," else { throw CocoaError(.coderInvalidValue) }
         editor.proposal = TranscriptProposal(clipID: clip.id, title: "Rewrite clip 2", changes: [
-            TranscriptChange(ordinal: 1, parts: [.init(kind: .voice, sourceWordIDs: [ids[start + 12]], newTokens: ["really", "simple"])]),
-            TranscriptChange(ordinal: 2, parts: [.init(kind: .cut, sourceWordIDs: [ids[start + 26], ids[start + 27]])]),
-            TranscriptChange(ordinal: 3, parts: [.init(kind: .textOnly, sourceWordIDs: [fix.id], newTokens: [fix.text.capitalized], correctedTexts: [fix.text.capitalized])])
+            TranscriptChange(ordinal: 1, parts: [.init(kind: .voice, sourceWordIDs: [ids[start + 4]], newTokens: ["counts"])]),
+            TranscriptChange(ordinal: 2, parts: [.init(kind: .cut, sourceWordIDs: [ids[start + 25]])]),
+            TranscriptChange(ordinal: 3, parts: [.init(kind: .textOnly, sourceWordIDs: [ids[start + 28]], newTokens: ["captions,"], correctedTexts: ["captions,"])])
         ])
         var buttons = false
         try await DebugUISuite.snapshot(WorkspaceView(shell: shell).environment(app), name: native ? "v2-transcript-hunks-1280" : "v2-transcript-hunks-1280-dark", size: NSSize(width: 1280, height: 800),
