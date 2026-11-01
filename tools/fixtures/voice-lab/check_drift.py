@@ -13,7 +13,8 @@ import math
 import subprocess
 import sys
 
-TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json']
+TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json',
+            'shared/fixtures/voice-lab/accept-all-cases.json']
 EXACT = ['shared/fixtures/voice-lab/continuity-cases.json', 'shared/fixtures/voice-lab/scope-rewrite-plan-cases.json',
          'shared/fixtures/voice-lab/scope-rewrite-diff-cases.json', 'shared/fixtures/voice-lab/llm-send-cost-cases.json',
          'shared/fixtures/voice-lab/training-spans.json', 'shared/fixtures/voice-lab/take-batch-cases.json',
