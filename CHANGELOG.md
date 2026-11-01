@@ -4,10 +4,6 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- Windows Core now approves all Rewrite voice windows as one priced batch and discards unsent takes correctly on early stop, cancellation or failure.
-
-- Windows Core now plans clip and full-take Rewrite requests and review hunks with the same shared cases as Mac, including existing re-voiced passages and per-change “Check this” badges.
-
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
 - Import a video and transcribe it with word timestamps: ElevenLabs Scribe with your own key, local Whisper models, or Apple Speech on Mac. If a local model is missing, VoxClip offers to download it.
 - Cut by editing words. Remove filler words and tighten long pauses in a click, correct a word's text, and restore anything you cut.

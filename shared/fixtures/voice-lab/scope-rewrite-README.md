@@ -1,15 +1,15 @@
 # Scope rewrite vectors
 
 Two files pin a clip or Full take Rewrite (voice-lab.md §8.1 item 1): the plan, before any quote, and the diff of the
-proposal into review hunks. Only the Swift suites replay them until the C# twins land (plan W1).
+proposal into review hunks. The Swift suites and the C# `ScopeRewriteTests` suite replay both files.
 
 ## Plan
 
 `scope-rewrite-plan-cases.json` pins `ScopeRewritePlan.make`: the Fix with AI request for a clip or Full take
 (voice-lab.md §8.1 item 1), before any quote. `tools/fixtures/voice-lab/generate_scope_rewrite.py` writes it (Python 3,
 standard library only, byte-identical on every run); change the generator, never the JSON. All inputs are synthetic and
-offline. The Swift suite `ScopeRewritePlanTests` replays every case. The C# suite does not yet; the C# twin (plan W1)
-replays the same file.
+offline. The Swift suite `ScopeRewritePlanTests` replays every case. The C# suite `apps/windows/tests/VoxClip.Core.Tests/Tracks/voice-lab/ScopeRewriteTests.cs`
+replays the same file in `EveryPlanVectorReplaysExactly`.
 
 ### Rules the generator encodes
 
@@ -100,7 +100,7 @@ as review hunks (voice-lab.md §8.1 item 1 and §8.2). `tools/fixtures/voice-lab
 (Python 3, standard library only, byte-identical on every run); change the generator, never the JSON. It loads only the
 definitions of `generate_scope_rewrite.py` for the plan, of `generate_word_diff.py` for the §8.2 diff, and of
 `generate_patch_rewrite.py` for the edit validation and the `checkThis` rule, and reads `patch-rewrite-cases.json`. The
-Swift suite `ScopeRewriteDiffTests` replays every case. The C# suite does not yet.
+Swift suite `ScopeRewriteDiffTests` replays every case. The C# `ScopeRewriteTests.EveryScopeDiffVectorReplaysExactly` replays the same file.
 
 ### Rules the generator encodes
 

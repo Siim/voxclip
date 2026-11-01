@@ -1,6 +1,6 @@
 # Take batch cases
 
-`take-batch-cases.json` pins how a Rewrite's voice phrases are paid for together: voice-lab.md §8.6 with several hunks (design delta §13.2), the bounded runs of §2.6 and the presentation and monthly cap of §3.1, as design delta §6 T1 uses them. The Mac suite `apps/macos/Tests/VoxClipCoreTests/VoiceLab/VoiceLabTakeBatchTests.swift` replays every case through `VoiceLabTakeBatch` and `VoiceLabTakeBatchProgress`. Only the Mac replays this file for now; the Windows twin (`VoiceLabTakeBatch.cs`) is plan package W3.
+`take-batch-cases.json` pins how a Rewrite's voice phrases are paid for together: voice-lab.md §8.6 with several hunks (design delta §13.2), the bounded runs of §2.6 and the presentation and monthly cap of §3.1, as design delta §6 T1 uses them. The Mac suite `apps/macos/Tests/VoxClipCoreTests/VoiceLab/VoiceLabTakeBatchTests.swift` replays every case through `VoiceLabTakeBatch` and `VoiceLabTakeBatchProgress`. The Windows suite `apps/windows/tests/VoxClip.Core.Tests/Tracks/voice-lab/VoiceLabTakeBatchTests.cs` replays the same cases through the C# twins.
 
 Regenerate only with `python3 tools/fixtures/voice-lab/generate_take_batch.py` and review the diff as a behaviour change. The generator uses only the Python standard library, computes every expected value with its own reference of the rules below, and gives identical bytes on every run. `check_drift.py` requires these bytes to match exactly. Expected values are never edited by hand.
 
