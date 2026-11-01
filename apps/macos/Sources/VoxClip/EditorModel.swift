@@ -198,7 +198,6 @@ struct EditorRenderSnapshot {
     var scopeBounds: ClosedRange<Int>?
     var editingAvailable = false
     var waveform: WaveformData?
-    var waveformRevision = 0
     var waveformKey: WaveformCache.Key? {
         guard !document.demo, mediaResolved, !mediaUnreadable, project.media.source.audio != nil else { return nil }
         return WaveformCache.Key(contentKey: project.media.source.contentKey, source: sourceURL, cache: app.locations.cache)
@@ -210,7 +209,7 @@ struct EditorRenderSnapshot {
         let key = waveformKey
         let value = if let key { await WaveformCache.shared.load(key) } else { nil as WaveformData? }
         guard !Task.isCancelled, key == waveformKey else { return }
-        waveform = value; waveformRevision += 1
+        waveform = value
     }
     /// Loads the waveform when the project's media is there to read, and again when it
     /// changes (impl-plan §3.1): the model owns it, so a hidden timeline never starves the
