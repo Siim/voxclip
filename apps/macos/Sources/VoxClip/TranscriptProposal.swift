@@ -110,6 +110,12 @@ enum TranscriptChangeSegment: Equatable {
     }
 }
 
+/// One review a Keep made, which its undo step puts back: a change's state before and after it.
+struct ProposalReview {
+    let before: TranscriptChange.State
+    let after: TranscriptChange.State
+}
+
 /// A Rewrite proposal in the transcript: its changes, in transcript order, the one the keys and
 /// the Keep and Undo buttons act on, and the tab it belongs to (design.md §6.3.5). It changes
 /// no project until a change is kept. V13 fills it from C2's hunks; V15's change list reads it.
@@ -458,7 +464,7 @@ extension EditorModel {
         return commands
     }
     /// Keep (⌘↩, impl-plan item 7): a cut or fix applies as one undo step, "Keep change {i}",
-    /// whose undo also puts the change back as it was, pending or left out; a voice change is
+    /// whose undo also puts that change back as it was, pending or left out; a voice change is
     /// included for takes, with no project change and no undo step. Either is `.kept` from then on.
     /// A change that can't be reviewed (`reviewable`) is not kept, and nothing is announced.
     @discardableResult func keepChange(_ ordinal: Int) -> Bool {
@@ -466,13 +472,13 @@ extension EditorModel {
               proposal.changes[index].reviewable else { return false }
         let change = proposal.changes[index], order = proposalDisplay?.shown.map(\.ordinal) ?? []
         guard change.state != .kept else { return false }
-        let previous = proposal
+        let id = proposal.id, focused = proposal.focused
         proposal.changes[index].state = .kept
         // A cut's or fix's commands, or a voice change's free parts (an edit split it), apply with it.
         let free = commands(change)
         if !free.isEmpty {
             guard apply(free, name: "Keep change \(ordinal)") else { return false }
-            registerProposalUndo(previous)
+            registerProposalUndo(id: id, focused: focused, reviews: [ordinal: ProposalReview(before: change.state, after: .kept)])
         }
         self.proposal = proposal
         advanceFocus(after: ordinal, order: order)
@@ -501,33 +507,41 @@ extension EditorModel {
         let reader = TranscriptChangeReader(self)
         let kept = proposal.changes.filter { $0.state == .pending && !reader.isApplied($0) }
         guard !kept.isEmpty else { return false }
-        let previous = proposal
-        for index in proposal.changes.indices where proposal.changes[index].state == .pending { proposal.changes[index].state = .kept }
+        let id = proposal.id, focused = proposal.focused
+        var reviews: [Int: ProposalReview] = [:]
+        for index in proposal.changes.indices where proposal.changes[index].state == .pending {
+            proposal.changes[index].state = .kept
+            reviews[proposal.changes[index].ordinal] = ProposalReview(before: .pending, after: .kept)
+        }
         let free = kept.flatMap(commands)
         // Its undo step also takes every change it kept back to pending.
         if !free.isEmpty {
             guard apply(free, name: proposal.title) else { return false }
-            registerProposalUndo(previous)
+            registerProposalUndo(id: id, focused: focused, reviews: reviews)
         }
         self.proposal = proposal
         announce(kept.count == 1 ? "Applied 1 change" : "Applied \(kept.count) changes")
         return true
     }
 
-    /// Registers, in the step a Keep's cuts and corrections make, putting the changes' states
-    /// and the focus back as they were, so ⌘Z takes what it kept back to pending (or left out)
-    /// and ⌘⇧Z keeps them again. It acts only on the proposal it was made in: once a later
-    /// Rewrite replaces or clears the proposal, the step undoes the project alone, and the
-    /// changes' words as an edit left them stay.
-    private func registerProposalUndo(_ previous: TranscriptProposal) {
-        let id = previous.id, focused = previous.focused
-        let states = Dictionary(previous.changes.map { ($0.ordinal, $0.state) }, uniquingKeysWith: { first, _ in first })
+    /// Registers, in the step a Keep's cuts and corrections make, putting back the reviews that
+    /// Keep made (`reviews`, by ordinal) and the focus, so ⌘Z takes what it kept back to pending
+    /// (or left out) and ⌘⇧Z keeps them again. A change reviewed since keeps its later review:
+    /// ⌘Z of a Keep never brings back, waiting, a change left out or kept after it, so its
+    /// takes are never offered again. It acts only on the proposal it was made in: once a
+    /// later Rewrite replaces or clears the proposal, the step undoes the project alone, and
+    /// the changes' words as an edit left them stay.
+    private func registerProposalUndo(id: UUID, focused: Int?, reviews: [Int: ProposalReview]) {
         undoManager?.registerUndo(withTarget: self) { model in
             guard var proposal = model.proposal, proposal.id == id else { return }
-            model.registerProposalUndo(proposal)
+            var undone: [Int: ProposalReview] = [:]
             for index in proposal.changes.indices {
-                if let state = states[proposal.changes[index].ordinal] { proposal.changes[index].state = state }
+                let ordinal = proposal.changes[index].ordinal
+                guard let review = reviews[ordinal], proposal.changes[index].state == review.after else { continue }
+                proposal.changes[index].state = review.before
+                undone[ordinal] = ProposalReview(before: review.after, after: review.before)
             }
+            model.registerProposalUndo(id: id, focused: model.proposal?.focused, reviews: undone)
             proposal.focused = focused
             model.proposal = proposal
         }

@@ -138,6 +138,24 @@ import Testing
         #expect(editor.project.edits == before.edits && changes(session)?.items.map(\.state) == [.pending, .pending, .pending] && session.task.footer.link?.title == "Keep All")
     }
 
+    /// ⌘Z of a Keep puts back only what that Keep reviewed: the phrase left out after it stays out, so the footer offers no
+    /// takes for it, and the tab, the status bar and the Outline count only the cut that waits again.
+    @Test func theUndoOfAKeepLeavesAPhraseLeftOutAfterItOut() async throws {
+        let (editor, session, undo, scenes) = try scene("r2-make-takes")
+        defer { scenes.forEach { $0.editor?.close() } }
+        #expect(changes(session)?.items.map(\.kind) == [.cut, .cut, .voice] && session.includedVoice == [3])
+        step(undo) { session.review(1, .keep) }
+        session.review(3, .undo)
+        await settle { changes(session)?.items.last?.state == .excluded }
+        #expect(changes(session)?.items.map(\.state) == [.kept, .pending, .excluded] && session.includedVoice.isEmpty)
+        #expect(session.task.footer.primary?.id == "apply" && !session.task.cards.contains(.takes))
+        undo.undo()
+        await settle { changes(session)?.items.first?.state == .pending }
+        #expect(changes(session)?.items.map(\.state) == [.pending, .pending, .excluded] && session.includedVoice.isEmpty)
+        #expect(session.task.footer.primary?.id == "apply" && session.task.footer.primary?.title.hasPrefix("Make") == false && !session.task.cards.contains(.takes))
+        #expect(editor.unreviewedChanges(clipID: editor.proposal?.clipID).map(\.ordinal) == [1, 2])
+    }
+
     /// Apply {c} Changes keeps every waiting change as one step named for the scope, announces it, closes Rewrite and
     /// takes the proposal out of the transcript; ⌘Z undoes the project alone.
     @Test func applyKeepsEveryChangeAndCloses() throws {

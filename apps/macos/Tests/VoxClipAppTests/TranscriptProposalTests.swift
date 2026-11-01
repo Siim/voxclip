@@ -219,6 +219,34 @@ import Testing
         #expect(model.proposal == next && model.cutWordIDs.contains(id(model, 91)))
     }
 
+    /// The undo of a Keep puts back only the reviews that Keep made: a change left out or kept
+    /// after it keeps that later review through ⌘Z and ⌘⇧Z, so a phrase the user left out never
+    /// comes back waiting for takes.
+    @Test func theUndoOfAKeepLeavesTheReviewsMadeAfterIt() throws {
+        let model = try editor(); defer { model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        defer { model.undoManager = nil }
+        func step(_ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
+        func states() -> [TranscriptChange.State] { model.proposal?.changes.map(\.state) ?? [] }
+        let site = (78...86).map { id(model, $0) }
+        // Keep cut 3, then leave phrase 1 out and keep phrase 2 (no undo steps of their own).
+        step { model.keepChange(3) }
+        #expect(model.excludeChange(1) && model.keepChange(2))
+        #expect(states() == [.excluded, .kept, .kept, .pending, .pending] && undo.undoActionName == "Keep change 3")
+        undo.undo()
+        #expect(states() == [.excluded, .kept, .pending, .pending, .pending] && model.cutWordIDs.isDisjoint(with: site), "⌘Z of the Keep: \(states())")
+        #expect(model.unreviewedChanges(clipID: "hunk-clip").map(\.ordinal) == [3, 4, 5])
+        undo.redo()
+        #expect(states() == [.excluded, .kept, .kept, .pending, .pending] && model.cutWordIDs.isSuperset(of: site), "⌘⇧Z: \(states())")
+        // Keep All, then phrase 5 left out after it: ⌘Z takes cut 4 back to waiting and leaves phrase 5 out.
+        step { model.keepAllChanges() }
+        #expect(states() == [.excluded, .kept, .kept, .kept, .kept] && model.excludeChange(5))
+        undo.undo()
+        #expect(states() == [.excluded, .kept, .kept, .pending, .excluded] && !model.cutWordIDs.contains(id(model, 91)), "⌘Z of Keep All: \(states())")
+        undo.redo()
+        #expect(states() == [.excluded, .kept, .kept, .kept, .excluded] && model.cutWordIDs.contains(id(model, 91)), "⌘⇧Z of Keep All: \(states())")
+    }
+
     /// VoiceOver hears what a change left out would have done, and new words as proposed when
     /// it reads a line as attributed text, as it does word by word.
     @Test func anExcludedChangeAndNewWordsReadInFull() throws {
