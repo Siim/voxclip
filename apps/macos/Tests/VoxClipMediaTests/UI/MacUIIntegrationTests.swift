@@ -287,24 +287,33 @@ final class MacUIRenderPerformanceTests: XCTestCase {
         let directory = try UIProcessHarness.run(mode: "-uiPerformanceTest", name: "performance")
         defer { UIProcessHarness.cleanTemporary(directory) }
         struct Metrics: Decodable {
+            let fixture: String
             let wordCount: Int
             let cutMedianMS: Double
             let cutP95MS: Double
             let cutMaximumMS: Double
             let scrollP95MS: Double
             let storageRebuildsDuringCuts: Int
+            let tabSwitchMaximumMS: Double
         }
-        let metrics = try JSONDecoder().decode(Metrics.self, from: Data(contentsOf: directory.appendingPathComponent("transcript-performance.json")))
-        XCTAssertEqual(metrics.wordCount, 10_000)
-        XCTAssertLessThan(metrics.cutMaximumMS, 50)
-        XCTAssertLessThan(metrics.scrollP95MS, 1000 / 60)
-        XCTAssertEqual(metrics.storageRebuildsDuringCuts, 0)
+        // One entry per 10,000-word fixture: speakers alternating, and one speaker throughout.
+        let measured = try JSONDecoder().decode([Metrics].self, from: Data(contentsOf: directory.appendingPathComponent("transcript-performance.json")))
+        XCTAssertEqual(measured.map(\.fixture), ["speaker-alternating", "single-speaker"])
+        for metrics in measured {
+            XCTAssertEqual(metrics.wordCount, 10_000, metrics.fixture)
+            XCTAssertLessThan(metrics.cutMaximumMS, 50, metrics.fixture)
+            XCTAssertLessThan(metrics.scrollP95MS, 1000 / 60, metrics.fixture)
+            XCTAssertEqual(metrics.storageRebuildsDuringCuts, 0, metrics.fixture)
+            XCTAssertLessThanOrEqual(metrics.tabSwitchMaximumMS, 50, metrics.fixture)
+        }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         for result in report {
             if let reason = result.skipped { print("SKIP: \(result.name): \(reason)") }
             else { XCTAssertTrue(result.passed, result.name) }
         }
-        print("10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; scroll p95=\(metrics.scrollP95MS)ms")
+        for metrics in measured {
+            print("\(metrics.fixture): 10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; scroll p95=\(metrics.scrollP95MS)ms; tab switch max=\(metrics.tabSwitchMaximumMS)ms")
+        }
     }
 }
 
