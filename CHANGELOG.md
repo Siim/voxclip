@@ -47,5 +47,5 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Relinking a moved video asks in a banner instead of a dialog.
 - The Mac Captions panel keeps scrollbars inside its column, local AI errors name the server URL, and the viewer transport shows current time and scope length.
 - The Mac Explorer shows your voices and recent exports, with file actions, export status and Retry in place.
-- While a moved video is missing or waits for you to confirm the file you chose, the Mac editor only reads: the clip bar's tools show dimmed, Rewrite and Export wait, and the status bar says why.
+- While a moved video is missing or waits for you to confirm the file you chose, the Mac editor only reads: the clip bar's tools show dimmed, Rewrite and Export wait, and the status bar says why. Opening a project on a slow drive no longer claims the video is missing while VoxClip checks it.
 - Not tested on: TODO list the test machines that were not available (doc/plan.md section 6).

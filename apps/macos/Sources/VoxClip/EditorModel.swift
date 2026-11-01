@@ -299,6 +299,14 @@ struct EditorRenderSnapshot {
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
     var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { closeRewrite(returnFocus: false) }; followWaveformKey() } }
+    /// The video's check (as the project opens or reverts, or after its video changes) has answered, found or not. A
+    /// video not resolved before then is only not checked yet, so Locate… and the read-only note wait for the answer
+    /// rather than flash while a slow or external volume reads.
+    private(set) var mediaChecked = false
+    /// The latest check, so one that a newer check replaced doesn't answer for it.
+    @ObservationIgnored private var mediaCheck = 0
+    /// The video's check answered without finding it: Locate… shows and the editor only reads.
+    var mediaMissing: Bool { mediaChecked && !mediaResolved }
     /// The project has a transcript. Unlike `project`, views observe it, so a transcript
     /// that arrives or is undone redraws the transcript column.
     private(set) var transcribed = false
@@ -494,7 +502,7 @@ struct EditorRenderSnapshot {
     var mediaReadOnlyNote: String? {
         guard !document.demo, !document.isVersion else { return nil }
         if mediaRelinkCandidate != nil { return "Read-only until you confirm the video" }
-        return mediaResolved ? nil : "Read-only until you locate the video"
+        return mediaMissing ? "Read-only until you locate the video" : nil
     }
     /// Why Export can't run for the scope, as its tooltip and accessible description
     /// (design §3.5 and §5.4.4); nil when it can or while an export runs.
@@ -553,6 +561,8 @@ struct EditorRenderSnapshot {
                 previewError = await app.safeError(error)
             }
         }
+        // The check has answered (a project without a video path has none to make).
+        mediaChecked = true
         refresh()
         if mediaResolved { await updatePreview(load: true) }
     }
@@ -577,10 +587,11 @@ struct EditorRenderSnapshot {
         planningSegments = nil; planningWordIndex = [:]; summaryCache.removeAll()
         correctionID = nil; selectedWordIDs = []; selectedPauseIDs = []
         fallbackNote = nil; focusedSuggestion = nil; clipError = nil; error = nil; previewError = nil
-        mediaResolved = document.demo
+        mediaResolved = document.demo; mediaChecked = false
         refresh()
         updateTask = Task { [weak self] in
-            guard let self, sourceURL.path != "/" else { return }
+            guard let self else { return }
+            guard sourceURL.path != "/" else { mediaChecked = true; return }
             do {
                 _ = try await resolveMediaIdentity()
                 await updatePreview(load: true)
@@ -739,7 +750,7 @@ struct EditorRenderSnapshot {
             guard let self else { return }
             do {
                 if mediaChanged, !document.demo {
-                    mediaResolved = false
+                    mediaResolved = false; mediaChecked = false
                     _ = try await resolveMediaIdentity()
                 }
                 try await Task.sleep(for: .milliseconds(150))
@@ -762,6 +773,10 @@ struct EditorRenderSnapshot {
         return positionEdit == candidate
     }
     func resolveMediaIdentity() async throws -> URL {
+        mediaCheck &+= 1
+        let check = mediaCheck
+        // Found, missing, unreadable or cancelled, the check has answered unless a newer one replaced it.
+        defer { if check == mediaCheck { mediaChecked = true } }
         let reference = project.media.source
         let resolved = try await app.projectStore.resolveSource(for: project, projectURL: document.fileURL ?? sourceURL.deletingLastPathComponent().appendingPathComponent("Untitled.voxclip"))
         try Task.checkCancellation()

@@ -110,6 +110,27 @@ import Testing
         #expect(editor.mediaRelinkCandidate == nil && editor.capabilities.edit && editor.mediaExportable && editor.statusReadOnly == nil)
         #expect(bar.variant == .scope("five-1") && bar.rewrite.isEnabled && bar.tighten.isEnabled && bar.ask.isEnabled)
     }
+    /// A video that is not checked yet is not a missing one: as a project opens, and again as it reverts, Locate… and the
+    /// read-only note wait until the video's check answers (on a slow or external volume that takes a while), and the
+    /// clip bar and status bar stay as they were before the check.
+    @Test func theReadOnlyNoteWaitsForTheVideosCheck() async throws {
+        _ = NSApplication.shared
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        let editor = EditorModel(document: VoxClipDocument(project: try project()), app: app, preview: DemoPreviewEngine(), exporter: RegressionExporter())
+        defer { editor.close() }
+        func silent() -> Bool {
+            !editor.mediaMissing && editor.mediaReadOnlyNote == nil && editor.statusReadOnly == nil
+                && StatusBarContent.make(app: app, editor: editor, now: Date())[.task] == nil
+        }
+        #expect(!editor.mediaResolved && silent(), "opening: the check has not answered")
+        await editor.start()
+        // The fixture's video is not on this Mac: the check answers that it is missing.
+        #expect(editor.mediaMissing && editor.mediaReadOnlyNote == "Read-only until you locate the video")
+        editor.reloadFromDocument(previousProjectID: editor.project.id)
+        #expect(!editor.mediaResolved && silent(), "reverting: the check runs again")
+        await editor.waitForPendingPreviewForAudit()
+        #expect(editor.mediaMissing && editor.mediaReadOnlyNote == "Read-only until you locate the video")
+    }
     @Test func aRefusedRelinkKeepsTheBannerAndExplainsWhy() async throws {
         let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
         defer { editor.close() }

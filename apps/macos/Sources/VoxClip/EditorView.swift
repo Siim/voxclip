@@ -165,7 +165,7 @@ import VoxClipCore
             if let error = model.error, !error.isEmpty { InlineNotice(text: error) }
             if let error = model.previewError, !error.isEmpty { InlineNotice(text: error) }
             MediaRelinkBanner(model: model)
-            if !model.document.demo, !model.mediaResolved {
+            if !model.document.demo, model.mediaMissing {
                 Button("Locate…") { model.locateMedia() }
             }
             if let progress = model.progress {
