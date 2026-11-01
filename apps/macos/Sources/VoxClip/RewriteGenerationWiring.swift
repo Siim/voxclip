@@ -37,6 +37,7 @@ extension RewriteSession {
         guard let reservation = generation.reservePreparation() else { return }
         let revision = self.revision
         do {
+            try generation.validatePlacement(window)
             let sampleRate: Double = Double(audio.sampleRate)
             let sampleCount: Double = project.media.source.durationSeconds * sampleRate
             let frames: Int64 = Int64(EditingPrimitives.jsRound(sampleCount))

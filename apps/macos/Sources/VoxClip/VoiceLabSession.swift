@@ -100,12 +100,23 @@ import VoxClipMedia
         let secrets = app.secrets; let logger = app.log
         self.reconciler = reconciler ?? VoiceOperationReconciler(store: store) { ElevenLabsVoiceLab(keys: secrets, region: $0, logger: logger) }
     }
-    func stageVerificationForTests(statement: VoiceConsentStatement, wav: Data, client: ElevenLabsVoiceLab) {
+    @ObservationIgnored private var speakerCheckForTests: VoiceSpeakerCheck?
+    func stageVerificationForTests(statement: VoiceConsentStatement, wav: Data, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck? = nil) {
         self.statement = statement; statementWAV = wav
         self.client = client; region = client.region
-        enrollment = VoiceEnrollment(store: store, client: client, reconciler: reconciler)
+        speakerCheckForTests = speaker
+        enrollment = VoiceEnrollment(store: store, client: client, speaker: speaker ?? .unavailable, reconciler: reconciler)
+    }
+    func stageTrainingForTests(_ samples: [VoiceTrainingSample]) {
+        training = samples; trainingReady = true; trainingSource = .readAloud
     }
     #endif
+    private func currentSpeakerCheck() async throws -> VoiceSpeakerCheck {
+        #if DEBUG
+        if let speakerCheckForTests { return speakerCheckForTests }
+        #endif
+        return try await app.speakerModelLibrary.check(language: enrollmentLanguage)
+    }
     func refreshEnabledState() async {
         guard enabled else { records = []; deleting = []; operations = []; return }
         await load()
@@ -178,6 +189,8 @@ import VoxClipMedia
         do {
             if recover {
                 try await store.reconcileAbandonedEnrollments()
+                let abandoned = await store.takeAbandonedEnrollmentCount()
+                if abandoned > 0 { await Log(logger: app.log).write(.warn, category: "voice-lab", message: "Abandoned invalid or expired enrollment journals: \(abandoned)") }
                 do { try await reconciler.reconcile(force: force) }
                 catch VoiceConsentError.recoveryCreatorMismatch { message = VoiceConsentError.recoveryCreatorMismatch.localizedDescription }
                 catch { message = "Couldn't finish a voice operation. Retry below. No create request was repeated." }
@@ -246,7 +259,7 @@ import VoxClipMedia
             }
             if action == .verify || action == .create {
                 guard speakerReady else { throw VoiceConsentError.speakerUnavailable }
-                let check = try await app.speakerModelLibrary.check(language: enrollmentLanguage)
+                let check = try await currentSpeakerCheck()
                 guard check.available else { throw VoiceConsentError.speakerUnavailable }
                 let (_, enrollment) = try services()
                 try await enrollment.setSpeakerCheck(check)
@@ -363,7 +376,7 @@ import VoxClipMedia
         message = nil; keptSeconds = nil
         do {
             let (_, enrollment) = try services()
-            let check = try await app.speakerModelLibrary.check(language: statement?.language ?? "en")
+            let check = try await currentSpeakerCheck()
             try await enrollment.setSpeakerCheck(check)
             var samples = training
             if trainingSource == .project {
@@ -478,8 +491,8 @@ import VoxClipMedia
         guard !busy else { return }
         recorder.discard()
         do {
-            try await store.withdrawCreation(recordID: recordID, remoteVoiceID: unsavedRecord?.voiceId, region: region ?? .default)
             try await enrollment?.cancel(recordID: recordID)
+            try await store.withdrawCreation(recordID: recordID, remoteVoiceID: unsavedRecord?.voiceId, region: region ?? .default)
             try await store.abandonEnrollment(recordID: recordID)
         } catch { message = "The statement recording could not be removed. Retry Remove This Voice to finish cleanup."; return }
         unsavedRecord = nil

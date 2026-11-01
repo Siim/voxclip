@@ -137,6 +137,10 @@ struct RewriteChange: Equatable, Sendable {
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
         // The takes are for the one phrase the list includes now (impl-plan item 25).
         takesVoice = includedVoice.only; includedVoiceSeen = takesVoice
+        generation?.validatePlacement = { [weak self] window in
+            guard let self else { throw CancellationError() }
+            try self.editor.validateVoiceLabPlacement(window, localCommands: self.localCommands)
+        }
         generation?.prepareQuote = { [weak self] in await self?.prepareTakes() }
         generation?.readMonthlyCap = { [weak self] in
             guard let self else { throw CancellationError() }
@@ -812,6 +816,10 @@ struct RewriteChange: Equatable, Sendable {
         }
         switch error {
         case RewriteSessionError.noSourceAudio: return "Find the original video before rewriting speech. Your edits are saved."
+        case VoiceLabProjectError.invalidFadeHandles, VoiceLabProjectError.overlappingFades:
+            return "This change can't blend beside the proposed cuts. Keep more of the surrounding speech or re-record this sentence. Your edits are saved."
+        case VoiceLabProjectError.invalidScope:
+            return "This change extends outside the selected scope. Choose a wider scope and try again. Your edits are saved."
         case VoiceLabGeometryError.insertionUnsupported: return "Inserting words isn't available yet. Your edits are saved."
         case VoiceLabGeometryError.roomToneUnavailable: return "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead."
         case is VoiceLabGeometryError: return "This change can't be placed in this take. Your edits are saved."

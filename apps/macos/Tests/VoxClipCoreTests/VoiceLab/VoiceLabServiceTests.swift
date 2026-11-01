@@ -217,11 +217,11 @@ struct VoiceLabServiceTests {
         _ = try await service.plan()
         let denied = OwnVoicePolicy(recordID: "record-1", recordActive: true, providerConsentGranted: false, statementVerified: true, speakerMatched: true)
         let deniedID = UUID()
-        do { _ = try await service.prepareClone(clone(), policy: denied, requestID: deniedID); Issue.record("Expected consent failure") }
+        do { _ = try await service.prepareEnrollmentClone(clone(), policy: denied, requestID: deniedID); Issue.record("Expected consent failure") }
         catch VoiceLabError.consentRequired {}
         #expect(calls.withLock { $0 }.count == 1)
         let createID = UUID()
-        let createQuote = try await service.prepareClone(clone(), policy: policy, requestID: createID)
+        let createQuote = try await service.prepareEnrollmentClone(clone(), policy: policy, requestID: createID)
         do { _ = try await service.createOwnClone(clone(trainingFill: 2), policy: policy, requestID: createID, authorization: approve(createQuote)); Issue.record("Expected sample binding") }
         catch VoiceLabError.consentRequired {}
         #expect(calls.withLock { $0 }.count == 1)
@@ -255,7 +255,7 @@ struct VoiceLabServiceTests {
         for code in [429, 403, 500] {
             status.withLock { $0 = code }
             let id = UUID()
-            let quote = try await service.prepareClone(clone("Mine"), policy: policy, requestID: id)
+            let quote = try await service.prepareEnrollmentClone(clone("Mine"), policy: policy, requestID: id)
             do { _ = try await service.createOwnClone(clone("Mine"), policy: policy, requestID: id, authorization: approve(quote)); Issue.record("Expected failure") }
             catch let error as VoiceLabError { #expect(error == (code == 429 ? .rateLimited : code == 403 ? .permissionMissing("create_instant_voice_clone") : .providerFailure(500))) }
         }
@@ -356,9 +356,11 @@ struct VoiceLabServiceTests {
         }
         #expect(try await service.plan().isNonCommercial)
         let id = UUID()
-        do { _ = try await service.prepareClone(clone("Mine"), policy: policy, requestID: id); Issue.record("Expected plan gate") }
+        let quote = try await service.prepareEnrollmentClone(clone("Mine"), policy: policy, requestID: id)
+        #expect(calls.withLock { $0 } == 1) // Preparing the final file set is local.
+        do { _ = try await service.validateCreationQuote(quote); Issue.record("Expected plan gate") }
         catch VoiceLabError.planUnavailable {}
-        #expect(calls.withLock { $0 } == 1)
+        #expect(calls.withLock { $0 } == 2)
         let task = Task {
             withUnsafeCurrentTask { $0?.cancel() }
             return try await service.models()
@@ -366,7 +368,7 @@ struct VoiceLabServiceTests {
         do { _ = try await task.value; Issue.record("Expected cancellation") }
         catch VoiceLabError.cancelled {}
         catch is CancellationError {}
-        #expect(calls.withLock { $0 } == 1)
+        #expect(calls.withLock { $0 } == 2)
     }
 
     @Test func sharedVoiceCategoryRightsBlockPaidCalls() async throws {

@@ -36,14 +36,20 @@ public actor VoiceOperationReconciler {
         while true {
             switch (value.kind, value.state) {
             case (.create, .intent):
+                if try await store.enrollmentRecovery(recordID: value.recordID) != nil {
+                    try await store.discardUnsentCreation(value.id)
+                    return // Create again is an in-app action; reconciliation never dispatches it.
+                }
                 value = try await store.transition(value.id, to: .withdrawing, at: now())
             case (.create, .dispatched):
+                try await store.clearEnrollmentRecovery(recordID: value.recordID)
                 value = try await store.preserveCreationAudit(value.id)
                 try await store.discardStatement(recordID: value.recordID)
                 try await store.discardUnresolvedDraft(value)
                 guard let remote = try await findRemote(value, force: force) else { return }
                 value = try await store.transition(value.id, to: .withdrawing, at: now(), remoteVoiceID: remote.id)
             case (.create, .created):
+                try await store.clearEnrollmentRecovery(recordID: value.recordID)
                 let draft = try? await store.load(value.recordID)
                 let audio = try? await store.statement(recordID: value.recordID)
                 let valid = draft?.status != .deleted && audio.map { VoiceLabFingerprint.bytes($0) == draft?.statement.audioSha256 } == true
@@ -54,6 +60,7 @@ public actor VoiceOperationReconciler {
                 try await store.saveCreatedRecord(value)
                 value = try await store.transition(value.id, to: .saved, at: now())
             case (.create, .withdrawing):
+                try await store.clearEnrollmentRecovery(recordID: value.recordID)
                 value = try await store.preserveCreationAudit(value.id)
                 try await store.discardStatement(recordID: value.recordID)
                 try await store.discardUnresolvedDraft(value)

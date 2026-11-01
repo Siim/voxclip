@@ -47,6 +47,7 @@ import xlocale
     @ObservationIgnored private var accepting = false
     @ObservationIgnored private var reviewedInputsCurrent = true
     private(set) var preparingQuote = false
+    @ObservationIgnored var validatePlacement: (@MainActor (VoiceLabWindow) throws -> Void) = { _ in }
     private(set) var quotePreparationFailed = false
     @ObservationIgnored private var quotedInput: VoiceLabTakeInput?
     #if DEBUG
@@ -182,6 +183,12 @@ import xlocale
             for row in rows where row.selectable && (row.fits || row.id == selected.id) &&
                 row.audio?.fit.plan.windowStart == selected.audio?.fit.plan.windowStart &&
                 row.audio?.fit.plan.windowEnd == selected.audio?.fit.plan.windowEnd {
+                // Fit may borrow silence and move a seam. Refuse changed geometry before publishing any asset.
+                guard let plan = row.audio?.fit.plan else { throw VoiceLabProjectError.invalidCandidate }
+                var window = input.window
+                window.start = plan.windowStart; window.end = plan.windowEnd
+                window.startSample = plan.windowStartSample; window.endSample = plan.windowEndSample
+                try editor.validateVoiceLabPlacement(window, localCommands: localCommands)
                 let published: VoiceLabPublishedTake, record: VoiceConsentRecord
                 #if DEBUG
                 if let publishForTests { (published, record) = try await publishForTests(row, input, date) }
@@ -278,6 +285,7 @@ import xlocale
         await cleanup?.value
         guard version == revision else { return }
         do {
+            try validatePlacement(input.window)
             let quote: VoiceLabTakeRunQuote
             #if DEBUG
             if let prepareForTests { quote = try await prepareForTests(input) }

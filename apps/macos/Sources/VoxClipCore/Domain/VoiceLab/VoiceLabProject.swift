@@ -288,22 +288,47 @@ public enum VoiceLabProject {
         return result
     }
 
-    /// Appends a reviewed v3 segment; v1 and segment-free v2 projects are upgraded first, so accept never writes v2.
+    /// A single take is the one-element form of atomic set acceptance.
     public static func accept(_ segment: VoiceLabSegment, assets: [VoiceLabAsset], into project: Project) throws -> Project {
+        try acceptAll([segment], assets: assets, into: project)
+    }
+
+    /// Appends the complete reviewed set before validation, including groups whose individual members cannot render alone.
+    /// The caller retains its original project on every failure. Assets already present are reconciled by the edit command.
+    public static func acceptAll(_ segments: [VoiceLabSegment], assets: [VoiceLabAsset], into project: Project) throws -> Project {
+        guard !segments.isEmpty else { throw VoiceLabProjectError.invalidSegment }
         var result = try project.schemaVersion == 3 ? project : upgradeToV3(project)
-        guard segment.candidates.indices.contains(segment.selectedCandidateIndex) else { throw VoiceLabProjectError.invalidCandidate }
         guard Set(assets.map(\.id)).count == assets.count,
               assets.allSatisfy({ asset in result.voiceLab.assets?.contains(where: { $0.id == asset.id }) == false }) else { throw VoiceLabProjectError.invalidAsset }
-        result.voiceLab.assets?.append(contentsOf: assets)
-        guard !result.voiceLab.segments.contains(where: { $0.id == segment.id }) else { throw VoiceLabProjectError.invalidSegment }
-        result.voiceLab.segments.append(segment)
-        // Every unrejected own-voice candidate is a new take, selected or not, so each needs an active consent reference (§6.10, §10.5).
-        for candidate in segment.candidates where candidate.rejected == nil {
-            guard let recipe = candidate.recipe, recipe.voiceSource == .own else { continue }
-            guard result.voiceLab.voices?.first(where: { $0.id == recipe.voiceRefId })?.status == .active else { throw VoiceLabProjectError.consentUnverified }
+        let ordered = segments.sorted { $0.replace.start < $1.replace.start }
+        for (index, segment) in ordered.enumerated() {
+            guard segment.candidates.indices.contains(segment.selectedCandidateIndex) else { throw VoiceLabProjectError.invalidCandidate }
+            if index > 0, segment.replace.start < ordered[index - 1].replace.end { throw VoiceLabProjectError.overlappingReplacement }
+            // Every unrejected own-voice candidate, selected or not, needs active consent (§6.10, §10.5).
+            for candidate in segment.candidates where candidate.rejected == nil {
+                guard let recipe = candidate.recipe, recipe.voiceSource == .own else { continue }
+                guard result.voiceLab.voices?.first(where: { $0.id == recipe.voiceRefId })?.status == .active else { throw VoiceLabProjectError.consentUnverified }
+            }
         }
+        result.voiceLab.assets?.append(contentsOf: assets)
+        result.voiceLab.segments.append(contentsOf: segments)
         try validate(result)
         return result
+    }
+
+    /// Validates the completed review in its output scope, including neighboring fades after cuts.
+    /// Stored replacements outside a clip remain valid, but every new take must be wholly inside that output.
+    public static func validate(_ project: Project, scope: VoiceLabOutputScope, accepting segments: [VoiceLabSegment] = []) throws {
+        let prepared = try VoiceLabRenderContract.prepare(project, scope: scope, labelPosition: .topRight)
+        let rendered = Set(prepared.selectedSegmentRecipes.map(\.segmentId))
+        guard segments.allSatisfy({ $0.enabled && rendered.contains($0.id) }) else { throw VoiceLabProjectError.invalidScope }
+        // Alternatives are also accepted paid takes. Check their scope seams against the completed selected set.
+        for segment in segments {
+            for index in segment.candidates.indices where index != segment.selectedCandidateIndex && segment.candidates[index].rejected == nil {
+                let alternate = try selectCandidate(index, id: segment.id, in: project)
+                _ = try VoiceLabRenderContract.prepare(alternate, scope: scope, labelPosition: .topRight)
+            }
+        }
     }
     /// Adds an own-voice consent reference (§6.8, §10.5). The project stores only IDs and the trimmed display name.
     public static func addVoiceReference(_ reference: VoiceLabVoiceReference, to project: Project) throws -> Project {

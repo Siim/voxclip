@@ -2,6 +2,7 @@
 import AVFoundation
 import Foundation
 import Testing
+import Synchronization
 @testable import VoxClipCore
 @_spi(Testing) @testable import VoxClipMedia
 @testable import VoxClip
@@ -158,6 +159,64 @@ import Testing
         #expect(VoiceLabSettings.createdDate("2026-10-26T12:00:00Z", shared: try SharedResources.locate()) == "26 October 2026")
         #expect(VoiceLabSettings.createdDate("invalid", shared: try SharedResources.locate()) == "Date unavailable")
     }
+    @Test(arguments: ["success", "mismatch", "cancel"])
+    func legacyVerifySendsUnderItsQuoteAndCreateDoesNotVerifyAgain(mode: String) async throws {
+        let mismatch = mode == "mismatch"
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString); defer { try? FileManager.default.removeItem(at: root) }
+        let store = VoiceConsentStore(locations: locations(root), fault: { step in
+            if mode == "cancel", step == .enrollmentVerified || step == .removeStatement { throw CocoaError(.fileWriteUnknown) }
+        })
+        let app = AppModel()
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.speakerModelLibrary.model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        app.speakerModelLibrary.installed = true
+        let session = VoiceLabSession(app: app, store: store)
+        let shared = try SharedResources.locate()
+        let fixture = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))
+        let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: fixture)
+        let statement = VoiceConsentStatement(language: record.statement.language, text: record.statement.text, nonce: record.statement.nonce)
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 16_000), rate: 16_000)
+        let response = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-scribe.json"))
+        let probe = LegacyEnrollmentProbe(mismatch: mismatch, response: response)
+        LegacyEnrollmentHTTP.probe.withLock { $0 = probe }
+        defer { LegacyEnrollmentHTTP.probe.withLock { $0 = nil } }
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [LegacyEnrollmentHTTP.self]
+        let client = ElevenLabsVoiceLab(keys: VoiceLabAppKeys(), session: URLSession(configuration: config), prices: try VoiceLabPriceCatalog.load(shared: shared))
+        let speaker = VoiceSpeakerCheck(embedder: LegacyEnrollmentEmbedder(probe: probe), calibratedThreshold: 0.8)
+        session.displayName = "Example"; session.ownVoice = true; session.adult = true; session.ownVideosOnly = true
+        session.stageVerificationForTests(statement: statement, wav: wav, client: client, speaker: speaker)
+        await session.request(.verify)?.value
+        #expect(session.confirmation == .verify)
+        #expect(probe.events.withLock { $0.isEmpty })
+        #expect(session.verificationCost.contains("0.01"))
+        await session.approve(.verify)
+        #expect(probe.events.withLock { $0 } == ["verify"])
+        if mismatch {
+            #expect(!session.verified && !session.hasStatementRecording && session.statement == nil)
+            #expect(session.message == VoiceConsentError.statementMismatch.localizedDescription)
+            #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(session.recordID)/statement.wav").path))
+        } else {
+            #expect(session.verified && session.message == VoiceLabSession.readAloudNextCopy)
+            let trainingWAV = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 15 * 16_000), rate: 16_000)
+            let samples = (0..<4).map { _ in VoiceTrainingSample(wav: trainingWAV, speech16k: [], seconds: 15, source: "readAloud", snrDb: 25) }
+            session.stageTrainingForTests(samples)
+            await session.prepareCreation()
+            #expect(session.confirmation == .create)
+            #expect(session.creationCost == "This action is free.")
+            await session.approve(.create)
+            let expected = mode == "cancel" ? ["verify"] : ["verify", "create"]
+            #expect(probe.events.withLock { $0.filter { $0 != "plan" } } == expected)
+            if mode == "cancel" {
+                let journal = store.root.appendingPathComponent("\(session.recordID)/enrollment.json")
+                #expect(FileManager.default.fileExists(atPath: journal.path))
+                await session.cancelEnrollment()
+                // Even if removing the statement fails, cancellation must already have cleared the journal.
+                #expect(!FileManager.default.fileExists(atPath: journal.path))
+            } else { #expect(session.records.count == 1 && !session.verified) }
+        }
+        session.stopRecovery()
+    }
+
     @Test func deletionNeverUsesTheDestructiveDefault() {
         #expect(VoiceLabSession.Request.delete("voice").defaultIsCancel)
         for request: VoiceLabSession.Request in [.subscription, .verify, .create] { #expect(!request.defaultIsCancel) }
@@ -616,6 +675,41 @@ import Testing
     func finished() async { if !done { await withCheckedContinuation { completion = $0 } } }
 }
 
+private final class LegacyEnrollmentProbe: Sendable {
+    let events = Mutex<[String]>([])
+    let embeddings = Mutex(0)
+    let mismatch: Bool; let response: Data
+    init(mismatch: Bool, response: Data) { self.mismatch = mismatch; self.response = response }
+}
+private struct LegacyEnrollmentEmbedder: SpeakerEmbedder {
+    let modelID = "fixture-calibrated"; let dimension = 2; let probe: LegacyEnrollmentProbe
+    func embed(_ pcm16k: [Float]) async throws -> [Float] { probe.embeddings.withLock { $0 += 1 }; return [1, 0] }
+}
+private final class LegacyEnrollmentHTTP: URLProtocol, @unchecked Sendable {
+    static let probe = Mutex<LegacyEnrollmentProbe?>(nil)
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard let probe = Self.probe.withLock({ $0 }) else { Issue.record("Missing enrollment probe"); return }
+        let data: Data
+        switch request.url!.path {
+        case "/v1/speech-to-text":
+            #expect(probe.embeddings.withLock { $0 } > 0)
+            probe.events.withLock { $0.append("verify") }
+            data = probe.mismatch ? Data(#"{"language_code":"eng","language_probability":1,"text":"wrong","words":[{"text":"wrong","type":"word","start":0,"end":1}]}"#.utf8) : probe.response
+        case "/v1/user/subscription":
+            probe.events.withLock { $0.append("plan") }
+            data = Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":1000,"can_use_instant_voice_cloning":true,"voice_slots_used":0,"voice_limit":3}"#.utf8)
+        case "/v1/voices/add":
+            probe.events.withLock { $0.append("create") }
+            data = Data(#"{"voice_id":"fixtureOwnVoice","requires_verification":false}"#.utf8)
+        default: Issue.record("Unexpected legacy enrollment request \(request.url!.path)"); data = Data()
+        }
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json", "request-id": "fixture-consent-response"])!, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
 private struct VoiceLabAppKeys: KeyProvider {
     func key(for provider: String) async throws -> String? { "synthetic-journal-ui-key" }
 }
