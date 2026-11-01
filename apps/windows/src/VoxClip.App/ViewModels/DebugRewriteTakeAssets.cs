@@ -29,9 +29,9 @@ internal sealed class DebugRewriteTakeAssets(VoiceLabTakeStorage storage)
                 window.StartSample, window.EndSample, frames, words);
             VoiceLabFitResult fit = changed ? new VoiceLabFitResult.ChangedDuration(plan, duration, 0.2) : new VoiceLabFitResult.Exact(plan);
             var fitted = VoiceLabSilenceFit.Prepare(snapshot, paid, fit, window, input.SourceSampleRate, ct);
-            var source = new float[checked((int)Math.Floor(input.Source.Length * (double)rate / input.SourceSampleRate + 0.5))];
-            var tone = VoiceLabRoomToneSelection.Select(input.Items, VoiceLabTakeProcessing.Envelope(input.Source, input.SourceSampleRate), input.SourceSampleRate, input.Source.Length);
-            var scratch = VoiceLabTakeRenderer.Stage(fitted, new(rate, samples, 0, tone, fit), input, source, storage.ScratchRoot, ct);
+            var source = new float[checked((int)Math.Floor(input.Source.TotalFrames * (double)rate / input.SourceSampleRate + 0.5))];
+            var tone = VoiceLabRoomToneSelection.Select(input.Items, input.SourceEnvelope, input.SourceSampleRate, input.Source.TotalFrames);
+            var scratch = VoiceLabTakeRenderer.Stage(fitted, new(rate, samples, 0, tone, fit), input, VoiceLabSourceExcerpt.Whole(source), storage.ScratchRoot, ct);
             var id = quote.Synthesis.Review.RequestId; rows.Add(id, (scratch, input, quote.Seed));
             var receipt = new VoiceLabReceipt("elevenlabs", ElevenLabsRegion.Default, "v1/text-to-speech/fixture-provider-voice/with-timestamps",
                 input.ModelId, "fixture-provider-voice", quote.Synthesis.Review.RequestId, "fixture", null);

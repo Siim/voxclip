@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 
 extension VoiceLabPriceCatalog {
     /// Reads `catalog/voice-lab.json` beneath the shared root; voice-lab §3.2.
@@ -30,7 +31,9 @@ public enum VoiceLabSpendWarning: Sendable, Equatable {
 /// §3.1. The App and CLI can record at the same time. A writer holds an exclusive `flock` on `spend.json.lock`, which is
 /// never deleted, while it reads, adds and replaces the file; a reader holds a shared one. The lock is polled with
 /// `Task.sleep`, so a busy ledger never blocks a thread, and these nonisolated async methods never run on the caller's
-/// actor. Only `EWOULDBLOCK` means another holder: any other failure is `writeFailed` at once.
+/// actor. Only `EWOULDBLOCK` means another holder: any other failure is `writeFailed` at once. Writers in one process
+/// try the lock in the order they asked for it (`VoiceLabSpendTurns`), so one that records again at once cannot keep
+/// another waiting until `lockTimeout`.
 ///
 /// The paid root is opened as the asset store opens it (`VoiceLabPaidRoot`): only `VoiceLab` itself is ever created,
 /// with mode 0700, never the data folder. Each write goes to a 0600 temporary file in the root, is flushed with
@@ -91,7 +94,11 @@ public struct VoiceLabSpendLedger: Sendable {
         let lock = Darwin.openat(root, lockName, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
         guard lock >= 0 else { return .writeFailed }
         defer { Darwin.close(lock) }
-        if let failure = await acquire(lock, LOCK_EX, waiting: lockTimeout) { return failure }
+        let turns = VoiceLabSpendTurns.shared(lock: directory.appendingPathComponent(lockName))
+        let turn = turns.join()
+        let failure = await acquire(lock, LOCK_EX, waiting: lockTimeout) { turns.isFirst(turn) }
+        turns.leave(turn)
+        if let failure { return failure }
         var warning: VoiceLabSpendWarning?
         document = VoiceLabSpendDocument()
         switch contents(in: root) {
@@ -122,16 +129,19 @@ public struct VoiceLabSpendLedger: Sendable {
     private var lockName: String { name + ".lock" }
 
     /// Polls a nonblocking `flock`, sleeping between attempts, so a busy lock costs at most `timeout` and never blocks
-    /// a thread. Nil once the lock is held.
-    private func acquire(_ lock: Int32, _ operation: Int32, waiting timeout: Duration) async -> VoiceLabSpendWarning? {
+    /// a thread. The lock is only tried while `mayTry` holds. Nil once the lock is held.
+    private func acquire(_ lock: Int32, _ operation: Int32, waiting timeout: Duration,
+                         mayTry: () -> Bool = { true }) async -> VoiceLabSpendWarning? {
         let deadline = ContinuousClock.now + timeout
-        // Unqualified: `Darwin.flock` names the fcntl lock struct, not the function.
-        while flock(lock, operation | LOCK_NB) != 0 {
-            guard errno == EWOULDBLOCK || errno == EINTR else { return .writeFailed }
+        while true {
+            if mayTry() {
+                // Unqualified: `Darwin.flock` names the fcntl lock struct, not the function.
+                if flock(lock, operation | LOCK_NB) == 0 { return nil }
+                guard errno == EWOULDBLOCK || errno == EINTR else { return .writeFailed }
+            }
             guard ContinuousClock.now < deadline else { return .lockTimedOut }
             do { try await Task.sleep(for: .milliseconds(10)) } catch { return .cancelled }
         }
-        return nil
     }
 
     private enum Contents { case missing, failed, bytes(Data) }
@@ -195,4 +205,40 @@ public struct VoiceLabSpendLedger: Sendable {
         }
         return nil
     }
+}
+
+/// The writers of one ledger in this process, in the order they asked for its lock. Only the first may try the
+/// `flock`; it leaves the line once it holds the lock or gives up. Without the line, a writer that released the lock and
+/// recorded again took it straight back, while another writer polling every 10 ms waited out `lockTimeout` behind a run
+/// of records and lost its own (voice-lab §3.1). Other processes still meet only at the `flock`.
+final class VoiceLabSpendTurns: Sendable {
+    private struct Line {
+        var next: UInt64 = 0
+        var waiting: [UInt64] = []
+    }
+    private static let ledgers = Mutex<[String: VoiceLabSpendTurns]>([:])
+    private let line = Mutex(Line())
+
+    static func shared(lock: URL) -> VoiceLabSpendTurns {
+        ledgers.withLock { ledgers in
+            let path = lock.standardizedFileURL.path
+            if let existing = ledgers[path] { return existing }
+            let turns = VoiceLabSpendTurns()
+            ledgers[path] = turns
+            return turns
+        }
+    }
+
+    func join() -> UInt64 {
+        line.withLock { line in
+            let turn = line.next
+            line.next += 1
+            line.waiting.append(turn)
+            return turn
+        }
+    }
+
+    func isFirst(_ turn: UInt64) -> Bool { line.withLock { $0.waiting.first == turn } }
+
+    func leave(_ turn: UInt64) { line.withLock { $0.waiting.removeAll { $0 == turn } } }
 }

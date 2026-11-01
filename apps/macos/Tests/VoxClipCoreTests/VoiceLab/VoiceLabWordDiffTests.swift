@@ -177,7 +177,7 @@ struct VoiceLabWordDiffTests {
         let events: [TimedWord] = (0..<vector.transcriptEvents).map { (index: Int) -> TimedWord in
             TimedWord(id: "e\(index)", text: "noise", kind: .event, start: 0, end: 0.1)
         }
-        let budget = VoiceLabPatchBudget.evaluate(diff: result, transcript: transcript + events)
+        let budget = VoiceLabPatchBudget.evaluate(hunks: result.hunks, transcript: transcript + events)
         let expected = try #require(vector.expected.budget)
         #expect(budget.voiceTokenCount == expected.voiceTokenCount)
         #expect(budget.wordItems == expected.wordItems)
@@ -190,7 +190,7 @@ struct VoiceLabWordDiffTests {
                                         outgoingSilence: 0.4, rate: 10, newWords: hunk.newTokens.joined(separator: " "))
         }
         let catalog = try VoiceLabPriceCatalog(data: FixtureLoader.data("catalog/voice-lab.json"))
-        let summary = try VoiceLabDiffSummary.make(diff: result, meters: meters, catalog: catalog, model: "eleven_v3", candidates: 3,
+        let summary = try VoiceLabDiffSummary.make(hunks: result.hunks, meters: meters, catalog: catalog, model: "eleven_v3", candidates: 3,
                                                   patchTexts: texts)
         let header = try #require(vector.expected.summary)
         #expect(summary.cutCount == header.cutCount)
@@ -199,9 +199,9 @@ struct VoiceLabWordDiffTests {
         #expect(summary.costEstimate?.units == header.costUnits)
         #expect(summary.costEstimate?.usd == header.usd.flatMap { Decimal(string: $0, locale: Locale(identifier: "en_US_POSIX")) })
         #expect(summary.copy == header.copy)
-        let noPrice = try VoiceLabDiffSummary.make(diff: result, meters: meters)
+        let noPrice = try VoiceLabDiffSummary.make(hunks: result.hunks, meters: meters)
         #expect(noPrice.costEstimate == nil)
-        let unknown = try VoiceLabDiffSummary.make(diff: result, meters: meters, catalog: catalog, model: "not-listed", patchTexts: texts)
+        let unknown = try VoiceLabDiffSummary.make(hunks: result.hunks, meters: meters, catalog: catalog, model: "not-listed", patchTexts: texts)
         #expect(unknown.costEstimate?.usd == nil)
         #expect(unknown.copy == noPrice.copy)
         if let cost = summary.costEstimate?.usd {
@@ -217,17 +217,17 @@ struct VoiceLabWordDiffTests {
             try VoiceLabWordDiff.diff(source: [TimedWord(id: "w", text: "old", start: .nan, end: 1)], newText: "new")
         }
         let diff = try VoiceLabWordDiff.diff(source: source, newText: "new")
-        #expect(throws: VoiceLabLengthBudgetError.invalidInput) { try VoiceLabDiffSummary.make(diff: diff, meters: []) }
+        #expect(throws: VoiceLabLengthBudgetError.invalidInput) { try VoiceLabDiffSummary.make(hunks: diff.hunks, meters: []) }
         let text = "left new right"
         let meter = try VoiceLabFitMeter.measure(text: text, window: labWindow(), incomingSilence: 0.4, outgoingSilence: 0.4,
                                                 rate: 10, newWords: "new", multipleHunks: true)
         #expect(meter.copy.hasPrefix("“new” · "))
         let catalog = try VoiceLabPriceCatalog(data: FixtureLoader.data("catalog/voice-lab.json"))
-        let summary = try VoiceLabDiffSummary.make(diff: diff, meters: [meter], catalog: catalog, model: "eleven_v3", patchTexts: [text])
+        let summary = try VoiceLabDiffSummary.make(hunks: diff.hunks, meters: [meter], catalog: catalog, model: "eleven_v3", patchTexts: [text])
         #expect(summary.costEstimate?.units == 14)
         #expect(summary.estimateSeconds == meter.estimateSeconds)
         #expect(throws: VoiceLabLengthBudgetError.invalidInput) {
-            try VoiceLabDiffSummary.make(diff: diff, meters: [meter], patchTexts: [])
+            try VoiceLabDiffSummary.make(hunks: diff.hunks, meters: [meter], patchTexts: [])
         }
     }
 }

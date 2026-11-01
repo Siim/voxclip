@@ -228,7 +228,7 @@ private struct MediaSheen: View {
 /// AVAssetImageGenerator. A black frame (mean luma under 0.06 with a deviation under
 /// 0.02 at 32×18) retries at +1 s, +3 s and 10% into the scope. Frames are kept by
 /// content key, time to 0.1 s and pixel size: in memory, and as a poster JPEG in the
-/// content key's cache entry, which cache eviction counts and removes with the entry.
+/// content key's cache entry, which cache eviction counts and strips in its first pass.
 actor ThumbnailCache {
     enum Result: Sendable { case frame(CGImage), black, unreadable }
     static let shared = ThumbnailCache()
@@ -244,6 +244,10 @@ actor ThumbnailCache {
         let box = CGSize(width: (2 * max(size.width, size.height * 16 / 9)).rounded(), height: (2 * max(size.height, size.width * 16 / 9)).rounded())
         let key = Key(contentKey: contentKey, tenths: Int((time * 10).rounded()), width: Int(box.width), height: Int(box.height))
         if let cached = images[key] { return .frame(cached) }
+        // Home's recent projects are not open, so the poster's entry is leased while it is read or written (architecture §8.2).
+        var lease: CacheKeyLease?
+        if let cache { lease = await CacheKeyRegistry.shared(cache: cache).lease(contentKey) }
+        defer { lease?.release() }
         let poster = Self.posterFolder(in: cache, contentKey: key.contentKey, create: false).map { Self.posterURL(in: $0, for: key) }
         if let poster, let image = Self.readPoster(poster) {
             remember(image, for: key)

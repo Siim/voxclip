@@ -106,7 +106,7 @@ public sealed class VoiceLabSilenceFitTests
         var tone = room ? new VoiceLabRoomTone(0, 24000, -6) : null;
         var input = new VoiceLabTakeInput("new words", "fixture", "fixture", "en", 7, "fixture", [], 48000, [], new HashSet<string>(), Window(row, hard), null, null, false, true);
         var analysis = new VoiceLabTakeAnalysis(24000, [], room ? -3 : 0, tone, fitted.Fit);
-        await using var scratch = VoiceLabTakeRenderer.Stage(fitted, analysis, input, source, storage.Root, TestContext.Current.CancellationToken);
+        await using var scratch = VoiceLabTakeRenderer.Stage(fitted, analysis, input, VoiceLabSourceExcerpt.Whole(source), storage.Root, TestContext.Current.CancellationToken);
         Assert.Equal(12000, scratch.Audio.PatchStart);
         Assert.Equal(16800, scratch.Audio.PatchEnd - scratch.Audio.PatchStart);
         Assert.Equal(2, scratch.Audio.Seams.Count);
@@ -122,6 +122,58 @@ public sealed class VoiceLabSilenceFitTests
             expected += background * (float)Math.Pow(10, -6.0 / 20);
         }
         Assert.Equal(expected, scratch.Audio.Mixed[scratch.Audio.PatchStart + relative], 7);
+    }
+    /// <summary>6 s of source at the asset rate, as ScratchMixUsesGainRoomLoopAndBothSeamLengths stages it. With regions, only the
+    /// room-tone run and 1 s around the window are held, as VoiceLabSourceAudio.RewriteSourceAsync keeps them.</summary>
+    private static VoiceLabSourceExcerpt StagingSource(VoiceLabWindow window, bool room, bool regions)
+    {
+        var source = Enumerable.Repeat(0.1f, 24000 * 6).ToArray();
+        if (room) for (var frame = 0; frame < 12000; frame++) source[frame] = frame / 12000f * 0.01f;
+        if (!regions) return VoiceLabSourceExcerpt.Whole(source);
+        var lower = (int)Math.Floor(window.Start * 24000 + 0.5) - 24000;
+        var upper = (int)Math.Floor(window.End * 24000 + 0.5) + 24000;
+        var run = new VoiceLabSourceExcerpt.Region(0, source.AsSpan(0, 12000));
+        var around = new VoiceLabSourceExcerpt.Region(lower, source.AsSpan(lower, upper - lower));
+        return new(source.Length, [around, run]);
+    }
+    private static async Task<VoiceLabTakeAudio> StagedAudio(JsonElement row, bool hard, bool room, bool regions)
+    {
+        using var storage = new Storage();
+        var fitted = await Prepare(row, storage.Root, hard);
+        var window = Window(row, hard);
+        var input = new VoiceLabTakeInput("new words", "fixture", "fixture", "en", 7, "fixture", [], 48000, [], new HashSet<string>(), window, null, null, false, true);
+        var analysis = new VoiceLabTakeAnalysis(24000, [], room ? -3 : 0, room ? new VoiceLabRoomTone(0, 24000, -6) : null, fitted.Fit);
+        await using var scratch = VoiceLabTakeRenderer.Stage(fitted, analysis, input, StagingSource(window, room, regions), storage.Root, TestContext.Current.CancellationToken);
+        return scratch.Audio;
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScratchFromSourceRegionsMatchesTheWholeSource(bool hard)
+    {
+        using var cases = Cases();
+        var row = cases.RootElement.GetProperty("cases")[1];
+        foreach (var room in new[] { false, true })
+        {
+            var expected = await StagedAudio(row, hard, room, regions: false);
+            var actual = await StagedAudio(row, hard, room, regions: true);
+            Assert.Equal(expected.Mixed, actual.Mixed);
+            Assert.Equal(expected.Seams, actual.Seams);
+            Assert.Equal((expected.PatchStart, expected.PatchEnd), (actual.PatchStart, actual.PatchEnd));
+        }
+    }
+    [Fact]
+    public async Task ScratchRefusesASourceExcerptWithoutTheWindow()
+    {
+        using var cases = Cases();
+        using var storage = new Storage();
+        var row = cases.RootElement.GetProperty("cases")[1];
+        var fitted = await Prepare(row, storage.Root);
+        await using var snapshot = fitted.Snapshot;
+        var input = new VoiceLabTakeInput("new words", "fixture", "fixture", "en", 7, "fixture", [], 48000, [], new HashSet<string>(), Window(row), null, null, true, true);
+        var excerpt = new VoiceLabSourceExcerpt(24000 * 6, [new VoiceLabSourceExcerpt.Region(0, Enumerable.Repeat(0.1f, 24000).ToArray())]);
+        Assert.Equal(VoiceLabErrorKind.InvalidAudio, Assert.Throws<VoiceLabException>(() => VoiceLabTakeRenderer.Stage(fitted,
+            new(24000, [], 0, null, fitted.Fit), input, excerpt, storage.Root, TestContext.Current.CancellationToken)).Kind);
     }
     [Fact]
     public async Task ConcurrentScratchAndSnapshotStopsAwaitTheSameConsumerTask()
@@ -146,7 +198,8 @@ public sealed class VoiceLabSilenceFitTests
         var row = cases.RootElement.GetProperty("cases")[1];
         var fitted = await Prepare(row, storage.Root);
         var input = new VoiceLabTakeInput("new words", "fixture", "fixture", "en", 7, "fixture", [], 48000, [], new HashSet<string>(), Window(row), null, null, true, true);
-        var scratch = VoiceLabTakeRenderer.Stage(fitted, new(24000, [], 0, null, fitted.Fit), input, Enumerable.Repeat(0.1f, 24000 * 6).ToArray(), storage.Root, TestContext.Current.CancellationToken);
+        var scratch = VoiceLabTakeRenderer.Stage(fitted, new(24000, [], 0, null, fitted.Fit), input,
+            VoiceLabSourceExcerpt.Whole(Enumerable.Repeat(0.1f, 24000 * 6).ToArray()), storage.Root, TestContext.Current.CancellationToken);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var second = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

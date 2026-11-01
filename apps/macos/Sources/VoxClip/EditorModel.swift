@@ -257,6 +257,20 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var exportTask: Task<Void, Never>?
     @ObservationIgnored var findTask: Task<Void, Never>?
     @ObservationIgnored private var initialised = false
+    /// This editor's lease on its project's cache entry, from `start` to `close` (architecture §8.2). Every editor holds
+    /// its own, so a Versions window showing the same project never releases or moves the main window's lease.
+    @ObservationIgnored private var cacheLease: CacheKeyLease?
+    @ObservationIgnored private var cacheLeaseEnded = false
+    /// The content key this editor holds in the cache, if any.
+    var cacheLeaseKey: String? { cacheLease?.key }
+    /// Leases the project's current content key at once and marks its entry used, releasing a different key held
+    /// before. Opening, a relink or its undo, and a reload of the document call it; after `close` it does nothing.
+    func holdCacheEntry() {
+        let key = project.media.source.contentKey
+        guard !cacheLeaseEnded, cacheLease?.key != key else { return }
+        cacheLease?.release()
+        cacheLease = app.leaseOpenProject(contentKey: key)
+    }
     /// Set by the shell's leave boundary: edits freeze, and late results cannot
     /// change a project that is leaving.
     var isLeaving = false { didSet { if isLeaving { closeRewrite(returnFocus: false) } } }
@@ -376,6 +390,7 @@ struct EditorRenderSnapshot {
         initialised = true
         await document.reportWarnings(to: app.log)
         app.openProjectKeys[project.id] = project.media.source.contentKey
+        holdCacheEntry()
         eventTask = Task { [weak self, preview] in
             for await event in preview.events {
                 guard let self, !Task.isCancelled else { return }
@@ -413,10 +428,14 @@ struct EditorRenderSnapshot {
         previewRevision &+= 1
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); preview.close()
         app.openProjectKeys[project.id] = nil
+        cacheLeaseEnded = true
+        cacheLease?.release(); cacheLease = nil
     }
     func reloadFromDocument(previousProjectID: String) {
         closeRewrite(returnFocus: false)
         app.openProjectKeys[previousProjectID] = nil
+        // The project stays open while its video is checked again, even if it is missing (architecture §8.2).
+        holdCacheEntry()
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); updateTask?.cancel()
         preview.pause(); isPlaying = false; previewStop = nil
         history = nil
@@ -566,6 +585,8 @@ struct EditorRenderSnapshot {
         #endif
         }
         document.replaceProject(changed)
+        // A relink, or its undo or redo, may change the content key: the lease moves with the project.
+        if mediaChanged { holdCacheEntry() }
         recordDocumentChange()
         error = nil
         refresh()
@@ -613,6 +634,7 @@ struct EditorRenderSnapshot {
         }
         mediaResolved = true
         app.openProjectKeys[project.id] = reference.contentKey
+        holdCacheEntry()
         return resolved
     }
     /// The relink flow for missing media (editing §10.3): choose the file, confirm a

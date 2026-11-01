@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A tiny assembly the Release boundary checker inspects in window-free mutation tests (VoxClip.Ui.Tests builds every
+       variant). BoundaryVariant=Clean is the approved baseline; each other variant injects one kind of violation. App and
+       AppPathMap compile the Clean sources as an x64 VoxClip.dll for the shipping check; AppPathMap also maps its PDB paths
+       away from the repository. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <BoundaryVariant Condition="'$(BoundaryVariant)' == ''">Clean</BoundaryVariant>
+    <DefineConstants>$(DefineConstants);BOUNDARY_$(BoundaryVariant.ToUpperInvariant())</DefineConstants>
+    <OutputPath>bin/$(BoundaryVariant)/</OutputPath>
+    <IntermediateOutputPath>obj/$(BoundaryVariant)/</IntermediateOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(BoundaryVariant)' == 'App' or '$(BoundaryVariant)' == 'AppPathMap'">
+    <AssemblyName>VoxClip</AssemblyName>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(BoundaryVariant)' == 'NestedLibraryImport'">
+    <!-- The LibraryImport generator requires unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(BoundaryVariant)' == 'AppPathMap'">
+    <PathMap>$(MSBuildProjectDirectory)=/src/</PathMap>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Fixture.cs" />
+    <None Include="Toolchain.generated.txt" />
+    <!-- The Observable, NestedObservable and GeneratedOuter variants use the [ObservableProperty] generator the App already references. -->
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+  <!-- Toolchain output is compiled from obj/, like the WinUI XAML compiler's .g.cs files. -->
+  <Target Name="EmitToolchainOutput" BeforeTargets="CoreCompile">
+    <Copy SourceFiles="Toolchain.generated.txt" DestinationFiles="$(IntermediateOutputPath)Toolchain.g.cs" SkipUnchangedFiles="true" />
+    <!-- The XAML file that the generated code's #line directives map to. -->
+    <WriteLinesToFile File="$(IntermediateOutputPath)RewritePanel.xaml" Lines="&lt;UserControl x:Class=&quot;VoxClip.App.Controls.RewritePanel&quot; /&gt;"
+                      Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)Toolchain.g.cs" />
+    </ItemGroup>
+  </Target>
+</Project>

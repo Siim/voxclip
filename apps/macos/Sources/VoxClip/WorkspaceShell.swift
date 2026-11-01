@@ -206,6 +206,8 @@ enum SidebarItem: Hashable {
                 // shows the system keep/delete prompt.
                 imported.markEdited()
                 await started?.value
+                // Keep the cache under its limit after each import, once the new project holds its lease (architecture §8.2).
+                app.requestCacheEviction()
             } catch is CancellationError {
             } catch { notice = await app.safeError(error) }
         }

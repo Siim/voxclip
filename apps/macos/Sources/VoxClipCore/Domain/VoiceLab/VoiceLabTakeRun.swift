@@ -65,13 +65,17 @@ public struct VoiceLabTakeRunQuote: Sendable, Equatable, Identifiable {
     public let estimate: CostEstimate
     package init(id: UUID, takes: [VoiceLabTakeQuote], preparedAt: Date) {
         self.id = id; self.takes = takes; self.preparedAt = preparedAt; expiresAt = preparedAt.addingTimeInterval(300)
-        let estimates = takes.flatMap { [$0.synthesis.estimate, $0.qa.estimate] }
+        estimate = Self.total(of: takes.flatMap { [$0.synthesis.estimate, $0.qa.estimate] }, takes: takes.count)
+    }
+    /// The sum of take quotes' estimates, `takes` units of "take": `usd` is unknown when any estimate's is, and so are
+    /// `credits`. A run and a take batch (`VoiceLabTakeBatch`) present their totals this way.
+    package static func total(of estimates: [CostEstimate], takes: Int) -> CostEstimate {
         let known = estimates.allSatisfy { $0.usd != nil }
         let creditsKnown = estimates.allSatisfy { $0.credits != nil }
-        estimate = CostEstimate(provider: "elevenlabs", operation: "takeRun", units: Double(takes.count), unit: "take",
-                                usd: known ? estimates.reduce(Decimal(0)) { $0 + ($1.usd ?? 0) } : nil,
-                                credits: creditsKnown ? estimates.reduce(0) { $0 + ($1.credits ?? 0) } : nil,
-                                basis: known ? "bounded-tts-and-scribe" : "unknown")
+        return CostEstimate(provider: "elevenlabs", operation: "takeRun", units: Double(takes), unit: "take",
+                            usd: known ? estimates.reduce(Decimal(0)) { $0 + ($1.usd ?? 0) } : nil,
+                            credits: creditsKnown ? estimates.reduce(0) { $0 + ($1.credits ?? 0) } : nil,
+                            basis: known ? "bounded-tts-and-scribe" : "unknown")
     }
 }
 
@@ -159,6 +163,9 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     public let seed: UInt32
     public let receipt: VoiceLabReceipt?
     public let qaReceipt: VoiceLabReceipt?
+    /// The take's request IDs the provider accepted: the 2xx status line arrived, which is when the spend ledger records
+    /// a request (voice-lab §3.1), even if the reply then failed and no receipt followed. Holds both receipts' IDs.
+    public let acceptedRequestIDs: Set<UUID>
     public let generated: VoiceLabAudioResult?
     public let quote: VoiceLabTakeQuote?
     public let audio: VoiceLabTakeAudio?
@@ -172,10 +179,12 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     }
     package init(id: UUID, index: Int, seed: UInt32, receipt: VoiceLabReceipt? = nil, audio: VoiceLabTakeAudio? = nil,
                  qa: VoiceLabTakeQAResult? = nil, score: Double? = nil, failure: VoiceLabTakeFailure? = nil,
-                 qaReceipt: VoiceLabReceipt? = nil, generated: VoiceLabAudioResult? = nil, quote: VoiceLabTakeQuote? = nil) {
+                 qaReceipt: VoiceLabReceipt? = nil, generated: VoiceLabAudioResult? = nil, quote: VoiceLabTakeQuote? = nil,
+                 accepted: Set<UUID> = []) {
         self.id = id; self.index = index; self.seed = seed; self.receipt = receipt; self.audio = audio
         self.qa = qa; self.score = score; self.failure = failure
         self.qaReceipt = qaReceipt; self.generated = generated; self.quote = quote
+        acceptedRequestIDs = accepted.union([receipt?.requestID, qaReceipt?.requestID].compactMap { $0 })
     }
 }
 public enum VoiceLabTakeRunEnd: String, Sendable, Equatable { case completed, earlyStop, cancelled, invalidated, fatal }

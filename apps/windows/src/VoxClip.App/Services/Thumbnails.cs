@@ -1,12 +1,14 @@
 using System.Globalization;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Services.Project;
 using VoxClip.Media.Thumbnails;
 
 namespace VoxClip.App.Services;
 
 /// <summary>Poster frames for Home tiles and sidebar rows (design §5.4.7). VoxClip's own decoder reads the scope's first
 /// kept word, skipping black frames, and the JPEG is kept in the source's content-key cache entry as
-/// <c>Cache/&lt;contentKey&gt;/thumbs/poster-&lt;t&gt;-&lt;px&gt;.jpg</c>, so cache eviction counts and removes it. When every
+/// <c>Cache/&lt;contentKey&gt;/thumbs/poster-&lt;t&gt;-&lt;px&gt;.jpg</c>, so cache eviction counts it and strips it in its first pass.
+/// Home's recent projects are not open, so the entry is leased while its poster is looked up or written (architecture §8.2). When every
 /// candidate is black, an empty <c>.none</c> file records that the caption card stands in. Decodes run off the UI thread,
 /// two at a time, and stop when cancelled. The Windows shell is never asked: it answers MKV and WEBM with a file-type icon.
 /// A cache entry that can't be written is a cache miss, reported to <paramref name="warn"/>, never an unreadable video.</summary>
@@ -24,6 +26,7 @@ internal sealed class Thumbnails(string cacheRoot, Action<string>? warn = null)
     public async Task<string?> GetAsync(string contentKey, string mediaPath, IReadOnlyList<double> candidates, int rotationDegrees, CancellationToken ct)
     {
         if (candidates.Count == 0 || PathFor(contentKey, candidates[0]) is not { } target) return null;
+        using var lease = await CacheKeyRegistry.Shared(cacheRoot).LeaseAsync(contentKey, ct).ConfigureAwait(false);
         var none = Path.ChangeExtension(target, ".none");
         if (File.Exists(target)) return target;
         if (File.Exists(none)) return null;

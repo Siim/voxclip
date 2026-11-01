@@ -41,27 +41,33 @@ public sealed class VoiceLabTakeScratch : IAsyncDisposable
 }
 public static class VoiceLabTakeRenderer
 {
+    /// <summary>The scratch mix of a take: the fitted take with its gain and room tone between the source's half-second lead and
+    /// tail, crossfaded into the source at each seam (§8.9). <paramref name="sourceAtAssetRate"/> is the source on the take's
+    /// sample grid; staging reads the lead, tail, seam handles and room-tone run at absolute frames and refuses an excerpt
+    /// that lacks them.</summary>
     public static VoiceLabTakeScratch Stage(VoiceLabFittedAudio fitted, VoiceLabTakeAnalysis analysis, VoiceLabTakeInput input,
-        float[] sourceAtAssetRate, string scratchRoot, CancellationToken ct = default)
+        VoiceLabSourceExcerpt sourceAtAssetRate, string scratchRoot, CancellationToken ct = default)
     {
         var plan = fitted.Fit.Plan;
         var rate = fitted.Snapshot.SampleRate;
-        int Frames(double seconds) => checked((int)Math.Floor(seconds * rate + 0.5));
+        long Frames(double seconds) => checked((long)Math.Floor(seconds * rate + 0.5));
         var start = Frames(plan.WindowStart);
         var end = Frames(plan.WindowEnd);
         var length = checked((int)plan.OutputFrames);
         var source = sourceAtAssetRate;
-        if (!fitted.Snapshot.IsValid || start < 0 || end <= start || end > source.Length || source.Any(sample => !float.IsFinite(sample))) throw Invalid();
-        var lead = Math.Min(rate / 2, start);
-        var tail = Math.Min(rate / 2, source.Length - end);
+        var total = source.TotalFrames;
+        if (!fitted.Snapshot.IsValid || start < 0 || end <= start || end > total || !source.IsFinite) throw Invalid();
+        var lead = (int)Math.Min(rate / 2, start);
+        var tail = (int)Math.Min(rate / 2, total - end);
         if ((long)lead + length + tail > (long)VoiceLabTakeProcessing.MaximumQaSeconds * rate) throw Invalid();
+        var loop = (int)Frames(0.05);
         float[] tone = [];
         if (analysis.RoomTone is { } room)
         {
             var lower = Frames(room.SourceStartSample / (double)input.SourceSampleRate);
             var upper = Frames(room.SourceEndSample / (double)input.SourceSampleRate);
-            if (lower < 0 || upper <= lower || upper > source.Length || upper - lower <= Frames(0.05)) throw Invalid();
-            tone = source[lower..upper].SelectMany(sample => new[] { sample, sample }).ToArray();
+            if (lower < 0 || upper <= lower || upper - lower <= loop || source.Samples(lower, upper) is not { } run) throw Invalid();
+            tone = run.ToArray().SelectMany(sample => new[] { sample, sample }).ToArray();
         }
         var gain = (float)Math.Pow(10, analysis.GainDb / 20);
         var toneGain = (float)Math.Pow(10, (analysis.RoomTone?.GainDb ?? 0) / 20);
@@ -71,31 +77,33 @@ public static class VoiceLabTakeRenderer
             if (frame < 0 || frame >= fitted.Wave.Frames) throw Invalid();
             float sample = 0;
             for (var channel = 0; channel < fitted.Wave.Channels; channel++) sample += (float)fitted.Wave.Sample(frame, channel) / fitted.Wave.Channels;
-            var background = tone.Length == 0 ? 0 : VoiceLabAudioMixer.RoomToneSample(tone, relative, 0, Frames(0.05)) * toneGain;
+            var background = tone.Length == 0 ? 0 : VoiceLabAudioMixer.RoomToneSample(tone, relative, 0, loop) * toneGain;
             return sample * gain + background;
         }
+        if (source.Samples(start - lead, start) is not { } leading || source.Samples(end, end + tail) is not { } trailing) throw Invalid();
         var mixed = new float[lead + length + tail];
-        source.AsSpan(start - lead, lead).CopyTo(mixed);
+        leading.Span.CopyTo(mixed);
         for (var relative = 0; relative < length; relative++)
         {
             if ((relative & 4095) == 0) ct.ThrowIfCancellationRequested();
             mixed[lead + relative] = Signal(relative);
         }
-        source.AsSpan(end, tail).CopyTo(mixed.AsSpan(lead + length));
+        trailing.Span.CopyTo(mixed.AsSpan(lead + length));
         var seams = new List<int>();
         foreach (var incoming in new[] { true, false })
         {
             var placement = incoming ? input.Window.LeftSeam : input.Window.RightSeam;
             if (placement.Kind == VoiceLabSeamKind.None) continue;
-            var count = Frames(placement.FadeSamples / (double)input.SourceSampleRate);
+            var count = checked((int)Frames(placement.FadeSamples / (double)input.SourceSampleRate));
             var before = count / 2;
             var seam = lead + (incoming ? 0 : length);
             var sourceSeam = incoming ? start : end;
-            if (count < 2 || seam < before || seam + count - before > mixed.Length || sourceSeam < before || sourceSeam + count - before > source.Length) throw Invalid();
+            if (count < 2 || seam < before || seam + count - before > mixed.Length || sourceSeam < before ||
+                source.Samples(sourceSeam - before, sourceSeam + count - before) is not { } handle) throw Invalid();
             for (var offset = 0; offset < count; offset++)
             {
                 var local = offset - before;
-                var original = source[sourceSeam + local];
+                var original = handle.Span[offset];
                 var synthetic = Signal((incoming ? 0 : length) + local);
                 var phase = offset / (double)(count - 1);
                 var left = incoming ? original : synthetic;

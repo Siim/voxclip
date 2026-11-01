@@ -11,7 +11,7 @@ internal sealed record VoiceLabTakeRunChecks(Action<VoiceConsentRecord> Validate
 public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
 {
     private sealed record Pending(VoiceLabTakeRunQuote Quote, VoiceLabTakeInput Input, VoiceConsentRecord Record,
-        VoiceLabTakePreflight Preflight, float[] Source, float[] Speech, long ModelRevision, long Revision, VoiceLabDispatchBinding Binding,
+        VoiceLabTakePreflight Preflight, VoiceLabSourceExcerpt Source, float[] Speech, long ModelRevision, long Revision, VoiceLabDispatchBinding Binding,
         VoiceLabDispatchBinding AcceptanceBinding);
     private readonly object sync = new();
     private readonly ElevenLabsVoiceLab client;
@@ -82,13 +82,15 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             if (!await inputsAreCurrent(ct).ConfigureAwait(false)) throw new VoiceLabRunInvalidatedException();
             Check(version, binding, ct);
             var preflight = VoiceLabTakeProcessing.Preflight(snapshot);
-            var source = await Task.Run(() => VoiceConsentAudio.Resample(snapshot.Source, snapshot.SourceSampleRate, 24000), ct).ConfigureAwait(false);
+            // Each region is resampled on the whole track's 24 kHz grid, where staging reads it.
+            var source = await Task.Run(() => VoiceLabSourceAudio.Resample(snapshot.Source, snapshot.SourceSampleRate, VoiceLabSourceAudio.TakeAssetRate), ct).ConfigureAwait(false);
             Check(version, binding, ct);
             var rate = snapshot.SourceSampleRate;
             var center = (snapshot.Window.StartSample + snapshot.Window.EndSample) / 2;
-            var start = (int)Math.Max(0, center - 5L * rate);
-            var end = Math.Min(snapshot.Source.Length, start + 10 * rate);
-            var speech = VoiceConsentAudio.Resample(snapshot.Source.AsSpan(start, end - start), rate, 16000);
+            var start = Math.Max(0, center - 5L * rate);
+            var end = Math.Min(snapshot.Source.TotalFrames, start + 10L * rate);
+            var span = snapshot.Source.Samples(start, end) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+            var speech = VoiceConsentAudio.Resample(span.Span, rate, 16000);
             var model = client.ModelRevision;
             for (var index = 0; index < 3; index++)
             {

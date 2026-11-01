@@ -44,6 +44,13 @@ internal sealed class AppServices : IAsyncDisposable
     /// <summary>Home and sidebar poster frames in each source's content-key cache entry (design §5.4.7).</summary>
     internal Thumbnails Thumbnails { get; }
     internal Waveform Waveform { get; }
+    /// <summary>The data folder's cache entries (architecture §8.2), shared by extraction, editors and eviction.</summary>
+    internal CacheIndex Cache { get; }
+    /// <summary>The content keys in use in the cache, across every window: open projects, extraction, transcription and
+    /// language detection, waveform reads and thumbnail posters (architecture §8.2).</summary>
+    internal CacheKeyRegistry CacheKeys => Cache.Keys;
+    /// <summary>Background eviction under the cache size limit, Clear cache and Clear everything (architecture §8.2).</summary>
+    internal CacheUpkeep CacheUpkeep { get; }
     /// <summary>Caption cards for media with no frame (design §5.4); null when the caption resources are missing.</summary>
     internal CaptionCards? Cards { get; private set; }
     internal string? SharedRoot { get; private set; }
@@ -160,6 +167,11 @@ internal sealed class AppServices : IAsyncDisposable
         Updates = new UpdateChecker(new VelopackUpdates(this));
         Thumbnails = new(Data.Cache, message => Log.Write(LogLevel.Warn, "thumbnails", message));
         Waveform = new(Audio, Data.Cache);
+        Cache = new(Data.Cache);
+        CacheUpkeep = new(new CacheEvictionScheduler(Cache, () => CacheUpkeep.LimitBytes(Settings), message => Log.Write(LogLevel.Warn, "cache", message)),
+            () => Settings);
+        // A lower cache limit is enforced at once (architecture §8.2).
+        settingsWrites.Changed += key => CacheUpkeep.SettingChanged(key);
         ExportLedger = new(Path.Combine(Data.Root, "exports.json"));
     }
 
@@ -173,6 +185,8 @@ internal sealed class AppServices : IAsyncDisposable
         if (SharedRoot is not null) Cards = new(SharedRoot);
         try { settingsWrites.Initialize(await SettingsStore.LoadAsync(ct)); }
         catch (Exception exception) { StartupNotice = UiError.Message(exception, "Settings"); }
+        // The cache size limit is kept in the background, first 30 s after launch (architecture §8.2).
+        CacheUpkeep.Started();
         localSpeech = new WhisperNetTranscriber(Models, Downloads, Data.Root, Log);
         ConfigureCloudSpeech();
         ClipFinder = new ClipFinder(new LlmCatalog(), Keys, new Redactor(), id => Connector(id));
@@ -195,8 +209,13 @@ internal sealed class AppServices : IAsyncDisposable
     internal void NotifyModelsChanged() => ModelsChanged?.Invoke(this, EventArgs.Empty);
 
     /// <summary>Detect the spoken language with an installed multilingual model before routing; transcription §9.8 and §11.2.</summary>
-    internal Task<(string Language, double Probability)> DetectLanguageAsync(VoxClip.Core.Domain.Transcript.TranscriptionRequest request, CancellationToken ct) =>
-        (localSpeech ?? throw new InvalidOperationException("Local transcription is not ready.")).DetectLanguageAsync(request, ct);
+    internal async Task<(string Language, double Probability)> DetectLanguageAsync(VoxClip.Core.Domain.Transcript.TranscriptionRequest request, CancellationToken ct)
+    {
+        var speech = localSpeech ?? throw new InvalidOperationException("Local transcription is not ready.");
+        // Detection reads the source's cache entry, so eviction leaves it alone meanwhile (architecture §8.2).
+        using var lease = await CacheKeys.LeaseAsync(request.ContentKey, ct);
+        return await speech.DetectLanguageAsync(request, ct);
+    }
 
     internal T Get<T>(string key, T fallback)
     {

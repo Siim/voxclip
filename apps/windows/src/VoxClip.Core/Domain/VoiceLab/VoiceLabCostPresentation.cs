@@ -43,13 +43,29 @@ public static class VoiceLabCostPresentation
     public static VoiceLabCostPresentationResult Kind(CostEstimate estimate, bool isLipSync, string providerName, VoiceLabMonthlyCap? cap = null)
     {
         ArgumentNullException.ThrowIfNull(estimate);
-        if (estimate.Usd is not { } usd) return new(VoiceLabCostPresentationKind.Confirm, "VoxClip can't tell what this costs. Check " + providerName + "'s pricing.");
+        if (estimate.Usd is not { } usd) return new(VoiceLabCostPresentationKind.Confirm, UnknownPrice(providerName));
         if (usd == 0 && !isLipSync) return new(VoiceLabCostPresentationKind.Inline, "");
         var crossing = cap?.IsCrossedBy(estimate) == true;
         if (usd < InlineLimit && !isLipSync && !crossing) return new(VoiceLabCostPresentationKind.Inline, Format(usd));
         var sentence = "This will cost " + (usd < Cent ? "less than $0.01" : "about " + Amount(usd)) + " on your " + providerName + " account.";
         return new(VoiceLabCostPresentationKind.Confirm, crossing ? sentence + " " + CapWarning(cap!.Limit, providerName) : sentence);
     }
+
+    /// <summary>An LLM send (<c>voiceRewrite</c>, <c>patchRewrite</c>) by who pays for it; Voice Lab §3.1 as amended by the user's
+    /// decision of 2026-10-31. A CLI signed in on a plan, Ollama and LM Studio (on this PC or another host) and Apple on-device cost
+    /// nothing extra: inline with no amount, so the send starts at once. An API-key connector, a CLI signed in with an API key, and a
+    /// CLI whose sign-in is unknown confirm every send with the unknown-price sentence. An LLM send never has a known price (§3.1),
+    /// so the estimate is not an input. <paramref name="signIn"/> is read only for the two CLI connectors.
+    /// <paramref name="providerName"/> names whose pricing to check, such as "Anthropic" or "OpenAI".</summary>
+    public static VoiceLabCostPresentationResult KindForLlmSend(ConnectorId connector, CliSignIn? signIn, string providerName)
+    {
+        var free = connector is ConnectorId.Ollama or ConnectorId.LmStudio or ConnectorId.AppleFoundation ||
+            (connector is ConnectorId.ClaudeCode or ConnectorId.Codex && signIn == CliSignIn.Plan);
+        return free ? new(VoiceLabCostPresentationKind.Inline, "") : new(VoiceLabCostPresentationKind.Confirm, UnknownPrice(providerName));
+    }
+
+    /// <summary>The confirmation for an action whose price VoxClip can't know.</summary>
+    private static string UnknownPrice(string providerName) => "VoxClip can't tell what this costs. Check " + providerName + "'s pricing.";
 
     /// <summary>"&lt; $0.01" below a cent. Otherwise two significant digits, rounded half away from zero but never finer than a cent,
     /// with two decimals below $10 and none from $10: "≈ $0.36", "≈ $1.20", "≈ $12", "≈ $1,000".</summary>

@@ -83,6 +83,65 @@ import VoxClipCore
                                                total: 8_000 * 60, rate: 8_000) == 192_000..<296_000)
     }
 
+    private struct RegionVectors: Decodable {
+        struct Near: Decodable {
+            let id: String
+            let rate: Int
+            let totalFrames: Int
+            let startSample: Int64
+            let endSample: Int64
+            let leftSeam: VoiceLabSeamKind
+            let rightSeam: VoiceLabSeamKind
+            let incomingSilence: Double?
+            let outgoingSilence: Double?
+            let expected: [Int]
+        }
+        struct Aligned: Decodable { let rate: Int; let lower: Int; let upper: Int; let totalFrames: Int; let expected: [Int] }
+        struct Merged: Decodable { let ranges: [[Int]]; let expected: [[Int]] }
+        struct Chunk: Decodable { let rate: Int; let expected: Int }
+        let schema: String
+        let takeAssetRate: Int
+        let nearWindow: [Near]
+        let aligned: [Aligned]
+        let merged: [Merged]
+        let decodeChunkFrames: [Chunk]
+    }
+
+    /// The region selection the Windows port replays too (shared/fixtures/voice-lab/rewrite-source-regions.json).
+    @Test func regionSelectionReplaysTheSharedVectors() throws {
+        let vectors = try JSONDecoder().decode(RegionVectors.self, from: FixtureLoader.data("fixtures/voice-lab/rewrite-source-regions.json"))
+        #expect(vectors.schema == "voxclip-voice-lab-rewrite-source-regions/1")
+        #expect(vectors.takeAssetRate == VoiceLabSourceAudio.takeAssetRate)
+        #expect(vectors.nearWindow.count == 11)
+        #expect(vectors.aligned.count == 7)
+        #expect(vectors.merged.count == 5)
+        #expect(vectors.decodeChunkFrames.count == 12)
+        for row in vectors.nearWindow {
+            let start: Double = Double(row.startSample) / Double(row.rate)
+            let end: Double = Double(row.endSample) / Double(row.rate)
+            let fade: Int64 = Int64(row.rate / 50)
+            let left = VoiceLabSeamPlacement(kind: row.leftSeam, time: start, sample: row.startSample, fadeSamples: fade)
+            let right = VoiceLabSeamPlacement(kind: row.rightSeam, time: end, sample: row.endSample, fadeSamples: fade)
+            let window = VoiceLabWindow(firstWordId: "w", lastWordId: "w", leftBridgeWordIds: [], rightBridgeWordIds: [], start: start, end: end,
+                                        startSample: row.startSample, endSample: row.endSample, leftSeam: left, rightSeam: right)
+            let range: Range<Int> = VoiceLabSourceAudio.nearWindow(window, incomingSilence: row.incomingSilence, outgoingSilence: row.outgoingSilence,
+                                                                   total: row.totalFrames, rate: row.rate)
+            #expect([range.lowerBound, range.upperBound] == row.expected, Comment(rawValue: row.id))
+        }
+        for row in vectors.aligned {
+            let range: Range<Int> = VoiceLabSourceAudio.aligned(row.lower, row.upper, total: row.totalFrames, rate: row.rate)
+            #expect([range.lowerBound, range.upperBound] == row.expected)
+        }
+        for row in vectors.merged {
+            let ranges: [Range<Int>] = row.ranges.map { pair in pair[0]..<pair[1] }
+            let joined: [[Int]] = VoiceLabSourceAudio.merged(ranges).map { range in [range.lowerBound, range.upperBound] }
+            #expect(joined == row.expected)
+        }
+        for row in vectors.decodeChunkFrames {
+            #expect(VoiceLabSourceAudio.decodeChunkFrames(sampleRate: row.rate) == row.expected)
+        }
+    }
+
     /// A take 7 s too long for a 1 s window borrows 7 s of the 8 s silence before its gap seam (§8.9.2), and staging reads
     /// the half second before the widened window and the seam handle at its start. The window's region used to reach only
     /// 6 s before the window, so staging found no samples there and refused the take after it was paid for.

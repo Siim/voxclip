@@ -183,7 +183,9 @@ public sealed class VoiceLabSpendLedger
     }
 
     /// <summary>Polls the lock so a busy ledger costs at most <paramref name="timeout"/>, never a hang. A reader finds no lock file before
-    /// the first write and then reads without it (null held, null failure).</summary>
+    /// the first write and then reads without it (null held, null failure). Writers of one ledger in this process try the lock in the
+    /// order they asked for it (<see cref="VoiceLabSpendTurns"/>), so one that records again at once cannot keep another waiting until
+    /// <see cref="LockTimeout"/>, as the Mac ledger does since 20eee7aa.</summary>
     private async Task<(FileStream? Held, VoiceLabSpendWarningKind? Failure)> AcquireAsync(bool shared, TimeSpan timeout, CancellationToken ct)
     {
         var options = shared
@@ -191,21 +193,29 @@ public sealed class VoiceLabSpendLedger
             : new FileStreamOptions { Mode = FileMode.OpenOrCreate, Access = FileAccess.ReadWrite, Share = FileShare.None };
         if (!shared && !OperatingSystem.IsWindows()) options.UnixCreateMode = Private;
         var watch = Stopwatch.StartNew();
-        while (true)
+        // Writers in this process try the lock in the order they asked for it; readers do not queue.
+        var turns = shared ? null : VoiceLabSpendTurns.Shared(FilePath + ".lock");
+        var turn = turns?.Join() ?? 0;
+        try
         {
-            try { return (new FileStream(FilePath + ".lock", options), null); }
-            catch (IOException exception) when (IsContention(exception))
+            while (true)
             {
+                if (turns is null || turns.IsFirst(turn))
+                {
+                    try { return (new FileStream(FilePath + ".lock", options), null); }
+                    catch (IOException exception) when (IsContention(exception)) { }
+                    catch (FileNotFoundException) when (shared) { return (null, null); }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        return (null, VoiceLabSpendWarningKind.WriteFailed);
+                    }
+                }
                 if (watch.Elapsed >= timeout) return (null, VoiceLabSpendWarningKind.LockTimedOut);
                 try { await Task.Delay(10, ct).ConfigureAwait(false); }
                 catch (OperationCanceledException) { return (null, VoiceLabSpendWarningKind.Cancelled); }
             }
-            catch (FileNotFoundException) when (shared) { return (null, null); }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                return (null, VoiceLabSpendWarningKind.WriteFailed);
-            }
         }
+        finally { turns?.Leave(turn); }
     }
 
     /// <summary>A sharing or lock violation on Windows (HResult 32 or 33), or the <c>EWOULDBLOCK</c> that .NET raises elsewhere for a held
@@ -252,4 +262,44 @@ public sealed class VoiceLabSpendLedger
         }
         return null;
     }
+}
+
+/// <summary>The writers of one ledger in this process, in the order they asked for its lock. Only the first may try the lock file;
+/// it leaves the line once it holds the lock or gives up. Without the line, a writer that released the lock and recorded again took it
+/// straight back, while another writer polling every 10 ms waited out <see cref="VoiceLabSpendLedger.LockTimeout"/> behind a run of
+/// records and lost its own (Voice Lab §3.1). Other processes still meet only at the lock file.</summary>
+internal sealed class VoiceLabSpendTurns
+{
+    private static readonly Dictionary<string, VoiceLabSpendTurns> Ledgers =
+        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private readonly object sync = new();
+    private readonly List<long> waiting = [];
+    private long next;
+
+    /// <summary>The line for the lock file at <paramref name="lockPath"/>, the same for every ledger instance in this process.</summary>
+    internal static VoiceLabSpendTurns Shared(string lockPath)
+    {
+        var path = Path.GetFullPath(lockPath);
+        lock (Ledgers)
+        {
+            if (Ledgers.TryGetValue(path, out var existing)) return existing;
+            var turns = new VoiceLabSpendTurns();
+            Ledgers[path] = turns;
+            return turns;
+        }
+    }
+
+    internal long Join()
+    {
+        lock (sync)
+        {
+            var turn = next++;
+            waiting.Add(turn);
+            return turn;
+        }
+    }
+
+    internal bool IsFirst(long turn) { lock (sync) return waiting.Count > 0 && waiting[0] == turn; }
+
+    internal void Leave(long turn) { lock (sync) waiting.Remove(turn); }
 }

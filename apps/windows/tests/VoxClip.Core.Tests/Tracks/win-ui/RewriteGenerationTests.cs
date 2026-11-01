@@ -2,13 +2,12 @@
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
-using Xunit;
-#if DEBUG
-using System.Buffers.Binary;
-using VoxClip.App.Services;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
+using Xunit;
+#if DEBUG
+using VoxClip.App.Services;
 #endif
 
 namespace VoxClip.Core.Tests.Tracks.WinUi;
@@ -45,6 +44,51 @@ public sealed class RewriteGenerationTests
             RewriteSession.Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.RoomToneUnavailable)));
         foreach (var error in new Exception[] { new VoiceLabGeometryException(VoiceLabGeometryErrorCode.NoVoicedAudio), new VoiceLabAudioMathException(VoiceLabAudioMathErrorCode.NoVoicedAudio) })
             Assert.Equal("There isn't enough timed speech to estimate this change. Your edits are saved.", RewriteSession.Refusal(error));
+    }
+    [Fact]
+    public void SourceAudioRefusalsSayWhatWentWrong()
+    {
+        // As on the Mac (RewriteSession.refusal): the source-audio error's own text, not "Rewrite stopped…".
+        Assert.Equal("The audio cannot be read. Check that the file is still available. Your edits are saved.",
+            RewriteSession.Refusal(new VoxClip.Media.VoiceLab.VoiceLabSourceAudioException(VoxClip.Media.VoiceLab.VoiceLabSourceAudioErrorCode.Unreadable)));
+        Assert.Equal("The source audio's sample rate differs from the project. Reopen the original source. Your edits are saved.",
+            RewriteSession.Refusal(new VoxClip.Media.VoiceLab.VoiceLabSourceAudioException(VoxClip.Media.VoiceLab.VoiceLabSourceAudioErrorCode.RateMismatch)));
+        Assert.Equal("This audio's sample rate is outside the range Voice Lab supports. Your edits are saved.",
+            RewriteSession.Refusal(new VoxClip.Media.VoiceLab.VoiceLabSourceAudioException(VoxClip.Media.VoiceLab.VoiceLabSourceAudioErrorCode.UnsupportedRate)));
+    }
+    /// <summary>The Editor's reader hands each request field to Media's decode in its place. A long incoming silence the decode
+    /// did not reach would leave staging nothing to read before the widened window, and the take would be refused after it was
+    /// paid for (Mac d4dfef26).</summary>
+    [Fact]
+    public async Task SourceReaderHandsEachRequestFieldToTheDecodeInItsPlace()
+    {
+        var window = new VoiceLabWindow("w10", "w12", [], [], 11, 13.4, 528_000, 643_200,
+            new(VoiceLabSeamKind.Gap, 11, 528_000, 960), new(VoiceLabSeamKind.Gap, 13.4, 643_200, 960));
+        TimedWord[] items = [new("w10", "word10", WordKind.Word, 11, 11.4, null, null, 1, null, TimingSource.Native)];
+        var request = new RewriteSourceRequest(4_800_000, 48_000, window, 7.5, 0.25, items);
+        var read = (VoiceLabSourceExcerpt.Whole([0.1f]), new AudioEnvelope(48_000, 0.01, []));
+        var path = "first.mov";
+        var seen = new List<object?>();
+        var reader = RewriteSourceRequest.Reader(() => path, (source, frames, rate, decoded, incoming, outgoing, words, ct) =>
+        {
+            seen.AddRange([source, frames, rate, decoded, incoming, outgoing, words, ct]);
+            return Task.FromResult(read);
+        });
+        // The path is read with the request, so a relinked source is the one decoded.
+        path = "relinked.mov";
+        using var cancel = new CancellationTokenSource();
+        var result = await reader(request, cancel.Token);
+        Assert.Same(read.Item1, result.Excerpt); Assert.Same(read.Item2, result.Envelope);
+        Assert.Equal(new object?[] { "relinked.mov", 4_800_000L, 48_000, window, 7.5, 0.25, items, cancel.Token }, seen);
+        Assert.Same(window, seen[3]); Assert.Same(items, seen[6]);
+        // The Editor passes Media's decode as a method group, which binds by position. The decoder's parameters are
+        // RewriteSourceAsync's, by name and type in order, so the two silences cannot change places on the way.
+        static (string?, Type)[] Parameters(System.Reflection.MethodInfo method) =>
+            method.GetParameters().Select(parameter => (parameter.Name, parameter.ParameterType)).ToArray();
+        Assert.Equal(Parameters(typeof(VoxClip.Media.VoiceLab.VoiceLabSourceAudio).GetMethod(nameof(VoxClip.Media.VoiceLab.VoiceLabSourceAudio.RewriteSourceAsync))!),
+            Parameters(typeof(RewriteSourceDecoder).GetMethod(nameof(RewriteSourceDecoder.Invoke))!));
+        Assert.Contains("var readSource = RewriteSourceRequest.Reader(() => media?.Path ?? \"\", VoiceLabSourceAudio.RewriteSourceAsync);",
+            Source("Pages/EditorPage.xaml.cs"));
     }
 #if DEBUG
     private static string Fixture => Path.Combine(SharedResources.ResolveRoot(), "fixtures", "voice-lab", "take-run-cases.json");
@@ -599,46 +643,45 @@ public sealed class RewriteGenerationTests
         Assert.Equal(count + 3, test.Runner.Preparations); Assert.Equal(0, test.Runner.PaidRequests);
     }
     [Fact]
+    public void VoiceLabelNamesTheVoiceAndItsConsentDate() =>
+        Assert.Equal("My voice · consent Oct 12", RewriteGenerationBackend.VoiceLabel("My voice", new(2026, 10, 12, 0, 0, 0, TimeSpan.Zero)));
+#endif
+    /// <summary>The take run's input comes from the one reviewed hunk, and the source reader gets what the run reads around: the
+    /// window, its two lendable silences, each in its place, and the transcript, on the whole track. Not DEBUG-only: CI runs these
+    /// tests in Release.</summary>
+    [Fact]
     public async Task InputBindingUsesOneReviewedHunkBridgesSourceClockAndSelectedVoiceModel()
     {
-        using var owner = new RewriteSession(Editor(), 10, 12, Envelope(), null);
+        // A longer pause after the passage than before it, so the two silences differ and a swap shows.
+        using var owner = new RewriteSession(Editor(pauseAfterWord12: 1.5), 10, 12, Envelope(), null);
         owner.Edit("much clearer words");
         var hunk = Assert.Single(owner.Review!.VoiceHunks);
-        var input = await owner.GenerationInputAsync("voice", "model", 42, true, _ => Task.FromResult(new float[] { 0.1f, 0.2f }), CancellationToken.None);
+        RewriteSourceRequest? request = null;
+        var read = (VoiceLabSourceExcerpt.Whole(new float[] { 0.1f, 0.2f }), VoiceLabTakeProcessing.Envelope([0.1f, 0.2f], 48_000));
+        var input = await owner.GenerationInputAsync("voice", "model", 42, true, (value, _) => { request = value; return Task.FromResult(read); }, CancellationToken.None);
         Assert.NotNull(input); Assert.Equal(hunk.PatchText, input.Text); Assert.Equal(hunk.Window, input.Window);
+        Assert.NotNull(request); Assert.Equal(4_800_000, request.Frames); Assert.Equal(48_000, request.SampleRate); Assert.Equal(hunk.Window, request.Window);
+        // Both seams sit in pauses, of 0.6 s before the passage and 2.1 s after it, so each lends a different silence (§8.9.2).
+        Assert.Equal(0.295, request.IncomingSilence!.Value, 9); Assert.Equal(1.055, request.OutgoingSilence!.Value, 9);
+        Assert.Equal((request.IncomingSilence, request.OutgoingSilence), (input.IncomingSilence, input.OutgoingSilence)); Assert.Same(owner.Transcript, request.Items);
+        Assert.Same(read.Item1, input.Source); Assert.Same(read.Item2, input.SourceEnvelope);
         Assert.Equal("voice", input.RecordId); Assert.Equal("model", input.ModelId); Assert.Equal(42u, input.Seed);
         Assert.Equal(48_000, input.SourceSampleRate); Assert.Equal(owner.Transcript, input.Items); Assert.False(input.CleanAudioOn); Assert.True(input.ProviderConsent);
         using var multiple = new RewriteSession(Editor(), 10, 18, Envelope(), null);
         multiple.Edit("Sunday word11 word12 word13 word14 word15 word16 word17 five");
         Assert.Equal(2, multiple.Review!.VoiceHunks.Count);
         var error = await Assert.ThrowsAsync<RewriteGenerationException>(() => multiple.GenerationInputAsync("voice", "model", 1, true,
-            _ => throw new InvalidOperationException("Must refuse before decoding."), CancellationToken.None));
+            (_, _) => throw new InvalidOperationException("Must refuse before decoding."), CancellationToken.None));
         Assert.Equal("Rewrite one passage at a time. Keep one changed passage, then generate takes.", error.Message);
     }
-    [Fact]
-    public async Task SourceChunksMatchMacNativeRatePcm16AndTinyTrailingChunkRule()
-    {
-        var spans = new List<(long Start, long End)>();
-        var samples = await RewriteGenerationBackend.ReadSourceAsync("owned-fixture", 280L * 8_000 + 100, 8_000, CancellationToken.None,
-            (_, start, end, rate, _) =>
-            {
-                Assert.Equal(8_000, rate); spans.Add((start, end));
-                var bytes = new byte[44 + checked((int)(end - start) * 2)];
-                for (var offset = 44; offset < bytes.Length; offset += 2) BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(offset, 2), -16384);
-                return Task.FromResult(bytes);
-            });
-        Assert.Equal((0L, 280L * 8_000 + 100), Assert.Single(spans));
-        Assert.True(samples.All(sample => sample == -0.5f));
-        Assert.Equal("My voice · consent Oct 12", RewriteGenerationBackend.VoiceLabel("My voice", new(2026, 10, 12, 0, 0, 0, TimeSpan.Zero)));
-    }
-    private static EditorViewModel Editor()
+    private static EditorViewModel Editor(double pauseAfterWord12 = 0)
     {
         var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "fixtures", "projects", "interview-take.voxclip")));
-        var words = Enumerable.Range(0, 80).Select(index => new TimedWord("w" + index, "word" + index, WordKind.Word, index + 1, index + 1.4, null, null, 1, null, TimingSource.Native)).ToArray();
+        double Later(int index) => index > 12 ? pauseAfterWord12 : 0;
+        var words = Enumerable.Range(0, 80).Select(index => new TimedWord("w" + index, "word" + index, WordKind.Word, index + 1 + Later(index), index + 1.4 + Later(index), null, null, 1, null, TimingSource.Native)).ToArray();
         return new(project with { Transcript = project.Transcript! with { Words = words }, Media = project.Media with { Source = project.Media.Source with { DurationSeconds = 100, Audio = new(48_000, 1) } },
             Edits = project.Edits with { CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>(), Clips = [], ActiveClipId = null } });
     }
     private static AudioEnvelope Envelope() => new(48_000, 0.01, Enumerable.Repeat(0.01f, 10_000).ToArray());
-#endif
 }
 #endif

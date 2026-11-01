@@ -102,7 +102,7 @@ public sealed class VoiceLabGenerationSessionTests
         Assert.Equal(3, runner.Sends);
     }
     private static CancellationToken Token => TestContext.Current.CancellationToken;
-    private static VoiceLabTakeInput Input() => new("Hello", "eleven_v3", "record", "en", 1, "source", [0.1f], 24000, [], new HashSet<string>(),
+    private static VoiceLabTakeInput Input(float[]? source = null) => new("Hello", "eleven_v3", "record", "en", 1, "source", source ?? [0.1f], 24000, [], new HashSet<string>(),
         new("first", "last", [], [], 0, 1, 0, 24000, new(VoiceLabSeamKind.Hard, 0, 0, 0), new(VoiceLabSeamKind.Hard, 1, 24000, 0)), null, null, false, true);
     private sealed class Runner : IVoiceLabTakeRunner
     {
@@ -309,7 +309,8 @@ public sealed class VoiceLabGenerationSessionTests
     {
         var runner = new Runner();
         var session = new VoiceLabGenerationSession(runner);
-        var input = Input();
+        var samples = new[] { 0.1f };
+        var input = Input(samples);
         var first = await session.PrepareAsync(input, ct: Token);
         Assert.Equal(0, runner.Sends);
         await session.ContinueAsync(Token);
@@ -320,8 +321,9 @@ public sealed class VoiceLabGenerationSessionTests
         Assert.Equal(3, second.Takes.Count); Assert.Equal(6, second.Actions.Count);
         Assert.Same(previous, session.Rows);
         Assert.DoesNotContain(second.Actions, action => first.Actions.Any(old => old.Token == action.Token));
-        input.Source[0] = 0.9f;
-        Assert.Equal(0.1f, runner.Input!.Source[0]);
+        // The input holds its own copy of the source, so a later change to the caller's samples cannot reach the run.
+        samples[0] = 0.9f;
+        Assert.Equal(0.1f, runner.Input!.Source.Samples(0, 1)!.Value.Span[0]);
         runner.Started = () => Assert.Empty(session.Rows);
         await session.ContinueAsync(Token);
         Assert.Equal(6, runner.Sends);

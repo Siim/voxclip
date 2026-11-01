@@ -206,6 +206,9 @@ public actor TranscriptionService {
         guard !active else { throw VoxClipError.transcriptionFailed("This project already has a transcription job") }
         active = true
         defer { active = false }
+        // Detection reads the source's cache entry, so eviction leaves it alone meanwhile (architecture §8.2).
+        let lease = await CacheKeyRegistry.shared(cache: locations.cache).lease(request.contentKey)
+        defer { lease.release() }
         let key = locations.cache.appendingPathComponent(request.contentKey).appendingPathComponent("language-detection").path
         do { try await gate.acquire(local: true, key: key) }
         catch is CancellationError { throw VoxClipError.cancelled }
@@ -231,6 +234,10 @@ public actor TranscriptionService {
         generation = UUID()
         let job = generation
         defer { active = false; for observer in observers.values { observer.finish() }; observers.removeAll() }
+        // The job reads the extracted audio and writes raw transcripts into the source's cache entry, so eviction leaves
+        // that entry alone until it ends (architecture §8.2).
+        let lease = await CacheKeyRegistry.shared(cache: locations.cache).lease(request.contentKey)
+        defer { lease.release() }
         let delivery = AsyncStream<TranscriptionProgress>.makeStream()
         let publishing = Task { [weak self] in
             for await value in delivery.stream { await self?.publish(value, job: job) }

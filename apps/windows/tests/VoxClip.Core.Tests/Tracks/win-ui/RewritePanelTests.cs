@@ -754,7 +754,7 @@ public sealed class RewritePanelTests
     }
 
     [Fact]
-    public async Task ALongSourceKeepsTheProposalCutsAndCorrectionsAndOnlyNewTakesAreRefused()
+    public async Task ALongSourceKeepsTheProposalCutsAndCorrectionsAndPreparesNewTakes()
     {
         static EditorViewModel Long(double seconds, int rate = 48_000)
         {
@@ -762,13 +762,7 @@ public sealed class RewritePanelTests
             return new(project with { Media = project.Media with { Source = project.Media.Source with { DurationSeconds = seconds, Audio = new(rate, 1) } } },
                 now: () => new DateTimeOffset(2026, 10, 28, 0, 0, 0, TimeSpan.Zero));
         }
-        const string refusal = "New takes work only in videos up to 10 minutes long. Cuts and corrections still work. Your edits are saved.";
-        // A take run reads at most 30,000,000 source frames: 10 min 25 s at 48 kHz.
-        Assert.Null(RewriteSourceLimit.Refusal(Long(625).Project));
-        Assert.Equal(30_000_000, RewriteSourceLimit.Frames(Long(625).Project));
-        Assert.Equal("New takes work only in videos up to 11 minutes long. Cuts and corrections still work. Your edits are saved.",
-            RewriteSourceLimit.Refusal(Long(3_600, 44_100).Project));
-        // A 44-minute talk still gets the AI proposal (none of it reads the source audio) and can apply its cuts.
+        // A 44-minute talk gets the AI proposal (none of it reads the source audio) and can apply its cuts.
         var editor = Long(2_640);
         var fake = new RecordingConnector { Rewrite = "word10 word12" };
         using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test", "local", ""));
@@ -781,24 +775,46 @@ public sealed class RewritePanelTests
         Assert.Equal(1, fake.Calls.Count(call => call == "send"));
         Assert.Equal("", session.Problem);
         Assert.Equal("Apply Cuts", session.LocalAction);
-        // A correction applies as well, and new words only reach the take refusal, before decoding or any ElevenLabs call.
         session.Edit("WORD10 word11 word12");
         Assert.Equal("Apply Correction", session.LocalAction);
         Assert.Equal("", session.Problem);
+        // New words now prepare takes at any length, as on the Mac: the reader is asked for the regions of a 126,720,000-frame
+        // track (the old cap refused anything over 30,000,000 frames, 10 min 25 s at 48 kHz, before decoding).
         session.Edit("much clearer words");
-        Assert.NotEmpty(session.Review!.VoiceHunks);
-        var error = await Assert.ThrowsAsync<RewriteGenerationException>(() => session.GenerationInputAsync("voice", "model", 1, true,
-            _ => throw new InvalidOperationException("Must refuse before decoding."), CancellationToken.None));
-        Assert.Equal(refusal, error.Message);
+        var hunk = Assert.Single(session.Review!.VoiceHunks);
+        RewriteSourceRequest? request = null;
+        var input = await session.GenerationInputAsync("voice", "model", 1, true, (value, _) =>
+        {
+            request = value;
+            var excerpt = new VoiceLabSourceExcerpt(value.Frames, [new(value.Window.StartSample, new float[value.Window.EndSample - value.Window.StartSample])]);
+            return Task.FromResult((excerpt, new AudioEnvelope(value.SampleRate, 0.01, new float[value.Frames / 480])));
+        }, CancellationToken.None);
+        Assert.NotNull(input); Assert.NotNull(request);
+        Assert.Equal(126_720_000, request.Frames); Assert.Equal(48_000, request.SampleRate); Assert.Equal(hunk.Window, request.Window);
+        Assert.Equal(126_720_000, input.Source.TotalFrames); Assert.Equal(264_000, input.SourceEnvelope.Rms.Count);
+        Assert.Equal(hunk.PatchText, input.Text);
         session.Edit("word10 word12");
         Assert.True(session.ApplyLocalChanges());
         Assert.Contains("w11", editor.State!.CutWordIds);
-        Assert.Contains("RewriteSourceLimit.Frames(session.Project)", AppSource("Pages", "EditorPage.xaml.cs"));
-        Assert.Contains("frames is <= 0 or > RewriteSourceLimit.MaxFrames", File.ReadAllText(Path.Combine(Path.GetDirectoryName(Shared)!,
-            "apps", "windows", "src", "VoxClip.App", "Services", "RewriteGenerationBackend.cs")));
-        var setInstruction = AppSource("ViewModels", "RewriteSession.cs");
-        setInstruction = setInstruction[setInstruction.IndexOf("internal async Task SetInstructionAsync", StringComparison.Ordinal)..];
-        Assert.DoesNotContain("RewriteSourceLimit", setInstruction[..setInstruction.IndexOf("internal void MarkEstimateShown", StringComparison.Ordinal)]);
+        // An hour at 44.1 kHz reaches the reader too; nothing in the App refuses by length any more.
+        using var hour = new RewriteSession(Long(3_600, 44_100), 10, 12, new(44_100, 0.01, Enumerable.Repeat(0.01f, 10_000).ToArray()), null);
+        hour.Edit("much clearer words");
+        long? frames = null;
+        await hour.GenerationInputAsync("voice", "model", 1, true, (value, _) =>
+        {
+            frames = value.Frames;
+            return Task.FromResult((VoiceLabSourceExcerpt.Whole([0f]), new AudioEnvelope(value.SampleRate, 0.01, [])));
+        }, CancellationToken.None);
+        Assert.Equal(158_760_000, frames);
+        Assert.Contains("RewriteSourceRequest.Reader(() => media?.Path ?? \"\", VoiceLabSourceAudio.RewriteSourceAsync)", AppSource("Pages", "EditorPage.xaml.cs"));
+        var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");
+        foreach (var file in Directory.EnumerateFiles(app, "*.cs", SearchOption.AllDirectories).Where(file => !file.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)))
+        {
+            var text = File.ReadAllText(file);
+            Assert.DoesNotContain("New takes work only", text);
+            Assert.DoesNotContain("RewriteSourceLimit", text);
+            Assert.DoesNotContain("ReadSourceAsync", text);
+        }
     }
 
     private sealed class RecordingConnector : ILlmConnector

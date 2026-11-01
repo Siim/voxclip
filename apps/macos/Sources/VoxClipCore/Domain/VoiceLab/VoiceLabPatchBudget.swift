@@ -11,8 +11,10 @@ public struct VoiceLabPatchBudgetResult: Sendable, Equatable {
 public enum VoiceLabPatchBudget {
     public static let disabledCopy = "That's a lot to re-voice. Re-record these sentences instead."
 
-    public static func evaluate(diff: VoiceLabWordDiffResult, transcript: [TimedWord]) -> VoiceLabPatchBudgetResult {
-        let count: Int = diff.hunks.filter { $0.kind == .voice }.reduce(0) { (total: Int, hunk: VoiceLabDiffHunk) -> Int in
+    /// §8.2 patch budget over a review's hunks after every merge: a passage's `VoiceLabWordDiff` hunks, or a clip or Full
+    /// take's `ScopeRewriteDiff` hunks. `transcript` is the whole take's.
+    public static func evaluate(hunks: [VoiceLabDiffHunk], transcript: [TimedWord]) -> VoiceLabPatchBudgetResult {
+        let count: Int = hunks.filter { $0.kind == .voice }.reduce(0) { (total: Int, hunk: VoiceLabDiffHunk) -> Int in
             total + hunk.newTokens.count
         }
         let wordItems: Int = transcript.filter { $0.kind == .word }.count

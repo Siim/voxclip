@@ -34,7 +34,7 @@ struct RewriteReview {
 
     @MainActor static func build(_ session: RewriteSession) throws -> RewriteReview {
         let diff = try VoiceLabWordDiff.diff(source: session.source, newText: session.newWords)
-        let budget = VoiceLabPatchBudget.evaluate(diff: diff, transcript: session.transcript)
+        let budget = VoiceLabPatchBudget.evaluate(hunks: diff.hunks, transcript: session.transcript)
         let voice = diff.hunks.filter { (hunk: VoiceLabDiffHunk) -> Bool in hunk.kind == .voice }
         var reviews: [RewriteHunkReview] = []
         for hunk in voice {
@@ -56,7 +56,7 @@ struct RewriteReview {
             }
         }
         let complete: Bool = reviews.allSatisfy { $0.meter != nil }
-        let summary = complete ? try VoiceLabDiffSummary.make(diff: diff, meters: reviews.compactMap(\.meter),
+        let summary = complete ? try VoiceLabDiffSummary.make(hunks: diff.hunks, meters: reviews.compactMap(\.meter),
             catalog: session.prices, model: session.synthesisModel, patchTexts: reviews.map(\.patchText)) : nil
         let inserted: Int = diff.ops.filter { $0.kind == .insert }.count
         let removed: Int = diff.ops.filter { $0.kind == .delete }.count

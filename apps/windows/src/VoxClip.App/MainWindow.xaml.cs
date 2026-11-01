@@ -313,7 +313,12 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
             {
                 try { await App.Services.RememberAsync(fullPath, lifetime.Token); }
                 catch (Exception exception) { ShowError(exception, "Recent projects"); }
-                if (newImport) await incoming.PromptTranscriptionAsync();
+                if (newImport)
+                {
+                    // Keep the cache under its limit after each import, once the new project's editor holds its lease (architecture §8.2).
+                    App.Services.CacheUpkeep.Imported();
+                    await incoming.PromptTranscriptionAsync();
+                }
             }
         }
         catch (Exception exception)

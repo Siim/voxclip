@@ -52,6 +52,8 @@ public sealed partial class EditorPage : Page
     private Task pendingWaveform = Task.CompletedTask;
     private CancellationTokenSource? waveformRequest;
     private ProjectLeaveBoundary leave = null!;
+    /// <summary>This editor's lease on its project's cache entry, from opening to closing (architecture §8.2).</summary>
+    private OpenProjectCacheLease? cacheLease;
     private readonly SemaphoreSlim previewChanges = new(1, 1);
     private readonly SemaphoreSlim saves = new(1, 1);
     private string pauseBreath = "natural";
@@ -97,6 +99,8 @@ public sealed partial class EditorPage : Page
         preview = new PreviewEngine();
 #endif
         ViewModel.SetMediaUnavailable(!demo && mediaPath is null);
+        // Eviction never strips or removes the entry of a project open in any window, and opening it marks it used.
+        if (!demo) { cacheLease = new(App.Services.Cache); cacheLease.Hold(project.Media.Source.ContentKey); }
         projectWrites = new(project, ViewModel.MarkSaved);
         ViewModel.SetVoiceLabLabelPosition(VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
         ViewModel.SetExportRecords(App.Services.ExportLedger.Records);
@@ -424,6 +428,8 @@ public sealed partial class EditorPage : Page
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         }, lifetime.Token);
         if (!relinked) return;
+        // Another file may have another content key: the lease moves with the project.
+        cacheLease?.Hold(ViewModel.Project.Media.Source.ContentKey);
         projectWrites = new(ViewModel.Project, ViewModel.MarkSaved);
         MediaPath = ViewModel.Project.Media.Source.AbsolutePath;
         media = selectedMedia;
@@ -589,8 +595,7 @@ public sealed partial class EditorPage : Page
             VoiceLabPrices.Load(), region, session.Project.Id, Current, OnUi);
         IVoiceLabTakeRunner runner = backend.Runner;
         Func<CancellationToken, Task<RewriteGenerationChoices>> discover = ct => backend.DiscoverAsync(session.Project.Transcript?.Language ?? "en", ct);
-        Func<CancellationToken, Task<float[]>> readSource = ct => RewriteGenerationBackend.ReadSourceAsync(media?.Path ?? "",
-            RewriteSourceLimit.Frames(session.Project), session.Project.Media.Source.Audio?.SampleRate ?? 0, ct);
+        var readSource = RewriteSourceRequest.Reader(() => media?.Path ?? "", VoiceLabSourceAudio.RewriteSourceAsync);
         Func<Guid, VoiceLabTakeScratch?> scratch = backend.Runner.Scratch;
         Func<Guid, Task> reject = backend.Runner.RejectAsync;
         async Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)> Publish(Guid id, DateTimeOffset date, CancellationToken ct)
@@ -610,8 +615,7 @@ public sealed partial class EditorPage : Page
         if (fake is not null)
         {
             runner = fake; discover = fake.DiscoverAsync;
-            readSource = _ => Task.FromResult(new float[checked((int)Math.Floor(session.Project.Media.Source.DurationSeconds *
-                (session.Project.Media.Source.Audio?.SampleRate ?? 48_000) + 0.5))]);
+            readSource = (request, _) => Task.FromResult(RewriteSourceFixture.Silent(request));
             scratch = fake.Scratch; reject = fake.RejectAsync; publish = fake.PublishAsync;
             releaseRunner = () => { backend.Dispose(); fake.Dispose(); };
             watchKeys = false;
@@ -1071,7 +1075,10 @@ public sealed partial class EditorPage : Page
     internal async Task CloseAsync()
     {
         if (disposed) return;
-        disposed = true; autosave?.Cancel(); await lifetime.CancelAsync();
+        disposed = true; autosave?.Cancel();
+        // Work still reading the entry, such as a waveform load, holds its own lease.
+        cacheLease?.Dispose();
+        await lifetime.CancelAsync();
         await pendingSave;
         await pendingWaveform;
         await pendingStandIn;

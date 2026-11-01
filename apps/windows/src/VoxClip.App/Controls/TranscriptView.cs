@@ -162,7 +162,9 @@ public sealed class TranscriptView : UserControl
             {
                 if (!IsLoaded) return;
                 RebuildThemeVisuals();
+#if DEBUG
                 Ui.TraceEffects("transcript-post-render", this);
+#endif
             });
         };
         CompositionTarget.Rendering += rendered;

@@ -16,6 +16,11 @@ private final class VoiceLabRunDispatch: Sendable {
     }
 }
 
+/// A take run's dispatch boundary (voice-lab §3.1): the App's last check before the request with this ID (a take's TTS or
+/// QA `requestID`) starts, such as the month's cap with `VoiceLabTakeBatchProgress.remainingEstimate(from:)`. It calls
+/// `start` to dispatch, or throws to refuse.
+public typealias VoiceLabTakeDispatchBoundary = @Sendable (UUID, @escaping @Sendable () throws -> Void) async throws -> Void
+
 public actor VoiceLabTakeRun {
     private struct Pending: Sendable {
         let quote: VoiceLabTakeRunQuote
@@ -25,6 +30,8 @@ public actor VoiceLabTakeRun {
         let source: VoiceLabSourceExcerpt
         let sourceSpeech: [Float]
         let modelRevision: Int
+        /// Pinned in the client by a take batch's one approval (`approve(_:)`), so `execute` skips its own approval.
+        var approvedAhead = false
     }
     private enum Abort: Error { case invalidated }
     private let client: ElevenLabsVoiceLab
@@ -35,7 +42,7 @@ public actor VoiceLabTakeRun {
     private let storage: VoiceLabTakeStorage
     private var scratches: [UUID: VoiceLabTakeScratch] = [:]
     private var paidAssets: [UUID: VoiceLabAsset] = [:]
-    private let dispatchIfCurrent: VoiceLabDispatchBoundary
+    private let dispatchIfCurrent: VoiceLabTakeDispatchBoundary
     private nonisolated let dispatchRevision = Mutex(0)
     private var pending: Pending?
     private var task: Task<VoiceLabTakeRunResult, Never>?
@@ -46,10 +53,12 @@ public actor VoiceLabTakeRun {
     #if DEBUG
     private var executeHook: (@Sendable (String) async -> Void)?
     package func useExecuteHook(_ hook: @escaping @Sendable (String) async -> Void) { executeHook = hook }
+    /// The ID of the set `prepare(_:)` holds for `execute`, so tests can see a batch's rollback.
+    package var preparedSetID: UUID? { pending?.quote.id }
     #endif
     public init(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck,
                 storage: VoiceLabTakeStorage,
-                dispatchIfCurrent: @escaping VoiceLabDispatchBoundary,
+                dispatchIfCurrent: @escaping VoiceLabTakeDispatchBoundary,
                 inputsAreCurrent: @escaping @Sendable () async -> Bool) {
         self.client = client; self.store = store; self.speaker = speaker; useGuard = VoiceUseGuard(store: store, check: speaker)
         self.inputsAreCurrent = inputsAreCurrent
@@ -130,6 +139,24 @@ public actor VoiceLabTakeRun {
             throw error
         }
     }
+    /// Pins this run's prepared set under a take batch's one approval (voice-lab §8.6 with several hunks, `VoiceLabTakeBatchRun`).
+    /// Every quote must still be fresh. The client then holds the set, so it neither expires nor is evicted while the
+    /// batch's earlier windows run, and `execute(_:approved:progress:started:)` later runs it without a second approval.
+    /// Nothing is sent. A quote that is not this run's prepared set, a set already pinned, and a run that is executing are
+    /// refused (`consentRequired`). `cancel()`, a new `prepare(_:)` and a launch that ends before any dispatch drop the pin.
+    public func approve(_ quote: VoiceLabTakeRunQuote) async throws {
+        guard task == nil, runningID == nil, executionOwner == nil, let value = pending, value.quote == quote, !value.approvedAhead
+        else { throw VoiceLabError.consentRequired }
+        let currentRevision = revision
+        let quotes = quote.takes.flatMap { [$0.synthesis, $0.qa] }
+        guard await client.quotesAreFresh(quotes), revision == currentRevision, executionOwner == nil else { throw VoiceLabError.consentRequired }
+        try await client.approveRun(quote.id, quotes: quotes)
+        guard revision == currentRevision, executionOwner == nil, pending?.quote == quote else {
+            await client.unapproveRun(quote.id)
+            throw VoiceLabError.consentRequired
+        }
+        pending?.approvedAhead = true
+    }
     public func execute(_ quote: VoiceLabTakeRunQuote, approved: Bool,
                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in },
                         started: @escaping @Sendable () async throws -> Void = {}) async throws -> VoiceLabTakeRunResult {
@@ -143,12 +170,14 @@ public actor VoiceLabTakeRun {
         let quotes = quote.takes.flatMap { [$0.synthesis, $0.qa] }
         let dispatch = VoiceLabRunDispatch()
         do {
-            let fresh = await client.quotesAreFresh(quotes)
+            // A set pinned by a batch approval was fresh when the user approved the batch, and the client holds it since.
+            let fresh: Bool
+            if value.approvedAhead { fresh = true } else { fresh = await client.quotesAreFresh(quotes) }
             try await checkpoint("clock", revision: currentRevision)
             guard fresh else { throw VoiceLabError.consentRequired }
             try await validate(value, revision: currentRevision)
             try await checkpoint("validation", revision: currentRevision)
-            try await client.approveRun(quote.id, quotes: quotes)
+            if !value.approvedAhead { try await client.approveRun(quote.id, quotes: quotes) }
             try await checkpoint("approval", revision: currentRevision)
             try await checkpoint("launch", revision: currentRevision)
             try await started()
@@ -167,7 +196,8 @@ public actor VoiceLabTakeRun {
     }
     private func release(owner: UUID, quote: VoiceLabTakeRunQuote, retaining value: Pending? = nil) async {
         guard executionOwner == owner else { return }
-        if let value {
+        if var value {
+            value.approvedAhead = false
             pending = value
             await client.unapproveRun(quote.id)
         } else {
@@ -229,15 +259,16 @@ public actor VoiceLabTakeRun {
             var qaReceipt: VoiceLabReceipt?
             var generated: VoiceLabAudioResult?
             var audio: VoiceLabTakeAudio?
+            let synthesisAccepted = VoiceLabRequestAcceptance(), qaAccepted = VoiceLabRequestAcceptance()
             do {
                 let authorization = try await useGuard.authorize(quote: take.synthesis, contentKey: value.input.contentKey,
                     recordID: value.record.id, speech16k: value.sourceSpeech, approved: true)
-                try await authorization.capability?.bindDispatch(boundary(revision: expected, dispatch: dispatch))
+                try await authorization.capability?.bindDispatch(boundary(request: take.synthesis.requestID, revision: expected, dispatch: dispatch))
                 try await validate(value, revision: expected)
                 let result = try await client.synthesize(text: value.input.text, modelID: value.input.modelID,
                     voice: .own(voiceID: value.record.voiceId, policy: authorization), language: value.input.language,
                     options: value.input.options(take: take.index), requestID: take.synthesis.requestID,
-                    authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true))
+                    authorization: VoiceLabAuthorization(quote: take.synthesis, approved: true), acceptance: synthesisAccepted)
                 receipt = result.receipt
                 generated = result
                 let storage = storage
@@ -277,9 +308,10 @@ public actor VoiceLabTakeRun {
                 let capability = VoiceOperationCapability(quote: take.qa, reserve: {
                     try await store.dispatchPermit(value.record, requestID: take.qa.requestID)
                 }) { try await self.validate(value, revision: expected) }
-                try await capability.bindDispatch(boundary(revision: expected, dispatch: dispatch))
+                try await capability.bindDispatch(boundary(request: take.qa.requestID, revision: expected, dispatch: dispatch))
                 let recognized = try await client.transcribeQA(processed.mixed, rate: processed.sampleRate,
-                    language: value.input.language, authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability)
+                    language: value.input.language, authorization: VoiceLabAuthorization(quote: take.qa, approved: true), capability: capability,
+                    acceptance: qaAccepted)
                 qaReceipt = recognized.receipt
                 try await validate(value, revision: expected)
                 let lower = Double(processed.patchRange.lowerBound) / Double(processed.sampleRate)
@@ -299,8 +331,12 @@ public actor VoiceLabTakeRun {
                 if qa.passed, case .exact = processed.fit { return VoiceLabTakeRunResult(rows: rows, end: .earlyStop) }
             } catch {
                 guard dispatch.started else { return VoiceLabTakeRunResult(rows: [], end: end(error)) }
-                rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
-                    receipt: receipt, audio: audio, failure: failure(error), qaReceipt: qaReceipt, generated: generated, quote: take))
+                // A request the provider accepted is in the spend ledger even when its reply failed and left no receipt.
+                var accepted = Set<UUID>()
+                if synthesisAccepted.accepted { accepted.insert(take.synthesis.requestID) }
+                if qaAccepted.accepted { accepted.insert(take.qa.requestID) }
+                rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed, receipt: receipt,
+                    audio: audio, failure: failure(error), qaReceipt: qaReceipt, generated: generated, quote: take, accepted: accepted))
                 await progress(rows)
                 if fatal(error) { return VoiceLabTakeRunResult(rows: rows, end: end(error)) }
             }
@@ -310,10 +346,10 @@ public actor VoiceLabTakeRun {
     private func policy(_ record: VoiceConsentRecord) -> OwnVoicePolicy {
         OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
     }
-    private func boundary(revision expected: Int, dispatch run: VoiceLabRunDispatch) -> VoiceLabDispatchBoundary {
+    private func boundary(request: UUID, revision expected: Int, dispatch run: VoiceLabRunDispatch) -> VoiceLabDispatchBoundary {
         let dispatch = dispatchIfCurrent
         return { [self] start in
-            try await dispatch {
+            try await dispatch(request) {
                 try self.dispatchRevision.withLock { revision in
                     guard revision == expected else { throw Abort.invalidated }
                     try start()

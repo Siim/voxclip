@@ -65,6 +65,9 @@ public sealed class TranscriptionService : ITranscriptionService
             throw new VoxClipException(VoxClipErrorCode.TranscriptionFailed, "Transcription stopped: this transcription engine is unavailable. Your video is still here.");
         SpeechCopy.ValidateIdentifiers(request.Plan);
         if (engine is ElevenLabsTranscriber) ElevenLabsTranscriber.ValidatePlan(request.Plan);
+        // The job reads the extracted audio and writes raw transcripts into the source's cache entry, so eviction leaves that
+        // entry alone until it ends (architecture §8.2).
+        using var lease = await CacheKeyRegistry.Shared(Path.Combine(root, "Cache")).LeaseAsync(request.ContentKey, ct).ConfigureAwait(false);
         await catalog.GetModelsAsync(ct).ConfigureAwait(false);
         if (request.Plan.Language is LanguageChoice.Forced languageChoice && catalog is ModelCatalog bundled)
             request = request with { Plan = request.Plan with { Language = new LanguageChoice.Forced(await bundled.NormalizeLanguageAsync(languageChoice.Code, ct).ConfigureAwait(false)) } };

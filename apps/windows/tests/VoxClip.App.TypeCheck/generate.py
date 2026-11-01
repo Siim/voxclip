@@ -1,5 +1,7 @@
 """Write Generated.g.cs: stub partial classes for what the WinUI XAML compiler generates (x:Name fields, InitializeComponent,
-Bindings) so VoxClip.App's C# can be type-checked on macOS. Usage: gen.py <App dir> <out file>."""
+Bindings) so VoxClip.App's C# can be type-checked on macOS. Usage: gen.py <App dir> <out file>.
+Like the real compiler, every stub carries GeneratedCode("Microsoft.UI.Xaml.Markup.Compiler") and has no initializer, so the
+Release boundary checker classifies the stubs exactly as it classifies the shipping XAML output (toolchain, not allowlisted)."""
 import re, sys, pathlib
 import xml.etree.ElementTree as ET
 
@@ -14,6 +16,7 @@ SPECIAL = {
     'VisualStateGroup': 'Microsoft.UI.Xaml', 'VisualState': 'Microsoft.UI.Xaml',
     'Run': 'Microsoft.UI.Xaml.Documents', 'Span': 'Microsoft.UI.Xaml.Documents', 'Hyperlink': 'Microsoft.UI.Xaml.Documents',
 }
+TAG = '[global::System.CodeDom.Compiler.GeneratedCode("Microsoft.UI.Xaml.Markup.Compiler", "typecheck-stub")]'
 out = ['#pragma warning disable CS0169, CS0414, CS0649, CS8618', '']
 for path in sorted(app.rglob('*.xaml')):
     if '/obj/' in str(path) or '/bin/' in str(path):
@@ -41,9 +44,10 @@ for path in sorted(app.rglob('*.xaml')):
             space = uri[len('using:'):]
         else:
             raise SystemExit(f'unknown namespace {uri} in {path}')
-        fields.append(f'    internal global::{space}.{local} {field} = null!;')
+        fields.append(f'    {TAG}\n    internal global::{space}.{local} {field};')
     body = '\n'.join(fields)
-    out.append(f'namespace {ns}\n{{\npartial class {name}\n{{\n{body}\n    public void InitializeComponent() {{ }}\n'
-               f'    private readonly __Bindings Bindings = new();\n    private sealed class __Bindings {{ public void Update() {{ }} public void StopTracking() {{ }} }}\n}}\n}}\n')
+    out.append(f'namespace {ns}\n{{\npartial class {name}\n{{\n{body}\n    {TAG}\n    public void InitializeComponent() {{ }}\n'
+               f'    {TAG}\n    private readonly __Bindings Bindings;\n'
+               f'    {TAG}\n    private sealed class __Bindings {{ public void Update() {{ }} public void StopTracking() {{ }} }}\n}}\n}}\n')
 pathlib.Path(sys.argv[2]).write_text('\n'.join(out))
 print('stubs for', sum(1 for line in out if line.startswith('namespace')), 'classes')
