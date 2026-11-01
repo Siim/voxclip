@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+### 2026-11-01 — W2a hosted-CI test-build compatibility
+
+- CI run 41300421810 exposed an Xcode 26 type-check timeout in the timeline room-tone test and four transcript test files referencing DEBUG-only app helpers during the Release CLI test build. The room-tone expression now uses typed binary64 intermediates; the transcript fold, gutter, renderer and viewport tests use the same whole-file DEBUG guard as the existing app-model suites. No shipping app code, package configuration or workflow changes.
+- Local verification: all 22 window tests pass in Debug and Release; the focused room-tone test passes; all 274 headless app tests in 24 suites pass. The Release `swift test` invocation compiles every test target, including the previously broken transcript files. A plain Release `swift build --build-tests` lacked testable dependency modules on this Xcode 27 setup, so it is not counted as validation. All nine fixture drift checks remain identical.
+- The additional unfiltered local Core diagnostic completes 818 tests in 68 suites but reports 131 timeout/cancellation and follow-on issues in unrelated provider/cache/service/process suites (261.310 s). The window suite passes. No unrelated runtime or timeout rules are changed; hosted Xcode 26 results remain the acceptance gate.
+- W2a's C# twin separately replays all 32 accepted C3 vectors with exact double bits, samples and fade halves. The legacy 606-case fixture and its C# reader remain byte-identical. W2's accept-all half is still deferred until C4 settles.
+
 ### 2026-11-01 — Core C3 review — cut-aware geometry and isolated fixtures
 
 - **Fixed (92ec10a6).** P1/P3: removed the `placeAll` key and sibling import from the legacy generator, restoring `window-cases.json` byte-identically to 018f8089 (606 cases, schema `/4`). Standalone `generate_window_all.py` writes `window-all-cases.json`, schema `voxclip-voice-lab-window-all-cases/1`, with its own README and a Swift exact-key/count replay. The C# reader and Windows code are untouched.
