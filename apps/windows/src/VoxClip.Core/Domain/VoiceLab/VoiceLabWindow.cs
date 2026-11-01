@@ -66,6 +66,20 @@ public sealed record VoiceLabWindow(string FirstWordId, string LastWordId, IRead
     IReadOnlyList<string> RightBridgeWordIds, double Start, double End, long StartSample, long EndSample,
     VoiceLabSeamPlacement LeftSeam, VoiceLabSeamPlacement RightSeam);
 
+public abstract record VoiceLabWindowRefusal
+{
+    public sealed record Geometry(VoiceLabGeometryException Error) : VoiceLabWindowRefusal;
+    public sealed record CollidesWithChange(int Index) : VoiceLabWindowRefusal;
+    public string? Copy => this is CollidesWithChange
+        ? "Too close to the change before it to voice separately. Edit them together or leave one out." : null;
+}
+
+public abstract record PlacedOrRefused
+{
+    public sealed record Placed(IReadOnlyList<int> Indices, VoiceLabDiffHunk Hunk, VoiceLabWindow Window) : PlacedOrRefused;
+    public sealed record Refused(int Index, VoiceLabDiffHunk Hunk, VoiceLabWindowRefusal Reason) : PlacedOrRefused;
+}
+
 /// <summary>Source-grid arithmetic shared by the patch geometry. Every second-to-sample conversion is editing §4.1 jsRound.</summary>
 internal static class VoiceLabGeometry
 {
@@ -113,6 +127,158 @@ public static class VoiceLabWindowPlanner
 {
     /// <summary>§8.4: a hard seam sits min(0.03, gap / 2) outside the replaced word.</summary>
     const double HardSeamReach = 0.03;
+
+    sealed record ReviewWindow(IReadOnlyList<int> Indices, VoiceLabDiffHunk Hunk, VoiceLabWindow Window);
+
+    public static IReadOnlyList<PlacedOrRefused> PlaceAll(Project project, VoiceLabOutputScope scope, AudioEnvelope envelope,
+        IReadOnlyList<VoiceLabDiffHunk> hunks)
+    {
+        var planningProject = project with
+        {
+            Edits = project.Edits with
+            {
+                CutWordIds = [.. project.Edits.CutWordIds, .. hunks.Where(hunk => hunk.Kind == VoiceLabDiffHunkKind.Cut).SelectMany(hunk => hunk.SourceWordIds)],
+            },
+        };
+        IReadOnlyList<TimedWord> words = project.Transcript?.Words ?? [];
+        Dictionary<string, int> positions = new(StringComparer.Ordinal);
+        for (int position = 0; position < words.Count; position++) positions.TryAdd(words[position].Id, position);
+        int Position(int index) => hunks[index].SourceWordIds.FirstOrDefault() is { } id && positions.TryGetValue(id, out var position)
+            ? position : int.MaxValue;
+        var order = Enumerable.Range(0, hunks.Count).Where(index => hunks[index].Kind == VoiceLabDiffHunkKind.Voice)
+            .OrderBy(Position).ThenBy(index => index).ToArray();
+        List<ReviewWindow> accepted = [];
+        List<(int Index, PlacedOrRefused Result)> refused = [];
+        for (int offset = 0; offset < order.Length; offset++)
+        {
+            int index = order[offset];
+            List<ReviewWindow> remaining = [.. accepted];
+            var current = hunks[index];
+            int[] indices = [index];
+            int? collision = null;
+            try
+            {
+                while (true)
+                {
+                    if (current.SourceWordIds.Count == 0) throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InsertionUnsupported);
+                    var first = current.SourceWordIds[0];
+                    var last = current.SourceWordIds[^1];
+                    var placed = Place(planningProject, scope, envelope, first, last);
+                    int hit = remaining.FindIndex(earlier => Touches(earlier.Window, placed));
+                    if (hit < 0)
+                    {
+                        var reservedProject = planningProject;
+                        Dictionary<string, int> reservations = new(StringComparer.Ordinal);
+                        for (int position = 0; position < remaining.Count; position++)
+                        {
+                            var id = "voice-lab-review-" + position.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                            while (reservedProject.VoiceLab.Segments.Any(segment => segment.Id == id)) id += "-";
+                            reservations[id] = position;
+                            reservedProject = reservedProject with
+                            {
+                                VoiceLab = reservedProject.VoiceLab with
+                                {
+                                    Segments = [.. reservedProject.VoiceLab.Segments, Reservation(id, remaining[position].Window)],
+                                },
+                            };
+                        }
+                        try
+                        {
+                            placed = Place(reservedProject, scope, envelope, first, last);
+                            hit = remaining.FindIndex(earlier => Touches(earlier.Window, placed));
+                        }
+                        catch (VoiceLabGeometryException error)
+                        {
+                            if (error.Code is not (VoiceLabGeometryErrorCode.OverlapsReplacement or VoiceLabGeometryErrorCode.AdjacentReplacement
+                                    or VoiceLabGeometryErrorCode.InvalidInput) || error.SegmentId is not { } id || !reservations.TryGetValue(id, out hit))
+                                throw;
+                        }
+                    }
+                    if (hit >= 0)
+                    {
+                        var earlier = remaining[hit];
+                        collision ??= earlier.Indices[0];
+                        current = Merge(earlier.Hunk, current, project, hunks, positions);
+                        indices = indices.Concat(earlier.Indices).Concat(Enumerable.Range(0, hunks.Count).Where(candidate =>
+                            hunks[candidate].Kind == VoiceLabDiffHunkKind.TextOnly && hunks[candidate].SourceWordIds.Count > 0 &&
+                            hunks[candidate].SourceWordIds.All(id => current.SourceWordIds.Contains(id, StringComparer.Ordinal))))
+                            .Distinct().OrderBy(Position).ThenBy(candidate => candidate).ToArray();
+                        remaining.RemoveAt(hit);
+                        continue;
+                    }
+                    if (collision is not null)
+                    {
+                        List<VoiceLabDiffHunk> budgetHunks = [.. remaining.Select(earlier => BudgetHunk(earlier.Hunk, earlier.Window, project)),
+                            BudgetHunk(current, placed, project), .. order.Skip(offset + 1).Select(candidate => hunks[candidate])];
+                        if (VoiceLabPatchBudget.Evaluate(new VoiceLabWordDiffResult([], budgetHunks), words).Flag != VoiceLabPatchBudgetFlag.Allowed)
+                            throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
+                    }
+                    remaining.Add(new ReviewWindow(indices, current, placed));
+                    accepted = remaining.OrderBy(earlier => earlier.Window.StartSample).ToList();
+                    break;
+                }
+            }
+            catch (VoiceLabGeometryException error)
+            {
+                VoiceLabWindowRefusal reason = collision is { } earlier
+                    ? new VoiceLabWindowRefusal.CollidesWithChange(earlier) : new VoiceLabWindowRefusal.Geometry(error);
+                refused.Add((index, new PlacedOrRefused.Refused(index, hunks[index], reason)));
+            }
+        }
+        return accepted.Select(earlier => (Index: earlier.Indices[0], Result: (PlacedOrRefused)new PlacedOrRefused.Placed(earlier.Indices, earlier.Hunk, earlier.Window)))
+            .Concat(refused).OrderBy(result => Array.IndexOf(order, result.Index)).Select(result => result.Result).ToArray();
+    }
+
+    static bool Touches(VoiceLabWindow left, VoiceLabWindow right) => left.Start <= right.End && right.Start <= left.End ||
+        left.StartSample <= right.EndSample && right.StartSample <= left.EndSample;
+
+    static VoiceLabDiffHunk Merge(VoiceLabDiffHunk earlier, VoiceLabDiffHunk later, Project project,
+        IReadOnlyList<VoiceLabDiffHunk> hunks, IReadOnlyDictionary<string, int> positions)
+    {
+        if (earlier.SourceWordIds.LastOrDefault() is not { } leftId || later.SourceWordIds.FirstOrDefault() is not { } rightId ||
+            !positions.TryGetValue(leftId, out var left) || !positions.TryGetValue(rightId, out var right) || left >= right || project.Transcript is null)
+            throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
+        var between = project.Transcript.Words.Skip(left + 1).Take(right - left - 1).ToArray();
+        var cuts = project.Edits.CutWordIds.Concat(hunks.Where(hunk => hunk.Kind == VoiceLabDiffHunkKind.Cut).SelectMany(hunk => hunk.SourceWordIds))
+            .ToHashSet(StringComparer.Ordinal);
+        if (between.Any(word => word.Kind != WordKind.Word || cuts.Contains(word.Id)))
+            throw VoiceLabGeometry.Error(VoiceLabGeometryErrorCode.InvalidInput);
+        var corrections = project.Edits.Corrections.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        foreach (var hunk in hunks.Where(hunk => hunk.Kind == VoiceLabDiffHunkKind.TextOnly))
+            foreach (var (id, text) in hunk.SourceWordIds.Zip(hunk.CorrectedTexts)) corrections[id] = text;
+        var bridges = between.Select(word => word.Id).ToArray();
+        return earlier with
+        {
+            SourceWordIds = [.. earlier.SourceWordIds, .. bridges, .. later.SourceWordIds],
+            NewTokens = [.. earlier.NewTokens, .. between.SelectMany(word => EditingAlgorithms.SplitWords(corrections.GetValueOrDefault(word.Id, word.Text))), .. later.NewTokens],
+            CorrectedTexts = [], AbsorbedItemIds = [.. earlier.AbsorbedItemIds, .. later.AbsorbedItemIds],
+            BridgeWordIds = [.. earlier.BridgeWordIds, .. bridges, .. later.BridgeWordIds],
+            SourceEndIndex = later.SourceEndIndex, AnchorSeconds = null,
+        };
+    }
+
+    static VoiceLabDiffHunk BudgetHunk(VoiceLabDiffHunk hunk, VoiceLabWindow window, Project project)
+    {
+        IReadOnlyList<TimedWord> words = project.Transcript?.Words ?? [];
+        IEnumerable<string> Tokens(IReadOnlyList<string> ids) => ids.SelectMany(id => words.FirstOrDefault(word => word.Id == id) is { } word
+            ? EditingAlgorithms.SplitWords(project.Edits.Corrections.GetValueOrDefault(id, word.Text)) : []);
+        return hunk with { NewTokens = [.. Tokens(window.LeftBridgeWordIds), .. hunk.NewTokens, .. Tokens(window.RightBridgeWordIds)] };
+    }
+
+    static VoiceLabSegment Reservation(string id, VoiceLabWindow window)
+    {
+        var audio = new VoiceLabAudio("", 0, 0, 1, 0);
+        var provenance = new VoiceLabProvenance("", "", "", "", null, null, null, DateTimeOffset.UnixEpoch);
+        var seams = new VoiceLabSeams(new(window.LeftSeam.Kind, window.LeftSeam.FadeSamples, 0, 0),
+            new(window.RightSeam.Kind, window.RightSeam.FadeSamples, 0, 0));
+        var video = new VoiceLabVideoRecipe(VoiceLabVideoMode.Source, window.StartSample, window.EndSample, window.EndSample - window.StartSample,
+            null, null, null, null, null, null, null, null, null, null, null);
+        var recipe = new VoiceLabRenderRecipe(audio, null, 0, 0, [], null, seams, video,
+            new VoiceLabRenderQa(null, null, null, 0, 0, null, null, null, null), provenance, new VoiceLabCost("", null), VoiceLabVoiceSource.Own, null, null);
+        return new VoiceLabSegment(id, VoiceLabSegmentKind.Tts, true,
+            new VoiceLabReplacement(window.Start, window.End, window.FirstWordId, window.LastWordId), 0, audio, null, null, provenance,
+            new VoiceLabQa(null, null, null, null), [new VoiceLabCandidate(null, null, null) { Recipe = recipe }], 0);
+    }
 
     /// <summary>A synth piece of the output plan: an enabled replacement in the scope, with its selected recipe's seams, or
     /// the window being placed.</summary>
