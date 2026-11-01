@@ -77,6 +77,8 @@ extension ProviderChoice {
     var providers: [ProviderChoice] = []
     var styles: [CaptionStyle] = []
     var recent: [URL] = []
+    /// Rewrite's recent instructions per project ID, most recent first (`rewriteSuggestions(for:)`). In memory only.
+    var rewriteRecents: [String: [String]] = [:]
     func noteRecent(_ url: URL) {
         if !Self.isTestSession { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
         recent.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
@@ -363,7 +365,9 @@ extension ProviderChoice {
             if bool(consent) { set(consent, .bool(false)) }
         }
         if key == "voiceLab.labelPosition" { Task { await shell.editor?.updatePreview(load: false) } }
-        if key == "voiceLab.enabled" || key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
+        // Text Rewrite needs no Voice Lab (design.md §6.3): turning it on or off leaves an open session, whose takes
+        // follow `voiceLabRewriteEnabled` on their own (`RewriteSession.generationIsCurrent`).
+        if key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
             shell.editor?.closeRewrite(returnFocus: false)
         }
         guard settingsLoaded else { if loadingSettings { pendingSettings[key] = value }; return true }

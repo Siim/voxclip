@@ -57,44 +57,98 @@ struct EditorRenderSnapshot {
     var showTranscribe = false
     var correctionID: String?
     var correctionText = ""
-    /// The open Rewrite session and its words, on whichever tab it belongs to. The
-    /// transcript, the timeline and the right column read `rewrite` and `rewriteRange`,
-    /// which hold them only while the session's tab is active (EditorModel+Tabs).
+    /// The open Rewrite session, on whichever tab it belongs to. The right column reads
+    /// `rewrite`, which holds it only while the session's tab is active (EditorModel+Tabs).
     var openRewrite: RewriteSession?
-    var openRewriteRange: ClosedRange<Int>?
     var focusedPane = EditorPane.transcript
     var paneFocusRequest = 0
     var scopeScrollRevision = 0
     var lastStyleId: String?
     @ObservationIgnored private var galleryKey = ""
     @ObservationIgnored private var galleryPages: [String: CaptionGalleryPages] = [:]
+    /// Voice Lab's one-time beta sheet (voice-lab.md §5); R2's Turn On Voice Lab… opens it (V15).
     var showVoiceLabOptIn = false
-    var rewriteInsertionAfterID: String?
     @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
-    private var pendingRewriteSelection: Set<String> = []
-    func beginRewrite(inserting: Bool = false, entry: RewriteEntry = .selection) {
-        let action = RewriteEntryPolicy.resolve(inserting ? .insertWords : entry, enabled: app.bool("voiceLab.enabled"),
-            noticeAccepted: app.bool("voiceLab.betaNoticeAccepted"), editable: capabilities.ai, selection: !selectedIDs.isEmpty)
-        if action == .turnOnVoiceLab { pendingRewriteSelection = selectedWordIDs; showVoiceLabOptIn = true; return }
-        guard action == .openPassage, let first = selectedIDs.first, let last = selectedIDs.last,
-              let lower = index(first), let upper = index(last) else { return }
+    /// The Ask field's text (design.md §6.3.1): what the next Rewrite asks; empty asks Fix mistakes. The clip bar's field
+    /// binds it once V3b adds it, and the passage panel's field until then. In memory only.
+    var rewriteInstruction = ""
+    /// Rewrite's scope now (design.md §6.3): the word selection, else the tab's clip, kept or suggested, else Full take.
+    /// Nil with no transcript.
+    var rewriteScopeNow: RewriteScope? {
+        guard !words.isEmpty else { return nil }
+        let selected = selectedIDs
+        if let first = selected.first, let last = selected.last, let lower = index(first), let upper = index(last) {
+            return .selection(min(lower, upper)...max(lower, upper))
+        }
+        if let clip = activeClip { return .clip(clip.id) }
+        return .fullTake
+    }
+    /// Edit › Rewrite {scope} (design.md §8): "Rewrite Selection", "Rewrite Clip {n}" (a suggested clip too) or
+    /// "Rewrite Full Take", with "…" when the chosen AI asks before each send.
+    var rewriteMenuTitle: String {
+        let title: String
+        switch rewriteScopeNow {
+        case .selection: title = "Rewrite Selection"
+        case .clip(let id): title = "Rewrite Clip \(clipNumber(id) ?? 1)"
+        case .fullTake, nil: title = "Rewrite Full Take"
+        }
+        return title + (rewriteAsksFirst ? "…" : "")
+    }
+    /// The chosen AI asks before each send (C8): an API key, or a CLI signed in with one. A CLI whose sign-in is not known
+    /// yet does not; its send neither starts nor asks until detection knows it (ai.md §4.8).
+    var rewriteAsksFirst: Bool {
+        let id = app.string("llm.connector")
+        guard let connector = ConnectorID(rawValue: id), app.providers.contains(where: { $0.id == id }) else { return false }
+        if (connector == .claudeCode || connector == .codex) && app.cliSignIn(connector) == nil { return false }
+        if case .confirm = app.llmSendKind(connector) { return true }
+        return false
+    }
+    /// Runs Rewrite on `scope` (the scope now when nil) with `instruction` (the Ask field's text when nil): the menu,
+    /// ⇧⌘R, the selection bar, the transcript's context menu and the clip bar (design.md §6.3.6 "Start"). The panel opens
+    /// in R1, or in R0 when no AI is chosen. The open session on this tab sends again when it has the same scope;
+    /// another scope replaces it. Text Rewrite needs no Voice Lab.
+    func runRewrite(scope requested: RewriteScope? = nil, instruction: String? = nil) {
+        guard let scope = requested ?? rewriteScopeNow, RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: scope) else { return }
+        let instruction = instruction ?? rewriteInstruction
+        rewriteOpenTask?.cancel()
+        if let session = rewrite, session.isOpen, session.rewriteScope == scope {
+            guard !session.isProposing else { return }
+            // A proposal with takes asks first (design.md §6.3.1 "Proposal open"); edited changes join with V14.
+            let takes = session.generation?.rows.isEmpty == false
+            let count = if case .proposal(let set) = session.task.state { set.items.count } else { 0 }
+            rewriteOpenTask = Task { [weak self] in
+                guard let self else { return }
+                if takes && count > 0 { guard await confirmDiscard(count) else { return } }
+                guard !Task.isCancelled, session.isOpen else { return }
+                session.actionTask?.cancel()
+                session.actionTask = Task { _ = await session.run(instruction: instruction) }
+            }
+            return
+        }
         closeRewrite(returnFocus: false)
         let snapshot = project
         let selection = selectedWordIDs
         let pauses = selectedPauseIDs
-        let caret = sourceTime
         let signature = rewriteConnectorSignature
         rewriteOpenTask = Task { [weak self] in
             guard let self else { return }
             if waveform == nil { await loadWaveform() }
-            guard !Task.isCancelled, capabilities.ai, app.voiceLabRewriteEnabled, project == snapshot,
-                  selectedWordIDs == selection, selectedPauseIDs == pauses, sourceTime == caret,
+            guard !Task.isCancelled, capabilities.ai, project == snapshot, selectedWordIDs == selection, selectedPauseIDs == pauses,
                   rewriteConnectorSignature == signature else { return }
-            openRewriteSession(range: lower...upper)
+            openRewriteSession(scope: scope, instruction: instruction)
         }
     }
-    /// Opens a Rewrite session on `range` with the AI chosen now; with none, its panel asks which (R0).
-    private func openRewriteSession(range: ClosedRange<Int>, instruction: String = "") {
+    /// "Discard these {c} changes?" with Keep Working, the default, and Discard Changes. True discards.
+    private func confirmDiscard(_ count: Int) async -> Bool {
+        guard let window else { return false }
+        let alert = NSAlert()
+        alert.messageText = count == 1 ? "Discard this change?" : "Discard these \(count) changes?"
+        alert.addButton(withTitle: "Keep Working")
+        alert.addButton(withTitle: "Discard Changes")
+        return await alert.beginSheetModal(for: window) == .alertSecondButtonReturn
+    }
+    /// Opens a Rewrite session on `scope` with the AI chosen now, which runs at once; with none, its panel asks which (R0).
+    private func openRewriteSession(scope: RewriteScope, instruction: String) {
         let signature = rewriteConnectorSignature
         let provider = app.providers.first { $0.id == app.string("llm.connector") }
         let connector: RewriteConnector? = provider.map { (provider: ProviderChoice) -> RewriteConnector in
@@ -102,44 +156,42 @@ struct EditorRenderSnapshot {
                 name: provider.shortName, group: provider.group, plan: provider.id == "codex" ? "ChatGPT plan" : "Claude plan")
         }
         let envelope = waveform.map { AudioEnvelope(sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), levels: $0.fine) }
-        openRewriteRange = range
-        let session = RewriteSession(editor: self, range: range, envelope: envelope, connector: connector,
+        let session = RewriteSession(editor: self, scope: scope, instruction: instruction, envelope: envelope, connector: connector,
             consent: { [weak self] in
                 guard let self, let provider else { return false }
                 return await self.rewriteConsent(provider: provider)
             }, connectorIsCurrent: { [weak self] in self?.rewriteConnectorSignature == signature })
         openRewrite = session
-        if !instruction.isEmpty { session.setInstruction(instruction) }
         session.start()
         if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
         transcriptRevision += 1
     }
     /// R0's Use {name}: writes `llm.connector`, as the AI menu and Settings do, and opens the
-    /// session again on the same words with its instruction, now with that AI.
+    /// session again on the same scope with its instruction, now with that AI, which runs.
     func useRewriteConnector(_ id: String) {
-        guard let session = openRewrite, let range = openRewriteRange else { return }
-        let instruction = session.instruction
+        guard let session = openRewrite else { return }
+        let scope = session.rewriteScope, instruction = session.instruction
         app.set("llm.connector", .string(id))
         closeRewrite(returnFocus: false)
-        guard capabilities.ai, app.voiceLabRewriteEnabled else { return }
-        openRewriteSession(range: range, instruction: instruction)
+        guard RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: scope) else { return }
+        openRewriteSession(scope: scope, instruction: instruction)
     }
     var rewriteConnectorSignature: [String] {
         let id = app.string("llm.connector")
         return [id, app.string("llm.model.\(id)"), app.string("llm.baseUrl.\(id)"), app.string("llm.cliPath.\(id)")]
     }
     func closeRewrite(returnFocus: Bool = true) {
-        rewriteOpenTask?.cancel(); openRewrite?.close(); openRewrite = nil; openRewriteRange = nil
+        rewriteOpenTask?.cancel(); openRewrite?.close(); openRewrite = nil
         transcriptRevision += 1
         if returnFocus { _ = focusTranscript(in: window) }
     }
     /// The session's own `current` (its connector, its project apart from the tab, open)
-    /// decides, so an edit outside its clip or another tab leaves the consent valid (impl-plan §3.3).
+    /// decides, so an edit outside its scope or another tab leaves the consent valid (impl-plan §3.3).
     private func rewriteConsent(provider: ProviderChoice) async -> Bool {
         guard let session = openRewrite, session.current, let connector = session.connector?.connector else { return false }
         do {
             return try await app.authorizeConnectorRequest(provider, connector: connector, action: .rewrite,
-                wordCount: session.source.filter { $0.kind == .word }.count, parent: window) { [self] in
+                wordCount: session.task.words.wordCount, rewrite: session.task.words, parent: window) { [self] in
                     openRewrite === session && session.current
                 }
         } catch is CancellationError { return false } catch {
@@ -148,12 +200,11 @@ struct EditorRenderSnapshot {
             return false
         }
     }
+    /// Voice Lab's beta sheet's Turn on.
     func enableVoiceLab() {
         app.set("voiceLab.betaNoticeAccepted", .bool(true))
         app.set("voiceLab.enabled", .bool(true))
         showVoiceLabOptIn = false
-        guard selectedWordIDs == pendingRewriteSelection else { return }
-        beginRewrite(entry: .menu)
     }
     var preset = ClipPresetID.best
     var instruction = ""
@@ -587,10 +638,6 @@ struct EditorRenderSnapshot {
         // current scope while it still has that clip, else Full Take.
         if restoringSnapshot { newProject.edits.activeClipId = scopeKept(in: newProject) }
         guard newProject != project else { return }
-        // An edit inside the open Rewrite session's clip closes it (design.md R3); one
-        // outside it leaves the session open on the new project.
-        let keepsRewrite = rewriteOutlives(project, newProject)
-        if !keepsRewrite { closeRewrite(returnFocus: false) }
         preview.pause(); isPlaying = false
         let previous = project
         let mediaChanged = previous.media.source != newProject.media.source
@@ -608,7 +655,8 @@ struct EditorRenderSnapshot {
         #endif
         }
         document.replaceProject(changed)
-        if keepsRewrite { openRewrite?.rebase(onto: changed) }
+        // The open Rewrite session follows: an edit outside its scope moves it on, one inside shows R3 (design.md R3).
+        openRewrite?.follow(changed)
         // A relink, or its undo or redo, may change the content key: the lease moves with the project.
         if mediaChanged { holdCacheEntry() }
         recordDocumentChange()

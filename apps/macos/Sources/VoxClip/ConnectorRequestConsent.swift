@@ -21,8 +21,8 @@ extension ProviderChoice {
 
     /// The confirmation for a send that asks every time: an API-key connector, or a CLI signed in with an API key.
     /// `price` is C8's unknown-price sentence. `wordCount` is the transcript's words for Find clips and the scope's for
-    /// Rewrite.
-    func costSheet(action: ConnectorConsentAction, wordCount: Int, price: String) -> LLMSendSheet {
+    /// Rewrite; a Rewrite's `rewrite` names its scope (design.md R0b: "Rewrite clip 1?", "Sends the 118 words of clip 1 …").
+    func costSheet(action: ConnectorConsentAction, wordCount: Int, rewrite: DirectorScope? = nil, price: String) -> LLMSendSheet {
         let target = cliName.map { "\($0), billed to the API key it is signed in with" } ?? "\(label) with your key"
         let words = wordCount == 1 ? "1 word" : "\(wordCount) words"
         switch action {
@@ -30,8 +30,8 @@ extension ProviderChoice {
             return LLMSendSheet(reason: .cost, title: "Find clips?",
                 message: "Sends this project's transcript (\(words), no audio or video) to \(target).\n\n\(price)", confirm: "Find Clips")
         case .rewrite:
-            return LLMSendSheet(reason: .cost, title: "Rewrite \(words)?",
-                message: "Sends \(wordCount == 1 ? "this word" : "these \(words)") to \(target).\n\n\(price)", confirm: "Rewrite")
+            let scope = rewrite ?? DirectorScope(kind: .selection(inClip: false), wordCount: wordCount)
+            return LLMSendSheet(reason: .cost, title: "\(scope.title)?", message: "Sends \(scope.words) to \(target).\n\n\(price)", confirm: "Rewrite")
         case .test:
             return LLMSendSheet(reason: .cost, title: "Send a test request?",
                 message: "Sends a short test request to \(target). Nothing from your projects is sent.\n\n\(price)", confirm: "Test")
@@ -58,7 +58,7 @@ extension AppModel {
     /// first send, and then asks C8's `kind(forLLMSendTo:signIn:providerName:)`. An inline send starts at once; a
     /// confirming send shows the cost sheet on every send and is never remembered. False sends nothing.
     func authorizeConnectorRequest(_ provider: ProviderChoice, connector: any LLMConnector,
-                                   action: ConnectorConsentAction, wordCount: Int = 0, parent: NSWindow? = nil,
+                                   action: ConnectorConsentAction, wordCount: Int = 0, rewrite: DirectorScope? = nil, parent: NSWindow? = nil,
                                    isCurrent: @escaping @MainActor () -> Bool = { true }) async throws -> Bool {
         let serverHost = localServerHost(provider)
         guard let status = await connectorStatus(provider, using: connector) else { return false }
@@ -86,7 +86,7 @@ extension AppModel {
         // can forget the method while the consent sheet is up.
         if provider.group == "cli" && cliSignIn(connector.id) == nil { return false }
         guard case .confirm(let price) = llmSendKind(connector.id) else { return true }
-        let cost = provider.costSheet(action: action, wordCount: wordCount, price: price)
+        let cost = provider.costSheet(action: action, wordCount: wordCount, rewrite: rewrite, price: price)
         return await present(cost, provider: provider, action: action, parent: parent) && stillCurrent()
     }
 

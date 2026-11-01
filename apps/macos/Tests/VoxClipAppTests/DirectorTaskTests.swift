@@ -120,20 +120,18 @@ private actor RefusingKeys: ProviderKeyStore {
         let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         return DebugConnectorRequests.makeEditor(fixture: fixture, app: app)
     }
-    /// Opens Rewrite on words 3–5 as ⇧⌘R does.
-    private func open(_ editor: EditorModel) async throws -> RewriteSession {
-        editor.beginRewrite()
+    /// Runs Rewrite on words 3–5 as ⇧⌘R does: it runs at once (R1), or detects the AIs (R0). With `waits`, until the run
+    /// or the detection ends; a held stub's run waits for `release()`.
+    private func open(_ editor: EditorModel, waits: Bool = true) async throws -> RewriteSession {
+        editor.runRewrite()
         await editor.rewriteOpenTask?.value
         let session = try #require(editor.openRewrite)
-        await session.actionTask?.value
+        if waits { await session.actionTask?.value }
         return session
     }
-    /// Starts a send from the passage panel's Rewrite, as its button does.
-    private func send(_ session: RewriteSession) async throws -> Task<Bool, Never> {
-        await session.detectConnector(); await session.prepare()
-        let quote = try #require(session.quote)
-        session.markEstimateShown(quote.id)
-        return Task { await session.propose(quote) }
+    /// Runs Rewrite again on the session's words, as Rewrite in the passage panel does.
+    private func send(_ session: RewriteSession) -> Task<Bool, Never> {
+        Task { await session.run() }
     }
     private func waitUntilSending(_ connector: StubConnector) async -> Bool {
         for _ in 0..<2_000 { if await connector.isWaiting { return true }; await Task.yield() }
@@ -188,9 +186,10 @@ private actor RefusingKeys: ProviderKeyStore {
         let (app, _) = app(nil, connectors: connectors, keys: ["openai": "sk-openai"])
         let editor = try editor(app)
         defer { editor.close() }
+        editor.rewriteInstruction = "Make it shorter"
         let session = try await open(editor)
         let task = session.task
-        #expect(task.state == .choosingAI && session.connector == nil && !session.canPropose && session.sendLine.isEmpty)
+        #expect(task.state == .choosingAI && session.connector == nil && session.sendLine.isEmpty && session.instruction == "Make it shorter")
         #expect(task.headline.text == "Who should rewrite these words?")
         #expect(task.cards == [.chooser([
             ConnectorChoice(id: "claude-code", name: "Claude Code (installed CLI)", shortName: "Claude Code", status: "Signed in · Claude plan · no extra cost", isReady: true, needsKey: false),
@@ -203,14 +202,15 @@ private actor RefusingKeys: ProviderKeyStore {
         // Picking another row retitles the primary; ↑↓ do the same through `choose`.
         task.choose("openai")
         #expect(task.footer.primary?.title == "Use OpenAI")
-        session.setInstruction("Make it shorter")
 
+        // Use continues to R1 on the same words with the same instruction.
         task.footer.primary?.perform()
         #expect(app.string("llm.connector") == "openai")
         let reopened = try #require(editor.openRewrite)
-        #expect(reopened !== session && !session.isOpen && editor.openRewriteRange == 3...5)
-        #expect(reopened.connector?.name == "OpenAI" && reopened.instruction == "Make it shorter" && reopened.task.state == .ready)
+        #expect(reopened !== session && !session.isOpen && reopened.rewriteScope == .selection(3...5))
+        #expect(reopened.connector?.name == "OpenAI" && reopened.instruction == "Make it shorter" && reopened.task.state == .running && reopened.task.turn == 1)
         #expect(editor.announcements.isEmpty)
+        await reopened.actionTask?.value
     }
 
     @Test func withNothingDetectedTheJobSendsToSettingsAndChecksAgain() async throws {
@@ -281,10 +281,9 @@ private actor RefusingKeys: ProviderKeyStore {
         let (app, _) = app("ollama", connectors: ["ollama": ollama])
         let editor = try editor(app)
         defer { editor.close() }
-        let session = try await open(editor)
+        let session = try await open(editor, waits: false)
         let task = session.task
-        #expect(task.state == .ready && task.context?.text == "Ollama · fixture-local · no extra cost" && task.context?.readiness == .ready)
-        let sending = try await send(session)
+        #expect(task.state == .running && task.turn == 1 && task.context?.text == "Ollama · fixture-local · no extra cost" && task.context?.readiness == .ready)
         #expect(await waitUntilSending(ollama))
         #expect(task.state == .running && task.turn == 1)
         #expect(task.headline.text == "Rewriting these words…" && task.headline.runningSince != nil && task.headline.stop?.title == "Stop")
@@ -297,7 +296,7 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(editor.announcements == ["Rewriting these words"])
 
         await ollama.release()
-        #expect(await sending.value)
+        #expect(await session.sending?.value == true)
         guard case .proposal(let changes) = task.state else { Issue.record("no proposal: \(task.state)"); return }
         #expect(!changes.items.isEmpty && changes.items.map(\.ordinal) == Array(1...changes.items.count))
         #expect(editor.announcements == ["Rewriting these words", changes.announcement])
@@ -310,16 +309,16 @@ private actor RefusingKeys: ProviderKeyStore {
         let (app, _) = app("anthropic", connectors: ["anthropic": anthropic])
         let editor = try editor(app)
         defer { editor.close() }
-        let session = try await open(editor)
-        session.setInstruction("Make it shorter")
+        editor.rewriteInstruction = "Tighten the intro"
+        let session = try await open(editor, waits: false)
         #expect(session.task.context?.text == "Anthropic · fixture-local · billed to your key" && session.task.context?.readiness == .asksFirst)
-        let sending = try await send(session)
         #expect(await waitUntilSending(anthropic))
-        #expect(session.task.cards.first == .asked(preset: nil, text: "“Make it shorter”"))
+        #expect(session.task.cards.first == .asked(preset: nil, text: "“Tighten the intro”"))
         #expect(session.task.steps[1].title == "Sent to Anthropic" && session.task.steps[1].detail == "Text only. No audio or video.")
         #expect(session.task.footer.note == "Sends these 3 words to Anthropic with your key.")
         await anthropic.release()
-        _ = await sending.value
+        await session.actionTask?.value
+        #expect(app.rewriteSuggestions(for: editor.project.id).last?.menuTitle == "Recent: “Tighten the intro”")
     }
 
     /// R1 shows as the user sends, but claims nothing sent and announces nothing while the privacy consent and the
@@ -331,10 +330,9 @@ private actor RefusingKeys: ProviderKeyStore {
         app.connectorConsentOverride = { _, _, sheet in await sheets.ask(sheet) }
         let editor = try editor(app)
         defer { editor.close() }
-        let session = try await open(editor)
+        let session = try await open(editor, waits: false)
         let task = session.task
         func waitForSheet() async { for _ in 0..<2_000 where !sheets.isAsking { await Task.yield() } }
-        let sending = try await send(session)
         await waitForSheet()
         #expect(sheets.asked == [.privacy] && task.state == .running && task.turn == 1)
         #expect(task.steps.map(\.status) == [.done, .waiting, .waiting, .waiting] && editor.announcements.isEmpty)
@@ -342,12 +340,12 @@ private actor RefusingKeys: ProviderKeyStore {
         await waitForSheet()
         #expect(sheets.asked == [.privacy, .cost] && task.steps.map(\.status) == [.done, .waiting, .waiting, .waiting] && editor.announcements.isEmpty)
         sheets.answer(true)
-        #expect(await sending.value)
+        #expect(await session.sending?.value == true)
         guard case .proposal(let changes) = task.state else { Issue.record("no proposal: \(task.state)"); return }
         #expect(editor.announcements == ["Rewriting these words", changes.announcement])
         #expect(await anthropic.sends == 1)
 
-        let declined = try await send(session)
+        let declined = send(session)
         await waitForSheet()
         #expect(sheets.asked == [.privacy, .cost, .cost] && editor.announcements.count == 2)
         sheets.answer(false)
@@ -362,13 +360,12 @@ private actor RefusingKeys: ProviderKeyStore {
         let editor = try editor(app)
         defer { editor.close() }
         let before = editor.project
-        let session = try await open(editor)
-        let sending = try await send(session)
+        let session = try await open(editor, waits: false)
         #expect(await waitUntilSending(ollama))
         session.task.headline.stop?.perform()
         #expect(!session.isOpen && editor.openRewrite == nil)
         await ollama.release()
-        #expect(await sending.value == false)
+        #expect(await session.sending?.value == false)
         #expect(editor.project == before && !editor.llmRuns.isBusy && editor.announcements == ["Rewriting these words"])
     }
 
@@ -424,14 +421,12 @@ private actor RefusingKeys: ProviderKeyStore {
         defer { editor.close() }
         let before = editor.project
         let session = try await open(editor)
-        let focus = session.task.focusRequest
-        let sending = try await send(session)
-        #expect(await sending.value == false)
+        #expect(await session.sending?.value == false)
         let task = session.task
         #expect(task.state == .error(row.error))
         #expect(task.headline.text == "Couldn't rewrite these words" && task.headline.stop == nil)
         if let body = row.body { #expect(texts(task) == [body]) }
-        else { #expect(task.cards == [.keyField(provider: "anthropic", label: "Anthropic API key")] && task.focusRequest == focus + 1) }
+        else { #expect(task.cards == [.keyField(provider: "anthropic", label: "Anthropic API key")] && task.focusRequest == 1) }
         #expect(task.footer.primary?.title == row.primary && task.footer.note == row.note && task.footer.link == nil)
         #expect(editor.announcements.last == "Couldn't rewrite these words.")
         #expect(editor.project == before && !editor.llmRuns.isBusy && session.isOpen)
@@ -443,7 +438,6 @@ private actor RefusingKeys: ProviderKeyStore {
         let editor = try editor(app)
         defer { editor.close() }
         let session = try await open(editor)
-        _ = await (try await send(session)).value
         #expect(session.task.footer.primary?.title == "Try Again" && session.task.turn == 1)
         await ollama.set(failure: nil)
         session.task.footer.primary?.perform()
@@ -452,8 +446,7 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(await ollama.sends == 2 && session.task.turn == 2)
 
         await ollama.set(failure: .refused(category: nil))
-        let refused = try await send(session)
-        _ = await refused.value
+        _ = await send(session).value
         #expect(session.task.state == .error(.refused))
         session.task.footer.primary?.perform()
         #expect(session.task.state == .ready && session.isOpen)
@@ -466,10 +459,10 @@ private actor RefusingKeys: ProviderKeyStore {
         let (app, _) = app("ollama", connectors: ["ollama": ollama])
         let editor = try editor(app)
         defer { editor.close() }
-        let session = try await open(editor)
         let clock = QuoteClock()
-        await session.service?.useClock { clock.now() }
-        _ = await (try await send(session)).value
+        let session = try await open(editor, waits: false)
+        await session.passageService?.useClock { clock.now() }
+        await session.actionTask?.value
         guard case .error(.message) = session.task.state else { Issue.record("no R1x: \(session.task.state)"); return }
         clock.advance(seconds: 301)
         await ollama.set(failure: nil)
@@ -486,7 +479,6 @@ private actor RefusingKeys: ProviderKeyStore {
         let editor = try editor(app)
         defer { editor.close() }
         let session = try await open(editor)
-        _ = await (try await send(session)).value
         let task = session.task
         let body = "Ollama took too long to answer. Try again, or pick a faster model. Your edits are saved."
         #expect(task.state == .error(.message(body)))
@@ -516,7 +508,6 @@ private actor RefusingKeys: ProviderKeyStore {
         let editor = try editor(app)
         defer { editor.close() }
         let session = try await open(editor)
-        _ = await (try await send(session)).value
         let task = session.task
         let focus = task.focusRequest
         task.keyDraft = "sk-ant-fixture"
@@ -536,7 +527,6 @@ private actor RefusingKeys: ProviderKeyStore {
         let editor = try editor(app)
         defer { editor.close() }
         let session = try await open(editor)
-        _ = await (try await send(session)).value
         let task = session.task
         #expect(task.state == .error(.noKey(provider: "anthropic", name: "Anthropic")))
         task.keyDraft = "sk-ant-fixture"
@@ -567,7 +557,7 @@ private actor RefusingKeys: ProviderKeyStore {
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
         let connector = RewriteConnector(connector: StubConnector(id: .ollama), model: "fixture-local", name: "Ollama", group: "local", plan: "")
-        let session = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: connector)
+        let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: connector)
         editor.rewrite = session
         func panel() -> [String: CGRect] {
             let host = NSHostingView(rootView: PanelHost(model: editor, shell: shell, width: 404, height: 522).environment(editor.app))
@@ -590,49 +580,51 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(panel()["director.panel"] == nil)
     }
 
-    /// The task's panel takes the keyboard from the passage panel it replaces, so Esc (and ⌘.) stop the run.
-    @Test func theTaskPanelTakesTheKeyboardSoEscStops() async throws {
+    /// A run keeps the keyboard where it was (design.md §10); moved into R1 (F6), Esc (and ⌘.) stop it there.
+    @Test func aRunKeepsTheKeyboardWhereItWasAndEscInThePanelStopsIt() async throws {
         let ollama = StubConnector(id: .ollama, hold: true)
         let (app, _) = app("ollama", connectors: ["ollama": ollama])
         let editor = try editor(app)
         defer { editor.close() }
-        let session = try await open(editor)
         let panel = PanelWindow(editor: editor)
         defer { panel.close() }
-        await panel.settle { panel.fieldHasKeyboard }
-        #expect(panel.fieldHasKeyboard, "opening Rewrite focuses its field")
-        let sending = try await send(session)
+        panel.window.makeFirstResponder(panel.elsewhere)
+        let session = try await open(editor, waits: false)
         #expect(await waitUntilSending(ollama))
-        await panel.settle { panel.showsTaskPanel && panel.paneHasKeyboard }
-        #expect(panel.showsTaskPanel && panel.paneHasKeyboard && session.task.keyboardInPanel)
+        await panel.settle { panel.showsTaskPanel }
+        #expect(panel.showsTaskPanel && panel.window.firstResponder === panel.elsewhere && !session.task.keyboardInPanel)
+        editor.focusedPane = .panel
+        editor.paneFocusRequest += 1
+        await panel.settle { panel.paneHasKeyboard }
+        #expect(panel.paneHasKeyboard && session.task.keyboardInPanel)
         panel.escape()
         #expect(!session.isOpen && editor.openRewrite == nil)
         await ollama.release()
-        #expect(await sending.value == false)
+        #expect(await session.sending?.value == false)
     }
 
-    /// The passage panel takes the keyboard back with the reply only when the keyboard stayed in the panel: a reply that
-    /// arrives while the user works elsewhere leaves focus there.
+    /// The passage panel takes the keyboard with the reply only when the keyboard was in the panel: a reply that arrives
+    /// while the user works elsewhere leaves focus there.
     @Test(arguments: [true, false])
     func aReplyTakesTheKeyboardOnlyFromThePanel(stayed: Bool) async throws {
         let ollama = StubConnector(id: .ollama, hold: true)
         let (app, _) = app("ollama", connectors: ["ollama": ollama])
         let editor = try editor(app)
         defer { editor.close() }
-        let session = try await open(editor)
         let panel = PanelWindow(editor: editor)
         defer { panel.close() }
-        await panel.settle { panel.fieldHasKeyboard }
-        let sending = try await send(session)
+        panel.window.makeFirstResponder(panel.elsewhere)
+        let session = try await open(editor, waits: false)
         #expect(await waitUntilSending(ollama))
-        await panel.settle { panel.paneHasKeyboard }
-        if !stayed {
-            panel.window.makeFirstResponder(panel.elsewhere)
-            await panel.settle { !session.task.keyboardInPanel }
-            #expect(!session.task.keyboardInPanel)
+        await panel.settle { panel.showsTaskPanel }
+        if stayed {
+            editor.focusedPane = .panel
+            editor.paneFocusRequest += 1
+            await panel.settle { panel.paneHasKeyboard }
+            #expect(session.task.keyboardInPanel)
         }
         await ollama.release()
-        #expect(await sending.value)
+        #expect(await session.sending?.value == true)
         await panel.settle { !panel.showsTaskPanel }
         #expect(!panel.showsTaskPanel, "the proposal shows in the passage panel")
         if stayed {
@@ -650,15 +642,13 @@ private actor RefusingKeys: ProviderKeyStore {
         let (app, _) = app("ollama", connectors: ["ollama": ollama])
         let editor = try editor(app)
         defer { editor.close() }
-        let session = try await open(editor)
         let panel = PanelWindow(editor: editor)
         defer { panel.close() }
-        await panel.settle { panel.fieldHasKeyboard }
-        _ = await (try await send(session)).value
-        #expect(session.task.state == .error(.refused))
-        await panel.settle { panel.showsTaskPanel && panel.paneHasKeyboard }
         panel.window.makeFirstResponder(panel.elsewhere)
-        await panel.settle { !session.task.keyboardInPanel }
+        let session = try await open(editor)
+        #expect(session.task.state == .error(.refused))
+        await panel.settle { panel.showsTaskPanel }
+        #expect(panel.window.firstResponder === panel.elsewhere)
         session.task.footer.primary?.perform()
         await panel.settle { panel.fieldHasKeyboard }
         #expect(session.task.state == .ready && panel.fieldHasKeyboard)
@@ -673,7 +663,7 @@ private actor RefusingKeys: ProviderKeyStore {
         let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         let scenes = await DebugRewrite.directorScenes(app: app, fixture: fixture)
         defer { scenes.forEach { $0.editor?.close() } }
-        #expect(scenes.map(\.name) == ["r0", "r0-none", "r1", "r1x-message", "r1x-signed-out", "r1x-no-key", "r1x-not-running", "r1x-refused", "r1x-too-many-words", "r1x-too-much-text"])
+        #expect(scenes.map(\.name) == ["r0", "r0-none", "r1", "r1-clip", "r1x-message", "r1x-signed-out", "r1x-no-key", "r1x-not-running", "r1x-refused", "r1x-too-many-words", "r1x-too-much-text", "r3"])
         let output = ProcessInfo.processInfo.environment["VOXCLIP_DIRECTOR_SCENES"].map { URL(fileURLWithPath: $0, isDirectory: true) }
         for scene in scenes {
             for width in [404, 300] {

@@ -59,9 +59,9 @@ import VoxClipMedia
         model.mediaResolved = true
         let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
         let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
-        let session = RewriteSession(editor: model, range: 12...25, envelope: envelope, connector: connector)
-        model.rewrite = session; model.rewriteRange = 12...25
-        session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
+        let session = RewriteSession(editor: model, scope: .selection(12...25), envelope: envelope, connector: connector)
+        model.rewrite = session
+        try session.receivePassage(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage."); session.finishRun(seconds: 1)
         if variant.hasPrefix("rewrite-takes-") { try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session) }
     }
     private static func measureResizes(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {

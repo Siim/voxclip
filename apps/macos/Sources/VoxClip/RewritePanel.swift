@@ -1,11 +1,14 @@
 import SwiftUI
 import VoxClipCore
 
+/// The passage panel, interim (impl-plan V13): the Rewrite job's proposal (R2) and its field while the task waits for a
+/// new instruction. Until the clip bar's Ask field (V3b) its field is the Ask field, with design.md §6.3.1's suggestions,
+/// and its Rewrite sends again on the session's scope; V15's change list replaces the rest and deletes it.
 @MainActor struct RewritePanel: View {
     @Bindable var session: RewriteSession
     @FocusState private var instructionFocused: Bool
-    @FocusState private var wordsFocused: Bool
     @State private var approvalTask: Task<Void, Never>?
+    private var editor: EditorModel { session.editor }
     var body: some View {
         VStack(spacing: 0) {
             ScrollView { contents }
@@ -15,45 +18,35 @@ import VoxClipCore
         .background(DesignValues.color("bg.surface"))
         .accessibilityElement(children: .contain).accessibilityIdentifier("voxclip.rewrite")
         .focusSection()
-        .onExitCommand { session.editor.closeRewrite() }
+        .onExitCommand { editor.closeRewrite() }
         // The panel also goes when its tab or the panel's job changes (impl-plan V3a, V4);
         // the session stays open then, and so does a send it approved. Closing it cancels its own work.
         .onDisappear { if !session.isOpen { approvalTask?.cancel() } }
-        // The field takes the keyboard as the session opens, after Ask for Something Else, and back from a run that had
-        // it; a reply that arrives while the user works elsewhere leaves focus there.
+        // The field takes the keyboard after Ask for Something Else and back from a run that had it; a reply that arrives
+        // while the user works elsewhere leaves focus there.
         .task {
             if session.task.takeKeyboardHandover() { instructionFocused = true }
-            await session.detectConnector(); await session.prepare()
+            await session.detectConnector()
         }
-        .task(id: session.quote?.id) { if let id = session.quote?.id { session.markEstimateShown(id) } }
-        .onChange(of: session.editor.paneFocusRequest) { _, _ in
-            if session.editor.focusedPane == .panel { instructionFocused = true }
+        .onChange(of: editor.paneFocusRequest) { _, _ in
+            if editor.focusedPane == .panel { instructionFocused = true }
         }
-        .onChange(of: instructionFocused) { _, focused in if focused { session.editor.focusedPane = .panel } }
-        .onChange(of: wordsFocused) { _, focused in if focused { session.editor.focusedPane = .panel } }
-        .onChange(of: instructionFocused || wordsFocused) { _, focused in session.task.keyboardInPanel = focused }
-        .onChange(of: session.editor.capabilities) { _, _ in
-            if !session.current { session.editor.closeRewrite(returnFocus: false) }
+        .onChange(of: instructionFocused) { _, focused in
+            if focused { editor.focusedPane = .panel }
+            session.task.keyboardInPanel = focused
+        }
+        .onChange(of: editor.capabilities) { _, _ in
+            if !session.current { editor.closeRewrite(returnFocus: false) }
         }
     }
     var contents: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            Text("What should change?").font(.system(size: 12, weight: .semibold))
-            TextField("What should change?", text: Binding(get: { session.instruction }, set: { session.setInstruction($0) }), axis: .vertical)
-                .lineLimit(2...4).textFieldStyle(.roundedBorder).focused($instructionFocused)
-                .accessibilityLabel("What should change?")
-            RewriteProposalControls(session: session, propose: approveAndPropose)
+            AskField(editor: editor, focused: $instructionFocused) { rewrite() }
+            RewriteProposalControls(session: session, rewrite: rewrite)
             Divider()
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline) { newWordsLabel; Spacer(minLength: 4); changeSummary.fixedSize() }
-                VStack(alignment: .leading, spacing: 4) { newWordsLabel; changeSummary }
-            }
-            TextField("New words", text: Binding(get: { session.newWords }, set: { session.edit($0) }), axis: .vertical)
-                .lineLimit(3...8).textFieldStyle(.roundedBorder).focused($wordsFocused).accessibilityLabel("New words")
+            if case .proposal(let set) = session.task.state { changeList(set) }
             if let review = session.review {
-                diffLine(review).font(.system(size: 12)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-                    .accessibilityLabel(review.accessibleDescription)
                 ForEach(review.voiceHunks.indices, id: \.self) { index in
                     if let meter = review.voiceHunks[index].meter {
                         Text(meter.copy).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -65,7 +58,7 @@ import VoxClipCore
                 if let summary = review.summary, !review.voiceHunks.isEmpty { Text(summary.copy).font(.system(size: 11)).foregroundStyle(.secondary) }
             }
             if !session.problem.isEmpty { InlineNotice(text: session.problem) }
-            if session.review?.voiceHunks.isEmpty == false {
+            if session.review?.voiceHunks.isEmpty == false, editor.app.voiceLabRewriteEnabled {
                 Divider()
                 if let generation = session.generation { RewriteTakesView(session: session, generation: generation, generate: generate) }
                 else { Button("Choose Voice…") { approvalTask = Task { await session.discoverVoices() } } }
@@ -74,57 +67,67 @@ import VoxClipCore
     }
     var footer: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Exports show AI MODIFIED on the video and in the post.", systemImage: "info.circle")
-                .font(.system(size: 11)).foregroundStyle(.secondary)
-            if let action = session.localAction {
-                Button(action) { if session.applyLocalChanges() { session.editor.closeRewrite() } }
+            if session.review?.voiceHunks.isEmpty == false {
+                Label("Exports show AI MODIFIED on the video and in the post.", systemImage: "info.circle")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            if let title = session.applyTitle {
+                Button(title) { session.applyFreeChanges() }
                     .disabled(!session.current || session.isProposing)
             }
-            if let generation = session.generation {
-                Button(generation.acceptTitle) {
-                    approvalTask = Task {
-                        if await generation.accept(into: session.editor, localCommands: session.localCommands) { session.editor.closeRewrite() }
-                    }
-                }
+            if let generation = session.generation, editor.app.voiceLabRewriteEnabled {
+                Button(generation.acceptTitle) { approvalTask = Task { await session.acceptTakes() } }
                 .keyboardShortcut(.return, modifiers: [])
-                .disabled(!session.current || !generation.readyToAccept || session.isProposing || !session.editor.capabilities.edit)
+                .disabled(!session.current || !generation.readyToAccept || session.isProposing || !editor.capabilities.edit)
                 if !generation.problem.isEmpty { InlineNotice(text: generation.problem) }
             }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
     }
-    private var header: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) { headerTitle; Spacer(minLength: 4); scope.fixedSize(); closeButton }
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) { headerTitle; Spacer(minLength: 4); closeButton }
-                scope
+    /// The proposal's headline and one row per change: its removed words struck, its new words in the tint.
+    private func changeList(_ set: ChangeSet) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(session.task.headline.text).font(.system(size: 13, weight: .semibold)).accessibilityAddTraits(.isHeader)
+            if let sub = session.task.headline.sub { Text(sub).font(.system(size: 11)).foregroundStyle(.secondary) }
+            ForEach(set.items) { item in
+                change(item).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(item.spokenDescription(of: set.items.count, prefix: "Change"))
             }
         }
     }
-    private var newWordsLabel: some View { Text("New words").font(.system(size: 12, weight: .semibold)).fixedSize() }
-    private var changeSummary: some View { Text(session.review?.changeSummary ?? "").font(.system(size: 11)).foregroundStyle(.secondary) }
-    private var scope: some View { Text(session.header).font(DesignValues.mono(11)).foregroundStyle(.secondary) }
-    private var closeButton: some View {
-        Button { session.editor.closeRewrite() } label: { Image(systemName: "xmark") }
-            .buttonStyle(.plain).accessibilityLabel(EditorIconAction.closeRewrite.name).help("Close Rewrite (Esc)")
+    private func change(_ item: ProposalItem) -> Text {
+        var result = AttributedString()
+        if !item.oldWords.isEmpty {
+            var old = AttributedString(item.oldWords.joined(separator: " "))
+            old.strikethroughStyle = .single; old.foregroundColor = Color.secondary
+            result.append(old)
+        }
+        if !item.newWords.isEmpty {
+            var new = AttributedString((item.oldWords.isEmpty ? "" : " ") + item.newWords.joined(separator: " "))
+            new.foregroundColor = DesignValues.accentText
+            result.append(new)
+        }
+        return Text(result)
     }
-    private var headerTitle: some View {
+    private var header: some View {
         HStack(spacing: 6) {
-            Image(systemName: "waveform")
-            Text("Rewrite").font(.system(size: 13, weight: .semibold))
-            Text("Beta").font(.system(size: 11)).padding(.horizontal, 4).overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary.opacity(0.5)))
-        }.fixedSize()
+            Image(systemName: "pencil")
+            Text(session.task.words.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+            if session.review?.voiceHunks.isEmpty == false && editor.app.voiceLabRewriteEnabled {
+                Text("Beta").font(.system(size: 11)).padding(.horizontal, 4).overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary.opacity(0.5)))
+            }
+            Spacer(minLength: 4)
+            Button { editor.closeRewrite() } label: { Image(systemName: "xmark") }
+                .buttonStyle(.plain).accessibilityLabel(EditorIconAction.closeRewrite.name).help("Close Rewrite (Esc)")
+        }
     }
     #if DEBUG
     var snapshot: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
-            Text("What should change?").font(.system(size: 12, weight: .semibold))
-            Text(session.instruction.isEmpty ? "What should change?" : session.instruction).font(.system(size: 12))
+            Text(editor.rewriteInstruction.isEmpty ? AskField.placeholder(session.task.words) : editor.rewriteInstruction).font(.system(size: 12))
                 .frame(maxWidth: .infinity, alignment: .leading).padding(8).background(DesignValues.color("bg.surface"))
-            newWordsLabel
-            Text(session.newWords).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
-            if let review = session.review { diffLine(review).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true) }
+            if case .proposal(let set) = session.task.state { changeList(set) }
             Divider()
             if let generation = session.generation { RewriteTakesView(session: session, generation: generation, generate: {}).snapshot }
             Divider()
@@ -132,24 +135,9 @@ import VoxClipCore
         }.padding(16).background(DesignValues.color("bg.surface"))
     }
     #endif
-    private func diffLine(_ review: RewriteReview) -> Text {
-        var result = AttributedString()
-        for run in review.runs {
-            var text = AttributedString(run.text + " ")
-            switch run.kind {
-            case .removed: text.strikethroughStyle = .single; text.foregroundColor = Color.secondary
-            case .inserted: text.foregroundColor = DesignValues.accentText
-            case .bridge: text.foregroundColor = Color.secondary
-            case .equal: break
-            }
-            result.append(text)
-        }
-        return Text(result)
-    }
-    /// The send asks for consent and, on an API key, confirms the cost itself (`RewriteSession.propose`).
-    private func approveAndPropose() {
-        guard let quote = session.quote, session.canPropose else { return }
-        approvalTask = Task { await session.propose(quote) }
+    /// Rewrite on the session's scope with the field's text: it sends again and replaces the proposal (design.md §6.3.1).
+    private func rewrite() {
+        editor.runRewrite(scope: session.rewriteScope)
     }
     private func generate() {
         guard let generation = session.generation, generation.canExecute else { return }
@@ -160,16 +148,54 @@ import VoxClipCore
     }
 }
 
+/// Rewrite's Ask field (design.md §6.3.1), bound to `EditorModel.rewriteInstruction`: the scope's placeholder, Return runs
+/// Rewrite, and a trailing menu lists the suggestions, which fill the field and do not send. The clip bar (V3b) hosts it.
+@MainActor struct AskField: View {
+    @Bindable var editor: EditorModel
+    var focused: FocusState<Bool>.Binding
+    let submit: () -> Void
+    /// "What should change in clip 1?", "… in this video?", "… in these words?".
+    static func placeholder(_ words: DirectorScope) -> String {
+        switch words.kind {
+        case .clip(let number): "What should change in clip \(number)?"
+        case .fullTake: "What should change in this video?"
+        case .selection: "What should change in these words?"
+        }
+    }
+    private var words: DirectorScope {
+        editor.rewrite?.task.words ?? DirectorScope(kind: .fullTake, wordCount: 0)
+    }
+    var body: some View {
+        let placeholder = Self.placeholder(words)
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles").foregroundStyle(.secondary).accessibilityHidden(true)
+            TextField(placeholder, text: $editor.rewriteInstruction)
+                .textFieldStyle(.plain).focused(focused)
+                .onSubmit(submit)
+                .accessibilityLabel(String(placeholder.dropLast()))
+            Menu {
+                ForEach(editor.app.rewriteSuggestions(for: editor.project.id)) { suggestion in
+                    Button(suggestion.menuTitle) { editor.rewriteInstruction = suggestion.title }
+                }
+            } label: { Image(systemName: "chevron.down") }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .accessibilityLabel("Suggestions").help("Suggestions")
+        }
+        .padding(.horizontal, 8).frame(minHeight: 28)
+        .background(DesignValues.color("bg.input"), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DesignValues.color("line.strong").opacity(0.4)))
+    }
+}
+
 @MainActor struct RewriteProposalControls: View {
     let session: RewriteSession
-    let propose: () -> Void
+    let rewrite: () -> Void
     var body: some View {
         // Running shows R1, and the connector's fixes show in R1x (DirectorPanel), not here.
         VStack(alignment: .leading, spacing: 12) {
-            Button(session.proposalButton, action: propose).disabled(!session.canPropose)
-                .accessibilityLabel(session.proposalButton)
+            Button(session.proposalButton, action: rewrite).disabled(!session.editor.capabilities.ai || session.isProposing)
+                .accessibilityLabel(session.task.words.title)
             Text(session.sendLine).font(.system(size: 11)).foregroundStyle(.secondary)
-            if !session.estimateCopy.isEmpty { Text(session.estimateCopy).font(.system(size: 11)).foregroundStyle(.secondary) }
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }

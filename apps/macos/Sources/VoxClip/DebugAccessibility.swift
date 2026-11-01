@@ -122,20 +122,17 @@ import VoxClipMedia
         captureProject.edits = ProjectEdits()
         let captureEditor = EditorModel(document: VoxClipDocument(project: captureProject), app: app, preview: DemoPreviewEngine())
         captureEditor.mediaResolved = true; captureEditor.refresh()
-        let session = RewriteSession(editor: captureEditor, range: 3...9, envelope: envelope, connector: connector)
+        let session = RewriteSession(editor: captureEditor, scope: .selection(3...9), instruction: "Make this clearer", envelope: envelope, connector: connector)
         defer { session.close(); captureEditor.close() }
-        session.setInstruction("Make this clearer")
-        session.edit("Here is my new draft")
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(5))
-        while session.quote == nil && clock.now < deadline { await Task.yield() }
-        if let quote = session.quote { session.markEstimateShown(quote.id) }
-        guard session.canPropose else { throw CocoaError(.coderInvalidValue) }
+        captureEditor.rewrite = session
+        captureEditor.rewriteInstruction = "Make this clearer"
+        try session.receivePassage("Here is my new draft")
+        session.finishRun(seconds: 1)
         for (name, scheme) in [("light", ColorScheme.light), ("dark", .dark)] {
             let panel = RewritePanel(session: session)
             let panelContents = VStack(spacing: 0) { panel.contents; Divider(); panel.footer }
             try DebugRound4.bitmap(panelContents, name: "rewrite-partial-native-fields-unsupported-\(name)", width: 360, height: 680, scheme: scheme, directory: directory)
-            let controls = RewriteProposalControls(session: session, propose: {}).padding(16)
+            let controls = RewriteProposalControls(session: session, rewrite: {}).padding(16)
             try DebugRound4.bitmap(controls, name: "rewrite-refreshed-estimate-controls-\(name)", width: 360, height: 150, scheme: scheme, directory: directory)
             app.settings.values["llm.connector"] = .string("codex")
             app.settings.values["llm.cloudConsent.codex"] = .bool(false)

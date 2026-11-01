@@ -266,8 +266,7 @@ import VoxClipCore
 }
 
 @MainActor struct ShortcutsView: View {
-    var rewriteEnabled = false
-    /// The current bindings: "keys|what they do".
+    /// The current bindings: "keys|what they do". ⇧⌘R is text Rewrite, which needs no Voice Lab.
     static let lines = bindings(internalBuild: RewriteEntryPolicy.buildEnabled)
     nonisolated static func bindings(internalBuild: Bool) -> [String] {
         var lines: [String] = ["Space|Play / pause", "J / K / L|Back / stop / forward", "Delete / ⇧Delete|Cut / restore selection", "Return / C|Correct spelling", "⌘Z / ⇧⌘Z|Undo / redo", "← / →|Previous / next word", "⌥← / ⌥→|Previous / next sentence", "⇧← / ⇧→|Extend selection", "⌘K|Make clip from selection", "I / O|Set clip start / end", "[ / ]|Previous / next clip", "P|Preview this cut", "⌥⌘U / ⌥⌘P / ⌥⌘R|Cut fillers / tighten / restore", "⌘F / ⌘G / ⇧⌘G|Find / next / previous", "⌘1 / ⌘2|Home / Full Take", "⌃Tab / ⌃⇧Tab|Next / previous tab", "⌘W|Close tab (on Full Take, the project)", "⇧⌘K|Find clips", "Escape|Dismiss selection bar, then Full Take", "⌥⌘I|Show / hide viewer", "⌃⌘S|Show / hide sidebar", "⌘J|Show / hide timeline", "⌘+ / ⌘− / ⌘0|Text size", "⌘E / ⌘O / ⌘,|Export / open / settings"]
@@ -280,7 +279,7 @@ import VoxClipCore
             Text("Keyboard shortcuts").font(.title2)
             Text("Select words in the transcript. Single-letter keys work in the editor, never while typing a correction or in a text field.").foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: 40, verticalSpacing: 8) {
-                ForEach(Self.lines.filter { rewriteEnabled || $0 != "⇧⌘R|Rewrite" }, id: \.self) { line in
+                ForEach(Self.lines, id: \.self) { line in
                     let parts = line.split(separator: "|")
                     GridRow { Text(parts[0]).font(DesignValues.mono()); Text(parts[1]) }
                 }

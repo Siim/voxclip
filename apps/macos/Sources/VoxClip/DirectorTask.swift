@@ -53,14 +53,19 @@ struct DirectorScope: Equatable, Sendable {
         case .selection(let inClip): inClip ? "clip" : "video"
         }
     }
-    /// R1x's headline for a scope over Rewrite's limits: "Clip 1 is too long to rewrite at once".
-    var tooLong: String {
+    /// The scope as a sentence's subject: "Clip 1", "Full take", "These words" (design.md R1x "{Full take | Clip {n}}").
+    var subject: String {
         switch kind {
-        case .clip(let number): "Clip \(number) is too long to rewrite at once"
-        case .fullTake: "Full take is too long to rewrite at once"
-        case .selection: wordCount == 1 ? "This word is too long to rewrite at once" : "These words are too long to rewrite at once"
+        case .clip(let number): "Clip \(number)"
+        case .fullTake: "Full take"
+        case .selection: wordCount == 1 ? "This word" : "These words"
         }
     }
+    /// R1x's headline for a scope over Rewrite's limits: "Clip 1 is too long to rewrite at once".
+    var tooLong: String { subject + (isPlural ? " are" : " is") + " too long to rewrite at once" }
+    /// R3's headline: "Clip 1 changed".
+    var changed: String { subject + " changed" }
+    private var isPlural: Bool { if case .selection = kind { wordCount != 1 } else { false } }
 }
 
 /// The context line (design.md §6.3.4): the AI's short name, its model and the send's state.
@@ -153,14 +158,38 @@ struct ProposalItem: Identifiable, Equatable, Sendable {
     let sourceWordIDs: [String]
     /// Its new words; empty for a cut.
     let newWords: [String]
+    /// The words it replaces or removes as the transcript reads them (corrections applied), in order.
+    var oldWords: [String] = []
+    /// It adds something the speaker didn't say: a number, a link or a name found nowhere in the scope or the instruction
+    /// (voice-lab.md §8.1 `checkThis`).
+    var checkThis = false
     var included = true
     var id: Int { ordinal }
+
+    /// "Proposed change 1 of 6: removed to, to the; inserted your, in the" (design.md §10), or "Change 1 of 6: …" in
+    /// the panel's list.
+    func spokenDescription(of count: Int, prefix: String = "Proposed change") -> String {
+        let parts = [oldWords.isEmpty ? nil : "removed " + oldWords.joined(separator: " "),
+                     newWords.isEmpty ? nil : "inserted " + newWords.joined(separator: " ")].compactMap { $0 }
+        return "\(prefix) \(ordinal) of \(count): " + parts.joined(separator: "; ")
+    }
 }
 
 /// A proposal: what a task would change, before anything changes the project (design.md §6.5).
 struct ChangeSet: Equatable, Sendable {
     var items: [ProposalItem]
     var voiceCount: Int { items.filter { $0.kind == .voice }.count }
+    /// R2's headline: "6 changes", "1 change", or "No changes needed".
+    var headline: String { items.isEmpty ? "No changes needed" : items.count == 1 ? "1 change" : "\(items.count) changes" }
+    /// R2's sub-line: "2 cuts · 1 fix · 3 phrases in your voice", zero parts left out; nil with no changes.
+    var subline: String? {
+        func part(_ kind: ProposalItem.Kind, _ one: String, _ many: String) -> String? {
+            let count = items.filter { $0.kind == kind }.count
+            return count == 0 ? nil : count == 1 ? "1 \(one)" : "\(count) \(many)"
+        }
+        let parts = [part(.cut, "cut", "cuts"), part(.fix, "fix", "fixes"), part(.voice, "phrase in your voice", "phrases in your voice")].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
     /// "6 changes proposed. 3 need your voice." (design.md §10).
     var announcement: String {
         let changes = items.count == 1 ? "1 change proposed." : "\(items.count) changes proposed."
@@ -245,7 +274,8 @@ enum PanelError: Equatable, Sendable {
     enum State: Equatable {
         /// R0: no AI is chosen.
         case choosingAI
-        /// Nothing runs: the task waits for the user to send (until V13 sends as a task opens).
+        /// Nothing runs: the task waits for a new instruction (Ask for Something Else, a declined sheet). The passage panel
+        /// shows its field until the clip bar's Ask field (V3b) holds it; V15 deletes the state with the passage panel.
         case ready
         /// R1.
         case running
@@ -253,10 +283,14 @@ enum PanelError: Equatable, Sendable {
         case proposal(ChangeSet)
         /// R1x.
         case error(PanelError)
+        /// R3: an edit inside the scope while a proposal was open or a run went on (design.md §6.3.6). Undoing back to the
+        /// proposal's revision shows it again.
+        case changed
     }
 
     let scope: RewriteScope
-    let words: DirectorScope
+    /// The scope's words; a new run reads them again (`rescope`), as edits in the scope change its count.
+    private(set) var words: DirectorScope
     private(set) var state: State
     /// Counts the runs started: a new turn brings the task's job back to the panel
     /// (`WorkspaceShell.panelJob(for:)`), though the user switched to Captions before it.
@@ -277,15 +311,21 @@ enum PanelError: Equatable, Sendable {
     private(set) var focusRequest = 0
     /// The keyboard is in the task's panel; its views report it as their focus changes. Moving it out drops a handover.
     @ObservationIgnored var keyboardInPanel = false { didSet { if !keyboardInPanel { keyboardHandover = false } } }
-    /// The view the panel draws next takes the keyboard: the task's first view, and the next one after a change of state
-    /// while the keyboard was in the panel. Until V15 the passage panel and the task's panel take turns, and the one that
-    /// goes takes the focused view with it; otherwise focus stays where the user moved it while the AI worked.
-    @ObservationIgnored private var keyboardHandover = true
+    /// The view the panel draws next takes the keyboard: after a change of state while the keyboard was in the panel, or
+    /// once asked (`handOverKeyboard`). Until V15 the passage panel and the task's panel take turns, and the one that goes
+    /// takes the focused view with it; otherwise focus stays where the user moved it while the AI worked. A task starts
+    /// with focus where it was (design.md §10), unless `takesKeyboard`.
+    @ObservationIgnored private var keyboardHandover: Bool
 
-    init(scope: RewriteScope, words: DirectorScope, state: State, close: PanelAction) {
+    /// A task that starts `.running` starts its first turn.
+    init(scope: RewriteScope, words: DirectorScope, state: State, takesKeyboard: Bool = false, close: PanelAction) {
         self.scope = scope; self.words = words; self.state = state; self.close = close
+        keyboardHandover = takesKeyboard
+        turn = state == .running ? 1 : 0
         headline = PanelHeadline(text: words.title)
     }
+    /// The scope's words as a new run reads them.
+    func rescope(_ words: DirectorScope) { if words != self.words { self.words = words } }
 
     /// The right column's job that shows the task. Voice steps and takes move it to the
     /// Voice and Takes jobs (V16–V18).

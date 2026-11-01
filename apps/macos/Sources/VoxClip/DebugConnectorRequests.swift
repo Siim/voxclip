@@ -19,7 +19,7 @@ actor ConsentFixtureConnector: LLMConnector {
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) -> RawCompletion {
         sends += 1
-        let text = request.feature == .test ? "{\"ok\":true,\"echo\":\"voxclip\"}" : request.feature == .voiceRewrite ? "{\"rewrite\":\"A clearer passage\"}" : "{\"clips\":[]}"
+        let text = request.feature == .test ? "{\"ok\":true,\"echo\":\"voxclip\"}" : request.feature == .voiceRewrite ? RewriteFixtureReply.text(for: request) : "{\"clips\":[]}"
         return RawCompletion(text: text, model: model, stop: .complete)
     }
 }
@@ -72,12 +72,9 @@ actor ConsentFixtureConnector: LLMConnector {
                         editor.findClips()
                         await wait { !editor.finding }
                     case .rewrite:
-                        editor.beginRewrite()
+                        editor.runRewrite()
                         await wait { editor.rewrite != nil }
-                        if let session = editor.rewrite {
-                            await session.detectConnector(); await session.prepare()
-                            if let quote = session.quote { session.markEstimateShown(quote.id); _ = await session.propose(quote) }
-                        }
+                        await editor.rewrite?.actionTask?.value
                     case .test:
                         _ = await testProvider(provider, app: app)
                     }

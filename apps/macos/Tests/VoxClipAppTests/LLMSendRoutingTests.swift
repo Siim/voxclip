@@ -66,23 +66,17 @@ import Testing
         return DebugConnectorRequests.makeEditor(fixture: fixture, app: app)
     }
 
-    /// One send through the entry the user presses: the Find Clips button, Rewrite in the panel, or Settings → Test.
+    /// One send through the entry the user presses: the Find Clips button, ⇧⌘R (which runs Rewrite at once), or Settings → Test.
     private func send(_ action: ConnectorConsentAction, editor: EditorModel, app: AppModel) async throws {
         switch action {
         case .findClips:
             editor.findClips()
             await editor.findTask?.value
         case .rewrite:
-            if editor.rewrite == nil {
-                editor.beginRewrite()
-                await editor.rewriteOpenTask?.value
-                let session = try #require(editor.rewrite)
-                await session.detectConnector(); await session.prepare()
-            }
+            editor.runRewrite()
+            await editor.rewriteOpenTask?.value
             let session = try #require(editor.rewrite)
-            let quote = try #require(session.quote)
-            session.markEstimateShown(quote.id)
-            _ = await session.propose(quote)
+            await session.actionTask?.value
         case .test:
             let provider = try #require(app.providers.first { $0.id == app.string("llm.connector") })
             _ = await testProvider(provider, app: app)
@@ -121,8 +115,7 @@ import Testing
         try await send(.rewrite, editor: editor, app: app)
         #expect(log.take() == [.cost])
         #expect(await fake.sends == 2)
-        #expect(editor.rewrite?.proposalButton == "Rewrite…")
-        #expect(editor.rewrite?.estimateCopy == "VoxClip can't tell what this costs. Check \(provider.label)'s pricing.")
+        #expect(editor.rewrite?.proposalButton == "Rewrite…" && editor.rewriteMenuTitle == "Rewrite Selection…")
         for action in [ConnectorConsentAction.findClips, .test] {
             for _ in 0..<2 {
                 #expect(try await app.authorizeConnectorRequest(provider, connector: fake, action: action, wordCount: 80))
@@ -139,14 +132,12 @@ import Testing
         defer { editor.close() }
         switch action {
         case .rewrite:
-            editor.beginRewrite()
+            editor.runRewrite()
             await editor.rewriteOpenTask?.value
             let session = try #require(editor.rewrite)
-            await session.detectConnector(); await session.prepare()
-            let quote = try #require(session.quote)
-            session.markEstimateShown(quote.id)
-            let sent = await session.propose(quote)
-            #expect(!sent)
+            await session.actionTask?.value
+            // The sign-in it can't place reads as signed out: R1x says how to sign in, and nothing was sent.
+            #expect(session.changes.isEmpty && session.task.state == .error(.signedOut(cli: "Claude Code", command: "claude")))
         default: try await send(action, editor: editor, app: app)
         }
         #expect(log.sheets.isEmpty)
@@ -212,14 +203,13 @@ import Testing
         let editor = try editor(app)
         defer { editor.close() }
         let connector = RewriteConnector(connector: fake, model: "fixture-local", name: "Fixture", group: "cli", plan: "Claude plan")
-        let session = RewriteSession(editor: editor, range: 3...5, envelope: AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000)),
+        let session = RewriteSession(editor: editor, scope: .selection(3...5), envelope: AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000)),
                                      connector: connector)
         defer { session.close() }
-        await session.prepare()
+        // Before detection the sign-in is not known: that send neither starts nor asks, so no "…" (ai.md §4.8).
         #expect(session.sendLine == "Sends these 3 words to Fixture with your sign-in.")
-        #expect(session.proposalButton == "Rewrite…")
+        #expect(session.proposalButton == "Rewrite")
         _ = await app.connectorStatus(provider, using: fake)
-        await session.prepare()
         #expect(session.proposalButton == button)
         #expect(session.sendLine == line)
     }

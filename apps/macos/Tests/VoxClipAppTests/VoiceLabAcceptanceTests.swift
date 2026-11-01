@@ -28,16 +28,20 @@ private struct AcceptanceTestKeys: KeyProvider {
 
 @Suite("Headless Voice Lab acceptance", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
 @MainActor struct VoiceLabAcceptanceTests {
-    @Test func disablingBetaHidesAnExistingPanelInEveryEditor() throws {
+    /// Text Rewrite needs no Voice Lab (impl-plan V13): turning the beta off keeps an open session and its panel, and
+    /// stops only its takes.
+    @Test func disablingBetaKeepsTextRewriteAndStopsItsTakes() throws {
         let app = enabledApp()
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
         let model = EditorModel(document: VoxClipDocument(project: try fixture(), demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
-        let session = RewriteSession(editor: model, range: 0...1, envelope: nil, connector: nil)
+        let session = RewriteSession(editor: model, scope: .selection(0...1), envelope: nil, connector: nil)
         model.rewrite = session
         let shell = WorkspaceShell(app: app)
-        #expect(model.panelRewrite === session && shell.panelJob(for: model) == .rewrite)
+        #expect(model.panelRewrite === session && shell.panelJob(for: model) == .rewrite && session.generationIsCurrent(region: .default))
         app.settings.values["voiceLab.enabled"] = .bool(false)
-        #expect(model.panelRewrite == nil && shell.panelJob(for: model) == .captions && !session.current)
+        #expect(model.panelRewrite === session && shell.panelJob(for: model) == .rewrite && session.current)
+        #expect(!session.generationIsCurrent(region: .default))
     }
     @Test func wordAccessibilityCoversSourceAndAcceptedSpeechWithoutAWindow() throws {
         let results = try DebugTranscriptPixels.wordAccessibility(app: enabledApp())
