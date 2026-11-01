@@ -115,6 +115,8 @@ import Testing
         #expect(SMPTETimecode.frame(seconds: 1.0 / 30) == 1)
         #expect(SMPTETimecode.frame(seconds: 1.0 / 30 - 0.0001) == 0)
         #expect(SMPTETimecode.frame(seconds: 0.999) == 29)
+        // 4.1 × 30 is 122.99999999999999 in binary: still frame 123 (4 s 3 f).
+        #expect(SMPTETimecode.frame(seconds: 4.1) == 123)
         #expect(SMPTETimecode.format(seconds: 59.999) == ("00:00:", "59:29"))
         #expect(SMPTETimecode.format(seconds: 60) == ("00:", "01:00:00"))
         #expect(SMPTETimecode.frame(seconds: -3) == 0 && SMPTETimecode.frame(seconds: .nan) == 0 && SMPTETimecode.frame(seconds: .infinity) == 0)
