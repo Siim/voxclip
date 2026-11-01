@@ -103,10 +103,11 @@ extension RewriteSession {
     /// A changed inclusion set needs a fresh complete-set placement and quote, never the old set's paid authorization.
     private func followIncludedVoice() {
         let included = includedVoice
-        guard included != includedVoicesSeen || takePlan?.stillCurrent == false else { return }
+        guard included != includedVoicesSeen || takePlan.map({ !$0.isRetired && !$0.stillCurrent }) == true else { return }
         includedVoicesSeen = included
         if hasPaidTakes {
-            takePlan?.stopAudition()
+            takePlan?.invalidate()
+            generation?.inputsChanged(prepareNewQuote: false)
             generation?.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
             return
         }

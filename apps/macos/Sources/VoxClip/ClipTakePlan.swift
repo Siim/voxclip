@@ -97,6 +97,7 @@ import VoxClipMedia
     @ObservationIgnored private var stopping = false
     @ObservationIgnored private var runningPhrase: Int?
     var stillCurrent: Bool { !retired && isCurrent() }
+    var isRetired: Bool { retired }
     var approvalID: UUID? { batch?.id }
 
     init(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope, hunks: [VoiceLabDiffHunk],
@@ -139,6 +140,11 @@ import VoxClipMedia
 
     #if DEBUG
     func showFixture(_ state: String) {
+        if ["ready", "none-passed", "length-changed", "cancelled", "generating"].contains(state) {
+            let estimate = CostEstimate(provider: "elevenlabs", operation: "textToSpeech", units: Double(phrases.count), unit: "take",
+                usd: Decimal(phrases.count) / 100, basis: "fixture")
+            spent = VoiceLabTakeRunQuote.total(of: [estimate], takes: phrases.count)
+        }
         for index in phrases.indices {
             let window = phrases[index].window
             let changed = state == "length-changed"
@@ -303,7 +309,12 @@ import VoxClipMedia
         retired = true; revision += 1; operation?.cancel(); batch = nil; cost = nil
         let backend = backend
         let operation = operation
-        invalidation = Task { await backend?.invalidate(); await operation?.value }
+        invalidation = Task { [weak self] in
+            await backend?.invalidate()
+            await operation?.value
+            guard let self else { return }
+            generating = false; preparing = false; runningPhrase = nil; self.operation = nil
+        }
     }
 
     @discardableResult func select(take: UUID, phrase: Int) -> Bool {

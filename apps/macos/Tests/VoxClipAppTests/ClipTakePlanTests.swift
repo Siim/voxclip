@@ -786,6 +786,37 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         }
     }
 
+    @Test func proposalChangeDuringAcceptedRequestRetainsPaidOwnershipUntilDrained() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try #require(session.takePlan), action = try #require(session.pricedTakeAction())
+        let original = editor.project, undo = UndoManager(); editor.undoManager = undo
+        let barrier = ClipTakeBarrier()
+        fixture.beforeProgress = { await barrier.pause() }
+        await editor.app.refreshMonthlySpend()
+        let generating = Task { await plan.start(approved: true); barrier.finished() }
+        await barrier.wait()
+        #expect(plan.generating && plan.spent.units == 0 && session.hasPaidTakes)
+        let sent = ClipTakeHTTP.state.withLock { ($0.texts.count, $0.qa) }
+        #expect(editor.excludeChange(1) && editor.project == original)
+        session.showProposal()
+        #expect(session.takePlan === plan && plan.isRetired && session.hasPaidTakes)
+        action.perform(); await session.takesTask?.value
+        let acceptedWhileDraining = await session.acceptTakes()
+        #expect(!plan.stillCurrent && !acceptedWhileDraining)
+        barrier.resume(); await generating.value; await plan.invalidation?.value
+        #expect(!plan.generating && !plan.preparing && session.takePlan === plan && session.hasPaidTakes)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == sent.0 && $0.qa == sent.1 })
+        let total = try #require(await fixture.ledger.total(provider: "elevenlabs", at: Date()))
+        #expect(plan.spent.units > 0 && editor.app.monthlySpend.total == total)
+        await session.prepareTakes()
+        let acceptedAfterDraining = await session.acceptTakes()
+        #expect(session.takePlan === plan && !acceptedAfterDraining)
+        #expect(editor.project == original && editor.undoSteps == 0 && !undo.canUndo)
+        editor.sendRewriteAgain(session)
+        #expect(session.task.confirm != nil && editor.openRewrite === session)
+    }
+
     @Test func explicitLowerScoreSelectionSurvivesFailedBetterRetryStopAndEviction() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan

@@ -282,11 +282,13 @@ private actor TemporarySettingsStore: SettingsStore {
         let started = try #require(importing.range(of: "await started?.value"))
         let request = try #require(importing.range(of: "app.requestCacheEviction()"))
         #expect(started.upperBound <= request.lowerBound)
-        // The sheet leases its source's key before extraction and holds it to the transcript.
+        // The inline run leases its approved snapshot's key before extraction and holds it to the transcript.
         let transcribing = try body(source("InlineTranscription+Run.swift"), of: "func performRun(")
-        let lease = try #require(transcribing.range(of: "let lease = await model.app.cacheKeys.lease(model.project.media.source.contentKey)"))
+        let key = try #require(transcribing.range(of: "let contentKey = request.project.media.source.contentKey"))
+        let lease = try #require(transcribing.range(of: "lease = await model.app.cacheKeys.lease(contentKey)"))
         let release = try #require(transcribing.range(of: "defer { lease.release() }"))
-        #expect(lease.upperBound <= release.lowerBound)
+        #expect(key.upperBound <= lease.lowerBound && lease.upperBound <= release.lowerBound)
+        #expect(!transcribing.contains("model.project.media.source.contentKey"))
         let settings = try source("SettingsView.swift")
         #expect(settings.contains("await app.cacheEviction.clearCache()") && settings.contains("await app.cacheEviction.clearEverything()"))
     }

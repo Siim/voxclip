@@ -615,7 +615,7 @@ struct RewriteChange: Equatable, Sendable {
         let proposal = task.state == .changed ? setAside?.proposal : ownProposal
         return proposal?.changes.contains { change in replyParts[change.ordinal].map { $0 != change.parts } ?? false } ?? false
     }
-    var hasPaidTakes: Bool { (takePlan?.spent.units ?? 0) > 0 || generation?.rows.isEmpty == false }
+    var hasPaidTakes: Bool { takePlan?.generating == true || (takePlan?.spent.units ?? 0) > 0 || generation?.rows.isEmpty == false }
     /// The proposal has phrases in your voice and Voice Lab is on: R2's Beta tag shows (design.md §6.3.4).
     var showsVoiceLab: Bool { review?.voiceHunks.isEmpty == false && editor.app.voiceLabRewriteEnabled }
     /// Applies every change still pending (Keep All) as one undo step named for the scope ("Rewrite clip 1", design.md

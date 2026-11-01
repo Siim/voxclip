@@ -245,7 +245,7 @@ import xlocale
         guard id != selectedModelID else { return }
         selectedModelID = id; inputsChanged()
     }
-    func inputsChanged() {
+    func inputsChanged(prepareNewQuote: Bool = true) {
         onInputsChanged?()
         let execution = sending
         sending?.cancel(); sending = nil
@@ -261,13 +261,13 @@ import xlocale
             await execution?.value
             if self?.executionRevision == executionRevision { self?.executionRevision = nil }
         }
-        requestQuote()
+        requestQuote(prepareNewQuote: prepareNewQuote)
     }
-    func requestQuote() {
+    func requestQuote(prepareNewQuote: Bool = true) {
         quotePreparation?.cancel()
         revision += 1; quote = nil; cost = nil; quotedInput = nil; preparingQuote = false
         quotePreparationFailed = false; problem = ""
-        guard let prepareQuote else { return }
+        guard prepareNewQuote, let prepareQuote else { return }
         quotePreparation = Task {
             guard !Task.isCancelled else { return }
             await prepareQuote()

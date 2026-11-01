@@ -188,9 +188,8 @@ import Testing
         #expect(session.task.footer.primary?.title == "Make Takes" && session.task.footer.link?.title == "Keep All")
     }
 
-    /// A take is made for one phrase (impl-plan item 25). With two phrases, Undo of one leaves the other's footer; once a
-    /// take of it passed, including the other phrase alone instead never offers that take's Use Take: the takes no longer
-    /// fit and the other phrase is quoted. Coming back to a phrase quotes it again too.
+    /// Paid takes stay with their original review. Changing inclusion retires acceptance without replacing paid work
+    /// or preparing a quote until the existing discard question is explicitly answered.
     @Test func takesStayWithTheirPhrase() async throws {
         let (editor, session, _, scenes) = try scene("r2-several-voices")
         defer { scenes.forEach { $0.editor?.close() } }
@@ -204,19 +203,22 @@ import Testing
         var quotes = 0
         generation.prepareQuote = { quotes += 1 }
         session.showProposal()
+        let plan = try #require(session.takePlan)
         #expect(session.includedVoicesSeen == [2] && session.usableTakeCount == 1 && session.task.footer.primary?.title == "Use Takes")
         // Keep phrase 3 too: several phrases, no takes. Then leave phrase 2 out: phrase 3 alone.
         session.review(3, .keep)
         #expect(session.task.footer.note?.contains("Rewrite one passage") == false)
         session.review(2, .undo)
-        await settle { quotes == 1 }
-        #expect(session.includedVoice == [3] && session.includedVoicesSeen == [3] && !generation.readyToAccept && quotes == 1)
-        #expect(session.task.footer.primary?.title == "Prepare Takes" && session.task.footer.note?.hasPrefix("Nothing paid yet.") == true)
+        await generation.finishQuotePreparationForTests()
+        #expect(session.includedVoice == [3] && session.includedVoicesSeen == [3] && !generation.readyToAccept && quotes == 0)
+        #expect(session.takePlan === plan && !plan.stillCurrent && session.hasPaidTakes && plan.spent.units > 0)
+        #expect(session.task.footer.primary == nil && session.task.footer.note?.contains("Made") == true)
         #expect(await session.acceptTakes() == false && editor.project.voiceLab.segments.isEmpty)
-        // Back to phrase 2 alone: its takes no longer fit either, and it is quoted again.
+        // Back to phrase 2 alone: the retired paid plan still cannot be accepted or silently replaced.
         session.review(2, .keep); session.review(3, .undo)
-        await settle { quotes == 2 }
-        #expect(session.includedVoice == [2] && session.includedVoicesSeen == [2] && quotes == 2 && session.task.footer.primary?.title == "Prepare Takes")
+        await generation.finishQuotePreparationForTests()
+        #expect(session.includedVoice == [2] && session.includedVoicesSeen == [2] && quotes == 0 && session.task.footer.primary == nil)
+        #expect(session.takePlan === plan && session.hasPaidTakes && !plan.stillCurrent)
     }
 
     /// A footer drawn for one phrase's quote makes no takes of another: a Make Takes the transcript's reviews left on screen
@@ -228,6 +230,7 @@ import Testing
         session.review(3, .undo)
         try DebugRewriteGeneration.install("none-passed", in: session)
         let generation = try #require(session.generation)
+        session.takePlan?.invalidate(); session.takePlan = nil; generation.invalidate()
         var quotes = 0
         generation.prepareQuote = { quotes += 1 }
         generation.prepareForTests = { _ in
@@ -254,8 +257,9 @@ import Testing
         editor.keepChange(3); editor.excludeChange(2)
         stale.perform()
         #expect(generation.phase != .generating)
-        await settle { session.includedVoicesSeen == [3] && quotes == 1 }
-        #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary?.title == "Prepare Takes")
+        await settle { session.includedVoicesSeen == [3] && quotes == 1 && session.task.footer.primary?.title == "Prepare Takes" }
+        #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary?.title == "Prepare Takes",
+            "footer: \(session.task.footer.primary?.title ?? "none"), note: \(session.task.footer.note ?? "none")")
         await generation.finishGenerationForTests()
     }
 
