@@ -180,7 +180,8 @@ extension RewriteSession {
     }
     /// The reply is in: the proposal's changes, announced. The passage panel shows them until V15.
     func finishRun(seconds: Double) {
-        let hunks = review?.diff.hunks ?? []
+        // A reply the passage panel cannot review (over the word-diff limit) shows its problem there, unannounced.
+        guard let hunks = review?.diff.hunks else { showReady(); return }
         let items = hunks.enumerated().map { index, hunk in
             ProposalItem(ordinal: index + 1, kind: hunk.kind == .cut ? .cut : hunk.kind == .textOnly ? .fix : .voice,
                          sourceWordIDs: hunk.sourceWordIds, newWords: hunk.newTokens)
