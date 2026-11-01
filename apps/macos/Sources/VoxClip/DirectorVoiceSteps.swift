@@ -61,9 +61,7 @@ import VoxClipCore
             return .handled
         }
         .task { if prepareOnAppear { await session.prepareVoiceJob() } }
-        .onChange(of: session.recorder.recording) { was, recording in
-            if was && !recording { Task { await session.finishRecording() } }
-        }
+        .onDisappear { session.leaveVoiceControls(owner: model) }
         .onChange(of: session.app.speakerModelLibrary.installed) { _, installed in
             if installed { session.continueAfterDownload() }
         }

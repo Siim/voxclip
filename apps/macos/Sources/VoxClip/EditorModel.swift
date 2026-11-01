@@ -578,6 +578,7 @@ struct EditorRenderSnapshot {
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
+        app.voiceLabSession.leaveVoiceControls(owner: self)
         voiceRewriteToastTask?.cancel()
         cancelMediaRelink()
         closeRewrite(returnFocus: false)

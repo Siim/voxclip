@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Leaving the Voice controls stops and discards an ongoing recording; automatic completion is handled by the session, not a hidden view.
+
 - Use fitting voice takes, cuts and corrections together with one Undo, truthful spend feedback and in-use phrase playback. Three-phrase exports retain generated audio and AI disclosure.
 
 - Review Voice Lab takes inline by phrase, audition and choose slots with 1/2/3, and approve real complete-set or phrase-only retry quotes without a takes sheet. Stop keeps finished takes; failed and nonfitting rows stay visible.

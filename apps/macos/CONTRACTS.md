@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+## F1 — session-owned capture completion and stop-before-hide (1 Nov 2026)
+
+- Back, job switch, tab/scope change, Home, right-column hiding and editor close discard ongoing local capture before removing its controls. The view's disappearance is a fallback, not the completion owner. Temporary navigation retains already completed statement/training drafts; it discards only an ongoing take and never approves cloud work.
+- `VoiceMicrophoneRecorder` delivers one stop/failure callback after releasing capture resources; discard suppresses completion and invalidates pending permission-start turns. The session owns the completion task and refuses canceled/late conversion and storage results. The removed view-owned recording observer cannot strand automatic completion. No real mic/provider calls are used in regression tests.
+- Preserve this lifecycle wiring when merging PanelHost, scope, WorkspaceShell and inline work. Terminal V-state reset is separate F3 work; this correction does not delete saved voices or change paid/recovery payloads.
+
 ## V19 — atomic Use Takes and truthful done feedback (1 Nov 2026)
 
 - Inline Use Takes / ⌘Return routes through `RewriteSession.acceptTakes` → the existing scoped C4 list overload once. All selected fitting publications precede the one project mutation; pending cuts/fixes join that snapshot. Stop may intentionally accept only finished fitting phrases, with the subset count in the action/feedback. Stale publication and all-nonfitting sets create no project prefix, success toast or undo entry. No second acceptance engine or loosened unity/QA/changed-duration guard.

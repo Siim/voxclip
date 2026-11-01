@@ -105,18 +105,22 @@ import VoxClipMedia
     @ObservationIgnored private var statementWAV: Data?
     @ObservationIgnored private var training: [VoiceTrainingSample] = []
     @ObservationIgnored private var acceptedAt = Date()
+    @ObservationIgnored private var recordingTurn = UUID()
+    @ObservationIgnored private(set) var recordingCompletion: Task<Void, Never>?
     init(app: AppModel) {
         self.app = app; self.store = VoiceConsentStore(locations: app.locations)
         let secrets = app.secrets; let logger = app.log
         reconciler = VoiceOperationReconciler(store: store, regionIsCurrent: { region in
             await MainActor.run { app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue }
         }) { ElevenLabsVoiceLab(keys: secrets, region: $0, logger: logger) }
+        observeRecordingCompletion()
     }
     #if DEBUG
     init(app: AppModel, store: VoiceConsentStore, reconciler: VoiceOperationReconciler? = nil) {
         self.app = app; self.store = store
         let secrets = app.secrets; let logger = app.log
         self.reconciler = reconciler ?? VoiceOperationReconciler(store: store) { ElevenLabsVoiceLab(keys: secrets, region: $0, logger: logger) }
+        observeRecordingCompletion()
     }
     @ObservationIgnored private var speakerCheckForTests: VoiceSpeakerCheck?
     func stageEnrollmentForTests(statement: VoiceConsentStatement, wav: Data, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck? = nil) {
@@ -167,9 +171,25 @@ import VoxClipMedia
         flow.owner?.announce("Own-voice check installed. Finding your clear speech.")
     }
     func returnToRewrite() {
+        leaveVoiceControls()
         guard !busy else { return }
         // Preserve local enrollment when switching jobs. Closing the proposal never approves a send.
         if let owner = flow.owner { owner.app.shell.choosePanelJob(.rewrite, for: owner) }
+    }
+    private func observeRecordingCompletion() {
+        recorder.onStopped = { [weak self] in
+            guard let self else { return }
+            recordingCompletion = Task { [weak self] in await self?.finishRecording() }
+        }
+    }
+    func leaveVoiceControls(owner: EditorModel? = nil) {
+        if let owner, flow.owner !== owner { return }
+        recordingTurn = UUID()
+        recordingCompletion?.cancel()
+        let wasRecording = recorder.recording || !recorder.samples.isEmpty
+        recorder.discard()
+        statementPlayer?.stop()
+        if wasRecording { message = "Recording discarded when you left Voice. Record it again to continue." }
     }
     func cancelVoiceAction() {
         if app.speakerModelLibrary.progress != nil { app.speakerModelLibrary.cancelDownload(); return }
@@ -362,13 +382,14 @@ import VoxClipMedia
         guard canRecord else { return }
         if statement == nil { await prepareVoiceStatement(); return }
         busy = true; message = nil
+        let turn = recordingTurn
         defer { busy = false }
         do {
             guard try await currentSpeakerCheck().available else { throw VoiceConsentError.speakerUnavailable }
             if let enrollment { try await enrollment.cancel(recordID: recordID) }
             try await store.abandonEnrollment(recordID: recordID)
             recordID = UUID().uuidString.lowercased()
-            guard statement != nil else { return }
+            guard statement != nil, recordingTurn == turn, !Task.isCancelled else { return }
             acceptedAt = Date(); trainingReady = false; statementWAV = nil; training = []; recordingTraining = false; keptSeconds = nil; flow.plan = nil; flow.priceAppearedAt = nil
             statementPlayer?.stop(); flow.owner?.transport("k")
             try await recorder.start(maximumSeconds: 30)
@@ -376,7 +397,7 @@ import VoxClipMedia
     }
     func stopRecording() async {
         recorder.stop()
-        await finishRecording()
+        await recordingCompletion?.value
     }
     func finishRecording() async {
         if let failure = recorder.failure {
@@ -386,23 +407,33 @@ import VoxClipMedia
         }
         guard enabled, !busy, !recorder.recording, !recorder.samples.isEmpty else { return }
         busy = true
+        defer { busy = false }
+        let turn = recordingTurn
+        let id = recordID
         let samples = recorder.samples
         do {
             if recordingTraining {
-                training = try await Task.detached(priority: .userInitiated) { try VoiceTrainingAudio.training(samples) }.value
+                let prepared = try await Task.detached(priority: .userInitiated) { try VoiceTrainingAudio.training(samples) }.value
+                guard recordingTurn == turn, !Task.isCancelled else { return }
+                training = prepared
                 trainingReady = true; recorder.discard()
                 message = "Training recording is ready. " + speakerMessage
             } else {
                 guard (5...30).contains(Double(samples.count) / 48_000) else { throw VoiceLabError.invalidAudio }
                 let wav = try await Task.detached(priority: .userInitiated) { try VoiceTrainingAudio.wav(samples) }.value
-                try await store.saveStatement(wav, recordID: recordID)
+                guard recordingTurn == turn, !Task.isCancelled else { return }
+                try await store.saveStatement(wav, recordID: id)
+                guard recordingTurn == turn, !Task.isCancelled else {
+                    try? await store.abandonEnrollment(recordID: id)
+                    return
+                }
                 statementWAV = wav; flow.statementSeconds = Double(samples.count) / 48_000
                 recorder.discard()
                 message = "Statement recorded. Nothing was sent."
             }
         } catch { message = await errorMessage(error); if recordingTraining { trainingReady = false } }
         busy = false
-        if statementWAV != nil { await prepareCreation() }
+        if recordingTurn == turn, !Task.isCancelled, statementWAV != nil { await prepareCreation() }
     }
     func beginTraining() async {
         guard enabled, statementWAV != nil, !busy, trainingSource == .readAloud else { return }

@@ -1465,6 +1465,8 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 
 #### 6.3.9 Edge states
 
+Leaving Voice via Back, the job switcher, a tab/scope change, Home, hidden right column or window/owner exit stops and discards an ongoing statement/read-aloud before hiding its controls. Already completed local draft audio survives temporary navigation. Automatic stop is session-owned and handled once even without a mounted view; canceled or late results cannot restore a discarded recording. No background/invisible recording is supported.
+
 | State | Where | Copy and action |
 |---|---|---|
 | No ElevenLabs key | V0 | §6.3.7 V0 |

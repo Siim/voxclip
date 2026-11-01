@@ -9,6 +9,52 @@ import Synchronization
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test(arguments: ["back", "switcher", "tab", "close", "disappear"], [false, true])
+    func leavingVoiceDiscardsCaptureWithoutAViewObserver(exit: String, training: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(locations: locations(root))
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        let shared = try SharedResources.locate()
+        let source = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        let editor = EditorModel(document: VoxClipDocument(project: source, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let session = app.voiceLabSession
+        session.flow.owner = editor; session.flow.state = .statement; session.showEnrollment = true
+        session.recordingTraining = training
+        var released = 0
+        session.recorder.simulateTake(samples: [Float](repeating: 0.1, count: 5 * 48_000), at: .now) { released += 1 }
+        switch exit {
+        case "back": session.returnToRewrite()
+        case "switcher": app.shell.choosePanelJob(.captions, for: editor)
+        case "tab": #expect(editor.setScope(nil))
+        case "close": editor.close()
+        default: session.leaveVoiceControls(owner: editor)
+        }
+        #expect(!session.recorder.recording && session.recorder.samples.isEmpty && released == 1)
+        session.recorder.stop()
+        await session.recordingCompletion?.value
+        #expect(!session.trainingReady && !session.hasStatementRecording && session.flow.plan == nil)
+        #expect(session.message?.contains("Recording discarded") == true)
+    }
+
+    @Test func automaticRecorderCompletionIsSessionOwnedAndConsumedOnceWithoutAView() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(locations: locations(root)); app.settings.values["voiceLab.enabled"] = .bool(true)
+        let session = app.voiceLabSession
+        session.flow.state = .statement; session.showEnrollment = true
+        session.recorder.simulateTake(samples: [Float](repeating: 0.1, count: 5 * 48_000), at: .now) {}
+        session.recorder.stop()
+        await session.recordingCompletion?.value
+        #expect(session.hasStatementRecording && !session.recorder.recording && session.recorder.samples.isEmpty)
+        let stored = try await VoiceConsentStore(locations: locations(root)).statement(recordID: session.recordID)
+        session.recorder.stop(); await session.stopRecording()
+        #expect(try await VoiceConsentStore(locations: locations(root)).statement(recordID: session.recordID) == stored)
+        #expect(session.flow.statementSeconds == 5 && session.flow.plan == nil)
+    }
+
     @Test(arguments: [2, 3], [false, true]) func recoveryOperationAccessibilityIdentifiesEachVoiceAndAction(count: Int, sharedSuffix: Bool) throws {
         let shared = try SharedResources.locate()
         let date = try #require(ISO8601DateFormatter().date(from: "2026-10-30T12:00:00Z"))

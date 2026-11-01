@@ -97,6 +97,7 @@ extension WorkspaceShell {
     func choosePanelJob(_ job: PanelJob, for model: EditorModel) {
         guard PanelJob.available(in: model).contains(job) else { return }
         let current = panelJob(for: model)
+        if current == .voice, job != .voice { model.app.voiceLabSession.leaveVoiceControls(owner: model) }
         if job == .export, current != .export { exportReturnJob = current }
         let task = model.openRewrite?.task
         panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0, voiceTurn: model.app.voiceLabSession.flow.turn)
