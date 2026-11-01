@@ -104,10 +104,11 @@ struct PanelAction: Identifiable {
     /// Stable across copy changes: "use", "checkAgain", "tryAgain", "stop".
     let id: String
     let title: String
+    var priced = false
     let perform: @MainActor () -> Void
 }
 extension PanelAction: Equatable {
-    static func == (lhs: PanelAction, rhs: PanelAction) -> Bool { lhs.id == rhs.id && lhs.title == rhs.title }
+    static func == (lhs: PanelAction, rhs: PanelAction) -> Bool { lhs.id == rhs.id && lhs.title == rhs.title && lhs.priced == rhs.priced }
 }
 
 /// The headline, with its optional sub-line and tag. While the task runs it carries the spinner, the
@@ -363,11 +364,13 @@ enum PanelError: Equatable, Sendable {
 
     /// The right column's job that shows the task. Voice steps and takes move it to the
     /// Voice and Takes jobs (V16–V18).
-    var job: PanelJob { .rewrite }
+    var job: PanelJob { cards.contains(.takes) ? .voice : .rewrite }
+    @ObservationIgnored var primaryAppearedAt: Date?
 
     /// Shows `state` with its panel content. Entering `.running` starts a new turn. A proposal shown again after a review
     /// is the same step: the keyboard stays where it is.
     func show(_ state: State, headline: PanelHeadline, cards: [PanelCard] = [], footer: PanelFooter = PanelFooter(), contextAction: PanelAction? = nil) {
+        if self.footer.primary != footer.primary { primaryAppearedAt = Date() }
         if state == .running, self.state != .running { turn += 1 }
         if !Self.sameStep(state, self.state) { keyboardHandover = keyboardHandover || keyboardInPanel; confirm = nil }
         self.state = state; self.headline = headline; self.cards = cards; self.footer = footer; self.contextAction = contextAction
@@ -438,7 +441,10 @@ enum PanelError: Equatable, Sendable {
             review(focused, .edit)
             return true
         }
+        if cards.contains(.takes), !command { return false }
         guard let primary = footer.primary else { return false }
+        if primary.priced, !VoiceLabSession.permitsPaidActivation(keyboard: true, command: command, repeated: false,
+            appeared: primaryAppearedAt, now: Date()) { return true }
         primary.perform()
         return true
     }

@@ -38,6 +38,7 @@ enum PanelJob: String, CaseIterable, Sendable {
     @MainActor static func available(in model: EditorModel) -> [PanelJob] {
         var jobs: [PanelJob] = [.captions]
         if let task = model.panelTask { jobs.append(task.job) }
+        if (model.hasVoiceJob || model.currentVoiceFeedback != nil), !jobs.contains(.voice) { jobs.append(.voice) }
         if model.exportJob.isOpen { jobs.append(.export) }
         return jobs
     }
@@ -49,11 +50,28 @@ struct PanelJobChoice {
     let job: PanelJob
     weak var task: DirectorTask?
     let turn: Int
+    var voiceTurn: Int = 0
 }
 
 extension EditorModel {
     /// The task the panel shows: the active tab's Rewrite session's. Text Rewrite needs no Voice Lab (impl-plan V13).
     var panelTask: DirectorTask? { rewrite?.task }
+    var hasVoiceJob: Bool { app.voiceLabSession.showEnrollment && app.voiceLabSession.flow.owner === self }
+    func openVoiceJob() {
+        guard capabilities.ai else { return }
+        let session = app.voiceLabSession
+        if session.showEnrollment, let owner = session.flow.owner, owner !== self {
+            announce("Finish making your voice in the other project first."); return
+        }
+        session.flow.owner = self; session.flow.originTask = openRewrite?.task
+        session.flow.originTurn = openRewrite?.task.turn ?? 0
+        session.flow.turn += 1
+        session.openEnrollment(project: VoiceLabSession.trainingProject(editor: self, name: app.shell.projectTitle), startAnalysis: false)
+        // Opening first use itself does not decode media or download a model.
+        if !app.speakerModelLibrary.installed || !session.enabled { session.analysis?.cancel(); session.projectAudio = .noProject }
+        if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
+        announce("Your voice. Step 1 of 2.")
+    }
 }
 
 extension WorkspaceShell {
@@ -68,16 +86,21 @@ extension WorkspaceShell {
         let jobs = PanelJob.available(in: model)
         let task = model.openRewrite?.task
         if let asking = model.panelTask, asking.confirm != nil { return asking.job }
-        if let choice = panelChoice, jobs.contains(choice.job), task == nil || choice.task === task && choice.turn == task?.turn { return choice.job }
+        let flow = model.app.voiceLabSession.flow
+        if let choice = panelChoice, task == nil || choice.task === task && choice.turn == (task?.turn ?? 0),
+           choice.voiceTurn == flow.turn, jobs.contains(choice.job) { return choice.job }
+        if model.hasVoiceJob, flow.originTask === task, flow.originTurn == (task?.turn ?? 0) { return .voice }
+        if task == nil, model.currentVoiceFeedback != nil { return .voice }
         return model.panelTask?.job ?? .captions
     }
     /// The switcher's pick. Picking Export records the job it was opened from for its Done.
     func choosePanelJob(_ job: PanelJob, for model: EditorModel) {
         guard PanelJob.available(in: model).contains(job) else { return }
         let current = panelJob(for: model)
+        if current == .voice, job != .voice { model.app.voiceLabSession.leaveVoiceControls(owner: model) }
         if job == .export, current != .export { exportReturnJob = current }
         let task = model.openRewrite?.task
-        panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0)
+        panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0, voiceTurn: model.app.voiceLabSession.flow.turn)
     }
     /// The Export job's Done: back to the job it was opened from while that can act, else Captions.
     func leaveExportJob(for model: EditorModel) {
@@ -115,15 +138,17 @@ extension WorkspaceShell {
 
     var body: some View {
         let job = shell.panelJob(for: model)
+        let showsTask = (job == .rewrite || job == .voice) && !(job == .voice && (model.hasVoiceJob || model.currentVoiceFeedback != nil))
         VStack(spacing: 0) {
             viewer
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
-                else if job == .rewrite, let session = model.rewrite {
-                    DirectorPanel(task: session.task, model: model)
-                } else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+                if let task = model.panelTask, task.confirm != nil || showsTask { DirectorPanel(task: task, model: model) }
+                else if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
+                else if job == .voice, let feedback = model.currentVoiceFeedback { VoiceRewriteDone(model: model, feedback: feedback) }
+                else if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+                else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)

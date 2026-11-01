@@ -1,0 +1,197 @@
+{
+  "schema": "voxclip-enrollment-cases/1",
+  "flows": [
+    {
+      "id": "success",
+      "events": [
+        "plan",
+        "verify",
+        "create"
+      ],
+      "outcome": "created"
+    },
+    {
+      "id": "verify-fail",
+      "events": [
+        "plan",
+        "verify"
+      ],
+      "outcome": "statementMismatch"
+    },
+    {
+      "id": "create-fail",
+      "events": [
+        "plan",
+        "verify",
+        "create"
+      ],
+      "outcome": "creationPending"
+    },
+    {
+      "id": "speaker-mismatch",
+      "events": [],
+      "outcome": "speakerMismatch"
+    },
+    {
+      "id": "declined",
+      "events": [],
+      "outcome": "consentRequired"
+    },
+    {
+      "id": "disabled",
+      "events": [],
+      "outcome": "consentRequired"
+    },
+    {
+      "id": "plan-denied",
+      "events": [
+        "plan"
+      ],
+      "outcome": "planUnavailable"
+    },
+    {
+      "id": "no-slots",
+      "events": [
+        "plan"
+      ],
+      "outcome": "noVoiceSlots"
+    }
+  ],
+  "mutations": [
+    "same",
+    "statementBytes",
+    "statementText",
+    "nonce",
+    "files",
+    "fileBytes",
+    "order",
+    "roles",
+    "name",
+    "language",
+    "createdAt",
+    "noiseRemoval",
+    "recordID"
+  ],
+  "attempts": {
+    "limit": 3,
+    "blockedAtSeconds": 599,
+    "allowedAtSeconds": 600
+  },
+  "recoveries": [
+    {
+      "id": "fresh",
+      "elapsedSeconds": 299,
+      "sameQuote": true,
+      "action": "create",
+      "events": [
+        "plan",
+        "create"
+      ]
+    },
+    {
+      "id": "expired",
+      "elapsedSeconds": 300,
+      "sameQuote": false,
+      "action": "create",
+      "events": [
+        "plan",
+        "create"
+      ]
+    },
+    {
+      "id": "unsent-intent",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "create",
+      "events": [
+        "plan",
+        "create"
+      ]
+    },
+    {
+      "id": "declined-recovery",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "decline",
+      "events": []
+    },
+    {
+      "id": "changed-statement",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "reject",
+      "events": []
+    },
+    {
+      "id": "different-creator",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "reject",
+      "events": []
+    },
+    {
+      "id": "dispatched",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "reject",
+      "events": []
+    },
+    {
+      "id": "cancelled",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "reject",
+      "events": []
+    }
+  ],
+  "retries": [
+    {
+      "id": "project-to-read-aloud",
+      "localPrepares": 4,
+      "expiredReprepares": 4,
+      "expectedSends": [
+        "plan",
+        "verify",
+        "create"
+      ]
+    }
+  ],
+  "journals": [
+    {
+      "id": "valid",
+      "ageSeconds": 86390,
+      "corruption": "none",
+      "retained": true
+    },
+    {
+      "id": "expired",
+      "ageSeconds": 86400,
+      "corruption": "none",
+      "retained": false
+    },
+    {
+      "id": "old",
+      "ageSeconds": 172800,
+      "corruption": "none",
+      "retained": false
+    },
+    {
+      "id": "undecodable",
+      "ageSeconds": 0,
+      "corruption": "json",
+      "retained": false
+    },
+    {
+      "id": "invalid-binding",
+      "ageSeconds": 0,
+      "corruption": "binding",
+      "retained": false
+    },
+    {
+      "id": "missing-statement",
+      "ageSeconds": 0,
+      "corruption": "statement",
+      "retained": false
+    }
+  ]
+}

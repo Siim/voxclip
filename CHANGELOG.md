@@ -4,6 +4,27 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Inline review questions keep their panel alive and return the keyboard to the transcript or field after Keep Working.
+
+- Returning from voice creation refreshes the same Rewrite review automatically; unverified voices and stale take results cannot become usable silently.
+
+- Repeated voice retries now retire evicted private audio after playback consumers stop, keeping only the three visible take slots without deleting paid assets.
+
+- Finishing or canceling voice enrollment clears stale steps and approval copy; reopening starts from current prerequisites without deleting saved voices.
+
+- Voice creation recovery now clearly discloses that saved statement and training audio are uploaded again, without repeating the statement check.
+
+- Leaving the Voice controls stops and discards an ongoing recording; automatic completion is handled by the session, not a hidden view.
+
+- Use fitting voice takes, cuts and corrections together with one Undo, truthful spend feedback and in-use phrase playback. Three-phrase exports retain generated audio and AI disclosure.
+
+- Review Voice Lab takes inline by phrase, audition and choose slots with 1/2/3, and approve real complete-set or phrase-only retry quotes without a takes sheet. Stop keeps finished takes; failed and nonfitting rows stay visible.
+
+- Create your own voice with one priced click after a private on-device check, with explicit creation-only recovery after an interruption.
+- Make your own voice in the right panel, with inline setup, model download, consent and recording.
+- Core preflights Rewrite placement against review cuts before quoting takes, refuses empty acceptance sets, and requires scoped app acceptance for sets (C4 review).
+- Core can accept every Rewrite take, cut and correction together, refuse invalid sets as a whole, and restore the review with one named Undo (C4; v2 Keep wiring follows in V15/V19).
+- Core provides speaker-first enrollment under one approval, with bounded recovery and creation-only recovery pricing.
 - On Mac, Escape during a timeline trim cancels the preview without changing the clip or adding an undo step.
 - On Mac, ⌘K opens an inline command field; ⌥⌘K makes a clip, and Keyboard Shortcuts opens the command list. Reopening the field keeps your search; moving focus outside closes it.
 - The Mac timeline has an Exports tab using the same files and actions as Explorer. Voice Lab shows estimated spend for this month in the status bar and AI menu.
@@ -29,6 +50,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Rewrite starts at once when it costs you nothing extra: Claude Code or Codex signed in on your plan, a local model, or Apple's on-device model. With an API key, VoxClip asks before every send.
 - Find Clips and the Test button in AI settings follow the same rule on Mac: they start at once when they cost you nothing extra, and ask before every send on an API key or on Claude Code or Codex signed in with one. The privacy notice still appears once for each AI, before its first send, and cancelling either one leaves everything as it was.
 - Voice Lab (beta, off until you turn it on): say the new words in your own cloned voice with your ElevenLabs key. Each paid step shows its cost and asks first.
+- Voice Lab's rewrite planner places several phrases in source order, merges colliding voice windows only when their seams and patch budget remain safe, and explains which change cannot be voiced separately.
+- Voice Lab's rewrite planner respects deletions in the same review when searching for safe voice seams, without re-voicing words marked for removal.
 - Make your voice from the clip you are rewriting, or from a 90-second read-aloud. You always record a short consent statement live. A speaker check on your computer runs before anything is sent, then one click checks your statement and creates the voice. Nothing is created if a check fails.
 - The speaker check is calibrated for English only, so your voice works in English projects in this release.
 - Every export that contains generated speech is marked AI MODIFIED on screen, and the mark is also embedded in the file's metadata and a provenance sidecar. You can move the label but not turn it off.

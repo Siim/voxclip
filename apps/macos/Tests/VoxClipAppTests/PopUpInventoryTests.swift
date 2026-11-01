@@ -14,12 +14,11 @@ struct PopUpInventoryTests {
         "ExportJob.swift": (1, "the Export job's folder NSOpenPanel: a system file picker"),
         "SettingsView.swift": (4, "Settings pages: two NSOpenPanels, the licences and privacy text sheets"),
         "LocalModelsView.swift": (1, "the model download confirmation; Settings › Models (origin .settings) and VT's transcription sheet"),
-        "SpeakerModelLibrary.swift": (1, "the own-voice check download confirmation in Settings; V16 makes it an inline row in the Voice job"),
-        "VoiceLabSettings.swift": (4, "Settings › Voice Lab's Turn on Voice Lab? alert (V16, low priority); CreateVoiceSheet and VoiceLabRequestSheet (V16, V17)"),
-        "EditorView.swift": (3, "TranscriptionSheet (VT), the Voice Lab opt-in sheet (V16), and the tour (Home frame 7); V11b replaced shortcuts with the inline command field"),
+        "VoiceLabSettings.swift": (2, "Settings-only account and deletion confirmations; enrollment is inline"),
+        "EditorView.swift": (2, "TranscriptionSheet (VT) and the tour (Home frame 7); shortcuts and Voice Lab opt-in are inline"),
         "TranscriptionSheet.swift": (1, "the transcription consent sheet (VT)"),
         "VoxClipApp.swift": (6, "Open's NSOpenPanel; Help › What Leaves This Mac, an NSAlert and its runModal (no owner yet); Transcribe again? (VT, v5 f25)"),
-        "RewriteSession.swift": (2, "RewriteApprovalSheet: API-key sends and the privacy consent (V12), takes and ElevenLabs (V18)"),
+        "RewriteSession.swift": (2, "RewriteApprovalSheet remains for ConnectorRequestConsent's API-key sends and connector privacy consent (V12); takes and ElevenLabs privacy are inline"),
     ]
     static let patterns = [".sheet(", ".alert(", ".confirmationDialog(", "NSAlert(", "beginSheetModal", "runModal("]
 

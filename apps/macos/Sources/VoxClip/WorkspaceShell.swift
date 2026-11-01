@@ -432,7 +432,10 @@ enum SidebarItem: Hashable {
     /// column shows over the editor instead (impl-plan §3.5). From 1,128 up both columns fit
     /// beside the Explorer, because the right column narrows toward 300 first.
     func toggleViewer() {
-        if windowWidth < Self.rightCollapseWidth { rightOverlay.toggle(); return }
+        if windowWidth < Self.rightCollapseWidth {
+            if rightOverlay, let editor { app.voiceLabSession.leaveVoiceControls(owner: editor) }
+            rightOverlay.toggle(); return
+        }
         rightHiddenByWidth = false
         if layout.rightVisible { hideRightColumn() } else { layout.rightVisible = true }
     }
@@ -447,6 +450,7 @@ enum SidebarItem: Hashable {
     /// Hides the right column, and with it the viewer's hover transport, so the timeline
     /// panel shows to carry play and the timecode.
     private func hideRightColumn() {
+        if let editor { app.voiceLabSession.leaveVoiceControls(owner: editor) }
         layout.rightVisible = false
         if !layout.timelineVisible { layout.timelineVisible = true }
     }
@@ -640,7 +644,9 @@ enum SidebarItem: Hashable {
         guard let editor else { return }
         editor.focusedSuggestion = nil
         switch selection {
-        case .home, .recent: editor.preview.pause(); editor.isPlaying = false
+        case .home, .recent:
+            app.voiceLabSession.leaveVoiceControls(owner: editor)
+            editor.preview.pause(); editor.isPlaying = false
         case .outline(let index): scrollToOutline(index); return
         case .fullTake: if editor.project.edits.activeClipId != nil { editor.activate(nil) }
         case .clip(let id):

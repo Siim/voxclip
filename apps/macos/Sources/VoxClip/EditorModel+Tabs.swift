@@ -25,6 +25,7 @@ extension EditorModel {
         guard !isLeaving else { return false }
         if let clipID, !project.edits.clips.contains(where: { $0.id == clipID }) { return false }
         guard project.edits.activeClipId != clipID else { return true }
+        app.voiceLabSession.leaveVoiceControls(owner: self)
         preview.pause(); isPlaying = false
         document.replaceProject(project.scoped(to: clipID))
         refresh()

@@ -56,17 +56,31 @@ import VoxClipCore
         .onExitCommand { (task.confirm?.cancel ?? task.headline.stop ?? task.close).perform() }
         // ⌘Return from anywhere in the panel: the primary. Return outside a text field edits the focused change of a change
         // list, else runs the primary; Space leaves the focused change out or keeps it (`DirectorTask.pressReturn`).
-        .onKeyPress(keys: [.return]) { press in
+        .onKeyPress(keys: [.return], phases: [.down, .repeat]) { press in
             let command = press.modifiers.contains(.command)
             guard command || !keyFieldFocused && !askFocused else { return .ignored }
+            guard press.phase == .down else { return .handled }
             return task.pressReturn(command: command) ? .handled : .ignored
         }
-        .onKeyPress(keys: [.space]) { press in
+        .onKeyPress(keys: [.space], phases: [.down, .repeat]) { press in
             guard press.modifiers.isEmpty, !keyFieldFocused, !askFocused else { return .ignored }
+            if task.cards.contains(.takes), task.confirm == nil {
+                if press.phase == .down { model?.transport(" ") }
+                return .handled
+            }
             return task.pressSpace() ? .handled : .ignored
+        }
+        .onKeyPress(characters: CharacterSet(charactersIn: "123"), phases: [.down, .repeat]) { press in
+            guard task.cards.contains(.takes), task.confirm == nil, !keyFieldFocused, !askFocused, press.modifiers.isEmpty else { return .ignored }
+            if press.phase == .down, let number = Int(press.characters) { model?.rewrite?.selectTake(number: number) }
+            return .handled
         }
         .onKeyPress(keys: [.upArrow, .downArrow]) { press in
             guard !keyFieldFocused, !askFocused else { return .ignored }
+            if task.cards.contains(.takes), task.confirm == nil {
+                model?.rewrite?.moveTakePhrase(backward: press.key == .upArrow)
+                return .handled
+            }
             if let rows = chooserRows, !rows.isEmpty {
                 let index = rows.firstIndex { $0.id == task.choice } ?? -1
                 let next = press.key == .upArrow ? max(0, index - 1) : min(rows.count - 1, index + 1)
@@ -477,10 +491,21 @@ import VoxClipCore
     enum Kind { case primary, ghost, bordered, small }
     let action: PanelAction
     let kind: Kind
+    @State private var appeared = Date()
     var body: some View {
-        Button(action.title, action: action.perform)
+        Button(action.title) {
+            let event = NSApp.currentEvent
+            if action.priced, event?.type == .keyDown {
+                guard event?.keyCode != 49,
+                      VoiceLabSession.permitsPaidActivation(keyboard: true, command: event?.modifierFlags.contains(.command) == true,
+                        repeated: event?.isARepeat == true, appeared: appeared, now: Date()) else { return }
+            }
+            action.perform()
+        }
             .buttonStyle(PanelButtonStyle(kind: kind, action: action))
             .accessibilityIdentifier("voxclip.director.\(action.id)")
+            .onAppear { appeared = Date() }
+            .onChange(of: action) { _, _ in appeared = Date() }
     }
 }
 

@@ -205,10 +205,9 @@ struct VoiceConsentTests {
         let calls = ConsentRequestLog(); let transcriptions = ConsentTranscriptionCount()
         let service = enroll(store: storage(root), client: client(calls), check: .unavailable, raw: try await raw(), calls: transcriptions)
         let id = UUID().uuidString; let statement = try statement()
-        await #expect(throws: VoiceLabError.consentRequired) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: false, enabled: true) }
-        await #expect(throws: VoiceLabError.consentRequired) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: false) }
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.preparePlan(recordID: id, statement: statement, wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: false) }
         let incomplete = VoiceConsentRecord.Attestations(ownVoice: true, adult: false, ownVideosOnly: true, acceptedAt: now)
-        await #expect(throws: VoiceConsentError.attestationsRequired) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: incomplete, approved: true, enabled: true) }
+        await #expect(throws: VoiceConsentError.attestationsRequired) { try await service.preparePlan(recordID: id, statement: statement, wav: wav, attestations: incomplete, displayName: "Example", samples: training(), enabled: true) }
         #expect(transcriptions.value.withLock { $0 } == 0); #expect(calls.value.withLock { $0.isEmpty })
     }
     @Test func threeAttemptsPerTenMinutes() async throws {
@@ -216,18 +215,20 @@ struct VoiceConsentTests {
         let calls = ConsentRequestLog(); let transcriptions = ConsentTranscriptionCount()
         let service = enroll(store: storage(root), client: client(calls), check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw(), calls: transcriptions)
         let id = UUID().uuidString; let statement = try statement()
-        for _ in 0..<3 { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now) }
-        await #expect(throws: VoiceConsentError.tooManyAttempts) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now.addingTimeInterval(599)) }
-        try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now.addingTimeInterval(600))
-        #expect(transcriptions.value.withLock { $0 } == 4)
+        for fill in [4_001, 4_002, 4_003] {
+            let recording = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: fill)
+            _ = try await service.preparePlan(recordID: id, statement: statement, wav: recording, attestations: attestations, displayName: "Example", samples: training(), enabled: true, now: now)
+        }
+        await #expect(throws: VoiceConsentError.tooManyAttempts) { try await service.preparePlan(recordID: id, statement: statement, wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true, now: now.addingTimeInterval(599)) }
+        #expect(transcriptions.value.withLock { $0 } == 0) // Local prepares never send the statement.
     }
     @Test func unavailableSpeakerNeverCreates() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let calls = ConsentRequestLog()
         let service = enroll(store: storage(root), client: client(calls), check: .init(embedder: Embedder(output: [1, 0])), raw: try await raw())
         let id = UUID().uuidString
-        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true) }
-        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true) }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true) }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true) }
         #expect(calls.value.withLock { $0.isEmpty })
     }
     @Test func calibrationLanguageCannotBeReusedForAnotherLanguage() async throws {
@@ -236,8 +237,8 @@ struct VoiceConsentTests {
         let check = VoiceSpeakerCheck(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8, language: "et")
         let service = enroll(store: store, client: client(calls), check: check, raw: try await raw())
         let record = try fixtureRecord(wav: wav)
-        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.verify(recordID: record.id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true) }
-        await #expect(throws: VoiceLabError.consentRequired) { try await service.prepare(recordID: record.id, displayName: "Example", samples: training(), enabled: true) }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.preparePlan(recordID: record.id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true) }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.preparePlan(recordID: record.id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true) }
         try await store.saveStatement(wav, recordID: record.id)
         try await store.save(record)
         let use = VoiceUseGuard(store: store, check: check)
@@ -247,15 +248,16 @@ struct VoiceConsentTests {
     @Test func mismatchedSpeakerNeverUploadsSamples() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let calls = ConsentRequestLog(); let store = storage(root); let client = client(calls)
+        let transcriptions = ConsentTranscriptionCount()
         _ = try await client.plan()
         let check = VoiceSpeakerCheck(embedder: LengthEmbedding(), calibratedThreshold: 0.8)
-        let service = enroll(store: store, client: client, check: check, raw: try await raw())
+        let service = enroll(store: store, client: client, check: check, raw: try await raw(), calls: transcriptions)
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
         let silent = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 240_000)
         let samples = (0..<4).map { _ in VoiceTrainingSample(wav: silent, speech16k: [], seconds: 15, source: "readAloud", snrDb: 25) }
-        await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true) }
+        await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: samples, enabled: true) }
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
+        #expect(transcriptions.value.withLock { $0 } == 0)
     }
     struct LengthEmbedding: SpeakerEmbedder {
         let modelID = "fixture-calibrated"
@@ -276,17 +278,16 @@ struct VoiceConsentTests {
         let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
         let service = enroll(store: store, client: client, check: check, raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
         let good = VoiceLabRequestFixtures.wav(rate: 16_000, frames: acceptedSeconds * 16_000, fill: 4_000)
         let badFrames = (60 - acceptedSeconds) * 8_000
         let bad = VoiceLabRequestFixtures.wav(rate: 16_000, frames: badFrames, fill: -4_000)
         let samples = [VoiceTrainingSample(wav: good, speech16k: [], seconds: Double(acceptedSeconds), source: "readAloud", snrDb: 25)] + (0..<2).map { _ in VoiceTrainingSample(wav: bad, speech16k: [], seconds: Double(badFrames) / 16_000, source: "readAloud", snrDb: 25) }
         if acceptedSeconds < 10 {
-            await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true) }
+            await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: samples, enabled: true) }
             #expect(calls.value.withLock { !$0.contains("POST /v1/voices/add") })
         } else {
-            let quote = try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true)
-            let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+            let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: samples, enabled: true)
+            let record = try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0")
             #expect(record.samples.count == 1)
             #expect(record.samples[0].seconds == 10)
         }
@@ -302,13 +303,12 @@ struct VoiceConsentTests {
         let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
         let service = enroll(store: store, client: client, check: check, raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
         // A low SNR would ask for noise removal on a read-aloud; project spans always pass 20 dB and send false (§6.5 step 5).
         let spans = [span(seconds: 15, fill: 1_000, snrDb: 15), span(seconds: 10, fill: -1_000), span(seconds: 10, fill: 2_000), span(seconds: 8, fill: 3_000)]
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: spans, enabled: true)
-        #expect(await service.trainingSeconds(quote: quote) == 33)
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: spans, enabled: true)
+        #expect(quote.trainingSeconds == 33)
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
-        let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+        let record = try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0")
         #expect(record.samples.map(\.source) == ["project", "project", "project"])
         #expect(record.samples.map(\.seconds) == [15, 10, 8])
         #expect(record.samples.map(\.sha256) == [spans[0], spans[2], spans[3]].map { VoiceLabFingerprint.bytes($0.wav) })
@@ -327,13 +327,12 @@ struct VoiceConsentTests {
         let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
         let service = enroll(store: store, client: client, check: check, raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
         let spans = [span(seconds: 15, fill: 1_000), span(seconds: 20, fill: -1_000), span(seconds: keptSeconds - 15, fill: 2_000)]
         if keptSeconds < 30 {
-            await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.prepare(recordID: id, displayName: "Example", samples: spans, enabled: true) }
+            await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: spans, enabled: true) }
         } else {
-            let quote = try await service.prepare(recordID: id, displayName: "Example", samples: spans, enabled: true)
-            #expect(await service.trainingSeconds(quote: quote) == 30)
+            let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: spans, enabled: true)
+            #expect(quote.trainingSeconds == 30)
         }
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
     }
@@ -346,7 +345,6 @@ struct VoiceConsentTests {
         let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
         let service = enroll(store: store, client: client, check: check, raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
         // 30 s at 16 kHz: the user (positive) for 12 s, another voice (negative) for 6 s, then the user again.
         var mixed = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 480_000, fill: 1_000)
         for frame in 192_000..<288_000 { mixed.replaceSubrange((44 + frame * 2)..<(46 + frame * 2), with: [0x18, 0xfc]) }
@@ -355,11 +353,11 @@ struct VoiceConsentTests {
         #expect(mean >= 0.8)
         let mixedSpan = VoiceTrainingSample(wav: mixed, speech16k: [], seconds: 30, source: "project", snrDb: 30)
         await #expect(throws: VoiceConsentError.speakerMismatch) {
-            try await service.prepare(recordID: id, displayName: "Example", samples: [mixedSpan, span(seconds: 25, fill: 2_000)], enabled: true)
+            try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: [mixedSpan, span(seconds: 25, fill: 2_000)], enabled: true)
         }
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: [mixedSpan, span(seconds: 15, fill: 2_000), span(seconds: 15, fill: 3_000)], enabled: true)
-        #expect(await service.trainingSeconds(quote: quote) == 30)
-        let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: [mixedSpan, span(seconds: 15, fill: 2_000), span(seconds: 15, fill: 3_000)], enabled: true)
+        #expect(quote.trainingSeconds == 30)
+        let record = try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0")
         #expect(record.samples.map(\.seconds) == [15, 15])
         let body = try #require(upload.value.withLock { $0 })
         #expect(body.range(of: mixed) == nil)
@@ -373,13 +371,12 @@ struct VoiceConsentTests {
         let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
         let service = enroll(store: store, client: client, check: check, raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
         let spans = [308_744, 308_744, 308_744, 396_767].map { frames in
             VoiceTrainingSample(wav: VoiceLabRequestFixtures.wav(rate: 44_100, frames: frames, fill: 1_000), speech16k: [], seconds: Double(frames) / 44_100, source: "project", snrDb: 30)
         }
         #expect(spans.reduce(0) { $0 + $1.seconds } < 30)
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: spans, enabled: true)
-        #expect(await service.trainingSeconds(quote: quote) == 30)
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: spans, enabled: true)
+        #expect(quote.trainingSeconds == 30)
     }
     @Test func trainingSamplesShareOneSourceAndItsLimits() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
@@ -388,7 +385,6 @@ struct VoiceConsentTests {
         let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: SpeakerAvailability()), calibratedThreshold: 0.8)
         let service = enroll(store: store, client: client, check: check, raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
         let readAloud = VoiceTrainingSample(wav: VoiceLabRequestFixtures.wav(rate: 16_000, frames: 240_000, fill: 4_000), speech16k: [], seconds: 15, source: "readAloud", snrDb: 25)
         let refused: [[VoiceTrainingSample]] = [
             [span(seconds: 30, fill: 1_000), span(seconds: 30, fill: 1_000), readAloud],
@@ -400,7 +396,7 @@ struct VoiceConsentTests {
             [VoiceTrainingSample(wav: readAloud.wav, speech16k: [], seconds: 15, source: "upload", snrDb: 25)] + [readAloud, readAloud, readAloud],
         ]
         for samples in refused {
-            await #expect(throws: VoiceLabError.invalidInput) { try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true) }
+            await #expect(throws: VoiceLabError.invalidInput) { try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: samples, enabled: true) }
         }
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
     }
@@ -424,10 +420,9 @@ struct VoiceConsentTests {
         let check = VoiceSpeakerCheck(embedder: SignEmbedding(present: present), calibratedThreshold: 0.8)
         let service = enroll(store: store, client: client, check: check, raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true)
         present.value.withLock { $0 = false }
-        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        await #expect(throws: VoiceConsentError.speakerUnavailable) { try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0") }
         #expect(calls.value.withLock { !$0.contains("POST /v1/voices/add") })
     }
     @Test func pendingVerificationOnlyActivatesOwnedVerifiedClone() async throws {
@@ -458,10 +453,9 @@ struct VoiceConsentTests {
         let check = VoiceSpeakerCheck(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8)
         let service = enroll(store: store, client: client, check: check, raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true, now: now)
-        await #expect(throws: VoiceLabError.consentRequired) { try await service.create(quote: quote, approved: false, enabled: true, appVersion: "0.1.0") }
-        let record = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true, now: now)
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.execute(quote, approved: false, enabled: true, appVersion: "0.1.0") }
+        let record = try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0")
         #expect(record.status == (verificationRequired ? .verificationRequired : .active))
         let fingerprint = try await client.creatorKeyFingerprint()
         #expect(record.creator == .init(region: client.region, keyFingerprint: fingerprint))
@@ -527,10 +521,9 @@ struct VoiceConsentTests {
         _ = try await client.plan()
         let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true)
         do {
-            _ = try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0")
+            _ = try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0")
             Issue.record("Expected a recoverable local save failure")
         } catch let error as VoiceConsentSaveError {
             #expect(error.record.voiceId == "fixtureOwnVoice")
@@ -538,7 +531,7 @@ struct VoiceConsentTests {
             try await VoiceOperationReconciler(store: store, client: client).reconcile(force: true)
             #expect(try await store.load(id) == error.record)
         }
-        await #expect(throws: VoiceLabError.invalidInput) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0") }
         #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.count } == 1)
     }
     @Test(arguments: ["local-save", "timeout", "crash", "invalid-consent", "cancelled"]) func uncertainCreationReconcilesWithoutAnotherPost(mode: String) async throws {
@@ -569,9 +562,8 @@ struct VoiceConsentTests {
         })
         _ = try await client.plan()
         let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
-        await #expect(throws: (any Error).self) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true)
+        await #expect(throws: (any Error).self) { try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0") }
         let restarted = storage(root)
         #expect(try await restarted.operations().filter { $0.kind == .create && !$0.finished }.count == 1)
         try await restarted.reconcileAbandonedEnrollments()
@@ -592,7 +584,7 @@ struct VoiceConsentTests {
         _ = try await client.plan()
         let policy = OwnVoicePolicy(recordID: UUID().uuidString, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         let request = VoiceLabCloneRequest(displayName: "Example", language: "en", samples: [.init(role: .consentStatement, wav: wav), .init(role: .training, wav: wav)], createdAt: now, removeBackgroundNoise: false)
-        let quote = try await client.prepareClone(request, policy: policy, requestID: UUID())
+        let quote = try await client.prepareEnrollmentClone(request, policy: policy, requestID: UUID())
         await #expect(throws: VoiceLabError.consentRequired) {
             try await client.createOwnClone(request, policy: policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
         }
@@ -678,8 +670,7 @@ struct VoiceConsentTests {
             let transport = client(ConsentRequestLog())
             _ = try await transport.plan()
             let service = enroll(store: store, client: transport, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
-            try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
-            if step == "quoted" { _ = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true) }
+            if step == "quoted" { _ = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true) }
             try await service.cancel(recordID: id)
         }
         try await store.abandonEnrollment(recordID: id)
@@ -822,7 +813,7 @@ struct VoiceConsentTests {
         await #expect(throws: VoiceLabError.consentRequired) { try await client.transcribeConsentStatement(wav: changed, language: "en", authorization: .init(quote: third, approved: true)) }
         #expect(calls.value.withLock { $0.count } == 1)
     }
-    @Test func expiredCreationQuoteKeepsVerifiedEnrollmentForRequoting() async throws {
+    @Test func expiredCombinedQuoteKeepsStatementForLocalRequoting() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let store = storage(root); let calls = ConsentRequestLog(); let client = client(calls)
         let elapsed = Mutex<Duration>(.zero); let date = now
@@ -830,15 +821,14 @@ struct VoiceConsentTests {
         _ = try await client.plan()
         let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
         let id = UUID().uuidString
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true, now: now)
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true, now: now)
         elapsed.withLock { $0 = .seconds(300) }
-        await #expect(throws: VoiceLabError.consentRequired) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        await #expect(throws: VoiceLabError.consentRequired) { try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0") }
         #expect(try await store.statement(recordID: id) == wav)
         #expect(try await store.operations().isEmpty)
         #expect(calls.value.withLock { $0.filter { $0.hasPrefix("POST") }.isEmpty })
-        let refreshed = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true, now: now)
-        #expect(refreshed.id != quote.id)
+        let refreshed = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true, now: now)
+        #expect(refreshed.quote.id != quote.quote.id)
     }
 }
 
@@ -1053,11 +1043,10 @@ extension VoiceConsentTests {
         remote.value.withLock { $0.createFailure = [.removeStatement, .retryScheduled].contains(step) }
         let client = operationClient(remote, nonce: id); _ = try await client.plan()
         let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
-        await #expect(throws: (any Error).self) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
-        #expect(await store.claimOperation(quote.requestID))
-        await store.releaseOperation(quote.requestID)
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true)
+        await #expect(throws: (any Error).self) { try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        #expect(await store.claimOperation(quote.quote.create.requestID))
+        await store.releaseOperation(quote.quote.create.requestID)
         let restarted = storage(root)
         try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
         #expect(try await restarted.operations().isEmpty)
@@ -1072,9 +1061,8 @@ extension VoiceConsentTests {
         let id = UUID().uuidString; let remote = OperationRemote(); let client = operationClient(remote, nonce: id)
         _ = try await client.plan()
         let service = enroll(store: store, client: client, check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw())
-        try await service.verify(recordID: id, statement: statement(), wav: wav, attestations: attestations, approved: true, enabled: true)
-        let quote = try await service.prepare(recordID: id, displayName: "Example", samples: training(), enabled: true)
-        await #expect(throws: (any Error).self) { try await service.create(quote: quote, approved: true, enabled: true, appVersion: "0.1.0") }
+        let quote = try await service.preparePlan(recordID: id, statement: statement(), wav: wav, attestations: attestations, displayName: "Example", samples: training(), enabled: true)
+        await #expect(throws: (any Error).self) { try await service.execute(quote, approved: true, enabled: true, appVersion: "0.1.0") }
         #expect(fired.withLock { $0 })
         let restarted = storage(root)
         try await restarted.reconcileAbandonedEnrollments()
@@ -1086,6 +1074,11 @@ extension VoiceConsentTests {
         if shouldSave {
             #expect(try await restarted.load(id).status == .active)
             #expect(try await restarted.statement(recordID: id) == wav)
+        } else if [VoiceConsentCheckpoint.saveDraft, .creationIntent, .creationDispatched].contains(step) {
+            // Verification is durable but creation was never dispatched: offer Create again, with no automatic send.
+            #expect(try await restarted.statement(recordID: id) == wav)
+            #expect(try await restarted.recoverableEnrollments() == [id])
+            #expect(!remote.value.withLock { $0.present })
         } else {
             #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(id)/statement.wav").path))
             #expect(!remote.value.withLock { $0.present })

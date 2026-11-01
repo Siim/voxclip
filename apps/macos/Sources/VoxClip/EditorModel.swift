@@ -88,7 +88,7 @@ struct EditorRenderSnapshot {
     var outlineScrollWordID: String?
     var lastStyleId: String?
     /// Voice Lab's one-time beta sheet (voice-lab.md §5); R2's Turn On Voice Lab… opens it.
-    var showVoiceLabOptIn = false
+
     @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
     #if DEBUG
     /// Tests learn where Rewrite's Core work (a plan, a placement, a review) ran: true on the main thread.
@@ -162,7 +162,7 @@ struct EditorRenderSnapshot {
         guard session.isOpen, !session.isProposing else { return }
         rewriteOpenTask?.cancel()
         let count = session.proposalCount
-        guard count > 0, session.generation?.rows.isEmpty == false || session.hasEditedChanges else {
+        guard count > 0, session.hasPaidTakes || session.hasEditedChanges else {
             sendAgain(session, instruction: instruction)
             return
         }
@@ -243,7 +243,7 @@ struct EditorRenderSnapshot {
     func enableVoiceLab() {
         app.set("voiceLab.betaNoticeAccepted", .bool(true))
         app.set("voiceLab.enabled", .bool(true))
-        showVoiceLabOptIn = false
+
     }
     var preset = ClipPresetID.best
     var instruction = ""
@@ -337,6 +337,9 @@ struct EditorRenderSnapshot {
     }
     var plan: EditPlan?
     var voiceLabPlan: VoiceLabOutputPlan?
+    var voiceRewriteFeedback: VoiceRewriteFeedback?
+    var voiceRewriteToastVisible = false
+    @ObservationIgnored var voiceRewriteToastTask: Task<Void, Never>?
     var renderTimeline: RenderTimeline? {
         if let voiceLabPlan { return .voiceLab(voiceLabPlan) }
         return plan.map(RenderTimeline.legacy)
@@ -575,6 +578,8 @@ struct EditorRenderSnapshot {
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
+        app.voiceLabSession.leaveVoiceControls(owner: self)
+        voiceRewriteToastTask?.cancel()
         cancelMediaRelink()
         closeRewrite(returnFocus: false)
         previewRevision &+= 1

@@ -17,7 +17,7 @@ package enum VoiceLabFingerprint {
 
 /// Values passed between the Voice Lab UI, Core services and future media integration.
 public enum VoiceLabOperation: String, Sendable, Codable { case createClone, deleteClone, textToSpeech, voiceChange, speechToText }
-public enum VoiceLabLanguageMode: Sendable, Equatable {
+public enum VoiceLabLanguageMode: Codable, Sendable, Equatable {
     case explicit(String)
     case autoDetected(expected: String)
 }
@@ -40,7 +40,7 @@ public enum VoiceLabError: Error, Sendable, Equatable {
 }
 
 /// Prepared by the service for one exact billable request; preparation performs no provider call.
-public struct VoiceLabQuote: Sendable, Equatable {
+public struct VoiceLabQuote: Codable, Sendable, Equatable {
     public let id: UUID
     public let operation: VoiceLabOperation
     public let requestID: UUID
@@ -183,10 +183,10 @@ public struct VoiceLabCloneResult: Sendable, Equatable {
     public var spendWarning: VoiceLabSpendWarning? { receipt.spendWarning }
 }
 
-public enum VoiceLabCloneSampleRole: String, Sendable, Equatable { case consentStatement, training }
+public enum VoiceLabCloneSampleRole: String, Codable, Sendable, Equatable { case consentStatement, training }
 
 /// A complete mono PCM16 WAV file. Other upload formats wait for spike S5 (voice-lab §6.5).
-public struct VoiceLabCloneSample: Sendable, Equatable {
+public struct VoiceLabCloneSample: Codable, Sendable, Equatable {
     public let role: VoiceLabCloneSampleRole
     public let wav: Data
     public init(role: VoiceLabCloneSampleRole, wav: Data) {
@@ -195,7 +195,7 @@ public struct VoiceLabCloneSample: Sendable, Equatable {
 }
 
 /// One own-voice clone upload (voice-lab §6.5, §6.7). The single consent statement is sent first, then training samples in caller order.
-public struct VoiceLabCloneRequest: Sendable, Equatable {
+public struct VoiceLabCloneRequest: Codable, Sendable, Equatable {
     public let recoveryNonce: String?
     public let displayName: String
     /// Statement language, `[a-z]{2,3}`, sent as the `language` label.
