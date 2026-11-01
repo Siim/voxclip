@@ -160,7 +160,10 @@ internal sealed class TranscriptionDialog : ContentDialog
         Task<bool> Confirm(TranscriptionModel candidate, IReadOnlyList<TranscriptionModel> dependencies, CancellationToken _) =>
             candidate.Id == download.Id && ModelDownloadCopy.Body(candidate, dependencies) == approved ? Task.FromResult(true)
                 : throw new InvalidOperationException("The model download no longer matches the licence shown.");
+        var install = new TranscriptionModelInstall(download.Id, engine.SelectedIndex == 0, language.Text,
+            (models.SelectedItem as ComboBoxItem)?.Tag as string);
         running = true; IsPrimaryButtonEnabled = false;
+        engine.IsEnabled = language.IsEnabled = models.IsEnabled = false;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         downloading = cancellation;
         var cancelled = false;
@@ -172,7 +175,13 @@ internal sealed class TranscriptionDialog : ContentDialog
             }), cancellation.Token);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested && !lifetime.IsCancellationRequested) { cancelled = true; }
-        finally { running = false; downloading = null; }
+        finally
+        {
+            running = false; downloading = null;
+            engine.IsEnabled = language.IsEnabled = models.IsEnabled = true;
+        }
+        if (closed) return;
+        await LoadModelsAsync();
         if (closed) return;
         App.Services.NotifyModelsChanged();
         ShowSetup();
@@ -180,6 +189,11 @@ internal sealed class TranscriptionDialog : ContentDialog
         if (cancelled) { consentNotice.IsOpen = false; return; }
         ClearRoute();
         Ui.Show(notice, TranscriptionRouting.Installed, InfoBarSeverity.Success);
+        var installed = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
+        if (closed || model.IsLeaving || lifetime.IsCancellationRequested) return;
+        if (install.Continues(TranscriptionModelChoices.InstalledLocal(catalogue, installed).Any(entry => entry.Id == install.ModelId),
+            engine.SelectedIndex == 0, language.Text, (models.SelectedItem as ComboBoxItem)?.Tag as string))
+            await RunTranscriptionAsync();
     }
     private void UpdateEngine()
     {

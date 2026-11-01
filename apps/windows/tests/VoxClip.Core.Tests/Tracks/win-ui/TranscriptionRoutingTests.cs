@@ -248,7 +248,7 @@ public sealed class TranscriptionRoutingTests
         Ordered(download, "CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);", "downloading = cancellation;",
             "ReferenceEquals(downloading, cancellation)) Ui.Show(consentNotice", "}), cancellation.Token);",
             "catch (OperationCanceledException) when (cancellation.IsCancellationRequested && !lifetime.IsCancellationRequested) { cancelled = true; }",
-            "finally { running = false; downloading = null; }", "ShowSetup();", "if (cancelled) { consentNotice.IsOpen = false; return; }");
+            "running = false; downloading = null;", "engine.IsEnabled = language.IsEnabled = models.IsEnabled = true;", "ShowSetup();", "if (cancelled) { consentNotice.IsOpen = false; return; }");
         // The licence and consent pages share one notice; it leaves the old page first, so Download works again after Cancel.
         Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(dialog, @"page\.Children\.Add\(DetachedConsentNotice\(\)\)").Count);
         Assert.DoesNotContain("page.Children.Add(consentNotice)", dialog);
@@ -279,6 +279,43 @@ public sealed class TranscriptionRoutingTests
         Assert.Contains("TranscriptionRouting.InstalledMemoryBytes", AppFile("Controls/TranscriptionDialog.cs"));
         Assert.Contains("TranscriptionRouting.InstalledMemoryBytes", AppFile("Controls/OnboardingDialog.cs"));
         Assert.Contains("GetPhysicallyInstalledSystemMemory(out var kilobytes)", AppFile("ViewModels/TranscriptionRouting.cs"));
+    }
+
+    [Theory]
+    [InlineData(true, true, "et", null, true)]
+    [InlineData(true, true, " ET ", null, true)]
+    [InlineData(false, true, "et", null, false)]
+    [InlineData(true, false, "et", null, false)]
+    [InlineData(true, true, "en", null, false)]
+    [InlineData(true, true, "et", Turbo, false)]
+    public void DownloadContinuesOnlyForTheInstalledLocalModelAndOriginalChoices(
+        bool installed, bool local, string language, string? choice, bool expected)
+    {
+        var install = new TranscriptionModelInstall(TalTech, true, "et", null);
+        Assert.Equal(expected, install.Continues(installed, local, language, choice));
+        // Even a download begun from a stale local prompt while cloud is selected cannot upload.
+        var cloud = new TranscriptionModelInstall(TalTech, false, "et", null);
+        Assert.False(cloud.Continues(true, false, "et", null));
+        Assert.False(cloud.Continues(true, true, "et", null));
+        var explicitModel = new TranscriptionModelInstall(Turbo, true, "auto", Turbo);
+        Assert.True(explicitModel.Continues(true, true, "", Turbo));
+        Assert.False(explicitModel.Continues(true, true, "auto", null));
+    }
+
+    [Fact]
+    public void DialogFreezesChoicesAndChecksTheVerifiedInstallBeforeContinuing()
+    {
+        var dialog = AppFile("Controls/TranscriptionDialog.cs");
+        var download = dialog[dialog.IndexOf("private async Task DownloadAsync", StringComparison.Ordinal)..];
+        Ordered(download, "var install = new TranscriptionModelInstall(download.Id, engine.SelectedIndex == 0, language.Text,",
+            "engine.IsEnabled = language.IsEnabled = models.IsEnabled = false;", "InstallAsync(download.Id",
+            "engine.IsEnabled = language.IsEnabled = models.IsEnabled = true;", "await LoadModelsAsync();", "ShowSetup();",
+            "if (cancelled) { consentNotice.IsOpen = false; return; }", "ListInstalledAsync(lifetime.Token);",
+            "if (closed || model.IsLeaving || lifetime.IsCancellationRequested) return;",
+            "if (install.Continues(TranscriptionModelChoices.InstalledLocal(catalogue, installed).Any(entry => entry.Id == install.ModelId),",
+            "engine.SelectedIndex == 0, language.Text, (models.SelectedItem as ComboBoxItem)?.Tag as string))",
+            "await RunTranscriptionAsync();");
+        Assert.Contains("if (!App.Services.Get(\"transcription.cloudConsent.elevenlabs\", false)) { ShowCloudConsent(); return; }", dialog);
     }
 
     private static void Ordered(string text, params string[] markers)

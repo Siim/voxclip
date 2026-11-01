@@ -149,6 +149,18 @@ internal static class TranscriptionRouting
         entry.GetProperty("windows").TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 }
 
+/// <summary>A model download started from the Transcribe dialog, with the engine, language and model choice its Download was
+/// clicked for (the Mac's <c>TranscriptionModelInstall</c>; transcription §11.3).</summary>
+internal sealed record TranscriptionModelInstall(string ModelId, bool Local, string Language, string? ModelChoice)
+{
+    /// <summary>Whether the finished download goes on to transcribe by itself: only once the model is installed and verified,
+    /// and only for the local engine with the language and model choice Download was clicked for. Anything else waits for
+    /// Transcribe, so an ElevenLabs upload always follows a click and its first-upload consent.</summary>
+    internal bool Continues(bool installed, bool local, string language, string? modelChoice) =>
+        installed && Local && local && TranscriptionRouting.Language(language) == TranscriptionRouting.Language(Language) &&
+        string.Equals(modelChoice, ModelChoice, StringComparison.Ordinal);
+}
+
 /// <summary>The Transcribe dialog's progress line, matching the Mac sheet with "PC" for "Mac"; transcription §13.1 and design
 /// §13.</summary>
 internal static class TranscriptionProgressCopy
