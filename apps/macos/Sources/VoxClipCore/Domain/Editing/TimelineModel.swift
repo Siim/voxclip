@@ -68,6 +68,29 @@ public struct TimelinePieces: Sendable, Equatable {
         return first.source.lowerBound..<max(first.source.lowerBound, last.source.upperBound)
     }
 
+    /// True where the piece at `index` starts a cut seam on Edited: its take time does not
+    /// continue from the piece before it (notes.md §6: each cut closes to ONE 1 pt seam). A
+    /// Voice Lab patch continues its neighbours' take time, so it has no seam of its own.
+    public func isSeam(at index: Int) -> Bool {
+        index > 0 && index < pieces.count && pieces[index].source.lowerBound - pieces[index - 1].source.upperBound > 1e-6
+    }
+
+    /// Where each seam is on Edited: the start of every piece that starts one.
+    public var seams: [Double] { pieces.indices.filter(isSeam(at:)).map { pieces[$0].edited.lowerBound } }
+
+    /// The take time inside `span` that no piece plays, longer than `minimum` seconds (notes.md
+    /// §6: Source view's removed ranges, drawn as empty lane with a dashed outline).
+    public func gaps(within span: Range<Double>, minimum: Double = 0.02) -> [Range<Double>] {
+        var gaps: [Range<Double>] = []
+        var covered = span.lowerBound
+        for piece in pieces[indices(overlapping: span, on: .source)] {
+            if piece.source.lowerBound - covered > minimum { gaps.append(covered..<piece.source.lowerBound) }
+            covered = max(covered, piece.source.upperBound)
+        }
+        if span.upperBound - covered > minimum { gaps.append(covered..<span.upperBound) }
+        return gaps
+    }
+
     /// The pieces that overlap `range` on `axis`.
     public func indices(overlapping range: Range<Double>, on axis: TimelineAxis) -> Range<Int> {
         var lower = 0, upper = pieces.count
@@ -141,6 +164,16 @@ public enum TimelineRuler {
         guard end <= laneEnd + 6 else { return nil }
         guard !brackets.contains(where: { start - 3 <= $0 && $0 <= end + 2 }) else { return nil }
         return start
+    }
+}
+
+/// Seconds as notes.md §2 writes them everywhere but the timecodes: one decimal and a
+/// non-breaking space, "4.4 s".
+public enum SecondsText {
+    public static let space = String(Character(Unicode.Scalar(UInt8(0xA0))))
+    public static func format(_ seconds: Double) -> String {
+        let value = seconds.isFinite ? max(0, seconds) : 0
+        return String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value) + space + "s"
     }
 }
 

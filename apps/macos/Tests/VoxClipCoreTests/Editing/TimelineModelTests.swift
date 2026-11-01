@@ -52,6 +52,47 @@ import Testing
         #expect(TimelinePieces([]).editedDuration == 0 && TimelinePieces([]).sourceSpan == nil)
     }
 
+    /// notes.md §6: on Edited each cut closes to ONE seam; a Voice Lab patch continues its
+    /// neighbours' take time and has none. On Source the removed ranges inside the scope are
+    /// exactly the cuts there, and gaps shorter than 20 ms are not drawn.
+    @Test func seamsAreTheCutsAndSourceGapsAreTheirRanges() {
+        let plan = EditPlan(sampleRate: 100, totalSamples: 6_000,
+                            cuts: [MediaInterval(startSample: 0, endSample: 1_000), MediaInterval(startSample: 1_400, endSample: 1_600),
+                                   MediaInterval(startSample: 2_000, endSample: 2_001), MediaInterval(startSample: 2_500, endSample: 3_000),
+                                   MediaInterval(startSample: 4_000, endSample: 6_000)],
+                            kept: [MediaInterval(startSample: 1_000, endSample: 1_400), MediaInterval(startSample: 1_600, endSample: 2_000),
+                                   MediaInterval(startSample: 2_001, endSample: 2_500), MediaInterval(startSample: 3_000, endSample: 4_000)])
+        let pieces = TimelinePieces(.legacy(plan))
+        // Three cuts inside the kept span (14–16 s, the 10 ms one at 20 s and 25–30 s), at their edited times.
+        #expect(pieces.seams == [4, 8, 12.99])
+        #expect(!pieces.isSeam(at: 0) && pieces.isSeam(at: 1) && !pieces.isSeam(at: 9))
+        // Inside a clip of 10–40 s the gaps are the cut ranges, less the 10 ms one.
+        #expect(pieces.gaps(within: 10..<40) == [14..<16, 25..<30])
+        // On Full Take the leading and trailing cuts are gaps too.
+        #expect(pieces.gaps(within: 0..<60) == [0..<10, 14..<16, 25..<30, 40..<60])
+        #expect(pieces.gaps(within: 0..<60, minimum: 0) == [0..<10, 14..<16, 20..<20.01, 25..<30, 40..<60])
+        #expect(TimelinePieces([]).gaps(within: 2..<5) == [2..<5] && TimelinePieces([]).seams.isEmpty)
+
+        func piece(_ kind: VoiceLabOutputPieceKind, _ source: (Int64, Int64), _ output: (Int64, Int64)) -> VoiceLabOutputPiece {
+            VoiceLabOutputPiece(kind: kind, sourceStartSample: source.0, sourceEndSample: source.1, outputStartSample: output.0, outputEndSample: output.1,
+                                segmentId: nil, assetId: nil, audio: nil)
+        }
+        let voice = TimelinePieces(.voiceLab(VoiceLabOutputPlan(sampleRate: 100, totalSourceSamples: 1_000,
+            pieces: [piece(.source, (0, 100), (0, 100)), piece(.synth, (100, 300), (100, 350)), piece(.source, (300, 400), (350, 450)),
+                     piece(.source, (500, 600), (450, 550))], captions: [], scope: .full)))
+        // The patch butts on both sides; the cut at 4–5 s is the one seam.
+        #expect(voice.seams == [4.5])
+        #expect(voice.gaps(within: 0..<6) == [4..<5])
+    }
+
+    @Test func secondsAreOneDecimalWithANonBreakingSpace() {
+        let space = String(Character(Unicode.Scalar(UInt8(0xA0))))
+        #expect(SecondsText.format(4.4) == "4.4" + space + "s")
+        #expect(SecondsText.format(0.04) == "0.0" + space + "s")
+        #expect(SecondsText.format(61.25) == "61.2" + space + "s" || SecondsText.format(61.25) == "61.3" + space + "s")
+        #expect(SecondsText.format(-1) == "0.0" + space + "s" && SecondsText.format(.nan) == "0.0" + space + "s")
+    }
+
     // MARK: Ruler
 
     @Test func labelsStepFromFiveToTenSecondsBelowNinetyPoints() {
