@@ -7,7 +7,7 @@ import VoxClipCore
 import VoxClipMedia
 
 private actor TranscriptionConsentSettings: SettingsStore {
-    private var document = SettingsDocument()
+    private var document = SettingsDocument(values: ["update.autoCheck": .bool(false)])
     func load() -> SettingsDocument { document }
     func save(_ settings: SettingsDocument) { document = settings }
     func flush() {}
@@ -60,69 +60,34 @@ private final class ConsentScribeProtocol: URLProtocol, @unchecked Sendable {
         input.edits = ProjectEdits()
         let editor = EditorModel(document: VoxClipDocument(project: input, demo: true), app: app, preview: DemoPreviewEngine())
         defer { editor.close() }
-        let actions = DebugButtonActions()
-        DebugButtonActions.current = actions
-        defer { DebugButtonActions.current = nil }
-        var sheet = TranscriptionSheet(model: editor, scribeSession: session)
-        sheet.inlineConsentForAudit = true
-        let controller = NSHostingController(rootView: sheet)
-        controller.sizingOptions = []
-        let host = controller.view
-        host.frame = CGRect(x: 0, y: 0, width: 560, height: 1000)
-        let settingsController = NSHostingController(rootView: ProviderKeyRow(provider: "elevenlabs", label: "ElevenLabs", app: app))
-        settingsController.sizingOptions = []
-        let settings = settingsController.view
-        settings.frame = CGRect(x: 0, y: 0, width: 720, height: 300)
-        await settle(host)
-        await settle(settings)
+        let flow = editor.transcription
+        flow.scribeSession = session
+        await flow.open()
         var results: [DebugUISuite.Result] = []
-        try actions.press("transcription.start")
-        await settle(host)
-        results.append(.init(name: "real Transcribe action opens consent without a Scribe request", passed:
-            requests.isEmpty && actions.entries["transcription.consent.continue"] != nil && editor.project.transcript == nil))
-        guard actions.entries["transcription.consent.cancel"] != nil else { return results }
-        try actions.press("transcription.consent.cancel")
-        await settle(host)
-        results.append(.init(name: "real consent Cancel leaves Not transcribed and never uploads", passed:
-            requests.isEmpty && editor.project == input && SidebarStyle.fullTakeMeta(editor) == "Not transcribed" && !app.bool("transcription.cloudConsent.elevenlabs")))
-
-        try actions.press("provider.elevenlabs.test")
-        for _ in 0..<100 {
-            if !requests.isEmpty { break }
-            try await Task.sleep(for: .milliseconds(20))
-        }
-        await settle(settings)
-        results.append(.init(name: "real Settings Test uses account-only request without transcription consent", passed:
-            requests == ["GET /v1/user/subscription"] && !app.bool("transcription.cloudConsent.elevenlabs") && editor.project.transcript == nil))
-
-        try actions.press("transcription.start")
-        await settle(host)
-        results.append(.init(name: "repeated real Transcribe still waits for Continue", passed:
-            requests == ["GET /v1/user/subscription"] && actions.entries["transcription.consent.continue"] != nil))
-        try actions.press("transcription.consent.continue")
-        for _ in 0..<500 {
-            if editor.project.transcript != nil { break }
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        results.append(.init(name: "inline ElevenLabs waits for a priced click", passed: editor.window == nil && requests.isEmpty && flow.canStart && flow.primaryTitle.contains("Upload and Transcribe") && flow.primaryTitle.contains("$")))
+        flow.notNow()
+        results.append(.init(name: "Not now keeps video and stores no consent", passed: requests.isEmpty && editor.project == input && !app.bool("transcription.cloudConsent.elevenlabs")))
+        let keyTest = await testSpeechKey(app: app)
+        results.append(.init(name: "Settings Test uses only the account endpoint and stores no transcription consent", passed: keyTest == "Works." && requests == ["GET /v1/user/subscription"] && !app.bool("transcription.cloudConsent.elevenlabs")))
+        await flow.open()
+        flow.activate()
         await editor.workTask?.value
-        results.append(.init(name: "real Continue runs extraction, Scribe transport and transcript import exactly once", passed:
-            requests.filter { $0 == "POST /v1/speech-to-text" }.count == 1 && editor.project.transcript?.words.first?.text == "Hello" && app.bool("transcription.cloudConsent.elevenlabs")))
+        results.append(.init(name: "priced click transcribes through the stub transport and stores consent", passed: requests.filter { $0 == "POST /v1/speech-to-text" }.count == 1 && editor.project.transcript?.words.first?.text == "Hello" && app.bool("transcription.cloudConsent.elevenlabs")))
         await app.flushSettings()
         let reopened = AppModel(settingsStore: store)
         await reopened.start()
-        results.append(.init(name: "real Continue persists consent across AppModel restart", passed:
-            reopened.bool("transcription.cloudConsent.elevenlabs")))
-        results.append(.init(name: "consent integration hosts remain window-free", passed: host.window == nil && settings.window == nil))
+        results.append(.init(name: "the priced click persists privacy consent across AppModel restart", passed: reopened.bool("transcription.cloudConsent.elevenlabs")))
+        let sent = requests.count
+        await flow.open(again: true)
+        results.append(.init(name: "stored consent never bypasses another priced click", passed: requests.count == sent && !flow.isRunning))
+        let spend = await app.transcriptionSpend.total()
+        flow.activate()
+        await editor.workTask?.value
+        let afterCache = await app.transcriptionSpend.total()
+        results.append(.init(name: "approved cached transcription makes no new request or charge", passed: requests.count == sent && afterCache.amount == spend.amount && flow.completion?.contains("no charge") == true))
         return results
     }
 
     private static var requests: [String] { ConsentScribeProtocol.requests.withLock { $0 } }
-    private static func settle(_ host: NSView) async {
-        for _ in 0..<12 {
-            host.layoutSubtreeIfNeeded()
-            host.displayIfNeeded()
-            try? await Task.sleep(for: .milliseconds(20))
-        }
-    }
 }
 #endif

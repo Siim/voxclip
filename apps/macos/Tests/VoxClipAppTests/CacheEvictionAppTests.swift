@@ -266,7 +266,7 @@ private actor TemporarySettingsStore: SettingsStore {
         #expect(keys.leasedKeys.isEmpty)
     }
 
-    /// The import pass, the transcription sheet's lease and the Clear actions run only with windows, so their call sites
+    /// The import pass, the inline transcription run's lease and the Clear actions run only with windows, so their call sites
     /// are checked in the source, as the Windows `EveryCacheHolderInTheAppTakesItsLease` does.
     @Test func windowedCallSitesAskForPassesAndTakeTheirLeases() throws {
         let sources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -283,7 +283,7 @@ private actor TemporarySettingsStore: SettingsStore {
         let request = try #require(importing.range(of: "app.requestCacheEviction()"))
         #expect(started.upperBound <= request.lowerBound)
         // The sheet leases its source's key before extraction and holds it to the transcript.
-        let transcribing = try body(source("TranscriptionSheet.swift"), of: "private func transcribe()")
+        let transcribing = try body(source("InlineTranscription+Run.swift"), of: "func performRun(")
         let lease = try #require(transcribing.range(of: "let lease = await model.app.cacheKeys.lease(model.project.media.source.contentKey)"))
         let release = try #require(transcribing.range(of: "defer { lease.release() }"))
         #expect(lease.upperBound <= release.lowerBound)

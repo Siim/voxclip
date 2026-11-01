@@ -97,7 +97,7 @@ extension AppModel {
     @Bindable var app: AppModel
     var body: some View {
         Picker("Engine", selection: app.stringBinding("transcription.engineMode", fallback: "local")) {
-            Text("On this Mac").tag("local"); Text("ElevenLabs Scribe").tag("elevenlabs"); Text("Apple on-device").tag("apple"); Text("Ask each time").tag("ask")
+            Text("Apple Speech · on this Mac").tag("apple"); Text("On this Mac · Apple Speech for English, otherwise Whisper").tag("local"); Text("ElevenLabs Scribe").tag("elevenlabs"); Text("Ask each time").tag("ask")
         }
     }
 }

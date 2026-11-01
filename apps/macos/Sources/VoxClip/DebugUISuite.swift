@@ -515,18 +515,15 @@ import ApplicationServices
             try await capture(window: window, name: "scene-menu-ready", directory: destination)
             let transcribeItem = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu?.item(withTitle: "Transcribe Again…")
             let dispatched = transcribeItem.flatMap { item in item.action.map { NSApp.sendAction($0, to: item.target, from: item) } } ?? false
-            try await waitUntil { window.attachedSheet != nil }
+            try await waitUntil { editor.transcription.phase == .choosing }
             let warning = AppDelegate.retranscriptionWarning(for: editor.project)
             // Editor menu commands need the main window to be key, so an inactive app
             // (a locked console) can't reach them.
             let inactive = NSApp.keyWindow !== window ? "the app isn't active, so the main window isn't key and editor menu commands are off" : nil
-            let warned = dispatched && window.attachedSheet != nil && !editor.showTranscribe && warning.contains("1 cuts") && warning.contains("1 corrections") && warning.contains("1 clips")
+            let warned = dispatched && window.attachedSheet == nil && editor.transcription.again && warning.contains("1 cut") && warning.contains("1 correction") && warning.contains("1 clip")
             results.append(Result(name: "Transcribe Again warns about lost cuts, corrections and clips", passed: warned, skipped: warned ? nil : inactive))
-            if let sheet = window.attachedSheet {
-                if let cancel = button(titled: "Cancel", in: sheet.contentView) { cancel.performClick(nil) } else { sheet.cancelOperation(nil) }
-            }
-            try await waitUntil { window.attachedSheet == nil }
-            let kept = window.attachedSheet == nil && !editor.showTranscribe && editor.project.edits.cutWordIds.count == 1 && editor.project.edits.corrections.count == 1 && editor.project.edits.clips.count == 1
+            editor.transcription.notNow()
+            let kept = window.attachedSheet == nil && editor.transcription.phase == .hidden && editor.project.edits.cutWordIds.count == 1 && editor.project.edits.corrections.count == 1 && editor.project.edits.clips.count == 1
             results.append(Result(name: "cancelling Transcribe Again keeps the edits", passed: kept && warned, skipped: kept && !warned ? inactive : nil))
             if let clip = made {
                 shell.selection = .clip(clip.id)
@@ -640,6 +637,7 @@ import ApplicationServices
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: interview, directory: destination, native: true)
             results += try await DebugRewrite.directorCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugInlineConfirm.captures(app: app, directory: destination)
+            results += try await DebugInlineTranscribe.captures(app: app, fixture: interview, directory: destination)
         } catch {
             results.append(Result(name: "scene audit: \(error.localizedDescription)", passed: false))
         }

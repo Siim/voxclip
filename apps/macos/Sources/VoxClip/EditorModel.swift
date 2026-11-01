@@ -64,7 +64,7 @@ struct EditorRenderSnapshot {
     var showExport = false
     let sendConfirmation = ConnectorConfirmation()
     var connectorSendVerb = "Rewrite"
-    var showTranscribe = false
+    @ObservationIgnored lazy var transcription = InlineTranscription(model: self)
     var correctionID: String?
     var correctionText = ""
     /// The open Rewrite session, on whichever tab it belongs to. The right column reads
@@ -392,7 +392,7 @@ struct EditorRenderSnapshot {
     }
     /// Set by the shell's leave boundary: edits freeze, and late results cannot
     /// change a project that is leaving.
-    var isLeaving = false { didSet { if isLeaving { closeRewrite(returnFocus: false) } } }
+    var isLeaving = false { didSet { if isLeaving { transcription.close(); closeRewrite(returnFocus: false) } } }
     /// Called when a refresh finds a different active clip, for example after Undo.
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
     /// Called when a refresh finds the clips changed: made, kept, dismissed, removed, or back after Undo. The tabs follow it.
@@ -533,9 +533,10 @@ struct EditorRenderSnapshot {
             }
         }
         refresh()
-        if mediaResolved { await updatePreview(load: true) }
+        if mediaResolved { await updatePreview(load: true); await transcription.openOnImport() }
     }
     func close() {
+        transcription.close()
         sendConfirmation.cancel()
         closeRewrite(returnFocus: false)
         previewRevision &+= 1
@@ -545,6 +546,7 @@ struct EditorRenderSnapshot {
         cacheLease?.release(); cacheLease = nil
     }
     func reloadFromDocument(previousProjectID: String) {
+        transcription.close()
         closeRewrite(returnFocus: false)
         app.openProjectKeys[previousProjectID] = nil
         // The project stays open while its video is checked again, even if it is missing (architecture §8.2).

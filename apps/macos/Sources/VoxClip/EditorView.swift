@@ -47,11 +47,10 @@ import VoxClipCore
             .ignoresSafeArea()
             .preferredColorScheme(shell.app.appearance)
     }
-    /// Export, Transcribe Again, Keyboard Shortcuts and the tour.
+    /// Export, Keyboard Shortcuts and the tour.
     private func sheets(on content: some View) -> some View {
         content
             .sheet(isPresented: editorFlag(\.showExport)) { if let editor = shell.editor { ExportSheet(model: editor) } }
-            .sheet(isPresented: editorFlag(\.showTranscribe)) { if let editor = shell.editor { TranscriptionSheet(model: editor) } }
             .sheet(isPresented: editorFlag(\.showVoiceLabOptIn)) {
                 if let editor = shell.editor { VoiceLabOptInView(editor: editor) }
             }
@@ -169,7 +168,11 @@ import VoxClipCore
             if !model.document.demo, !model.mediaResolved {
                 Button("Locate…") { model.locateMedia() }
             }
-            if let progress = model.progress {
+            if model.transcription.isVisible {
+                if model.transcribed { InlineTranscriptionView(transcription: model.transcription) }
+                else { ScrollView { InlineTranscriptionView(transcription: model.transcription) } }
+            }
+            if let progress = model.progress, !model.transcription.isRunning {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(0..<6) { line in RoundedRectangle(cornerRadius: 4).fill(DesignValues.color("bg.muted")).frame(width: line.isMultiple(of: 2) ? 300 : 240, height: 12) }
                     Text(progress)
@@ -177,9 +180,10 @@ import VoxClipCore
                 }.padding(40)
                 Spacer()
             } else if !model.transcribed {
-                ContentUnavailableView { Label("This video isn't transcribed yet.", systemImage: "text.alignleft") }
-                    description: { Text("Your video is still here. Transcribe it to cut by words.") }
-                    actions: { Button("Transcribe…") { model.showTranscribe = true }; Button("Models and keys…") { openVoxClipSettings() } }
+                if !model.transcription.isVisible {
+                    HStack { Text("This video isn't transcribed yet."); Button("Transcribe…") { Task { await model.transcription.open() } } }.padding(.leading, 80).padding(.top, 24)
+                }
+                Spacer(minLength: 0)
             } else { TranscriptTextView(model: model).accessibilityLabel("Transcript, edit by words").focusSection() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

@@ -72,6 +72,7 @@ extension ProviderChoice {
     static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
     public var startupError: VoxClipError?
     let settingsSendConfirmation = ConnectorConfirmation()
+    @ObservationIgnored lazy var transcriptionSpend = TranscriptionSpend(locations: locations)
     var notice: String?
     var settingErrors: [String: String] = [:]
     var settings = SettingsDocument()
