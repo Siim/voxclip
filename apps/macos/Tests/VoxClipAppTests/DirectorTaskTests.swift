@@ -2,8 +2,9 @@
 import AppKit
 import Foundation
 import SwiftUI
+import Synchronization
 import Testing
-@testable import VoxClipCore
+@_spi(Testing) @testable import VoxClipCore
 @testable import VoxClip
 
 /// A stub connector whose readiness, sign-in and answer a test sets. With `hold` its send
@@ -33,6 +34,13 @@ private actor StubConnector: LLMConnector {
     func release() { waiting?.resume(); waiting = nil }
     func set(readiness: ConnectorStatus) { self.readiness = readiness }
     func set(failure: LLMError?) { self.failure = failure }
+}
+
+/// The quote clock of a session's `VoiceRewriteService`, moved by hand.
+private final class QuoteClock: Sendable {
+    private let time = Mutex<Duration>(.zero)
+    func now() -> Duration { time.withLock { $0 } }
+    func advance(seconds: Int) { time.withLock { $0 += .seconds(seconds) } }
 }
 
 /// The consent and cost sheets of a send, held until the test answers each.
@@ -388,6 +396,26 @@ private actor StubConnector: LLMConnector {
         #expect(session.task.state == .error(.refused))
         session.task.footer.primary?.perform()
         #expect(session.task.state == .ready && session.isOpen)
+    }
+
+    /// R1x sends the user away (sign in, start the server, get a key); Try Again after the service's 300 s quote window
+    /// still sends, with a quote made for it.
+    @Test func tryAgainAfterTheQuoteWindowSendsWithAFreshQuote() async throws {
+        let ollama = StubConnector(id: .ollama, failure: .timeout)
+        let (app, _) = app("ollama", connectors: ["ollama": ollama])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        let clock = QuoteClock()
+        await session.service?.useClock { clock.now() }
+        _ = await (try await send(session)).value
+        guard case .error(.message) = session.task.state else { Issue.record("no R1x: \(session.task.state)"); return }
+        clock.advance(seconds: 301)
+        await ollama.set(failure: nil)
+        session.task.footer.primary?.perform()
+        await session.actionTask?.value
+        if case .proposal = session.task.state {} else { Issue.record("Try Again after 301 s did not propose: \(session.task.state)") }
+        #expect(await ollama.sends == 2)
     }
 
     @Test func saveKeyAndTryAgainSavesTheKeyThenSends() async throws {

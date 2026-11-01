@@ -131,7 +131,8 @@ struct RewriteConnector {
             editor.app.string("transcription.elevenlabs.region", fallback: "default") == region.rawValue
     }
     private var shownQuoteID: UUID?
-    @ObservationIgnored private let service: VoiceRewriteService?
+    /// Prepares and sends the quotes; tests move its clock past a quote's 300 s window.
+    @ObservationIgnored let service: VoiceRewriteService?
     @ObservationIgnored private let connectorIsCurrent: @MainActor () -> Bool
     @ObservationIgnored private let consent: @MainActor () async -> Bool
     @ObservationIgnored private var request: VoiceRewriteRequest?
@@ -257,6 +258,12 @@ struct RewriteConnector {
     }
     func markEstimateShown(_ id: UUID) {
         if current && quote?.id == id { shownQuoteID = id }
+    }
+    /// Drops the quote and prepares a new one for the same words and instruction: the service refuses a quote older than
+    /// 300 s, and R1x's fixes (sign in, start the server, get a key) can take longer.
+    func prepareFreshQuote() async {
+        quote = nil; estimate = nil; shownQuoteID = nil; request = nil
+        await prepare()
     }
     /// Sends the shown quote. Every connector goes through `consent`, the editor's route to
     /// `AppModel.authorizeConnectorRequest`: the one-time privacy consent, then a confirmation when the send asks first.

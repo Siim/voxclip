@@ -273,7 +273,7 @@ extension RewriteSession {
     /// Sends again with a fresh quote.
     func tryAgain() async {
         guard isOpen else { return }
-        if quote == nil { await prepare() }
+        await prepareFreshQuote()
         guard isOpen, !Task.isCancelled else { return }
         guard let quote else { showReady(); return }
         markEstimateShown(quote.id)
