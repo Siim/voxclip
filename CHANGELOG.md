@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Save valid inline spelling corrections when leaving the field on both platforms.
+
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
 - Import a video and transcribe it with word timestamps: ElevenLabs Scribe with your own key, local Whisper models, or Apple Speech on Mac. If a local model is missing, VoxClip offers to download it.
 - Cut by editing words. Remove filler words and tighten long pauses in a click, correct a word's text, and restore anything you cut.

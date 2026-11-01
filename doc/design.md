@@ -478,6 +478,8 @@ Live transcript while recording (M2): partial words in `text.muted` italic; a "J
 | Right-click | Context menu: Make Clip (⌘K) · Cut · Restore · Rewrite… (Voice Lab on) · Correct Spelling… · Play from Here · Preview This Cut (P) · Copy Text. With a caret between words and Voice Lab on: Insert Words… |
 | Drop a file on the window | The whole-window overlay (§7). With a project open, it is saved first, then the new video opens in its place |
 
+On both platforms, an inline correction ends when focus leaves its field, on a click elsewhere, when the selection changes, and before any transport action. Save valid typed text on the word the field opened for; drop empty text, text containing a line break, or text beyond the project's correction limit, keeping the word unchanged. Esc cancels. Return and Tab keep their behavior above. Play/Pause uses the playing state before saving: Space or Pause during playback saves and stays paused, including when the save refreshes the preview.
+
 After every cut the edit summary updates (§3.5) and VoiceOver or Narrator announces "Cut 'um'". Undo groups by command: one Cut Fillers is one undo step.
 
 - **Cut fillers** cuts every item for which the editing spec's `isFiller` is true (section 6.2): VoxConvo's `um+, uh+, erm+, hmm+` with one optional trailing `, . ! ?`, plus every `…` (unlabeled speech) item. The rule is not editable in 0.1.0 (per-language lists are deferred, editing spec section 12). The label carries the count (§3.5); disabled at N = 0.

@@ -57,6 +57,8 @@ public sealed partial class EditorPage : Page
     private string pauseBreath = "natural";
     private double previewDuration;
     private double? previewStop;
+    /// <summary>Play/Pause reads the playing state from before an open correction is saved (design §4.2).</summary>
+    private readonly PlaybackToggle playback = new();
     private string? previewClipId;
     // Home keeps this page alive and re-inserts it, so Loaded moves no focus: a chosen sidebar row keeps it (design C15).
     // Opening a project focuses the transcript once, at the end of OpenAsync.
@@ -340,7 +342,7 @@ public sealed partial class EditorPage : Page
         UpdateAiTag();
         Untranscribed.Visibility = ViewModel.HasTranscript ? Visibility.Collapsed : Visibility.Visible;
         UpdateFindClips();
-        _ = RunAsync(UpdatePreviewAsync, "Preview");
+        playback.Refreshing(RunAsync(UpdatePreviewAsync, "Preview"));
         if (ViewModel.IsReadOnly) pendingStandIn = RenderUnavailableCaptionsAsync();
         if (!ViewModel.IsRelinking) SaveRequested(sender, args);
     }
@@ -477,6 +479,8 @@ public sealed partial class EditorPage : Page
     }
     private async Task SeekSourceAsync(double source)
     {
+        // Every seek is a transport action, which ends an open correction first (design §4.2).
+        await playback.EndCorrectionAsync(ViewModel);
         previewStop = null;
         if (preview is null || ViewModel.IsReadOnly)
         {
@@ -685,6 +689,7 @@ public sealed partial class EditorPage : Page
     private async void PlayFromHereClicked(object sender, RoutedEventArgs args) => await RunAsync(PlayFromHereAsync, "Preview");
     private async Task PlayFromHereAsync()
     {
+        await playback.EndCorrectionAsync(ViewModel);
         if (preview is null || ViewModel.IsReadOnly || ViewModel.Busy) return;
         previewStop = null;
         if (ViewModel.HasSelection) ViewModel.SourceTime = ViewModel.Words[ViewModel.SelectionStart].Start;
@@ -725,7 +730,7 @@ public sealed partial class EditorPage : Page
         ToolTipService.SetToolTip(FindClipsCommand, ViewModel.HasTranscript ? "Find clips (Ctrl+Shift+K)" : ShellViewModel.TranscribeFirst);
     }
     /// <summary>Home pauses playback and keeps this page alive; design §2.</summary>
-    internal void PausePlayback() => _ = RunAsync(async () => { if (preview?.Position.IsPlaying == true) await preview.PauseAsync(lifetime.Token); }, "Preview");
+    internal void PausePlayback() => _ = RunAsync(async () => { await playback.EndCorrectionAsync(ViewModel); if (preview?.Position.IsPlaying == true) await preview.PauseAsync(lifetime.Token); }, "Preview");
     /// <summary>A sidebar row sets the scope through the existing setActiveClip step; a clip also selects its first word unless
     /// the transcript keeps its selection, as after making a clip.</summary>
     internal void SelectScope(string? clipId, bool keepSelection = false)
@@ -743,12 +748,15 @@ public sealed partial class EditorPage : Page
         await RunAsync(() => SeekSourceAsync(Math.Min(ViewModel.Project.Media.Source.DurationSeconds, ViewModel.SourceTime + 3)), "Preview");
     private async Task TogglePlaybackAsync()
     {
-        if (preview is null || ViewModel.IsReadOnly) return;
         previewStop = null;
-        if (preview.Position.IsPlaying) await preview.PauseAsync(lifetime.Token); else await preview.PlayAsync(lifetime.Token);
+        // Saving an open correction refreshes the preview, so Play/Pause toggles from the state before the save.
+        var pause = await playback.PausesAsync(ViewModel, () => preview?.Position.IsPlaying == true);
+        if (preview is not { } engine || ViewModel.IsReadOnly) return;
+        if (pause) await engine.PauseAsync(lifetime.Token); else await engine.PlayAsync(lifetime.Token);
     }
     private async Task PreviewCutAsync()
     {
+        await playback.EndCorrectionAsync(ViewModel);
         if (preview is null || ViewModel.PreviewCutRange() is not { } range) return;
         await SeekSourceAsync(range.Start);
         previewStop = range.End;
@@ -880,8 +888,8 @@ public sealed partial class EditorPage : Page
         switch (args.Key)
         {
             case VirtualKey.Space: await RunAsync(InputState.Down(VirtualKey.Shift) ? PlayFromHereAsync : TogglePlaybackAsync, "Preview"); break;
-            case VirtualKey.K: previewStop = null; if (preview is not null) await RunAsync(() => preview.PauseAsync(lifetime.Token), "Preview"); break;
-            case VirtualKey.L: previewStop = null; if (preview is not null && !ViewModel.IsReadOnly) await RunAsync(() => preview.PlayAsync(lifetime.Token), "Preview"); break;
+            case VirtualKey.K: await playback.EndCorrectionAsync(ViewModel); previewStop = null; if (preview is not null) await RunAsync(() => preview.PauseAsync(lifetime.Token), "Preview"); break;
+            case VirtualKey.L: await playback.EndCorrectionAsync(ViewModel); previewStop = null; if (preview is not null && !ViewModel.IsReadOnly) await RunAsync(() => preview.PlayAsync(lifetime.Token), "Preview"); break;
             case VirtualKey.J: await RunAsync(() => SeekSourceAsync(Math.Max(0, ViewModel.SourceTime - 3)), "Preview"); break;
             case VirtualKey.P: await RunAsync(PreviewCutAsync, "Preview"); break;
             case VirtualKey.Back: case VirtualKey.Delete: ViewModel.CutSelection(InputState.Down(VirtualKey.Shift)); break;

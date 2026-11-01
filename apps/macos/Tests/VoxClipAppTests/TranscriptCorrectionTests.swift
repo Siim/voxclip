@@ -29,6 +29,14 @@ import Testing
         #expect(model.selectedWordIDs == ["w5"])
     }
 
+    @Test func extendingTheSelectionSavesTheOpenCorrection() throws {
+        let model = try editor(); defer { model.close() }
+        try correcting(model, "w3", text: "Today")
+        model.selectedWordIDs = ["w3", "w5"]
+        #expect(model.correctionID == nil)
+        #expect(model.project.edits.corrections["w3"] == "Today")
+    }
+
     @Test func playSavesTheOpenCorrectionAndPlays() throws {
         let model = try editor(); defer { model.close() }
         try correcting(model, "w3", text: "Today")
@@ -60,6 +68,15 @@ import Testing
         model.transport(" ")
         #expect(model.correctionID == nil && model.isPlaying)
         #expect(model.project.edits.corrections["w5"] == nil)
+    }
+
+    @Test(arguments: ["today\n", "to\rday", "to\u{2028}day", "to\u{2029}day", String(repeating: "a", count: EditingLimits.maxCorrectionScalars + 1)])
+    func unsavableDraftIsDroppedOnFocusLoss(_ draft: String) throws {
+        let model = try editor(); defer { model.close() }
+        try correcting(model, "w3", text: draft)
+        model.endCorrection()
+        #expect(model.correctionID == nil)
+        #expect(model.project.edits.corrections["w3"] == nil)
     }
 
     @Test func focusLeavingTheFieldSavesTheTypedTextAndRemovesTheField() throws {

@@ -69,6 +69,7 @@
     <Compile Include="LocalRuntimeGuardTests.cs" />
     <Compile Include="NativeCaptionHitContractTests.cs" />
     <Compile Include="TranscriptionRoutingTests.cs" />
+    <Compile Include="InlineCorrectionTests.cs" />
     <Compile Include="ShareDisclosureTests.cs" />
     <Compile Include="CaptionUndoTests.cs" />
     <Compile Include="WindowsSettingsCopyTests.cs" />

@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-11-01 — parity-copy-2 — inline correction parity
+
+- Design §4.2 records the same focus-loss, outside-click, selection-change and transport rule on both platforms. Mac now ends a correction when the selection extends as well as when it moves away, and rejects raw line breaks before trimming. The existing Return/Tab/Esc behavior stays in place; `TranscriptCorrectionTests` covers the added cases.
+- No window gate ran. Native focus, keyboard and VoiceOver checks remain owed. Windows owns its popup/controller implementation; no media or provider behavior changes here.
+
 ### 2026-10-31 — mac-mvp-fixes — Rewrite takes on long recordings
 
 - Take generation used to decode the whole source into one array, refused more than 30,000,000 frames (10 min 25 s at 48 kHz, 11 min 20 s at 44.1 kHz), and resampled the whole track to 24 kHz. Any longer recording failed before a quote. The user saw the generic "The operation could not finish." with Open Settings and a Retry that failed the same way.
@@ -24,7 +29,9 @@
 
 - The inline correction field (design §4.2) used to close only on Return, Tab or Esc typed into it. A click elsewhere left it open with `correctionID` set, which silently disabled Delete-to-cut, Space, the viewer and timeline Play buttons and the selection bar. It now ends the way an inline rename ends (`WorkspaceShell.endRename`, macOS convention): focus leaving the field (`controlTextDidEndEditing`), a click in the transcript, a selection change (`selectedWordIDs.didSet`) and any transport action (`transport`, so Play) save the typed text when it is valid. Text that can't be saved (empty, a line break, too long) is dropped and the word keeps its text. Esc still cancels, and Return and Tab are unchanged.
 - `EditorModel.endCorrection(keep:)` is the one exit; the field reports typed text to `correctionText` as it changes, so ends that start in the model save what the user typed. `reloadFromDocument` clears `correctionID` before the selection, so a reload never saves a stale draft. The view forgets the field before removing it, so the end-editing notice its removal sends is ignored, and it replaces a field left over a different word. When the model ends a correction while the field still has focus, the transcript takes the focus back. Saving pauses playback (`apply`), so `transport` reads the playing state before it ends the correction, and Space or Pause with the field open during playback pauses instead of resuming.
-- The design is silent on focus loss. Windows uses a light-dismiss popup, which discards the text on a click elsewhere; the lead decides whether design §4.2 records the platform difference.
+- Extending the selection now ends an open correction even when its word remains selected, matching the shared selection-change rule.
+- Correction validation also rejects carriage returns, Unicode line separators and trailing line breaks before trimming, as Windows does; headless `TranscriptCorrectionTests` covers these unsavable drafts.
+- Design §4.2 now records the shared Mac and Windows rule: save valid typed text on focus loss, outside clicks, selection changes and transport actions; Esc cancels and unsavable text is dropped.
 - `TranscriptCorrectionTests` (headless, no window) cover selection change, Play, Pause during playback, unsavable text, focus loss through the delegate and Esc. The three model tests failed before the change (7 failed expectations); the two view tests do not compile without it.
 
 ### 2026-10-31 — mac-mvp-fixes — first-use model download in the transcription sheet

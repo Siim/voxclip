@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-11-01 — parity-copy-2 — inline correction parity
+
+- Inline corrections save valid typed text when focus leaves, on outside clicks, when the selection changes, and before transport actions. Esc cancels; empty, multiline and over-limit drafts are dropped. The view model owns the draft and closes the popup; the light-dismiss implementation is removed. Play/Pause waits for edit refreshes and uses the state before saving, so Pause during playback saves and stays paused. Headless `InlineCorrectionTests` cover these boundaries.
+- Owed native: popup focus/outside-click behavior, Return/Tab/Esc, playback Pause, download/cancel/consent, keyboard and Narrator on a real Windows PC. The VM stays off.
+
 ### 2026-10-31 - Windows own-voice training from the project's audio
 
 - Voice Lab §6.5 (a) on Windows. Core `VoiceTrainingSpans.Select` replays all 12 `training-spans.json` cases exactly, and `VoiceTrainingSpans.Inputs` builds its items and excluded ranges from a project. Any millisecond value beyond 2^53 is refused as invalid input, so the integer steps cannot overflow.

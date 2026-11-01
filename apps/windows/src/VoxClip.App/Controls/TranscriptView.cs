@@ -31,7 +31,11 @@ public sealed class TranscriptView : UserControl
     private bool showPauses = true;
     private double fontSize = DefaultFontSize;
     private string structure = "";
-    private readonly Popup correction = new() { IsLightDismissEnabled = true };
+    /// <summary>The inline correction field's popup. It is not light-dismiss, which would drop the typed text on a click
+    /// elsewhere: focus leaving the field and a press outside it end the correction and save valid text (design §4.2).</summary>
+    private readonly Popup correction = new();
+    private TextBox? correctionField;
+    private UIElement? correctionPressRoot;
     private sealed record WordRun(int Index, Run Run, int After, int LastIndex);
     private sealed record PauseRun(Pause Pause, Inline Inline, Run? Run);
     private sealed record ParagraphVisual(RichTextBlock Text, List<WordRun> Runs, List<PauseRun> Pauses, TranscriptOverlay Overlay)
@@ -145,7 +149,7 @@ public sealed class TranscriptView : UserControl
         KeyUp += (_, args) => { if (args.Key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Home or Windows.System.VirtualKey.End) ScheduleFlyout(); };
         ActualThemeChanged += (_, _) => RebuildThemeVisuals();
         Loaded += (_, _) => { Ui.EffectsChanged += EffectsChanged; RefreshVisuals(); if (pendingReveal >= 0) RevealWord(pendingReveal); };
-        Unloaded += (_, _) => { Ui.EffectsChanged -= EffectsChanged; correction.IsOpen = false; selectionFlyout.Hide(); };
+        Unloaded += (_, _) => { Ui.EffectsChanged -= EffectsChanged; model?.EndCorrection(); CloseCorrectionField(); selectionFlyout.Hide(); };
     }
     private void EffectsChanged(object? sender, EventArgs args)
     {
@@ -221,18 +225,22 @@ public sealed class TranscriptView : UserControl
     public void Attach(EditorViewModel viewModel)
     {
         fontSize = Math.Clamp(App.Services.Get("general.transcriptTextSize", DefaultFontSize), 13, 28);
-        if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= ModelChanged; model.Announcement -= Announce; }
+        model?.EndCorrection();
+        if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= ModelChanged; model.Announcement -= Announce; model.CorrectionChanged -= CorrectionChanged; }
+        CloseCorrectionField();
         model = viewModel;
         model.Changed += ModelChanged;
         model.SelectionChanged += ModelChanged;
         model.Announcement += Announce;
+        model.CorrectionChanged += CorrectionChanged;
         structure = "";
         ModelChanged(this, EventArgs.Empty);
     }
     public void Detach()
     {
-        if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= ModelChanged; model.Announcement -= Announce; }
-        correction.IsOpen = false;
+        model?.EndCorrection();
+        if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= ModelChanged; model.Announcement -= Announce; model.CorrectionChanged -= CorrectionChanged; }
+        CloseCorrectionField();
         selectionFlyout.Hide();
         foreach (var visual in realized.Values) visual.Release();
         realized.Clear();
@@ -625,19 +633,34 @@ public sealed class TranscriptView : UserControl
         ScheduleFlyout();
     }
     private void DoubleTappedWord(object sender, DoubleTappedRoutedEventArgs args) { BeginCorrection(); args.Handled = true; }
+    /// <summary>Double-click, Enter, C or Correct spelling… opens the inline correction on the first selected word.</summary>
     public void BeginCorrection()
     {
         selectionFlyout.Hide();
-        if (model is null || !model.HasSelection) return;
-        var text = new TextBox { Text = model.DisplayText(model.Words[model.SelectionStart]), MinWidth = 140, MaxWidth = 320, Header = "Correct spelling" };
+        model?.BeginCorrection();
+    }
+    /// <summary>The model opened or ended the correction. Ends that start in the model (a selection change, a transport action,
+    /// leaving) close the field here.</summary>
+    private void CorrectionChanged(object? sender, EventArgs args)
+    {
+        if (model?.CorrectionWordId is { } id) OpenCorrectionField(id); else CloseCorrectionField();
+    }
+    private void OpenCorrectionField(string id)
+    {
+        CloseCorrectionField();
+        if (model is null) return;
+        // With nowhere to show the field, the correction ends at once, so nothing waits on a field no one can see.
+        if (XamlRoot is null || !IsLoaded) { model.EndCorrection(keep: false); return; }
+        var text = new TextBox { Text = model.CorrectionText, MinWidth = 140, MaxWidth = 320, Header = "Correct spelling" };
         AutomationProperties.SetName(text, "Correct spelling. The audio stays the same.");
         var panel = new StackPanel { Spacing = 8 };
         panel.Children.Add(text);
         panel.Children.Add(new TextBlock { Text = "Changes captions only. Enter saves. Esc cancels.", TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         correction.Child = new Border { Child = panel, Padding = new Thickness(12), CornerRadius = new CornerRadius(8), Background = Brush("LayerFillColorDefaultBrush"), BorderBrush = Brush("VcLineStrongBrush"), BorderThickness = new Thickness(1), MaxWidth = 340 };
         correction.XamlRoot = XamlRoot;
-        var visual = realized.Values.FirstOrDefault(value => value.Runs.Any(run => run.Index == model.SelectionStart));
-        var word = visual?.Runs.FirstOrDefault(run => run.Index == model.SelectionStart);
+        var index = model.Index(id);
+        var visual = realized.Values.FirstOrDefault(value => value.Runs.Any(run => run.Index == index));
+        var word = visual?.Runs.FirstOrDefault(run => run.Index == index);
         if (visual is not null && word is not null)
         {
             var rect = word.Run.ContentStart.GetCharacterRect(LogicalDirection.Forward);
@@ -645,15 +668,60 @@ public sealed class TranscriptView : UserControl
             correction.HorizontalOffset = Math.Min(point.X, Math.Max(0, XamlRoot.Size.Width - 350));
             correction.VerticalOffset = Math.Min(point.Y, Math.Max(0, XamlRoot.Size.Height - 160));
         }
+        correctionField = text;
+        // The model saves what was typed when the correction ends anywhere else.
+        text.TextChanged += (_, _) => { if (ReferenceEquals(correctionField, text) && model is not null) model.CorrectionText = text.Text; };
         text.KeyDown += (_, args) =>
         {
-            if (args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Tab) { model.Correct(text.Text); correction.IsOpen = false; if (args.Key == Windows.System.VirtualKey.Tab) { model.Select(model.SelectionEnd + 1); KeepWordInView(model.SelectionCaret); } Focus(FocusState.Keyboard); args.Handled = true; }
-            if (args.Key == Windows.System.VirtualKey.Escape) { correction.IsOpen = false; Focus(FocusState.Keyboard); args.Handled = true; }
+            if (model is null || !ReferenceEquals(correctionField, text)) return;
+            if (args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Tab)
+            {
+                model.CorrectionText = text.Text;
+                model.EndCorrection();
+                if (args.Key == Windows.System.VirtualKey.Tab) { model.Select(model.SelectionEnd + 1); KeepWordInView(model.SelectionCaret); }
+                Focus(FocusState.Keyboard); args.Handled = true;
+            }
+            if (args.Key == Windows.System.VirtualKey.Escape) { model.EndCorrection(keep: false); Focus(FocusState.Keyboard); args.Handled = true; }
+        };
+        // Focus leaving the field saves, as an inline rename does; the field's own Cut/Copy/Paste menu keeps it open.
+        text.LostFocus += (_, _) =>
+        {
+            if (!ReferenceEquals(correctionField, text) || text.ContextFlyout is { IsOpen: true } || text.SelectionFlyout is { IsOpen: true }) return;
+            model?.EndCorrection();
         };
         EventHandler<object>? opened = null;
-        opened = (_, _) => { correction.Opened -= opened; text.Focus(FocusState.Programmatic); text.SelectAll(); };
+        opened = (_, _) =>
+        {
+            correction.Opened -= opened;
+            if (!ReferenceEquals(correctionField, text)) return;
+            text.Focus(FocusState.Programmatic); text.SelectAll();
+            // A press anywhere outside the popup ends it too, even where the press moves no focus (the transcript's margins,
+            // the gutter, the viewer). The popup's content is not under the root, so a press inside it does not. Added once
+            // the popup is open, so the press of the double-click that opened it is not seen.
+            if (XamlRoot?.Content is UIElement root && correctionPressRoot is null)
+            {
+                correctionPressRoot = root;
+                root.AddHandler(PointerPressedEvent, CorrectionPress, true);
+            }
+        };
         correction.Opened += opened;
         correction.IsOpen = true;
+    }
+    /// <summary>One handler instance, so the root can remove exactly what it was given.</summary>
+    private PointerEventHandler CorrectionPress => correctionPress ??= (_, _) => model?.EndCorrection();
+    private PointerEventHandler? correctionPress;
+    /// <summary>Close the field. When it still has the focus (Return, Tab, Esc, or an end that started in the model), the
+    /// transcript takes the focus back; when focus already moved elsewhere, it stays there.</summary>
+    private void CloseCorrectionField()
+    {
+        var field = correctionField;
+        correctionField = null;
+        if (correctionPressRoot is { } root) root.RemoveHandler(PointerPressedEvent, CorrectionPress);
+        correctionPressRoot = null;
+        var focused = field is not null && field.FocusState != FocusState.Unfocused;
+        correction.IsOpen = false;
+        correction.Child = null;
+        if (focused && IsLoaded) Focus(FocusState.Programmatic);
     }
     private void WordContextRequested(object sender, RightTappedRoutedEventArgs args)
     {
