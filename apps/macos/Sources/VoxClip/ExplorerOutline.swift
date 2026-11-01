@@ -59,26 +59,24 @@ extension WorkspaceShell {
         if case .clip(let id) = row, let tab = tabs.open.first(where: { $0.clipID == id }) { tabs.keepOpen(tab) }
     }
 
+    /// The row's "Rewrite Clip {n}" can act: AI editing is available (V13's `RewriteEntryPolicy.canRun`; text Rewrite
+    /// needs no Voice Lab) and the clip keeps a word.
     func canRewriteExplorerClip(_ id: String) -> Bool {
-        guard let editor,
-              RewriteEntryPolicy.resolve(.menu, enabled: app.bool("voiceLab.enabled"), noticeAccepted: app.bool("voiceLab.betaNoticeAccepted"),
-                editable: editor.capabilities.ai, selection: true) != .unavailable,
+        guard let editor, RewriteEntryPolicy.canRun(editable: editor.capabilities.ai, scope: .clip(id)),
               let clip = editor.project.edits.clips.first(where: { $0.id == id }),
               let lower = editor.index(clip.startWordId), let upper = editor.index(clip.endWordId), lower <= upper else { return false }
         return editor.words[lower...upper].contains { !editor.cutWordIDs.contains($0.id) }
     }
 
-    /// V13 replaces this selection-backed entry with its scope-taking Rewrite command.
+    /// "Rewrite Clip {n}" on a row: opens the clip's tab, pins it so the session's work stays with it (a preview tab
+    /// with an open Rewrite is pinned), lets go of the word selection, so the scope now is the clip as the clip bar and
+    /// Edit › Rewrite read it, and runs V13's Rewrite on the clip with the clip bar's field text.
     func rewriteExplorerClip(_ id: String) {
-        guard canRewriteExplorerClip(id), let editor,
-              let clip = editor.project.edits.clips.first(where: { $0.id == id }),
-              let lower = editor.index(clip.startWordId), let upper = editor.index(clip.endWordId), lower <= upper else { return }
+        guard canRewriteExplorerClip(id), let editor else { return }
         choose(.clip(id))
         tabs.keepOpen(tabs.active)
-        editor.selectedWordIDs = Set(editor.words[lower...upper].filter { !editor.cutWordIDs.contains($0.id) }.map(\.id))
+        editor.selectedWordIDs = []
         editor.selectedPauseIDs = []
-        // The row's scope seek can finish during startup; the selected words, project
-        // and connector still have to match, while its playhead need not stay still.
-        editor.beginRewrite(entry: .menu, selectionAnchored: true)
+        editor.runRewrite(scope: .clip(id))
     }
 }

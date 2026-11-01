@@ -110,8 +110,6 @@ import Testing
     @Test func rewriteOnAPreviewPinsBeforeTheNextExplorerChoice() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
-        editor.app.settings.values["voiceLab.enabled"] = .bool(true)
-        editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         editor.app.settings.values["llm.connector"] = .string("ollama")
         editor.app.connectorOverride = { _ in ConsentFixtureConnector(id: .ollama) }
         editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
@@ -119,9 +117,10 @@ import Testing
         let clip = try #require(editor.activeClip)
         let lower = try #require(editor.index(clip.startWordId))
         editor.selectedWordIDs = Set(editor.words[lower...(lower + 2)].map(\.id))
-        editor.beginRewrite(selectionAnchored: true)
+        editor.runRewrite()
         await editor.rewriteOpenTask?.value
         let session = try #require(editor.openRewrite)
+        #expect(session.rewriteScope == .selection(lower...(lower + 2)))
         #expect(shell.tabs.preview == nil && shell.tabs.clipTabs.contains(.clip("five-1")))
         shell.choose(.clip("five-2"))
         #expect(session.isOpen && editor.openRewrite === session && session.current)
@@ -137,7 +136,7 @@ import Testing
         // Exercise the replacement guard independently of the eager open notification.
         editor.onRewriteSessionOpen = nil
         let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
-        let session = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.openRewrite = session
         #expect(shell.tabs.preview == .clip("five-1"))
         shell.choose(.clip("five-1"))
@@ -172,9 +171,11 @@ import Testing
         #expect(editor.suggestedClips.map(\.id) == ["five-5"])
     }
 
-    @Test func rowRewriteUsesTheExistingEntryPolicyAndNeedsKeptWords() async throws {
+    /// V13's entry rule: AI editing and a clip that keeps a word; text Rewrite needs no Voice Lab.
+    @Test func rowRewriteNeedsAIEditingAndKeptWordsButNoVoiceLab() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
+        editor.app.settings.values["voiceLab.enabled"] = .bool(false)
         #expect(shell.canRewriteExplorerClip("five-1"))
         #expect(!shell.canRewriteExplorerClip("missing-clip"))
         editor.isLeaving = true
@@ -188,22 +189,28 @@ import Testing
         #expect(!shell.canRewriteExplorerClip("five-1"))
     }
 
-    @Test func rewriteFromARowPinsAndUsesThatClipsKeptWords() async throws {
+    /// "Rewrite Clip {n}" runs V13's Rewrite on the clip itself with the clip bar's field text, from a selection
+    /// elsewhere and with Voice Lab off, and pins the clip's tab.
+    @Test func rewriteFromARowPinsAndRunsOnTheClip() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
-        editor.app.settings.values["voiceLab.enabled"] = .bool(true)
-        editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        editor.app.settings.values["voiceLab.enabled"] = .bool(false)
         editor.app.settings.values["llm.connector"] = .string("ollama")
         editor.app.connectorOverride = { _ in ConsentFixtureConnector(id: .ollama) }
         editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
-        shell.rewriteExplorerClip("five-1")
+        editor.rewriteInstruction = "Make it shorter"
+        editor.selectedWordIDs = Set(editor.words.prefix(3).map(\.id))
+        shell.rewriteExplorerClip("five-2")
         await editor.rewriteOpenTask?.value
-        let clip = try #require(editor.keptClips.first { $0.id == "five-1" })
-        let lower = try #require(editor.index(clip.startWordId)), upper = try #require(editor.index(clip.endWordId))
-        let kept = Set(editor.words[lower...upper].filter { !editor.cutWordIDs.contains($0.id) }.map(\.id))
-        #expect(editor.selectedWordIDs == kept && shell.tabs.active == .clip("five-1") && shell.tabs.preview == nil)
-        #expect(editor.openRewrite?.scope == .clip("five-1"))
+        let session = try #require(editor.openRewrite)
+        #expect(session.rewriteScope == .clip("five-2") && session.scope == .clip("five-2") && session.instruction == "Make it shorter")
+        #expect(editor.selectedWordIDs.isEmpty && editor.rewriteScopeNow == .clip("five-2") && editor.rewriteMenuTitle == "Rewrite Clip 2")
+        #expect(shell.tabs.active == .clip("five-2") && shell.tabs.preview == nil)
         #expect(!editor.document.isDocumentEdited)
+        // The row's Rewrite on the open clip again sends the same session again in place.
+        shell.rewriteExplorerClip("five-2")
+        #expect(editor.openRewrite === session)
+        editor.closeRewrite(returnFocus: false)
     }
 
     @Test func pendingHunkSeamMarksOnlyItsParagraphAndSpeaksItsMeaning() async throws {

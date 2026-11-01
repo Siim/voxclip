@@ -340,7 +340,7 @@ The duration, a separator, then one status:
 
 Export statuses come from an app-local export ledger (§6.2), not from the project file.
 
-**Rewrite on a row** (§6.3). On macOS v2 the kept row's context menu offers **Rewrite Clip {n}**. Until V13 supplies whole-scope Rewrite, it selects that clip's kept words and enters the existing selection Rewrite policy; the clip is pinned so the session cannot disappear on the next preview. The hover-button rules below describe Windows.
+**Rewrite on a row** (§6.3). On macOS v2 the kept row's context menu offers **Rewrite Clip {n}**, shown while the clip keeps a word. It opens the clip's tab, lets go of the word selection and runs Rewrite on the clip with the scope bar's field text (§6.3.6 "Start"); the clip's tab is pinned so the session cannot disappear on the next preview. The hover-button rules below describe Windows.
 
 - The selected kept clip's row shows a **Rewrite** button after its meta line. Other kept rows, suggestion rows and Full take show it while the pointer is over them. No row shows it while a task is open. Its target is at least 24 pt (§15), and its accessible name is "Rewrite clip {n}" ("Rewrite full take" on Full take).
 - Clicking it selects the row if needed, then runs Rewrite with the scope bar's field text, or with Fix mistakes when the field is empty.
