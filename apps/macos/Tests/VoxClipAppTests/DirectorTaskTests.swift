@@ -80,17 +80,22 @@ private actor RefusingKeys: ProviderKeyStore {
     /// Lays the panel out and lets SwiftUI run its updates and tasks, until `done` holds or for `turns` turns.
     func settle(turns: Int = 2_000, until done: () -> Bool = { false }) async {
         for _ in 0..<turns {
-            host.layoutSubtreeIfNeeded()
-            if done() { return }
+            layoutTurn()
             await Task.yield()
+            if done() { return }
         }
+    }
+    private func layoutTurn() {
+        host.layoutSubtreeIfNeeded()
+        _ = RunLoop.main.run(mode: .default, before: Date())
+        window.layoutIfNeeded()
     }
     /// The task's panel shows, not the passage panel.
     var showsTaskPanel: Bool { DebugRightColumn.markers(in: host)["director.panel"] != nil }
     /// A text field in the panel has the keyboard: the passage panel's instruction, or a key field.
     var fieldHasKeyboard: Bool { (window.firstResponder as? NSTextView).map { $0 !== elsewhere && $0.isDescendant(of: host) } ?? false }
     /// The task's panel itself has the keyboard (SwiftUI focus on a view that is not a text field).
-    var paneHasKeyboard: Bool { window.firstResponder === host }
+    var paneHasKeyboard: Bool { !(window.firstResponder is NSTextView) && (window.firstResponder as? NSView).map { $0.isDescendant(of: host) } == true }
     /// Esc, and ⌘., which AppKit sends as the same action.
     func escape() { window.firstResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil) }
     func close() { window.close() }
@@ -133,6 +138,7 @@ private actor RefusingKeys: ProviderKeyStore {
         await session.detectConnector(); await session.prepare()
         let quote = try #require(session.quote)
         session.markEstimateShown(quote.id)
+        #expect(session.canPropose, "current=\(session.current), open=\(session.isOpen), problem=\(session.problem), running=\(session.isProposing)")
         return Task { await session.propose(quote) }
     }
     private func waitUntilSending(_ connector: StubConnector) async -> Bool {
@@ -588,6 +594,27 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(panel()["director.panel"] != nil)
         session.showReady()
         #expect(panel()["director.panel"] == nil)
+    }
+
+    @Test func mountingThePanelPreservesItsDisplayedQuote() async throws {
+        let ollama = StubConnector(id: .ollama)
+        let (app, _) = app("ollama", connectors: ["ollama": ollama])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        await session.prepare()
+        let quote = try #require(session.quote)
+        session.markEstimateShown(quote.id)
+        let revision = session.revision
+        await session.prepare()
+        session.setInstruction(session.instruction)
+        session.edit(session.newWords)
+        #expect(session.revision == revision && session.quote == quote && session.canPropose)
+        let panel = PanelWindow(editor: editor)
+        defer { panel.close() }
+        await panel.settle()
+        #expect(session.quote == quote, "current=\(session.current), open=\(session.isOpen), problem=\(session.problem), quote=\(String(describing: session.quote?.id)), original=\(quote.id)")
+        #expect(session.canPropose, "current=\(session.current), open=\(session.isOpen), problem=\(session.problem)")
     }
 
     /// The task's panel takes the keyboard from the passage panel it replaces, so Esc (and ⌘.) stop the run.

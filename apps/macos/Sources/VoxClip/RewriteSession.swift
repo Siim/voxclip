@@ -214,6 +214,7 @@ struct RewriteConnector {
         return diff.hunks.contains { $0.kind == .textOnly } ? "Apply Correction" : "Apply Cuts"
     }
     func setInstruction(_ text: String) {
+        guard isOpen, instruction != text else { return }
         invalidate(preservingTakes: true)
         instruction = text
         problem = ""
@@ -236,6 +237,10 @@ struct RewriteConnector {
     func prepare(revision expected: Int? = nil) async {
         let expected = expected ?? revision
         guard current, let connector, let service else { return }
+        if quote != nil {
+            estimate = editor.app.llmSendKind(connector.connector.id)
+            return
+        }
         do {
             guard let envelope, let first = source.first(where: { $0.kind == .word }), let last = source.last(where: { $0.kind == .word }) else {
                 problem = "Find the original video before rewriting speech. Your edits are saved."; return
@@ -248,7 +253,7 @@ struct RewriteConnector {
             let input = VoiceRewriteRequest(id: UUID(), scope: .passage, sourceWords: words, instruction: instruction,
                 language: project.transcript?.language ?? "en", targetSeconds: range.targetSeconds, minChars: range.minChars, maxChars: range.maxChars)
             let prepared = try await service.prepare(input, connector: connector.connector.id, model: connector.model)
-            guard !Task.isCancelled, current, revision == expected else { return }
+            guard !Task.isCancelled, current, revision == expected, quote == nil else { return }
             request = input; quote = prepared
             // Shown on the button and under it; the send itself asks again with a fresh detection (VS).
             estimate = editor.app.llmSendKind(connector.connector.id)
@@ -315,7 +320,7 @@ struct RewriteConnector {
         return result == .proposed
     }
     func edit(_ text: String) {
-        guard isOpen else { return }
+        guard isOpen, newWords != text else { return }
         invalidate(preservingTakes: true); newWords = text; problem = ""; refreshReview()
         schedulePreparation()
     }

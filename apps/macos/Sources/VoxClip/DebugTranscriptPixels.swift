@@ -825,7 +825,9 @@ extension DebugTranscriptPixels {
         var result: NSBitmapImageRep?
         NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
             text.backgroundColor = DesignValues.nsColor("bg.surface")
-            guard let cached = scroll.bitmapImageRepForCachingDisplay(in: scroll.bounds) else { return }
+            guard let cached = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(ceil(scroll.bounds.width * 2)), pixelsHigh: Int(ceil(scroll.bounds.height * 2)),
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return }
+            cached.size = scroll.bounds.size
             scroll.cacheDisplay(in: scroll.bounds, to: cached)
             result = cached
         }

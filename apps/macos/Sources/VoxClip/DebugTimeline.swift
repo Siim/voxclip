@@ -676,7 +676,9 @@ import VoxClipCore
     /// `view` as its window draws it (lanes and their layers), read back in sRGB.
     static func sRGBBitmap(of view: NSView) throws -> NSBitmapImageRep {
         view.layoutSubtreeIfNeeded()
-        guard let cached = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { throw CocoaError(.coderInvalidValue) }
+        guard let cached = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(ceil(view.bounds.width * 2)), pixelsHigh: Int(ceil(view.bounds.height * 2)),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { throw CocoaError(.coderInvalidValue) }
+        cached.size = view.bounds.size
         view.cacheDisplay(in: view.bounds, to: cached)
         guard let image = cached.cgImage, let space = CGColorSpace(name: CGColorSpace.sRGB),
               let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
