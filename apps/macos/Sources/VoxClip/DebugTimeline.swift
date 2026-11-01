@@ -65,8 +65,10 @@ import VoxClipCore
         check("end trim snaps to the nearest word end, not word start", model.trimIndex(start: false, source: boundary + 0.001) == oldEnd)
         check("Edited In and Out run from 0 to the clip's output length", model.timelineInOut(on: .edited) == 0...model.duration)
         check("Source In and Out are the clip's take range", model.timelineInOut(on: .source) == model.scopeSourceRange && model.scopeSourceRange != nil)
-        let envelope = WaveformData(fine: [0, 0, 0, 0, 1, 1, 1, 1, 1, 1])
-        check("50-ms waveform buckets aggregate five 10-ms RMS levels energetically", abs(envelope.buckets[0] - sqrt(0.2)) < 0.0001 && envelope.buckets[1] == 1)
+        let envelope = WaveformData(fine: [0, 0, 0, 0.5, 1, 1, 1, 1, 0.2])
+        check("the 40 ms level folds four 10 ms frames: their loudest value and their energetic RMS",
+              envelope.levels.map(\.frameSeconds) == [0.01, 0.04, 0.16, 0.64] && envelope.levels[1].max == [0.5, 1, 0.2]
+              && abs(envelope.levels[1].rms[0] - sqrt(0.0625)) < 0.0001 && envelope.levels[1].rms[1] == 1 && abs(envelope.levels[2].rms[0] - sqrt(4.29 / 9)) < 0.0001)
         results += try await waveform(directory: directory)
         mark("waveform complete")
         results += try await audioCaptures(app: app, fixture: fixture, directory: directory)
@@ -177,6 +179,53 @@ import VoxClipCore
         }
         model.showsCuts = false
         return results
+    }
+
+    /// A take's 10 ms envelope that sounds like its words, for scenes with no media, after
+    /// the mockup's generator (ux/v2 src/model.py): each word's syllables, about 170 ms, with
+    /// an attack and a release, jagged by noise correlated over about 30 ms and a slower
+    /// wobble, now and then a consonant spike; a dip where words run together and silence
+    /// where they do not.
+    static func speech(words: [TimedWord], duration: Double) -> WaveformData {
+        let rate = 1 / WaveformData.frameSeconds
+        var fine = [Float](repeating: 0, count: max(1, Int((duration * rate).rounded(.up))))
+        var seed: UInt32 = 0x5EED
+        func random(_ lower: Float, _ upper: Float) -> Float {
+            seed = seed &* 1_664_525 &+ 1_013_904_223
+            return lower + (upper - lower) * Float(seed >> 8) / Float(1 << 24)
+        }
+        var noise: Float = 0.85, wobble: Float = 0.85
+        for (index, word) in words.enumerated() {
+            let first = max(0, Int(word.start * rate)), last = min(fine.count, Int(word.end * rate))
+            guard first < last else { continue }
+            let loud = 0.1 * random(0.7, 1.08)
+            let length = last - first
+            let syllables = max(1, Int((Double(length) / (0.17 * rate)).rounded()))
+            var edges = [first]
+            for syllable in 1..<max(1, syllables) {
+                edges.append(first + Int(Float(length) * (Float(syllable) + random(-0.18, 0.18)) / Float(syllables)))
+            }
+            edges.append(last)
+            for syllable in 0..<syllables {
+                let lower = edges[syllable], span = max(1, edges[syllable + 1] - lower)
+                let level = loud * random(0.55, 1.0)
+                let attack = max(1, Int(Float(span) * random(0.12, 0.22))), release = max(1, Int(Float(span) * random(0.25, 0.4)))
+                for frame in 0..<span where lower + frame < last {
+                    let shape: Float = frame < attack ? 0.35 + 0.65 * Float(frame) / Float(attack)
+                        : frame > span - release ? 0.22 + 0.78 * Float(span - frame) / Float(release)
+                        : 1 - 0.15 * Float(frame - attack) / Float(max(1, span - attack - release))
+                    noise = 0.55 * noise + 0.45 * random(0.66, 1.0)
+                    wobble = 0.86 * wobble + 0.14 * random(0.35, 1.15)
+                    fine[lower + frame] = max(0.16 * loud, level * shape * noise * min(1, wobble + 0.12))
+                }
+                if random(0, 1) < 0.35 { fine[lower] = max(fine[lower], loud * random(0.98, 1.14)) }
+            }
+            // Words that run together keep a dip between them; a pause is silence.
+            if index + 1 < words.count, words[index + 1].start - word.end < 0.05 {
+                for frame in last..<min(fine.count, max(last, Int(words[index + 1].start * rate))) { fine[frame] = loud * random(0.05, 0.12) }
+            }
+        }
+        return WaveformData(fine: fine)
     }
 
     /// The whole panel as the window server composites it (SwiftUI toolbar and AppKit lanes).
@@ -455,8 +504,8 @@ import VoxClipCore
             try file.write(from: buffer)
         }
         let decoded = await WaveformCache.shared.load(.init(contentKey: String(repeating: "b", count: 64), source: wav, cache: cache))
-        let levelsMatch: Bool = decoded?.buckets.allSatisfy { (level: Float) -> Bool in abs(level - 0.25) < 0.001 } == true
-        results.append(.init(name: "off-main AVAssetReader fallback computes fifty-ms linear-PCM RMS", passed: decoded?.buckets.count == 20 && levelsMatch))
+        let levelsMatch: Bool = decoded?.fine.allSatisfy { (level: Float) -> Bool in abs(level - 0.25) < 0.001 } == true
+        results.append(.init(name: "off-main AVAssetReader fallback computes ten-ms linear-PCM RMS and its pyramid", passed: decoded?.fine.count == 100 && levelsMatch && decoded?.levels[1].max.count == 25))
         return results
     }
     private static func capture(_ view: NSView, name: String, directory: URL) throws -> NSBitmapImageRep {

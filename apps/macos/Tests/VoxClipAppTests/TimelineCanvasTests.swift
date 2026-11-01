@@ -418,6 +418,28 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(!red)
     }
 
+    // MARK: The waveform pyramid
+
+    /// notes.md §6: typical peaks reach 55–70% of the half-height, and the core sits inside
+    /// them. Measured on a minute of speech from a whole take's zoom to 10 ms a point, f1's
+    /// 20.7 pt/s among them.
+    @Test func typicalPeaksReachFiftyFiveToSeventyPercent() throws {
+        let words = (0..<60).map { TimedWord(id: "t\($0)", text: "word", start: Double($0), end: Double($0) + 0.8) }
+        let waveform = DebugTimeline.speech(words: words, duration: 60)
+        for ptPerSecond in [936 / 45.2, 3, 8, 40, 100] {
+            let step = 1 / ptPerSecond
+            let columns = stride(from: 0.0, to: 60, by: step).map { waveform.column(from: $0, to: $0 + step) }.filter { $0.peak > 0 }
+            let peaks = columns.map(\.peak).sorted()
+            let median = peaks[peaks.count / 2]
+            #expect(median >= 0.55 && median <= 0.70, "median peak \(median) at \(ptPerSecond) pt/s")
+            #expect(columns.allSatisfy { $0.core <= $0.peak })
+        }
+        // A level of a 60-minute envelope folds four frames of the one below it.
+        let hour = WaveformData(fine: [Float](repeating: 0.1, count: 360_000))
+        #expect(hour.levels.map(\.max.count) == [360_000, 90_000, 22_500, 5_625])
+        #expect(hour.byteCount < 4 << 20)
+    }
+
     // MARK: The waveform
 
     /// impl-plan §3.1: the model loads the waveform when the media is there, so a hidden
