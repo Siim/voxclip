@@ -73,15 +73,26 @@ private actor LaunchSettings: SettingsStore {
     }
     #endif
 
+    /// A dragged size is stored rounded and clamped, and every window starts with it. Where
+    /// the editor would drop under its minimum beside the Explorer, the right column narrows,
+    /// and a wider window gives the dragged width back (V1b, impl-plan §3.5).
     @Test func draggedSizesAreKeptForEveryWindowAndClamped() {
         let app = AppModel()
         let layout = WorkspaceLayout(app: app)
+        layout.windowWidth = 1440
         layout.rememberRightWidth(420.4)
         layout.rememberExplorerWidth(400)
         layout.rememberTimelineHeight(10)
         #expect(app.settings.values[WorkspaceLayout.rightWidthKey] == .number(420))
         #expect(layout.rightWidth == 420 && layout.explorerWidth == 320 && layout.timelineHeight == 72)
-        #expect(WorkspaceLayout(app: app).rightWidth == 420)
+        let other = WorkspaceLayout(app: app)
+        other.windowWidth = 1440
+        #expect(other.rightWidth == 420)
+        // At 1280 beside the 320 Explorer the editor keeps 604: 1280 − 320 − 604 = 356.
+        other.windowWidth = 1280
+        #expect(other.rightWidth == 356)
+        other.explorerVisible = false
+        #expect(other.rightWidth == 420)
     }
 
     @Test func togglesAndTheWidthRuleStoreNoSize() {
@@ -234,13 +245,22 @@ private actor LaunchSettings: SettingsStore {
         #expect(at1280[.explorer] == CGRect(x: 0, y: 0, width: 224, height: 776))
         #expect(at1280[.tabBar] == CGRect(x: 224, y: 0, width: 652, height: 38))
         #expect(at1280[.transcript] == CGRect(x: 224, y: 72, width: 652, height: 488))
-        #expect(at1280[.rightBody] == CGRect(x: 876, y: 38, width: 404, height: 522))
+        #expect(at1280[.rightTitle] == CGRect(x: 876, y: 0, width: 404, height: 38))
+        #expect(at1280[.viewer] == CGRect(x: 876, y: 38, width: 404, height: 227))
+        #expect(at1280[.panelHeader] == CGRect(x: 876, y: 265, width: 404, height: 30))
+        #expect(at1280[.panelBody] == CGRect(x: 876, y: 295, width: 404, height: 265))
         #expect(at1280[.timeline] == CGRect(x: 224, y: 560, width: 1056, height: 216))
         #expect(at1280[.statusBar] == CGRect(x: 0, y: 776, width: 1280, height: 24))
         #expect(ShellRegion.rightTitle.reference(in: CGSize(width: 1440, height: 900)) == CGRect(x: 996, y: 0, width: 444, height: 38))
         #expect(ShellRegion.tabBar.reference(in: CGSize(width: 1128, height: 800)) == CGRect(x: 224, y: 0, width: 604, height: 38))
         #expect(ShellRegion.explorer.reference(in: CGSize(width: 960, height: 600)) == nil)
-        #expect(ShellRegion.rightBody.reference(in: CGSize(width: 960, height: 600)) == CGRect(x: 636, y: 38, width: 324, height: 322))
+        // At the window minimum the box gives way so the panel body keeps 160 (PanelHost.bodyMinimum).
+        #expect(ShellRegion.viewer.reference(in: CGSize(width: 960, height: 600)) == CGRect(x: 636, y: 38, width: 324, height: 132))
+        #expect(ShellRegion.panelHeader.reference(in: CGSize(width: 960, height: 600)) == CGRect(x: 636, y: 170, width: 324, height: 30))
+        #expect(ShellRegion.panelBody.reference(in: CGSize(width: 960, height: 600)) == CGRect(x: 636, y: 200, width: 324, height: 160))
+        #expect(ShellRegion.viewer.reference(in: CGSize(width: 1280, height: 700)) == CGRect(x: 876, y: 38, width: 404, height: 227))
+        #expect(ShellRegion.viewer.reference(in: CGSize(width: 1440, height: 900)) == CGRect(x: 996, y: 38, width: 444, height: 250))
+        #expect(ShellRegion.viewer.reference(in: CGSize(width: 800, height: 600)) == nil)
         #expect(ShellRegion.rightTitle.reference(in: CGSize(width: 800, height: 600)) == nil)
         #expect(ShellRegion.transcript.reference(in: CGSize(width: 800, height: 600)) == CGRect(x: 0, y: 72, width: 800, height: 288))
         #expect(ShellRegion.timeline.reference(in: CGSize(width: 800, height: 600)) == CGRect(x: 0, y: 360, width: 800, height: 216))

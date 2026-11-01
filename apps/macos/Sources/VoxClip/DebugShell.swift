@@ -119,11 +119,14 @@ import VoxClipCore
         check("a click on ⋯ reaches the ⋯ button", more.flatMap(hit)?.identifier?.rawValue == "voxclip.shell.more")
         check("a click on Export reaches the Export button", (export.flatMap(hit) as? ShellExportButton) != nil)
         check("a click on the Explorer toggle reaches it", toggle.flatMap(hit)?.identifier?.rawValue == "voxclip.shell.toggleExplorer")
-        for (name, point) in [("the tab row beside its tab", CGPoint(x: 600, y: 19)), ("the scope tab", CGPoint(x: 260, y: 19)),
+        for (name, point) in [("the tab row beside its tabs", CGPoint(x: 600, y: 19)),
                               ("the right title row", CGPoint(x: 950, y: 19)), ("the Explorer's header", CGPoint(x: 120, y: 30))] {
             let band = hit(point) as? ShellBand
             check("a click on \(name) reaches a title row that moves the window (\(band?.identifier?.rawValue ?? hit(point).map { String(describing: type(of: $0)) } ?? "nothing"))", band?.movesWindow == true)
         }
+        let tab = hit(CGPoint(x: 260, y: 19)) as? EditorTabItemView
+        check("a click on the Full Take tab reaches the tab, which does not move the window (\(hit(CGPoint(x: 260, y: 19)).map { String(describing: type(of: $0)) } ?? "nothing"))",
+              tab?.tab == .fullTake && tab?.mouseDownCanMoveWindow == false)
         check("a click in the clip-bar row does not move the window", (hit(CGPoint(x: 600, y: 55)) as? ShellBand)?.movesWindow == false)
 
         // Find Clips from ⇧⌘K in the transcript and from ⋯ opens its popover at ⋯. The Clip
@@ -179,11 +182,11 @@ import VoxClipCore
         if !(explorerList.map { window.makeFirstResponder($0) } ?? false) { window.makeFirstResponder(nil) }
         editor.focusedPane = .sidebar
         shell.movePaneFocus(backward: false)
-        check("F6 from the Explorer reaches the tab and clip-bar rows at ⋯", editor.focusedPane == .tabs && (window.firstResponder as? NSView)?.identifier?.rawValue == "voxclip.shell.more")
+        check("F6 from the Explorer reaches the tab and clip-bar rows at the active tab", editor.focusedPane == .tabs && (window.firstResponder as? EditorTabItemView)?.tab == shell.tabs.active)
         shell.movePaneFocus(backward: false)
         check("F6 from the tab row puts focus in the transcript", editor.focusedPane == .transcript && window.firstResponder is TranscriptNSTextView)
         shell.movePaneFocus(backward: true)
-        check("⇧F6 from the transcript, which holds focus, returns to the tab row", editor.focusedPane == .tabs && (window.firstResponder as? NSView)?.identifier?.rawValue == "voxclip.shell.more")
+        check("⇧F6 from the transcript, which holds focus, returns to the tab row", editor.focusedPane == .tabs && (window.firstResponder as? EditorTabItemView)?.tab == shell.tabs.active)
         window.makeFirstResponder(nil)
         editor.focusedPane = .timeline
         shell.movePaneFocus(backward: false)
@@ -482,9 +485,15 @@ import VoxClipCore
         for (region, identifier) in [(ShellRegion.tabBar, "voxclip.shell.tabBar"), (.clipBar, "voxclip.shell.clipBar"), (.transcript, "voxclip.shell.transcript")] {
             if let rect = frame(identifier) { regions[region] = CGRect(x: start, y: rect.minY, width: end - start, height: rect.height) }
         }
-        if let right {
+        if let right, let column = view("voxclip.shell.right", in: root) {
             regions[.rightTitle] = CGRect(x: right.minX, y: right.minY, width: right.width, height: ShellMetrics.titleRow)
-            regions[.rightBody] = CGRect(x: right.minX, y: right.minY + ShellMetrics.titleRow, width: right.width, height: right.height - ShellMetrics.titleRow)
+            // The viewer, the panel header and the panel body are SwiftUI rows of PanelHost, found by their layout markers.
+            for (region, marker) in [(ShellRegion.viewer, "viewer.box"), (.panelHeader, "panel.header"), (.panelBody, "panel.body")] {
+                if let found = markerView(marker, in: column), found.bounds.width > 0, found.bounds.height > 0 {
+                    let rect = found.convert(found.bounds, to: nil)
+                    regions[region] = CGRect(x: rect.minX, y: height - rect.maxY, width: rect.width, height: rect.height)
+                }
+            }
         }
         if let timeline = frame("voxclip.shell.timeline") {
             regions[.timeline] = CGRect(x: start, y: timeline.minY, width: timeline.maxX - start, height: timeline.height)
@@ -492,7 +501,12 @@ import VoxClipCore
         return regions
     }
 
-    /// The `RightColumn` hosts under `controller`: one, whether the column or the overlay shows it.
+    /// The first layout marker named `name` under `root` (`columnLayoutEvidence`).
+    static func markerView(_ name: String, in root: NSView) -> ColumnLayoutMarker? {
+        if let marker = root as? ColumnLayoutMarker, marker.name == name { return marker }
+        return root.subviews.lazy.compactMap { markerView(name, in: $0) }.first
+    }
+    /// The `RightColumnHost` hosts under `controller`: one, whether the column or the overlay shows it.
     static func rightColumnHosts(in controller: NSViewController) -> [NSViewController] {
         let own = String(describing: type(of: controller)).contains("RightColumn") ? [controller] : []
         return own + controller.children.flatMap { rightColumnHosts(in: $0) }

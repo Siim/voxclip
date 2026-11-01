@@ -148,6 +148,23 @@ private final class FullScreenStandIn: NSWindow {
         work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
         #expect(app.settings.values[WorkspaceLayout.rightWidthKey] == nil)
 
+        // Dragged closed with the timeline hidden: Hide Viewer shows the timeline, which
+        // carries play and the timecode while the right column is hidden (until V4).
+        shell.toggleTimeline()
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
+        #expect(!shell.layout.timelineVisible && work.timelineItem.isCollapsed)
+        drag(work.rightItem, collapsed: true, in: work.columns)
+        #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
+        // Building the work area resizes its splits before `apply` collapses the hidden
+        // column, which is no drag: the column stays hidden.
+        let rebuilt = makeWork(model, shell)
+        #expect(!shell.layout.rightVisible && rebuilt.rightItem.isCollapsed)
+        rebuilt.tearDown()
+        drag(work.rightItem, collapsed: false, in: work.columns)
+        #expect(shell.layout.rightVisible)
+        work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible)
+
         // Below 904: collapsed by width, locked, and shown over the editor on request.
         shell.windowWidth = 880
         work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible, rightOverlay: shell.rightOverlay)
@@ -170,6 +187,22 @@ private final class FullScreenStandIn: NSWindow {
         work.apply(rightVisible: shell.layout.rightVisible, timelineVisible: shell.layout.timelineVisible, rightOverlay: shell.rightOverlay)
         #expect(work.rightOverlay == nil && overlay.superview == nil)
         #expect(work.rightColumnHost.view.superview === docked && DebugShell.rightColumnHosts(in: work).count == 1)
+    }
+
+    /// A resize between ⌃⌘S and the next `apply` is no drag: the Explorer the user hid stays
+    /// hidden, and a drag that opens it shows it.
+    @Test func aResizeBeforeApplyKeepsAHiddenExplorerHidden() async throws {
+        let (shell, controller, _) = try await openShell(width: 1440)
+        defer { controller.tearDown(); shell.editor?.close() }
+        let item = try #require(controller.explorerItem)
+        shell.toggleSidebar()
+        #expect(!shell.layout.explorerVisible && !item.isCollapsed)
+        NotificationCenter.default.post(name: NSSplitView.didResizeSubviewsNotification, object: controller.content.divider)
+        #expect(!shell.layout.explorerVisible)
+        controller.apply(EditorShellState(shell: shell))
+        #expect(item.isCollapsed)
+        drag(item, collapsed: false, in: controller.content)
+        #expect(shell.layout.explorerVisible)
     }
 
     /// A drag of the Explorer's divider stops where the editor (604) and the right column
@@ -297,8 +330,8 @@ private final class FullScreenStandIn: NSWindow {
         #expect(!(explorer.accessibilityChildren() ?? []).isEmpty)
     }
 
-    /// F6 reaches the AppKit stops: ⋯ for the tab and clip-bar rows, and the status bar,
-    /// and starts again from the stop that holds focus (impl-plan §3.2).
+    /// F6 reaches the AppKit stops: the active tab for the tab and clip-bar rows (V3a), and
+    /// the status bar, and starts again from the stop that holds focus (impl-plan §3.2).
     @Test func f6ReachesTheTabRowAndTheStatusBar() async throws {
         let (shell, controller, window) = try await openShell()
         defer { controller.tearDown(); shell.editor?.close() }
@@ -306,7 +339,7 @@ private final class FullScreenStandIn: NSWindow {
         let work = try #require(controller.editorWork)
         editor.focusedPane = .sidebar
         shell.movePaneFocus(backward: false)
-        #expect(editor.focusedPane == .tabs && window.firstResponder === work.overflow)
+        #expect(editor.focusedPane == .tabs && work.tabBar.activeItem != nil && window.firstResponder === work.tabBar.activeItem)
         // F6 starts from the stop that holds focus; with none, from the editor's last pane.
         window.makeFirstResponder(nil)
         editor.focusedPane = .timeline

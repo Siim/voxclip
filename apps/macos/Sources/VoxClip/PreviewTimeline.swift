@@ -16,133 +16,230 @@ import VoxClipMedia
     override func layout() { super.layout(); playerLayer.frame = bounds }
 }
 
-func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, rewriting: Bool) -> CGSize {
-    let aspect = max(0.01, ratio)
-    let width = max(1, innerWidth)
-    let panelReserve: CGFloat = 320
-    let availableStageHeight = max(1, columnHeight - panelReserve)
-    let aspectCap: CGFloat = rewriting && columnHeight < 760 ? 124 : aspect <= 1 ? 320 : .greatestFiniteMagnitude
-    let cap = min(aspectCap, availableStageHeight)
-    let height = min(width / aspect, cap)
-    return CGSize(width: min(width, height * aspect), height: height)
+/// The one tag on the stage (impl-plan V4): "AI voice" while the frame plays AI-voiced
+/// speech (f4), "AI modified" while the scope holds some, else the stand-in's media chip.
+enum ViewerTag: Equatable {
+    case aiVoice, aiModified, media(String)
+    var text: String {
+        switch self {
+        case .aiVoice: "AI voice"
+        case .aiModified: "AI modified"
+        case .media(let text): text
+        }
+    }
 }
 
+/// The viewer (ux/v2 notes.md §1, impl-plan V4): a fixed box the column's width wide and
+/// 16:9 of it high (404 × 227 at 1280), on the stage colour, with the frame fitted inside
+/// it, so a portrait or square frame is pillarboxed (f5). Only captions, titles and one tag
+/// are drawn on the stage. While the timeline panel is hidden, a hover transport along the
+/// box's bottom edge carries play, the timecode and Edited / Source (notes.md §1).
 @MainActor struct ViewerSection: View {
+    /// The viewer's own keyboard stops: the box, which takes the transport keys, and the
+    /// hover transport's controls.
+    enum Focus: Hashable { case box, play, axis }
     @Bindable var model: EditorModel
-    var columnHeight: CGFloat = 800
-    var columnWidth: CGFloat
-    var ratio: Double {
-        switch model.project.export.aspect {
+    let columnWidth: CGFloat
+    /// The box's height: 16:9 of the width unless a short column gives less (`PanelHost`).
+    let boxHeight: CGFloat?
+    let timelineVisible: Bool
+    @State private var hovering: Bool
+    /// A caption is being dragged on the stage; the transport steps aside meanwhile.
+    @State private var captionDragging = false
+    /// The pane's own focus (`EditorPaneFocus`, the nearest focusable ancestor)…
+    @Environment(\.isFocused) private var focused
+    /// …and focus inside the viewer, which that ancestor does not see.
+    @FocusState private var focus: Focus?
+    #if DEBUG
+    /// Harnesses put keyboard focus inside the viewer when it appears.
+    private var initialFocus: Focus?
+    func focusing(_ focus: Focus) -> ViewerSection { var copy = self; copy.initialFocus = focus; return copy }
+    #endif
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(model: EditorModel, columnWidth: CGFloat, boxHeight: CGFloat? = nil, timelineVisible: Bool = true, hovering: Bool = false) {
+        self.model = model
+        self.columnWidth = columnWidth
+        self.boxHeight = boxHeight
+        self.timelineVisible = timelineVisible
+        _hovering = State(initialValue: hovering)
+    }
+
+    /// 16:9 of the column's width, to the nearest point: 227 at 404.
+    static func boxHeight(forWidth width: CGFloat) -> CGFloat { (max(0, width) * 9 / 16).rounded() }
+    /// The frame at `ratio` (width ÷ height), as large as fits in `box`, in whole points: a
+    /// frame within half a point of the box fills it (16:9 in 404 × 227), and 9:16 is 128 wide.
+    static func stageSize(ratio: Double, in box: CGSize) -> CGSize {
+        let aspect = CGFloat(max(0.01, ratio))
+        guard box.width > 0, box.height > 0 else { return .zero }
+        if box.width / box.height > aspect { return CGSize(width: min(box.width, (box.height * aspect).rounded()), height: box.height) }
+        return CGSize(width: box.width, height: min(box.height, (box.width / aspect).rounded()))
+    }
+    /// The frame's width ÷ height for `aspect`; Original is the oriented source.
+    static func ratio(_ project: Project) -> Double {
+        switch project.export.aspect {
         case .source:
-            let size = model.project.media.source.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 16, height: 9)
+            let size = project.media.source.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 16, height: 9)
             return Double(size.width) / Double(max(1, size.height))
         case .landscape: return 16 / 9
         case .portrait: return 9 / 16
         case .square: return 1
         }
     }
+    /// The tag for what shows: the AI tags on any stage, the media chip only on the stand-in.
+    static func tag(for model: EditorModel, standIn: Bool) -> ViewerTag? {
+        let time = model.sourceTime
+        if model.project.voiceLab.segments.contains(where: { $0.enabled && $0.replace.start <= time && time < $0.replace.end }) { return .aiVoice }
+        if model.containsAISpeech(clipID: model.activeClip?.id) { return .aiModified }
+        return standIn ? ViewerStandIn.chip(model.mediaStatus).map(ViewerTag.media) : nil
+    }
+    /// The hover transport shows with the timeline hidden while the pointer is over the
+    /// viewer, keyboard focus is on the viewer pane or inside it (the box, Play or Edited /
+    /// Source), or VoiceOver runs, so it is never only a hover target. It steps aside while
+    /// a caption is dragged, so the caption and the guides show.
+    static func showsTransport(timelineVisible: Bool, hovering: Bool, focused: Bool, focusInside: Bool = false, voiceOver: Bool, captionDragging: Bool = false) -> Bool {
+        !timelineVisible && !captionDragging && (hovering || focused || focusInside || voiceOver)
+    }
+
     var body: some View {
-        let size = viewerStageSize(ratio: ratio, innerWidth: max(1, columnWidth - 32), columnHeight: columnHeight, rewriting: model.rewrite != nil)
-        VStack(spacing: 10) {
-            ZStack {
-                Rectangle().fill(DesignValues.color("stage"))
-                if !model.document.demo, model.mediaResolved, !model.mediaUnreadable, model.project.media.source.video != nil, let native = model.nativePreview {
-                    PlayerSurface(player: native.player)
-                } else { ViewerStandIn(model: model) }
-                if model.canMoveCaptions, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
-                    CaptionPositionOverlay(model: model, style: style)
-                }
-            }
-            .frame(width: size.width, height: size.height)
-            .columnLayoutEvidence("viewer.stage")
-            .clipShape(.rect(cornerRadius: 10))
-            .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(stageLabel)
-            .accessibilityIdentifier("voxclip.viewer.stage")
-            viewerRow
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.regular) }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 24).columnLayoutEvidence("frame.regular")
-                HStack(spacing: 8) { frameLabel; framePicker.controlSize(.small) }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 24).columnLayoutEvidence("frame.small")
-                VStack(alignment: .leading, spacing: 6) {
-                    frameLabel
-                    framePicker.controlSize(.small).frame(maxWidth: .infinity, alignment: .leading)
-                }.frame(maxWidth: .infinity, alignment: .leading).columnLayoutEvidence("frame.stacked")
+        // The frame, the scope and the AI segments come from the project, which only projectRevision makes observable.
+        let _ = model.projectRevision
+        let box = CGSize(width: max(1, columnWidth), height: max(1, boxHeight ?? Self.boxHeight(forWidth: columnWidth)))
+        let stage = Self.stageSize(ratio: Self.ratio(model.project), in: box)
+        let label = Self.stageLabel(for: model)
+        let transport = Self.showsTransport(timelineVisible: timelineVisible, hovering: hovering, focused: focused, focusInside: focus != nil,
+            voiceOver: voiceOver, captionDragging: captionDragging)
+        ZStack(alignment: .bottom) {
+            stageView
+                .frame(width: stage.width, height: stage.height)
+                .columnLayoutEvidence("viewer.stage", text: label)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(label)
+                .accessibilityIdentifier("voxclip.viewer.stage")
+                .frame(width: box.width, height: box.height)
+            if transport {
+                ViewerHoverTransport(model: model, focus: $focus).transition(.opacity)
             }
         }
-        .padding(VCTokens.spacingPanePaddingMacos)
-        .frame(maxWidth: .infinity)
-        .tint(DesignValues.accentText)
+        .frame(width: box.width, height: box.height)
+        .background(DesignValues.color("stage"))
+        .clipped()
+        .columnLayoutEvidence("viewer.box")
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: Double(VCTokens.motionDurationBase) / 1000), value: transport)
         .focusable()
+        .focused($focus, equals: .box)
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
+        #if DEBUG
+        .onAppear { if let initialFocus { focus = initialFocus } }
+        #endif
     }
-    private var frameLabel: some View {
-        Text("Frame").font(.system(size: 13)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize().columnLayoutEvidence("control.frame.label")
+    private var standIn: Bool {
+        model.document.demo || !model.mediaResolved || model.mediaUnreadable || model.project.media.source.video == nil || model.nativePreview == nil
     }
-    private var framePicker: some View {
-        Picker("Frame", selection: Binding(get: { model.project.export.aspect }, set: { model.setAspect($0) })) {
-            ForEach([AspectRatio.portrait, .square, .landscape, .source], id: \.self) { aspect in
-                Text(aspect == .source ? "Original" : aspect.rawValue)
-                    .fontWeight(model.project.export.aspect == aspect ? .semibold : .regular).tag(aspect)
+    private var stageView: some View {
+        ZStack {
+            Rectangle().fill(DesignValues.color("stage"))
+            if !standIn, let native = model.nativePreview { PlayerSurface(player: native.player) } else { ViewerStandIn(model: model) }
+            if model.canMoveCaptions, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
+                CaptionPositionOverlay(model: model, style: style, dragging: $captionDragging)
             }
-        }.labelsHidden().pickerStyle(.segmented).frame(height: 24).accessibilityLabel("Frame").columnLayoutEvidence("control.frame.picker")
+        }
+        .overlay(alignment: .topLeading) {
+            if let tag = Self.tag(for: model, standIn: standIn) {
+                MediaChip(text: tag.text, icon: tag == .aiVoice ? "waveform" : nil, tint: tag == .aiVoice ? DesignValues.color("ai.tint") : nil)
+                    .columnLayoutEvidence("viewer.tag")
+                    .accessibilityIdentifier("voxclip.viewer.tag")
+                    // The media chip repeats the stage label's spoken state.
+                    .accessibilityHidden(!(tag == .aiVoice || tag == .aiModified))
+                    .padding(10)
+                    .allowsHitTesting(false)
+            }
+        }
     }
-    private var stageLabel: String {
+    /// The stage's accessible label, as before V4: the scope, AI speech, then the media state.
+    static func stageLabel(for model: EditorModel) -> String {
         let scope = model.activeClip.flatMap { model.clipNumber($0.id) }.map { "clip \($0)" } ?? "full take"
-        let ai = hasAI ? ", contains AI-modified speech" : ""
+        let ai = model.containsAISpeech(clipID: model.activeClip?.id) ? ", contains AI-modified speech" : ""
         return "Video preview, \(scope)\(ai)\(model.mediaStatus.spokenState.map { ", " + $0 } ?? "")"
     }
-    private var viewerRow: some View {
+}
+
+/// The viewer's transport while the timeline panel is hidden (notes.md §1: "play and
+/// timecode are never lost"): play, the playhead's time on the timeline's axis and Edited /
+/// Source, in a bar along the box's bottom edge, over the video like the stage's chips.
+/// Only Play and Edited / Source take the pointer: a press anywhere else on the bar reaches
+/// the stage under it, so a caption placed low can still be dragged.
+@MainActor struct ViewerHoverTransport: View {
+    @Bindable var model: EditorModel
+    let focus: FocusState<ViewerSection.Focus?>.Binding
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+    var body: some View {
+        let opaque = reduceTransparency || contrast == .increased
+        // A narrow column drops the length, then the speed, from the time; VoiceOver reads them all.
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 4) {
-                aiTag
-                HStack(spacing: 0) {
-                    playbackTime
-                    if model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").font(DesignValues.mono(12)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize().accessibilityHidden(true) }
-                }
-                Spacer(minLength: 4)
-                transportButtons
-            }.frame(height: 34).columnLayoutEvidence("transport.inline")
-            VStack(alignment: .leading, spacing: 6) {
-                if hasAI || model.playbackRate != 1 {
-                    HStack(spacing: 8) {
-                        aiTag
-                        if model.playbackRate != 1 { Text("\(model.playbackRate.formatted())×").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).fixedSize().accessibilityHidden(true) }
-                    }
-                }
-                HStack(spacing: 4) { playbackTime; Spacer(minLength: 4); transportButtons }.frame(height: 34)
-            }.columnLayoutEvidence("transport.stacked")
-        }.buttonStyle(.plain).foregroundStyle(DesignValues.color("text.primary"))
+            row(total: true, rate: true)
+            row(total: false, rate: true)
+            row(total: false, rate: false)
+        }
+        .padding(.leading, 4).padding(.trailing, 6)
+        .frame(height: 32)
+        .foregroundStyle(DesignValues.color("overlay.foreground"))
+        .background {
+            RoundedRectangle(cornerRadius: 6).fill(DesignValues.color(opaque ? "overlay.transportOpaque" : "overlay.scrim")).allowsHitTesting(false)
+        }
+        .overlay {
+            if opaque { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("line.strong"), lineWidth: 1).allowsHitTesting(false) }
+        }
+        .environment(\.colorScheme, .dark)
+        .padding(8)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Transport")
+        .accessibilityIdentifier("voxclip.viewer.transport")
+        .columnLayoutEvidence("viewer.transport")
     }
-    private var hasAI: Bool { model.containsAISpeech(clipID: model.activeClip?.id) }
-    @ViewBuilder private var aiTag: some View {
-        if hasAI {
-            Text("AI modified").font(.system(size: 11)).fixedSize().padding(.horizontal, 4).padding(.vertical, 2)
-                .overlay { RoundedRectangle(cornerRadius: 4).stroke(DesignValues.accentText, lineWidth: 1) }
+    private func row(total: Bool, rate: Bool) -> some View {
+        HStack(spacing: 6) {
+            Button { model.transport(" ") } label: {
+                Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 12, weight: .semibold))
+                    .frame(width: 24, height: 24).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Play/Pause (Space)")
+            .accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
+            .accessibilityIdentifier("voxclip.viewer.play")
+            .focused(focus, equals: .play)
+            .columnLayoutEvidence("viewer.play")
+            playbackTime(total: total, rate: rate).allowsHitTesting(false)
+            Spacer(minLength: 4)
+            Picker("Timeline time", selection: $model.showsCuts) {
+                Text("Edited").tag(false); Text("Source").tag(true)
+            }
+            .labelsHidden().pickerStyle(.segmented).controlSize(.small).fixedSize()
+            .accessibilityLabel("Timeline time")
+            .accessibilityIdentifier("voxclip.viewer.axis")
+            .focused(focus, equals: .axis)
+            .columnLayoutEvidence("viewer.axis")
         }
     }
-    private var playbackTime: some View {
-        HStack(spacing: 0) {
-            Text(timecode(model.playhead))
-            Text(" / \(timecode(model.duration))").foregroundStyle(DesignValues.color("text.secondary"))
+    /// Edited time over the edited length, or source time over the take's, as the timeline reads.
+    private func playbackTime(total showsTotal: Bool, rate showsRate: Bool) -> some View {
+        let edited = model.timelineAxis == .edited
+        let current = edited ? model.playhead : model.sourceTime, total = edited ? model.duration : model.sourceDuration
+        let dim = DesignValues.color("overlay.foreground").opacity(0.66)
+        return HStack(spacing: 0) {
+            Text(timecode(current))
+            if showsTotal { Text(" / \(timecode(total))").foregroundStyle(dim) }
+            if showsRate && model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").foregroundStyle(dim) }
         }
-        .font(DesignValues.mono(12)).monospacedDigit().fixedSize()
-        .accessibilityElement(children: .ignore).accessibilityLabel("Playback time")
+        .font(VCType.callout.mono()).monospacedDigit().lineLimit(1).fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback time")
         .accessibilityIdentifier("voxclip.viewer.time")
-        .accessibilityValue("\(timecode(floor(model.playhead))) of \(timecode(model.duration))")
-    }
-    private var transportButtons: some View {
-        Group {
-            Button { model.transport("j") } label: { transportSymbol("gobackward").frame(width: 28, height: 28) }
-                .help("Back 3 Seconds (J)").accessibilityLabel(EditorIconAction.back.name)
-            Button { model.transport(" ") } label: { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").frame(width: 34, height: 34) }
-                .background(DesignValues.color("bg.sunken"), in: Circle()).help("Play/Pause (Space)").accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
-            Button { model.seek(source: min(model.sourceDuration, model.sourceTime + 3)) } label: { transportSymbol("goforward").frame(width: 28, height: 28) }
-                .help("Forward 3 Seconds").accessibilityLabel(EditorIconAction.forward.name)
-        }
-    }
-    private func transportSymbol(_ name: String) -> some View {
-        Image(systemName: name).overlay { Text("3").font(.system(size: 7, weight: .semibold)).offset(y: 1) }
+        .accessibilityValue("\(timecode(floor(current))) of \(timecode(total))\(model.playbackRate != 1 ? ", \(model.playbackRate.formatted()) times speed" : "")")
     }
 }
 
@@ -180,7 +277,6 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                     }
                 }
                 if showsCaptions { StandInCaptions(model: model) }
-                if let label = chip { MediaChip(text: label).padding(6) }
             }
         }.allowsHitTesting(false).accessibilityHidden(true)
     }
@@ -207,8 +303,9 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
             context.fill(Path(ellipseIn: CGRect(x: size.width / 2 - 2.5, y: baseline - maximum - 2.5, width: 5, height: 5)), with: .color(.white.opacity(0.55)))
         }
     }
-    private var chip: String? {
-        switch model.mediaStatus {
+    /// The stand-in's status chip (design §5.4.8), which the viewer shows as its one tag.
+    static func chip(_ status: MediaStatus) -> String? {
+        switch status {
         case .demo: "Demo · no video"
         case .audioOnly: "Audio only"
         case .transcribing(_, let stage): stage.chipText
@@ -272,6 +369,8 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
 @MainActor private struct CaptionPositionOverlay: View {
     let model: EditorModel
     let style: CaptionStyle
+    /// Whether a drag is under way, for the viewer's hover transport.
+    @Binding var dragging: Bool
     @GestureState private var dragged: CGPoint?
     @State private var hovering = false
     private var aspectClass: String {
@@ -306,11 +405,12 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                         line.move(to: CGPoint(x: 0, y: size.height * fraction)); line.addLine(to: CGPoint(x: size.width, y: size.height * fraction))
                         context.stroke(line, with: .color(guide), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     }
-                }.allowsHitTesting(false).accessibilityHidden(true)
+                }.allowsHitTesting(false).accessibilityHidden(true).columnLayoutEvidence("caption.guides")
             }
             RoundedRectangle(cornerRadius: 4).stroke(DesignValues.color("overlay.foreground").opacity(hovering || dragged != nil ? 0.8 : 0), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                 .frame(width: max(80, geometry.size.width * 0.75), height: max(32, geometry.size.height * 0.12))
                 .contentShape(Rectangle())
+                .columnLayoutEvidence("caption.handle")
                 .position(x: (dragged?.x ?? CGFloat(position.x)) * geometry.size.width, y: (dragged?.y ?? CGFloat(position.y)) * geometry.size.height)
                 .onHover { hovering = $0 }
                 .gesture(DragGesture(coordinateSpace: .named("caption-stage")).updating($dragged) { value, state, _ in
@@ -320,6 +420,8 @@ func viewerStageSize(ratio: Double, innerWidth: CGFloat, columnHeight: CGFloat, 
                 .accessibilityIdentifier("voxclip.caption.position")
                 .accessibilityAdjustableAction { direction in move(CGPoint(x: position.x, y: min(1, max(0, position.y + (direction == .increment ? 0.05 : -0.05))))) }
         }.coordinateSpace(name: "caption-stage")
+            .onChange(of: dragged != nil) { _, active in dragging = active }
+            .onDisappear { dragging = false }
     }
     private func normalized(_ point: CGPoint, size: CGSize) -> CGPoint {
         func snap(_ value: Double) -> Double {

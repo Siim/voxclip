@@ -9,7 +9,7 @@ import VoxClipMedia
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         let names = EditorIconAction.allCases.map(\.name)
-        let expected = ["Back 3 seconds", "Play", "Pause", "Forward 3 seconds", "Close Rewrite", "Hide Viewer", "Show Viewer", "Previous match", "Next match", "Close find",
+        let expected = ["Play", "Pause", "Close Rewrite", "Hide Viewer", "Show Viewer", "Previous match", "Next match", "Close find",
                         "Hide Sidebar", "Show Sidebar", "Hide Timeline", "Show Timeline", "More Commands"]
         check("all shipped editor icon actions have explicit C15 names", names == expected && Set(names).count == names.count)
         for number in [1, 5, 12] {

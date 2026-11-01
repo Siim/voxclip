@@ -4,15 +4,21 @@ import AppKit
 import VoxClipCore
 import VoxClipMedia
 
+/// The right column under its title row (impl-plan V4): `PanelHost` at the v2 widths and
+/// heights, without a window. The viewer is the column's width and 16:9 of it high, the
+/// panel header 30 below it, and nothing runs past the column.
 @MainActor enum DebugRightColumn {
     struct Measurement: Encodable {
         let variant: String
         let width: CGFloat
         let minimumWidth: CGFloat
         let proposedWidth: CGFloat
-        let stageWidth: CGFloat
+        let box: CGRect
+        let stage: CGRect
+        let header: CGRect
         let markers: [String: CGRect]
-        let frameChoices: [String]
+        /// The switcher's jobs, in order.
+        let jobs: [String]
         let accessibilityElements: Int
         let viewOverflow: [String]
         let accessibilityOverflow: [String]
@@ -22,7 +28,9 @@ import VoxClipMedia
         let variant: String
         let width: CGFloat
         let height: CGFloat
+        let box: CGRect
         let stage: CGRect
+        let header: CGRect
         let scrollFrames: [CGRect]
         let scrollClipping: [Bool]
         let scrolledViews: [String]
@@ -30,18 +38,39 @@ import VoxClipMedia
     }
     struct ResizeMeasurement: Encodable {
         let width: CGFloat
-        let stage: CGRect
+        let box: CGRect
         let elapsed: Double
         let settled: Bool
         let viewOverflow: [String]
+    }
+    /// The column's frame width ÷ height for `variant`.
+    private static func ratio(_ variant: String, fixture: Project) -> Double {
+        switch variant {
+        case "9:16": return 9.0 / 16
+        case "1:1": return 1
+        case "16:9": return 16.0 / 9
+        default:
+            let source = fixture.media.source.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 16, height: 9)
+            return Double(source.width) / Double(max(1, source.height))
+        }
+    }
+    /// A Rewrite session on the fixture's words 12–25, as the Rewrite variants show it.
+    private static func openRewrite(_ variant: String, in model: EditorModel) throws {
+        model.mediaResolved = true
+        let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
+        let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
+        let session = RewriteSession(editor: model, range: 12...25, envelope: envelope, connector: connector)
+        model.rewrite = session; model.rewriteRange = 12...25
+        session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
+        if variant.hasPrefix("rewrite-takes-") { try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session) }
     }
     private static func measureResizes(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
         model.setAspect(.landscape)
+        let shell = WorkspaceShell(app: app)
         let controller = NSHostingController(rootView: GeometryReader { geometry in
-            RightColumnContents(model: model, columnHeight: geometry.size.height, columnWidth: geometry.size.width)
-                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+            PanelHost(model: model, shell: shell, width: geometry.size.width, height: geometry.size.height)
         })
         controller.sizingOptions = []
         let host = controller.view
@@ -49,33 +78,45 @@ import VoxClipMedia
         for width: CGFloat in [320, 300, 560] {
             host.frame = CGRect(x: 0, y: 0, width: width, height: 675)
             let started = ProcessInfo.processInfo.systemUptime
-            var stage = CGRect.zero
+            var box = CGRect.zero
             var settled = false
             repeat {
                 host.layoutSubtreeIfNeeded()
-                stage = markers(in: host)["viewer.stage"] ?? .zero
-                settled = abs(stage.width - (width - 32)) <= 0.5 && abs(stage.minX - 16) <= 0.5
+                box = markers(in: host)["viewer.box"] ?? .zero
+                settled = abs(box.width - width) <= 0.5 && abs(box.minX) <= 0.5 && abs(box.height - ViewerSection.boxHeight(forWidth: width)) <= 0.5
                 if settled { break }
                 await Task.yield()
             } while ProcessInfo.processInfo.systemUptime - started < 2
-            measurements.append(ResizeMeasurement(width: width, stage: stage, elapsed: ProcessInfo.processInfo.systemUptime - started,
+            measurements.append(ResizeMeasurement(width: width, box: box, elapsed: ProcessInfo.processInfo.systemUptime - started,
                 settled: settled, viewOverflow: viewOverflow(host)))
         }
         try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("right-column-resizes.json"), options: .atomic)
         return measurements.flatMap { measurement in [
-            .init(name: "resized column \(measurement.width): stage follows without stale-width feedback", passed: measurement.settled),
+            .init(name: "resized column \(measurement.width): the viewer follows at the column's width and 16:9 of it", passed: measurement.settled),
             .init(name: "resized column \(measurement.width): visible descendants fit", passed: measurement.viewOverflow.isEmpty)
         ] }
     }
+    /// The least scroll height the panel's job keeps in every state at every size: one 24 pt
+    /// row, so its gallery or its fields can still be scrolled into view. Captions and a
+    /// resting Rewrite keep 54 or more; Rewrite's provider error, whose notice sits in its
+    /// fixed footer, keeps 30 at 960 × 600 and 35 at 1280 × 700 (V15 replaces that footer).
+    static let minimumViewport: CGFloat = 24
+    /// The column under the title row at the v2 widths (impl-plan item 18) and heights: the
+    /// work area above the 216 pt timeline, less the 38 pt title row. Each size's box height
+    /// is written out: 16:9 of the width down to 1280 × 700, and at the 960 × 600 minimum the
+    /// box gives way so the body keeps `PanelHost.bodyMinimum`.
     static func measureHeights(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
         let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
         var measurements: [HeightMeasurement] = []
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let sizes: [(String, CGFloat, CGFloat)] = [("1440x900", 360, 775), ("1280x800", 320, 675),
-            ("1280x700", 320, 575), ("960x600", 300, 475)]
+        let sizes: [(String, CGFloat, CGFloat)] = [("1440x900", 444, 622), ("1280x800", 404, 522),
+            ("1280x700", 404, 422), ("960x600", 324, 322)]
+        let boxHeights: [String: CGFloat] = ["1440x900": 250, "1280x800": 227, "1280x700": 227, "960x600": 132]
+        let shell = WorkspaceShell(app: app)
         for (window, width, height) in sizes {
-            let extra = width == 320 && height == 675 ? ["rewrite", "rewrite-budget", "fine-tune", "caption-error", "captions-off"] + DebugRewriteGeneration.variants : []
+            // Every job's state at the sizes where the body is shortest, as well as at 1280 × 800.
+            let extra = window == "1440x900" ? [] : ["rewrite", "rewrite-budget", "fine-tune", "caption-error", "captions-off"] + DebugRewriteGeneration.variants
             for variant in ["source", "9:16", "1:1", "16:9"] + extra {
                 try Data("\(window) \(variant)".utf8).write(to: directory.appendingPathComponent("height-progress.txt"), options: .atomic)
                 let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
@@ -84,16 +125,8 @@ import VoxClipMedia
                 model.setStyle("vox-highlight")
                 if variant == "captions-off" { model.setCaptionsEnabled(false) }
                 if variant == "caption-error" { model.captionError = "Captions couldn't be drawn. Your media and edits are safe. Choose another style or try again." }
-                if variant.hasPrefix("rewrite") {
-                    model.mediaResolved = true
-                    let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
-                    let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
-                    let session = RewriteSession(editor: model, range: 12...25, envelope: envelope, connector: connector)
-                    model.rewrite = session; model.rewriteRange = 12...25
-                    session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
-                    if variant.hasPrefix("rewrite-takes-") { try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session) }
-                }
-                let controller = NSHostingController(rootView: RightColumnContents(model: model, columnHeight: height, columnWidth: width, fineTune: variant == "fine-tune"))
+                if variant.hasPrefix("rewrite") { try openRewrite(variant, in: model) }
+                let controller = NSHostingController(rootView: PanelHost(model: model, shell: shell, width: width, height: height, fineTune: variant == "fine-tune"))
                 controller.sizingOptions = []
                 let host = controller.view
                 host.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -102,8 +135,10 @@ import VoxClipMedia
                 host.layoutSubtreeIfNeeded()
                 let scrolls = scrollViews(in: host)
                 let audit = viewAudit(host)
+                let found = markers(in: host)
                 measurements.append(HeightMeasurement(window: window, variant: variant, width: width, height: height,
-                    stage: markers(in: host)["viewer.stage"] ?? .zero, scrollFrames: scrolls.map { $0.convert($0.bounds, to: host) },
+                    box: found["viewer.box"] ?? .zero, stage: found["viewer.stage"] ?? .zero, header: found["panel.header"] ?? .zero,
+                    scrollFrames: scrolls.map { $0.convert($0.bounds, to: host) },
                     scrollClipping: scrolls.map { $0.clipsToBounds && $0.contentView.clipsToBounds },
                     scrolledViews: audit.scrolled, viewOverflow: audit.overflow))
             }
@@ -112,29 +147,21 @@ import VoxClipMedia
         return measurements.flatMap { measurement -> [DebugUISuite.Result] in
             let rewriting = measurement.variant.hasPrefix("rewrite")
             let viewport = measurement.scrollFrames.first ?? .zero
-            // The stage keeps its §5.1 frame size wherever 320 points remain for the panel below
-            // (every aspect at 1280×800 and 1440×900); on shorter columns only its height yields.
-            let stage = measurement.stage.size
-            let source = fixture.media.source.video.map(OutputSizing.orientedSize) ?? PixelSize(width: 16, height: 9)
-            let ratio: Double = switch measurement.variant {
-            case "9:16": 9.0 / 16
-            case "1:1": 1
-            case "16:9": 16.0 / 9
-            default: Double(source.width) / Double(max(1, source.height))
-            }
-            let inner: CGFloat = measurement.width - 32
-            let aspectCap: CGFloat = rewriting && measurement.height < 760 ? 124 : ratio <= 1 ? 320 : .greatestFiniteMagnitude
-            let specifiedHeight = min(inner / ratio, aspectCap)
-            let specified = CGSize(width: specifiedHeight * ratio, height: specifiedHeight)
-            let expectedHeight = min(specifiedHeight, max(1, measurement.height - 320))
-            let expected = CGSize(width: expectedHeight * ratio, height: expectedHeight)
-            let fullSize = measurement.height >= 675
-            let stageMatches = abs(stage.width - expected.width) <= 0.5 && abs(stage.height - expected.height) <= 0.5
-                && (!fullSize || (abs(stage.width - specified.width) <= 0.5 && abs(stage.height - specified.height) <= 0.5))
+            // The frame is fitted in the box, with no Rewrite compaction: every job gets the same box.
+            let boxHeight = boxHeights[measurement.window] ?? .nan
+            let expected = ViewerSection.stageSize(ratio: ratio(measurement.variant, fixture: fixture), in: CGSize(width: measurement.width, height: boxHeight))
+            let boxMatches = abs(measurement.box.width - measurement.width) <= 0.5 && abs(measurement.box.height - boxHeight) <= 0.5
+                && abs(PanelHost.viewerHeight(width: measurement.width, height: measurement.height) - boxHeight) <= 0.5
+            let stageMatches = abs(measurement.stage.width - expected.width) <= 0.5 && abs(measurement.stage.height - expected.height) <= 0.5
+            let headerMatches = abs(measurement.header.minY - measurement.box.maxY) <= 0.5 && abs(measurement.header.height - PanelHost.headerHeight) <= 0.5
+            let body = measurement.height - measurement.header.maxY
+            let name = "right column \(measurement.window) \(measurement.variant)"
             return [
-                .init(name: "right column height \(measurement.window) \(measurement.variant): stage \(stage) is \(fullSize ? "the specified frame" : "height-limited") \(expected)", passed: stage.height > 0 && stageMatches && abs(stage.width / stage.height - ratio) <= 0.001 && measurement.height - stage.height >= 319.5),
-                .init(name: "right column height \(measurement.window) \(measurement.variant): visible descendants fit", passed: measurement.viewOverflow.isEmpty && viewport.height > 0 && measurement.scrollClipping.allSatisfy { $0 }),
-                .init(name: "right column height \(measurement.window) \(measurement.variant): gallery bottom \(viewport.maxY) <= \(measurement.height - 16)", passed: rewriting || viewport.maxY <= measurement.height - 15.5)
+                .init(name: "\(name): viewer \(measurement.box.size) is \(boxHeight) high, stage \(measurement.stage.size) is \(expected), header 30 under it", passed: boxMatches && stageMatches && headerMatches),
+                .init(name: "\(name): the panel body (\(body)) keeps at least \(PanelHost.bodyMinimum)", passed: body >= PanelHost.bodyMinimum - 0.5),
+                .init(name: "\(name): visible descendants fit", passed: measurement.viewOverflow.isEmpty && measurement.scrollClipping.allSatisfy { $0 }),
+                .init(name: "\(name): the panel's scroll (\(viewport.height)) keeps at least \(minimumViewport)", passed: viewport.height >= minimumViewport - 0.5),
+                .init(name: "\(name): the panel scrolls inside its body (\(viewport.minY)–\(viewport.maxY))", passed: viewport.minY >= measurement.header.maxY - 0.5 && (rewriting || viewport.maxY <= measurement.height - 15.5))
             ]
         }
     }
@@ -159,29 +186,23 @@ import VoxClipMedia
           for variant in ["source", "9:16", "1:1", "16:9", "ai-rate-hours", "captions-off", "fine-tune", "caption-error", "rewrite", "rewrite-budget"] + DebugRewriteGeneration.variants {
             let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
             defer { model.close() }
+            let shell = WorkspaceShell(app: app)
             model.setAspect(AspectRatio(rawValue: variant) ?? .source)
             model.setStyle(variant == "fine-tune" ? "box-highlight" : "vox-highlight")
             if variant == "captions-off" { model.setCaptionsEnabled(false) }
             if variant == "caption-error" { model.captionError = "Captions couldn't be drawn. Your media and edits are safe. Choose another style or try again." }
             if variant == "ai-rate-hours" {
+                // An hour-long take at 1.5× in the hover transport, with the timeline hidden.
                 var voice = try JSONProjectStore.decode(Data(contentsOf: root.appendingPathComponent("fixtures/voice-lab/passage-project.voxclip")))
                 voice.media.source.durationSeconds = 3730.1
                 let first = try VoiceLabOutputPlanner.build(voice, scope: .full)
                 voice.media.source.durationSeconds += 3730.1 - first.duration
                 model.voiceLabPlan = try VoiceLabOutputPlanner.build(voice, scope: .full)
                 model.playhead = 3730.1; model.playbackRate = 1.5
+                shell.layout.timelineVisible = false
             }
-            if variant.hasPrefix("rewrite") {
-                model.mediaResolved = true
-                let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
-                let fake = RewriteFixtureConnector()
-                let connector = RewriteConnector(connector: fake, model: "fixture-local", name: "Fixture", group: "local", plan: "")
-                let session = RewriteSession(editor: model, range: 12...25, envelope: envelope, connector: connector)
-                model.rewrite = session; model.rewriteRange = 12...25
-                session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
-                if variant.hasPrefix("rewrite-takes-") { try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session) }
-            }
-            let content = RightColumnContents(model: model, columnHeight: height, columnWidth: width, fineTune: variant == "fine-tune")
+            if variant.hasPrefix("rewrite") { try openRewrite(variant, in: model) }
+            let content = PanelHost(model: model, shell: shell, width: width, height: height, fineTune: variant == "fine-tune", hovering: variant == "ai-rate-hours")
             let controller = NSHostingController(rootView: content)
             controller.sizingOptions = []
             let host = controller.view
@@ -192,9 +213,10 @@ import VoxClipMedia
             let minimum = controller.sizeThatFits(in: CGSize(width: 0, height: height))
             let proposed = controller.sizeThatFits(in: CGSize(width: width, height: height))
             let markers = markers(in: host)
-            measurements.append(Measurement(variant: variant, width: width, minimumWidth: minimum.width,
-                proposedWidth: proposed.width, stageWidth: markers["viewer.stage"]?.width ?? 0, markers: markers,
-                frameChoices: frameChoices(host), accessibilityElements: accessibilityElements(host).filter { $0.isAccessibilityElement() }.count,
+            let jobs = markers.filter { $0.key.hasPrefix("panel.job.") }.sorted { $0.value.minX < $1.value.minX }.map { String($0.key.dropFirst(10)) }
+            measurements.append(Measurement(variant: variant, width: width, minimumWidth: minimum.width, proposedWidth: proposed.width,
+                box: markers["viewer.box"] ?? .zero, stage: markers["viewer.stage"] ?? .zero, header: markers["panel.header"] ?? .zero, markers: markers,
+                jobs: jobs, accessibilityElements: accessibilityElements(host).filter { $0.isAccessibilityElement() }.count,
                 viewOverflow: viewOverflow(host), accessibilityOverflow: accessibilityOverflow(host)))
           }
         }
@@ -202,24 +224,28 @@ import VoxClipMedia
         let captures = try DebugRewriteGeneration.captures(app: app, directory: directory)
         try JSONEncoder().encode(captures).write(to: directory.appendingPathComponent("rewrite-captures.json"), options: .atomic)
         try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("right-column-layout.json"), options: .atomic)
-        var results: [DebugUISuite.Result] = measurements.flatMap { measurement in [
-            .init(name: "right column \(measurement.variant) at \(measurement.width): minimum \(measurement.minimumWidth), proposed \(measurement.proposedWidth)", passed: measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5),
-            .init(name: "right column \(measurement.variant) at \(measurement.width): descendants fit", passed: measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty),
-            .init(name: "right column \(measurement.variant) at \(measurement.width): stage \(measurement.stageWidth) fits inner width", passed: measurement.stageWidth > 0 && measurement.stageWidth <= measurement.width - 32 + 0.5),
-            // Offscreen hosts don't vend SwiftUI's virtual accessibility elements, so the descendant check
-            // must be shown to have measured the real rows: the Frame control and one candidate per row.
-            .init(name: "right column \(measurement.variant) at \(measurement.width): measured Frame choices \(measurement.frameChoices) and one candidate per row", passed: measurement.frameChoices == ["9:16", "1:1", "16:9", "Original"] && candidates("frame.", measurement) == 1 && candidates("transport.", measurement) == 1 && candidates("captions.", measurement) == (measurement.variant.hasPrefix("rewrite") ? 0 : 1))
-        ] }
+        var results: [DebugUISuite.Result] = measurements.flatMap { measurement -> [DebugUISuite.Result] in
+            let name = "right column \(measurement.variant) at \(measurement.width)"
+            let rewriting = measurement.variant.hasPrefix("rewrite")
+            let expected = ViewerSection.stageSize(ratio: ratio(measurement.variant, fixture: fixture), in: CGSize(width: measurement.width, height: ViewerSection.boxHeight(forWidth: measurement.width)))
+            return [
+                .init(name: "\(name): minimum \(measurement.minimumWidth), proposed \(measurement.proposedWidth)", passed: measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5),
+                .init(name: "\(name): descendants fit", passed: measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty),
+                .init(name: "\(name): viewer \(measurement.box.size) spans the column at 16:9 and the stage \(measurement.stage.size) is \(expected) in it",
+                      passed: abs(measurement.box.minX) <= 0.5 && abs(measurement.box.minY) <= 0.5 && abs(measurement.box.width - measurement.width) <= 0.5
+                        && abs(measurement.box.height - ViewerSection.boxHeight(forWidth: measurement.width)) <= 0.5
+                        && abs(measurement.stage.width - expected.width) <= 0.5 && abs(measurement.stage.height - expected.height) <= 0.5),
+                .init(name: "\(name): the 30 pt panel header sits under the viewer", passed: abs(measurement.header.minY - measurement.box.maxY) <= 0.5 && abs(measurement.header.height - PanelHost.headerHeight) <= 0.5 && abs(measurement.header.width - measurement.width) <= 0.5),
+                // Offscreen hosts don't vend SwiftUI's virtual accessibility elements, so the descendant check
+                // must be shown to have measured the real rows: the switcher's jobs and one Captions candidate.
+                .init(name: "\(name): the switcher shows \(measurement.jobs) and one Captions candidate", passed: measurement.jobs == (rewriting ? ["captions", "rewrite"] : ["captions"]) && candidates("captions.", measurement) == (rewriting ? 0 : 1))
+            ]
+        }
+        let hours = measurements.filter { $0.variant == "ai-rate-hours" }
+        results.append(.init(name: "the hour-long 1.5× time fits the hover transport inside the viewer at every width",
+            passed: hours.count == 6 && hours.allSatisfy { measurement in measurement.markers["viewer.transport"].map { measurement.box.insetBy(dx: -0.5, dy: -0.5).contains($0) } == true }))
         results.append(.init(name: "360-point short Captions summary uses one row", passed: measurements.first { $0.width == 360 && $0.variant == "source" }?.markers["captions.inline"] != nil))
-        results.append(.init(name: "300-point AI/rate/hour case uses metadata fallback", passed: measurements.first { $0.width == 300 && $0.variant == "ai-rate-hours" }?.markers["transport.stacked"] != nil))
-        let stacked = measurements.first { $0.width == 300 && $0.variant == "source" }?.markers["frame.stacked"]
-        results.append(.init(name: "300-point Frame choices use a stacked picker spanning the leading inner width (\(stacked.map { "\($0)" } ?? "none"))",
-            passed: stacked.map { abs($0.minX - 16) <= 0.5 && abs($0.width - 268) <= 0.5 } ?? false))
         for measurement in measurements {
-            let frameLabel = measurement.markers["control.frame.label"]
-            let framePicker = measurement.markers["control.frame.picker"]
-            results.append(.init(name: "Frame label and picker at \(measurement.width) (\(measurement.variant)) use the leading inner edge",
-                passed: frameLabel.map { abs($0.minX - 16) <= 0.5 } == true && framePicker.map { $0.width > 0 && $0.maxX <= measurement.width - 15.5 } == true))
             guard let heading = measurement.markers["header.captions.heading"], let toggle = measurement.markers["header.captions.switch"] else { continue }
             results.append(.init(name: "Captions switch at \(measurement.width) (\(measurement.variant)) is centred on the heading inside the inner width",
                 passed: abs(heading.midY - toggle.midY) <= 0.5 && toggle.maxX <= measurement.width - 16 + 0.5))
@@ -259,7 +285,7 @@ import VoxClipMedia
             let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
             defer { model.close() }
             model.setStyle("vox-highlight")
-            let controller = NSHostingController(rootView: RightColumnContents(model: model, columnHeight: 4096, columnWidth: width))
+            let controller = NSHostingController(rootView: PanelHost(model: model, shell: WorkspaceShell(app: app), width: width, height: 4096))
             controller.sizingOptions = []
             let host = controller.view
             host.frame = CGRect(x: 0, y: 0, width: width, height: 4096)
@@ -277,20 +303,6 @@ import VoxClipMedia
     }
     private static func candidates(_ prefix: String, _ measurement: Measurement) -> Int {
         measurement.markers.keys.filter { $0.hasPrefix(prefix) }.count
-    }
-    /// The labels of the visible four-segment Frame control, or none if it wasn't laid out.
-    static func frameChoices(_ host: NSView) -> [String] {
-        var found: [String] = []
-        func visit(_ view: NSView) {
-            guard found.isEmpty, !view.isHidden else { return }
-            if let control = view as? NSSegmentedControl, control.segmentCount == 4, view.convert(view.bounds, to: host).width > 0 {
-                let labels = (0..<control.segmentCount).map { control.label(forSegment: $0) ?? "" }
-                if labels == ["9:16", "1:1", "16:9", "Original"] { found = labels; return }
-            }
-            view.subviews.forEach(visit)
-        }
-        visit(host)
-        return found
     }
     static func viewOverflow(_ host: NSView) -> [String] {
         viewAudit(host).overflow
@@ -359,6 +371,17 @@ import VoxClipMedia
         visit(host, depth: 0)
         return elements
     }
+    /// The text the layout markers given one carry (`columnLayoutEvidence(_:text:)`): what a
+    /// view drew, for checks that cannot read SwiftUI's accessibility offscreen.
+    static func texts(in host: NSView) -> [String: String] {
+        var texts: [String: String] = [:]
+        func visit(_ view: NSView) {
+            if let marker = view as? ColumnLayoutMarker, let text = marker.text { texts[marker.name] = text }
+            view.subviews.forEach(visit)
+        }
+        visit(host)
+        return texts
+    }
     static func markers(in host: NSView) -> [String: CGRect] {
         var frames: [String: CGRect] = [:]
         func visit(_ view: NSView) {
@@ -376,6 +399,7 @@ import VoxClipMedia
 
 @MainActor final class ColumnLayoutMarker: NSView {
     var name = ""
+    var text: String?
     var logicalSize: CGSize?
     var scrollTarget: CaptionGalleryTarget?
     override func isAccessibilityElement() -> Bool { false }
@@ -383,9 +407,10 @@ import VoxClipMedia
 }
 @MainActor struct ColumnLayoutProbe: NSViewRepresentable {
     let name: String
+    var text: String? = nil
     var scrollTarget: CaptionGalleryTarget? = nil
-    func makeNSView(context: Context) -> ColumnLayoutMarker { let view = ColumnLayoutMarker(); view.name = name; view.scrollTarget = scrollTarget; return view }
-    func updateNSView(_ view: ColumnLayoutMarker, context: Context) { view.name = name; view.scrollTarget = scrollTarget }
+    func makeNSView(context: Context) -> ColumnLayoutMarker { let view = ColumnLayoutMarker(); updateNSView(view, context: context); return view }
+    func updateNSView(_ view: ColumnLayoutMarker, context: Context) { view.name = name; view.text = text; view.scrollTarget = scrollTarget }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ColumnLayoutMarker, context: Context) -> CGSize? {
         let size = CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
         if size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite { nsView.logicalSize = size }
@@ -395,9 +420,10 @@ import VoxClipMedia
 #endif
 
 extension View {
-    @ViewBuilder func columnLayoutEvidence(_ name: String) -> some View {
+    /// A DEBUG marker of this view's frame, and of the text it shows when given one.
+    @ViewBuilder func columnLayoutEvidence(_ name: String, text: String? = nil) -> some View {
         #if DEBUG
-        background(ColumnLayoutProbe(name: name))
+        background(ColumnLayoutProbe(name: name, text: text))
         #else
         self
         #endif

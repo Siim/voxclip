@@ -16,7 +16,9 @@ import VoxClipCore
         .accessibilityElement(children: .contain).accessibilityIdentifier("voxclip.rewrite")
         .focusSection()
         .onExitCommand { session.editor.closeRewrite() }
-        .onDisappear { approvalTask?.cancel() }
+        // The panel also goes when its tab or the panel's job changes (impl-plan V3a, V4);
+        // the session stays open then, and so does a send it approved. Closing it cancels its own work.
+        .onDisappear { if !session.isOpen { approvalTask?.cancel() } }
         .task { instructionFocused = true; await session.detectConnector(); await session.prepare() }
         .task(id: session.quote?.id) { if let id = session.quote?.id { session.markEstimateShown(id) } }
         .onChange(of: session.editor.paneFocusRequest) { _, _ in

@@ -78,7 +78,8 @@ struct RewriteConnector {
 
 @MainActor @Observable final class RewriteSession {
     let editor: EditorModel
-    let project: Project
+    /// The project the session was opened on, moved on by edits outside its clip (`rebase`).
+    private(set) var project: Project
     let transcript: [TimedWord]
     let source: [TimedWord]
     let scope: VoiceLabOutputScope
@@ -140,7 +141,7 @@ struct RewriteConnector {
             return corrected
         }
         source = Array(transcript[range])
-        scope = project.edits.activeClipId.map(VoiceLabOutputScope.clip) ?? .full
+        scope = editor.project.edits.activeClipId.map(VoiceLabOutputScope.clip) ?? .full
         self.envelope = envelope; self.connector = connector; self.prices = prices; self.synthesisModel = synthesisModel
         self.consent = consent; self.connectorIsCurrent = connectorIsCurrent
         service = editor.app.shared.map(VoiceRewriteService.init)
@@ -148,7 +149,9 @@ struct RewriteConnector {
         header = "\(source.filter { $0.kind == .word }.count) words at \(timecode(source.first?.start ?? 0))"
         refreshReview()
     }
-    var current: Bool { isOpen && editor.capabilities.edit && editor.project == project && connectorIsCurrent() && editor.app.voiceLabRewriteEnabled }
+    /// The session still matches the editor's project. The editor's tab is not part of it:
+    /// a session belongs to its tab and keeps working while another tab shows (impl-plan §3.3).
+    var current: Bool { isOpen && editor.capabilities.edit && editor.project.scoped(to: project.edits.activeClipId) == project && connectorIsCurrent() && editor.app.voiceLabRewriteEnabled }
     var canPropose: Bool { current && !isProposing && !editor.llmRuns.isBusy && quote != nil && shownQuoteID == quote?.id }
     var proposalButton: String {
         guard let connector, let estimate else { return "Rewrite" }
@@ -301,6 +304,12 @@ struct RewriteConnector {
     func close() {
         guard isOpen else { return }
         isOpen = false; invalidate()
+    }
+    /// An edit outside this session's clip moved the project on (impl-plan §3.3, design.md
+    /// R3); the session's words, plan and proposal still hold. It keeps its own tab's scope.
+    func rebase(onto next: Project) {
+        guard isOpen else { return }
+        project = next.scoped(to: project.edits.activeClipId)
     }
     static func refusal(_ error: any Error) -> String {
         if let error = error as? VoiceConsentError { return error.localizedDescription }

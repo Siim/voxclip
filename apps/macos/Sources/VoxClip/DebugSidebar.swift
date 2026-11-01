@@ -27,13 +27,15 @@ import VoxClipCore
             try await DebugUISuite.snapshot(SidebarRowsPreview(shell: shell).environment(app), name: "sidebar-rows-\(suffix)", size: NSSize(width: 252, height: 640), appearance: appearance, directory: directory, active: true)
         }
         results += try await editorLayout(app: app, shell: shell, directory: directory)
+        let rowSteps = editor.undoSteps
         shell.selection = .clip(kept[0].id)
         check("a clip row scopes the editor to that clip", editor.project.edits.activeClipId == kept[0].id)
         for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             try await DebugUISuite.snapshot(WorkspaceView(shell: shell).environment(app), name: "sidebar-clip-\(suffix)", size: NSSize(width: 1440, height: 900), appearance: appearance, directory: directory, active: true, mainWindow: true)
         }
-        editor.undoManager?.undo()
-        check("undo of the row change returns to Full Take", shell.selection == .fullTake && editor.project.edits.activeClipId == nil)
+        check("a row change is no undo step (impl-plan item 16)", editor.undoSteps == rowSteps)
+        shell.selection = .fullTake
+        check("Full Take's row returns the scope to Full Take", shell.selection == .fullTake && editor.project.edits.activeClipId == nil)
 
         guard let suggestion = suggested.first else { throw CocoaError(.coderInvalidValue) }
         editor.keep(suggestion.id)
@@ -114,14 +116,15 @@ import VoxClipCore
         undo.undo()
         check("one undo removes the clip and returns the selection to Full Take", editor.project.edits.clips.count == before && editor.project.edits.activeClipId == nil && shell.selection == .fullTake)
         undo.redo()
-        check("redo brings the clip back selected", editor.project.edits.activeClipId == made?.id && shell.selection == made.map { SidebarItem.clip($0.id) })
+        // Redo never switches tabs (impl-plan §3.3): the clip comes back and Full Take stays open.
+        check("redo brings the clip back and keeps the open tab", editor.project.edits.clips.contains { $0.id == made?.id } && editor.project.edits.activeClipId == nil && shell.selection == .fullTake)
         step { shell.selection = .fullTake }
         editor.select(words[start].id); editor.select(words[start + 3].id, extend: true)
         let duplicateSteps = editor.undoSteps
         step { editor.makeClip() }
-        check("Make Clip on words a clip already covers selects that clip and announces it (\(editor.lastAnnouncement ?? "no announcement"))",
+        check("Make Clip on words a clip already covers selects that clip, with no undo step, and announces it (\(editor.lastAnnouncement ?? "no announcement"))",
               editor.project.edits.clips.count == before + 1 && editor.project.edits.activeClipId == made?.id && editor.lastAnnouncement == "Clip \(madeNumber ?? 0) already covers these words."
-              && editor.undoSteps == duplicateSteps + 1)
+              && editor.undoSteps == duplicateSteps)
         step { if let made { editor.removeClip(made.id) } }
 
         // Keep, Dismiss and Remove on the selected row move the selection to the next row.
@@ -132,7 +135,8 @@ import VoxClipCore
         step { editor.keep(suggestions[0]) }
         check("Keep on the selected suggestion selects the next suggestion in the same undo step", shell.selection == .clip(suggestions[1]) && editor.project.edits.activeClipId == suggestions[1] && editor.undoSteps == keepSteps + 1)
         undo.undo()
-        check("one undo restores the suggestion and its selection", editor.suggestedClips.map(\.id) == suggestions && shell.selection == .clip(suggestions[0]))
+        // Undo never switches tabs (impl-plan §3.3): the open suggestion stays selected.
+        check("one undo restores the suggestion and keeps the open tab", editor.suggestedClips.map(\.id) == suggestions && shell.selection == .clip(suggestions[1]))
         step { shell.selection = .clip(suggestions[1]) }
         step { editor.dismiss(suggestions[1]) }
         check("Dismiss on the last row selects Full Take", shell.selection == .fullTake && editor.suggestedClips.map(\.id) == [suggestions[0]])
@@ -579,7 +583,7 @@ import VoxClipCore
         defer { model.close() }
         let left = NSViewController()
         let right = NSHostingController(rootView: GeometryReader { geometry in
-            RightColumnContents(model: model, columnHeight: geometry.size.height, columnWidth: geometry.size.width).frame(width: geometry.size.width, height: geometry.size.height)
+            PanelHost(model: model, shell: shell, width: geometry.size.width, height: geometry.size.height)
         })
         right.sizingOptions = []
         left.view = NSView(frame: NSRect(x: 0, y: 0, width: 700, height: 675))
@@ -626,8 +630,8 @@ import VoxClipCore
             fallback.invalidate()
             let stored = app.settings.values[key]
             check("a drag of the divider stores \(expected) points (\(start) → \(right.view.frame.width))", abs(right.view.frame.width - expected) < 1.5 && stored == .number(expected))
-            let stageSettled = await stageFits(right.view, width: expected)
-            check("the stage follows the dragged \(expected)-point column", stageSettled)
+            let viewerSettled = await viewerFits(right.view, width: expected)
+            check("the viewer follows the dragged \(expected)-point column", viewerSettled)
         }
         let expected: CGFloat = 560
         let stored = app.settings.values[key]
@@ -635,18 +639,18 @@ import VoxClipCore
             window.setContentSize(NSSize(width: width, height: 675))
             window.contentView?.layoutSubtreeIfNeeded()
             check("window resize to \(width) preserves the dragged right-column width", abs(right.view.frame.width - expected) < 1.5 && app.settings.values[key] == stored)
-            let stageSettled = await stageFits(right.view, width: expected)
-            check("the stage follows the preserved width after resize to \(width)", stageSettled)
+            let viewerSettled = await viewerFits(right.view, width: expected)
+            check("the viewer follows the preserved width after resize to \(width)", viewerSettled)
         }
         window.close()
         return results
     }
 
-    private static func stageFits(_ view: NSView, width: CGFloat) async -> Bool {
+    private static func viewerFits(_ view: NSView, width: CGFloat) async -> Bool {
         let started = ProcessInfo.processInfo.systemUptime
         repeat {
             view.window?.contentView?.layoutSubtreeIfNeeded()
-            if let stage = DebugRightColumn.markers(in: view)["viewer.stage"], abs(stage.width - (width - 32)) <= 0.5 { return true }
+            if let viewer = DebugRightColumn.markers(in: view)["viewer.box"], abs(viewer.width - width) <= 0.5 { return true }
             await Task.yield()
         } while ProcessInfo.processInfo.systemUptime - started < 2
         return false

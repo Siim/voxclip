@@ -36,7 +36,7 @@ extension HeavyMediaTests {
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         #expect(report.count >= 315)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
-        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let stageWidth: Double; let variant: String; let frameChoices: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
+        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let box: CGRect; let header: CGRect; let variant: String; let jobs: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
         #expect(measurements.count == 108)
         let captures = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("rewrite-captures.json")))
@@ -45,48 +45,55 @@ extension HeavyMediaTests {
         #expect(Set(measurements.map(\.width)) == [300, 320, 340, 360, 440, 560])
         for measurement in measurements {
             #expect(measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5)
-            #expect(measurement.stageWidth > 0 && measurement.stageWidth <= measurement.width - 31.5)
+            // The viewer spans the column at 16:9 of its width, with the 30 pt panel header under it (impl-plan V4).
+            #expect(abs(measurement.box.width - measurement.width) <= 0.5 && abs(measurement.box.height - (measurement.width * 9 / 16).rounded()) <= 0.5)
+            #expect(abs(measurement.header.minY - measurement.box.maxY) <= 0.5 && abs(measurement.header.height - 30) <= 0.5)
             #expect(measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty)
-            #expect(measurement.frameChoices == ["9:16", "1:1", "16:9", "Original"], Comment(rawValue: "\(measurement.variant) at \(measurement.width)"))
+            #expect(measurement.jobs == (measurement.variant.hasPrefix("rewrite") ? ["captions", "rewrite"] : ["captions"]), Comment(rawValue: "\(measurement.variant) at \(measurement.width)"))
         }
         struct HeightMeasurement: Decodable {
             let width: Double
             let height: Double
             let variant: String
+            let box: CGRect
             let stage: CGRect
             let scrollFrames: [CGRect]
             let scrollClipping: [Bool]
             let viewOverflow: [String]
         }
         let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
-        #expect(heights.count == 29)
-        #expect(Set(heights.map(\.height)) == [475, 575, 675, 775])
+        #expect(heights.count == 55)
+        #expect(Set(heights.map(\.height)) == [322, 422, 522, 622])
         for measurement in heights {
             let viewport = try #require(measurement.scrollFrames.first)
-            #expect(viewport.height > 0)
+            // One 24 pt row at least in every state (DebugRightColumn.minimumViewport).
+            #expect(viewport.height >= 23.5, Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height): \(viewport)"))
+            // 16:9 of the width down to 1280 × 700; at 960 × 600 the box gives way so the body keeps 160.
+            let boxHeight: Double = switch measurement.height { case 622: 250; case 322: 132; default: 227 }
+            #expect(abs(measurement.box.height - boxHeight) <= 0.5 && measurement.height - measurement.box.height - 30 >= 159.5,
+                Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height): box \(measurement.box)"))
             #expect(measurement.scrollClipping.allSatisfy { $0 })
             #expect(measurement.viewOverflow.isEmpty, Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height)"))
             if !measurement.variant.hasPrefix("rewrite") {
                 #expect(viewport.maxY <= measurement.height - 15.5)
             }
-            if measurement.width == 320 && measurement.height == 675 {
+            if measurement.width == 404 && measurement.height == 522 {
+                // notes.md §1 at 1280 × 800: the 404 × 227 viewer, the frame fitted in it (f5's 128-wide 9:16), and no Rewrite compaction.
                 let literalSize: CGSize = switch measurement.variant {
-                case "9:16": CGSize(width: 180, height: 320)
-                case "1:1": CGSize(width: 288, height: 288)
-                // Every Rewrite state, including the Voice Lab takes states, opens Rewrite in a column under 760 high (design §5.1).
-                case let variant where variant.hasPrefix("rewrite"): CGSize(width: 124 * 16.0 / 9, height: 124)
-                default: CGSize(width: 288, height: 162)
+                case "9:16": CGSize(width: 128, height: 227)
+                case "1:1": CGSize(width: 227, height: 227)
+                default: CGSize(width: 404, height: 227)
                 }
                 #expect(abs(measurement.stage.width - literalSize.width) <= 0.5 && abs(measurement.stage.height - literalSize.height) <= 0.5,
                     Comment(rawValue: "Literal design stage size for \(measurement.variant): \(measurement.stage.size) vs \(literalSize)"))
             }
         }
-        struct ResizeMeasurement: Decodable { let width: Double; let stage: CGRect; let elapsed: Double; let settled: Bool; let viewOverflow: [String] }
+        struct ResizeMeasurement: Decodable { let width: Double; let box: CGRect; let elapsed: Double; let settled: Bool; let viewOverflow: [String] }
         let resizes = try JSONDecoder().decode([ResizeMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-resizes.json")))
         #expect(resizes.map(\.width) == [320, 300, 560])
         for resize in resizes {
             #expect(resize.settled && resize.elapsed < 2 && resize.viewOverflow.isEmpty)
-            #expect(abs(resize.stage.width - (resize.width - 32)) <= 0.5 && abs(resize.stage.minX - 16) <= 0.5)
+            #expect(abs(resize.box.width - resize.width) <= 0.5 && abs(resize.box.minX) <= 0.5)
         }
     }
     @Test("Saved Voice Lab recipe uses native preview and App export", .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_UI_TESTS"] == "1")) func voiceRecipeWorkflow() async throws {
@@ -185,20 +192,20 @@ extension HeavyMediaTests {
                 if name == "live-editor-300" { #expect(!bounds.collapsed && abs(bounds.column.width - 300) <= 1) }
                 if name == "live-editor-560" { #expect(!bounds.collapsed && abs(bounds.column.width - 560) <= 1) }
                 if name == "live-editor-960" { #expect(!bounds.collapsed && abs(bounds.content.width - 960) <= 1 && abs(bounds.content.height - 600) <= 1) }
-                if !bounds.collapsed { #expect(bounds.elements.contains { $0.identifier == "voxclip.viewer.time" }) }
+                if !bounds.collapsed { #expect(bounds.elements.contains { $0.identifier == "voxclip.viewer.stage" } && bounds.elements.contains { $0.identifier == "voxclip.panel.job.captions" }) }
             }
         }
         try verifyColumnSettlements(in: directory)
         try verifySelectedGallery(in: directory)
     }
     private func verifyColumnSettlements(in directory: URL) throws {
-        struct Settlement: Decodable { let elapsed: Double; let settled: Bool; let stage: CGRect; let root: CGRect; let column: CGRect }
+        struct Settlement: Decodable { let elapsed: Double; let settled: Bool; let viewer: CGRect; let root: CGRect; let column: CGRect }
         for width: Double in [300, 560] {
             for suffix in ["", "-resize-64", "-resize-0"] {
                 let name = "drag-\(Int(width))\(suffix)-settlement.json"
                 let result = try JSONDecoder().decode(Settlement.self, from: Data(contentsOf: directory.appendingPathComponent(name)))
                 #expect(result.settled && result.elapsed < 2, Comment(rawValue: name))
-                #expect(abs(result.column.width - width) <= 1 && abs(result.stage.width - (width - 32)) <= 0.5)
+                #expect(abs(result.column.width - width) <= 1 && abs(result.viewer.width - result.column.width) <= 0.5)
                 #expect(abs(result.root.minX - result.column.minX) <= 0.5 && abs(result.root.width - result.column.width) <= 0.5)
             }
         }

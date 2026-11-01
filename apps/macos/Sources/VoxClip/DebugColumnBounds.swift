@@ -139,11 +139,9 @@ import VoxClipCore
                 visit(root, viewport: nil, depth: 0)
             } else { failures.append("Right-column accessibility root is missing") }
             let identifiers = Set(elements.map(\.identifier))
-            let labels = Set(elements.map(\.label))
-            for required in ["voxclip.viewer.stage", "voxclip.viewer.time"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
-            for required in ["Back 3 seconds", "Forward 3 seconds"] where !labels.contains(required) { failures.append("Missing \(required)") }
-            if !labels.contains("Play") && !labels.contains("Pause") { failures.append("Missing Play/Pause") }
-            for required in ["9:16", "1:1", "16:9", "Original"] where !labels.contains(required) { failures.append("Missing Frame choice \(required)") }
+            // The viewer and the panel header with its switcher (impl-plan V4). Play and the time
+            // are the timeline's, and the hover transport's only while the timeline is hidden.
+            for required in ["voxclip.viewer.stage", "voxclip.panel.title", "voxclip.panel.job.captions"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
             if !identifiers.contains("voxclip.rewrite") {
                 for required in ["voxclip.captions.switch", "voxclip.captions.summary", "voxclip.captions.gallery"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
                 if !elements.contains(where: { $0.role == kAXRadioButtonRole && $0.label.contains(": ") }) { failures.append("Missing caption gallery choices") }

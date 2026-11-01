@@ -28,6 +28,7 @@ import VoxClipCore
         func item(_ menu: String, _ title: String) -> NSMenuItem? {
             let items = NSApp.mainMenu?.item(withTitle: menu)?.submenu
             return items?.item(withTitle: title) ?? (title == "Hide Cut Words" ? items?.item(withTitle: "Show Cut Words") : nil)
+                ?? (title == "Close Project" ? items?.item(withTitle: "Close Tab") ?? items?.item(withTitle: "Close") : nil)
         }
         guard let delegate = NSApp.delegate as? AppDelegate else { throw CocoaError(.coderInvalidValue) }
         let bindings: [(String, String, String, NSEvent.ModifierFlags)] = [
@@ -119,6 +120,27 @@ import VoxClipCore
             check("Sidebar menu title tracks the next action", sidebarBefore != sidebar.title)
             invoke("View", sidebar.title)
         }
+        // View › Frame (impl-plan V4): the Frame picker left the viewer.
+        if let frameMenu = item("View", "Frame")?.submenu {
+            check("View › Frame lists 9:16, 1:1, 16:9 and Original", frameMenu.items.map(\.title) == ["9:16", "1:1", "16:9", "Original"])
+            let aspect = editor.project.export.aspect, steps = editor.undoSteps
+            if let square = frameMenu.item(withTitle: "1:1"), let action = square.action { _ = delegate.perform(action, with: square) }
+            let states = frameMenu.items.map { entry -> NSControl.StateValue in _ = delegate.validateMenuItem(entry); return entry.state }
+            check("View › Frame › 1:1 sets the frame as one undo step and checks it (\(states))",
+                  editor.project.export.aspect == .square && editor.undoSteps == steps + 1 && states == [.off, .on, .off, .off])
+            editor.setAspect(aspect)
+        } else { check("View › Frame exists", false) }
+        // The viewer's Back 3 s button is gone (impl-plan V4): chosen from the menu, Back 3 Seconds
+        // works outside the transcript, as Forward 3 Seconds does; the J key keeps its routing.
+        if let back = item("Playback", "Back 3 Seconds"), let forward = item("Playback", "Forward 3 Seconds") {
+            let resolved = editor.mediaResolved, responder = window.firstResponder
+            editor.mediaResolved = true
+            _ = window.makeFirstResponder(nil)
+            check("Back 3 Seconds is on from the menu outside the transcript, as Forward 3 Seconds is",
+                  delegate.validateMenuItem(back) && delegate.validateMenuItem(forward))
+            editor.mediaResolved = resolved
+            _ = window.makeFirstResponder(responder)
+        } else { check("Playback has Back 3 Seconds and Forward 3 Seconds", false) }
         guard let first = editor.words.first, let kept = editor.keptClips.first, let suggestion = editor.suggestedClips.first else { throw CocoaError(.coderInvalidValue) }
         editor.selectedWordIDs = [first.id]
         invoke("Clip", "Find Clips…")

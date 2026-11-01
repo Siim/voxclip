@@ -285,24 +285,24 @@ import VoxClipMedia
     private static func settleColumn(in window: NSWindow, name: String, directory: URL) async throws {
         guard let right = DebugColumnBounds.split(in: window.contentView)?.arrangedSubviews.last else { throw CocoaError(.coderInvalidValue) }
         let started = ProcessInfo.processInfo.systemUptime
-        var stage: CGRect?, root: CGRect?, column: CGRect?
+        var viewer: CGRect?, root: CGRect?, column: CGRect?
         var settled = false
         repeat {
             window.contentView?.layoutSubtreeIfNeeded()
-            stage = DebugRightColumn.markers(in: right)["viewer.stage"]
+            viewer = DebugRightColumn.markers(in: right)["viewer.box"]
             root = DebugColumnBounds.rightFrame(in: window)
             column = DebugColumnBounds.columnFrame(in: window)
-            if let stage, let root, let column {
-                settled = abs(stage.width - (column.width - 32)) <= 0.5 && abs(root.minX - column.minX) <= 0.5 && abs(root.width - column.width) <= 0.5
+            if let viewer, let root, let column {
+                settled = abs(viewer.width - column.width) <= 0.5 && abs(root.minX - column.minX) <= 0.5 && abs(root.width - column.width) <= 0.5
             }
             if settled { break }
             await Task.yield()
         } while ProcessInfo.processInfo.systemUptime - started < 2
         struct Settlement: Encodable {
-            let elapsed: Double; let settled: Bool; let stage: CGRect?; let root: CGRect?; let column: CGRect?; let liveResize: Bool
+            let elapsed: Double; let settled: Bool; let viewer: CGRect?; let root: CGRect?; let column: CGRect?; let liveResize: Bool
         }
         let elapsed = ProcessInfo.processInfo.systemUptime - started
-        try JSONEncoder().encode(Settlement(elapsed: elapsed, settled: settled, stage: stage, root: root, column: column, liveResize: right.inLiveResize))
+        try JSONEncoder().encode(Settlement(elapsed: elapsed, settled: settled, viewer: viewer, root: root, column: column, liveResize: right.inLiveResize))
             .write(to: directory.appendingPathComponent("\(name)-settlement.json"), options: .atomic)
         guard settled else { throw VoxClipError.exportFailed("The right-column layout did not settle after \(name) within two seconds.") }
     }

@@ -92,6 +92,12 @@ enum SidebarItem: Hashable {
     var selection: SidebarItem = .home { didSet { if selection != oldValue { followSelection() } } }
     /// The shell's regions and sizes (impl-plan V1a).
     let layout: WorkspaceLayout
+    /// The editor's tabs in this window (impl-plan V3a), Full Take only until the open
+    /// project's clips open theirs.
+    let tabs = EditorTabs()
+    /// The panel job picked in the right column's switcher (impl-plan V4, §3.4), until the
+    /// project closes; `panelJob(for:)` reads it.
+    var panelChoice: PanelJobChoice?
     /// Below `explorerCollapseWidth` (1,128) the Explorer shows over the editor on request
     /// (impl-plan §3.5): the Explorer toggle, View > Show Sidebar and Find Clips. Escape or
     /// a click on a row hides it again.
@@ -401,14 +407,15 @@ enum SidebarItem: Hashable {
         if layout.rightVisible { hideRightColumn() } else { layout.rightVisible = true }
     }
     /// The timeline toggle in the title row, the panel's Hide and View › Hide Timeline (⌘J).
-    /// Until V4's hover transport the panel carries play and the timecode while the right column is hidden,
-    /// so it does not hide then (notes.md §1: "play and timecode are never lost").
+    /// Play and the timecode are never lost (notes.md §1): the timeline panel carries them,
+    /// and while it is hidden the viewer's hover transport does (impl-plan V4). With the right
+    /// column hidden too nothing would, so the panel does not hide then.
     func toggleTimeline() {
         guard layout.rightVisible || !layout.timelineVisible else { return }
         layout.timelineVisible.toggle()
     }
-    /// Hides the right column, and shows the timeline panel, whose toolbar carries play and
-    /// the timecode while it is hidden (until V4).
+    /// Hides the right column, and with it the viewer's hover transport, so the timeline
+    /// panel shows to carry play and the timecode.
     private func hideRightColumn() {
         layout.rightVisible = false
         if !layout.timelineVisible { layout.timelineVisible = true }
@@ -510,14 +517,18 @@ enum SidebarItem: Hashable {
         model.undoManager = next.undoManager
         model.window = windowController?.window
         model.onActiveClipChange = { [weak self] id in self?.followScope(id) }
+        model.onClipsChange = { [weak self] in self?.syncTabs() }
         model.onNeedsSidebar = { [weak self] in self?.revealSidebar() }
         next.editorModel = model
         renaming = nil
         sidebarOverlay = false
         rightOverlay = false
+        tabs.reset()
+        panelChoice = nil
         document = next
         editor = model
         selection = next.project.edits.activeClipId.map(SidebarItem.clip) ?? .fullTake
+        syncTabs()
         if let windowController {
             // AppKit takes the title from windowTitle(forDocumentDisplayName:) here.
             next.addWindowController(windowController)
@@ -543,6 +554,8 @@ enum SidebarItem: Hashable {
         document = nil
         editor = nil
         started = nil
+        tabs.reset()
+        panelChoice = nil
         windowController?.window?.title = title
         (windowController as? MainWindowController)?.restorationDidChange()
     }
@@ -569,9 +582,10 @@ enum SidebarItem: Hashable {
 
     // MARK: Selection
 
-    /// A row change applies the existing `setActiveClip` command; Home and Recent rows
-    /// only pause. When the editor refuses the change, for example while its video is
-    /// missing, the selection returns to the editor's scope.
+    /// A row change scopes the editor (`EditorModel.activate`, no undo step) and the tabs
+    /// follow: a kept clip's tab opens, a suggestion opens as the preview tab (impl-plan
+    /// V3a). Home and Recent rows only pause. When the editor refuses the change, for
+    /// example while the project is leaving, the selection returns to the editor's scope.
     private func followSelection() {
         notice = nil
         windowController?.window?.title = title
@@ -587,10 +601,13 @@ enum SidebarItem: Hashable {
         guard !selection.showsHome else { return }
         let scope = editor.project.edits.activeClipId.map(SidebarItem.clip) ?? .fullTake
         if selection != scope { selection = scope }
+        syncTabs()
     }
 
-    /// Keeps the selected row in step when undo or Remove changes the active clip.
+    /// Keeps the selected row and the tabs in step when a tab, Remove or Undo changes the
+    /// active clip.
     private func followScope(_ activeClipID: String?) {
+        defer { syncTabs() }
         guard !selection.showsHome else { return }
         let row = activeClipID.map(SidebarItem.clip) ?? .fullTake
         if selection != row { selection = row }
@@ -734,6 +751,14 @@ enum SidebarItem: Hashable {
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, event.keyCode == 53, event.modifierFlags.intersection([.command, .option, .control]).isEmpty, attachedSheet == nil,
            let shell = (windowController as? ShellWindowController)?.shell, shell.dismissOverlaysOnEscape(in: self) {
+            return
+        }
+        // ⌃Tab and ⌃⇧Tab show the next and previous tab when the Window menu has not taken
+        // them; with one tab they keep AppKit's meaning.
+        if event.type == .keyDown, event.keyCode == 48, event.modifierFlags.intersection([.command, .option, .control]) == .control, attachedSheet == nil,
+           let shell = (windowController as? ShellWindowController)?.shell, shell.tabsShown, shell.tabs.open.count > 1,
+           !((firstResponder as? any NSTextInputClient)?.hasMarkedText() ?? false) {
+            shell.showAdjacentTab(event.modifierFlags.contains(.shift) ? -1 : 1)
             return
         }
         if event.type == .keyDown, EditorPane.isCycleKey(code: event.keyCode, modifiers: event.modifierFlags), attachedSheet == nil,

@@ -171,10 +171,19 @@ import VoxClipCore
         guard mainWindowIsKey, !model.shell.showsHome else { return nil }
         return model.shell.editor
     }
+    /// The key window's shell: the main window's or a Versions window's. The tab commands act on it.
+    private var keyShell: WorkspaceShell? {
+        #if DEBUG
+        if let commandWindowForTesting { return (commandWindowForTesting.windowController as? ShellWindowController)?.shell }
+        #endif
+        return (NSApp.keyWindow?.windowController as? ShellWindowController)?.shell
+    }
     @objc private func newProject(_ sender: Any?) { chooseFile(app: model, moviesOnly: true) }
     @objc private func openProject(_ sender: Any?) { chooseFile(app: model) }
-    /// ⌘W closes the project and shows Home; on Home it closes the window (design §11).
+    /// ⌘W closes a clip or suggestion tab (impl-plan item 5). On Full Take it closes the
+    /// project and shows Home, and on Home it closes the window (design §11).
     @objc private func closeProject(_ sender: Any?) {
+        if let shell = keyShell, shell.closesTab { shell.closeTab(shell.tabs.active); return }
         guard mainWindowIsKey else { NSApp.keyWindow?.performClose(sender); return }
         if model.shell.document != nil { Task { await model.shell.closeProject() } }
         else { model.shell.windowController?.window?.performClose(sender) }
@@ -229,7 +238,9 @@ import VoxClipCore
         case 13: shell.selection = .home; return
         case 14: if shell.document != nil { shell.selection = .fullTake }; return
         case 16: shell.toggleSidebar(); return
-        case 50: if validateMenuItem(item) { shell.toggleTimeline() }; return
+        case 56: if validateMenuItem(item) { shell.toggleTimeline() }; return
+        // Tabs work in the key window, a Versions window too (impl-plan V3a).
+        case 50, 51: keyShell?.showAdjacentTab(item.tag == 50 ? -1 : 1); return
         // Help works on Home and with no project open; both sheets belong to the main window.
         case 35: MainWindowController.shared.show(); shell.showShortcuts = true; return
         case 36: MainWindowController.shared.show(); model.showTour = true; return
@@ -282,9 +293,13 @@ import VoxClipCore
         case 47: editor.seek(source: min(editor.sourceDuration, editor.sourceTime + 3))
         case 48: editor.copySelection()
         case 49: editor.findTask?.cancel()
+        case 52, 53, 54, 55: editor.setAspect(Self.frameAspects[item.tag - 52])
         default: break
         }
     }
+    /// View › Frame (impl-plan V4: the Frame picker left the viewer), in the design's order
+    /// 9:16 · 1:1 · 16:9 · Original, tags 52–55.
+    static let frameAspects: [AspectRatio] = [.portrait, .square, .landscape, .source]
     private var selectedClipID: String? {
         guard case .clip(let id) = model.shell.selection else { return nil }
         return id
@@ -326,12 +341,20 @@ import VoxClipCore
               let role = (NSApp.accessibilityFocusedUIElement as? any NSAccessibilityProtocol)?.accessibilityRole() else { return false }
         return [.button, .checkBox, .radioButton, .radioGroup, .popUpButton, .menuButton, .disclosureTriangle].contains(role)
     }
+    /// Back 3 Seconds shares J with Shuttle Back. The J key reaches it only from the
+    /// transcript; chosen from the menu it works wherever focus is, like Forward 3 Seconds,
+    /// since the viewer has no Back 3 s button (impl-plan V4).
+    static func backStepEnabled(_ item: NSMenuItem, event: NSEvent?, responder: NSResponder?) -> Bool {
+        guard let event, event.type == .keyDown, !item.keyEquivalent.isEmpty,
+              event.charactersIgnoringModifiers?.lowercased() == item.keyEquivalent.lowercased() else { return true }
+        return responder is TranscriptNSTextView
+    }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(checkUpdates(_:)) {
             item.title = model.update.map { "VoxClip \($0.version) Available…" } ?? "Check for Updates…"
         }
         if item.action == #selector(closeProject(_:)) {
-            item.title = mainWindowIsKey && model.shell.document != nil ? "Close Project" : "Close"
+            item.title = keyShell?.closesTab == true ? "Close Tab" : mainWindowIsKey && model.shell.document != nil ? "Close Project" : "Close"
             return NSApp.keyWindow != nil
         }
         if item.action == #selector(performEditorCommand(_:)) {
@@ -341,12 +364,13 @@ import VoxClipCore
             case 16:
                 item.title = model.shell.sidebarShown ? "Hide Sidebar" : "Show Sidebar"
                 return mainWindowIsKey
-            case 50:
+            case 56:
                 // While the right column is hidden the timeline carries play and the timecode, so it stays (WorkspaceShell.toggleTimeline).
                 let shell = model.shell
                 item.title = shell.layout.timelineVisible ? "Hide Timeline" : "Show Timeline"
                 return mainWindowIsKey && shell.editor != nil && !shell.showsHome && (shell.layout.rightVisible || !shell.layout.timelineVisible)
             case 35, 36: return true
+            case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
             default: break
             }
             guard let editor else { return false }
@@ -375,7 +399,7 @@ import VoxClipCore
             case 49: return editor.finding
             case 43, 44: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.capabilities.edit
             case 45: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.canExport && editor.mediaExportable
-            case 46: return editor.mediaResolved && NSApp.keyWindow?.firstResponder is TranscriptNSTextView
+            case 46: return editor.mediaResolved && Self.backStepEnabled(item, event: NSApp.currentEvent, responder: NSApp.keyWindow?.firstResponder)
             case 47: return editor.mediaResolved
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
             case 8: return editor.capabilities.edit && editor.summary.canTighten
@@ -385,6 +409,9 @@ import VoxClipCore
             case 10: item.title = editor.showCuts ? "Hide Cut Words" : "Show Cut Words"
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
             case 12: item.title = model.shell.viewerShown ? "Hide Viewer" : "Show Viewer"
+            case 52, 53, 54, 55:
+                item.state = editor.project.export.aspect == Self.frameAspects[item.tag - 52] ? .on : .off
+                return editor.capabilities.writable && editor.capabilities.media
             default: return true
             }
         }
@@ -393,6 +420,9 @@ import VoxClipCore
         return true
     }
     private func installMenus() {
+        // The windows never tab (`tabbingMode = .disallowed`), so AppKit adds no tab items of
+        // its own beside the editor's Show Next Tab and Show Previous Tab (⌃Tab, impl-plan V3a).
+        NSWindow.allowsAutomaticWindowTabbing = false
         let main = NSMenu()
         NSApp.mainMenu = main
         func menu(_ title: String) -> NSMenu {
@@ -476,8 +506,13 @@ import VoxClipCore
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")
         command(view, "Hide Sidebar", 16, "s", [.command, .control])
-        command(view, "Hide Timeline", 50, "j")
+        command(view, "Hide Timeline", 56, "j")
         command(view, "Source / Edited Timeline", 17)
+        let frame = NSMenuItem(title: "Frame", action: nil, keyEquivalent: "")
+        let frameMenu = NSMenu(title: "Frame")
+        for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect == .source ? "Original" : aspect.rawValue, 52 + offset, "", []) }
+        frame.submenu = frameMenu
+        view.addItem(frame)
         command(view, "Bigger Text", 18, "+")
         command(view, "Smaller Text", 19, "-")
         command(view, "Actual Size", 20, "0")
@@ -511,6 +546,15 @@ import VoxClipCore
         add(window, "Minimize", #selector(NSWindow.performMiniaturize(_:)), "m")
         add(window, "Zoom", #selector(NSWindow.performZoom(_:)))
         add(window, "Toggle Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
+        window.addItem(.separator())
+        // The editor's tabs (impl-plan §3.2): ⌃⇧Tab and ⌃Tab, with ⇧⌘[ and ⇧⌘] as hidden alternates.
+        command(window, "Show Previous Tab", 50, "\t", [.control, .shift])
+        command(window, "Show Next Tab", 51, "\t", [.control])
+        for (tag, key) in [(50, "{"), (51, "}")] {
+            command(window, tag == 50 ? "Show Previous Tab" : "Show Next Tab", tag, key, [.command])
+            window.items.last?.isHidden = true
+            window.items.last?.allowsKeyEquivalentWhenHidden = true
+        }
         window.addItem(.separator())
         add(window, "VoxClip", #selector(showMainWindow(_:)), target: self)
         window.addItem(.separator())
