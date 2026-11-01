@@ -100,24 +100,16 @@ extension RewriteSession {
         if changed { editor.proposal = proposal }
     }
 
-    /// Keeps the takes with their phrase (impl-plan item 25) as the list's inclusions change: they are made for the one
-    /// phrase the list included when the generation was made (`takesVoice`). Including another phrase alone moves them to
-    /// that one: the takes made before no longer fit, and it is quoted (`inputsChanged`). Coming back to the takes' phrase
-    /// asks again for a quote it lost meanwhile. With none or several included, the footer offers no takes.
+    /// A changed inclusion set needs a fresh complete-set placement and quote, never the old set's paid authorization.
     private func followIncludedVoice() {
-        let only = includedVoice.only
-        guard only != includedVoiceSeen else { return }
-        includedVoiceSeen = only
-        guard let generation, let only else { return }
-        if only != takesVoice {
-            takesVoice = only
-            generation.inputsChanged()
-        } else if generation.quote == nil, !generation.preparingQuote, generation.phase != .generating {
-            generation.requestQuote()
-        }
+        let included = includedVoice
+        guard included != includedVoicesSeen else { return }
+        includedVoicesSeen = included
+        takePlan?.invalidate(); takePlan = nil
+        generation?.inputsChanged()
     }
 
-    /// R2's set, cards, footer and Ask again, by design.md R2's footer cases with impl-plan item 25 for voice changes.
+    /// R2's set, cards, footer and Ask again, by design.md R2's footer cases.
     func proposalContent() -> ProposalContent {
         let readings = ownProposal == nil ? [] : editor.changeReadings
         let unavailable = voiceUnavailable
@@ -174,9 +166,7 @@ extension RewriteSession {
     /// R2's footer cases (design.md R2), with "Nothing paid yet" and Keep All in v2's grammar (notes.md §7):
     /// - Voice Lab off with voice changes: Turn On Voice Lab, and Apply {k} Free Changes.
     /// - Voice changes over the budget: the callout, and Apply {k} Free Changes.
-    /// - More than one voice change included (impl-plan item 25, until takes place several windows): the one-passage line,
-    ///   and Apply {k} Free Changes.
-    /// - One voice change included: Make Your Voice with no voice yet, Make Takes, or Use Take {n} once a take passed,
+    /// - Included voice changes: Make Your Voice with no voice yet, Make Takes, or Use Takes once takes passed,
     ///   with Keep All while changes wait.
     /// - Only cuts and fixes: Apply {c} Changes. Nothing included: the note alone. Every change kept: its note alone, and
     ///   Close ends the task.
@@ -199,9 +189,6 @@ extension RewriteSession {
         if !included.isEmpty, let over = overBudget {
             return (PanelFooter(note: "Make Takes appears when the phrases fit.", primary: apply(beside: true)), over, false)
         }
-        if included.count > 1 {
-            return (PanelFooter(note: Self.onePassage, primary: apply(beside: true)), nil, false)
-        }
         if let voice = included.first {
             return (takesFooter(voice, keepAll: keepAll), nil, generation != nil)
         }
@@ -218,14 +205,20 @@ extension RewriteSession {
         let limit = min(60, budget.wordItems * 15 / 100)
         return "These changes re-voice \(budget.voiceTokenCount) words; a rewrite can re-voice \(limit). Undo a phrase or two, or re-record these sentences."
     }
-    /// Takes are made for one voice change at a time until C3 and C5 place several (impl-plan item 25).
-    static let onePassage = "Rewrite one passage at a time. Keep one changed passage, then generate takes."
     /// R2's note once every change is kept: nothing is left to apply; ⌘Z of a Keep brings its change back for review.
     static let everyChangeKept = "Every change is kept."
 
-    /// The footer while one voice change is included: Make Your Voice, Make Takes or Use Take {n}. Takes and their quote
-    /// act only for the phrase they are made for (`takesVoice`); for another, the footer waits for its quote.
+    /// The footer prepares one plan for the entire included set. V18 supplies the phrase rows.
     private func takesFooter(_ voice: ProposalItem, keepAll: PanelAction?) -> PanelFooter {
+        if let takePlan {
+            let note = takePlan.problem.isEmpty ? "Sends the included phrases and a short audio check to ElevenLabs with your key. No video." : takePlan.problem
+            guard !takePlan.preparing, !takePlan.generating, let cost = takePlan.cost else { return PanelFooter(note: note, link: keepAll) }
+            let title: String = switch cost {
+            case .confirm: "Make Takes…"
+            case .inline(let amount): amount.isEmpty ? "Make Takes" : "Make Takes · ≈ \(amount)"
+            }
+            return PanelFooter(note: note, link: keepAll, primary: PanelAction(id: "makeTakes", title: title) { [weak self] in self?.makeTakes() })
+        }
         if let parts = replyParts[voice.ordinal], ownProposal?[voice.ordinal]?.parts != parts {
             return PanelFooter(note: "Takes are made from the AI's words. Rewrite again to make takes of an edited change.", link: keepAll)
         }
@@ -237,7 +230,7 @@ extension RewriteSession {
             } ?? ""
             return PanelFooter(note: unpaid + estimate, link: keepAll, primary: PanelAction(id: "makeTakes", title: "Make Takes") { [weak self] in self?.makeTakes() })
         }
-        let ours = takesVoice == voice.ordinal
+        let ours = includedVoice.count == 1
         if ours, generation.readyToAccept {
             return PanelFooter(note: "Exports show AI MODIFIED on the video and in the post.",
                                primary: PanelAction(id: "useTake", title: generation.acceptTitle) { [weak self] in self?.useTake() })
@@ -304,15 +297,23 @@ extension RewriteSession {
     func makeTakes() {
         guard current else { return }
         takesTask?.cancel()
-        guard let generation else {
+        guard generation != nil else {
             takesTask = Task { [weak self] in await self?.discoverVoices() }
             return
         }
-        guard takesVoice != nil, takesVoice == includedVoice.only, generation.canExecute else { return }
-        generation.approve(true, confirmation: { [weak self] copy in
-            guard let window = self?.editor.window else { return false }
-            return await RewriteApprovalSheet(title: "Make Takes", copy: copy, parent: window).confirm()
-        })
+        guard let takePlan else {
+            takesTask = Task { [weak self] in await self?.prepareTakes() }
+            return
+        }
+        takesTask = Task { [weak self, weak takePlan] in
+            guard let self, let takePlan, let cost = takePlan.cost else { return }
+            let quoteID = takePlan.approvalID
+            if case .confirm(let copy) = cost {
+                guard let window = editor.window,
+                      await RewriteApprovalSheet(title: "Make Takes", copy: copy, parent: window).confirm() else { return }
+            }
+            await takePlan.start(approved: true, quoteID: quoteID)
+        }
     }
     /// Use Take {n}: the take with the free changes still pending, one undo step.
     func useTake() {

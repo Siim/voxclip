@@ -116,6 +116,10 @@ struct RewriteChange: Equatable, Sendable {
     private(set) var review: RewriteReview?
     private(set) var revision = 0
     private(set) var generation: RewriteGenerationSession?
+    var takePlan: ClipTakePlan?
+    @ObservationIgnored var takeBackend: ((Int, @escaping VoiceLabTakeDispatchBoundary) -> ClipTakePlan.Backend)?
+    @ObservationIgnored var takePlanOrdinals: [Int] = []
+    @ObservationIgnored var takeRegion: ElevenLabsRegion?
     /// The Director task the Rewrite job shows (impl-plan V12m); the session drives it.
     let task: DirectorTask
     /// The AIs R0 lists, once detected.
@@ -123,8 +127,10 @@ struct RewriteChange: Equatable, Sendable {
     /// The work a panel action started (detection, a run, Try Again); closing the session cancels it.
     @ObservationIgnored var actionTask: Task<Void, Never>?
     func configureGeneration(client: ElevenLabsVoiceLab, store: VoiceConsentStore, speaker: VoiceSpeakerCheck) {
+        takePlan?.invalidate(); takePlan = nil
         generation?.invalidate()
         let region = client.region
+        takeRegion = region
         let storage = VoiceLabTakeStorage(projectId: editor.project.id,
             paidRoot: editor.app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true),
             scratchRoot: editor.app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true))
@@ -135,8 +141,15 @@ struct RewriteChange: Equatable, Sendable {
             await self?.generationIsCurrent(region: region) ?? false
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
-        // The takes are for the one phrase the list includes now (impl-plan item 25).
-        takesVoice = includedVoice.only; includedVoiceSeen = takesVoice
+        takeBackend = { [weak self] count, dispatch in
+            let runs = (0..<count).map { _ in
+                VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: dispatch) { [weak self] in
+                    await self?.generationIsCurrent(region: region) ?? false
+                }
+            }
+            return ClipTakePlan.Backend(runs: runs)
+        }
+        includedVoicesSeen = includedVoice
         generation?.validatePlacement = { [weak self] window in
             guard let self else { throw CancellationError() }
             try self.editor.validateVoiceLabPlacement(window, localCommands: self.localCommands)
@@ -176,12 +189,7 @@ struct RewriteChange: Equatable, Sendable {
     /// The voice changes left out because they can't be made now (`voiceUnavailable`): Voice Lab's Turn on, or a review
     /// that places them, includes them again (design.md R2).
     @ObservationIgnored var leftOutUnavailable: Set<Int> = []
-    /// The phrase in your voice the generation's quote and takes are for (impl-plan item 25): the one the list included
-    /// alone when the generation was made, or the one it included alone since (`followIncludedVoice`). The footer offers
-    /// Make Takes and Use Take, and Use Take uses a take, only while the list includes it alone.
-    @ObservationIgnored var takesVoice: Int?
-    /// The phrase the list included alone when R2 last showed; nil for none or several.
-    @ObservationIgnored var includedVoiceSeen: Int?
+    @ObservationIgnored var includedVoicesSeen: [Int] = []
     /// What a run replaced, shown again when the run ends with nothing sent or proposed: a declined sheet, a send gone
     /// stale. Nil for a session's first run, which closes instead, as Stop does.
     @ObservationIgnored private var replaced: Replaced?
@@ -540,6 +548,7 @@ struct RewriteChange: Equatable, Sendable {
         receive(try VoiceLabWordDiff.diff(source: source, newText: text).hunks.map { RewriteChange(hunk: $0) })
     }
     private func invalidate() {
+        takePlan?.invalidate(); takePlan = nil
         generation?.invalidate(); generation = nil
         revision += 1; sending?.cancel()
         reviewing?.cancel(); reviewing = nil
@@ -621,6 +630,7 @@ struct RewriteChange: Equatable, Sendable {
         let proposal = task.state == .changed ? setAside?.proposal : ownProposal
         return proposal?.changes.contains { change in replyParts[change.ordinal].map { $0 != change.parts } ?? false } ?? false
     }
+    var hasPaidTakes: Bool { (takePlan?.spent.units ?? 0) > 0 || generation?.rows.isEmpty == false }
     /// The proposal has phrases in your voice and Voice Lab is on: R2's Beta tag shows (design.md §6.3.4).
     var showsVoiceLab: Bool { review?.voiceHunks.isEmpty == false && editor.app.voiceLabRewriteEnabled }
     /// Applies every change still pending (Keep All) as one undo step named for the scope ("Rewrite clip 1", design.md
@@ -645,11 +655,18 @@ struct RewriteChange: Equatable, Sendable {
     /// for a review being built again: when that moved a window, the takes no longer fit and are not used.
     @discardableResult func acceptTakes() async -> Bool {
         if let reviewing { await reviewing.value }
-        // The take is the phrase's the list includes alone (impl-plan item 25), never one it left out since.
-        guard current, let generation, takesVoice != nil, takesVoice == includedVoice.only else { return false }
-        let accepted = await generation.accept(into: editor, localCommands: localCommands) { [self] edit in try ownEdit(edit) }
-        if accepted { editor.closeRewrite() }
-        return accepted
+        if let takePlan {
+            do {
+                guard current else { return false }
+                let output = try await takePlan.acceptance()
+                guard current, takePlan.stillCurrent, self.takePlan === takePlan else { return false }
+                try ownEdit { try editor.applyVoiceLab(output.segments, assets: output.assets, voice: output.voice,
+                    scope: rewriteScope, localCommands: localCommands) }
+                editor.closeRewrite()
+                return true
+            } catch { problem = ClipTakePlan.copy(error); return false }
+        }
+        return false
     }
     /// The session's own edit: `follow` does not take it for an edit in the scope.
     private func ownEdit<T>(_ edit: () throws -> T) rethrows -> T {
@@ -716,6 +733,8 @@ struct RewriteChange: Equatable, Sendable {
     /// and the next such edit tries again. Cuts and fixes read nothing outside the scope.
     private func move(to next: Project) {
         guard next != project else { return }
+        let requote = takePlan != nil
+        takePlan?.invalidate(); takePlan = nil
         project = next; derive()
         let previous = review
         guard previous.map({ !$0.voiceHunks.isEmpty }) ?? changes.contains(where: { $0.hunk.kind == .voice }) else { return }
@@ -728,7 +747,7 @@ struct RewriteChange: Equatable, Sendable {
             switch built {
             case .success(let fresh):
                 review = fresh; problem = ""
-                if previous.map({ !fresh.makesTheSameTakes(as: $0) }) ?? true { generation?.inputsChanged() }
+                if requote || previous.map({ !fresh.makesTheSameTakes(as: $0) }) ?? true { generation?.inputsChanged() }
             case .failure(let error):
                 review = nil; problem = Self.refusal(error)
                 generation?.inputsChanged()
@@ -795,7 +814,7 @@ struct RewriteChange: Equatable, Sendable {
     func showChanged() {
         let words = task.words
         var body = "You edited \(words.name), so these changes may no longer fit. Nothing was applied, and no takes were paid for."
-        if generation?.rows.isEmpty == false { body += " Your takes are kept until you close this." }
+        if hasPaidTakes { body += " Your takes are kept until you close this." }
         // Rewrite Again discards the set-aside proposal and its takes, so it asks first as ⇧⌘R does.
         let again = PanelAction(id: "rewriteAgain", title: sendAsksFirst ? "Rewrite Again…" : "Rewrite Again") { [weak self] in
             guard let self else { return }

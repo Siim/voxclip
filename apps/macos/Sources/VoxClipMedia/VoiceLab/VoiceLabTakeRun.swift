@@ -3,6 +3,8 @@ import Synchronization
 import VoxClipCore
 
 private final class VoiceLabRunDispatch: Sendable {
+    let keepingPreviousTakes: Bool
+    init(keepingPreviousTakes: Bool) { self.keepingPreviousTakes = keepingPreviousTakes }
     private struct State { var started = false; var retired = false }
     private let state = Mutex(State())
     var started: Bool { state.withLock { $0.started } }
@@ -91,7 +93,8 @@ public actor VoiceLabTakeRun {
         }
         return (models, voices)
     }
-    public func prepare(_ input: VoiceLabTakeInput) async throws -> VoiceLabTakeRunQuote {
+    public func prepare(_ input: VoiceLabTakeInput, candidates: Int = VoiceLabPricing.maximumCandidates) async throws -> VoiceLabTakeRunQuote {
+        guard (1...VoiceLabPricing.maximumCandidates).contains(candidates) else { throw VoiceLabError.invalidInput }
         guard task == nil, executionOwner == nil, runningID == nil else { throw VoiceLabError.consentRequired }
         revision += 1
         dispatchRevision.withLock { $0 = revision }
@@ -119,7 +122,7 @@ public actor VoiceLabTakeRun {
         var takes: [VoiceLabTakeQuote] = []
         var quotes: [VoiceLabQuote] = []
         do {
-            for index in 0..<VoiceLabPricing.maximumCandidates {
+            for index in 0..<candidates {
                 let options = input.options(take: index)
                 let speech = try await client.prepareSynthesis(text: input.text, modelID: input.modelID,
                     voice: .own(voiceID: record.voiceId, policy: policy(record)), language: input.language, options: options, requestID: UUID())
@@ -158,6 +161,7 @@ public actor VoiceLabTakeRun {
         pending?.approvedAhead = true
     }
     public func execute(_ quote: VoiceLabTakeRunQuote, approved: Bool,
+                        keepingPreviousTakes: Bool = false,
                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in },
                         started: @escaping @Sendable () async throws -> Void = {}) async throws -> VoiceLabTakeRunResult {
         guard approved, task == nil, runningID == nil, executionOwner == nil, let value = pending, value.quote == quote else { throw VoiceLabError.consentRequired }
@@ -168,7 +172,7 @@ public actor VoiceLabTakeRun {
         pending = nil
         stop = .cancelled
         let quotes = quote.takes.flatMap { [$0.synthesis, $0.qa] }
-        let dispatch = VoiceLabRunDispatch()
+        let dispatch = VoiceLabRunDispatch(keepingPreviousTakes: keepingPreviousTakes)
         do {
             // A set pinned by a batch approval was fresh when the user approved the batch, and the client holds it since.
             let fresh: Bool
@@ -254,7 +258,7 @@ public actor VoiceLabTakeRun {
         var rows: [VoiceLabTakeRow] = []
         for take in value.quote.takes {
             do { try await validate(value, revision: expected) }
-            catch { return VoiceLabTakeRunResult(rows: rows, end: end(error)) }
+            catch { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
             var receipt: VoiceLabReceipt?
             var qaReceipt: VoiceLabReceipt?
             var generated: VoiceLabAudioResult?
@@ -327,10 +331,10 @@ public actor VoiceLabTakeRun {
                     qaReceipt: qaReceipt, generated: generated, quote: take))
                 await progress(rows)
                 do { try await validate(value, revision: expected) }
-                catch { return VoiceLabTakeRunResult(rows: rows, end: end(error)) }
+                catch { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
                 if qa.passed, case .exact = processed.fit { return VoiceLabTakeRunResult(rows: rows, end: .earlyStop) }
             } catch {
-                guard dispatch.started else { return VoiceLabTakeRunResult(rows: [], end: end(error)) }
+                guard dispatch.started else { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
                 // A request the provider accepted is in the spend ledger even when its reply failed and left no receipt.
                 var accepted = Set<UUID>()
                 if synthesisAccepted.accepted { accepted.insert(take.synthesis.requestID) }
@@ -356,7 +360,7 @@ public actor VoiceLabTakeRun {
                     run.start()
                 }
             }
-            if run.retire() { await self.retirePreviousTakes() }
+            if run.retire(), !run.keepingPreviousTakes { await self.retirePreviousTakes() }
         }
     }
     private func retirePreviousTakes() async {

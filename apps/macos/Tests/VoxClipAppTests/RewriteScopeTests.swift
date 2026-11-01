@@ -140,15 +140,18 @@ private final class WorkThreads: Sendable {
         session.configureGeneration(client: ElevenLabsVoiceLab(keys: ScopeTakeKeys(), region: .default),
                                     store: VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])), speaker: .unavailable)
         let generation = try #require(session.generation)
+        let fallback = VoiceLabWindow(firstWordId: "w20", lastWordId: "w21", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 21, end: 22.4,
+            startSample: 21_000, endSample: 22_400, leftSeam: .init(kind: .gap, time: 21, sample: 21_000, fadeSamples: 20),
+            rightSeam: .init(kind: .gap, time: 22.4, sample: 22_400, fadeSamples: 20))
+        let window = session.review?.voiceHunks.first?.window ?? fallback
+        let frames = Int64(EditingPrimitives.jsRound((window.end - window.start) * 24_000))
         let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
-            trimStartFrame: 0, trimEndFrame: 24_000, windowStart: 21, windowEnd: 22.4, windowStartSample: 21_000, windowEndSample: 22_400,
-            outputFrames: 24_000, words: [VoiceLabWord(text: "Hello", start: 0.1, end: 0.9, synthetic: true)])
+            trimStartFrame: 0, trimEndFrame: frames, windowStart: window.start, windowEnd: window.end,
+            windowStartSample: window.startSample, windowEndSample: window.endSample,
+            outputFrames: frames, words: [VoiceLabWord(text: "Hello", start: 0.1, end: 0.9, synthetic: true)])
         let audio = VoiceLabTakeAudio(sampleRate: 24_000, trimmed: [0.1], mixed: [0.1], patchRange: 0..<1, seams: [], gainDb: 0, roomTone: nil, fit: .exact(plan))
         let qa = VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -20, speakerScore: 0.8), failures: [])
         let row = VoiceLabTakeRow(id: UUID(), index: 0, seed: 0, audio: audio, qa: qa, score: 1, failure: nil)
-        let window = VoiceLabWindow(firstWordId: "w20", lastWordId: "w21", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 21, end: 22.4,
-            startSample: 21_000, endSample: 22_400, leftSeam: .init(kind: .gap, time: 21, sample: 21_000, fadeSamples: 20),
-            rightSeam: .init(kind: .gap, time: 22.4, sample: 22_400, fadeSamples: 20))
         let input = VoiceLabTakeInput(text: "new words", modelID: "fixture-model", recordID: "fixture-record", language: "en", seed: 7,
             contentKey: editor.project.media.source.contentKey, source: [], sourceSampleRate: 1_000, items: editor.words,
             window: window, incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
@@ -461,7 +464,7 @@ private final class WorkThreads: Sendable {
         #expect(generation.readyToAccept)
         let hold = PublicationHold()
         generation.publishForTests = { _, _, _ in await hold.pause(); throw CancellationError() }
-        let accepting = Task { await session.acceptTakes() }
+        let accepting = Task { await generation.accept(into: editor) }
         await hold.wait()
         step(undo) { editor.apply(.cutSelection(ids: ["w60"]), name: "Cut selection") }
         #expect(session.project == editor.project && session.current && proposal(session) != nil)

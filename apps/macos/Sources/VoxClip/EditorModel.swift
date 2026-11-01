@@ -162,7 +162,7 @@ struct EditorRenderSnapshot {
         guard session.isOpen, !session.isProposing else { return }
         rewriteOpenTask?.cancel()
         let count = session.proposalCount
-        guard count > 0, session.generation?.rows.isEmpty == false || session.hasEditedChanges else {
+        guard count > 0, session.hasPaidTakes || session.hasEditedChanges else {
             sendAgain(session, instruction: instruction)
             return
         }
