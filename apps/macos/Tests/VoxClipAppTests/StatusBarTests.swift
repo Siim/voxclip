@@ -343,6 +343,32 @@ import Testing
         editor.finding = false
     }
 
+    /// MVP integration: V11a's items, VX's export run and the Rewrite review count share the bar at 1280. The AI and its
+    /// billing, the running Find Clips, "Full Take · 2:10 · 8 cuts · 2 changes to review", the Frame and "Exporting 42%"
+    /// all show, in order, without overlap.
+    @Test func theExportRunAndTheReviewCountShareTheBarWithV11asItems() async throws {
+        let app = app("claude-code", ["claude-code": ConsentFixtureConnector(id: .claudeCode, readiness: .ready, authMethod: "claude.ai")])
+        let (_, editor, _, bar) = try await open(app)
+        defer { bar.tearDown(); editor.close() }
+        await detect(app)
+        let free = editor.words.filter { $0.kind == .word && !editor.cutWordIDs.contains($0.id) }
+        editor.proposal = TranscriptProposal(clipID: nil, title: "Rewrite full take", changes: (1...2).map {
+            TranscriptChange(ordinal: $0, parts: [.init(kind: .cut, sourceWordIDs: [free[$0 * 4].id])])
+        })
+        editor.exporting = true
+        editor.exportProgress = ExportProgress(phase: .encoding, fraction: 0.42)
+        editor.finding = true
+        let since = try #require(editor.findingSince)
+        bar.now = { since.addingTimeInterval(12) }
+        lay(bar, width: 1280)
+        #expect(bar.shown == [.harness, .billing, .task, .summary, .frame, .export])
+        #expect(bar.content[.billing]?.text == "No extra cost on your plan" && bar.content[.task]?.text == "Finding clips… 0:12")
+        #expect(bar.content[.summary]?.text == "Full Take · 2:10 · 8 cuts · 2 changes to review" && bar.content[.export]?.text == "Exporting 42%")
+        let shown = bar.shown.compactMap { bar.view($0) }
+        #expect(zip(shown, shown.dropFirst()).allSatisfy { $0.frame.maxX <= $1.frame.minX } && shown.last?.frame.maxX == 1272)
+        editor.finding = false; editor.exporting = false; editor.proposal = nil
+    }
+
     @Test func homeShowsNothing() async throws {
         let (shell, editor, _, bar) = try await open(app("claude-code"))
         defer { bar.tearDown(); editor.close() }

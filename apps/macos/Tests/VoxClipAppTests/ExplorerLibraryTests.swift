@@ -204,6 +204,40 @@ import Testing
         #expect(texts["explorer.export"] == nil && texts["explorer.voice"] == nil)
         #expect(texts["explorer.header.voices"] == "Voices, 1 item" && texts["explorer.header.exports"] == "Exports, 1 item")
     }
+    /// MVP integration: the Outline's change dots (V14 through the shell's seam) and V2b's bottom-pinned VOICES and
+    /// EXPORTS share the production Explorer. The library sits on the pane's bottom edge, bounded, under the List that
+    /// holds the Outline, and the Outline keeps its dots while the library is open.
+    @Test func outlineDotsAndTheLibraryShareTheExplorer() async throws {
+        let shell = try await shell(), editor = try #require(shell.editor)
+        defer { editor.close() }
+        try editor.app.exportLedger.record(record(editor.project))
+        let shared = try SharedResources.locate()
+        editor.app.settings.values["voiceLab.enabled"] = .bool(true)
+        editor.app.voiceLabSession.records = [try JSONDecoder().decode(VoiceConsentRecord.self,
+            from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))]
+        shell.setExplorerExpanded(.exports, true); shell.setExplorerExpanded(.voices, true); shell.setExplorerExpanded(.outline, true)
+        let entries = shell.outlineEntries
+        try #require(entries.count >= 2)
+        let word = try #require(editor.words[entries[1].words].first { !editor.cutWordIDs.contains($0.id) && $0.kind == .word })
+        editor.proposal = TranscriptProposal(clipID: nil, title: "Rewrite full take", changes: [TranscriptChange(ordinal: 1, parts: [.init(kind: .cut, sourceWordIDs: [word.id])])])
+        #expect(shell.outlineEntries.filter(\.pendingHunk).map(\.id) == [entries[1].id])
+        let size = NSSize(width: 224, height: 560)
+        let host = NSHostingView(rootView: ExplorerView(shell: shell).frame(width: size.width, height: size.height))
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: size.width, height: size.height), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = host
+        defer { window.contentView = nil; window.close() }
+        host.frame = NSRect(origin: .zero, size: size)
+        for _ in 0..<50 { host.layoutSubtreeIfNeeded(); if DebugRightColumn.markers(in: host)["explorer.header.outline"] != nil { break }; await Task.yield() }
+        let frames = DebugRightColumn.markers(in: host), texts = DebugRightColumn.texts(in: host)
+        let library = try #require(frames["explorer.library"]), outline = try #require(frames["explorer.header.outline"])
+        try #require(host.isFlipped)
+        #expect(abs(library.maxY - size.height) < 1, "the library sits on the pane's bottom edge: \(library)")
+        #expect(library.height <= 260 && library.height >= 2 * ExplorerMetrics.rowHeight + 2 * ExplorerMetrics.libraryRowHeight)
+        #expect(outline.maxY <= library.minY, "the Outline sits above the library: \(outline), \(library)")
+        #expect(texts["explorer.header.voices"] == "Voices, 1 item" && texts["explorer.header.exports"] == "Exports, 1 item")
+        #expect(shell.outlineEntries.filter(\.pendingHunk).map(\.id) == [entries[1].id])
+        editor.proposal = nil
+    }
     @Test func previewLibraryHasTheProductionInset() async throws {
         let shell = try await shell(), editor = try #require(shell.editor)
         defer { editor.close() }
