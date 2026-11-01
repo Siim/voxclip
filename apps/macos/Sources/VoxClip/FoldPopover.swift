@@ -28,13 +28,12 @@ extension EditorModel {
         }
         return "1 cut: " + items.joined(separator: ", ")
     }
-    /// Opens a fold in the transcript, as Show cuts shows it, and selects what it holds, so
-    /// Restore (⇧⌫) is one key away. It folds again when the selection leaves it.
+    /// Opens a fold in the transcript, as Show cuts shows it, by selecting what it holds, so
+    /// Restore (⇧⌫) is one key away. It folds again when the selection no longer ends in it.
     func expandFold(_ ids: [String]) {
-        guard let first = ids.first else { return }
+        guard !ids.isEmpty else { return }
         selectedWordIDs = Set(ids.filter { wordIndex[$0] != nil })
         selectedPauseIDs = Set(ids.filter { pauseIndex[$0] != nil })
-        expandedFolds[first] = Set(ids)
     }
     /// The popover's Restore: the fold's words and pauses come back as one undo step.
     func restoreFold(_ ids: [String]) {
@@ -43,16 +42,17 @@ extension EditorModel {
     }
     /// View › Show Cuts (⌥⌘C): every fold opens, in the transcript and, with the timeline's
     /// Source axis, on the timeline. A view setting: no undo step, no document change.
-    func toggleShowsCuts() {
-        showsCuts.toggle()
-        expandedFolds = [:]
-    }
-    /// Folds a click opened stay open while the selection holds some of their words or pauses.
-    func collapseFoldsOutsideSelection() {
-        guard !expandedFolds.isEmpty else { return }
-        let selection = selectedWordIDs.union(selectedPauseIDs)
-        let open = expandedFolds.filter { !$0.value.isDisjoint(with: selection) }
-        if open.count != expandedFolds.count { expandedFolds = open }
+    func toggleShowsCuts() { showsCuts.toggle() }
+    /// The selection's ends that are removed in the open clip: the folds that hold them open
+    /// (ux/v2 notes.md §5), so an arrow key, Find Next or a Delete that lands in a fold shows
+    /// what it selected. A fold between the ends stays folded and the selection's tint runs
+    /// over it. Outside the open clip there are no folds to open.
+    var openFoldEnds: [String] {
+        selectionEnds.filter { id in
+            guard cutWordIDs.contains(id) || cutPauseIDs.contains(id) else { return false }
+            guard let scope = scopeBounds else { return true }
+            return (wordIndex[id] ?? pauseIndex[id]?.afterIndex).map(scope.contains) ?? false
+        }
     }
 }
 

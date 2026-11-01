@@ -620,10 +620,12 @@ extension DebugTranscriptPixels {
         let rects = text.selectionLayer?.rects ?? []
         let font = renderer.font
         check("the selection tint is the text's height, ascender to descender (\(rects.map(\.height)))", rects.count == 1 && rects.allSatisfy { abs($0.height - (font.ascender - font.descender)) < 0.01 })
-        // The selection across a fold maps to the words either side, never the fold's.
+        // A selection across a fold holds the words either side and what the fold holds, as ⇧→ over it does.
         if let so = text.map.span(id: id(0)), let whilst = text.map.span(id: id(2)) {
             text.setSelectedRange(NSRange(location: so.range.location, length: NSMaxRange(whilst.range) - so.range.location))
-            check("a selection across a fold selects the words around it (\(model.selectedWordIDs.sorted()))", model.selectedWordIDs == [id(0), id(2)] && model.selectedPauseIDs.isEmpty)
+            check("a selection across a fold selects the words around it and what it holds (\(model.selectedWordIDs.sorted()), \(model.selectedPauseIDs.sorted()))",
+                  model.selectedWordIDs == [id(0), id(1), id(2)] && model.selectedPauseIDs == ["pause-after-\(id(0))"])
+            model.selectedPauseIDs = []
             model.selectedWordIDs = [id(3), id(4), id(5)]
             pane.update()
         }
@@ -700,7 +702,7 @@ extension DebugTranscriptPixels {
                   && model.selectedWordIDs == [id(9)] && model.selectedPauseIDs == ["pause-after-\(id(8))", "pause-after-\(id(9))"])
             model.select(id(17))
             pane.update(rebuild: true)
-            check("selecting elsewhere folds it again", displayed(text) == folded && model.expandedFolds.isEmpty)
+            check("selecting elsewhere folds it again", displayed(text) == folded && model.openFoldEnds.isEmpty)
         }
 
         // Restore is one undo step.

@@ -23,10 +23,10 @@ struct EditorRenderSnapshot {
             rewriteOpenTask?.cancel()
             // Selecting other words ends an open inline correction, as a click elsewhere ends an inline rename.
             if let id = correctionID, !selectedWordIDs.contains(id) { endCorrection() }
-            collapseFoldsOutsideSelection()
+            updateSelectionEnds()
         }
     }
-    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); collapseFoldsOutsideSelection() } } }
+    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); updateSelectionEnds() } } }
     var previewStop: Double?
     var playhead: Double = 0
     var sourceTime: Double = 0
@@ -38,8 +38,10 @@ struct EditorRenderSnapshot {
     var showsCuts = false
     /// Show Pauses: the lengths of uncut pauses in the open clip. An opt-in, off by default.
     var showPauses = false
-    /// Folds a click opened (`expandFold`): each fold's first word or pause, with all it holds.
-    var expandedFolds: [String: Set<String>] = [:]
+    /// The selection's first and last word or pause in reading order (a pause follows the
+    /// word before it), one id when they are the same. A fold opens while one of them is in
+    /// it (`openFoldEnds`), so what is selected always shows.
+    private(set) var selectionEnds: [String] = []
     var editedTimeline = false
     var findVisible = false
     var query = ""
@@ -916,10 +918,29 @@ struct EditorRenderSnapshot {
         if keep { saveCorrection() }
         correctionID = nil
     }
+    /// Finds the selection's first and last word or pause in reading order, from the
+    /// selection `didSet`s.
+    private func updateSelectionEnds() {
+        var lower: (position: Int, id: String)?, upper: (position: Int, id: String)?
+        func consider(_ id: String, at position: Int?) {
+            guard let position else { return }
+            if lower.map({ position < $0.position }) ?? true { lower = (position, id) }
+            if upper.map({ position > $0.position }) ?? true { upper = (position, id) }
+        }
+        for id in selectedWordIDs { consider(id, at: wordIndex[id].map { 2 * $0 }) }
+        for id in selectedPauseIDs { consider(id, at: pauseIndex[id].map { 2 * $0.afterIndex + 1 }) }
+        let ends = [lower?.id, upper?.id].compactMap { $0 }
+        let unique = ends.count == 2 && ends[0] == ends[1] ? [ends[0]] : ends
+        if unique != selectionEnds { selectionEnds = unique }
+    }
+    /// Selects a word, or with `extend` the words from the selection's first to it and the
+    /// cut pauses between them, as a drag over their folds selects them.
     func select(_ id: String, extend: Bool = false) {
-        selectedPauseIDs = []
-        if extend, let anchor = selectedIDs.first, let lower = index(anchor), let upper = index(id) { selectedWordIDs = Set(words[min(lower, upper)...max(lower, upper)].map(\.id)) }
-        else { selectedWordIDs = [id] }
+        if extend, let anchor = selectedIDs.first, let lower = index(anchor), let upper = index(id) {
+            let span = min(lower, upper)...max(lower, upper)
+            selectedPauseIDs = Set(span.dropLast().compactMap { pauseByAfterIndex[$0]?.id }.filter(cutPauseIDs.contains))
+            selectedWordIDs = Set(words[span].map(\.id))
+        } else { selectedPauseIDs = []; selectedWordIDs = [id] }
         if !isPlaying, let word = words.first(where: { $0.id == id }) { seek(source: word.start) }
     }
     func step(_ offset: Int, extend: Bool = false, sentence: Bool = false) {

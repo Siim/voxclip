@@ -91,14 +91,14 @@ import VoxClipCore
 
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextLayoutManagerDelegate {
         /// What the text shows, beyond the take's words: when it changes, `rebuild` writes the
-        /// paragraphs whose content changed. Folds follow the cuts and the open clip, so both
-        /// are part of it; a playhead tick is not.
+        /// paragraphs whose content changed. Folds follow the cuts, the open clip and the
+        /// selection's removed ends, so all three are part of it; a playhead tick is not.
         struct Content: Equatable {
             var layout: Int, showsCuts: Bool, showPauses: Bool, textSize: Double, pauseThreshold: Double
-            var scope: ClosedRange<Int>?, expanded: Set<String>, cutWords: Set<String>, cutPauses: Set<String>
+            var scope: ClosedRange<Int>?, openEnds: [String], cutWords: Set<String>, cutPauses: Set<String>
             @MainActor init(model: EditorModel) {
                 layout = model.transcriptLayoutRevision; showsCuts = model.showsCuts; showPauses = model.showPauses; textSize = model.textSize
-                pauseThreshold = model.project.edits.pauseThresholdSeconds; scope = model.scopeBounds; expanded = Set(model.expandedFolds.keys)
+                pauseThreshold = model.project.edits.pauseThresholdSeconds; scope = model.scopeBounds; openEnds = model.openFoldEnds
                 cutWords = model.cutWordIDs; cutPauses = model.cutPauseIDs
             }
         }
@@ -113,10 +113,20 @@ import VoxClipCore
             let ranges = proposed.flatMap { text.map.selectionRanges(in: $0.rangeValue) }
             return ranges.isEmpty ? old : ranges.map { NSValue(range: $0) }
         }
+        /// The selection's words and pauses: those of its selectable spans and of the folds
+        /// between them, which `selectionRanges` leaves out of the ranges, so a drag across a
+        /// fold holds what ⇧→ over it holds (notes.md §5).
         func textViewDidChangeSelection(_ notification: Notification) {
             guard !updating, let text else { return }
-            let spans = text.selectedRanges.flatMap { text.map.intersecting($0.rangeValue).filter(\.selectable) }; model.selectedWordIDs = Set(spans.filter { !$0.pause }.flatMap { $0.ids.isEmpty ? [$0.id] : $0.ids })
-            model.selectedPauseIDs = Set(spans.filter(\.pause).map(\.id))
+            let spans = text.map.selected(text.selectedRanges.map(\.rangeValue))
+            var words = Set<String>(), pauses = Set<String>()
+            for span in spans {
+                if span.kind == .fold {
+                    for id in span.ids { if model.pauseIndex[id] != nil { pauses.insert(id) } else { words.insert(id) } }
+                } else if span.pause { pauses.insert(span.id) } else { words.formUnion(span.ids.isEmpty ? [span.id] : span.ids) }
+            }
+            model.selectedWordIDs = words
+            model.selectedPauseIDs = pauses
             text.updateSelectionLayer()
             text.selectionDidChange()
             if !model.isPlaying, let id = spans.first?.id, let position = model.index(id) { model.seek(source: model.words[position].start) }

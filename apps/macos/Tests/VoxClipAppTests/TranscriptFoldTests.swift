@@ -120,9 +120,10 @@ import Testing
         #expect(model.selectedWordIDs == [id(model, 6)] && model.selectedPauseIDs == ["pause-after-\(id(model, 6))"])
         // Selecting inside it keeps it open; selecting elsewhere folds it again.
         model.selectedPauseIDs = []
-        #expect(model.expandedFolds.count == 1)
+        render(model, renderer)
+        #expect(text.map.span(id: id(model, 6))?.kind == .text && model.openFoldEnds == [id(model, 6)])
         model.select(id(model, 3))
-        #expect(model.expandedFolds.isEmpty)
+        #expect(model.openFoldEnds.isEmpty)
         render(model, renderer)
         #expect(text.map.span(id: id(model, 6))?.kind == .fold)
     }
@@ -163,13 +164,14 @@ import Testing
                            "1 cut: pause 1.0 seconds, uh, pause 0.8 seconds, Cuts", "1 cut: uh, pause 1.0 seconds, um, Cuts"])
     }
 
-    @Test func aSelectionAcrossAFoldSelectsTheWordsAroundIt() throws {
+    @Test func aSelectionAcrossAFoldSelectsTheWordsAroundItAndWhatItHolds() throws {
         let model = try editor(); defer { model.close() }
         let (text, _, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
         let so = try #require(text.map.span(id: id(model, 0))), whilst = try #require(text.map.span(id: id(model, 2)))
         text.setSelectedRange(NSRange(location: so.range.location, length: NSMaxRange(whilst.range) - so.range.location))
-        #expect(model.selectedWordIDs == [id(model, 0), id(model, 2)] && model.selectedPauseIDs.isEmpty)
+        #expect(model.selectedWordIDs == [id(model, 0), id(model, 1), id(model, 2)] && model.selectedPauseIDs == ["pause-after-\(id(model, 0))"])
+        #expect(model.openFoldEnds.isEmpty, "the fold between the ends stays folded")
         // A click on a fold's characters selects the nearest word, never the fold.
         let fold = try #require(text.map.span(id: id(model, 1)))
         text.setSelectedRange(NSRange(location: fold.range.location + 1, length: 0))
@@ -265,6 +267,70 @@ import Testing
     }
 
     // MARK: Review fixes
+
+    /// The pane as the editor renders it (`TranscriptTextView.render` and `select`), in a
+    /// window that is never shown.
+    private func shown(_ model: EditorModel, height: CGFloat = 488) throws -> TranscriptPane {
+        try TranscriptPane(model: model, size: NSSize(width: 652, height: height))
+    }
+
+    @Test func aDragAcrossAFoldHoldsItsWordsAndPausesAsShiftArrowsDo() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try shown(model); defer { pane.close() }
+        let text = pane.text
+        let include = try #require(text.map.span(id: id(model, 35))), source = try #require(text.map.span(id: id(model, 38)))
+        let fold = try #require(text.map.span(id: id(model, 36)))
+        text.setSelectedRange(NSRange(location: include.range.location, length: NSMaxRange(source.range) - include.range.location))
+        let words = Set((35...38).map { id(model, $0) }), pauses: Set = ["pause-after-\(id(model, 36))"]
+        #expect(model.selectedWordIDs == words && model.selectedPauseIDs == pauses, "a drag across include•source holds uh, um and the pause between them")
+        pane.update()
+        #expect(DebugTranscriptPixels.displayed(text)[1].contains("include•source"), "a fold between the selection's ends stays folded")
+        let rects = text.selectionRects(), box = try #require(text.foldBox(fold))
+        #expect(rects.count == 1 && rects.first.map { $0.minX < box.minX && $0.maxX > box.maxX } == true, "the tint runs over the fold")
+        // ⇧→ three times from include selects the same words and pauses.
+        model.select(id(model, 35))
+        for _ in 0..<3 { model.step(1, extend: true) }
+        #expect(model.selectedWordIDs == words && model.selectedPauseIDs == pauses)
+        // ⇧⌫ after the drag restores what the fold held, as its popover's Restore does.
+        text.setSelectedRange(NSRange(location: include.range.location, length: NSMaxRange(source.range) - include.range.location))
+        model.cutSelection(restore: true)
+        #expect(model.cutWordIDs.isDisjoint(with: words) && model.cutPauseIDs.isDisjoint(with: pauses))
+    }
+
+    @Test func theFoldTheSelectionEndsInOpensSoTheSelectionShows() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try shown(model); defer { pane.close() }
+        let text = pane.text
+        func shows(_ index: Int) -> Bool { text.map.span(id: id(model, index))?.kind == .text }
+        func tinted(_ index: Int) -> Bool {
+            guard let span = text.map.span(id: id(model, index)), span.selectable else { return false }
+            return text.selectedRanges.map(\.rangeValue) == [span.range] && text.selectionRects().count == 1
+        }
+        // → from include onto the cut uh opens its fold and tints uh.
+        model.select(id(model, 35)); pane.update()
+        model.step(1); pane.update()
+        #expect(model.selectedWordIDs == [id(model, 36)] && tinted(36))
+        #expect(DebugTranscriptPixels.displayed(text)[1].contains("include, uh, 1.0\u{00A0}s um, source"), "\(DebugTranscriptPixels.displayed(text)[1])")
+        model.step(1); pane.update()
+        #expect(model.selectedWordIDs == [id(model, 37)] && tinted(37))
+        // Onto the kept word after it, the fold closes.
+        model.step(1); pane.update()
+        #expect(model.selectedWordIDs == [id(model, 38)] && tinted(38) && !shows(36) && DebugTranscriptPixels.displayed(text)[1].contains("include•source"))
+        // Find Next on a cut filler opens its fold.
+        model.query = "um"; model.findNext(); pane.update()
+        #expect(model.selectedWordIDs == [id(model, 37)] && tinted(37))
+        model.query = ""
+        // Delete cuts the word, which stays in view, struck, while it is selected: a second Delete visibly restores it.
+        model.select(id(model, 11)); pane.update()
+        model.toggleSelectionCut(); pane.update()
+        #expect(model.cutWordIDs.contains(id(model, 11)) && model.selectedWordIDs == [id(model, 11)] && tinted(11))
+        #expect(pane.renderer.attributes[id(model, 11)]?[.vcStrike] as? Bool == true)
+        model.toggleSelectionCut(); pane.update()
+        #expect(!model.cutWordIDs.contains(id(model, 11)) && tinted(11))
+        // Once the selection moves on, the cut word folds.
+        model.toggleSelectionCut(); model.select(id(model, 12)); pane.update()
+        #expect(text.map.span(id: id(model, 11))?.kind == .fold && DebugTranscriptPixels.displayed(text)[0].contains("app,•videos,") && tinted(12))
+    }
 
     @Test func aRunOfRemovalsIsOneFoldAcrossAnotherClipsEdge() throws {
         let model = try editor(); defer { model.close() }

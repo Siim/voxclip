@@ -211,6 +211,23 @@ struct TranscriptRangeMap {
         if start < NSMaxRange(extent) { result.append(NSRange(location: start, length: NSMaxRange(extent) - start)) }
         return result
     }
+    /// The spans a selection holds: the selectable spans in its ranges, then the folds in a
+    /// gap between two ranges that holds nothing selectable. `selectionRanges` leaves those
+    /// folds out of the ranges it snaps a selection to.
+    func selected(_ ranges: [NSRange]) -> [TranscriptSpan] {
+        let ranges = ranges.sorted { $0.location < $1.location }
+        var result: [TranscriptSpan] = []
+        for (index, range) in ranges.enumerated() {
+            if index > 0 {
+                let previous = NSMaxRange(ranges[index - 1])
+                let gap = NSRange(location: previous, length: max(0, range.location - previous))
+                let between = gap.length > 0 ? intersecting(gap).filter { NSIntersectionRange($0.range, gap).length > 0 } : []
+                if !between.contains(where: \.selectable) { result += between.filter { $0.kind == .fold } }
+            }
+            result += intersecting(range).filter(\.selectable)
+        }
+        return result
+    }
     func intersecting(_ range: NSRange) -> [TranscriptSpan] {
         let lower = lowerBound(range.location)
         var result: [TranscriptSpan] = []
@@ -450,17 +467,17 @@ struct TranscriptAppearance: Equatable {
     /// shown.
     ///
     /// In the open clip (every word in Full Take), each run of removed words and pauses is one
-    /// fold (notes.md §5), or, under Show cuts and in an opened fold, its words and pause
-    /// lengths. A run reaches over the pauses that show nothing and stops at a paragraph
-    /// break and at the open clip's edges, where its removals end, so the band never starts
-    /// or ends inside a fold; other clips' edges do not split it. A comma that only exists
-    /// because a filler follows folds with
+    /// fold (notes.md §5), or, under Show cuts and in the fold the selection starts or ends
+    /// in (`EditorModel.openFoldEnds`), its words and pause lengths. A run reaches over the
+    /// pauses that show nothing and stops at a paragraph break and at the open clip's edges,
+    /// where its removals end, so the band never starts or ends inside a fold; other clips'
+    /// edges do not split it. A comma that only exists because a filler follows folds with
     /// it (`DisplayPunctuation`). Uncut pauses show only with Show Pauses. Outside the open
     /// clip the words read as said: no folds, no struck words and no pauses.
     private func contents(model: EditorModel, replacements: [VoiceLabSegment]) -> [TranscriptParagraphContent] {
         let words = transcript
         let cutWords = model.cutWordIDs, cutPauses = model.cutPauseIDs, fillers = model.fillerCandidateIDs
-        let showsCuts = model.showsCuts, expanded = model.expandedFolds, scope = model.scopeBounds
+        let showsCuts = model.showsCuts, openEnds = model.openFoldEnds, scope = model.scopeBounds
         let pauses = model.pauseByAfterIndex, showPauses = model.showPauses
         var segments: [String: VoiceLabSegment] = [:]
         for segment in replacements where segments[segment.replace.firstWordId] == nil { segments[segment.replace.firstWordId] = segment }
@@ -500,7 +517,7 @@ struct TranscriptAppearance: Equatable {
                         if cutPauses.contains(pause.id) { ids.append(pause.id); items.append(pausePiece(pause)) }
                         else if showPauses { trailing = pausePiece(pause); break }
                     }
-                    let open = showsCuts || ids.first.map { expanded[$0] != nil } == true
+                    let open = showsCuts || openEnds.contains(where: ids.contains)
                     // The kept word before the run reads without a comma that only exists because a filler follows.
                     let wordFollows = position < paragraph.upperBound
                     if let last = content.pieces.last, last.kind == .word, !cutWords.contains(last.id), wordIndex[last.id].map(inside) == true,
