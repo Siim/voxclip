@@ -103,6 +103,67 @@ import Testing
         #expect(text.popoverChange == nil && model.correctionID == id(model, 40))
     }
 
+    /// notes.md §5: after Keep the change is gone like a commit. Restoring its words or
+    /// correcting them again never brings it back, and Keep All never applies it again.
+    @Test func aKeptCutOrFixStaysKeptWhenItsWordsChangeAgain() throws {
+        let model = try editor(); defer { model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        defer { model.undoManager = nil }
+        func step(_ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
+        let site = (78...86).map { id(model, $0) }
+        step { model.keepChange(3) }
+        #expect(model.proposal?[3]?.state == .kept && model.cutWordIDs.isSuperset(of: site))
+        step { model.apply(.restoreCuts, name: "Restore cuts") }
+        #expect(model.cutWordIDs.isDisjoint(with: site) && model.proposalDisplay?.shown(3) == nil && model.proposal?[3]?.state == .kept, "Restore All Cuts brings no hunk back")
+        step { model.keepAllChanges() }
+        #expect(model.cutWordIDs.isDisjoint(with: site) && model.cutWordIDs.contains(id(model, 91)), "Keep All leaves the restored words alone")
+        // ⌘Z of Keep All, of the restore and of the Keep: the change waits again.
+        undo.undo(); undo.undo(); undo.undo()
+        #expect(model.proposal?[3]?.state == .pending && model.proposalDisplay?.shown(3) != nil && model.cutWordIDs.isDisjoint(with: site))
+
+        let word = id(model, 87)  // "and"
+        model.proposal = TranscriptProposal(clipID: "hunk-clip", title: "Rewrite clip 1", changes: [
+            TranscriptChange(ordinal: 1, parts: [.init(kind: .textOnly, sourceWordIDs: [word], newTokens: ["And"], correctedTexts: ["And"])])
+        ])
+        step { model.keepChange(1) }
+        step { model.apply(.correct(id: word, text: "Also"), name: "Correct spelling") }
+        #expect(model.proposalDisplay?.shown.isEmpty == true && !model.hasUnreviewedChanges(clipID: "hunk-clip"), "a corrected word brings no fix back")
+        var applied = true
+        step { applied = model.keepAllChanges() }
+        #expect(!applied && model.text(model.words[87]) == "Also", "and Keep All writes nothing over the correction")
+    }
+
+    /// The undo of a Keep puts the change back as it was, and only into its own proposal.
+    @Test func theUndoOfAKeepPutsBackItsOwnProposalsStatesOnly() throws {
+        let model = try editor(); defer { model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        defer { model.undoManager = nil }
+        func step(_ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
+        let site = (78...86).map { id(model, $0) }
+        // Keep on a change left out, then ⌘Z: left out again, and Keep All leaves it out.
+        model.excludeChange(3)
+        step { model.keepChange(3) }
+        #expect(model.proposal?[3]?.state == .kept && model.cutWordIDs.isSuperset(of: site))
+        undo.undo()
+        #expect(model.proposal?[3]?.state == .excluded && model.cutWordIDs.isDisjoint(with: site))
+        step { model.keepAllChanges() }
+        #expect(model.proposal?[3]?.state == .excluded && model.cutWordIDs.isDisjoint(with: site) && model.cutWordIDs.contains(id(model, 91)))
+        // An edit made after Keep All stays through its undo: only the states go back.
+        model.editChange(5, text: "automatic clipper")
+        undo.undo()
+        #expect(model.proposal?[5]?.state == .pending && model.proposal?[5]?.kind == .fix && !model.cutWordIDs.contains(id(model, 91)))
+        undo.redo()
+        #expect(model.proposal?[4]?.state == .kept && model.cutWordIDs.contains(id(model, 91)))
+        // Once another proposal stands in its place, ⌘Z undoes the project alone.
+        var next = DebugTranscriptPixels.proposal(for: model)
+        next.title = "Rewrite clip 1, again"
+        model.proposal = next
+        undo.undo()
+        #expect(model.proposal == next && !model.cutWordIDs.contains(id(model, 91)))
+        undo.redo()
+        #expect(model.proposal == next && model.cutWordIDs.contains(id(model, 91)))
+    }
+
     @Test func aFocusMoveWritesOnlyTheParagraphsOfTheTwoChanges() throws {
         let model = try editor(); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))

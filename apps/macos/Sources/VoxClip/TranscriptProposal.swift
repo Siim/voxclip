@@ -11,9 +11,11 @@ struct TranscriptChange: Equatable, Identifiable {
         case cut, fix, voice
         static func < (lhs: Kind, rhs: Kind) -> Bool { lhs.rawValue < rhs.rawValue }
     }
-    /// Pending until reviewed (impl-plan item 7). A kept cut or fix is applied to the project,
-    /// so it reads as the project from then on; only a kept voice change, which is included for
-    /// takes and changes nothing yet, keeps `.kept`. An excluded change shows its original words.
+    /// Pending until reviewed (impl-plan item 7). A kept cut or fix is applied to the project and
+    /// is gone from the transcript like a commit (notes.md §5), even when its words are restored
+    /// or corrected again later; only ⌘Z of its Keep takes it back to pending. A kept voice
+    /// change is included for takes and changes nothing yet, so it still shows. An excluded
+    /// change shows its original words.
     enum State: Equatable { case pending, kept, excluded }
     /// One §8.2 hunk of the change: `VoiceLabDiffHunk`'s values.
     struct Part: Equatable {
@@ -108,6 +110,9 @@ enum TranscriptChangeSegment: Equatable {
 /// the Keep and Undo buttons act on, and the tab it belongs to (design.md §6.3.5). It changes
 /// no project until a change is kept. V13 fills it from C2's hunks; V15's change list reads it.
 struct TranscriptProposal: Equatable {
+    /// Which proposal this is: the undo of a Keep puts change states back only into the
+    /// proposal it was made in, never into one a later Rewrite put in its place.
+    let id = UUID()
     /// The open clip it belongs to; nil for Full Take. It shows only while that tab is open.
     var clipID: String?
     /// The scope's title, "Rewrite clip 1": Keep All's undo name.
@@ -258,13 +263,13 @@ extension EditorModel {
     func isPunctuationOnly(_ change: TranscriptChange) -> Bool { TranscriptChangeReader(self).isPunctuationOnly(change) }
 
     /// The proposal as the open tab shows it, or nil when it belongs to another tab. Shown are
-    /// the changes not yet in the project whose words are in the take, less punctuation-only
-    /// fixes.
+    /// the changes not kept into the project and not already in it whose words are in the take,
+    /// less punctuation-only fixes (notes.md §5: never drawn; Keep All still applies them).
     var proposalDisplay: TranscriptProposalDisplay? {
         guard let proposal, proposal.clipID == project.edits.activeClipId else { return nil }
         let reader = TranscriptChangeReader(self), index = reader.wordIndex
         let visible = proposal.changes.filter { change in
-            !reader.isPunctuationOnly(change) && !reader.isApplied(change) && change.span.allSatisfy { index[$0] != nil }
+            !(change.isFree && change.state == .kept) && !reader.isPunctuationOnly(change) && !reader.isApplied(change) && change.span.allSatisfy { index[$0] != nil }
                 && (change.anchor.map { anchor in
                     switch anchor { case .after(let id), .before(let id): index[id] != nil }
                 } ?? true) && !(change.span.isEmpty && change.anchor == nil)
@@ -395,24 +400,22 @@ extension EditorModel {
         }
         return commands
     }
-    /// Keep (⌘↩, impl-plan item 7): a cut or fix applies as one undo step, "Keep change {i}";
-    /// a voice change is included for takes, with no project change and no undo step.
+    /// Keep (⌘↩, impl-plan item 7): a cut or fix applies as one undo step, "Keep change {i}",
+    /// whose undo also puts the change back as it was, pending or left out; a voice change is
+    /// included for takes, with no project change and no undo step. Either is `.kept` from then on.
     @discardableResult func keepChange(_ ordinal: Int) -> Bool {
         guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }) else { return false }
         let change = proposal.changes[index], order = proposalDisplay?.shown.map(\.ordinal) ?? []
         guard change.state != .kept else { return false }
-        if change.kind == .voice {
-            let previous = self.proposal
-            proposal.changes[index].state = .kept
-            self.proposal = proposal
-            // A voice change's free parts (an edit split it) apply with it, and undo with it.
-            let free = commands(change)
-            if !free.isEmpty { registerProposalUndo(previous); apply(free, name: "Keep change \(ordinal)") }
-        } else {
-            proposal.changes[index].state = .pending
-            self.proposal = proposal
-            guard apply(commands(change), name: "Keep change \(ordinal)") else { return false }
+        let previous = proposal
+        proposal.changes[index].state = .kept
+        // A cut's or fix's commands, or a voice change's free parts (an edit split it), apply with it.
+        let free = commands(change)
+        if !free.isEmpty {
+            guard apply(free, name: "Keep change \(ordinal)") else { return false }
+            registerProposalUndo(previous)
         }
+        self.proposal = proposal
         advanceFocus(after: ordinal, order: order)
         announce("Kept change \(ordinal)")
         return true
@@ -430,30 +433,43 @@ extension EditorModel {
     }
     @discardableResult func keepFocusedChange() -> Bool { proposalDisplay?.focused.map { keepChange($0) } ?? false }
     @discardableResult func excludeFocusedChange() -> Bool { proposalDisplay?.focused.map { excludeChange($0) } ?? false }
-    /// Keep All (impl-plan item 7): every change not excluded; the free ones apply as one undo
-    /// step named for the scope ("Rewrite clip 1") and the voice ones are included for takes.
+    /// Keep All (impl-plan item 7): every change still pending. The free ones apply as one
+    /// undo step named for the scope ("Rewrite clip 1") and the voice ones are included for
+    /// takes; all of them are `.kept`, so a later edit of their words never brings them back.
     @discardableResult func keepAllChanges() -> Bool {
         guard capabilities.edit, var proposal else { return false }
         let reader = TranscriptChangeReader(self)
-        let kept = proposal.changes.filter { $0.state != .excluded && !reader.isApplied($0) }
+        let kept = proposal.changes.filter { $0.state == .pending && !reader.isApplied($0) }
         guard !kept.isEmpty else { return false }
-        let previous = self.proposal
-        for index in proposal.changes.indices where proposal.changes[index].state != .excluded && proposal.changes[index].kind == .voice { proposal.changes[index].state = .kept }
-        self.proposal = proposal
+        let previous = proposal
+        for index in proposal.changes.indices where proposal.changes[index].state == .pending { proposal.changes[index].state = .kept }
         let free = kept.flatMap(commands)
-        // Its undo step also takes the voice changes back to pending.
-        if !free.isEmpty { registerProposalUndo(previous); apply(free, name: proposal.title) }
+        // Its undo step also takes every change it kept back to pending.
+        if !free.isEmpty {
+            guard apply(free, name: proposal.title) else { return false }
+            registerProposalUndo(previous)
+        }
+        self.proposal = proposal
         announce(kept.count == 1 ? "Applied 1 change" : "Applied \(kept.count) changes")
         return true
     }
 
-    /// Registers, in the step a Keep's project change makes, putting the proposal back as it
-    /// was, so the undo takes kept voice changes back to pending; the redo keeps them again.
-    private func registerProposalUndo(_ previous: TranscriptProposal?) {
+    /// Registers, in the step a Keep's cuts and corrections make, putting the changes' states
+    /// and the focus back as they were, so ⌘Z takes what it kept back to pending (or left out)
+    /// and ⌘⇧Z keeps them again. It acts only on the proposal it was made in: once a later
+    /// Rewrite replaces or clears the proposal, the step undoes the project alone, and the
+    /// changes' words as an edit left them stay.
+    private func registerProposalUndo(_ previous: TranscriptProposal) {
+        let id = previous.id, focused = previous.focused
+        let states = Dictionary(previous.changes.map { ($0.ordinal, $0.state) }, uniquingKeysWith: { first, _ in first })
         undoManager?.registerUndo(withTarget: self) { model in
-            let current = model.proposal
-            model.registerProposalUndo(current)
-            model.proposal = previous
+            guard var proposal = model.proposal, proposal.id == id else { return }
+            model.registerProposalUndo(proposal)
+            for index in proposal.changes.indices {
+                if let state = states[proposal.changes[index].ordinal] { proposal.changes[index].state = state }
+            }
+            proposal.focused = focused
+            model.proposal = proposal
         }
     }
 
