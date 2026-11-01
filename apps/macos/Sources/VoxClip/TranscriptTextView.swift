@@ -32,6 +32,7 @@ import VoxClipCore
         text.installBackdrop()
         text.installSelectionLayer()
         text.installProposalLayer()
+        text.relayViewportLayout()
         scroll.documentView = text; scroll.hasVerticalScroller = true; scroll.drawsBackground = false
         text.observeSelectionScrolling(scroll)
         coordinator.text = text
@@ -342,6 +343,39 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
 }
 
+/// Stands between a transcript's viewport layout controller and its text view. It passes
+/// every delegate call on to the text view and, after each finished layout, lets the
+/// transcript place its layers. NSTextView declares its viewport delegate methods only from
+/// the macOS 27 SDK, so overriding them would not build with the macOS 26 SDK.
+final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDelegate {
+    private weak var base: (any NSTextViewportLayoutControllerDelegate)?
+    private let didLayout: @MainActor () -> Void
+    init(base: (any NSTextViewportLayoutControllerDelegate)?, didLayout: @escaping @MainActor () -> Void) {
+        self.base = base
+        self.didLayout = didLayout
+    }
+    func viewportBounds(for controller: NSTextViewportLayoutController) -> CGRect {
+        base?.viewportBounds(for: controller) ?? .zero
+    }
+    func textViewportLayoutController(_ controller: NSTextViewportLayoutController, configureRenderingSurfaceFor fragment: NSTextLayoutFragment) {
+        base?.textViewportLayoutController(controller, configureRenderingSurfaceFor: fragment)
+    }
+    func textViewportLayoutControllerWillLayout(_ controller: NSTextViewportLayoutController) {
+        base?.textViewportLayoutControllerWillLayout?(controller)
+    }
+    func textViewportLayoutControllerDidLayout(_ controller: NSTextViewportLayoutController) {
+        base?.textViewportLayoutControllerDidLayout?(controller)
+        let didLayout = didLayout
+        MainActor.assumeIsolated { didLayout() }
+    }
+    /// Delegate methods the relay does not name, such as the macOS 27 rendering surface cache
+    /// and set-needs-layout calls, go to the text view unchanged.
+    override func responds(to selector: Selector!) -> Bool {
+        super.responds(to: selector) || base?.responds(to: selector) == true
+    }
+    override func forwardingTarget(for selector: Selector!) -> Any? { base }
+}
+
 @MainActor final class TranscriptNSTextView: NSTextView, NSTextFieldDelegate, @preconcurrency NSAccessibilityCustomRotorItemSearchDelegate {
     weak var model: EditorModel?
 
@@ -353,9 +387,11 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         return max(120, min((width - gutter - Double(TranscriptGutter.trailing)).clamped(to: 480...Double(VCTokens.sizeTranscriptMeasureMax)), width - gutter))
     }
     /// A transcript that arrives after the editor showed, for example when transcription
-    /// finishes, takes the keyboard focus the editor still wants.
+    /// finishes, takes the keyboard focus the editor still wants. The viewport relay is
+    /// checked here too, in case AppKit made the view its controller's delegate again.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        relayViewportLayout()
         guard let window, model?.wantsTranscriptFocus == true else { return }
         Task { @MainActor [weak self] in
             guard let self, self.window === window, let model = self.model, model.wantsTranscriptFocus else { return }
@@ -390,11 +426,21 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         addSubview(caret, positioned: .above, relativeTo: layer)
         selectionLayer = layer; self.caret = caret
     }
+    private var viewportRelay: TranscriptViewportRelay?
+    /// Puts the relay between the viewport layout controller and this view, so each finished
+    /// viewport layout also places the transcript's layers. Safe to call again: it rewraps
+    /// only when AppKit has made the view the controller's delegate again.
+    func relayViewportLayout() {
+        guard let controller = textLayoutManager?.textViewportLayoutController else { return }
+        if let viewportRelay, controller.delegate === viewportRelay { return }
+        let relay = TranscriptViewportRelay(base: controller.delegate) { [weak self] in self?.viewportDidLayout() }
+        viewportRelay = relay
+        controller.delegate = relay
+    }
     /// Every viewport layout (scrolling, resizing, new text) moves the backdrop, the
     /// selection, the caret and the overview ruler's visible window with the lines TextKit
     /// just placed.
-    override func textViewportLayoutControllerDidLayout(_ controller: NSTextViewportLayoutController) {
-        super.textViewportLayoutControllerDidLayout(controller)
+    func viewportDidLayout() {
         updateBackdrop()
         updateSelectionLayer()
         updateCaret()
