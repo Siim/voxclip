@@ -182,6 +182,7 @@ import VoxClipCore
             let spoken = sliders.compactMap { attribute($0, kAXValueDescriptionAttribute) as? String }
             check("\(name) reaches VoiceOver with the playhead's spoken value", ax.isEmpty || spoken.contains(model.timelineAccessibilityValue))
             check("\(name) shows the toolbar's timecode readout", ax.isEmpty || ax.contains { attribute($0, kAXIdentifierAttribute) as? String == "voxclip.timeline.time" })
+            results += toolbarChecks(name: name, axis: axis, model: model, elements: ax)
             if DebugUISuite.sessionLocked {
                 results.append(.init(name: "capture \(name)", passed: true, skipped: "the console session is locked"))
             } else {
@@ -247,6 +248,33 @@ import VoxClipCore
             }
         }
         check("has a waveform", lane.drawn.columns > 20)
+        return results
+    }
+
+    /// The toolbar through the AX API (notes.md §6): Edited / Source as the picker "Timeline
+    /// time" that switches Show cuts, ⏮ and ⏭, the src TC on Edited only, and the selection's length.
+    private static func toolbarChecks(name: String, axis: TimelineAxis, model: EditorModel, elements: [AXUIElement]) -> [DebugUISuite.Result] {
+        guard !elements.isEmpty else { return [.init(name: "\(name) toolbar through the AX API", passed: true, skipped: "no AX tree for the panel window")] }
+        var results: [DebugUISuite.Result] = []
+        func check(_ label: String, _ passed: Bool) { results.append(.init(name: "\(name) \(label)", passed: passed)) }
+        func element(_ identifier: String) -> AXUIElement? { elements.first { attribute($0, kAXIdentifierAttribute) as? String == identifier } }
+        func label(_ element: AXUIElement?) -> String? {
+            guard let element else { return nil }
+            return [kAXDescriptionAttribute, kAXTitleAttribute].lazy.compactMap { attribute(element, $0) as? String }.first { !$0.isEmpty }
+        }
+        check("has Go to start and Go to end", label(element("voxclip.timeline.start")) == "Go to start" && label(element("voxclip.timeline.end")) == "Go to end")
+        check(axis == .edited ? "shows the src TC" : "has no src TC on Source", (element("voxclip.timeline.sourceTime") != nil) == (axis == .edited))
+        let length = label(element("voxclip.timeline.selectionLength"))
+        check("shows the selection's length (\(length ?? "none"))", length?.hasSuffix(" seconds selected") == true)
+        let radios = elements.filter { attribute($0, kAXRoleAttribute) as? String == kAXRadioButtonRole }
+        let titles = radios.compactMap { label($0) }
+        check("reads Edited / Source as a two-option picker (\(titles))", titles.contains("Edited") && titles.contains("Source"))
+        if let other = radios.first(where: { label($0) == (axis == .edited ? "Source" : "Edited") }) {
+            let before = model.showsCuts
+            _ = AXUIElementPerformAction(other, kAXPressAction as CFString)
+            check("switches Show cuts from the picker", model.showsCuts != before)
+            model.showsCuts = before
+        }
         return results
     }
 

@@ -530,7 +530,7 @@ private actor TimelineTestSettings: SettingsStore {
     }
 
     /// A Voice Lab patch on Edited (notes.md §6): an `ai.tint` 10% fill with no outline and no
-    /// seam of its own.
+    /// seam of its own; with the playhead in it the src TC reads "AI voice".
     @Test func anAIPatchIsABlueFillWithoutSeams() throws {
         let app = try app()
         let model = try audioModel(app)
@@ -556,6 +556,12 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(try pixels.shows(x(7.2), top + 2.25, "ai.tint", alpha: 0.10, over: "timeline.lane"))
         #expect(try pixels.shows(x(7.2), top + 1.5, "ai.tint", alpha: 0.10, over: "timeline.lane"))
         #expect(try pixels.shows(x(3), top + 2.25, "timeline.audioPiece"))
+        model.playhead = 7.2
+        #expect(model.playheadInAIVoice)
+        model.playhead = 5.9
+        #expect(!model.playheadInAIVoice)
+        model.playhead = 8.5
+        #expect(!model.playheadInAIVoice)
     }
 
     /// Until the waveform arrives (or with no media to read) A1 draws one capsule per kept

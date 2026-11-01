@@ -13,6 +13,21 @@ extension EditorModel {
     /// The scope's pieces, from the plan the preview and export use.
     var timelinePieces: TimelinePieces { renderTimeline.map(TimelinePieces.init) ?? TimelinePieces([]) }
 
+    /// True while the playhead plays a Voice Lab patch, whose audio is your AI voice rather
+    /// than the take: the toolbar's src TC reads "src AI voice" (notes.md §6).
+    var playheadInAIVoice: Bool {
+        guard let plan = voiceLabPlan else { return false }
+        let sample = playhead * plan.sampleRate
+        var lower = 0, upper = plan.pieces.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if Double(plan.pieces[middle].outputEndSample) <= sample { lower = middle + 1 } else { upper = middle }
+        }
+        guard plan.pieces.indices.contains(lower) else { return false }
+        let piece = plan.pieces[lower]
+        return piece.kind == .synth && Double(piece.outputStartSample) <= sample
+    }
+
     /// How long the axis runs: the scope's output on Edited, the take on Source.
     func timelineLength(on axis: TimelineAxis) -> Double { axis == .edited ? duration : sourceDuration }
 
