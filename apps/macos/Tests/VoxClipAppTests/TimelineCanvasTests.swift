@@ -655,6 +655,64 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(hour.byteCount < 4 << 20)
     }
 
+    /// The column at each lane point of `seconds` at `ptPerSecond`, and whether it is a
+    /// pause: every 10 ms frame within 100 ms of it under −45 dBFS.
+    private func columns(_ waveform: WaveformData, seconds: Double, ptPerSecond: Double) -> [(peak: Float, pause: Bool)] {
+        let step = 1 / ptPerSecond, quiet = Float(pow(10, -45.0 / 20))
+        return stride(from: 0.0, to: seconds, by: step).map { start in
+            let lower = max(0, Int((start - 0.1) * 100)), upper = min(waveform.fine.count, Int(((start + step + 0.1) * 100).rounded(.up)))
+            return (waveform.column(from: start, to: start + step, span: step).peak, lower < upper && waveform.fine[lower..<upper].allSatisfy { $0 < quiet })
+        }
+    }
+
+    /// notes.md §6 on `waveform` at the timeline's zooms: no pause draws (not even a centre
+    /// line), fewer than 10% of the voiced columns reach the top, and their median peak is
+    /// within `typical` of the half-height.
+    private func expectSpeech(_ waveform: WaveformData, seconds: Double, typical: ClosedRange<Float>, _ name: String) {
+        let half = Float(TimelineMetrics.audio.height / 2 - TimelineAudioLane.pieceInset - TimelineAudioLane.waveInset)
+        for ptPerSecond in [3, 8, 936 / 45.2, 40, 100] {
+            let all = columns(waveform, seconds: seconds, ptPerSecond: ptPerSecond)
+            let pauses = all.filter(\.pause), voiced = all.filter { !$0.pause && $0.peak * half >= 0.5 }.map(\.peak).sorted()
+            let drawn = pauses.filter { $0.peak * half >= 0.5 }.count
+            #expect(drawn == 0, "\(name): \(drawn) of \(pauses.count) pause columns draw at \(ptPerSecond) pt/s")
+            guard !voiced.isEmpty else { Issue.record("\(name): nothing voiced at \(ptPerSecond) pt/s"); continue }
+            let top = voiced.filter { $0 >= 0.99 }.count, median = voiced[voiced.count / 2]
+            #expect(top * 10 < voiced.count, "\(name): \(top) of \(voiced.count) voiced columns reach the top at \(ptPerSecond) pt/s")
+            #expect(typical.contains(median), "\(name): median peak \(median) at \(ptPerSecond) pt/s")
+        }
+    }
+
+    /// Real speech, decoded as the cache decodes a take: four LibriSpeech readings whose
+    /// pauses hold room tone between −60 and −45 dBFS. Six seconds each, so a median holds a
+    /// few dozen columns at a whole take's zoom: 50–75% here, 55–70% on the minute above.
+    @Test func realSpeechDrawsNothingInItsPausesAndRarelyReachesTheTop() async throws {
+        let shared = try SharedResources.locate()
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-waveform-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: cache) }
+        let loader = WaveformCache()
+        for name in ["1089-134686-0000", "1089-134686-0002", "1188-133604-0000", "1188-133604-0001"] {
+            let source = shared.root.appendingPathComponent("fixtures/voice-lab/speaker/\(name).wav")
+            let waveform = try #require(await loader.load(.init(contentKey: "fixture-\(name)", source: source, cache: cache)))
+            #expect(waveform.fine.count == 600)
+            expectSpeech(waveform, seconds: 6, typical: 0.5...0.75, name)
+        }
+    }
+
+    /// A phone or laptop take: two minutes of speech with pauses most of the time (57%)
+    /// holding −50 dBFS room tone, ±3 dB. The room is not voice: it draws nothing, and it
+    /// does not set the scale.
+    @Test func roomToneIsSilenceAndDoesNotSetTheScale() {
+        let words = (0..<60).map { TimedWord(id: "t\($0)", text: "word", start: Double($0) * 2, end: Double($0) * 2 + 0.86) }
+        var fine = DebugTimeline.speech(words: words, duration: 120).fine
+        var seed: UInt32 = 7
+        for index in fine.indices where fine[index] == 0 {
+            seed = seed &* 1_664_525 &+ 1_013_904_223
+            fine[index] = Float(pow(10, (-50 + 6 * Double(seed >> 8) / Double(1 << 24) - 3) / 20))
+        }
+        #expect(fine.filter { $0 < 0.005 }.count * 100 / fine.count >= 55)
+        expectSpeech(WaveformData(fine: fine), seconds: 120, typical: 0.55...0.70, "room tone")
+    }
+
     // MARK: The waveform
 
     /// impl-plan §3.1: the model loads the waveform when the media is there, so a hidden

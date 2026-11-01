@@ -21,16 +21,29 @@ struct WaveformData: Sendable {
     /// The column a typical spoken peak reaches, as a fraction of the half-height
     /// (notes.md §6: typical peaks at 55–70%).
     static let typicalPeak: Float = 0.62
+    /// Peaks past this fraction of the half-height grow by their decibels, `kneeRange` dB
+    /// to the full half-height, so a loud syllable keeps its shape instead of a flat top.
+    static let knee: Float = 0.70
+    static let kneeRange: Float = 16
     /// Frames quieter than this (−60 dBFS) never count as voice.
     static let voicedFloor: Float = 0.001
+    /// The noise floor is the take's quietest 5% of 10 ms frames: its room tone, from the
+    /// pauses. Silence reaches `noiseMargin` dB over it, but stays `voiceHeadroom` dB under
+    /// the take's loud speech (its loudest 5% of frames), so a take with few pauses or a
+    /// loud room keeps its quieter speech.
+    static let noiseQuantile = 0.05
+    static let noiseMargin: Float = 14
+    static let voiceQuantile = 0.95
+    static let voiceHeadroom: Float = 20
 
     let fine: [Float]
     let levels: [WaveformLevel]
     /// Per level, the median of the voiced frames' loudest values: what a typical spoken
     /// column of that length reaches. Zero when nothing is voiced.
     let references: [Float]
-    /// Columns whose loudest frame is under this draw nothing: 30 dB under the typical
-    /// 10 ms frame, and never under −60 dBFS (notes.md §6: nothing drawn in silence).
+    /// Columns whose loudest frame is under this draw nothing (notes.md §6: nothing drawn
+    /// in silence, no centre line): the noise floor plus `noiseMargin`, at most
+    /// `voiceHeadroom` under the loud speech, and never under −60 dBFS.
     let silence: Float
     /// Identifies this load, so a lane redraws when the waveform changes without comparing it.
     let identity = UUID()
@@ -73,28 +86,41 @@ struct WaveformData: Sendable {
             levels.append(WaveformLevel(frameSeconds: previous.frameSeconds * Double(Self.factor), max: maxima, rms: rms))
         }
         self.levels = levels
-        references = levels.map { Self.voicedMedian($0.max) }
-        silence = Swift.max(Self.voicedFloor, references[0] * 0.0316)
+        let histograms = levels.map { Histogram($0.max) }
+        let noise = histograms[0].quantile(Self.noiseQuantile), voice = histograms[0].quantile(Self.voiceQuantile)
+        let silence = Swift.max(Self.voicedFloor, Swift.min(noise * Self.decibels(Self.noiseMargin), voice * Self.decibels(-Self.voiceHeadroom)))
+        self.silence = silence
+        references = histograms.map { $0.quantile(0.5, atLeast: silence) }
     }
 
-    /// The median of the values at or over `voicedFloor`, to 0.1 dB, from a histogram:
-    /// one pass, no copy of an hour of frames.
-    static func voicedMedian(_ values: [Float]) -> Float {
-        let bins = 600, floor = Double(voicedFloor)
-        var histogram = [Int](repeating: 0, count: bins)
-        var voiced = 0
-        for value in values where value >= voicedFloor {
-            let decibels = 20 * log10(Double(Swift.min(value, 1)) / floor)
-            histogram[Swift.min(bins - 1, Int(decibels * 10))] += 1
-            voiced += 1
+    /// `value` decibels as a linear factor.
+    private static func decibels(_ value: Float) -> Float { pow(10, value / 20) }
+
+    /// A level's frames in 0.1 dB bins from −90 dBFS to 0 (quieter ones, silence included,
+    /// in the first): one pass, no copy of an hour of frames.
+    private struct Histogram {
+        static let floor = -90.0, bins = 900
+        var counts = [Int](repeating: 0, count: bins)
+        init(_ values: [Float]) {
+            for value in values { counts[Self.bin(value)] += 1 }
         }
-        guard voiced > 0 else { return 0 }
-        var seen = 0
-        for (bin, count) in histogram.enumerated() {
-            seen += count
-            if seen * 2 > voiced { return Float(floor * pow(10, (Double(bin) + 0.5) / 200)) }
+        private static func bin(_ value: Float) -> Int {
+            let decibels = 20 * log10(Double(Swift.min(value, 1)))
+            return decibels.isFinite ? Swift.min(bins - 1, Swift.max(0, Int((decibels - floor) * 10))) : 0
         }
-        return 1
+        /// The value `fraction` of the way through the frames at or over `minimum`, to
+        /// 0.1 dB; zero when there are none.
+        func quantile(_ fraction: Double, atLeast minimum: Float = 0) -> Float {
+            let first = minimum > 0 ? Self.bin(minimum) : 0
+            let total = counts[first...].reduce(0, +)
+            guard total > 0 else { return 0 }
+            var seen = 0
+            for bin in first..<Self.bins {
+                seen += counts[bin]
+                if Double(seen) > fraction * Double(total) { return Float(pow(10, (Self.floor + (Double(bin) + 0.5) / 10) / 20)) }
+            }
+            return 1
+        }
     }
 
     /// The pixel column for `start..<end` seconds of the take, as fractions of the half-height:
@@ -102,7 +128,8 @@ struct WaveformData: Sendable {
     /// the coarsest level whose frames fit in a column `span` seconds long (the whole column,
     /// where a piece ends inside it; `end - start` when nil). A column takes the frames whose
     /// middles fall in it, or the one under its middle. Its scale puts a typical spoken
-    /// column of that length at `typicalPeak` at every zoom. Both are zero in silence.
+    /// column of that length at `typicalPeak` at every zoom; a peak past `knee` grows by its
+    /// decibels, and its core shrinks with it. Both are zero in silence.
     func column(from start: Double, to end: Double, span: Double? = nil) -> (peak: Float, core: Float) {
         guard let first = levels.first, !first.max.isEmpty, start.isFinite, end.isFinite, end > start else { return (0, 0) }
         let span = max(end - start, span ?? 0)
@@ -125,7 +152,16 @@ struct WaveformData: Sendable {
         guard peak >= silence, reference > 0 else { return (0, 0) }
         let core = (energy / Float(upper - lower)).squareRoot()
         let gain = Self.typicalPeak / (reference * Float(2).squareRoot())
-        return (Swift.min(1, peak * Float(2).squareRoot() * gain), Swift.min(1, core * gain))
+        // The knee is a gain on the whole column, so the core keeps its share of the peak.
+        let linear = peak * Float(2).squareRoot() * gain, shaped = Self.shaped(linear)
+        return (shaped, Swift.min(shaped, core * gain * shaped / linear))
+    }
+
+    /// A peak's height from its linear scale: as is up to `knee`, then by its decibels,
+    /// `kneeRange` dB to the full half-height.
+    static func shaped(_ value: Float) -> Float {
+        guard value > knee else { return value }
+        return Swift.min(1, knee + (1 - knee) * 20 * log10(value / knee) / kneeRange)
     }
 
     /// What a typical spoken column `span` seconds long reaches at `level`: between this
