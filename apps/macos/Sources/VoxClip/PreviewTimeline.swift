@@ -168,8 +168,9 @@ enum ViewerTag: Equatable {
 }
 
 /// The viewer's transport while the timeline panel is hidden (notes.md §1: "play and
-/// timecode are never lost"): play, the playhead's time on the timeline's axis and Edited /
-/// Source, in a bar along the box's bottom edge, over the video like the stage's chips.
+/// timecode are never lost"): play, the timeline's own readout (`TimelineReadout`,
+/// `HH:MM:SS:FF` on its axis) and Edited / Source (Show cuts, which flips the transcript
+/// too), in a bar along the box's bottom edge, over the video like the stage's chips.
 /// Only Play and Edited / Source take the pointer: a press anywhere else on the bar reaches
 /// the stage under it, so a caption placed low can still be dragged.
 @MainActor struct ViewerHoverTransport: View {
@@ -179,11 +180,10 @@ enum ViewerTag: Equatable {
     @Environment(\.colorSchemeContrast) private var contrast
     var body: some View {
         let opaque = reduceTransparency || contrast == .increased
-        // A narrow column drops the length, then the speed, from the time; VoiceOver reads them all.
+        // A narrow column drops the speed beside the readout; VoiceOver still reads it.
         ViewThatFits(in: .horizontal) {
-            row(total: true, rate: true)
-            row(total: false, rate: true)
-            row(total: false, rate: false)
+            row(rate: true)
+            row(rate: false)
         }
         .padding(.leading, 4).padding(.trailing, 6)
         .frame(height: 32)
@@ -201,7 +201,7 @@ enum ViewerTag: Equatable {
         .accessibilityIdentifier("voxclip.viewer.transport")
         .columnLayoutEvidence("viewer.transport")
     }
-    private func row(total: Bool, rate: Bool) -> some View {
+    private func row(rate: Bool) -> some View {
         HStack(spacing: 6) {
             Button { model.transport(" ") } label: {
                 Image(systemName: model.isPlaying ? "pause.fill" : "play.fill").font(.system(size: 12, weight: .semibold))
@@ -213,7 +213,7 @@ enum ViewerTag: Equatable {
             .accessibilityIdentifier("voxclip.viewer.play")
             .focused(focus, equals: .play)
             .columnLayoutEvidence("viewer.play")
-            playbackTime(total: total, rate: rate).allowsHitTesting(false)
+            playbackTime(rate: rate).allowsHitTesting(false)
             Spacer(minLength: 4)
             Picker("Timeline time", selection: $model.showsCuts) {
                 Text("Edited").tag(false); Text("Source").tag(true)
@@ -225,17 +225,19 @@ enum ViewerTag: Equatable {
             .columnLayoutEvidence("viewer.axis")
         }
     }
-    /// Edited time over the edited length, or source time over the take's, as the timeline reads.
-    private func playbackTime(total showsTotal: Bool, rate showsRate: Bool) -> some View {
-        let edited = model.timelineAxis == .edited
-        let current = edited ? model.playhead : model.sourceTime, total = edited ? model.duration : model.sourceDuration
-        let dim = DesignValues.color("overlay.foreground").opacity(0.66)
-        return HStack(spacing: 0) {
-            Text(timecode(current))
-            if showsTotal { Text(" / \(timecode(total))").foregroundStyle(dim) }
-            if showsRate && model.playbackRate != 1 { Text(" · \(model.playbackRate.formatted())×").foregroundStyle(dim) }
+    /// The timeline toolbar's readout, and the speed when it is not 1×. One accessible element,
+    /// `voxclip.viewer.time`: the time on the timeline's axis over that axis' length, then the speed.
+    private func playbackTime(rate showsRate: Bool) -> some View {
+        let axis = model.timelineAxis
+        let current = model.timelinePlayhead(on: axis), total = model.timelineLength(on: axis)
+        return HStack(spacing: 6) {
+            TimelineReadout(model: model)
+            if showsRate && model.playbackRate != 1 {
+                Text("\(model.playbackRate.formatted())×").font(VCType.callout.mono()).monospacedDigit()
+                    .foregroundStyle(DesignValues.color("overlay.foreground").opacity(0.66))
+            }
         }
-        .font(VCType.callout.mono()).monospacedDigit().lineLimit(1).fixedSize()
+        .lineLimit(1).fixedSize()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Playback time")
         .accessibilityIdentifier("voxclip.viewer.time")

@@ -383,35 +383,60 @@ import Testing
         #expect(!document.isDocumentEdited && !document.hasUnautosavedChanges)
     }
 
-    /// The tab row's last 32 pt stay the title row's, so it moves the window there even
-    /// when six tabs shrink to fit and when they overflow and scroll behind the chevron.
+    /// The editor's own tab row at 1280 (notes.md §1: 652 wide) ends with Show cuts and ⋯,
+    /// which leave the tabs 460 pt after their 32 pt drag gap: room for four at 96. Four
+    /// shrink to fit with no chevron and a fifth scrolls behind it (impl-plan §3.5). The
+    /// row's last 32 pt stay the title row's, so it moves the window there: with the tabs
+    /// shrunk, with them overflowing, and at 400, where Show cuts is its eye alone.
     @Test func theTabRowKeepsADragGapAfterItsTabs() async throws {
         let (shell, editor, _) = try await openShell()
         defer { editor.close() }
-        for id in ["five-1", "five-2", "five-3", "five-4", "five-5"] { shell.selection = .clip(id) }
-        let bar = EditorTabBarView(shell: shell, model: editor)
-        defer { bar.tearDown() }
-        let row = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "tabBar")
-        row.set(leading: [bar], trailing: [])
-        row.fillsLeading = bar
-        // A 624 pt row leaves the tabs 616, as at 1280 with the Explorer and the right column shown.
-        let host = NSView(frame: NSRect(x: 0, y: 0, width: 624, height: ShellMetrics.titleRow))
+        let work = EditorWorkController(model: editor, shell: shell)
+        defer { work.tearDown() }
+        let row = work.tabRow, bar = work.tabBar, showCuts = work.showCuts
+        #expect(row.trailing.elementsEqual([showCuts, work.overflow], by: ===) && row.fillsLeading === bar)
+        let reference = ShellRegion.tabBar.reference.width
+        #expect(reference == 652)
+        let host = NSView(frame: NSRect(x: 0, y: 0, width: reference, height: ShellMetrics.titleRow))
         host.addSubview(row)
-        for (width, overflows) in [(CGFloat(624), false), (400, true)] {
+        func lay(_ width: CGFloat) {
             host.frame.size.width = width
             row.frame = host.bounds
             bar.render()
+            showCuts.invalidateIntrinsicContentSize()
             row.needsLayout = true
             row.layoutSubtreeIfNeeded()
             bar.layoutSubtreeIfNeeded()
-            #expect(bar.order.count == 6 && bar.frame.width == width - 8 && bar.overflowing == overflows)
+        }
+        // Clip 1, Clip 2, Full Take and the suggestion's preview tab.
+        for id in ["five-1", "five-2", "five-5"] { shell.selection = .clip(id) }
+        for (width, count, overflows) in [(reference, 4, false), (reference, 5, true), (400, 6, true)] {
+            if bar.order.count < count {
+                for id in ["five-3", "five-4"].prefix(count - 4) { shell.selection = .clip(id) }
+            }
+            lay(width)
+            let label = "\(count) tabs at \(Int(width)), bar \(Int(bar.frame.width)), Show cuts \(Int(showCuts.frame.width))"
+            #expect(bar.order.count == count && bar.overflowing == overflows && bar.overflowButton.isHidden == !overflows, "\(label)")
+            // Show cuts and ⋯ follow the tab bar; at 1280 Show cuts keeps its label.
+            #expect(showCuts.compact == (width < ShowCutsToggle.compactWidth) && bar.frame.maxX + row.spacing == showCuts.frame.minX, "\(label)")
+            #expect(showCuts.frame.maxX + row.spacing == work.overflow.frame.minX && work.overflow.frame.maxX + row.trailingInset == width, "\(label)")
+            if width == reference {
+                #expect(Int(bar.tabRoom / EditorTabMetrics.minimumWidth) == 4, "room for four tabs at 96: \(label)")
+            }
+            if !overflows {
+                let naturals = bar.order.compactMap { bar.items[$0]?.naturalWidth }
+                let widths = bar.order.compactMap { bar.items[$0]?.frame.width }
+                #expect(naturals.reduce(0, +) > bar.tabRoom && widths.allSatisfy { $0 >= EditorTabMetrics.minimumWidth } && widths.reduce(0, +) <= bar.tabRoom + 0.5,
+                        "they shrink, never under 96: \(naturals.map { Int($0) }) to \(widths.map { Int($0) }) in \(Int(bar.tabRoom))")
+            }
             // Any point in the last 32 pt: its start, middle and end.
             for inset in [CGFloat(31), 16, 1] {
                 let point = NSPoint(x: bar.frame.maxX - inset, y: bar.frame.midY)
-                #expect(row.hitTest(point) === row && row.movesWindow, "width \(width), \(inset) from the end: \(row.hitTest(point).map { String(describing: type(of: $0)) } ?? "nothing")")
+                #expect(row.hitTest(point) === row && row.movesWindow, "\(label), \(inset) from the end: \(row.hitTest(point).map { String(describing: type(of: $0)) } ?? "nothing")")
             }
+            // Nothing the tabs draw reaches the drag gap: each tab, or the chevron while they scroll.
             let ends = overflows ? [bar.overflowButton.frame.maxX] : bar.order.compactMap { bar.items[$0]?.frame.maxX }
-            #expect(ends.allSatisfy { $0 <= bar.bounds.width - 32 + 0.5 })
+            #expect(!ends.isEmpty && ends.allSatisfy { $0 <= bar.bounds.width - EditorTabMetrics.dragGap + 0.5 }, "\(label): \(ends.map { Int($0) })")
         }
     }
 
@@ -462,8 +487,13 @@ import Testing
         editor.focusedPane = .sidebar
         shell.movePaneFocus(backward: false)
         #expect(editor.focusedPane == .tabs && window.firstResponder === active)
-        // Show cuts' slot sits at the row's end and stays hidden until V8b.
-        #expect(work.showCutsSlot.superview === work.tabRow && work.showCutsSlot.isHidden)
+        // Show cuts sits at the row's end, before ⋯ (V8b), and the tabs keep their drag gap after them.
+        #expect(work.showCuts.superview === work.tabRow && !work.showCuts.isHidden)
+        #expect(work.tabRow.trailing.prefix(2).elementsEqual([work.showCuts, work.overflow], by: ===))
+        work.tabRow.layoutSubtreeIfNeeded()
+        bar.layoutSubtreeIfNeeded()
+        let ends = bar.order.compactMap { bar.items[$0]?.frame.maxX }
+        #expect(work.showCuts.frame.minX >= bar.frame.maxX && ends.count == 2 && ends.allSatisfy { $0 <= bar.bounds.width - EditorTabMetrics.dragGap + 0.5 })
     }
 }
 

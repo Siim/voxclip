@@ -786,9 +786,9 @@ struct EditorShellState: Equatable {
     private let rightTitle = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "rightTitle")
     /// The editor's tabs (impl-plan V3a), filling the tab row up to its trailing controls.
     let tabBar: EditorTabBarView
-    /// Show cuts' place at the tab row's end (notes.md §1), hidden until V8b gives it the toggle.
-    let showCutsSlot = NSView(frame: NSRect(x: 0, y: 0, width: 0, height: ShellMetrics.iconButton))
     let overflow = ShellIconButton(symbol: "ellipsis", size: 14, identifier: "voxclip.shell.more")
+    /// Show cuts at the tab row's end, before ⋯ (notes.md §1; impl-plan V8b).
+    let showCuts: ShowCutsToggle
     let export = ShellExportButton()
     let timelineToggle = ShellIconButton(symbol: "rectangle.bottomthird.inset.filled", identifier: "voxclip.shell.toggleTimeline")
     let rightToggle = ShellIconButton(symbol: "sidebar.right", identifier: "voxclip.shell.toggleRight")
@@ -821,6 +821,7 @@ struct EditorShellState: Equatable {
         self.model = model
         self.shell = shell
         tabBar = EditorTabBarView(shell: shell, model: model)
+        showCuts = ShowCutsToggle(model: model)
         super.init(vertical: false, identifier: "voxclip.shell.work", dividerToken: "line.edge")
         build()
     }
@@ -888,8 +889,6 @@ struct EditorShellState: Equatable {
         rightTitle.spacing = 6
         tabRow.trailingInset = 8
         tabRow.fillsLeading = tabBar
-        showCutsSlot.identifier = NSUserInterfaceItemIdentifier("voxclip.shell.showCuts")
-        showCutsSlot.isHidden = true
         overflow.describe(EditorIconAction.moreCommands.name)
         overflow.target = self
         overflow.action = #selector(showOverflow(_:))
@@ -902,7 +901,8 @@ struct EditorShellState: Equatable {
         observations = [
             ShellObservation { [weak self] in self?.renderExport() },
             ShellObservation { [weak self] in self?.renderFindClips() },
-            ShellObservation { [weak self] in self?.followSizes() }
+            ShellObservation { [weak self] in self?.followSizes() },
+            ShellObservation { [weak self] in self?.showCuts.render() }
         ]
     }
 
@@ -956,13 +956,14 @@ struct EditorShellState: Equatable {
         }
     }
 
-    /// The tab row: the Explorer toggle while the Explorer is hidden, the tabs, Show cuts'
-    /// slot and ⋯, and the right column's controls while it is hidden.
+    /// The tab row: the Explorer toggle while the Explorer is hidden, the tabs, then Show cuts
+    /// and ⋯, and the right column's controls while it is hidden. The tab bar keeps its own
+    /// drag gap after the tabs (`EditorTabMetrics.dragGap`), so Show cuts never takes it.
     func placeTabRow(explorerToggle: NSView?) {
         self.explorerToggle = explorerToggle
         let cluster: [NSView] = [export, timelineToggle, rightToggle]
         let rightShows = rightItem.map { !$0.isCollapsed } ?? true
-        tabRow.set(leading: [explorerToggle, tabBar].compactMap { $0 }, trailing: rightShows ? [showCutsSlot, overflow] : [showCutsSlot, overflow] + cluster)
+        tabRow.set(leading: [explorerToggle, tabBar].compactMap { $0 }, trailing: rightShows ? [showCuts, overflow] : [showCuts, overflow] + cluster)
         rightTitle.set(leading: [], trailing: rightShows ? cluster : [])
     }
 

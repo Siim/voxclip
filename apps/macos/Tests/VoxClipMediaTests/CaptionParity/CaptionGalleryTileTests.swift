@@ -29,7 +29,8 @@ private final class CaptionTileLatch: @unchecked Sendable {
     }
 }
 
-/// Gallery tiles through the real CoreText renderer (captions §15.2–15.3, design §6.1).
+/// Page-sample gallery tiles through the real CoreText renderer (captions §15.2–15.3, design §6.1): the Core
+/// sample both Cores replay. The Mac's v2 tiles draw a fixed phrase as caption cards instead (impl-plan V5).
 @Suite(.serialized)
 struct CaptionGalleryTileTests {
     /// The shared interview take, the transcript of the Mac UI scenes ("So um, today we ship uh the clipper. Thanks").
@@ -45,13 +46,13 @@ struct CaptionGalleryTileTests {
         return project
     }
 
-    /// What `EditorModel.captionTileInput` samples at the start of the take: up to six kept words, corrected.
+    /// The page-sample tile's words at the start of the take (captions §15.2–15.3): up to six kept words, corrected.
     private static func tileWords(_ project: Project) -> [String] {
         let edits = project.edits
         return (project.transcript?.words ?? []).filter { !edits.cutWordIds.contains($0.id) }.prefix(6).map { edits.corrections[$0.id] ?? $0.text }
     }
 
-    /// `CaptionHandoff.tile`'s layout call: the words at [0.4 i, 0.4 i + 0.35] with no emphasis, in the resolved style.
+    /// The page-sample tile's layout call: the words at [0.4 i, 0.4 i + 0.35] with no emphasis, in the resolved style.
     private static func tileLayout(_ sample: [String], pipeline: CaptionPipeline, style: CaptionStyle, frame: PixelSize) async throws -> CaptionLayoutResult {
         let words = sample.enumerated().map { index, text in
             CaptionWord(id: "tile-\(index)", text: text, start: Double(index) * 0.4, end: Double(index) * 0.4 + 0.35)
@@ -89,7 +90,7 @@ struct CaptionGalleryTileTests {
                         failures.append("\(label): layout threw \(error)"); continue
                     }
                     do {
-                        // CaptionHandoff.tile draws at 0.2 s.
+                        // The page-sample tile drew at 0.2 s.
                         let raster = try await rasterizer.rasterize(layout, time: 0.2, previewWidth: 320, reduceMotion: true)
                         if Self.drawsSomething(raster) { rendered += 1 } else { failures.append("\(label): empty overlay") }
                     } catch {

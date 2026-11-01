@@ -27,7 +27,7 @@ import Testing
         project.edits = ProjectEdits(cutWordIds: stride(from: 0, to: count, by: 5).map { "r\($0)" })
         project.edits.clips = [ClipRange(id: "fifth", startWordId: "r40", endWordId: "r49", title: "Fifth", origin: suggested ? .ai : .manual, selected: !suggested)]
         let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
-        model.showCuts = showCuts
+        model.showsCuts = showCuts
         return model
     }
     private func pane(_ model: EditorModel) throws -> (TranscriptNSTextView, TranscriptRenderer, TranscriptTextView.Coordinator) {
@@ -39,9 +39,9 @@ import Testing
         return (text, coordinator.renderer, coordinator)
     }
     private func appearance(_ model: EditorModel) -> TranscriptAppearance {
-        TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, scope: model.scopeBounds, activeClipID: model.activeClip?.id, playhead: model.sourceTime)
+        TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, scope: model.scopeBounds, activeClipID: model.activeClip?.id, playhead: model.sourceTime)
     }
-    /// What the editor's updateNSView does after an edit with Show Cut Words off.
+    /// What the editor's updateNSView does after an edit.
     private func render(_ model: EditorModel, _ renderer: TranscriptRenderer) {
         renderer.rebuild(model: model)
         renderer.update(appearance(model))
@@ -79,7 +79,7 @@ import Testing
         #expect(Set(renderer.attributes.keys) == Set(text.map.spans.map(\.id)), "one style per span, none left from replaced spans")
         let tips = { (view: TranscriptNSTextView, span: TranscriptSpan) in view.textStorage?.attribute(.toolTip, at: span.range.location, effectiveRange: nil) as? String }
         for span in text.map.spans {
-            #expect(color(renderer, span.id) === color(freshRenderer, span.id) && color(renderer, span.id, .vcRounded) === color(freshRenderer, span.id, .vcRounded)
+            #expect(color(renderer, span.id) === color(freshRenderer, span.id)
                     && renderer.attributes[span.id]?[.vcStrike] as? Bool == freshRenderer.attributes[span.id]?[.vcStrike] as? Bool, "\(span.id) styled as a fresh build")
             #expect(tips(text, span) == tips(fresh, span), "\(span.id) has a fresh build's tooltip")
         }
@@ -106,12 +106,12 @@ import Testing
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
         let before = text.string.components(separatedBy: "\n")
-        #expect(before.count == 6 && before[2].hasPrefix("⋯ 1 cut word"))
+        #expect(before.count == 6 && before[2].hasPrefix(TranscriptFold.text) && text.map.span(id: "r20")?.ids == ["r20"])
         let log = EditLog(try #require(text.textStorage)); defer { log.stop() }
         model.apply(.toggle(id: "r21"), name: "Cut")
         render(model, renderer)
         let after = text.string.components(separatedBy: "\n")
-        #expect(after[2].hasPrefix("⋯ 2 cut word"), "the cut joins r20's fold")
+        #expect(after[2].hasPrefix(TranscriptFold.text + "word") && text.map.span(id: "r21")?.ids == ["r20", "r21"], "the cut joins r20's fold")
         #expect(after.indices.filter { after[$0] != before[$0] } == [2])
         #expect(log.edits.map(\.range) == [NSRange(location: renderer.paragraphs[2].offset, length: length(renderer, text, paragraph: 2))], "one edit, exactly the third paragraph")
         try expectFreshBuild(model, text, renderer)
@@ -226,9 +226,9 @@ import Testing
         renderer.update(appearance(model)); layOut(text)
         try expectRenderingAttributes(text, renderer, "Full Take")
         #expect(color(renderer, "r12") === DesignValues.nsColor("word.text"))
-        model.showCuts = true
+        model.showsCuts = true
         render(model, renderer); layOut(text)
-        try expectRenderingAttributes(text, renderer, "Show Cut Words on")
+        try expectRenderingAttributes(text, renderer, "Show cuts on")
         try expectFreshBuild(model, text, renderer)
     }
 
@@ -237,14 +237,14 @@ import Testing
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
         let rebuilds = renderer.documentRebuilds, styles = renderer.rebuildStyles, revision = renderer.storageRevision
-        model.showCuts = false
+        model.showsCuts = false
         render(model, renderer)
         #expect(renderer.documentRebuilds == rebuilds + 1, "every paragraph folds a cut, so the document is written once")
         #expect(renderer.rebuildStyles - styles == text.map.count)
         try expectFreshBuild(model, text, renderer)
         model.textSize = 20
         render(model, renderer)
-        // The text starts with r0's fold in the mono face, so the size is read at a word.
+        // The text starts with r0's fold, so the size is read at a word.
         let word = try #require(text.map.span(id: "r1"))
         #expect(renderer.documentRebuilds == rebuilds + 2 && (text.textStorage?.attribute(.font, at: word.range.location, effectiveRange: nil) as? NSFont)?.pointSize == 20)
         #expect(renderer.rebuildStyles - styles == text.map.count, "a new size keeps every style")
@@ -253,23 +253,28 @@ import Testing
         try expectFreshBuild(model, text, renderer)
     }
 
-    @Test func aTabSwitchWritesNoTextAndEveryUncutFillerKeepsItsHint() throws {
+    @Test func aTabSwitchWritesTheParagraphsWhoseInClipStateChangedAndFillersHaveNoHint() throws {
         let model = try editor(showCuts: false); defer { model.close() }
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
-        let revision = renderer.storageRevision
+        #expect(text.map.span(id: "r10")?.kind == .fold && text.map.span(id: "r45")?.kind == .fold)
+        // Outside the open clip the words read as said: no folds (notes.md §5). Five of the six
+        // paragraphs hold a cut outside the clip, so the switch writes the document once.
+        let rebuilds = renderer.documentRebuilds
         model.activate(model.project.edits.clips[0])
-        renderer.update(appearance(model))
-        #expect(renderer.storageRevision == revision)
-        let log = EditLog(try #require(text.textStorage)); defer { log.stop() }
-        model.apply(.toggle(id: "r21"), name: "Cut")
         render(model, renderer)
-        #expect(log.edits.count == 1, "the filler outside the clip does not rewrite its paragraph")
+        #expect(renderer.documentRebuilds == rebuilds + 1)
+        #expect(text.map.span(id: "r10")?.kind == .text && text.map.span(id: "r10")?.ids == [] && text.map.span(id: "r45")?.kind == .fold)
+        #expect(!text.string.components(separatedBy: "\n")[1].contains(TranscriptFold.glyph) && text.string.components(separatedBy: "\n")[4].contains(TranscriptFold.glyph))
+        #expect(color(renderer, "r10") === DesignValues.nsColor("word.outside") && renderer.attributes["r10"]?[.vcStrike] as? Bool == false, "a cut word outside the clip is unstruck")
+        // Back to Full Take every paragraph folds its cuts again.
+        model.activate(nil)
+        render(model, renderer)
+        #expect(text.map.span(id: "r10")?.kind == .fold)
+        try expectFreshBuild(model, text, renderer)
+        // The filler underline and its hint are gone (impl-plan item 11); fillers stay in the rotor.
         func tip(_ id: String) -> String? { text.map.span(id: id).flatMap { text.textStorage?.attribute(.toolTip, at: $0.range.location, effectiveRange: nil) as? String } }
-        #expect(tip("r23") == "Filler · Delete to cut" && tip("r41") == "Filler · Delete to cut" && tip("r22") == nil)
-        model.apply(.toggle(id: "r23"), name: "Cut")
-        render(model, renderer)
-        #expect(text.map.span(id: "r23")?.ids == ["r23"] && tip("r23") == nil, "a cut filler folds without its hint")
+        #expect(tip("r23") == nil && tip("r41") == nil)
     }
 
     @Test func theRangeMapFindsEverySpanAcrossParagraphsAndAfterAReplacement() {

@@ -139,3 +139,49 @@ enum TranscriptGutter {
         }
     }
 }
+
+/// The transcript selection (notes.md §5): `tint.selection` at text height, the font's
+/// ascender to its descender with no padding, radius 2, one rect per visible line. It sits
+/// over the backdrop and behind the text, and TextKit draws no selection of its own
+/// (`selectedTextAttributes` is empty). Like the backdrop it covers only the visible lines.
+@MainActor final class TranscriptSelectionLayer: NSView {
+    /// The rects in the text view's coordinates.
+    private(set) var rects: [CGRect] = []
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func isAccessibilityElement() -> Bool { false }
+
+    func show(_ rects: [CGRect]) {
+        guard rects != self.rects || rects.isEmpty != isHidden else { return }
+        self.rects = rects
+        let extent = rects.reduce(CGRect.null) { $0.union($1) }
+        guard !extent.isNull else { isHidden = true; return }
+        let frame = extent.insetBy(dx: -1, dy: -1).integral
+        if self.frame != frame { self.frame = frame }
+        isHidden = false
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        context.setFillColor(DesignValues.nsColor("tint.selection").cgColor)
+        for rect in rects {
+            context.addPath(CGPath(roundedRect: rect.offsetBy(dx: -frame.minX, dy: -frame.minY), cornerWidth: 2, cornerHeight: 2, transform: nil))
+        }
+        context.fillPath()
+    }
+}
+
+/// The caret (impl-plan item 19): where the playhead is, a 2 × 19 pt bar of `tint.text`,
+/// radius 1. The text view moves it; a playhead tick redraws no text.
+@MainActor final class TranscriptCaret: NSView {
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func isAccessibilityElement() -> Bool { false }
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        context.setFillColor(DesignValues.nsColor("tint.text").cgColor)
+        context.addPath(CGPath(roundedRect: bounds, cornerWidth: 1, cornerHeight: 1, transform: nil))
+        context.fillPath()
+    }
+}

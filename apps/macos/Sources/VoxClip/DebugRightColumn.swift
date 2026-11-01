@@ -35,6 +35,7 @@ import VoxClipMedia
         let scrollClipping: [Bool]
         let scrolledViews: [String]
         let viewOverflow: [String]
+        let markers: [String: CGRect]
     }
     struct ResizeMeasurement: Encodable {
         let width: CGFloat
@@ -97,9 +98,10 @@ import VoxClipMedia
         ] }
     }
     /// The least scroll height the panel's job keeps in every state at every size: one 24 pt
-    /// row, so its gallery or its fields can still be scrolled into view. Captions and a
-    /// resting Rewrite keep 54 or more; Rewrite's provider error, whose notice sits in its
-    /// fixed footer, keeps 30 at 960 × 600 and 35 at 1280 × 700 (V15 replaces that footer).
+    /// row, so its gallery or its fields can still be scrolled into view. Captions' gallery
+    /// keeps 61 or more (77 without a caption error) and a resting Rewrite 54 or more;
+    /// Rewrite's provider error, whose notice sits in its fixed footer, keeps 30 at 960 × 600
+    /// and 35 at 1280 × 700 (V15 replaces that footer).
     static let minimumViewport: CGFloat = 24
     /// The column under the title row at the v2 widths (impl-plan item 18) and heights: the
     /// work area above the 216 pt timeline, less the 38 pt title row. Each size's box height
@@ -124,7 +126,6 @@ import VoxClipMedia
                 model.setAspect(AspectRatio(rawValue: variant) ?? .source)
                 model.setStyle("vox-highlight")
                 if variant == "captions-off" { model.setCaptionsEnabled(false) }
-                if variant == "caption-error" { model.captionError = "Captions couldn't be drawn. Your media and edits are safe. Choose another style or try again." }
                 if variant.hasPrefix("rewrite") { try openRewrite(variant, in: model) }
                 let controller = NSHostingController(rootView: PanelHost(model: model, shell: shell, width: width, height: height, fineTune: variant == "fine-tune"))
                 controller.sizingOptions = []
@@ -133,6 +134,7 @@ import VoxClipMedia
                 host.layoutSubtreeIfNeeded()
                 try await Task.sleep(for: .milliseconds(100))
                 host.layoutSubtreeIfNeeded()
+                if variant == "caption-error" { await showCaptionError(model, in: host) }
                 let scrolls = scrollViews(in: host)
                 let audit = viewAudit(host)
                 let found = markers(in: host)
@@ -140,10 +142,11 @@ import VoxClipMedia
                     box: found["viewer.box"] ?? .zero, stage: found["viewer.stage"] ?? .zero, header: found["panel.header"] ?? .zero,
                     scrollFrames: scrolls.map { $0.convert($0.bounds, to: host) },
                     scrollClipping: scrolls.map { $0.clipsToBounds && $0.contentView.clipsToBounds },
-                    scrolledViews: audit.scrolled, viewOverflow: audit.overflow))
+                    scrolledViews: audit.scrolled, viewOverflow: audit.overflow, markers: found))
             }
         }
         try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("right-column-heights.json"), options: .atomic)
+        let gallery = CaptionsSection.galleryOrder(app.styles).map(\.id)
         return measurements.flatMap { measurement -> [DebugUISuite.Result] in
             let rewriting = measurement.variant.hasPrefix("rewrite")
             let viewport = measurement.scrollFrames.first ?? .zero
@@ -161,9 +164,53 @@ import VoxClipMedia
                 .init(name: "\(name): the panel body (\(body)) keeps at least \(PanelHost.bodyMinimum)", passed: body >= PanelHost.bodyMinimum - 0.5),
                 .init(name: "\(name): visible descendants fit", passed: measurement.viewOverflow.isEmpty && measurement.scrollClipping.allSatisfy { $0 }),
                 .init(name: "\(name): the panel's scroll (\(viewport.height)) keeps at least \(minimumViewport)", passed: viewport.height >= minimumViewport - 0.5),
-                .init(name: "\(name): the panel scrolls inside its body (\(viewport.minY)–\(viewport.maxY))", passed: viewport.minY >= measurement.header.maxY - 0.5 && (rewriting || viewport.maxY <= measurement.height - 15.5))
-            ]
+                // Captions' gallery ends where its property rows start; they end at the body's bottom.
+                .init(name: "\(name): the panel scrolls inside its body (\(viewport.minY)–\(viewport.maxY))", passed: viewport.minY >= measurement.header.maxY - 0.5
+                      && (rewriting || measurement.markers["captions.properties"].map { viewport.maxY <= $0.minY + 0.5 && abs($0.maxY - measurement.height) <= 0.5 } == true))
+            ] + (rewriting ? [] : captionsRows(measurement, gallery: gallery))
         }
+    }
+    /// The Captions job's rows in a measured column (impl-plan V5): the STYLE row, the first
+    /// row of tiles and Words per caption at every size; at 1280 × 800 with Fine tune closed,
+    /// f1's body: two whole rows of tiles, then Words per caption, Case, Position and Fine
+    /// tune. A caption error stays above the gallery, which then may show less of its first row.
+    private static func captionsRows(_ measurement: HeightMeasurement, gallery: [String]) -> [DebugUISuite.Result] {
+        let markers = measurement.markers
+        let name = "Captions \(measurement.window) \(measurement.variant)"
+        guard let viewport = markers.first(where: { $0.key.hasPrefix("caption.gallery.") })?.value,
+              let properties = markers["captions.properties"], let style = markers["captions.style"] else {
+            return [.init(name: "\(name): the STYLE row, gallery and property rows are laid out", passed: false)]
+        }
+        func shown(_ key: String, in area: CGRect) -> Bool { markers[key].map { area.insetBy(dx: -0.5, dy: -0.5).contains($0) } == true }
+        func tiles(_ count: Int) -> Bool {
+            gallery.prefix(count).allSatisfy { shown("caption.image.\($0)", in: viewport) && shown("caption.name.\($0)", in: viewport) }
+        }
+        let body = CGRect(x: 0, y: measurement.header.maxY, width: measurement.width, height: measurement.height - measurement.header.maxY)
+        guard measurement.variant != "caption-error" else {
+            // A caption error stays above the gallery, which keeps scrolling under it.
+            return [.init(name: "\(name): the STYLE row and the caption error show above the gallery (gallery \(viewport.height))",
+                          passed: body.insetBy(dx: -0.5, dy: -0.5).contains(style) && markers["caption.error"].map { body.insetBy(dx: -0.5, dy: -0.5).contains($0) && $0.maxY <= viewport.minY + 0.5 } == true)]
+        }
+        return [
+            .init(name: "\(name): the STYLE row and the first row of tiles show (gallery \(viewport.height))",
+                  passed: body.insetBy(dx: -0.5, dy: -0.5).contains(style) && tiles(CaptionsPanelMetrics.columns)),
+            .init(name: "\(name): Words per caption shows under the gallery (property rows \(properties.height))",
+                  passed: shown("captions.property.words", in: properties) && properties.minY >= viewport.maxY - 0.5)
+        ] + (measurement.window == "1280x800" && measurement.variant != "fine-tune" ? [
+            .init(name: "\(name): two whole rows of tiles and every property row show, as in f1",
+                  passed: tiles(CaptionsPanelMetrics.columns * 2) && ["words", "case", "position", "fineTune"].allSatisfy { shown("captions.property.\($0)", in: properties) })
+        ] : [])
+    }
+    /// Shows a caption error in `host`. The preview's caption layout clears the error when it
+    /// lands, so it is set once the preview has settled, then laid out until it shows.
+    private static func showCaptionError(_ model: EditorModel, in host: NSView) async {
+        await model.waitForPendingPreviewForAudit()
+        model.captionError = "Captions couldn't be drawn. Your media and edits are safe. Choose another style or try again."
+        for _ in 0..<100 where markers(in: host)["caption.error"] == nil {
+            host.layoutSubtreeIfNeeded()
+            await Task.yield()
+        }
+        host.layoutSubtreeIfNeeded()
     }
     static func scrollViews(in host: NSView) -> [NSScrollView] {
         (host as? NSScrollView).map { [$0] } ?? host.subviews.flatMap { scrollViews(in: $0) }
@@ -190,7 +237,6 @@ import VoxClipMedia
             model.setAspect(AspectRatio(rawValue: variant) ?? .source)
             model.setStyle(variant == "fine-tune" ? "box-highlight" : "vox-highlight")
             if variant == "captions-off" { model.setCaptionsEnabled(false) }
-            if variant == "caption-error" { model.captionError = "Captions couldn't be drawn. Your media and edits are safe. Choose another style or try again." }
             if variant == "ai-rate-hours" {
                 // An hour-long take at 1.5× in the hover transport, with the timeline hidden.
                 var voice = try JSONProjectStore.decode(Data(contentsOf: root.appendingPathComponent("fixtures/voice-lab/passage-project.voxclip")))
@@ -210,6 +256,7 @@ import VoxClipMedia
             host.layoutSubtreeIfNeeded()
             try await Task.sleep(for: .milliseconds(60))
             host.layoutSubtreeIfNeeded()
+            if variant == "caption-error" { await showCaptionError(model, in: host) }
             let minimum = controller.sizeThatFits(in: CGSize(width: 0, height: height))
             let proposed = controller.sizeThatFits(in: CGSize(width: width, height: height))
             let markers = markers(in: host)
@@ -237,18 +284,18 @@ import VoxClipMedia
                         && abs(measurement.stage.width - expected.width) <= 0.5 && abs(measurement.stage.height - expected.height) <= 0.5),
                 .init(name: "\(name): the 30 pt panel header sits under the viewer", passed: abs(measurement.header.minY - measurement.box.maxY) <= 0.5 && abs(measurement.header.height - PanelHost.headerHeight) <= 0.5 && abs(measurement.header.width - measurement.width) <= 0.5),
                 // Offscreen hosts don't vend SwiftUI's virtual accessibility elements, so the descendant check
-                // must be shown to have measured the real rows: the switcher's jobs and one Captions candidate.
-                .init(name: "\(name): the switcher shows \(measurement.jobs) and one Captions candidate", passed: measurement.jobs == (rewriting ? ["captions", "rewrite"] : ["captions"]) && candidates("captions.", measurement) == (rewriting ? 0 : 1))
+                // must be shown to have measured the real rows: the switcher's jobs and Captions' STYLE row.
+                .init(name: "\(name): the switcher shows \(measurement.jobs) and the Captions STYLE row only on Captions", passed: measurement.jobs == (rewriting ? ["captions", "rewrite"] : ["captions"]) && candidates("captions.style", measurement) == (rewriting ? 0 : 1))
             ]
         }
         let hours = measurements.filter { $0.variant == "ai-rate-hours" }
         results.append(.init(name: "the hour-long 1.5× time fits the hover transport inside the viewer at every width",
             passed: hours.count == 6 && hours.allSatisfy { measurement in measurement.markers["viewer.transport"].map { measurement.box.insetBy(dx: -0.5, dy: -0.5).contains($0) } == true }))
-        results.append(.init(name: "360-point short Captions summary uses one row", passed: measurements.first { $0.width == 360 && $0.variant == "source" }?.markers["captions.inline"] != nil))
-        for measurement in measurements {
-            guard let heading = measurement.markers["header.captions.heading"], let toggle = measurement.markers["header.captions.switch"] else { continue }
-            results.append(.init(name: "Captions switch at \(measurement.width) (\(measurement.variant)) is centred on the heading inside the inner width",
-                passed: abs(heading.midY - toggle.midY) <= 0.5 && toggle.maxX <= measurement.width - 16 + 0.5))
+        for measurement in measurements where !measurement.variant.hasPrefix("rewrite") {
+            let heading = measurement.markers["header.captions.heading"], toggle = measurement.markers["header.captions.switch"]
+            results.append(.init(name: "Captions switch at \(measurement.width) (\(measurement.variant)) is centred on the STYLE row at its trailing inset, 20 under the panel header",
+                passed: heading.flatMap { heading in toggle.map { abs(heading.midY - $0.midY) <= 0.5 && abs($0.maxX - (measurement.width - CaptionsPanelMetrics.inset)) <= 0.5
+                    && abs($0.midY - measurement.header.maxY - 20) <= 0.5 && abs(heading.minX - CaptionsPanelMetrics.inset) <= 0.5 } } == true))
         }
         results += try await captionsSwitchIdentity(app: app, fixture: fixture)
         // Window-free only: the native divider drag runs in the UI self-test (DebugSidebar).
@@ -275,13 +322,13 @@ import VoxClipMedia
         }
         return results
     }
-    /// Turning captions off can change which header form fits. The switch the user pressed must
-    /// survive that (same AppKit control), or keyboard and VoiceOver focus is lost on every press.
+    /// Turning captions off changes the switch's label from On to Off. The switch the user
+    /// pressed must survive that (same AppKit control), or keyboard and VoiceOver focus is lost
+    /// on every press.
     private static func captionsSwitchIdentity(app: AppModel, fixture: Project) async throws -> [DebugUISuite.Result] {
         func switches(in view: NSView) -> [NSSwitch] { ((view as? NSSwitch).map { [$0] } ?? []) + view.subviews.flatMap { switches(in: $0) } }
         var results: [DebugUISuite.Result] = []
-        var formChanged = false
-        for width: CGFloat in [300, 320, 340] {
+        for width: CGFloat in [300, 404, 560] {
             let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
             defer { model.close() }
             model.setStyle("vox-highlight")
@@ -290,15 +337,13 @@ import VoxClipMedia
             let host = controller.view
             host.frame = CGRect(x: 0, y: 0, width: width, height: 4096)
             host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(60)); host.layoutSubtreeIfNeeded()
-            let before = switches(in: host), formBefore = markers(in: host).keys.filter { $0.hasPrefix("captions.") }.sorted()
+            let before = switches(in: host), labelBefore = texts(in: host)["header.captions.switch"]
             model.setCaptionsEnabled(false)
             host.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(60)); host.layoutSubtreeIfNeeded()
-            let after = switches(in: host), formAfter = markers(in: host).keys.filter { $0.hasPrefix("captions.") }.sorted()
-            formChanged = formChanged || formBefore != formAfter
-            results.append(.init(name: "Captions switch at \(width) keeps its control when captions turn off (\(formBefore) to \(formAfter), \(before.count)/\(after.count) switches)",
-                passed: before.count == 1 && after.count == 1 && before[0] === after[0] && after[0].state == .off))
+            let after = switches(in: host), labelAfter = texts(in: host)["header.captions.switch"]
+            results.append(.init(name: "Captions switch at \(width) keeps its control when captions turn off (\(labelBefore ?? "none") to \(labelAfter ?? "none"), \(before.count)/\(after.count) switches)",
+                passed: before.count == 1 && after.count == 1 && before[0] === after[0] && after[0].state == .off && labelBefore == "On" && labelAfter == "Off"))
         }
-        results.append(.init(name: "Captions switch identity check exercised a header form change", passed: formChanged))
         return results
     }
     private static func candidates(_ prefix: String, _ measurement: Measurement) -> Int {

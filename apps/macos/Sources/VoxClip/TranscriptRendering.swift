@@ -1,10 +1,9 @@
 import AppKit
+import CoreText
 import VoxClipCore
 
 extension NSAttributedString.Key {
-    static let vcRounded = Self("voxclip.rounded")
-    static let vcRadius = Self("voxclip.radius")
-    /// A rendering attribute set only to redraw a fragment whose gutter changed.
+    /// A rendering attribute set only to redraw a fragment whose gutter or fold changed.
     static let vcGutter = Self("voxclip.gutter")
     static let vcStrike = Self("voxclip.strike")
     static let vcUnderline = Self("voxclip.underline")
@@ -14,6 +13,14 @@ extension NSAttributedString.Key {
 enum TranscriptSpanKind: Equatable {
     case text
     case ai
+    /// A run of removed words and pauses folded into one dot (ux/v2 notes.md §5): a word
+    /// joiner, one glyph drawn clear and kerned to the fold's gap, and a zero-width space, so
+    /// the dot stays on the line of the word before it. `ids` are the words and pauses it
+    /// holds, in reading order.
+    case fold
+    /// A comma that folds with the filler after it (`DisplayPunctuation`), shown in
+    /// `word.gone` under Show cuts or in an opened fold.
+    case comma
 }
 
 struct TranscriptSpan: Equatable {
@@ -26,6 +33,26 @@ struct TranscriptSpan: Equatable {
     /// The same span `offset` characters later.
     func moved(by offset: Int) -> TranscriptSpan {
         offset == 0 ? self : TranscriptSpan(id: id, range: NSRange(location: range.location + offset, length: range.length), pause: pause, ids: ids, kind: kind)
+    }
+}
+
+/// A fold's characters (ux/v2 notes.md §5): a word joiner glues it to the word before, the
+/// glyph is drawn clear and kerned so the fold is `gap` wide, and the zero-width space after it
+/// is where a line may break. No space surrounds it: it replaces the word space.
+@MainActor enum TranscriptFold {
+    static let joiner = "\u{2060}"
+    static let glyph = "\u{2022}"
+    static let breakAfter = "\u{200B}"
+    static let text = joiner + glyph + breakAfter
+    /// The glyph's offset in the fold's text.
+    static let glyphOffset = 1
+    /// The fold's width and its dot's diameter at the body size: 13 and 5 at 15 pt.
+    static func gap(textSize: Double) -> CGFloat { 13 * textSize / DesignValues.transcriptTextSize }
+    static func dot(textSize: Double) -> CGFloat { 5 * textSize / DesignValues.transcriptTextSize }
+    /// The kern after the glyph that makes the fold `gap` wide in `font`.
+    static func kern(font: NSFont, textSize: Double) -> CGFloat {
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: glyph, attributes: [.font: font]))
+        return gap(textSize: textSize) - CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
     }
 }
 
@@ -44,20 +71,25 @@ struct TranscriptParagraph: Equatable {
     let start: Double
 }
 
-/// What one display paragraph shows, as plain values (impl-plan §3.1): its words, folded
-/// cuts, corrections, pauses and AI replacements. `rebuild` writes a paragraph's text only
-/// when this differs from what the storage holds, so a cut edits one paragraph and every
-/// other paragraph keeps its text, spans and styles.
+/// What one display paragraph shows, as plain values (impl-plan §3.1): its words, folds,
+/// corrections, pauses, AI replacements and folded commas, and so the open clip's extent,
+/// Show cuts and the opened folds. `rebuild` writes a paragraph's text only when this
+/// differs from what the storage holds, so a cut edits one paragraph and every other
+/// paragraph keeps its text, spans and styles.
 struct TranscriptParagraphContent: Equatable {
     struct Piece: Equatable {
         enum Kind: Equatable {
-            /// A word, as corrected.
+            /// A word, as corrected, without a comma that folds with the filler after it.
+            /// Removed words show as words under Show cuts and in an opened fold.
             case word
             /// An accepted AI passage's words, standing for the source words in `ids`.
             case replacement
-            /// A run of cut words shown as `⋯ N cut` while Show Cut Words is off.
+            /// A run of removed words and pauses in the open clip, one dot (`TranscriptFold`).
             case fold
-            /// A pause token, `‖ 1.2s`, while Show Pauses is on.
+            /// The comma a fold took from the word before it, shown again under Show cuts.
+            case comma
+            /// A pause length, "1.4 s": a cut pause under Show cuts or in an opened fold, and
+            /// an uncut pause in the open clip while Show Pauses is on.
             case pause
             /// The kerned blank the AI marker draws over, before an AI passage.
             case aiMarker
@@ -179,6 +211,23 @@ struct TranscriptRangeMap {
         if start < NSMaxRange(extent) { result.append(NSRange(location: start, length: NSMaxRange(extent) - start)) }
         return result
     }
+    /// The spans a selection holds: the selectable spans in its ranges, then the folds in a
+    /// gap between two ranges that holds nothing selectable. `selectionRanges` leaves those
+    /// folds out of the ranges it snaps a selection to.
+    func selected(_ ranges: [NSRange]) -> [TranscriptSpan] {
+        let ranges = ranges.sorted { $0.location < $1.location }
+        var result: [TranscriptSpan] = []
+        for (index, range) in ranges.enumerated() {
+            if index > 0 {
+                let previous = NSMaxRange(ranges[index - 1])
+                let gap = NSRange(location: previous, length: max(0, range.location - previous))
+                let between = gap.length > 0 ? intersecting(gap).filter { NSIntersectionRange($0.range, gap).length > 0 } : []
+                if !between.contains(where: \.selectable) { result += between.filter { $0.kind == .fold } }
+            }
+            result += intersecting(range).filter(\.selectable)
+        }
+        return result
+    }
     func intersecting(_ range: NSRange) -> [TranscriptSpan] {
         let lower = lowerBound(range.location)
         var result: [TranscriptSpan] = []
@@ -193,11 +242,11 @@ struct TranscriptRangeMap {
     }
 }
 
+/// What styles the transcript's spans without writing text: the cut state, Find's query,
+/// the open clip and the playhead, which places the caret and marks the current paragraph.
 struct TranscriptAppearance: Equatable {
     var cutWords: Set<String> = []
     var cutPauses: Set<String> = []
-    var fillers: Set<String> = []
-    var playing: String?
     var query = ""
     var scope: ClosedRange<Int>?
     var lowConfidence = false
@@ -213,7 +262,8 @@ struct TranscriptAppearance: Equatable {
 /// a correction or a fold edits one paragraph. More than `separateEdits` changed paragraphs
 /// (Cut Fillers, Show Pauses) are written in one edit over their extent. The whole document
 /// is written again only for a new take, a new paragraph list (an AI passage over a paragraph
-/// break), a new text size, or a change to more than half the paragraphs (Show Cut Words).
+/// break), a new text size, or a change to more than half the paragraphs (Show cuts, or a tab
+/// switch between Full Take and a clip, since text outside the open clip shows no folds).
 /// Span styles (`attributes`) survive a rebuild, and so do the TextKit rendering attributes
 /// of the text no edit replaced: TextKit moves rendering attributes with the edits, and a
 /// replaced paragraph's new layout fragment is styled from `attributes` by the
@@ -264,21 +314,43 @@ struct TranscriptAppearance: Equatable {
     /// Spans whose style a scope change recomputed: only those whose in-clip state changed.
     private(set) var scopeRestyles = 0
     private var gutterRevision = 0
+    /// A fold's width and its dot's diameter at the built text size (`TranscriptFold`).
+    private(set) var foldGap = TranscriptFold.gap(textSize: DesignValues.transcriptTextSize)
+    private(set) var foldDot = TranscriptFold.dot(textSize: DesignValues.transcriptTextSize)
+    /// Where the caret stands for the playhead (item 19): the start of the word playing or
+    /// the next one, the fold that holds it, or the end of the take. Nil with no words.
+    private(set) var caretOffset: Int?
+    /// Times the caret moved; a playhead tick moves it and restyles no span.
+    private(set) var caretMoves = 0
+    private var caretRevision = -1
+    /// The appearance the last whole-document write styled every span for, until `update`.
+    private var wholeStyle: TranscriptAppearance?
 
-    func rebuild(model: EditorModel) {
+    /// Writes the paragraphs whose content changed. `pending`, the appearance the next
+    /// `update` brings, styles the replaced paragraphs, so a whole-document write for a tab
+    /// switch styles each span once rather than once here and again in the scope restyle.
+    func rebuild(model: EditorModel, appearance pending: TranscriptAppearance? = nil) {
         guard let text, let storage = text.textStorage else { return }
+        let styling = pending ?? appearance
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.minimumLineHeight = (model.textSize * DesignValues.transcriptLineHeightRatio).rounded()
         paragraphStyle.maximumLineHeight = paragraphStyle.minimumLineHeight
         paragraphStyle.paragraphSpacing = DesignValues.transcriptParagraphGap
         paragraphStyle.baseWritingDirection = .natural
         font = DesignValues.transcriptFont(size: model.textSize)
+        foldGap = TranscriptFold.gap(textSize: model.textSize)
+        foldDot = TranscriptFold.dot(textSize: model.textSize)
         let body: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: DesignValues.nsColor("word.text"), .paragraphStyle: paragraphStyle]
-        let mono: [NSAttributedString.Key: Any] = [.font: DesignValues.monoFont(13), .foregroundColor: DesignValues.nsColor("text.muted"), .paragraphStyle: paragraphStyle]
+        // Pause lengths in SF Mono 11 (notes.md §2), scaled with the text and a point above the baseline.
+        let mono: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedSystemFont(ofSize: VCType.small.size * model.textSize / DesignValues.transcriptTextSize, weight: .regular), .foregroundColor: DesignValues.nsColor("word.gone"),
+                                                   .baselineOffset: 1, .paragraphStyle: paragraphStyle]
         var marker = body
         marker[.kern] = max(0, 27 - (" " as NSString).size(withAttributes: [.font: font]).width)
         marker[.foregroundColor] = NSColor.clear
-        let styles = BuildStyles(body: body, mono: mono, marker: marker)
+        var fold = body
+        fold[.kern] = TranscriptFold.kern(font: font, textSize: model.textSize)
+        fold[.foregroundColor] = NSColor.clear
+        let styles = BuildStyles(body: body, mono: mono, marker: marker, fold: fold)
 
         // Arrays compare their buffers first, so an unchanged take costs nothing here.
         let words = model.words
@@ -318,8 +390,12 @@ struct TranscriptAppearance: Equatable {
             else { for index in changed { for span in text.map.spans(inParagraph: index) { forget(span) } } }
             text.map = TranscriptRangeMap(paragraphs: mapped)
             blocks = zip(contents, built).map { ($0, $1.text.length) }
-            for index in changed { styled.formUnion(style(paragraph: index)) }
+            // With the coming appearance every span is styled for it, so `update` restyles none;
+            // without it the untouched paragraphs keep theirs.
+            for index in pending == nil ? changed : Array(contents.indices) { styled.formUnion(style(paragraph: index, state: styling)) }
+            editing = true
             storage.setAttributedString(value)
+            finishEdits()
             documentRebuilds += 1
             paragraphReplacements += contents.count
             storageEdits += 1
@@ -333,13 +409,15 @@ struct TranscriptAppearance: Equatable {
                 : nil
             let extent = NSRange(location: start, length: batch?.length ?? 0)
             // Last paragraph first, so each edit's offset is still the storage's.
+            editing = true
+            defer { finishEdits() }
             for index in changed.reversed() {
                 let old = blocks[index], built = build(contents[index], styles: styles)
                 let range = NSRange(location: offset(ofParagraph: index), length: old.length)
                 for span in text.map.spans(inParagraph: index) { forget(span) }
                 text.map.replace(paragraph: index, with: built.spans, lengthChange: built.text.length - old.length)
                 blocks[index] = (contents[index], built.text.length)
-                styled.formUnion(style(paragraph: index))
+                styled.formUnion(style(paragraph: index, state: styling))
                 if let batch { batch.replaceCharacters(in: NSRange(location: range.location - start, length: range.length), with: built.text) }
                 else { storage.replaceCharacters(in: range, with: built.text); storageEdits += 1 }
             }
@@ -353,11 +431,13 @@ struct TranscriptAppearance: Equatable {
             defer { offset += block.length + 1 }
             return TranscriptParagraph(offset: offset, firstWord: block.content.firstWord, start: block.content.start)
         }
+        // A whole-document write styled every span for `pending`: an `update` to it restyles nothing.
+        wholeStyle = whole ? pending : nil
         // Words that became or stopped being AI words outside the replaced paragraphs restyle now.
-        if let appearance {
+        if let styling {
             for id in aiChanged where !styled.contains(id) {
                 guard let span = text.map.span(id: id) else { continue }
-                attributes[span.id] = style(span, state: appearance)
+                attributes[span.id] = style(span, state: styling)
                 rebuildStyles += 1
                 apply(span)
             }
@@ -379,86 +459,132 @@ struct TranscriptAppearance: Equatable {
         let body: [NSAttributedString.Key: Any]
         let mono: [NSAttributedString.Key: Any]
         let marker: [NSAttributedString.Key: Any]
+        let fold: [NSAttributedString.Key: Any]
     }
 
     /// The take's display paragraphs as content. Paragraphs come from the words alone
     /// (impl-plan item 22); a break inside an AI passage, which reads as one span, is not
-    /// shown, and a folded run of cuts stops at a break, a clip's first word and after a
-    /// clip's last word.
+    /// shown.
+    ///
+    /// In the open clip (every word in Full Take), each run of removed words and pauses is one
+    /// fold (notes.md §5), or, under Show cuts and in the fold the selection starts or ends
+    /// in (`EditorModel.openFoldEnds`), its words and pause lengths. A run reaches over the
+    /// pauses that show nothing and stops at a paragraph break and at the open clip's edges,
+    /// where its removals end, so the band never starts or ends inside a fold; other clips'
+    /// edges do not split it. A comma that only exists because a filler follows folds with
+    /// it (`DisplayPunctuation`). Uncut pauses show only with Show Pauses. Outside the open
+    /// clip the words read as said: no folds, no struck words and no pauses.
     private func contents(model: EditorModel, replacements: [VoiceLabSegment]) -> [TranscriptParagraphContent] {
         let words = transcript
-        let folded = model.showCuts ? [] : model.cutWordIDs
-        // Scope never changes a paragraph's text, so a tab switch edits no storage: the hint
-        // goes on every uncut filler of the take, not only those in the open clip.
-        let fillers = model.fillerCandidateIDs.subtracting(model.cutWordIDs)
-        let pauses = model.showPauses ? model.pauseByAfterIndex : [:]
-        let clips = model.sortedClips
-        let clipStarts = Set(clips.map(\.startWordId)), clipEnds = Set(clips.map(\.endWordId))
+        let cutWords = model.cutWordIDs, cutPauses = model.cutPauseIDs, fillers = model.fillerCandidateIDs
+        let showsCuts = model.showsCuts, openEnds = model.openFoldEnds, scope = model.scopeBounds
+        let pauses = model.pauseByAfterIndex, showPauses = model.showPauses
         var segments: [String: VoiceLabSegment] = [:]
         for segment in replacements where segments[segment.replace.firstWordId] == nil { segments[segment.replace.firstWordId] = segment }
+        func inside(_ position: Int) -> Bool { scope?.contains(position) ?? true }
+        func removed(_ position: Int) -> Bool { inside(position) && cutWords.contains(words[position].id) && !aiWordIDs.contains(words[position].id) }
+        /// The pause after a word, when it is in the open clip: between two of its words.
+        func pause(after position: Int) -> Pause? {
+            guard let pause = pauses[position], inside(position), inside(position + 1) else { return nil }
+            return pause
+        }
+        func pausePiece(_ pause: Pause) -> TranscriptParagraphContent.Piece {
+            let duration = toFixed1(pause.duration)
+            return .init(kind: .pause, id: pause.id, text: "\(duration)\u{00A0}s", toolTip: "pause \(duration) seconds")
+        }
         var result: [TranscriptParagraphContent] = []
         result.reserveCapacity(split.count)
-        var current: TranscriptParagraphContent?
-        var position = 0, nextBreak = 0
-        while position < words.count {
-            let word = words[position]
-            while nextBreak < split.count && split[nextBreak].lowerBound < position { nextBreak += 1 }
-            if nextBreak < split.count && split[nextBreak].lowerBound == position || current == nil {
-                if let current { result.append(current) }
-                current = TranscriptParagraphContent(firstWord: position, start: word.start)
-                if nextBreak < split.count && split[nextBreak].lowerBound == position { nextBreak += 1 }
-            }
-            let limit = nextBreak < split.count ? split[nextBreak].lowerBound : words.count
-            if let segment = segments[word.id] {
-                current?.pieces.append(.init(kind: .aiMarker, id: "ai:\(segment.id)", text: " "))
-                if let replacement = segment.words {
-                    let end = max(position + 1, (wordIndex[segment.replace.lastWordId] ?? position) + 1)
-                    current?.pieces.append(.init(kind: .replacement, id: word.id, text: replacement.map(\.text).joined(separator: " "), ids: words[position..<end].map(\.id)))
-                    position = end
+        for paragraph in split {
+            var content = TranscriptParagraphContent(firstWord: paragraph.lowerBound, start: words[paragraph.lowerBound].start)
+            var position = paragraph.lowerBound
+            /// A cut pause after the word just shown starts a run there.
+            var pendingPause: Pause?
+            while position < paragraph.upperBound || pendingPause != nil {
+                // A run of removed words and pauses: from a cut pause after a kept word, or from a removed word.
+                if pendingPause != nil || removed(position) {
+                    var ids: [String] = [], items: [TranscriptParagraphContent.Piece] = [], filler = false
+                    /// An uncut pause shown after the run (Show Pauses) ends it and follows the fold.
+                    var trailing: TranscriptParagraphContent.Piece?
+                    if let pause = pendingPause { ids.append(pause.id); items.append(pausePiece(pause)); pendingPause = nil }
+                    while position < paragraph.upperBound, removed(position) {
+                        let word = words[position]
+                        ids.append(word.id)
+                        items.append(.init(kind: .word, id: word.id, text: corrections[word.id] ?? word.text))
+                        filler = filler || fillers.contains(word.id)
+                        position += 1
+                        // The pause after a removed word: a cut one joins the run, an uncut one shown with Show Pauses ends it.
+                        guard let pause = pause(after: position - 1) else { continue }
+                        if cutPauses.contains(pause.id) { ids.append(pause.id); items.append(pausePiece(pause)) }
+                        else if showPauses { trailing = pausePiece(pause); break }
+                    }
+                    let open = showsCuts || openEnds.contains(where: ids.contains)
+                    // The kept word before the run reads without a comma that only exists because a filler follows.
+                    let wordFollows = position < paragraph.upperBound
+                    if let last = content.pieces.last, last.kind == .word, !cutWords.contains(last.id), wordIndex[last.id].map(inside) == true,
+                       DisplayPunctuation.foldsComma(last.text, foldRemovesFiller: filler, wordFollows: wordFollows) {
+                        content.pieces[content.pieces.count - 1].text = DisplayPunctuation.withoutComma(last.text)
+                        if open { content.pieces.append(.init(kind: .comma, id: "comma:\(last.id)", text: String(last.text.last ?? ","))) }
+                    }
+                    if open { content.pieces += items } else if let first = ids.first { content.pieces.append(.init(kind: .fold, id: first, text: TranscriptFold.text, ids: ids)) }
+                    if let trailing { content.pieces.append(trailing) }
                     continue
                 }
+                let word = words[position]
+                if let segment = segments[word.id] {
+                    content.pieces.append(.init(kind: .aiMarker, id: "ai:\(segment.id)", text: " "))
+                    if let replacement = segment.words {
+                        let end = max(position + 1, (wordIndex[segment.replace.lastWordId] ?? position) + 1)
+                        content.pieces.append(.init(kind: .replacement, id: word.id, text: replacement.map(\.text).joined(separator: " "), ids: words[position..<end].map(\.id)))
+                        position = end
+                        continue
+                    }
+                }
+                let corrected = corrections[word.id]
+                content.pieces.append(.init(kind: .word, id: word.id, text: corrected ?? word.text, toolTip: corrected != nil ? "Heard as: \(word.text)" : nil))
+                position += 1
+                if let pause = pause(after: position - 1) {
+                    if cutPauses.contains(pause.id) {
+                        // A cut pause starts a run, also at the paragraph's end.
+                        pendingPause = pause
+                    } else if showPauses { content.pieces.append(pausePiece(pause)) }
+                }
             }
-            if folded.contains(word.id) && !aiWordIDs.contains(word.id) {
-                var end = position + 1
-                while end < limit && folded.contains(words[end].id) && !clipStarts.contains(words[end].id) && !clipEnds.contains(words[end - 1].id) { end += 1 }
-                current?.pieces.append(.init(kind: .fold, id: word.id, text: "⋯ \(end - position) cut", ids: words[position..<end].map(\.id)))
-                position = end
-                continue
-            }
-            let corrected = corrections[word.id]
-            current?.pieces.append(.init(kind: .word, id: word.id, text: corrected ?? word.text,
-                toolTip: corrected != nil ? "Heard as: \(word.text)" : fillers.contains(word.id) ? "Filler · Delete to cut" : nil))
-            if let pause = pauses[position] {
-                let duration = toFixed1(pause.duration)
-                current?.pieces.append(.init(kind: .pause, id: pause.id, text: "‖\u{00A0}\(duration)s", toolTip: "pause \(duration) seconds"))
-            }
-            position += 1
+            result.append(content)
         }
-        if let current { result.append(current) }
         return result
     }
 
-    /// A paragraph's text, without its line break, and its spans counted from its first character.
+    /// A paragraph's text, without its line break, and its spans counted from its first
+    /// character. A word is followed by a space unless a fold or its folded comma comes next:
+    /// a fold replaces the word space (notes.md §5).
     private func build(_ content: TranscriptParagraphContent, styles: BuildStyles) -> (text: NSAttributedString, spans: [TranscriptSpan]) {
         let value = NSMutableAttributedString()
         var spans: [TranscriptSpan] = []
         spans.reserveCapacity(content.pieces.count)
-        for piece in content.pieces {
+        let pieces = content.pieces
+        for (index, piece) in pieces.enumerated() {
             let range = NSRange(location: value.length, length: piece.text.utf16.count)
+            let next = index + 1 < pieces.count ? pieces[index + 1].kind : nil
+            let space = next != .fold && next != .comma ? " " : ""
             switch piece.kind {
             case .aiMarker:
                 spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, kind: .ai))
                 value.append(NSAttributedString(string: piece.text, attributes: styles.marker))
             case .word, .replacement:
                 spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, ids: piece.ids))
-                value.append(NSAttributedString(string: piece.text + " ", attributes: styles.body))
+                value.append(NSAttributedString(string: piece.text + space, attributes: styles.body))
+            case .comma:
+                spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, kind: .comma))
+                value.append(NSAttributedString(string: piece.text + space, attributes: styles.body))
             case .fold:
-                spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, ids: piece.ids))
-                value.append(NSAttributedString(string: piece.text + " ", attributes: styles.mono))
+                spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, ids: piece.ids, kind: .fold))
+                value.append(NSAttributedString(string: TranscriptFold.joiner, attributes: styles.body))
+                value.append(NSAttributedString(string: TranscriptFold.glyph, attributes: styles.fold))
+                value.append(NSAttributedString(string: TranscriptFold.breakAfter, attributes: styles.body))
             case .pause:
                 spans.append(TranscriptSpan(id: piece.id, range: range, pause: true))
                 value.append(NSAttributedString(string: piece.text, attributes: styles.mono))
-                value.append(NSAttributedString(string: " ", attributes: styles.body))
+                value.append(NSAttributedString(string: space, attributes: styles.body))
             }
             if let toolTip = piece.toolTip { value.addAttribute(.toolTip, value: toolTip, range: range) }
         }
@@ -470,10 +596,10 @@ struct TranscriptAppearance: Equatable {
     private func forget(_ span: TranscriptSpan) { attributes[span.id] = nil }
     /// Styles a replaced paragraph's spans for the current appearance; the validator applies
     /// them when TextKit lays out the paragraph's new fragment.
-    private func style(paragraph index: Int) -> [String] {
-        guard let text, let appearance else { return [] }
+    private func style(paragraph index: Int, state: TranscriptAppearance?) -> [String] {
+        guard let text, let state else { return [] }
         let spans = text.map.spans(inParagraph: index)
-        for span in spans { attributes[span.id] = style(span, state: appearance) }
+        for span in spans { attributes[span.id] = style(span, state: state) }
         rebuildStyles += spans.count
         return spans.flatMap { [$0.id] + $0.ids }
     }
@@ -484,14 +610,15 @@ struct TranscriptAppearance: Equatable {
         appearance = state
         let changed: Set<String>
         var scopeRuns: [Range<Int>] = []
-        if let previous, previous.query == state.query, previous.lowConfidence == state.lowConfidence {
+        let fresh = wholeStyle == state
+        wholeStyle = nil
+        if fresh {
+            // Every span was styled for this state as the document was written; TextKit's
+            // validator applies them as it lays the new fragments out.
+            changed = []
+        } else if let previous, previous.query == state.query, previous.lowConfidence == state.lowConfidence {
             var ids = previous.cutWords.symmetricDifference(state.cutWords)
             ids.formUnion(previous.cutPauses.symmetricDifference(state.cutPauses))
-            ids.formUnion(previous.fillers.symmetricDifference(state.fillers))
-            if previous.playing != state.playing {
-                if let id = previous.playing { ids.insert(id) }
-                if let id = state.playing { ids.insert(id) }
-            }
             changed = ids
             // A tab switch or a trim restyles only the words whose in-clip state changed (impl-plan §3.1).
             if previous.scope != state.scope { scopeRuns = Self.scopeDifference(previous.scope, state.scope, count: transcript.count) }
@@ -502,6 +629,16 @@ struct TranscriptAppearance: Equatable {
             attributes[span.id] = style(span, state: state)
             apply(span)
         }
+        // The caret follows the playhead (item 19) with no span restyled: only its view moves.
+        // It goes first: finding its line may lay out a fragment, whose validator would drop
+        // the gutter redraw below.
+        let caret = caretOffset(atTime: state.playhead)
+        if caret != caretOffset || caretRevision != storageRevision {
+            caretOffset = caret
+            caretRevision = storageRevision
+            caretMoves += 1
+            text.updateCaret()
+        }
         let current = paragraph(atTime: state.playhead)
         if current != currentParagraph {
             let old = currentParagraph
@@ -511,6 +648,17 @@ struct TranscriptAppearance: Equatable {
         }
         if previous == nil || previous?.scope != state.scope || previous?.activeClipID != state.activeClipID { text.updateBackdrop() }
         if !changed.isEmpty || !scopeRuns.isEmpty { text.needsDisplay = true }
+    }
+
+    /// The caret's place for take time `seconds`: the start of the first word that ends after
+    /// it, which is the word playing or, in a gap, the next one; the fold or AI passage holding
+    /// that word; or the end of the last word.
+    func caretOffset(atTime seconds: Double) -> Int? {
+        guard let text, !transcript.isEmpty else { return nil }
+        var lower = 0, upper = transcript.count
+        while lower < upper { let middle = (lower + upper) / 2; if transcript[middle].end <= seconds { lower = middle + 1 } else { upper = middle } }
+        guard lower < transcript.count else { return text.map.span(id: transcript[transcript.count - 1].id).map { NSMaxRange($0.range) } }
+        return text.map.span(id: transcript[lower].id)?.range.location
     }
 
     /// The word positions whose in-clip state differs between two scopes, nil being the whole
@@ -571,6 +719,13 @@ struct TranscriptAppearance: Equatable {
         gutterRevision += 1
         manager.addRenderingAttribute(.vcGutter, value: gutterRevision, for: range)
     }
+    /// Redraws the fragment holding a span, as a fold's hover needs: a rendering attribute
+    /// change is what makes TextKit draw a fragment again.
+    func redisplay(span id: String) {
+        guard let span = text?.map.span(id: id), let manager = text?.textLayoutManager, let range = textRange(span.range) else { return }
+        gutterRevision += 1
+        manager.addRenderingAttribute(.vcGutter, value: gutterRevision, for: range)
+    }
     /// The TextKit range of a storage range. Locations count from the document's start, so
     /// they are made when needed rather than kept across edits.
     private func textRange(_ range: NSRange) -> NSTextRange? {
@@ -579,42 +734,31 @@ struct TranscriptAppearance: Equatable {
         return NSTextRange(location: start, end: end)
     }
 
+    /// A span's style (notes.md §5): words in `word.text` in the open clip and `word.outside`
+    /// beyond it; a removed word shown under Show cuts in `word.gone` with a 1 pt strike in the
+    /// same grey; pause lengths in `word.gone`, or `text.tertiary` for an uncut pause; a folded
+    /// comma in `word.gone`. Folds and the AI marker draw their own marks over clear glyphs.
+    /// Outside the open clip a cut word reads as said, unstruck.
     private func style(_ span: TranscriptSpan, state: TranscriptAppearance) -> [NSAttributedString.Key: Any] {
-        if !span.selectable { return [.foregroundColor: NSColor.clear] }
+        switch span.kind {
+        case .ai, .fold: return [.foregroundColor: NSColor.clear]
+        case .comma: return [.foregroundColor: DesignValues.nsColor("word.gone")]
+        case .text: break
+        }
         let inside = state.scope.map { scope in wordIndex[span.id].map(scope.contains) ?? true } ?? true
         if aiWordIDs.contains(span.id) {
             // AI words read in t1 like proposed words (notes.md §5), and in word.outside beyond the clip.
-            var result: [NSAttributedString.Key: Any] = [.foregroundColor: DesignValues.nsColor(inside ? "text.primary" : "word.outside"),
-                .vcStrike: false, .vcUnderline: 3, .vcUnderlineColor: NSColor(DesignValues.accentText)]
-            if state.playing.map({ span.id == $0 || span.ids.contains($0) }) == true {
-                result[.vcRounded] = DesignValues.nsColor("word.playingBackground"); result[.vcRadius] = 4.0
-                result[.foregroundColor] = DesignValues.nsColor("word.playingForeground")
-            }
-            return result
+            return [.foregroundColor: DesignValues.nsColor(inside ? "text.primary" : "word.outside"), .vcStrike: false, .vcUnderline: 3, .vcUnderlineColor: NSColor(DesignValues.accentText)]
         }
-        let cut = span.pause ? state.cutPauses.contains(span.id) : state.cutWords.contains(span.id)
-        var result: [NSAttributedString.Key: Any] = [.foregroundColor: DesignValues.nsColor(cut ? "word.cut" : inside ? "word.text" : "word.outside"), .vcStrike: cut]
-        if !span.ids.isEmpty || span.pause {
-            // Pause tokens and collapsed "⋯ N cut" runs are text.muted on pause.background, cut or
-            // not; a cut pause keeps its cut.stroke strike.
-            result[.foregroundColor] = DesignValues.nsColor("text.muted")
-            if cut || !span.ids.isEmpty { result[.vcRounded] = DesignValues.nsColor("pause.background"); result[.vcRadius] = 6.0 }
-            if !span.ids.isEmpty { result[.vcStrike] = false }
-            return result
-        }
+        if span.pause { return [.foregroundColor: DesignValues.nsColor(state.cutPauses.contains(span.id) ? "word.gone" : "text.tertiary")] }
+        let cut = inside && state.cutWords.contains(span.id)
+        var result: [NSAttributedString.Key: Any] = [.foregroundColor: DesignValues.nsColor(cut ? "word.gone" : inside ? "word.text" : "word.outside"), .vcStrike: cut]
         let word = wordIndex[span.id].map { transcript[$0] }
-        if state.fillers.contains(span.id) && !cut {
-            result[.vcUnderline] = 1
-            result[.vcUnderlineColor] = DesignValues.nsColor("word.filler")
-        } else if !cut, state.lowConfidence, let confidence = word?.conf, confidence < 0.6 {
+        if !cut, state.lowConfidence, let confidence = word?.conf, confidence < 0.6 {
             result[.vcUnderline] = 2
             result[.vcUnderlineColor] = DesignValues.nsColor("word.lowConfidence")
         }
         if !state.query.isEmpty, let word, (corrections[span.id] ?? word.text).localizedCaseInsensitiveContains(state.query) { result[.backgroundColor] = DesignValues.nsColor("pause.background") }
-        if state.playing == span.id {
-            result[.vcRounded] = DesignValues.nsColor("word.playingBackground"); result[.vcRadius] = 4.0
-            result[.foregroundColor] = DesignValues.nsColor("word.playingForeground")
-        }
         return result
     }
 
@@ -626,12 +770,27 @@ struct TranscriptAppearance: Equatable {
 
     /// Applies the styles of the spans in a fragment TextKit just laid out: every paragraph
     /// when the document is new, and a replaced paragraph after a rebuild.
+    /// TextKit can lay a fragment out while a storage edit is still being processed (a
+    /// selection the edit moved asks for it), and the edit then drops what the validator
+    /// applied. Those spans are applied again once the edit is done (`finishEdits`).
     func validate(_ fragment: NSTextLayoutFragment) {
         guard let manager = fragment.textLayoutManager, let content = manager.textContentManager, let elementRange = fragment.textElement?.elementRange, let text else { return }
         let offset = content.offset(from: content.documentRange.location, to: elementRange.location)
         let length = content.offset(from: elementRange.location, to: elementRange.endLocation)
         guard offset != NSNotFound, length > 0 else { return }
-        for span in text.map.intersecting(NSRange(location: offset, length: length)) { apply(span) }
+        for span in text.map.intersecting(NSRange(location: offset, length: length)) {
+            apply(span)
+            if editing { validatedDuringEdits.insert(span.id) }
+        }
+    }
+    private var editing = false
+    private var validatedDuringEdits: Set<String> = []
+    /// Applies again the spans TextKit validated during the edits just made.
+    private func finishEdits() {
+        editing = false
+        guard !validatedDuringEdits.isEmpty, let text else { return }
+        for id in validatedDuringEdits { if let span = text.map.span(id: id) { apply(span) } }
+        validatedDuringEdits = []
     }
     func hasCorrection(_ id: String) -> Bool { corrections[id] != nil }
 }

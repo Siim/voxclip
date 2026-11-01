@@ -44,9 +44,10 @@ import Testing
         Row(name: "Apple on-device", connector: "apple-foundation", authMethod: nil, baseURL: nil, first: [], later: []),
     ]
 
-    private func setUp(_ connector: String, authMethod: String?, baseURL: String? = nil) throws -> (AppModel, ConsentFixtureConnector, SheetLog) {
+    private func setUp(_ connector: String, authMethod: String?, baseURL: String? = nil,
+                       readiness: ConnectorStatus = .ready) throws -> (AppModel, ConsentFixtureConnector, SheetLog) {
         let app = AppModel(settingsStore: RegressionSettingsStore())
-        let fake = ConsentFixtureConnector(id: try #require(ConnectorID(rawValue: connector)), authMethod: authMethod)
+        let fake = ConsentFixtureConnector(id: try #require(ConnectorID(rawValue: connector)), readiness: readiness, authMethod: authMethod)
         app.connectorOverride = { _ in fake }
         app.set("llm.connector", .string(connector))
         app.set("llm.model.\(connector)", .string("fixture-local"))
@@ -195,9 +196,14 @@ import Testing
         }
     }
 
-    @Test(arguments: [("claude.ai", "Rewrite", "Sends these 3 words to Fixture with your sign-in. Counts toward your Claude plan."),
-                      ("api_key", "Rewrite…", "Sends these 3 words to Fixture, billed to the API key it is signed in with.")])
-    func theRewriteButtonAndSendLineFollowTheDetectedSignIn(method: String, button: String, line: String) async throws {
+    /// Only a send that asks first reads "Rewrite…" with C8's sentence (design §6.3.1). A CLI with no known sign-in (not
+    /// detected yet, signed out, or a method VoxClip does not recognise) never asks: its send fails with the sign-in error.
+    @Test(arguments: [("claude.ai", "Rewrite", "Sends these 3 words to Fixture with your sign-in. Counts toward your Claude plan.", ""),
+                      ("api_key", "Rewrite…", "Sends these 3 words to Fixture, billed to the API key it is signed in with.",
+                       "VoxClip can't tell what this costs. Check Anthropic's pricing."),
+                      ("third_party", "Rewrite", "Sends these 3 words to Fixture with your sign-in.", ""),
+                      ("none", "Rewrite", "Sends these 3 words to Fixture with your sign-in.", "")])
+    func theRewriteButtonAndSendLineFollowTheDetectedSignIn(method: String, button: String, line: String, price: String) async throws {
         let (app, fake, _) = try setUp("claude-code", authMethod: method)
         let provider = try #require(app.providers.first { $0.id == "claude-code" })
         let editor = try editor(app)
@@ -209,9 +215,98 @@ import Testing
         // Before detection the sign-in is not known: that send neither starts nor asks, so no "…" (ai.md §4.8).
         #expect(session.sendLine == "Sends these 3 words to Fixture with your sign-in.")
         #expect(session.proposalButton == "Rewrite")
+        #expect(app.llmSendKind(.claudeCode) == nil)
         _ = await app.connectorStatus(provider, using: fake)
         #expect(session.proposalButton == button)
         #expect(session.sendLine == line)
+        // C8's sentence is the cost sheet's, shown only by a send that asks first.
+        #expect(app.llmSendKind(.claudeCode) == (price.isEmpty ? .inline("") : .confirm(price)))
+    }
+
+    /// Declining the cost sheet changes nothing: the route runs before anything is claimed sent, so nothing is sent or
+    /// announced, R1's steps never pass Read, the lease is free and no problem line shows. Approving sends once.
+    @Test func decliningTheRewriteCostSheetSendsAndAnnouncesNothing() async throws {
+        let (app, fake, log) = try setUp("codex", authMethod: "api_key")
+        app.set("llm.cloudConsent.codex", .bool(true))
+        let editor = try editor(app)
+        defer { editor.close() }
+        let provider = try #require(app.providers.first { $0.id == "codex" })
+        _ = await app.connectorStatus(provider, using: fake)
+        var stepsBehindSheet: [ActivityStep.Status] = []
+        log.answer = { _ in stepsBehindSheet = editor.rewrite?.task.steps.map(\.status) ?? []; return false }
+        try await send(.rewrite, editor: editor, app: app)
+        let session = try #require(editor.rewrite)
+        #expect(log.take() == [.cost])
+        #expect(await fake.sends == 0)
+        #expect(stepsBehindSheet == [.done, .waiting, .waiting, .waiting])
+        #expect(editor.announcements.isEmpty && session.task.state == .ready && session.problem.isEmpty && !editor.llmRuns.isBusy)
+        log.answer = { _ in true }
+        try await send(.rewrite, editor: editor, app: app)
+        #expect(log.take() == [.cost])
+        #expect(await fake.sends == 1)
+    }
+
+    /// Find clips shows its progress only once the route says yes (design §6.2: the consent, then "while it runs").
+    @Test func decliningTheFindClipsCostSheetShowsNoProgressAndKeepsTheLastResultLines() async throws {
+        let (app, fake, log) = try setUp("codex", authMethod: "api_key")
+        app.set("llm.cloudConsent.codex", .bool(true))
+        let editor = try editor(app)
+        defer { editor.close() }
+        var sidebarReveals = 0
+        editor.onNeedsSidebar = { sidebarReveals += 1 }
+        editor.clipError = "Earlier error."
+        editor.fallbackNote = "Answered by fixture-fallback because fixture-local was busy."
+        var findingBehindSheet = false
+        log.answer = { _ in findingBehindSheet = editor.finding; return false }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(log.take() == [.cost])
+        #expect(await fake.sends == 0)
+        #expect(!findingBehindSheet && !editor.finding && !editor.llmRuns.isBusy)
+        #expect(sidebarReveals == 0 && !editor.announcements.contains("Finding clips"))
+        #expect(editor.clipError == "Earlier error." && editor.fallbackNote == "Answered by fixture-fallback because fixture-local was busy.")
+        log.answer = { _ in true }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(await fake.sends == 1)
+        #expect(sidebarReveals == 1 && editor.announcements.contains("Finding clips"))
+        #expect(editor.fallbackNote == nil && editor.clipError != "Earlier error.")
+    }
+
+    /// A connector that is not ready fails in the route, before any progress: the error still reaches the sidebar.
+    @Test func aFindClipsReadinessErrorRevealsTheSidebarWithTheConnectorsMessage() async throws {
+        let (app, fake, log) = try setUp("lmstudio", authMethod: nil, readiness: .noModels)
+        let editor = try editor(app)
+        defer { editor.close() }
+        var sidebarReveals = 0
+        editor.onNeedsSidebar = { sidebarReveals += 1 }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(log.sheets.isEmpty)
+        #expect(await fake.sends == 0)
+        #expect(sidebarReveals == 1 && !editor.finding)
+        #expect(editor.clipError == "Load or download a model in LM Studio, then refresh. Your edits are saved.")
+    }
+
+    /// The Rewrite panel's readiness error names the chosen connector, as Find clips does: the route now runs for local
+    /// connectors too, and LM Studio's server is off until the user starts it. The error is R1x on the session's task
+    /// (V12m), with nothing sent, no sheet and the passage panel's problem line untouched.
+    @Test(arguments: [
+        ("lmstudio", ConnectorStatus.notRunning(url: "http://localhost:1234"), PanelError.notRunning(server: "LM Studio")),
+        ("lmstudio", .noModels, .message("Load or download a model in LM Studio, then refresh. Your edits are saved.")),
+        ("claude-code", .cliSignedOut, .signedOut(cli: "Claude Code", command: "claude")),
+        ("openai", .needsKey, .noKey(provider: "openai", name: "OpenAI")),
+    ])
+    func aRewriteReadinessErrorNamesTheConnector(connector: String, readiness: ConnectorStatus, error: PanelError) async throws {
+        let (app, fake, log) = try setUp(connector, authMethod: nil, readiness: readiness)
+        let editor = try editor(app)
+        defer { editor.close() }
+        try await send(.rewrite, editor: editor, app: app)
+        let session = try #require(editor.rewrite)
+        #expect(log.sheets.isEmpty)
+        #expect(await fake.sends == 0)
+        #expect(session.task.state == .error(error), "\(session.task.state)")
+        #expect(session.problem.isEmpty && !editor.llmRuns.isBusy)
     }
 }
 #endif

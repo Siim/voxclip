@@ -18,7 +18,7 @@ extension HeavyMediaTests {
         let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
-        #expect(report.count == 64)
+        #expect(report.count == 72)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable {
             let name: String
@@ -29,6 +29,16 @@ extension HeavyMediaTests {
         #expect(measurements.count == 20)
         #expect(Set(measurements.filter { $0.name.hasPrefix("last-") }.map(\.width)) == [300, 320, 360, 560])
         for measurement in measurements { #expect(measurement.settled, Comment(rawValue: measurement.name)) }
+    }
+    /// Show scroll bars › Always (or Automatic with a mouse) gives the gallery a legacy scroller:
+    /// it takes its width from the tiles, and the gallery stays in the column.
+    @Test("The caption gallery fits its column with legacy scroll bars") func captionGalleryLegacyScrollers() throws {
+        let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery-legacy", arguments: ["-AppleShowScrollBars", "Always"])
+        defer { UIProcessHarness.cleanTemporary(directory) }
+        let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
+        #expect(report.count == 72)
+        for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
+        #expect(report.filter { $0.name.hasPrefix("gallery at 404 with legacy scrollers") }.count == 2)
     }
     @Test("Right-column content fits without opening a window") func rightColumnLayout() throws {
         let directory = try UIProcessHarness.run(mode: "-layoutAudit", name: "layout")
@@ -60,6 +70,7 @@ extension HeavyMediaTests {
             let scrollFrames: [CGRect]
             let scrollClipping: [Bool]
             let viewOverflow: [String]
+            let markers: [String: CGRect]
         }
         let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
         #expect(heights.count == 55)
@@ -75,7 +86,9 @@ extension HeavyMediaTests {
             #expect(measurement.scrollClipping.allSatisfy { $0 })
             #expect(measurement.viewOverflow.isEmpty, Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height)"))
             if !measurement.variant.hasPrefix("rewrite") {
-                #expect(viewport.maxY <= measurement.height - 15.5)
+                // Captions (impl-plan V5): the gallery ends where the property rows start, and they end at the body's bottom.
+                let properties = try #require(measurement.markers["captions.properties"], Comment(rawValue: measurement.variant))
+                #expect(viewport.maxY <= properties.minY + 0.5 && abs(properties.maxY - measurement.height) <= 0.5)
             }
             if measurement.width == 404 && measurement.height == 522 {
                 // notes.md §1 at 1280 × 800: the 404 × 227 viewer, the frame fitted in it (f5's 128-wide 9:16), and no Rewrite compaction.
@@ -300,6 +313,7 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             let cutP95MS: Double
             let cutMaximumMS: Double
             let scrollP95MS: Double
+            let foldScrollP95MS: Double
             let storageRebuildsDuringCuts: Int
             let tabSwitchMaximumMS: Double
             let foldCutMaximumMS: Double
@@ -308,6 +322,8 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             let showCutsToggleMaximumMS: Double
             let bulkEditMaximumMS: Double
             let rulerSpanMedianMS: Double
+            let caretTickRestyles: Int
+            let caretMoves: Int
         }
         // One entry per 10,000-word fixture: speakers alternating, and one speaker throughout.
         let measured = try JSONDecoder().decode([Metrics].self, from: Data(contentsOf: directory.appendingPathComponent("transcript-performance.json")))
@@ -316,6 +332,8 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             XCTAssertEqual(metrics.wordCount, 10_000, metrics.fixture)
             XCTAssertLessThan(metrics.cutMaximumMS, 50, metrics.fixture)
             XCTAssertLessThan(metrics.scrollP95MS, 1000 / 60, metrics.fixture)
+            // The default view: folds, the caret and a selection over several paragraphs.
+            XCTAssertLessThan(metrics.foldScrollP95MS, 1000 / 60, metrics.fixture)
             XCTAssertEqual(metrics.storageRebuildsDuringCuts, 0, metrics.fixture)
             XCTAssertLessThanOrEqual(metrics.tabSwitchMaximumMS, 50, metrics.fixture)
             // Fold edits rebuild at most two paragraphs, never the document (impl-plan V8a).
@@ -326,6 +344,9 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             // A bulk fold edit (Cut Fillers) is at most one full rebuild, and the ruler's span is per frame.
             XCTAssertLessThanOrEqual(metrics.bulkEditMaximumMS, 150, metrics.fixture)
             XCTAssertLessThanOrEqual(metrics.rulerSpanMedianMS, 0.05, metrics.fixture)
+            // A playhead tick moves the caret and styles no span (impl-plan item 19).
+            XCTAssertEqual(metrics.caretTickRestyles, 0, metrics.fixture)
+            XCTAssertGreaterThan(metrics.caretMoves, 0, metrics.fixture)
         }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         for result in report {
@@ -333,7 +354,7 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             else { XCTAssertTrue(result.passed, result.name) }
         }
         for metrics in measured {
-            print("\(metrics.fixture): 10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; fold edit max=\(metrics.foldCutMaximumMS)ms; Show cuts toggle max=\(metrics.showCutsToggleMaximumMS)ms; bulk fold edit max=\(metrics.bulkEditMaximumMS)ms; ruler span median=\(metrics.rulerSpanMedianMS)ms; scroll p95=\(metrics.scrollP95MS)ms; tab switch max=\(metrics.tabSwitchMaximumMS)ms")
+            print("\(metrics.fixture): 10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; fold edit max=\(metrics.foldCutMaximumMS)ms; Show cuts toggle max=\(metrics.showCutsToggleMaximumMS)ms; bulk fold edit max=\(metrics.bulkEditMaximumMS)ms; ruler span median=\(metrics.rulerSpanMedianMS)ms; scroll p95=\(metrics.scrollP95MS)ms; fold scroll p95=\(metrics.foldScrollP95MS)ms; tab switch max=\(metrics.tabSwitchMaximumMS)ms")
         }
     }
 }
@@ -341,7 +362,8 @@ final class MacUIRenderPerformanceTests: XCTestCase {
 private enum UIProcessHarness {
     struct Result: Decodable { let name: String; let passed: Bool; let skipped: String? }
     enum Failure: Error { case executableMissing, timedOut, appFailed(Int32), outputMissing }
-    static func run(mode: String, name: String, acceptNonzeroWithReport: String? = nil, preparedDirectory: URL? = nil) throws -> URL {
+    /// Runs the app in `mode`, writing to a fresh folder; `arguments` follow the mode's own.
+    static func run(mode: String, name: String, arguments: [String] = [], acceptNonzeroWithReport: String? = nil, preparedDirectory: URL? = nil) throws -> URL {
         let environment = ProcessInfo.processInfo.environment
         let adjacent = Bundle(for: MacUIRenderPerformanceTests.self).bundleURL.deletingLastPathComponent().appendingPathComponent("VoxClip")
         let override = mode == "-uiPerformanceTest" ? environment["VOXCLIP_UI_PERFORMANCE_EXECUTABLE"] ?? environment["VOXCLIP_APP_EXECUTABLE"] : environment["VOXCLIP_APP_EXECUTABLE"]
@@ -376,6 +398,7 @@ private enum UIProcessHarness {
         process.arguments = ["-ApplePersistenceIgnoreState", "YES", "-NSQuitAlwaysKeepsWindows", "NO", mode, directory.path]
         if mode == "-sceneAudit", environment["VOXCLIP_UI_REDUCED_EFFECTS"] == "1" { process.arguments! += ["-reducedEffects"] }
         if mode == "-demoCapture" { process.arguments! += ["-demoProject", shared.appendingPathComponent("fixtures/projects/interview-take.voxclip").path] }
+        process.arguments! += arguments
         var childEnvironment = environment.filter { !$0.key.hasSuffix("_API_KEY") && !$0.key.hasSuffix("_TOKEN") }
         childEnvironment["VOXCLIP_SHARED_DIR"] = shared.path
         childEnvironment["VOXCLIP_NO_KEYCHAIN"] = "1"

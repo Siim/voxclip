@@ -22,11 +22,15 @@ import VoxClipCore
         text.textContainer?.lineFragmentPadding = 0
         text.textContainer?.containerSize = NSSize(width: TranscriptNSTextView.measure(forPane: width), height: CGFloat.greatestFiniteMagnitude)
         text.textContainerInset = NSSize(width: TranscriptGutter.width, height: 8)
-        text.selectedTextAttributes = TranscriptNSTextView.selectionAttributes
+        // No native selection drawing: the selection layer draws it at text height (notes.md §5).
+        // An empty dictionary is what stops TextKit 2 from filling the selection; a clear
+        // background colour does not.
+        text.selectedTextAttributes = [:]
         text.setAccessibilityLabel("Transcript. Select words, then Delete to cut. Return corrects spelling.")
         text.setAccessibilityCustomRotors(["Cuts", "Pauses", "Suggested fillers", "Clips", "AI words"].map { NSAccessibilityCustomRotor(label: $0, itemSearchDelegate: text) })
         text.configureAccessibilityActions()
         text.installBackdrop()
+        text.installSelectionLayer()
         scroll.documentView = text; scroll.hasVerticalScroller = true; scroll.drawsBackground = false
         text.observeSelectionScrolling(scroll)
         coordinator.text = text
@@ -41,21 +45,10 @@ import VoxClipCore
     func updateNSView(_ scroll: TranscriptScrollView, context: Context) {
         guard let text = scroll.documentView as? TranscriptNSTextView else { return }
         let coordinator = context.coordinator
-        let signature = "\(model.transcriptLayoutRevision):\(model.showCuts):\(model.showPauses):\(model.textSize):\(model.project.edits.pauseThresholdSeconds)"
         coordinator.updating = true
-        if coordinator.signature != signature || !model.showCuts && coordinator.hiddenCuts != model.cutWordIDs {
-            coordinator.signature = signature
-            coordinator.hiddenCuts = model.cutWordIDs
-            coordinator.renderer.rebuild(model: model)
-        }
-        coordinator.renderer.update(TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, playing: model.playingWordID, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence"), activeClipID: model.activeClip?.id, playhead: model.sourceTime))
+        Self.render(model, coordinator: coordinator)
         scroll.overviewRuler.marks = TranscriptOverviewRuler.marks(model: model)
-        let selected = (model.selectedWordIDs.union(model.selectedPauseIDs)).compactMap { text.map.span(id: $0) }.sorted { $0.range.location < $1.range.location }
-        if let first = selected.first, let last = selected.last {
-            let range = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
-            let ranges = text.map.selectionRanges(in: range).map { NSValue(range: $0) }
-            if text.selectedRanges != ranges { text.selectedRanges = ranges }
-        }
+        Self.select(model: model, in: text)
         coordinator.updating = false; text.updateCorrection(); text.refreshSelectionBar()
         if coordinator.scopeScrollRevision != model.scopeScrollRevision {
             coordinator.scopeScrollRevision = model.scopeScrollRevision
@@ -69,11 +62,49 @@ import VoxClipCore
         }
     }
 
+    /// Renders the model as the editor shows it: the paragraphs whose content changed (all
+    /// with `force`), styled for the new appearance, then the styles that changed, the caret
+    /// and the current paragraph. The DEBUG checks render through here too.
+    static func render(_ model: EditorModel, coordinator: Coordinator, force: Bool = false) {
+        let content = Coordinator.Content(model: model)
+        let appearance = TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence"),
+                                              activeClipID: model.activeClip?.id, playhead: model.sourceTime)
+        if force || coordinator.content != content {
+            coordinator.content = content
+            coordinator.renderer.rebuild(model: model, appearance: appearance)
+        }
+        coordinator.renderer.update(appearance)
+    }
+    /// Shows the model's selection in the text view and its selection layer: the selected
+    /// words and pauses from the first to the last, less what cannot be selected, or none.
+    static func select(model: EditorModel, in text: TranscriptNSTextView) {
+        let selected = (model.selectedWordIDs.union(model.selectedPauseIDs)).compactMap { text.map.span(id: $0) }.filter(\.selectable).sorted { $0.range.location < $1.range.location }
+        if let first = selected.first, let last = selected.last {
+            let range = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
+            let ranges = text.map.selectionRanges(in: range).map { NSValue(range: $0) }
+            if text.selectedRanges != ranges { text.selectedRanges = ranges }
+        } else if let current = text.selectedRanges.first?.rangeValue, text.selectedRanges.count > 1 || current.length > 0 {
+            text.selectedRanges = [NSValue(range: NSRange(location: current.location, length: 0))]
+        }
+        text.updateSelectionLayer()
+    }
+
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextLayoutManagerDelegate {
+        /// What the text shows, beyond the take's words: when it changes, `rebuild` writes the
+        /// paragraphs whose content changed. Folds follow the cuts, the open clip and the
+        /// selection's removed ends, so all three are part of it; a playhead tick is not.
+        struct Content: Equatable {
+            var layout: Int, showsCuts: Bool, showPauses: Bool, textSize: Double, pauseThreshold: Double
+            var scope: ClosedRange<Int>?, openEnds: [String], cutWords: Set<String>, cutPauses: Set<String>
+            @MainActor init(model: EditorModel) {
+                layout = model.transcriptLayoutRevision; showsCuts = model.showsCuts; showPauses = model.showPauses; textSize = model.textSize
+                pauseThreshold = model.project.edits.pauseThresholdSeconds; scope = model.scopeBounds; openEnds = model.openFoldEnds
+                cutWords = model.cutWordIDs; cutPauses = model.cutPauseIDs
+            }
+        }
         let model: EditorModel
         weak var text: TranscriptNSTextView?
-        var signature = "", updating = false
-        var hiddenCuts: Set<String> = []
+        var content: Content?, updating = false
         var scopeScrollRevision = 0
         let renderer = TranscriptRenderer()
         init(model: EditorModel) { self.model = model }
@@ -82,10 +113,21 @@ import VoxClipCore
             let ranges = proposed.flatMap { text.map.selectionRanges(in: $0.rangeValue) }
             return ranges.isEmpty ? old : ranges.map { NSValue(range: $0) }
         }
+        /// The selection's words and pauses: those of its selectable spans and of the folds
+        /// between them, which `selectionRanges` leaves out of the ranges, so a drag across a
+        /// fold holds what ⇧→ over it holds (notes.md §5).
         func textViewDidChangeSelection(_ notification: Notification) {
             guard !updating, let text else { return }
-            let spans = text.selectedRanges.flatMap { text.map.intersecting($0.rangeValue).filter(\.selectable) }; model.selectedWordIDs = Set(spans.filter { !$0.pause }.flatMap { $0.ids.isEmpty ? [$0.id] : $0.ids })
-            model.selectedPauseIDs = Set(spans.filter(\.pause).map(\.id))
+            let spans = text.map.selected(text.selectedRanges.map(\.rangeValue))
+            var words = Set<String>(), pauses = Set<String>()
+            for span in spans {
+                if span.kind == .fold {
+                    for id in span.ids { if model.pauseIndex[id] != nil { pauses.insert(id) } else { words.insert(id) } }
+                } else if span.pause { pauses.insert(span.id) } else { words.formUnion(span.ids.isEmpty ? [span.id] : span.ids) }
+            }
+            model.selectedWordIDs = words
+            model.selectedPauseIDs = pauses
+            text.updateSelectionLayer()
             text.selectionDidChange()
             if !model.isPlaying, let id = spans.first?.id, let position = model.index(id) { model.seek(source: model.words[position].start) }
         }
@@ -110,59 +152,76 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     override func draw(at point: CGPoint, in context: CGContext) {
         let drawingContext = TranscriptDrawingContext(value: context)
         let fragment = TranscriptDrawingFragment(value: self)
-        MainActor.assumeIsolated { fragment.value.drawDecorations(at: point, in: drawingContext.value, foreground: false) }
         super.draw(at: point, in: context)
-        MainActor.assumeIsolated { fragment.value.drawDecorations(at: point, in: drawingContext.value, foreground: true) }
+        MainActor.assumeIsolated { fragment.value.drawDecorations(at: point, in: drawingContext.value) }
     }
-    private func drawDecorations(at point: CGPoint, in context: CGContext, foreground: Bool) {
+    /// Over the glyphs: the gutter, fold dots, the strike of removed words under Show cuts,
+    /// underlines, correction dots and the AI marker. No playing-word fill and no filler
+    /// underline (impl-plan items 11 and 19).
+    private func drawDecorations(at point: CGPoint, in context: CGContext) {
         context.saveGState()
         defer { context.restoreGState() }
-        if let renderer, let text = renderer.text, let content = textLayoutManager?.textContentManager, let element = textElement, let elementRange = element.elementRange {
-            let offset = content.offset(from: content.documentRange.location, to: elementRange.location)
-            for line in textLineFragments {
-                let lineRange = NSRange(location: offset + line.characterRange.location, length: line.characterRange.length)
-                if foreground { drawGutter(line: line, lineRange: lineRange, offset: offset, at: point, renderer: renderer, text: text, context: context) }
-                for span in text.map.intersecting(lineRange) {
-                    let intersection = NSIntersectionRange(span.range, lineRange)
-                    guard intersection.length > 0 else { continue }
-                    let start = line.locationForCharacter(at: intersection.location - offset)
-                    let end = line.locationForCharacter(at: NSMaxRange(intersection) - offset)
-                    let rect = CGRect(x: point.x + line.typographicBounds.minX + min(start.x, end.x) - 2, y: point.y + line.typographicBounds.minY, width: max(4, abs(end.x - start.x) + 4), height: line.typographicBounds.height)
-                    let attributes = renderer.attributes[span.id] ?? [:]
-                    if foreground, !span.selectable {
-                        drawMarker(span, rect: rect, renderer: renderer, context: context)
-                        continue
-                    }
-                    if !foreground, let color = attributes[.vcRounded] as? NSColor {
-                        let radius = CGFloat((attributes[.vcRadius] as? NSNumber)?.doubleValue ?? 4)
-                        context.setFillColor(color.cgColor); context.addPath(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)); context.fillPath()
-                    }
-                    guard foreground else { continue }
-                    let fontIndex = min(line.attributedString.length - 1, max(0, intersection.location - offset))
-                    let font = line.attributedString.attribute(.font, at: fontIndex, effectiveRange: nil) as? NSFont ?? DesignValues.transcriptFont(size: DesignValues.transcriptTextSize)
-                    let baseline = point.y + line.typographicBounds.minY + line.glyphOrigin.y
-                    let lower = rect.minX + 2, upper = rect.maxX - 2
-                    if attributes[.vcStrike] as? Bool == true {
-                        context.setStrokeColor(DesignValues.nsColor("cut.stroke").cgColor)
-                        context.setLineWidth(DesignValues.dimension("stroke.cutStrike", fallback: 1.5))
-                        context.setLineDash(phase: 0, lengths: [])
-                        context.move(to: CGPoint(x: lower, y: baseline - font.xHeight / 2))
-                        context.addLine(to: CGPoint(x: upper, y: baseline - font.xHeight / 2)); context.strokePath()
-                    }
-                    if let underline = attributes[.vcUnderline] as? Int, let color = attributes[.vcUnderlineColor] as? NSColor {
-                        let row = baseline - font.underlinePosition + 1
-                        context.setStrokeColor(color.cgColor); context.setLineWidth(underline == 1 ? 1.5 : 1)
-                        context.setLineCap(underline == 1 ? .round : .butt)
-                        context.setLineDash(phase: 0, lengths: underline == 1 ? [0.5, 2.5] : [4, 3])
-                        context.move(to: CGPoint(x: lower, y: row)); context.addLine(to: CGPoint(x: upper, y: row)); context.strokePath()
-                    }
-                    if renderer.hasCorrection(span.id), intersection.location == span.range.location {
-                        context.setFillColor(DesignValues.nsColor("word.correctionDot").cgColor)
-                        context.fillEllipse(in: CGRect(x: point.x + line.typographicBounds.minX + start.x, y: rect.maxY - 2, width: 2, height: 2))
-                    }
+        guard let renderer, let text = renderer.text, let content = textLayoutManager?.textContentManager, let element = textElement, let elementRange = element.elementRange else { return }
+        let offset = content.offset(from: content.documentRange.location, to: elementRange.location)
+        for line in textLineFragments {
+            let lineRange = NSRange(location: offset + line.characterRange.location, length: line.characterRange.length)
+            drawGutter(line: line, lineRange: lineRange, offset: offset, at: point, renderer: renderer, text: text, context: context)
+            let baseline = point.y + line.typographicBounds.minY + line.glyphOrigin.y
+            for span in text.map.intersecting(lineRange) {
+                let intersection = NSIntersectionRange(span.range, lineRange)
+                guard intersection.length > 0 else { continue }
+                // A word after a fold starts the fold's full kern after its glyph (`glyphX`).
+                let start = text.glyphX(line, local: intersection.location - offset)
+                let end = text.glyphX(line, local: NSMaxRange(intersection) - offset)
+                let rect = CGRect(x: point.x + line.typographicBounds.minX + min(start, end) - 2, y: point.y + line.typographicBounds.minY, width: max(4, abs(end - start) + 4), height: line.typographicBounds.height)
+                switch span.kind {
+                case .ai: drawMarker(span, rect: rect, renderer: renderer, context: context); continue
+                case .fold:
+                    let glyph = span.range.location + TranscriptFold.glyphOffset
+                    guard NSLocationInRange(glyph, lineRange) else { continue }
+                    let left = point.x + line.typographicBounds.minX + line.locationForCharacter(at: glyph - offset).x
+                    drawFold(centre: CGPoint(x: left + renderer.foldGap / 2, y: baseline - renderer.font.xHeight / 2), diameter: renderer.foldDot, hovered: text.hoveredFold == span.id, context: context)
+                    continue
+                case .comma, .text: break
+                }
+                let attributes = renderer.attributes[span.id] ?? [:]
+                let fontIndex = min(line.attributedString.length - 1, max(0, intersection.location - offset))
+                let font = line.attributedString.attribute(.font, at: fontIndex, effectiveRange: nil) as? NSFont ?? DesignValues.transcriptFont(size: DesignValues.transcriptTextSize)
+                let lower = rect.minX + 2, upper = rect.maxX - 2
+                if attributes[.vcStrike] as? Bool == true {
+                    // A removed word under Show cuts: a 1 pt strike in its own grey (notes.md §5).
+                    context.setStrokeColor(DesignValues.nsColor("word.gone").cgColor)
+                    context.setLineWidth(1)
+                    context.setLineDash(phase: 0, lengths: [])
+                    context.move(to: CGPoint(x: lower, y: baseline - font.xHeight / 2))
+                    context.addLine(to: CGPoint(x: upper, y: baseline - font.xHeight / 2)); context.strokePath()
+                }
+                if attributes[.vcUnderline] != nil, let color = attributes[.vcUnderlineColor] as? NSColor {
+                    let row = baseline - font.underlinePosition + 1
+                    context.setStrokeColor(color.cgColor); context.setLineWidth(1)
+                    context.setLineCap(.butt)
+                    context.setLineDash(phase: 0, lengths: [4, 3])
+                    context.move(to: CGPoint(x: lower, y: row)); context.addLine(to: CGPoint(x: upper, y: row)); context.strokePath()
+                }
+                if renderer.hasCorrection(span.id), intersection.location == span.range.location {
+                    context.setFillColor(DesignValues.nsColor("word.correctionDot").cgColor)
+                    context.fillEllipse(in: CGRect(x: point.x + line.typographicBounds.minX + start, y: rect.maxY - 2, width: 2, height: 2))
                 }
             }
         }
+    }
+
+    /// A fold's dot (notes.md §5): 5 pt of `fold.dot` centred in the fold on the x-height;
+    /// under the pointer `text.secondary` with a 3 pt halo of it at 18%.
+    private func drawFold(centre: CGPoint, diameter: CGFloat, hovered: Bool, context: CGContext) {
+        let radius = diameter / 2
+        if hovered {
+            let halo = radius + 3
+            context.setFillColor(DesignValues.nsColor("text.secondary").withAlphaComponent(0.18).cgColor)
+            context.fillEllipse(in: CGRect(x: centre.x - halo, y: centre.y - halo, width: halo * 2, height: halo * 2))
+        }
+        context.setFillColor(DesignValues.nsColor(hovered ? "text.secondary" : "fold.dot").cgColor)
+        context.fillEllipse(in: CGRect(x: centre.x - radius, y: centre.y - radius, width: diameter, height: diameter))
     }
 
     /// The gutter of one line (notes.md §5): the paragraph's timecode on its first line,
@@ -211,15 +270,6 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
 
 @MainActor final class TranscriptNSTextView: NSTextView, NSTextFieldDelegate, @preconcurrency NSAccessibilityCustomRotorItemSearchDelegate {
     weak var model: EditorModel?
-    /// Selected words read in text.primary on the platform selection (selection.text), so
-    /// cut and filler colours never sit on it; Increase Contrast takes the system's pair.
-    static let selectionAttributes: [NSAttributedString.Key: Any] = {
-        let primary = DesignValues.nsColor("text.primary")
-        let text = NSColor(name: NSColor.Name("voxclip.selectedTranscriptText")) { appearance in
-            appearance.bestMatch(from: [.accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua, .aqua, .darkAqua])?.rawValue.contains("HighContrast") == true ? .selectedTextColor : primary
-        }
-        return [.backgroundColor: NSColor.selectedTextBackgroundColor, .foregroundColor: text]
-    }()
 
     /// The transcript measure (notes.md §1 and §4): the pane less the 80 gutter and 44 of
     /// right padding, kept between 480 and 680, and never wider than the pane after the
@@ -255,12 +305,220 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         addSubview(view, positioned: .below, relativeTo: nil)
         backdrop = view
     }
-    /// Every viewport layout (scrolling, resizing, new text) moves the backdrop and the
-    /// overview ruler's visible window with the lines TextKit just placed.
+    private(set) var selectionLayer: TranscriptSelectionLayer?
+    private(set) var caret: TranscriptCaret?
+    /// Adds the selection tint and the caret above the backdrop and behind the text.
+    func installSelectionLayer() {
+        guard selectionLayer == nil, let backdrop else { return }
+        let layer = TranscriptSelectionLayer(frame: .zero), caret = TranscriptCaret(frame: .zero)
+        layer.isHidden = true; caret.isHidden = true
+        addSubview(layer, positioned: .above, relativeTo: backdrop)
+        addSubview(caret, positioned: .above, relativeTo: layer)
+        selectionLayer = layer; self.caret = caret
+    }
+    /// Every viewport layout (scrolling, resizing, new text) moves the backdrop, the
+    /// selection, the caret and the overview ruler's visible window with the lines TextKit
+    /// just placed.
     override func textViewportLayoutControllerDidLayout(_ controller: NSTextViewportLayoutController) {
         super.textViewportLayoutControllerDidLayout(controller)
         updateBackdrop()
+        updateSelectionLayer()
+        updateCaret()
         (enclosingScrollView as? TranscriptScrollView)?.overviewRuler.visibleSpan = visibleTakeSpan()
+    }
+    /// The laid-out line holding the character at `offset`, its fragment and the fragment's
+    /// first character, or nil while TextKit has not laid it out (offscreen).
+    private func laidOutLine(atCharacter offset: Int) -> (fragment: NSTextLayoutFragment, line: NSTextLineFragment, base: Int)? {
+        guard let manager = textLayoutManager, let content = manager.textContentManager,
+              let location = content.location(content.documentRange.location, offsetBy: offset),
+              let fragment = manager.textLayoutFragment(for: location), fragment.state == .layoutAvailable,
+              let element = fragment.textElement?.elementRange else { return nil }
+        let base = content.offset(from: content.documentRange.location, to: element.location)
+        guard let line = fragment.textLineFragments.first(where: { NSLocationInRange(offset - base, $0.characterRange) }) ?? fragment.textLineFragments.last else { return nil }
+        return (fragment, line, base)
+    }
+    /// A character's x in its line. TextKit reports the place after a kerned glyph half way
+    /// through the kern, so a word after a fold starts the fold's full kern after its glyph.
+    /// A fold that ends the line before adds nothing: `index` then starts its line. Every x
+    /// of a character that may follow a fold goes through here.
+    func glyphX(_ line: NSTextLineFragment, local index: Int) -> CGFloat {
+        let x = line.locationForCharacter(at: index).x
+        let string = line.attributedString.string as NSString
+        let first = line.characterRange.location
+        var previous = index - 1
+        if previous >= first, previous < string.length, string.character(at: previous) == 0x200B { previous -= 1 }
+        guard previous >= first, previous < string.length, string.character(at: previous) == 0x2022,
+              let kern = line.attributedString.attribute(.kern, at: previous, effectiveRange: nil) as? CGFloat else { return x }
+        return x + kern / 2
+    }
+    /// The box of a range's characters on the line of its first, in this view: from
+    /// `glyphX`, over the line's typographic height. Nil while the line is not laid out.
+    func textBox(of range: NSRange) -> CGRect? {
+        guard let (fragment, line, base) = laidOutLine(atCharacter: range.location) else { return nil }
+        let lower = range.location - base, upper = min(NSMaxRange(range) - base, NSMaxRange(line.characterRange))
+        let left = glyphX(line, local: lower), right = glyphX(line, local: max(lower, upper))
+        let origin = textContainerOrigin
+        return CGRect(x: origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + left, y: origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY,
+                      width: max(0, right - left), height: line.typographicBounds.height)
+    }
+    /// The selection at text height (notes.md §5): per visible line, from the first selected
+    /// character to the last, the font's ascender to its descender, folds between selected
+    /// words included.
+    func selectionRects() -> [CGRect] {
+        let ranges = selectedRanges.map(\.rangeValue).filter { $0.length > 0 }
+        guard let first = ranges.first, let last = ranges.last, let manager = textLayoutManager, let content = manager.textContentManager, let renderer else { return [] }
+        let documentStart = content.documentRange.location
+        // The viewport's lines only; before any viewport layout, every laid-out line.
+        let viewport = manager.textViewportLayoutController.viewportRange
+        let start = max(first.location, viewport.map { content.offset(from: documentStart, to: $0.location) } ?? 0)
+        let end = min(NSMaxRange(last), viewport.map { content.offset(from: documentStart, to: $0.endLocation) } ?? NSMaxRange(last))
+        guard start < end, let location = content.location(documentStart, offsetBy: start) else { return [] }
+        // The storage's own string: bridging `string` would copy the whole text on every viewport layout.
+        guard let string = textStorage?.mutableString else { return [] }
+        let origin = textContainerOrigin, font = renderer.font
+        var rects: [CGRect] = []
+        manager.enumerateTextLayoutFragments(from: location, options: []) { fragment in
+            guard let element = fragment.textElement?.elementRange else { return false }
+            let base = content.offset(from: documentStart, to: element.location)
+            guard base < end else { return false }
+            for line in fragment.textLineFragments {
+                let lineStart = base + line.characterRange.location
+                var lower = max(start, lineStart), upper = min(end, lineStart + line.characterRange.length)
+                // A line's trailing space, break or newline is not text.
+                while upper > lower, [0x20, 0x200B, 0x0A].contains(string.character(at: upper - 1)) { upper -= 1 }
+                guard upper > lower else { continue }
+                let left = glyphX(line, local: lower - base), right = glyphX(line, local: upper - base)
+                let x = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX
+                let baseline = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
+                rects.append(CGRect(x: x + left, y: baseline - font.ascender, width: max(1, right - left), height: font.ascender - font.descender))
+            }
+            return true
+        }
+        return rects
+    }
+    func updateSelectionLayer() { selectionLayer?.show(selectionRects()) }
+
+    // MARK: Folds
+
+    /// The fold under the pointer, whose dot shows in text.secondary with a halo.
+    private(set) var hoveredFold: String?
+    private var hoverArea: NSTrackingArea?
+    private var hoverTask: Task<Void, Never>?
+    private var foldPopover: NSHostingView<FoldPopover>?
+    /// The fold whose popover shows.
+    private(set) var popoverFold: String?
+    var foldPopoverVisible: Bool { foldPopover?.isHidden == false }
+    #if DEBUG
+    var foldPopoverAuditView: NSView? { foldPopoverVisible ? foldPopover : nil }
+    #endif
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverArea { removeTrackingArea(hoverArea) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverArea = area
+    }
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        hover(at: convert(event.locationInWindow, from: nil))
+    }
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        hover(at: nil)
+    }
+    /// Hovering a fold lights its dot at once and shows its popover after a moment; the
+    /// popover stays while the pointer moves into it.
+    func hover(at point: CGPoint?) {
+        if let point, let popover = foldPopover, !popover.isHidden, popover.frame.insetBy(dx: -4, dy: -4).contains(point) { return }
+        let fold = point.flatMap(fold(at:))
+        setHoveredFold(fold?.id)
+        guard let fold else { hoverTask?.cancel(); hideFoldPopover(); return }
+        guard popoverFold != fold.id || !foldPopoverVisible else { return }
+        hideFoldPopover()
+        hoverTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            guard !Task.isCancelled, self?.hoveredFold == fold.id else { return }
+            self?.showFoldPopover(for: fold.id)
+        }
+    }
+    private func setHoveredFold(_ id: String?) {
+        guard hoveredFold != id else { return }
+        let old = hoveredFold
+        hoveredFold = id
+        for fold in [old, id].compactMap({ $0 }) { renderer?.redisplay(span: fold) }
+    }
+    /// The fold whose dot box holds a point in this view: the fold's width, its line's height.
+    func fold(at point: CGPoint) -> TranscriptSpan? {
+        guard let manager = textLayoutManager, let content = manager.textContentManager, !map.isEmpty else { return nil }
+        let origin = textContainerOrigin
+        guard let fragment = manager.textLayoutFragment(for: CGPoint(x: point.x - origin.x, y: point.y - origin.y)), fragment.state == .layoutAvailable,
+              let element = fragment.textElement?.elementRange else { return nil }
+        let base = content.offset(from: content.documentRange.location, to: element.location)
+        let y = point.y - origin.y - fragment.layoutFragmentFrame.minY
+        guard let line = fragment.textLineFragments.first(where: { $0.typographicBounds.minY <= y && y < $0.typographicBounds.maxY }) else { return nil }
+        let lineRange = NSRange(location: base + line.characterRange.location, length: line.characterRange.length)
+        return map.intersecting(lineRange).first { span in
+            span.kind == .fold && foldBox(span, fragment: fragment, line: line, base: base).map { $0.contains(point) } == true
+        }
+    }
+    /// A fold's box in this view: from its glyph's start, the fold's width, over its line.
+    func foldBox(_ span: TranscriptSpan) -> CGRect? {
+        guard let (fragment, line, base) = laidOutLine(atCharacter: span.range.location + TranscriptFold.glyphOffset) else { return nil }
+        return foldBox(span, fragment: fragment, line: line, base: base)
+    }
+    private func foldBox(_ span: TranscriptSpan, fragment: NSTextLayoutFragment, line: NSTextLineFragment, base: Int) -> CGRect? {
+        let glyph = span.range.location + TranscriptFold.glyphOffset - base
+        guard let renderer, NSLocationInRange(glyph, line.characterRange) else { return nil }
+        let origin = textContainerOrigin
+        let x = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + line.locationForCharacter(at: glyph).x
+        let y = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY
+        return CGRect(x: x, y: y, width: renderer.foldGap, height: line.typographicBounds.height)
+    }
+    /// Shows a fold's popover under its line, its dot 22 pt from the popover's leading edge,
+    /// or above the line when the pane has no room for it below.
+    func showFoldPopover(for id: String) {
+        guard let model, let span = map.span(id: id), span.kind == .fold, let box = foldBox(span), let line = lineBox(atCharacter: span.range.location + TranscriptFold.glyphOffset) else { return }
+        let view = FoldPopover(items: model.foldItems(span.ids), description: model.foldDescription(span.ids), canRestore: model.capabilities.edit) { [weak self] in
+            self?.hideFoldPopover()
+            self?.model?.restoreFold(span.ids)
+        }
+        let host: NSHostingView<FoldPopover>
+        if let foldPopover { host = foldPopover; host.rootView = view } else { host = NSHostingView(rootView: view); foldPopover = host; addSubview(host) }
+        let size = host.fittingSize
+        let visible = visibleRect
+        let x = min(max(visible.minX + 4, box.midX - 22), visible.maxX - size.width - 4)
+        let below = line.maxY + 2, above = line.minY - 2 - size.height
+        let y = below + size.height <= visible.maxY || above < visible.minY ? below : above
+        host.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
+        host.isHidden = false
+        popoverFold = id
+    }
+    func hideFoldPopover() {
+        hoverTask?.cancel(); hoverTask = nil
+        foldPopover?.isHidden = true
+        popoverFold = nil
+    }
+    /// Places the caret (impl-plan item 19): 2 × 19 at 15 pt, from 15 above the baseline to 4
+    /// below, centred on the start of the playhead's word. Hidden while its line is offscreen.
+    func updateCaret() {
+        guard let caret else { return }
+        // Only a line in the viewport: asking TextKit for another paragraph's fragment would
+        // lay it out, and a fragment made outside a layout pass misses its rendering attributes.
+        guard let renderer, let offset = renderer.caretOffset, let manager = textLayoutManager, let content = manager.textContentManager,
+              let viewport = manager.textViewportLayoutController.viewportRange,
+              case let start = content.offset(from: content.documentRange.location, to: viewport.location),
+              case let end = content.offset(from: content.documentRange.location, to: viewport.endLocation),
+              offset >= start, offset <= end, let (fragment, line, base) = laidOutLine(atCharacter: offset) else {
+            if !caret.isHidden { caret.isHidden = true }
+            return
+        }
+        let scale = renderer.font.pointSize / DesignValues.transcriptTextSize
+        let origin = textContainerOrigin
+        let x = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + glyphX(line, local: offset - base)
+        let baseline = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
+        let frame = CGRect(x: x - 1, y: baseline - 15 * scale, width: 2, height: 19 * scale)
+        if caret.frame != frame { caret.frame = frame }
+        if caret.isHidden { caret.isHidden = false }
     }
     /// Places the open clip's band and range bar (notes.md §5) from its first and last lines.
     /// An end beyond the viewport is never laid out for this, so the band runs past the
@@ -352,6 +610,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     override func viewWillMove(toSuperview newSuperview: NSView?) {
         if newSuperview == nil {
             hideSelectionBar()
+            hideFoldPopover()
             for token in scrollingTokens { NotificationCenter.default.removeObserver(token) }
             scrollingTokens = []
         }
@@ -368,7 +627,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     func observeSelectionScrolling(_ scroll: NSScrollView) {
         for token in scrollingTokens { NotificationCenter.default.removeObserver(token) }
         scrollingTokens = [NotificationCenter.default.addObserver(forName: NSScrollView.willStartLiveScrollNotification, object: scroll, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.liveScrolling = true; self?.hideSelectionBar() }
+            MainActor.assumeIsolated { self?.liveScrolling = true; self?.hideSelectionBar(); self?.hideFoldPopover() }
         }, NotificationCenter.default.addObserver(forName: NSScrollView.didEndLiveScrollNotification, object: scroll, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.liveScrolling = false; self?.scheduleSelectionBar() }
         }]
@@ -403,8 +662,8 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                 let lineRange = NSRange(location: offset + line.characterRange.location, length: line.characterRange.length)
                 guard ranges.contains(where: { NSIntersectionRange($0, lineRange).length > 0 }) else { continue }
                 let intersections = ranges.map { NSIntersectionRange($0, lineRange) }.filter { $0.length > 0 }
-                let starts = intersections.map { line.locationForCharacter(at: $0.location - offset).x }
-                let ends = intersections.map { line.locationForCharacter(at: NSMaxRange($0) - offset).x }
+                let starts = intersections.map { glyphX(line, local: $0.location - offset) }
+                let ends = intersections.map { glyphX(line, local: NSMaxRange($0) - offset) }
                 let left = min(starts.min() ?? 0, ends.min() ?? 0)
                 let right = max(starts.max() ?? 0, ends.max() ?? 0)
                 let bounds = line.typographicBounds.offsetBy(dx: origin.x + fragment.layoutFragmentFrame.minX, dy: origin.y + fragment.layoutFragmentFrame.minY)
@@ -480,7 +739,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         }.joined(separator: "; ")
     }
     override func accessibilityString(for range: NSRange) -> String? {
-        map.intersecting(range).filter(\.selectable).map(spoken).joined(separator: " ")
+        map.intersecting(range).filter { $0.selectable || $0.kind == .fold }.map(spoken).joined(separator: " ")
     }
     override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
         let words = map.intersecting(range).filter(\.selectable)
@@ -494,8 +753,14 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             let overlap = NSIntersectionRange(span.range, range)
             guard overlap.length > 0 else { continue }
             let local = NSRange(location: overlap.location - range.location, length: overlap.length)
-            if !span.selectable { result.replaceCharacters(in: local, with: String(repeating: " ", count: local.length)); continue }
-            if span.pause || collapsedCut(span), overlap.location == span.range.location { result.replaceCharacters(in: NSRange(location: local.location, length: 1), with: " ") }
+            if span.kind == .fold {
+                // A fold reads as what it removed: "1 cut: uh, pause 1.4 seconds".
+                result.replaceCharacters(in: local, with: String(repeating: " ", count: local.length))
+                if let model { result.addAttribute(.accessibilityCustomText, value: [model.foldDescription(span.ids)], range: local) }
+                continue
+            }
+            if span.kind == .ai { result.replaceCharacters(in: local, with: String(repeating: " ", count: local.length)); continue }
+            if span.pause, overlap.location == span.range.location { result.replaceCharacters(in: NSRange(location: local.location, length: 1), with: " ") }
             let states = accessibilityStates(span)
             if !states.isEmpty { result.addAttribute(.accessibilityCustomText, value: states, range: local) }
         }
@@ -503,7 +768,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
     override func accessibilityValue() -> String? {
         let value = NSMutableString(string: string)
-        for span in map.spans where !span.selectable && NSMaxRange(span.range) <= value.length {
+        for span in map.spans where (span.kind == .ai || span.kind == .fold) && NSMaxRange(span.range) <= value.length {
             value.replaceCharacters(in: span.range, with: String(repeating: " ", count: span.range.length))
         }
         return value as String
@@ -515,12 +780,11 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         return selection.length == 0 ? "" : accessibilityString(for: selection)
     }
     func spoken(_ span: TranscriptSpan) -> String {
+        if span.kind == .fold, let model { return model.foldDescription(span.ids) }
         let states = accessibilityStates(span)
-        if span.pause || collapsedCut(span), !states.isEmpty { return states.joined(separator: ", ") }
+        if span.pause, !states.isEmpty { return states.joined(separator: ", ") }
         return ([(string as NSString).substring(with: span.range)] + states).joined(separator: ", ")
     }
-    /// A run of cut words shown as "⋯ n cut". An accepted Voice Lab replacement also lists its source words but reads as words.
-    private func collapsedCut(_ span: TranscriptSpan) -> Bool { !span.ids.isEmpty && !aiModified(span) }
     private func aiModified(_ span: TranscriptSpan) -> Bool {
         guard let model, !span.pause, let position = model.index(span.id) else { return false }
         let word = model.words[position]
@@ -534,7 +798,6 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             guard let pause = model.pauseIndex[span.id] else { return [] }
             return ["pause \(toFixed1(pause.duration)) seconds"] + (model.cutPauseIDs.contains(span.id) ? ["cut"] : [])
         }
-        if collapsedCut(span) { return [span.ids.count == 1 ? "1 cut word" : "\(span.ids.count) cut words"] }
         let modified = aiModified(span)
         var states: [String] = []
         // An accepted replacement never inherits the dormant source words' cut state.
@@ -547,6 +810,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         model?.focusedPane = .transcript
         if event.keyCode == 53, model?.rewrite != nil { model?.closeRewrite(); return }
         guard let model, !hasMarkedText(), correction == nil else { super.keyDown(with: event); return }
+        if event.keyCode == 53, foldPopoverVisible { hideFoldPopover(); return }
         if event.keyCode == 53, selectionBarVisible { hideSelectionBar(dismissed: true); return }
         if event.keyCode == 53 { model.activate(nil); return }
         if EditorPane.entersSelectionBar(code: event.keyCode, modifiers: event.modifierFlags) {
@@ -578,6 +842,16 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
     override func mouseDown(with event: NSEvent) {
         finishCorrection()
+        hideFoldPopover()
+        // A click on a fold opens it and selects what it holds (notes.md §5).
+        if event.clickCount == 1, event.modifierFlags.isDisjoint(with: [.shift, .command, .option, .control]), let model,
+           let fold = fold(at: convert(event.locationInWindow, from: nil)) {
+            hideSelectionBar()
+            model.expandFold(fold.ids)
+            window?.makeFirstResponder(self)
+            scheduleSelectionBar()
+            return
+        }
         selecting = true; selectionDismissed = false; hideSelectionBar()
         super.mouseDown(with: event)
         selecting = false
@@ -654,7 +928,8 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         if correction != nil, correctionWordID != id { removeCorrectionField(refocus: false) }
         guard correction == nil, let window else { return }
         hideSelectionBar()
-        let rect = convert(window.convertFromScreen(firstRect(forCharacterRange: span.range, actualRange: nil)), from: nil)
+        // The word's own box, so a word after a fold is not half its kern short (`glyphX`).
+        let rect = textBox(of: span.range) ?? convert(window.convertFromScreen(firstRect(forCharacterRange: span.range, actualRange: nil)), from: nil)
         let field = NSTextField(frame: CGRect(x: rect.minX, y: rect.minY, width: max(90, rect.width + 24), height: 28))
         field.stringValue = model.correctionText; field.font = DesignValues.transcriptFont(size: model.textSize); field.delegate = self; field.setAccessibilityLabel("Correct spelling, audio stays the same")
         addSubview(field); correction = field; correctionWordID = id; window.makeFirstResponder(field); field.selectText(nil)

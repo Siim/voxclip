@@ -725,16 +725,9 @@ import VoxClipCore
             }
         }
         check("a system accent's text colour mixes toward text.primary until it reads at 4.5:1 on bg.surface", readable)
-        var selection = false
-        for appearance in [light, dark] {
-            appearance.performAsCurrentDrawingAppearance {
-                guard let drawn = (TranscriptNSTextView.selectionAttributes[.foregroundColor] as? NSColor)?.usingColorSpace(.sRGB),
-                      let primary = DesignValues.nsColor("text.primary").usingColorSpace(.sRGB) else { selection = false; return }
-                selection = abs(drawn.redComponent - primary.redComponent) < 0.01 && abs(drawn.greenComponent - primary.greenComponent) < 0.01 && abs(drawn.blueComponent - primary.blueComponent) < 0.01
-            }
-            if !selection { break }
-        }
-        check("selected transcript words draw in text.primary on the platform selection", selection)
+        // The transcript's selection is its own tint at text height (ux/v2 notes.md §5), never the platform's.
+        let transcript = TranscriptTextView.makeScrollView(model: located, coordinator: TranscriptTextView.Coordinator(model: located)).documentView as? TranscriptNSTextView
+        check("selected transcript words draw the tint.selection layer, not the platform selection", transcript?.selectedTextAttributes.isEmpty == true && transcript?.selectionLayer != nil)
         return results
     }
 
@@ -875,9 +868,10 @@ import VoxClipCore
         shell.layout.explorerVisible = false
         let steps = model.undoSteps
         let playhead = model.playhead, exportTitle = model.exportTitle, subtitle = model.subtitle
+        // The sidebar opens once the send is authorized, inside the run (VS), so read it when the run ends.
         model.findClips()
-        let revealed = shell.layout.explorerVisible
         await model.findTask?.value
+        let revealed = shell.layout.explorerVisible
         check("Find Clips adds three suggestions and keeps none", model.suggestedClips.count == 3 && model.keptClips.isEmpty && model.project.ai.results.count == 1 && model.clipError == nil)
         check("a run shows the hidden sidebar for its progress", revealed)
         let first = model.suggestedClips.first?.id

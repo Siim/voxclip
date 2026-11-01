@@ -356,7 +356,7 @@ enum RewriteFixtureReply {
             while await fake.sends == 0 && clock.now < deadline { await Task.yield() }
             check("Rewrite holds the same project lease as Find Clips", editor.llmRuns.isBusy && !editor.capabilities.ai)
             editor.findClips()
-            check("Find Clips cannot start while Rewrite holds lease", !editor.finding)
+            check("Find Clips cannot start while Rewrite holds lease", !editor.finding && editor.findTask == nil)
             editor.closeRewrite(returnFocus: false)
             for _ in 0..<20 { await Task.yield() }
             check("close after dispatch retains lease until fake request stops", editor.llmRuns.isBusy)
@@ -415,7 +415,8 @@ enum RewriteFixtureReply {
             let (editor, session) = make(fake)
             defer { editor.close() }
             editor.findClips()
-            check("real Find Clips entry acquires shared project lease first", editor.finding && editor.llmRuns.isBusy)
+            // The lease is taken at once; `finding` (the sidebar row) follows only once the route says yes.
+            check("real Find Clips entry acquires shared project lease first", editor.llmRuns.isBusy)
             let proposal = await session.run()
             check("Find Clips first refuses Rewrite without a second send", !proposal && !session.isProposing)
             for _ in 0..<5_000 { if await fake.sends > 0 { break }; await Task.yield() }

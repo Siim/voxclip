@@ -23,20 +23,27 @@ struct EditorRenderSnapshot {
             rewriteOpenTask?.cancel()
             // Selecting other words ends an open inline correction, as a click elsewhere ends an inline rename.
             if let id = correctionID, !selectedWordIDs.contains(id) { endCorrection() }
+            updateSelectionEnds()
         }
     }
-    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel() } } }
+    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); updateSelectionEnds() } } }
     var previewStop: Double?
     var playhead: Double = 0
     var sourceTime: Double = 0
     var isPlaying = false
     var playbackRate: Float = 1
-    var showCuts = true
-    var showPauses = true
-    /// Show cuts (ux/v2 notes.md §5 and §6): on, the timeline shows take time with the cuts
-    /// as gaps (Source); off, it shows the scope's output with every cut closed (Edited).
-    /// Off by default. A view setting: no undo step and no document change (impl-plan §3.3).
+    /// Show cuts (ux/v2 notes.md §5 and §6), one switch for the transcript and the timeline. On,
+    /// the transcript shows every removed word struck and every cut pause's length where a fold
+    /// stands, and the timeline shows take time with the cuts as gaps (Source); off, each run of
+    /// removals is one fold and the timeline shows the scope's output with every cut closed
+    /// (Edited). Off by default. A view setting: no undo step and no document change (impl-plan §3.3).
     var showsCuts = false
+    /// Show Pauses: the lengths of uncut pauses in the open clip. An opt-in, off by default.
+    var showPauses = false
+    /// The selection's first and last word or pause in reading order (a pause follows the
+    /// word before it), one id when they are the same. A fold opens while one of them is in
+    /// it (`openFoldEnds`), so what is selected always shows.
+    private(set) var selectionEnds: [String] = []
     var findVisible = false
     var query = ""
     var textSize = DesignValues.transcriptTextSize
@@ -64,8 +71,6 @@ struct EditorRenderSnapshot {
     var paneFocusRequest = 0
     var scopeScrollRevision = 0
     var lastStyleId: String?
-    @ObservationIgnored private var galleryKey = ""
-    @ObservationIgnored private var galleryPages: [String: CaptionGalleryPages] = [:]
     /// Voice Lab's one-time beta sheet (voice-lab.md §5); R2's Turn On Voice Lab… opens it.
     var showVoiceLabOptIn = false
     @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
@@ -210,7 +215,7 @@ struct EditorRenderSnapshot {
                     openRewrite === session && session.current
                 }
         } catch is CancellationError { return false } catch {
-            // R1x: the error's fix shows in the panel; the send returns false and changes nothing.
+            // R1x: the error's fix shows in the panel, named for the session's AI; the send returns false and changes nothing.
             await session.fail(error)
             return false
         }
@@ -996,10 +1001,29 @@ struct EditorRenderSnapshot {
         if keep { saveCorrection() }
         correctionID = nil
     }
+    /// Finds the selection's first and last word or pause in reading order, from the
+    /// selection `didSet`s.
+    private func updateSelectionEnds() {
+        var lower: (position: Int, id: String)?, upper: (position: Int, id: String)?
+        func consider(_ id: String, at position: Int?) {
+            guard let position else { return }
+            if lower.map({ position < $0.position }) ?? true { lower = (position, id) }
+            if upper.map({ position > $0.position }) ?? true { upper = (position, id) }
+        }
+        for id in selectedWordIDs { consider(id, at: wordIndex[id].map { 2 * $0 }) }
+        for id in selectedPauseIDs { consider(id, at: pauseIndex[id].map { 2 * $0.afterIndex + 1 }) }
+        let ends = [lower?.id, upper?.id].compactMap { $0 }
+        let unique = ends.count == 2 && ends[0] == ends[1] ? [ends[0]] : ends
+        if unique != selectionEnds { selectionEnds = unique }
+    }
+    /// Selects a word, or with `extend` the words from the selection's first to it and the
+    /// cut pauses between them, as a drag over their folds selects them.
     func select(_ id: String, extend: Bool = false) {
-        selectedPauseIDs = []
-        if extend, let anchor = selectedIDs.first, let lower = index(anchor), let upper = index(id) { selectedWordIDs = Set(words[min(lower, upper)...max(lower, upper)].map(\.id)) }
-        else { selectedWordIDs = [id] }
+        if extend, let anchor = selectedIDs.first, let lower = index(anchor), let upper = index(id) {
+            let span = min(lower, upper)...max(lower, upper)
+            selectedPauseIDs = Set(span.dropLast().compactMap { pauseByAfterIndex[$0]?.id }.filter(cutPauseIDs.contains))
+            selectedWordIDs = Set(words[span].map(\.id))
+        } else { selectedPauseIDs = []; selectedWordIDs = [id] }
         if !isPlaying, let word = words.first(where: { $0.id == id }) { seek(source: word.start) }
     }
     func step(_ offset: Int, extend: Bool = false, sentence: Bool = false) {
@@ -1140,28 +1164,6 @@ struct EditorRenderSnapshot {
             return nil
         }
     }
-    func captionTileInput(_ style: CaptionStyle) -> CaptionTileInput {
-        let visible = app.bool("general.showPlaceholderWords", fallback: true)
-        let key = "\(projectRevision):\(activeClip?.id ?? "full"):\(visible)"
-        if galleryKey != key { galleryKey = key; galleryPages = [:] }
-        let scope: CaptionCardScope = activeClip.map { .clip($0.id) } ?? .fullTake
-        if galleryPages[style.id] == nil, let resources = app.captionResources {
-            galleryPages[style.id] = CaptionGalleryPages(project: project, scope: scope, style: style, wordsVisible: visible, resources: resources)
-        }
-        let sample = transcriptionStatus != nil ? CaptionGallerySample.preview(style) : galleryPages[style.id]?.sample(at: playhead) ?? CaptionGallerySample.preview(style)
-        let selected = style.id == project.captions.styleId
-        let overrides = selected ? project.captions.overrides : [:]
-        let placement = selected && style.position.userDraggable ? project.captions.positionByAspect[captionPreset.rawValue] ?? project.captions.position : nil
-        let resolved = (try? style.resolved(overrides: overrides, frame: outputSpec().size)) ?? style
-        let lower = activeClip.flatMap { clip in index(clip.startWordId).map { words[$0].start } } ?? 0
-        let upper = activeClip.flatMap { clip in index(clip.endWordId).map { words[$0].end } } ?? sourceDuration
-        let time = (floor(sourceTime * 4) / 4).clamped(to: lower...max(lower, upper))
-        let frameAvailable = !document.demo && mediaResolved && !mediaUnreadable && project.media.source.video != nil
-        let loading = mediaStatus == .loading || (transcriptionStatus != nil && !frameAvailable)
-        return CaptionTileInput(state: nil, plan: nil, style: style, sampleWords: sample.words.map(\.text), language: sample.source == .preview ? "en" : project.transcript?.language, frame: outputSpec().size, overrides: overrides, position: placement, sourceURL: sourceURL, sourceTime: time,
-                                sample: sample, backdrop: CaptionCardLook.backdrop(resolved, previewBackground: app.previewBackgrounds[style.id]), frameAvailable: frameAvailable, loading: loading,
-                                contentKey: project.media.source.contentKey)
-    }
     func outputSpec() -> OutputSpec {
         ExportFingerprint.output(project)
     }
@@ -1217,16 +1219,20 @@ extension EditorModel {
                   let lease = self.llmRuns.acquire() else { return }
             let runs = self.llmRuns
             let connector = self.app.connector(provider.id)
-            self.findTask?.cancel(); self.finding = true; self.clipError = nil; self.fallbackNote = nil; self.showAISetup = false
-            self.onNeedsSidebar?()
-            self.announce("Finding clips")
+            self.findTask?.cancel(); self.showAISetup = false
             self.findTask = Task { [self] in
                 defer { self.finding = false; runs.release(lease) }
                 do {
+                    // The route comes first (design §6.2: the consent, then "while it runs"); only the lease is held. A
+                    // declined send leaves the sidebar, the last error and the fallback note as they were and announces
+                    // nothing, and no "Finding clips…" row shows behind a sheet.
                     guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
                         wordCount: transcript.words.filter { $0.kind == .word }.count, parent: window, isCurrent: { [self] in
                             !isLeaving && project == snapshot && rewriteConnectorSignature == selectedSignature
                         }) else { return }
+                    finding = true; clipError = nil; fallbackNote = nil
+                    onNeedsSidebar?()
+                    announce("Finding clips")
                     let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
                     let presets = try await finder.presets()
@@ -1256,7 +1262,8 @@ extension EditorModel {
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
                 } catch is CancellationError {} catch LLMError.cancelled {} catch VoxClipError.cancelled {} catch {
                     let message = await app.safeError(error, context: "ai:\(provider.label)")
-                    if !message.isEmpty { clipError = message }
+                    // A connector that is not ready fails in the route, before the run revealed the sidebar.
+                    if !message.isEmpty { clipError = message; fallbackNote = nil; onNeedsSidebar?() }
                 }
             }
         }
