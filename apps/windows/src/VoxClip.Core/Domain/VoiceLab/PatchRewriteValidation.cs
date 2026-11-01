@@ -48,7 +48,7 @@ internal static class PatchRewriteValidator
     private static bool HasControl(string text) => text.Any(character => char.IsControl(character) && character != '\t');
 
     /// <summary>The tokens and digit runs of the transcript and the instruction, which an edit's own may repeat without a badge.</summary>
-    private sealed class Sources
+    internal sealed class Sources
     {
         private readonly HashSet<string> keys = new(StringComparer.Ordinal);
         private readonly HashSet<string> digitRuns = new(StringComparer.Ordinal);
@@ -64,20 +64,21 @@ internal static class PatchRewriteValidator
         }
 
         /// <summary>True when the NFC text holds a digit run, a URL, or a capitalised token not at a sentence start, that no source has.</summary>
-        internal bool Flags(string text)
+        internal bool Flags(string text) => FlaggedTokens(text).Any(flag => flag);
+
+        internal IReadOnlyList<bool> FlaggedTokens(string text)
         {
-            var normal = EditingAlgorithms.Nfc(text);
-            if (DigitRuns(normal).Any(run => !digitRuns.Contains(run))) return true;
-            var tokens = EditingAlgorithms.SplitWords(normal);
-            for (var index = 0; index < tokens.Count; index++)
+            var tokens = EditingAlgorithms.SplitWords(EditingAlgorithms.Nfc(text));
+            return tokens.Select((token, index) =>
             {
-                var key = Key(tokens[index]);
-                if (IsUrl(tokens[index]) && !keys.Contains(key)) return true;
+                if (DigitRuns(token).Any(run => !digitRuns.Contains(run))) return true;
+                var key = Key(token);
+                if (IsUrl(token) && !keys.Contains(key)) return true;
                 var atStart = index == 0 || SentenceEnd.IsMatch(tokens[index - 1]);
-                if (!atStart && IsCapitalised(tokens[index]) && !keys.Contains(key)) return true;
-            }
-            return false;
+                return !atStart && IsCapitalised(token) && !keys.Contains(key);
+            }).ToArray();
         }
+
     }
 
     /// <summary>normalizeForMatch (editing §4.7) without its lowercase step: equal keys mean equal normalizeForMatch, and case counts.</summary>
