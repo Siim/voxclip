@@ -170,9 +170,10 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             for span in text.map.intersecting(lineRange) {
                 let intersection = NSIntersectionRange(span.range, lineRange)
                 guard intersection.length > 0 else { continue }
-                let start = line.locationForCharacter(at: intersection.location - offset)
-                let end = line.locationForCharacter(at: NSMaxRange(intersection) - offset)
-                let rect = CGRect(x: point.x + line.typographicBounds.minX + min(start.x, end.x) - 2, y: point.y + line.typographicBounds.minY, width: max(4, abs(end.x - start.x) + 4), height: line.typographicBounds.height)
+                // A word after a fold starts the fold's full kern after its glyph (`glyphX`).
+                let start = text.glyphX(line, local: intersection.location - offset)
+                let end = text.glyphX(line, local: NSMaxRange(intersection) - offset)
+                let rect = CGRect(x: point.x + line.typographicBounds.minX + min(start, end) - 2, y: point.y + line.typographicBounds.minY, width: max(4, abs(end - start) + 4), height: line.typographicBounds.height)
                 switch span.kind {
                 case .ai: drawMarker(span, rect: rect, renderer: renderer, context: context); continue
                 case .fold:
@@ -204,7 +205,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                 }
                 if renderer.hasCorrection(span.id), intersection.location == span.range.location {
                     context.setFillColor(DesignValues.nsColor("word.correctionDot").cgColor)
-                    context.fillEllipse(in: CGRect(x: point.x + line.typographicBounds.minX + start.x, y: rect.maxY - 2, width: 2, height: 2))
+                    context.fillEllipse(in: CGRect(x: point.x + line.typographicBounds.minX + start, y: rect.maxY - 2, width: 2, height: 2))
                 }
             }
         }
@@ -338,14 +339,27 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
     /// A character's x in its line. TextKit reports the place after a kerned glyph half way
     /// through the kern, so a word after a fold starts the fold's full kern after its glyph.
+    /// A fold that ends the line before adds nothing: `index` then starts its line. Every x
+    /// of a character that may follow a fold goes through here.
     func glyphX(_ line: NSTextLineFragment, local index: Int) -> CGFloat {
         let x = line.locationForCharacter(at: index).x
         let string = line.attributedString.string as NSString
+        let first = line.characterRange.location
         var previous = index - 1
-        if previous >= 0, previous < string.length, string.character(at: previous) == 0x200B { previous -= 1 }
-        guard previous >= 0, previous < string.length, string.character(at: previous) == 0x2022,
+        if previous >= first, previous < string.length, string.character(at: previous) == 0x200B { previous -= 1 }
+        guard previous >= first, previous < string.length, string.character(at: previous) == 0x2022,
               let kern = line.attributedString.attribute(.kern, at: previous, effectiveRange: nil) as? CGFloat else { return x }
         return x + kern / 2
+    }
+    /// The box of a range's characters on the line of its first, in this view: from
+    /// `glyphX`, over the line's typographic height. Nil while the line is not laid out.
+    func textBox(of range: NSRange) -> CGRect? {
+        guard let (fragment, line, base) = laidOutLine(atCharacter: range.location) else { return nil }
+        let lower = range.location - base, upper = min(NSMaxRange(range) - base, NSMaxRange(line.characterRange))
+        let left = glyphX(line, local: lower), right = glyphX(line, local: max(lower, upper))
+        let origin = textContainerOrigin
+        return CGRect(x: origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + left, y: origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY,
+                      width: max(0, right - left), height: line.typographicBounds.height)
     }
     /// The selection at text height (notes.md §5): per visible line, from the first selected
     /// character to the last, the font's ascender to its descender, folds between selected
@@ -643,8 +657,8 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                 let lineRange = NSRange(location: offset + line.characterRange.location, length: line.characterRange.length)
                 guard ranges.contains(where: { NSIntersectionRange($0, lineRange).length > 0 }) else { continue }
                 let intersections = ranges.map { NSIntersectionRange($0, lineRange) }.filter { $0.length > 0 }
-                let starts = intersections.map { line.locationForCharacter(at: $0.location - offset).x }
-                let ends = intersections.map { line.locationForCharacter(at: NSMaxRange($0) - offset).x }
+                let starts = intersections.map { glyphX(line, local: $0.location - offset) }
+                let ends = intersections.map { glyphX(line, local: NSMaxRange($0) - offset) }
                 let left = min(starts.min() ?? 0, ends.min() ?? 0)
                 let right = max(starts.max() ?? 0, ends.max() ?? 0)
                 let bounds = line.typographicBounds.offsetBy(dx: origin.x + fragment.layoutFragmentFrame.minX, dy: origin.y + fragment.layoutFragmentFrame.minY)
@@ -909,7 +923,8 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         if correction != nil, correctionWordID != id { removeCorrectionField(refocus: false) }
         guard correction == nil, let window else { return }
         hideSelectionBar()
-        let rect = convert(window.convertFromScreen(firstRect(forCharacterRange: span.range, actualRange: nil)), from: nil)
+        // The word's own box, so a word after a fold is not half its kern short (`glyphX`).
+        let rect = textBox(of: span.range) ?? convert(window.convertFromScreen(firstRect(forCharacterRange: span.range, actualRange: nil)), from: nil)
         let field = NSTextField(frame: CGRect(x: rect.minX, y: rect.minY, width: max(90, rect.width + 24), height: 28))
         field.stringValue = model.correctionText; field.font = DesignValues.transcriptFont(size: model.textSize); field.delegate = self; field.setAccessibilityLabel("Correct spelling, audio stays the same")
         addSubview(field); correction = field; correctionWordID = id; window.makeFirstResponder(field); field.selectText(nil)

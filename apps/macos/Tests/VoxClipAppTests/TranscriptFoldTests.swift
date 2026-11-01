@@ -10,6 +10,8 @@ import Testing
 /// checks its pixels; the last test runs it.
 @Suite("Transcript folds, Show cuts, selection and caret", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
 @MainActor struct TranscriptFoldTests {
+    /// A never-shown window that keeps its first responder, so a correction field stays up without a field editor.
+    private final class StillWindow: NSWindow { override func makeFirstResponder(_ responder: NSResponder?) -> Bool { false } }
     private func fixture() throws -> Project {
         let shared = try SharedResources.locate()
         return try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
@@ -344,6 +346,63 @@ import Testing
                                                           "And one cool feature I added is when you want to represent your project, you include•source directory."])
         #expect(text.map.span(id: id(model, 9))?.ids == ["pause-after-\(id(model, 8))", id(model, 9), "pause-after-\(id(model, 9))"])
         #expect(text.map.span(id: id(model, 36))?.ids == [id(model, 36), "pause-after-\(id(model, 36))", id(model, 37)])
+    }
+
+    @Test func aLineThatStartsAfterAFoldPlacesTheSelectionAndCaretAtItsStart() throws {
+        let model = try editor(); defer { model.close() }
+        var project = model.project
+        let words = (0..<240).map { index in TimedWord(id: "glue-\(index)", text: ["So", "while", "you're", "speaking,", "examines", "your", "app,"][index % 7], start: Double(index) * 0.4, end: Double(index) * 0.4 + 0.3, speaker: "s") }
+        project.transcript?.words = words
+        project.edits = ProjectEdits(cutWordIds: words.indices.filter { $0 % 3 == 2 }.map { words[$0].id })
+        model.document.replaceProject(project); model.refresh()
+        let pane = try shown(model); defer { pane.close() }
+        let text = pane.text, string = text.string as NSString
+        let manager = try #require(text.textLayoutManager), content = try #require(manager.textContentManager)
+        // The first line that starts right after a fold's break.
+        var found: (start: Int, x: CGFloat, glyphX: CGFloat)?
+        manager.enumerateTextLayoutFragments(from: content.documentRange.location, options: [.ensuresLayout]) { fragment in
+            guard let element = fragment.textElement?.elementRange else { return false }
+            let base = content.offset(from: content.documentRange.location, to: element.location)
+            for line in fragment.textLineFragments where line.characterRange.location > 0 && string.character(at: base + line.characterRange.location - 1) == 0x200B {
+                let local = line.characterRange.location
+                found = (base + local, text.textContainerOrigin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + line.locationForCharacter(at: local).x, text.glyphX(line, local: local) - line.locationForCharacter(at: local).x)
+                return false
+            }
+            return true
+        }
+        let line = try #require(found)
+        #expect(abs(line.glyphX) < 0.01, "a fold on the line before adds no kern (\(line.glyphX))")
+        let word = try #require(text.map.span(at: line.start))
+        #expect(word.range.location == line.start)
+        model.selectedWordIDs = [word.id]
+        pane.scroll(toCharacter: line.start); pane.update()
+        let rect = try #require(text.selectionRects().first)
+        #expect(abs(rect.minX - line.x) < 0.01, "the selection starts at the line's start (\(rect.minX), \(line.x))")
+        model.selectedWordIDs = []
+        let position = try #require(model.index(word.id))
+        model.sourceTime = model.words[position].start + 0.05
+        pane.update()
+        let caret = try #require(text.caret)
+        #expect(!caret.isHidden && abs(caret.frame.midX - line.x) < 0.01, "the caret stands at the line's start (\(caret.frame.midX), \(line.x))")
+    }
+
+    @Test func theCorrectionFieldStandsOverAWordAfterAFold() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try shown(model); defer { pane.close() }
+        let window = StillWindow(contentRect: NSRect(x: -10000, y: -10000, width: 652, height: 488), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = pane.scroll
+        defer { window.close() }
+        let text = pane.text
+        pane.layout()
+        let fold = try #require(text.map.span(id: id(model, 9))), box = try #require(text.foldBox(fold))
+        let app = try #require(text.map.span(id: id(model, 10)))
+        let platform = text.convert(window.convertFromScreen(text.firstRect(forCharacterRange: app.range, actualRange: nil)), from: nil)
+        model.select(id(model, 10)); pane.update()
+        model.beginCorrection(); text.updateCorrection()
+        let field = try #require(text.correctionFieldForTests)
+        #expect(abs(field.frame.minX - box.maxX) < 0.5 && abs(field.frame.minY - platform.minY) < 0.5, "at the word, the fold's 13 pt after its dot (\(field.frame), \(box.maxX), \(platform))")
+        model.endCorrection(keep: false); text.updateCorrection()
     }
 
     @Test func theFoldScenePassesEveryCheck() throws {

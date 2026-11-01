@@ -720,6 +720,24 @@ extension DebugTranscriptPixels {
         }
         model.undoManager = nil
 
+        // A decoration on the word after a fold starts at the word, the fold's 13 pt after its
+        // glyph: the correction dot under "apps," in "your•apps,", never in the fold's gap.
+        model.apply(.correct(id: id(10), text: "apps,"), name: "Correct spelling")
+        model.sourceTime = model.words[17].start + 0.05
+        pane.update()
+        pane.scroll(toCharacter: 0)
+        if let fold = text.map.span(id: id(9)), let box = text.foldBox(fold), let word = text.map.span(id: id(10)), let line = text.textBox(of: word.range) {
+            bitmap = try pane.bitmap("v2-transcript-correction-dark", directory: directory)
+            let strip = CGRect(x: box.minX + 1, y: line.maxY - 2, width: box.width + 12, height: 2)
+            let background = pane.pixel(bitmap, CGPoint(x: strip.maxX + 12, y: strip.midY)) ?? surface
+            let ink = pane.inkExtent(bitmap, in: strip, background: background)
+            check("the correction dot under the word after a fold starts at the word (\(ink.map { "\($0.lowerBound)" } ?? "no ink"), word at \(box.maxX))",
+                  ink.map { abs($0.lowerBound - box.maxX) < 1 && abs(line.minX - box.maxX) < 0.5 } == true)
+        } else { check("the corrected word after a fold is laid out", false) }
+        model.apply(.correct(id: id(10), text: model.words[10].text), name: "Correct spelling")
+        model.sourceTime = model.words[10].start + 0.05
+        pane.update()
+
         // Outside the open clip the words read as said: no folds, no strikes, no pauses.
         var clipped = model.project
         clipped.edits.clips = [ClipRange(id: "fold-clip", startWordId: id(20), endWordId: id(model.words.count - 1), title: "Second paragraph")]
