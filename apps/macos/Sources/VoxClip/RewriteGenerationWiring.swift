@@ -3,6 +3,21 @@ import VoxClipCore
 import VoxClipMedia
 
 extension RewriteSession {
+    func refreshCreatedVoice(_ record: VoiceConsentRecord) {
+        guard current, editor.app.voiceLabRewriteEnabled, editor.app.bool("voiceLab.providerConsent.elevenlabs") else { return }
+        takesTask = Task { [weak self] in
+            guard let self, current else { return }
+            if let generation { await generation.discover(language: project.transcript?.language ?? "en") }
+            else { await discoverVoices() }
+            guard current, !Task.isCancelled, let generation else { return }
+            if generation.voices.contains(where: { $0.id == record.id }) { generation.chooseVoice(record.id) }
+            else {
+                generation.chooseVoice(nil)
+                generation.fail("This voice isn't ready to use. Finish ElevenLabs verification, then refresh Voices. Nothing was sent for takes.")
+            }
+            showProposal()
+        }
+    }
     func discoverVoices() async {
         guard current, editor.app.voiceLabRewriteEnabled, generation == nil else { return }
         reportGenerationProblem(nil)
@@ -31,6 +46,10 @@ extension RewriteSession {
     func prepareTakes() async {
         if let reviewing { await reviewing.value }
         guard current, let generation, review != nil, overBudget == nil, !includedVoice.isEmpty, let takeBackend else { return }
+        guard !hasPaidTakes else {
+            generation.fail("Your paid takes are kept. Leave this review and confirm discarding them before making a fresh takes plan.")
+            return
+        }
         takePlan?.invalidate(); takePlan = nil
         takeQuotePhrase = nil; takeRowsShown = true
         guard let recordID = generation.selectedVoiceID, let modelID = generation.selectedModelID,

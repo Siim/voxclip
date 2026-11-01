@@ -104,9 +104,11 @@ extension ClipTakePlan.Phrase {
                 Picker("Voice", selection: Binding(get: { generation.selectedVoiceID ?? "" }, set: { generation.chooseVoice($0) })) {
                     ForEach(generation.voices) { Text($0.voiceName).tag($0.id) }
                 }
+                .disabled(session.takesBusy || session.hasPaidTakes)
                 Picker("Speech model", selection: Binding(get: { generation.selectedModelID ?? "" }, set: { generation.chooseModel($0) })) {
                     ForEach(generation.models, id: \.id) { Text($0.name).tag($0.id) }
                 }
+                .disabled(session.takesBusy || session.hasPaidTakes)
             }
             if let plan = session.takePlan {
                 ForEach(plan.phrases) { phrase in phraseRow(phrase, plan: plan) }

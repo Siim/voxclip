@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+## V18/V19 handoff review — fresh voice discovery and input lifetime (1 Nov 2026)
+
+- Finishing creation returns to the existing Rewrite session and consent-respectfully refreshes its generation voice cache, selecting the new active voice without a legacy manual refresh or rebuilt proposal. A voice still needing provider verification remains unselected with explicit guidance; no takes are sent. No discovery occurs if provider consent was revoked.
+- Generation input changes invalidate the existing takes plan immediately. A paid plan is retained as a guarded review, never silently replaced by quote preparation; voice/model pickers lock once takes are paid. Discovery refuses a late response after its input revision changes. F4 additionally prevents stale run results from restoring display rows and keeps their actual spend accounted.
+- Stub regression covers cached no-voice → terminal return → selected active voice and quote preparation (or pending-verification refusal), preserving the same review; a barrier delivers a late accepted result after invalidation and proves no rows/audition return. Preserve displayed quote IDs, scope/task turns and the existing paid discard confirmation when integrating inline `f9b273eb`.
+
 ## F4 — bounded private retry scratch and drained eviction (1 Nov 2026)
 
 - The existing per-phrase backend exposes `retire` → `VoiceLabTakeRun.reject`. A full three-slot row retires only its unselected evicted slot, awaiting consumer shutdown and private mixed/fitted/snapshot removal before the retry proceeds. Selected and surviving slots stay usable. Original/published paid assets are not garbage-collected.

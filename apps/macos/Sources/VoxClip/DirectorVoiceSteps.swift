@@ -180,7 +180,7 @@ import VoxClipCore
                 }.disabled(!session.canCreate).accessibilityIdentifier("voxclip.voice.create").columnLayoutEvidence("voice.create", text: session.creationTitle)
             }
         } else if flow.state == .finished {
-            Button("Back to Rewrite") { session.finishCreation(); session.returnToRewrite() }.disabled(session.unsavedRecord != nil)
+            Button("Back to Rewrite") { session.returnToRewrite() }.disabled(session.unsavedRecord != nil)
         } else if flow.state == .agree {
             Button("Read the Statement") { Task { await session.prepareVoiceStatement() } }.disabled(!session.canRecord)
         } else if session.recorder.recording {

@@ -174,9 +174,13 @@ import VoxClipMedia
     func returnToRewrite() {
         leaveVoiceControls()
         guard !busy else { return }
+        let created = flow.state == .finished && unsavedRecord == nil ? flow.finishedRecord : nil
         if flow.state == .finished, unsavedRecord == nil { finishCreation() }
         // Preserve local enrollment when switching jobs. Closing the proposal never approves a send.
-        if let owner = flow.owner { owner.app.shell.choosePanelJob(.rewrite, for: owner) }
+        if let owner = flow.owner {
+            owner.app.shell.choosePanelJob(.rewrite, for: owner)
+            if let created { owner.openRewrite?.refreshCreatedVoice(created) }
+        }
     }
     private func observeRecordingCompletion() {
         recorder.onStopped = { [weak self] in
@@ -206,7 +210,7 @@ import VoxClipMedia
         } else if flow.state == .firstUse {
             if flow.keyReady { turnOnVoiceJob() } else { Task { await saveVoiceKey() } }
         } else if flow.state == .agree { Task { await prepareVoiceStatement() } }
-        else if flow.state == .finished, unsavedRecord == nil { finishCreation(); returnToRewrite() }
+        else if flow.state == .finished, unsavedRecord == nil { returnToRewrite() }
         else if flow.state == .statement, projectMismatch, trainingSource == .project { useReadAloud() }
         else if flow.state == .statement {
             Task { if recorder.recording { await stopRecording() } else if recordingTraining { await beginTraining() } else { await beginStatement() } }

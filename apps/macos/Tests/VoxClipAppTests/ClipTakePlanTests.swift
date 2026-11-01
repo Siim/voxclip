@@ -33,6 +33,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var failOwner = false
         var gets = 0
         var qa = 0
+        var voicesVisible = true
     }
     static let state = Mutex(State())
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -46,7 +47,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 Self.state.withLock { $0.gets += 1 }
                 data = Data(#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}]"#.utf8)
             case ("GET", "/v2/voices"):
-                data = Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"My voice","category":"cloned","is_owner":true}],"has_more":false}"#.utf8)
+                data = Self.state.withLock { $0.voicesVisible } ? Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"My voice","category":"cloned","is_owner":true}],"has_more":false}"#.utf8) : Data(#"{"voices":[],"has_more":false}"#.utf8)
             case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"):
                 let body = try #require(JSONSerialization.jsonObject(with: Self.body(request)) as? [String: Any])
                 let text = try #require(body["text"] as? String)
@@ -117,6 +118,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let playback: TakeReviewPlayback
         let source: Project
         let envelope: AudioEnvelope
+        let client: ElevenLabsVoiceLab
+        let store: VoiceConsentStore
+        let record: VoiceConsentRecord
         var preparations = 0
         var approved = 0
         var decoded = 0
@@ -124,11 +128,14 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var afterPhrase: ((Int) async throws -> Void)?
         var beforePhrase: ((Int) async throws -> Void)?
         var beforeQuote: (() async -> Void)?
-        var beforePublish: (() async -> Void)?
+        var beforePublish: ((Int) async -> Void)?
         var beforeDispatch: (() -> Void)?
+        var beforeProgress: (@MainActor @Sendable () async -> Void)?
         var current = true
-        init(root: URL, plan: ClipTakePlan, ledger: VoiceLabSpendLedger, playback: TakeReviewPlayback, source: Project, envelope: AudioEnvelope) {
+        init(root: URL, plan: ClipTakePlan, ledger: VoiceLabSpendLedger, playback: TakeReviewPlayback, source: Project, envelope: AudioEnvelope,
+             client: ElevenLabsVoiceLab, store: VoiceConsentStore, record: VoiceConsentRecord) {
             self.root = root; self.plan = plan; self.ledger = ledger; self.playback = playback; self.source = source; self.envelope = envelope
+            self.client = client; self.store = store; self.record = record
         }
     }
     private func project() throws -> (Project, [Float], AudioEnvelope) {
@@ -194,7 +201,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 return VoiceLabMonthlyCap(limit: cap, spent: try #require(total).usd)
             }, isCurrent: { fixture?.current ?? true }, audition: audition)
         } catch { try? FileManager.default.removeItem(at: root); throw error }
-        let made = Fixture(root: root, plan: plan, ledger: ledger, playback: playback, source: project, envelope: envelope); fixture = made
+        let made = Fixture(root: root, plan: plan, ledger: ledger, playback: playback, source: project, envelope: envelope,
+            client: client, store: store, record: record); fixture = made
         ClipTakeHTTP.state.withLock { $0.duration = plan.phrases[0].originalLength }
         let storage = VoiceLabTakeStorage(projectId: project.id, paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch"))
         let check = VoiceSpeakerCheck(embedder: ClipTakeSpeaker(), calibratedThreshold: 0.45)
@@ -218,12 +226,15 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         backend.approve = { [weak made] batch, indices in made?.approved += 1; try await real.approve(batch, indices) }
         backend.execute = { [weak made] batch, index, phrase, progress in
             try await made?.beforePhrase?(phrase)
-            let result = try await real.execute(batch, index, phrase, progress)
+            let result = try await real.execute(batch, index, phrase) { [weak made] rows in
+                await made?.beforeProgress?()
+                await progress(rows)
+            }
             try await made?.afterPhrase?(phrase)
             return result
         }
         backend.publish = { [weak made] phrase, row, input, date in
-            await made?.beforePublish?()
+            await made?.beforePublish?(phrase)
             return try await real.publish(phrase, row, input, date)
         }
         plan.connect(backend)
@@ -486,7 +497,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     @Test func changedInputsRefuseStalePublicationAndDispatch() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
-        fixture.beforePublish = { [weak fixture] in fixture?.current = false }
+        fixture.beforePublish = { [weak fixture] _ in fixture?.current = false }
         await #expect(throws: ClipTakePlan.Failure.stale) { try await fixture.plan.acceptance() }
         await fixture.plan.prepareAnother(phrase: 0)
         #expect(fixture.plan.cost == nil)
@@ -660,6 +671,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let (editor, session) = session(fixture); defer { editor.close() }
         installReview(session, fixture: fixture, withFreeChanges: true)
         let original = editor.project
+        #expect(!editor.document.isDocumentEdited)
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
         await fixture.plan.play(phrase: 0)
@@ -671,6 +683,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await session.takesTask?.value
         undo.endUndoGrouping()
         #expect(editor.openRewrite == nil && editor.project.voiceLab.segments.count == 3)
+        #expect(editor.project.transcript == original.transcript && editor.document.isDocumentEdited)
         #expect(editor.project.edits.cutWordIds.contains("w0") && editor.project.edits.corrections["w1"] == "Old")
         #expect(editor.undoSteps == 1 && undo.undoActionName == "Rewrite full take")
         #expect(!fixture.plan.audition.isPlaying)
@@ -692,9 +705,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ViewerSection.tag(for: editor, standIn: false) == .aiVoice)
         #expect(editor.undoVoiceRewrite())
         #expect(editor.project == original && editor.currentVoiceFeedback == nil && !undo.canUndo)
+        #expect(!editor.document.isDocumentEdited)
         #expect(!editor.containsAISpeech(clipID: nil) && !editor.voiceRewriteToastVisible)
         undo.redo()
         #expect(editor.project.voiceLab.segments.count == 3 && editor.currentVoiceFeedback == nil)
+        #expect(editor.document.isDocumentEdited)
     }
 
     @Test func stalePublicationNeverShowsSuccessOrRegistersUndo() async throws {
@@ -704,7 +719,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
         let barrier = ClipTakeBarrier()
-        fixture.beforePublish = { await barrier.pause() }
+        fixture.beforePublish = { phrase in if phrase == 1 { await barrier.pause() } }
         let accepting = Task { await session.acceptTakes() }
         await barrier.wait()
         fixture.current = false
@@ -759,6 +774,64 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(await session.acceptTakes() == false)
         #expect(editor.project == original && editor.currentVoiceFeedback == nil && !editor.voiceRewriteToastVisible)
         #expect(!undo.canUndo && editor.undoSteps == 0 && editor.openRewrite === session)
+    }
+
+    @Test(arguments: [false, true]) func createdVoiceReturnsToTheSameReviewAndRefreshesWithoutManualLegacyAction(pending: Bool) async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        session.takePlan = nil
+        session.receive(hunks([10]).map { RewriteChange(hunk: $0) }); session.finishRun(seconds: 1); session.showProposal()
+        let changes = session.changes
+        editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        session.configureGeneration(client: fixture.client, store: fixture.store, speaker: .unavailable)
+        let generation = try #require(session.generation)
+        ClipTakeHTTP.state.withLock { $0.voicesVisible = false }
+        await generation.discover(language: "en"); await generation.finishQuotePreparationForTests()
+        #expect(generation.voices.isEmpty && generation.selectedVoiceID == nil)
+        generation.prepareQuote = { [weak generation] in
+            guard generation?.selectedVoiceID == fixture.record.id else { return }
+            await fixture.plan.prepare()
+        }
+        var created = fixture.record
+        if pending { created.status = .verificationRequired; try await fixture.store.save(created) }
+        ClipTakeHTTP.state.withLock { $0.voicesVisible = true }
+        let enrollment = editor.app.voiceLabSession
+        enrollment.flow.owner = editor; enrollment.flow.state = .finished; enrollment.flow.finishedRecord = created; enrollment.showEnrollment = true
+        enrollment.returnToRewrite()
+        await session.takesTask?.value; await generation.finishQuotePreparationForTests()
+        #expect(editor.openRewrite === session && session.changes == changes && !enrollment.showEnrollment)
+        #expect(generation.selectedVoiceID == (pending ? nil : created.id))
+        #expect((fixture.plan.approvalID != nil) == !pending)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
+    }
+
+    @Test func invalidatedLateResultCannotRestoreRowsOrAudition() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan, barrier = ClipTakeBarrier()
+        fixture.beforeProgress = { await barrier.pause() }
+        await plan.prepare()
+        let operation = Task { await plan.start(approved: true) }
+        await barrier.wait()
+        fixture.current = false; plan.invalidate()
+        barrier.resume(); await operation.value; await plan.invalidation?.value
+        #expect(plan.phrases[0].takes.isEmpty && !plan.audition.isPlaying && !plan.stillCurrent)
+        #expect(plan.spent.units == 1 && ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    @Test func changingGenerationInputsCannotReplaceAPaidPlanWithoutDiscardConfirmation() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        session.takePlan = nil
+        session.receive(hunks([10]).map { RewriteChange(hunk: $0) }); session.finishRun(seconds: 1); session.showProposal()
+        editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        session.configureGeneration(client: fixture.client, store: fixture.store, speaker: .unavailable)
+        let generation = try #require(session.generation)
+        await generation.discover(language: "en"); await generation.finishQuotePreparationForTests()
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        session.takePlan = fixture.plan
+        generation.chooseVoice(nil); await generation.finishQuotePreparationForTests()
+        #expect(session.takePlan === fixture.plan && session.hasPaidTakes && !fixture.plan.stillCurrent)
+        #expect(generation.problem.contains("Your paid takes are kept") && ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 }
 #endif

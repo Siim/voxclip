@@ -1469,6 +1469,8 @@ Leaving Voice via Back, the job switcher, a tab/scope change, Home, hidden right
 
 Done/Back after successful creation and successful cancellation are terminal: they reset the transient enrollment step, price/plan, recovery presentation and agreement/recording draft. Reopening starts at actual prerequisites/agreement, never stale success. Saved voices and their consent audio survive. An unsaved remote creation must still be saved or explicitly removed; Done cannot silently drop it.
 
+Returning after creation refreshes the existing Rewrite review's voice choices under its current provider consent and selects the new active voice. Pending ElevenLabs verification is not a usable voice: the review explains verification/refresh, without sending takes or rebuilding the proposal. Once takes are paid, voice/model choices are locked; changing inputs by another route invalidates the plan but preserves its paid-review discard guard. A late discovery or generation response cannot revive a stale choice or take.
+
 | State | Where | Copy and action |
 |---|---|---|
 | No ElevenLabs key | V0 | §6.3.7 V0 |

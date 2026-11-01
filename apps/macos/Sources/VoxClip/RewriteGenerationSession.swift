@@ -34,6 +34,7 @@ import xlocale
     @ObservationIgnored private var cleanup: Task<Void, Never>?
     @ObservationIgnored private var quotePreparation: Task<Void, Never>?
     @ObservationIgnored var prepareQuote: (@MainActor () async -> Void)?
+    @ObservationIgnored var onInputsChanged: (@MainActor () -> Void)?
     @ObservationIgnored var readMonthlyCap: (@MainActor () async throws -> VoiceLabMonthlyCap?)?
     @ObservationIgnored private var preparedCap: VoiceLabMonthlyCap?
     @ObservationIgnored private var activeQuote: VoiceLabTakeRunQuote?
@@ -223,8 +224,10 @@ import xlocale
     var inputsMatchCurrentSelection: Bool { input?.recordID == selectedVoiceID && input?.modelID == selectedModelID }
     func discover(language: String) async {
         guard inputsAreCurrent() else { return }
+        let version = revision
         do {
             let choices = try await run.discover(language: language)
+            guard version == revision, inputsAreCurrent(), !Task.isCancelled else { return }
             models = choices.models; voices = choices.voices
             if !voices.contains(where: { $0.id == selectedVoiceID }) { chooseVoice(nil) }
             if !models.contains(where: { $0.id == selectedModelID }) { chooseModel(nil) }
@@ -243,6 +246,7 @@ import xlocale
         selectedModelID = id; inputsChanged()
     }
     func inputsChanged() {
+        onInputsChanged?()
         let execution = sending
         sending?.cancel(); sending = nil
         reviewedInputsCurrent = false

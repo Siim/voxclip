@@ -158,6 +158,7 @@ struct RewriteChange: Equatable, Sendable {
             try self.editor.validateVoiceLabPlacement(window, localCommands: self.localCommands)
         }
         generation?.prepareQuote = { [weak self] in await self?.prepareTakes() }
+        generation?.onInputsChanged = { [weak self] in self?.takePlan?.invalidate() }
         generation?.readMonthlyCap = { [weak self] in
             guard let self else { throw CancellationError() }
             return try await self.currentGenerationCap()
