@@ -245,7 +245,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             container.containerSize = NSSize(width: width, height: CGFloat.greatestFiniteMagnitude)
         }
     }
-    var map = TranscriptRangeMap(spans: [])
+    var map = TranscriptRangeMap()
     weak var renderer: TranscriptRenderer?
     private(set) var backdrop: TranscriptBackdropView?
     /// Adds the backdrop behind the text, selection and every other subview.
