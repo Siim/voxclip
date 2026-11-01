@@ -10,7 +10,7 @@
     <IsTestProject>true</IsTestProject>
     <IsPackable>false</IsPackable>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-    <DefineConstants>$(DefineConstants);WIN_UI_TESTS</DefineConstants>
+    <DefineConstants>$(DefineConstants);WIN_UI_TESTS;VOXCLIP_ENROLLMENT_TESTS</DefineConstants>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
@@ -49,6 +49,8 @@
     <Compile Include="../../../../src/VoxClip.App/Services/DebugVoiceLabBackend.cs" Link="Services/DebugVoiceLabBackend.cs" />
     <Compile Include="ConnectorPreflightTests.cs" />
     <Compile Include="ExportWorkflowTests.cs" />
+    <Compile Include="../../../../src/VoxClip.Media/VoiceLab/VoiceEnrollment.cs" Link="Enrollment/VoiceEnrollment.cs" />
+    <Compile Include="../../../Support/EnrollmentSpeaker.cs" Link="Enrollment/EnrollmentSpeaker.cs" />
     <Compile Include="ExportEquivalenceTests.cs" />
     <Compile Include="RelinkViewModelTests.cs" />
     <Compile Include="CaptionTileStateTests.cs" />

@@ -494,14 +494,10 @@ public sealed class CreateVoiceTests
 
     internal static void SupplySyntheticSpeaker(VoiceStatementBackend backend)
     {
-    // Exercise the legacy session with local synthetic speaker evidence; production's native gate stays closed.
-    var enrollment = typeof(VoiceStatementBackend).GetField("enrollment", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(backend)!;
-    var speakerType = enrollment.GetType().GetNestedType("TestSpeaker", System.Reflection.BindingFlags.NonPublic)!;
-    Func<float[], CancellationToken, Task<float[]>> embed = (_, _) => Task.FromResult(new float[] { 1, 0 });
-    Func<float[], CancellationToken, Task<(float[] Whole, float[][] Parts)>> parts = (_, _) => Task.FromResult((new float[] { 1, 0 }, new float[][] { [1, 0] }));
-    var speaker = Activator.CreateInstance(speakerType, embed, parts, 0.8, "fixture-calibrated");
-    enrollment.GetType().GetProperty("SpeakerForTests", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(enrollment, speaker);
-
+        var enrollment = (VoiceEnrollment)typeof(VoiceStatementBackend)
+            .GetField("enrollment", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(backend)!;
+        enrollment.SpeakerForTests = new((_, _) => Task.FromResult(new float[] { 1, 0 }),
+            (_, _) => Task.FromResult((new float[] { 1, 0 }, new float[][] { [1, 0] })));
     }
     private sealed class ConsentSetup : IAsyncDisposable
     {

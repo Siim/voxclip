@@ -4,14 +4,19 @@ using VoxClip.Core.Services.Speech;
 using VoxClip.Core.Services.VoiceLab;
 #pragma warning disable CS1591
 
+#if VOXCLIP_ENROLLMENT_TESTS
+using VoxClip.Media.VoiceLab;
+namespace VoxClip.Tests.Enrollment;
+#else
 namespace VoxClip.Media.VoiceLab;
+#endif
 
 public sealed class VoiceConsentSaveException(VoiceConsentRecord record) : Exception("Voice creation completed; finish the local consent save before use.")
 {
     public VoiceConsentRecord Record { get; } = record;
 }
 
-public sealed class VoiceEnrollment
+public sealed partial class VoiceEnrollment
 {
     private readonly VoiceConsentStore store;
     private readonly ElevenLabsVoiceLab client;
@@ -36,17 +41,16 @@ public sealed class VoiceEnrollment
         this.clock = clock ?? TimeProvider.System;
         this.reconciler = reconciler ?? new(store, region => region == client.Region ? client : throw new VoiceConsentException(VoiceConsentError.InvalidRecord), this.clock);
     }
-    // Test-only embeddings exercise the dormant algorithm without opening the native Windows parity gate.
-    internal sealed record TestSpeaker(Func<float[], CancellationToken, Task<float[]>> Embed,
-        Func<float[], CancellationToken, Task<(float[] Whole, float[][] Parts)>> Parts, double Threshold = 0.8, string Model = "fixture-calibrated");
-    internal TestSpeaker? SpeakerForTests { get; init; }
-    public bool SpeakerAvailable => SpeakerForTests is not null || speaker.Available;
-    private bool Supports(string language) => SpeakerForTests is not null ? language == "en" : speaker.Supports(language);
-    private double Threshold => SpeakerForTests?.Threshold ?? speaker.Threshold ?? throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-    private string Model => SpeakerForTests?.Model ?? speaker.ModelId ?? throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-    private void ValidateSpeaker() { if (SpeakerForTests is null) speaker.ValidateAvailability(); }
-    private Task<float[]> Embed(float[] pcm, CancellationToken ct) => SpeakerForTests is { } test ? test.Embed(pcm, ct) : speaker.EmbeddingAsync(pcm, ct);
-    private Task<(float[] Whole, float[][] Parts)> Parts(float[] pcm, CancellationToken ct) => SpeakerForTests is { } test ? test.Parts(pcm, ct) : speaker.PartEmbeddingsAsync(pcm, ct);
+#if !VOXCLIP_ENROLLMENT_TESTS
+    public bool SpeakerAvailable => speaker.Available;
+    private bool Supports(string language) => speaker.Supports(language);
+    private double Threshold => speaker.Threshold ?? throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+    private string Model => speaker.ModelId ?? throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+    private void ValidateSpeaker() => speaker.ValidateAvailability();
+    private Task<float[]> Embed(float[] pcm, CancellationToken ct) => speaker.EmbeddingAsync(pcm, ct);
+    private Task<(float[] Whole, float[][] Parts)> Parts(float[] pcm, CancellationToken ct) => speaker.PartEmbeddingsAsync(pcm, ct);
+    private static byte[] TrainingWav(VoiceTrainingSample sample) => sample.Wav;
+#endif
     public void SetSpeakerCheck(VoiceSpeakerCheck check)
     {
         Reserve();
@@ -206,12 +210,12 @@ public sealed class VoiceEnrollment
         foreach (var sample in inputs)
         {
             ct.ThrowIfCancellationRequested();
-            var format = VoiceConsentAudio.ValidateWav(sample.Wav);
+            var format = VoiceConsentAudio.ValidateWav(TrainingWav(sample));
             if (Math.Abs(format.Frames / (double)format.Rate - sample.Seconds) >= 0.001) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
             (float[] Whole, float[][] Parts) candidate;
             try
             {
-                var pcm = VoiceConsentAudio.Pcm16k(sample.Wav);
+                var pcm = VoiceConsentAudio.Pcm16k(TrainingWav(sample));
                 candidate = source == "project" ? await parts(pcm, ct).ConfigureAwait(false) : (await embed(pcm, ct).ConfigureAwait(false), []);
             }
             catch (VoiceConsentException error) when (error.Kind == VoiceConsentError.SpeakerMismatch) { continue; }
@@ -221,7 +225,7 @@ public sealed class VoiceEnrollment
             var score = candidate.Parts.Aggregate(SpeakerAudio.Cosine(owner, candidate.Whole), (lowest, part) => Math.Min(lowest, SpeakerAudio.Cosine(owner, part)));
             if (score < threshold) continue;
             accepted.Add(sample);
-            hashes.Add(new(VoiceConsentStore.Hash(sample.Wav), sample.Seconds, sample.Source, score));
+            hashes.Add(new(VoiceConsentStore.Hash(TrainingWav(sample)), sample.Seconds, sample.Source, score));
         }
         if (source == "readAloud" ? accepted.Count == 0 || accepted.Sum(sample => sample.Seconds) < 10 : Milliseconds(accepted) < VoiceTrainingSpans.TotalMinMs)
             throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
@@ -230,7 +234,7 @@ public sealed class VoiceEnrollment
         if (!statement.Text.StartsWith(prefix, StringComparison.Ordinal)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         var request = new VoiceLabCloneRequest(name, statement.Language,
             new[] { new VoiceLabCloneSample(VoiceLabCloneSampleRole.ConsentStatement, statementWav) }
-                .Concat(accepted.Select(sample => new VoiceLabCloneSample(VoiceLabCloneSampleRole.Training, sample.Wav.ToArray()))).ToArray(),
+                .Concat(accepted.Select(sample => new VoiceLabCloneSample(VoiceLabCloneSampleRole.Training, TrainingWav(sample).ToArray()))).ToArray(),
             created, source == "readAloud" && accepted.Any(sample => sample.SnrDb < 20 && !sample.CleanAudioApplied), recordId);
         var policy = new OwnVoicePolicy(recordId, null, true, true, true, true, true);
         return new(client.PrepareEnrollmentClone(request, policy, Guid.NewGuid()), request, policy, hashes.ToArray(), owner, Milliseconds(accepted));
