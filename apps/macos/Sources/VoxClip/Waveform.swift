@@ -99,12 +99,13 @@ struct WaveformData: Sendable {
 
     /// The pixel column for `start..<end` seconds of the take, as fractions of the half-height:
     /// the peak (the loudest frame's RMS times √2) and the core (the RMS over the frames), from
-    /// the coarsest level whose frames fit in the column. A column takes the frames whose
+    /// the coarsest level whose frames fit in a column `span` seconds long (the whole column,
+    /// where a piece ends inside it; `end - start` when nil). A column takes the frames whose
     /// middles fall in it, or the one under its middle. Its scale puts a typical spoken
-    /// column of its length at `typicalPeak` at every zoom. Both are zero in silence.
-    func column(from start: Double, to end: Double) -> (peak: Float, core: Float) {
+    /// column of that length at `typicalPeak` at every zoom. Both are zero in silence.
+    func column(from start: Double, to end: Double, span: Double? = nil) -> (peak: Float, core: Float) {
         guard let first = levels.first, !first.max.isEmpty, start.isFinite, end.isFinite, end > start else { return (0, 0) }
-        let span = end - start
+        let span = max(end - start, span ?? 0)
         let index = levels.lastIndex { $0.frameSeconds <= span + 1e-9 } ?? 0
         let level = levels[index], seconds = level.frameSeconds
         var lower = Int((start / seconds - 0.5).rounded(.up)), upper = Int((end / seconds - 0.5).rounded(.up))

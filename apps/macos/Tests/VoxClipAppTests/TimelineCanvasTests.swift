@@ -643,6 +643,12 @@ private actor TimelineTestSettings: SettingsStore {
             #expect(median >= 0.55 && median <= 0.70, "median peak \(median) at \(ptPerSecond) pt/s")
             #expect(columns.allSatisfy { $0.core <= $0.peak })
         }
+        // A column a piece ends inside keeps the whole column's scale, so the columns at a
+        // seam are no taller than their neighbours.
+        let alternating = WaveformData(fine: (0..<400).map { $0 % 4 == 0 ? 0.1 : 0.02 })
+        let whole = alternating.column(from: 1.0, to: 1.048), edge = alternating.column(from: 1.034, to: 1.048, span: 0.048)
+        #expect(whole.peak > 0.5 && edge.peak <= whole.peak + 1e-6)
+        #expect(alternating.column(from: 1.034, to: 1.048).peak > whole.peak)
         // A level of a 60-minute envelope folds four frames of the one below it.
         let hour = WaveformData(fine: [Float](repeating: 0.1, count: 360_000))
         #expect(hour.levels.map(\.max.count) == [360_000, 90_000, 22_500, 5_625])

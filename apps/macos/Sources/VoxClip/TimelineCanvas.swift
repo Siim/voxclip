@@ -830,7 +830,7 @@ struct TimelineOverviewLabel: Equatable {
             let start = max(range.lowerBound, state.viewport.time(atX: Double(column - TimelineMetrics.header)))
             let end = min(range.upperBound, state.viewport.time(atX: Double(column + 1 - TimelineMetrics.header)))
             if end > start {
-                let value = waveform.column(from: start + offset, to: end + offset)
+                let value = waveform.column(from: start + offset, to: end + offset, span: 1 / state.viewport.ptPerSecond)
                 let peak = CGFloat(value.peak) * half, core = CGFloat(value.core) * half
                 if peak >= 0.5 {
                     paint.peaks.append(CGRect(x: column, y: mid - peak, width: 1, height: 2 * peak))
