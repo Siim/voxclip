@@ -117,6 +117,29 @@ import Testing
         try expectFreshBuild(model, text, renderer)
     }
 
+    /// Another transcript open first, with no folds, leaves Foundation's shared attribute
+    /// dictionaries holding its paragraph style. Every run still holds the one style for the
+    /// text size, so the storage sets no style again over the edited paragraph and its line
+    /// break as it processes a fold edit.
+    @Test func aFoldEditBesideAnotherTranscriptWritesOnlyItsParagraph() throws {
+        let other = try editor(showCuts: true, paragraphs: 3); defer { other.close() }
+        let (otherText, _, otherCoordinator) = try pane(other)
+        defer { withExtendedLifetime((otherText, otherCoordinator)) {} }
+        let model = try editor(showCuts: false); defer { model.close() }
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        let storage = try #require(text.textStorage), style = TranscriptRenderer.paragraphStyle(textSize: model.textSize)
+        let log = EditLog(storage); defer { log.stop() }
+        model.apply(.toggle(id: "r21"), name: "Cut")
+        render(model, renderer)
+        #expect(log.edits.map(\.range) == [NSRange(location: renderer.paragraphs[2].offset, length: length(renderer, text, paragraph: 2))], "one edit, the third paragraph without its line break")
+        var others: [NSRange] = []
+        storage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            if (value as? NSParagraphStyle) !== style { others.append(range) }
+        }
+        #expect(others.isEmpty, "runs holding another paragraph style: \(others)")
+    }
+
     @Test func cutsInTwoParagraphsEditOnlyThoseTwo() throws {
         let model = try editor(showCuts: false); defer { model.close() }
         let (text, renderer, coordinator) = try pane(model)

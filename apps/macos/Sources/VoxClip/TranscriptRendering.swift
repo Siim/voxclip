@@ -325,6 +325,23 @@ struct TranscriptAppearance: Equatable {
     private var caretRevision = -1
     /// The appearance the last whole-document write styled every span for, until `update`.
     private var wholeStyle: TranscriptAppearance?
+    /// One paragraph style per text size for every transcript in the process. Foundation
+    /// shares equal attribute dictionaries between attributed strings, so with a new, equal
+    /// style per rebuild a paragraph's runs could hold different style objects, and the
+    /// storage's paragraph-style fixing would then set the style again over the whole
+    /// paragraph, its line break included, while it processes the edit.
+    private static var paragraphStyles: [Double: NSParagraphStyle] = [:]
+    static func paragraphStyle(textSize: Double) -> NSParagraphStyle {
+        if let style = paragraphStyles[textSize] { return style }
+        let style = NSMutableParagraphStyle()
+        style.minimumLineHeight = (textSize * DesignValues.transcriptLineHeightRatio).rounded()
+        style.maximumLineHeight = style.minimumLineHeight
+        style.paragraphSpacing = DesignValues.transcriptParagraphGap
+        style.baseWritingDirection = .natural
+        let shared = style.copy() as? NSParagraphStyle ?? style
+        paragraphStyles[textSize] = shared
+        return shared
+    }
 
     /// Writes the paragraphs whose content changed. `pending`, the appearance the next
     /// `update` brings, styles the replaced paragraphs, so a whole-document write for a tab
@@ -332,11 +349,7 @@ struct TranscriptAppearance: Equatable {
     func rebuild(model: EditorModel, appearance pending: TranscriptAppearance? = nil) {
         guard let text, let storage = text.textStorage else { return }
         let styling = pending ?? appearance
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.minimumLineHeight = (model.textSize * DesignValues.transcriptLineHeightRatio).rounded()
-        paragraphStyle.maximumLineHeight = paragraphStyle.minimumLineHeight
-        paragraphStyle.paragraphSpacing = DesignValues.transcriptParagraphGap
-        paragraphStyle.baseWritingDirection = .natural
+        let paragraphStyle = Self.paragraphStyle(textSize: model.textSize)
         font = DesignValues.transcriptFont(size: model.textSize)
         foldGap = TranscriptFold.gap(textSize: model.textSize)
         foldDot = TranscriptFold.dot(textSize: model.textSize)
