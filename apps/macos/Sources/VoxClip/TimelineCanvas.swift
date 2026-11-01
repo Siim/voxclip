@@ -707,6 +707,8 @@ struct TimelineOverviewLabel: Equatable {
         var gaps: [Range<Double>] = []
         /// The lane points whose waveform column drew a peak, each once.
         var columns = 0
+        /// Of those, the ones drawn outside In/Out at 32%.
+        var dimmed = 0
         /// Piece boxes drawn (pieces under 3 pt share their neighbour's).
         var boxes = 0
         /// Word capsules drawn in place of a waveform.
@@ -791,7 +793,7 @@ struct TimelineOverviewLabel: Equatable {
             context.saveGState()
             context.setAlpha(Self.outsideOpacity)
             context.beginTransparencyLayer(auxiliaryInfo: nil)
-            draw(&outside, in: context, wave: "timeline.wave")
+            drawn.dimmed = draw(&outside, in: context, wave: "timeline.wave")
             context.endTransparencyLayer()
             context.restoreGState()
             if let clip = state.clip {
@@ -895,11 +897,12 @@ struct TimelineOverviewLabel: Equatable {
         Paint(origin: TimelineMetrics.header, points: Int(max(0, bounds.width - TimelineMetrics.header).rounded(.up)), height: bounds.height)
     }
 
-    /// Fills `paint` and records what it drew.
-    private func draw(_ paint: inout Paint, in context: CGContext, wave: String) {
+    /// Fills `paint` and records what it drew. Returns its waveform columns.
+    @discardableResult private func draw(_ paint: inout Paint, in context: CGContext, wave: String) -> Int {
         let drew = paint.draw(in: context, wave: wave)
         drawn.columns += drew.columns
         drawn.boxes += drew.boxes
+        return drew.columns
     }
 
     /// Pieces and their waveform, gathered and filled in one pass each: one box per run of

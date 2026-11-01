@@ -349,24 +349,29 @@ import VoxClipCore
     /// Budgets on a 60-minute take with 9,000 words and 1,500 cuts (impl-plan §3.1): the
     /// waveform pyramid built off the main thread within 150 ms, a full redraw within 8 ms, a
     /// playhead tick within 1 ms that redraws no lane, and zoom frames within 16.7 ms at p95.
+    /// Edited is timed on Full Take; Source with Show cuts on and the take's middle half open
+    /// as a clip, so its frames draw the removed ranges and the take outside In/Out.
     /// Enforced in optimized builds (`./bundle.sh profile`); a debug build records them.
     static func performance(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
+        let count = 9_000
         var project = fixture
-        let words: [TimedWord] = (0..<9_000).map { index in
+        let words: [TimedWord] = (0..<count).map { index in
             let start = Double(index) * 0.4
             return TimedWord(id: "timeline-\(index)", text: index % 20 == 19 ? "word." : "word", start: start, end: start + 0.3)
         }
+        let duration = Double(count) * 0.4
         project.transcript?.words = words
-        project.transcript?.durationSeconds = 3_600
-        project.media.source.durationSeconds = 3_600
-        project.edits = ProjectEdits(cutWordIds: stride(from: 3, to: 9_000, by: 6).map { words[$0].id })
+        project.transcript?.durationSeconds = duration
+        project.media.source.durationSeconds = duration
+        let clip = ClipRange(id: "timeline-performance", startWordId: words[count / 4].id, endWordId: words[count * 3 / 4].id)
+        project.edits = ProjectEdits(cutWordIds: stride(from: 3, to: count, by: 6).map { words[$0].id }, clips: [clip])
         let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
         model.mediaResolved = true; model.refresh()
         // The pyramid is built off the main thread, as the cache's load task builds it; the
         // gate waits for it.
         final class Built: @unchecked Sendable { var waveform: WaveformData?; var offMain = false }
-        let envelope = speech(words: words, duration: 3_600).fine, built = Built(), done = DispatchSemaphore(value: 0)
+        let envelope = speech(words: words, duration: duration).fine, built = Built(), done = DispatchSemaphore(value: 0)
         let pyramidStart = ContinuousClock.now
         Thread.detachNewThread {
             built.waveform = WaveformData(fine: envelope)
@@ -388,13 +393,15 @@ import VoxClipCore
         canvas.displayIfNeeded()
         let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.audio]
         // Each lane draws through its layer at once, in or out of a shown window.
-        var redraws: [Double] = []
-        for _ in 0..<30 {
-            let start = ContinuousClock.now
-            lanes.forEach { $0.invalidate() }
-            lanes.forEach { $0.layer?.displayIfNeeded() }
-            redraws.append(milliseconds(start.duration(to: .now)))
+        func redraws() -> [Double] {
+            (0..<30).map { _ in
+                let start = ContinuousClock.now
+                lanes.forEach { $0.invalidate() }
+                lanes.forEach { $0.layer?.displayIfNeeded() }
+                return milliseconds(start.duration(to: .now))
+            }
         }
+        var redrawTimes = redraws()
         let drawn = lanes.map(\.draws)
         var ticks: [Double] = []
         let edited = model.duration
@@ -406,17 +413,16 @@ import VoxClipCore
             lanes.forEach { $0.layer?.displayIfNeeded() }
             ticks.append(milliseconds(start.duration(to: .now)))
         }
-        let redrawMaximum = redraws.max() ?? 0, tickP95 = percentile(ticks, 0.95), tickMaximum = ticks.max() ?? 0
+        let tickP95 = percentile(ticks, 0.95), tickMaximum = ticks.max() ?? 0
         let tickDraws = zip(lanes.map(\.draws), drawn).map { $0 - $1 }.reduce(0, +)
         // Zoom: from the fitted hour to 100 pt/s and back, on both axes, with the ruler and A1
         // drawing each frame (V9 adds the controls; the lanes' cost is this).
         var zooms: [Double] = []
         let fitted = canvas.viewport
-        for axis in [TimelineAxis.edited, .source] {
+        func zoomFrames(_ axis: TimelineAxis, center: Double, each: () -> Void = {}) {
             for frame in 0..<120 {
                 let step = Double(frame < 60 ? frame : 119 - frame) / 59
                 let zoom = fitted.ptPerSecond * pow(100 / fitted.ptPerSecond, step)
-                let center = (axis == .edited ? model.duration : model.sourceDuration) / 2
                 let viewport = TimelineViewport(axis: axis, ptPerSecond: zoom, origin: center - fitted.width / zoom / 2, width: fitted.width)
                 let start = ContinuousClock.now
                 canvas.ruler.state.viewport = viewport
@@ -424,19 +430,40 @@ import VoxClipCore
                 canvas.ruler.layer?.displayIfNeeded()
                 canvas.audio.layer?.displayIfNeeded()
                 zooms.append(milliseconds(start.duration(to: .now)))
+                each()
             }
         }
-        let zoomP95 = percentile(zooms, 0.95)
+        zoomFrames(.edited, center: model.duration / 2)
+        let editedColumns = canvas.audio.drawn.columns
+        // Source: Show cuts on and the clip open, so the lanes take its removed ranges and
+        // In/Out; zoomed about Out, where the take outside it and the cuts inside both show.
+        model.activate(clip)
+        // Opening the clip is the gate's own step, not an edit to keep: nothing autosaves it.
+        model.document.updateChangeCount(.changeCleared)
+        model.showsCuts = true
+        canvas.renderContent()
+        let source = canvas.audio.state
+        redrawTimes += redraws()
+        var gaps = 0, dimmed = 0
+        zoomFrames(.source, center: source.inOut?.upperBound ?? model.sourceDuration / 2) {
+            gaps = max(gaps, canvas.audio.drawn.gaps.count)
+            dimmed = max(dimmed, canvas.audio.drawn.dimmed)
+        }
+        let redrawMaximum = redrawTimes.max() ?? 0, zoomP95 = percentile(zooms, 0.95)
         let optimized = !_isDebugAssertConfiguration()
-        let metrics: [String: Double] = ["words": 9_000, "cuts": Double(project.edits.cutWordIds.count), "fullRedrawMaximumMS": redrawMaximum,
-                                         "fullRedrawMedianMS": percentile(redraws, 0.5), "tickP95MS": tickP95, "tickMaximumMS": tickMaximum,
+        let metrics: [String: Double] = ["words": Double(count), "cuts": Double(project.edits.cutWordIds.count), "fullRedrawMaximumMS": redrawMaximum,
+                                         "fullRedrawMedianMS": percentile(redrawTimes, 0.5), "tickP95MS": tickP95, "tickMaximumMS": tickMaximum,
                                          "laneDrawsDuringTicks": Double(tickDraws), "pyramidMS": pyramid, "zoomFrameP95MS": zoomP95,
-                                         "zoomFrameMaximumMS": zooms.max() ?? 0, "audioColumns": Double(canvas.audio.drawn.columns), "optimized": optimized ? 1 : 0]
+                                         "zoomFrameMaximumMS": zooms.max() ?? 0, "audioColumns": Double(editedColumns),
+                                         "sourceRemovedRanges": Double(source.removed.count), "sourceGapsDrawn": Double(gaps),
+                                         "sourceDimmedColumns": Double(dimmed), "optimized": optimized ? 1 : 0]
         try JSONEncoder().encode(metrics).write(to: directory.appendingPathComponent("timeline-performance.json"), options: .atomic)
         return [
             .init(name: "60-minute waveform pyramid builds off the main thread within 150 ms (\(String(format: "%.1f", pyramid)) ms)", passed: offMain && (!optimized || pyramid <= 150)),
-            .init(name: "60-minute zoom frames draw the ruler and A1 within 16.7 ms at p95 (\(String(format: "%.2f", zoomP95)) ms)", passed: canvas.audio.drawn.columns > 100 && (!optimized || zoomP95 <= 1000.0 / 60)),
-            .init(name: "60-minute timeline full redraw stays within 8 ms (\(String(format: "%.2f", redrawMaximum)) ms)", passed: drawn.allSatisfy { $0 > 1 } && (!optimized || redrawMaximum <= 8)),
+            .init(name: "60-minute zoom frames draw the ruler and A1 on Edited and Source within 16.7 ms at p95 (\(String(format: "%.2f", zoomP95)) ms)", passed: editedColumns > 100 && (!optimized || zoomP95 <= 1000.0 / 60)),
+            .init(name: "60-minute Source frames draw the removed ranges and the take outside In/Out (\(gaps) ranges, \(dimmed) dimmed columns)",
+                  passed: !source.removed.isEmpty && gaps > 0 && dimmed > 0),
+            .init(name: "60-minute timeline full redraw on Edited and Source stays within 8 ms (\(String(format: "%.2f", redrawMaximum)) ms)", passed: drawn.allSatisfy { $0 > 1 } && (!optimized || redrawMaximum <= 8)),
             .init(name: "60-minute playhead tick stays within 1 ms (p95 \(String(format: "%.3f", tickP95)) ms)", passed: !optimized || tickP95 <= 1),
             .init(name: "60-minute playhead ticks redraw no lane (\(tickDraws) draws)", passed: tickDraws == 0)
         ]

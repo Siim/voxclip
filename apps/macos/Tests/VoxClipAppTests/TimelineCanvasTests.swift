@@ -797,6 +797,22 @@ private actor TimelineTestSettings: SettingsStore {
         expectSpeech(WaveformData(fine: fine), seconds: 120, typical: 0.55...0.70, "room tone")
     }
 
+    /// impl-plan §3.1's 60-minute gate times Source as it draws: with
+    /// Show cuts on and a clip open, its frames draw the removed ranges and the take outside
+    /// In/Out, and its full redraw is timed with Edited's.
+    @Test func thePerformanceGateTimesSourceWithItsCutsAndInOut() throws {
+        let app = try app()
+        let shared = try SharedResources.locate()
+        let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
+        let directory = app.locations.root.appendingPathComponent("performance", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let results = try DebugTimeline.performance(app: app, fixture: fixture, directory: directory)
+        let source = try #require(results.first { $0.name.contains("Source frames draw the removed ranges and the take outside In/Out") })
+        #expect(source.passed, "\(source.name)")
+        #expect(results.contains { $0.name.contains("full redraw on Edited and Source") })
+        for result in results { #expect(result.passed, "\(result.name)") }
+    }
+
     // MARK: The waveform
 
     /// impl-plan §3.1: the model loads the waveform when the media is there, so a hidden
