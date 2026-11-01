@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## Pinned TextKit test portability hunk (1 Nov 2026)
+
+- Ported only `TranscriptRendererTests.validationDuringAStorageEditDefersItsWrites` from the parent-authorized `70b901ff707b56975383362d016d2f2c23cc7d9c`: retain a real unchanged first-paragraph fragment before the third-paragraph edit and invoke the renderer's validator directly while the storage is editing. Do not enumerate mutating `NSTextContentStorage` on macOS 26.6.
+- No WC1 merge, production renderer change, EditLog change, attribute-bound relaxation or shared paragraph-style change. All original reentrancy, eager-write, fresh-build and style assertions remain. The original test passed here on Xcode 27; the parent reported the Xcode 26.6 exception in integration CI `41329779304`. Local renderer suite passed after this hunk; hosted verification remains parent-owned.
+
 ## V18/V19 integration seam — keep the task host through questions (1 Nov 2026)
 
 - The full App run exposed an inherited conditional-host identity loss: asking and dismissing an inline question replaced `DirectorPanel`, throwing away the prior keyboard responder. `PanelHost` now uses one task branch for the ordinary task and its question, retaining the existing question override over other jobs. No focus policy or assertion was relaxed.
