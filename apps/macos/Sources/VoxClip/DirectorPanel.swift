@@ -281,6 +281,7 @@ import VoxClipCore
     @ViewBuilder private func glyph(_ status: ActivityStep.Status) -> some View {
         switch status {
         case .done: Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary"))
+        case .failed: Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("status.warning"))
         case .running: ProgressView().controlSize(.mini)
         case .waiting: Circle().strokeBorder(DesignValues.color("text.disabled"), lineWidth: 1).frame(width: 8, height: 8)
         }

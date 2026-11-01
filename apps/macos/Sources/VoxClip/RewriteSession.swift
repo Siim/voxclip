@@ -88,6 +88,9 @@ struct RewriteChange: Equatable, Sendable {
 /// and `PatchRewriteService`, and its reply through C2's `ScopeRewriteDiff`; a selection through `VoiceRewriteService`
 /// and the passage diff. Both end in `changes` and the task's `ChangeSet`. The session belongs to the tab it opened on.
 @MainActor @Observable final class RewriteSession {
+    var sendApproved = false
+    var sendFailure: LLMError?
+    func waitForSend() async { _ = await sending?.value }
     let editor: EditorModel
     /// What the session rewrites (C1's `RewriteScope`).
     let rewriteScope: RewriteScope

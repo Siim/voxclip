@@ -1219,10 +1219,13 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 
 **R0b. A send that asks first** (an API-key connector, or a CLI signed in with an API key; every send)
 
-- A sheet titled "Rewrite clip {n}?" with:
-  - "Sends the {w} words of clip {n} to {provider} with your key." For a CLI on an API key: "Sends the {w} words of clip {n} to Claude Code, billed to the API key it is signed in with." (Codex likewise.)
-  - "VoxClip can't tell what this costs. Check {provider}'s pricing."
-- Buttons **Cancel** and **Rewrite** (the default).
+- On Mac v2, an inline approval row sits in the slot below the clip bar and pushes the transcript down (v5 f22–f22c). The right panel stays as it was until Send.
+- Line 1: “Rewrite sends the {w} words of clip {n} to {provider} with your key.” A CLI on an API key names the CLI and says it is billed to the API key it is signed in with.
+- Detail: “No audio or video. {model}. Asks before each send.” Note: “VoxClip can't tell what this costs. Check {provider}'s pricing.” The provider's pricing is linked; no price is invented.
+- **Send** (accent), **Cancel**. On first use, one row combines the connector consent and the send: **Allow and Send**, **Not now**. A plan's first-use **Allow and Rewrite** stays neutral (ai.md §4.8).
+- A missing key is entered and saved inline; saving makes no request and reveals Send. Return ignores repeat, a keydown before the row, and the first 0.5 s after opening or rewording. ⌘Return sends; Esc cancels and preserves the Ask text. Space plays. A billed button never receives focus automatically.
+- Failures after Send appear in the Rewrite job's steps. **Try Again…** reopens this row; a rejected key offers an inline key field and **Save Key and Try Again…**. The Director thread job stays hidden until P1-09.
+- Windows retains its native R0b confirmation until its v2 port.
 
 **R1. Running**
 
@@ -1454,7 +1457,7 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 | Not enough clean speech | V1, then the read-aloud | §6.3.7 V1, below 30 s |
 | Speaker mismatch | V3 | §6.3.7 V3, mismatch |
 | A paid step of $0.50 or more, an unknown price, or crossing the monthly cap | sheet | voice-lab.md §3.1 copy |
-| AI on an API key | sheet R0b | §6.3.6 R0b |
+| AI on an API key | inline approval row R0b (Mac v2) | §6.3.6 R0b |
 | Too much to re-voice | R2 | the over-budget footer in §6.3.6 R2 |
 | Not the voice owner | T1 | §6.3.8 T1 |
 | Voice Lab off (release) | R2 | the §6.3.6 R2 footer |
@@ -1917,7 +1920,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Rewrite: panel header and context line | Rewrite panel | Titles "Rewrite clip {n}", "Rewrite {w} words", "Rewrite full take"; in voice steps "Your voice" with "Step {i} of 3" ("Step {i} of 4" with a read-aloud), "Beta" and "Back to rewrite". Context line "{AI} · {model} · no extra cost", "{AI} · {model} · billed to your key" or "{AI} · {model} · answered in {t} s". Other scopes substitute their words (§6.3) |
 | Rewrite: no AI chosen | Rewrite panel, R0 | "Who should rewrite clip {n}?" Rows: "Claude Code (installed CLI)" with "Signed in · Claude plan · no extra cost", "Signed in · billed to the API key Claude Code uses" or "Not signed in. Run `claude` in Terminal and sign in."; "Codex (installed CLI)" with "Signed in · ChatGPT plan · no extra cost" or "Not signed in. Run `codex login` in Terminal."; "Ollama" with "{model} on this {Mac/PC} · free" or "Not running. Start Ollama, then choose Check Again."; "Apple on-device" with "free · English"; "Anthropic" with "your API key · asks before each send", and with no key the field "Paste your Anthropic API key" [Save Key]. Note "Change it any time from the menu above the transcript." [Check Again] [Use {name}] |
 | Rewrite: no AI set up | Rewrite panel, R0 | "No AI is set up yet" / "Rewrite needs an AI: an installed Claude Code or Codex, a local model, Apple on-device, or an API key." [AI Settings…] [Check Again] |
-| Rewrite: a send that asks first | sheet, R0b | Title "Rewrite clip {n}?" Body "Sends the {w} words of clip {n} to {provider} with your key." (a CLI on an API key: "Sends the {w} words of clip {n} to Claude Code, billed to the API key it is signed in with.") and "VoxClip can't tell what this costs. Check {provider}'s pricing." [Cancel] [Rewrite] |
+| Rewrite: a send that asks first | inline approval row, R0b (Mac v2) | “Rewrite sends the {w} words of clip {n} to {provider} with your key.” “No audio or video. {model}. Asks before each send.” [Send] [Cancel]. First use: [Allow and Send], with the privacy detail. “VoxClip can't tell what this costs. Check {provider}'s pricing.” links to pricing. No invented price. |
 | Rewrite: running | Rewrite panel, R1 | Quote "Asked: **Fix mistakes**, fix slips and repeats, keep my words, change as little as possible." or "Asked: “{instruction}”". Headline "Rewriting clip {n}…" with the elapsed time and [Stop]. Steps "Read clip {n}" · "{w} words · {m:ss}"; "Sent to {AI}" · "Text only. No audio or video." (a loopback server or Apple: "Running on this {Mac/PC}" · "Nothing leaves it."); "Waiting for {AI}…" · "Changes appear in the transcript when it answers."; "Check that each change fits". Announce "Rewriting clip {n}". Stop is silent |
 | Rewrite: send line | Rewrite panel footer | A CLI on a plan: "Sends the {w} words of clip {n} to {CLI} with your sign-in. Counts toward your {Claude plan \| ChatGPT plan}." A CLI on an API key: "Sends the {w} words of clip {n} to {CLI}, billed to the API key it is signed in with." An API key: "Sends the {w} words of clip {n} to {provider} with your key." A loopback server or Apple: "Runs on this {Mac/PC}. Nothing leaves it." A remote local server: "Sends the {w} words of clip {n} to {host}." |
 | Rewrite: couldn't rewrite | Rewrite panel, R1x | "Couldn't rewrite clip {n}", then the AI spec section 5 message and "Your edits are saved." [Try Again] ([Try Again…] when the send asks first). Signed out: "{CLI} isn't signed in. Run `claude` (or `codex login`) in Terminal and sign in, then choose Try Again." No key: the field "{provider} API key" [Save Key and Try Again]. Not running: "Ollama isn't running. Start it, then choose Try Again." Refused: "The model declined to rewrite this recording." [Ask for Something Else] |

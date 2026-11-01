@@ -144,6 +144,7 @@ import VoxClipCore
     @FocusState private var findFocused: Bool
     var body: some View {
         VStack(spacing: 0) {
+            ConnectorConfirmationView(confirmation: model.sendConfirmation, model: model)
             if model.document.demo {
                 Label { Text("Demo project with no video. ").fontWeight(.semibold) + Text("Changes aren't saved to the fixture.") } icon: { Image(systemName: "info.circle") }
                     .font(.system(size: 13)).foregroundStyle(DesignValues.color("text.primary"))
@@ -184,5 +185,6 @@ import VoxClipCore
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.surface"))
         .scrollEdgeEffectStyle(.automatic, for: .vertical)
+
     }
 }

@@ -48,7 +48,10 @@ struct PanelJobChoice {
 
 extension EditorModel {
     /// The task the panel shows: the active tab's Rewrite session's. Text Rewrite needs no Voice Lab (impl-plan V13).
-    var panelTask: DirectorTask? { rewrite?.task }
+    var panelTask: DirectorTask? {
+        guard let rewrite, rewrite.task.state != .running || rewrite.sendApproved else { return nil }
+        return rewrite.task
+    }
 }
 
 extension WorkspaceShell {

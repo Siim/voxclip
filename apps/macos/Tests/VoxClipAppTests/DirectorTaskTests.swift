@@ -51,10 +51,10 @@ private actor RefusingKeys: ProviderKeyStore {
 
 /// The consent and cost sheets of a send, held until the test answers each.
 @MainActor private final class HeldSheets {
-    private(set) var asked: [LLMSendSheet.Reason] = []
+    private(set) var asked: [ConnectorSendPrompt.Reason] = []
     private var answer: CheckedContinuation<Bool, Never>?
     var isAsking: Bool { answer != nil }
-    func ask(_ sheet: LLMSendSheet) async -> Bool {
+    func ask(_ sheet: ConnectorSendPrompt) async -> Bool {
         asked.append(sheet.reason)
         return await withCheckedContinuation { answer = $0 }
     }
@@ -338,11 +338,8 @@ private actor RefusingKeys: ProviderKeyStore {
         let task = session.task
         func waitForSheet() async { for _ in 0..<2_000 where !sheets.isAsking { await Task.yield() } }
         await waitForSheet()
-        #expect(sheets.asked == [.privacy] && task.state == .running && task.turn == 1)
+        #expect(sheets.asked == [.cost] && task.state == .running && task.turn == 1 && editor.panelTask == nil)
         #expect(task.steps.map(\.status) == [.done, .waiting, .waiting, .waiting] && editor.announcements.isEmpty)
-        sheets.answer(true)
-        await waitForSheet()
-        #expect(sheets.asked == [.privacy, .cost] && task.steps.map(\.status) == [.done, .waiting, .waiting, .waiting] && editor.announcements.isEmpty)
         sheets.answer(true)
         #expect(await session.sending?.value == true)
         guard case .proposal(let changes) = task.state else { Issue.record("no proposal: \(task.state)"); return }
@@ -351,7 +348,7 @@ private actor RefusingKeys: ProviderKeyStore {
 
         let declined = send(session)
         await waitForSheet()
-        #expect(sheets.asked == [.privacy, .cost, .cost] && editor.announcements.count == 2)
+        #expect(sheets.asked == [.cost, .cost] && editor.announcements.count == 2)
         sheets.answer(false)
         #expect(await declined.value == false)
         #expect(task.state == .proposal(changes) && editor.announcements.count == 2 && session.ownProposal != nil)
@@ -413,7 +410,7 @@ private actor RefusingKeys: ProviderKeyStore {
                 note: "Runs on this Mac. Nothing leaves it."),
         Failure(name: "a rejected API key", connector: "anthropic", readiness: .ready, authMethod: nil, failure: .unauthorized,
                 error: .message("Anthropic rejected the API key. Check it in Settings › AI. Your edits are saved."),
-                body: "Anthropic rejected the API key. Check it in Settings › AI. Your edits are saved.", primary: "Try Again…",
+                body: "Anthropic rejected the API key. Check it in Settings › AI. Your edits are saved.", primary: "Save Key and Try Again…",
                 note: "Sends these 3 words to Anthropic with your key."),
     ]
 
@@ -434,6 +431,31 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(task.footer.primary?.title == row.primary && task.footer.note == row.note && task.footer.link == nil)
         #expect(editor.announcements.last == "Couldn't rewrite these words.")
         #expect(editor.project == before && !editor.llmRuns.isBusy && session.isOpen)
+    }
+
+    @Test func failedAPIKeySendKeepsItsStepsAndRetryReopensTheInlineRow() async throws {
+        let stub = StubConnector(id: .openai, failure: .rateLimited(retryAfter: nil))
+        let (app, _) = app("openai", connectors: ["openai": stub])
+        app.connectorConsentOverride = nil
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor, waits: false)
+        func waitForRow() async { for _ in 0..<10_000 where !editor.sendConfirmation.isPresented { await Task.yield() } }
+        await waitForRow()
+        #expect(editor.sendConfirmation.isPresented && editor.panelTask == nil)
+        #expect(await stub.sends == 0)
+        editor.sendConfirmation.approve()
+        await session.sending?.value
+        #expect(session.task.steps.map(\.status) == [.done, .done, .failed])
+        #expect(session.task.steps.last?.title == "No answer" && session.task.steps.last?.detail == "429 · rate limited")
+        #expect(session.task.footer.primary?.title == "Try Again…")
+        session.task.footer.primary?.perform()
+        await waitForRow()
+        #expect(editor.sendConfirmation.prompt?.confirm == "Send")
+        #expect(await stub.sends == 1)
+        editor.sendConfirmation.cancel()
+        await session.actionTask?.value
+        #expect(await stub.sends == 1)
     }
 
     @Test func tryAgainSendsAgainAndAskForSomethingElseAsksForTheField() async throws {
@@ -571,7 +593,9 @@ private actor RefusingKeys: ProviderKeyStore {
             host.layoutSubtreeIfNeeded()
             return DebugRightColumn.markers(in: host)
         }
-        // A session with an AI runs as it opens: it starts on its first turn.
+        // Before approval the panel remains Captions; the send brings Rewrite into it.
+        #expect(shell.panelJob(for: editor) == .captions && editor.panelTask == nil)
+        session.sendRun()
         #expect(session.task.turn == 1 && shell.panelJob(for: editor) == .rewrite && panel()["director.panel"] != nil)
         shell.choosePanelJob(.captions, for: editor)
         #expect(shell.panelJob(for: editor) == .captions)
@@ -584,6 +608,8 @@ private actor RefusingKeys: ProviderKeyStore {
         shell.choosePanelJob(.captions, for: editor)
         // The next run brings the job back.
         session.beginRun()
+        #expect(shell.panelJob(for: editor) == .captions && editor.panelTask == nil)
+        session.sendRun()
         #expect(session.task.turn == 2 && shell.panelJob(for: editor) == .rewrite && panel()["director.panel"] != nil)
         shell.choosePanelJob(.captions, for: editor)
         // The same turn's error keeps the user's pick.

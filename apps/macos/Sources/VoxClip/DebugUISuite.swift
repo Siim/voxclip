@@ -639,6 +639,7 @@ import ApplicationServices
             results += try await DebugStatusBar.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: interview, directory: destination, native: true)
             results += try await DebugRewrite.directorCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugInlineConfirm.captures(app: app, directory: destination)
         } catch {
             results.append(Result(name: "scene audit: \(error.localizedDescription)", passed: false))
         }

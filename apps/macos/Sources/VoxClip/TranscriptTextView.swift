@@ -1135,6 +1135,13 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     }
     override func keyDown(with event: NSEvent) {
         model?.focusedPane = .transcript
+        if let row = model?.sendConfirmation, row.isPresented {
+            if event.keyCode == 53 { row.cancel(); return }
+            if (event.keyCode == 36 || event.keyCode == 76), event.modifierFlags.contains(.command) {
+                _ = row.pressReturn(timestamp: event.timestamp, now: ProcessInfo.processInfo.systemUptime, isRepeat: event.isARepeat, command: true)
+                return
+            }
+        }
         if event.keyCode == 53, model?.rewrite != nil { model?.closeRewrite(); return }
         guard let model, !hasMarkedText(), correction == nil else { super.keyDown(with: event); return }
         if event.keyCode == 53, changePopoverVisible { hideChangePopover(); return }

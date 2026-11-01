@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+### 2026-11-01 — v2-inline V12 — inline connector approvals
+
+- Built: the f22/f22b/f22c approval slot below the clip bar, including missing-key Save, combined first-use/API billing, per-send retries, and the fresh Return/repeat guard. One `ConnectorConfirmation` per editor and one in Settings owns the cancellable request. A pending Rewrite stays out of the right panel until Send. Failures keep the send steps and show No answer or Couldn't reach; a 401 adds its key field. DEBUG f22/f22b/f22c scenes are registered with `-sceneAudit`.
+- Deleted: API-key/R0b and connector-privacy uses of `RewriteApprovalSheet`; renamed their data payload to `ConnectorSendPrompt`. The sheet class stays in `RewriteSession.swift` for takes, owned by V18. `RewritePanel` and its panel-specific state were already absent at this base. Director remains unavailable until P1-09.
+- Verification: 102 tests in seven headless suites passed (routing, confirmation, scope, task, clip-bar, tabs and status). Negative probe: weakening the Return guard and removing scope refresh made eight tests fail with 11 issues; the restored implementation passes. Build with the 300 ms expression warning flag compiled; remaining warnings are baseline. No live providers, keys or user data.
+- Owes: native focus, Return/Space/Esc, VoiceOver and side-by-side f22/f22b layout at normal and narrow sizes; real-window gates only in the permitted idle interval.
+- Merge: overlaps the voice lane in `DirectorTask.swift` (failed activity status), `DirectorPanel.swift` (failed glyph), `RewriteSession+Task.swift` and `PanelHost.swift`; preserve both changes. `InlinePrimaryButton` is also VT's guarded billed button. Tighten is today's local edit, so it does not invent an LLM send. Hook confirms the take it actually sends. Settings Test uses its own inline slot. No CI dispatch for this package.
+
 ### 2026-11-01 — lead — Rewrite-loop merge: transcript 31294438 + timeline 233914b4 + explorer b529f4ea into Feel da519783
 
 - **What.** `lead/v2-rewrite` starts at `lead/v2-feel` da519783 and merges `track/v2-transcript` 31294438 (V14 and its hosted CI fixes; CI green, run 41289079602), then `track/v2-timeline` 233914b4 (V13, V15 and the V15 review; that lane already held V14 at 2a82d671), then `track/v2-explorer` b529f4ea (V3b, V11a with 1d7da980, V2 and its review). Its `./bundle.sh profile` build is the Rewrite-loop test build. The lane entries below are kept as merged, each once.

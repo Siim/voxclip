@@ -130,7 +130,7 @@ struct PanelFooter: Equatable {
 
 /// One step of a task's work log: Rewrite's own steps (R1), or one tool call in Phase 1.
 struct ActivityStep: Identifiable, Equatable, Sendable {
-    enum Status: Equatable, Sendable { case waiting, running, done }
+    enum Status: Equatable, Sendable { case waiting, running, done, failed }
     let id: String
     var title: String
     var detail: String
@@ -146,6 +146,7 @@ struct ActivityStep: Identifiable, Equatable, Sendable {
         case .done: "Done: \(spoken)"
         case .running: "In progress: \(spoken)"
         case .waiting: "Next: \(spoken)"
+        case .failed: "Failed: \(spoken)"
         }
     }
 }

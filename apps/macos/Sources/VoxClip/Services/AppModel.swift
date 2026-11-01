@@ -71,6 +71,7 @@ extension ProviderChoice {
     nonisolated static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
     public var startupError: VoxClipError?
+    let settingsSendConfirmation = ConnectorConfirmation()
     var notice: String?
     var settingErrors: [String: String] = [:]
     var settings = SettingsDocument()
@@ -220,8 +221,8 @@ extension ProviderChoice {
     @ObservationIgnored private var library: ModelLibrary?
     @ObservationIgnored private let modelDownloader: (any ModelDownloader)?
     @ObservationIgnored var connectorOverride: ((String) -> any LLMConnector)?
-    /// Answers the send sheets (`LLMSendSheet`: the privacy consent and the cost confirmation) in harness sessions and tests.
-    @ObservationIgnored var connectorConsentOverride: (@MainActor (ProviderChoice, ConnectorConsentAction, LLMSendSheet) async -> Bool)?
+    /// Answers the send sheets (`ConnectorSendPrompt`: the privacy consent and the cost confirmation) in harness sessions and tests.
+    @ObservationIgnored var connectorConsentOverride: (@MainActor (ProviderChoice, ConnectorConsentAction, ConnectorSendPrompt) async -> Bool)?
     var testingProviders: Set<String> = []
     @ObservationIgnored var providerKeyStoreOverride: (any ProviderKeyStore)?
     var providerKeyStore: any ProviderKeyStore { providerKeyStoreOverride ?? secrets }

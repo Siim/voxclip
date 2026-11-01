@@ -175,6 +175,7 @@ extension RewriteSession {
     /// R1 starts as the run does: the quote of what was asked, the steps with nothing sent yet, Stop, and the send line
     /// as the note. The consent and the cost sheet ask over it; `sendRun` announces it once they pass.
     func beginRun() {
+        sendApproved = false; sendFailure = nil
         let suggestion = RewriteSuggestions.suggestion(for: instruction)
         let asked: PanelCard = suggestion.asked.map { .asked(preset: suggestion.title, text: $0) } ?? .asked(preset: nil, text: "“\(suggestion.title)”")
         let stop = PanelAction(id: "stop", title: "Stop") { [weak editor] in editor?.closeRewrite() }
@@ -184,6 +185,7 @@ extension RewriteSession {
     /// The consent passed and the words go: R1 waits for the AI. Announced now, not while a sheet still asks, and a typed
     /// instruction joins the project's recent ones (design.md §6.3.1).
     func sendRun() {
+        sendApproved = true
         guard task.state == .running else { return }
         task.update(runSteps(reached: 2))
         editor.app.noteRewriteInstruction(instruction, for: project.id)
@@ -229,6 +231,7 @@ extension RewriteSession {
     /// Shows a failed send's error (R1x), announced.
     func fail(_ error: any Error) async {
         guard let shown = await panelError(error), isOpen else { return }
+        sendFailure = error as? LLMError
         fail(shown)
     }
     /// `problem` adds a line under the fix and is announced instead of the headline: a key that could not be saved, or
@@ -264,6 +267,29 @@ extension RewriteSession {
                 editor?.requestFindClips(from: .clipBar)
             } : nil
             (headline, cards, footer) = Self.tooLarge(error, words: words, findClips: findClips)
+        }
+        if sendApproved, let failure = sendFailure {
+            var steps = Array(runSteps(reached: 2).prefix(3))
+            let detail: String
+            switch failure {
+            case .rateLimited: detail = "429 · rate limited"
+            case .unauthorized: detail = "401 · key rejected"
+            case .network: detail = "nothing was answered"
+            default: detail = "No reply was received."
+            }
+            steps[2] = ActivityStep(id: "wait", title: "No answer", detail: detail, status: .failed, spoken: "No answer. \(detail)")
+            if case .network = failure {
+                steps[1] = ActivityStep(id: "send", title: "Couldn't reach \(aiName)", detail: "nothing was answered", status: .failed, spoken: "Couldn't reach \(aiName)")
+                steps.removeLast()
+            }
+            cards.insert(.activity(steps), at: 0)
+            if case .unauthorized = failure, let provider {
+                cards.append(.keyField(provider: provider.id, label: "\(aiName) API key"))
+                footer.primary = PanelAction(id: "saveKeyAndTryAgain", title: "Save Key and Try Again…") { [weak self] in
+                    guard let self else { return }
+                    actionTask = Task { await self.saveKeyAndTryAgain(provider.id) }
+                }
+            }
         }
         if let problem { cards.append(.text(problem)) }
         task.show(.error(error), headline: headline, cards: cards, footer: footer)
