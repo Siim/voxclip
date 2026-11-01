@@ -481,7 +481,7 @@ import VoxClipCore
     /// Edited is timed on Full Take; Source with Show cuts on and the take's middle half open
     /// as a clip, so its frames draw the removed ranges and the take outside In/Out.
     /// Enforced in optimized builds (`./bundle.sh profile`); a debug build records them.
-    static func performance(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
+    static func performance(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         let count = 9_000
         var project = fixture
         let words: [TimedWord] = (0..<count).map { index in
@@ -499,17 +499,13 @@ import VoxClipCore
         model.mediaResolved = true; model.refresh()
         // The pyramid is built off the main thread, as the cache's load task builds it; the
         // gate waits for it.
-        final class Built: @unchecked Sendable { var waveform: WaveformData?; var offMain = false }
-        let envelope = speech(words: words, duration: duration).fine, built = Built(), done = DispatchSemaphore(value: 0)
+        let envelope = speech(words: words, duration: duration).fine
         let pyramidStart = ContinuousClock.now
-        Thread.detachNewThread {
-            built.waveform = WaveformData(fine: envelope)
-            built.offMain = !Thread.isMainThread
-            done.signal()
-        }
-        done.wait()
-        let pyramid = milliseconds(pyramidStart.duration(to: .now)), offMain = built.offMain
-        model.waveform = built.waveform
+        let built = await Task.detached(priority: .utility) {
+            (WaveformData(fine: envelope), FilmstripDecodeStatistics.offMainThread)
+        }.value
+        let pyramid = milliseconds(pyramidStart.duration(to: .now)), offMain = built.1
+        model.waveform = built.0
         model.captionPages = captionPages(model)
         let canvas = TimelineCanvasView(model: model)
         defer { canvas.tearDown() }
@@ -605,7 +601,18 @@ import VoxClipCore
         let scrollP95 = percentile(scrolls, 0.95)
         let redrawMaximum = redrawTimes.max() ?? 0, zoomP95 = percentile(zooms, 0.95)
         let optimized = !_isDebugAssertConfiguration()
-        let metrics: [String: Double] = ["words": Double(count), "cuts": Double(project.edits.cutWordIds.count), "fullRedrawMaximumMS": redrawMaximum,
+        // Measure native setup/decode separately from deterministic redraw timing.
+        // This uses the tiny checked-in source, never the user's media or network.
+        let shared = try SharedResources.locate()
+        let native = FilmstripCache(source: .init(url: shared.root.appendingPathComponent("fixtures/media/bars-1080p.mp4"), contentKey: "performance", cache: nil))
+        var decoded = 0
+        await native.want([0], tolerance: 0.1, generation: 1) { _, _ in decoded += 1 }
+        await native.waitUntilIdle()
+        await native.want([30], tolerance: 0.1, generation: 2) { _, _ in decoded += 1 }
+        await native.waitUntilIdle()
+        let decode = await native.decodeStatistics()
+        await native.cancelAll()
+        let metrics: [String: Double] = ["filmstripAssets": Double(decode.assets), "filmstripColdMS": decode.firstDecodeMS, "filmstripReusedAssetMS": decode.lastDecodeMS, "words": Double(count), "cuts": Double(project.edits.cutWordIds.count), "fullRedrawMaximumMS": redrawMaximum,
                                          "fullRedrawMedianMS": percentile(redrawTimes, 0.5), "tickP95MS": tickP95, "tickMaximumMS": tickMaximum,
                                          "laneDrawsDuringTicks": Double(tickDraws), "pyramidMS": pyramid, "zoomFrameP95MS": zoomP95,
                                          "scrollFrameP95MS": scrollP95, "selectionFrameP95MS": selectionP95, "selectionFrameMaximumMS": selections.max() ?? 0,
@@ -615,6 +622,7 @@ import VoxClipCore
                                          "sourceDimmedColumns": Double(dimmed), "optimized": optimized ? 1 : 0]
         try JSONEncoder().encode(metrics).write(to: directory.appendingPathComponent("timeline-performance.json"), options: .atomic)
         return [
+            .init(name: "Filmstrip decodes reuse one off-main asset (cold \(String(format: "%.2f", decode.firstDecodeMS)) ms, reused \(String(format: "%.2f", decode.lastDecodeMS)) ms)", passed: decoded == 2 && decode.assets == 1 && decode.decodes == 2 && decode.offMain),
             .init(name: "60-minute selection frames draw the ruler and wash within 16.7 ms at p95 (\(String(format: "%.2f", selectionP95)) ms)", passed: !optimized || selectionP95 <= 1000.0 / 60),
             .init(name: "60-minute scroll frames draw V1, A1, CC and FX within 16.7 ms at p95 (\(String(format: "%.2f", scrollP95)) ms)", passed: canvas.video.tiles > 0 && !canvas.captions.blocks.isEmpty && (!optimized || scrollP95 <= 1000.0 / 60)),
             .init(name: "60-minute waveform pyramid builds off the main thread within 150 ms (\(String(format: "%.1f", pyramid)) ms)", passed: offMain && (!optimized || pyramid <= 150)),

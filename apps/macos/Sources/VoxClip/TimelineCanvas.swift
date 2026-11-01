@@ -149,6 +149,7 @@ struct TimelineContent: Equatable {
     init(model: EditorModel, shell: WorkspaceShell? = nil) {
         self.model = model
         self.shell = shell
+        zoomStep = model.timelineZoomStep
         super.init(frame: NSRect(x: 0, y: 0, width: 1056, height: TimelineMetrics.height))
         wantsLayer = true
         layerContentsRedrawPolicy = .never

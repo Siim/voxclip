@@ -4,13 +4,10 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- On Mac, the timeline adds an FX Motion lane with “Director results land here,” matching the saved S/M/L track heights and overlay scrolling.
-
-- On Mac, drag in the timeline or transcript to select the same words, trim In/Out with one undo step, navigate and select by word or sentence with the keyboard, and adjust the playhead, edges and zoom with VoiceOver.
-
-- On Mac the timeline adds video filmstrips and caption cues, caption visibility and preview mute in the track headers, saved S/M/L track heights, zoom buttons and slider, pinch zoom, overlay scrolling, and Maximize. Source view leaves cut video empty, darkens cut parts inside caption cues, and dims media outside In/Out.
-
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
+- On Mac, the timeline adds an FX Motion lane with “Director results land here,” matching the saved S/M/L track heights and overlay scrolling.
+- On Mac, drag in the timeline or transcript to select the same words, trim In/Out with one undo step, navigate and select by word or sentence with the keyboard, and adjust the playhead, edges and zoom with VoiceOver.
+- On Mac the timeline adds video filmstrips and caption cues, caption visibility and preview mute in the track headers, saved S/M/L track heights, zoom buttons and slider, pinch zoom, overlay scrolling, and Maximize. Source view leaves cut video empty, darkens cut parts inside caption cues, and dims media outside In/Out.
 - Import a video and transcribe it with word timestamps: ElevenLabs Scribe with your own key, local Whisper models, or Apple Speech on Mac. If a local model is missing, VoxClip offers to download it.
 - Cut by editing words. Remove filler words and tighten long pauses in a click, correct a word's text, and restore anything you cut.
 - Find clips with the AI you choose: your own API key, a local model (Ollama or LM Studio), your signed-in Claude Code or Codex, or Apple's on-device model on Mac.

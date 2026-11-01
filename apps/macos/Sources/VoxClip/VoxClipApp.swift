@@ -64,7 +64,7 @@ import VoxClipCore
                         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                         guard let shared = model.shared else { throw VoxClipError.sharedResourcesMissing }
                         let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
-                        results = try DebugTimeline.performance(app: model, fixture: fixture, directory: directory)
+                        results = try await DebugTimeline.performance(app: model, fixture: fixture, directory: directory)
                     } else {
                         results = CommandLine.arguments[index] == "-captionGalleryAudit"
                             ? try await DebugCaptionGallery.run(app: model, directory: directory)
@@ -127,7 +127,7 @@ import VoxClipCore
                 } else if let position = CommandLine.arguments.firstIndex(of: "-settingsAudit"), position + 1 < CommandLine.arguments.count {
                     await DebugUISuite.settingsAudit(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 } else if let position = CommandLine.arguments.firstIndex(of: "-uiPerformanceTest"), position + 1 < CommandLine.arguments.count {
-                    DebugUISuite.performance(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
+                    await DebugUISuite.performance(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 } else if let position = CommandLine.arguments.firstIndex(of: "-demoCapture"), position + 1 < CommandLine.arguments.count {
                     await DebugUISuite.captureDemo(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 }
@@ -259,10 +259,12 @@ import VoxClipCore
         case 50, 51: keyShell?.showAdjacentTab(item.tag == 50 ? -1 : 1); return
         // Show Cuts is a view setting, so it works in the key window, a Versions window too.
         case 60: if validateMenuItem(item) { keyEditor?.toggleShowsCuts() }; return
-        case 61: if validateMenuItem(item) { keyEditor?.timelineZoomStep += 1 }; return
-        case 18, 19:
+        case 20:
+            if validateMenuItem(item) { keyEditor?.zoom(0) }
+            return
+        case 18, 19, 61:
             guard validateMenuItem(item), let editor = keyEditor else { return }
-            let direction = item.tag == 18 ? 1 : -1
+            let direction = item.tag == 19 ? -1 : 1
             if editor.focusedPane == .timeline { editor.timelineZoomStep += direction }
             else { editor.zoom(Double(direction)) }
             return
@@ -286,7 +288,6 @@ import VoxClipCore
         case 9: editor.apply(.restoreCuts, name: "Restore cuts")
         case 11: editor.showPauses.toggle()
         case 12: model.shell.toggleViewer()
-        case 20: editor.zoom(0)
         case 21: editor.transport(" ")
         case 22: editor.transport(" ", shift: true)
         case 23: editor.transport("p")
@@ -392,10 +393,10 @@ import VoxClipCore
                 return mainWindowIsKey && shell.editor != nil && !shell.showsHome && (shell.layout.rightVisible || !shell.layout.timelineVisible)
             case 35, 36: return true
             case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
-            case 61: return keyEditor != nil
-            case 18, 19:
+            case 20: return keyEditor != nil
+            case 18, 19, 61:
                 let timeline = keyEditor?.focusedPane == .timeline
-                item.title = item.tag == 18 ? (timeline ? "Zoom Timeline In" : "Bigger Text") : (timeline ? "Zoom Timeline Out" : "Smaller Text")
+                item.title = item.tag != 19 ? (timeline ? "Zoom Timeline In" : "Bigger Text") : (timeline ? "Zoom Timeline Out" : "Smaller Text")
                 return keyEditor != nil
             case 60:
                 guard let editor = keyEditor else { return false }
@@ -447,6 +448,17 @@ import VoxClipCore
         if item.action == #selector(exportProject(_:)) { return editor.map { $0.canExport && $0.exportUnavailable == nil } ?? false }
         if item.action == #selector(revealMedia(_:)) { return editor != nil }
         return true
+    }
+    /// Shared by the installed View menu and the headless menu audit.
+    func addZoomCommands(to menu: NSMenu) {
+        for (title, tag, key) in [("Bigger Text", 61, "="), ("Bigger Text", 18, "+"), ("Smaller Text", 19, "-"), ("Actual Size", 20, "0")] {
+            let item = NSMenuItem(title: title, action: #selector(performEditorCommand(_:)), keyEquivalent: key)
+            item.tag = tag; item.target = self; item.keyEquivalentModifierMask = .command
+            // Preserve the shifted plus spelling without a second visible action.
+            item.isHidden = tag == 18
+            item.allowsKeyEquivalentWhenHidden = tag == 18
+            menu.addItem(item)
+        }
     }
     private func installMenus() {
         // The windows never tab (`tabbingMode = .disallowed`), so AppKit adds no tab items of
@@ -541,10 +553,7 @@ import VoxClipCore
         for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect == .source ? "Original" : aspect.rawValue, 52 + offset, "", []) }
         frame.submenu = frameMenu
         view.addItem(frame)
-        command(view, "Zoom Timeline In", 61, "=")
-        command(view, "Bigger Text", 18, "+")
-        command(view, "Smaller Text", 19, "-")
-        command(view, "Actual Size", 20, "0")
+        addZoomCommands(to: view)
         add(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
         let playback = menu("Playback")
         command(playback, "Play/Pause", 21, " ", [])

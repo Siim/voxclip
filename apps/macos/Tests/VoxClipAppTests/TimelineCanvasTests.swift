@@ -19,7 +19,8 @@ private actor TimelineTestSettings: SettingsStore {
 @Suite("v2 timeline", .serialized)
 @MainActor struct TimelineCanvasTests {
     private func app() throws -> AppModel {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-timeline-\(UUID().uuidString)", isDirectory: true)
+        let parent = ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory
+        let root = parent.appendingPathComponent("voxclip-timeline-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root.appendingPathComponent("Cache"), withIntermediateDirectories: true)
         return AppModel(settingsStore: TimelineTestSettings(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path]))
     }
@@ -804,13 +805,13 @@ private actor TimelineTestSettings: SettingsStore {
     /// impl-plan §3.1's 60-minute gate times Source as it draws: with
     /// Show cuts on and a clip open, its frames draw the removed ranges and the take outside
     /// In/Out, and its full redraw is timed with Edited's.
-    @Test func thePerformanceGateTimesSourceWithItsCutsAndInOut() throws {
+    @Test func thePerformanceGateTimesSourceWithItsCutsAndInOut() async throws {
         let app = try app()
         let shared = try SharedResources.locate()
         let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         let directory = app.locations.root.appendingPathComponent("performance", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let results = try DebugTimeline.performance(app: app, fixture: fixture, directory: directory)
+        let results = try await DebugTimeline.performance(app: app, fixture: fixture, directory: directory)
         let source = try #require(results.first { $0.name.contains("Source frames draw the removed ranges and the take outside In/Out") })
         #expect(source.passed, "\(source.name)")
         #expect(results.contains { $0.name.contains("full redraw on Edited and Source") })
@@ -990,14 +991,45 @@ private actor TimelineTestSettings: SettingsStore {
             _ = delegate.perform(action, with: item)
             #expect(editor.timelineZoomStep == expected)
         }
+        let menu = NSMenu(title: "View")
+        delegate.addZoomCommands(to: menu)
+        #expect(Set(menu.items.map(\.tag)).count == menu.items.count)
+        #expect(Set(menu.items.map(\.keyEquivalent)).count == menu.items.count)
+        for item in menu.items { #expect(delegate.validateMenuItem(item)) }
+        #expect(menu.items.filter { !$0.isHidden && $0.title == "Zoom Timeline In" }.count == 1)
+        #expect(menu.items.filter { !$0.isHidden && $0.title == "Zoom Timeline Out" }.count == 1)
         editor.focusedPane = .transcript
         let textSize = editor.textSize
-        let biggerText = NSMenuItem(title: "Zoom", action: action, keyEquivalent: "+")
-        biggerText.tag = 18
-        #expect(delegate.validateMenuItem(biggerText) && biggerText.title == "Bigger Text")
-        _ = delegate.perform(action, with: biggerText)
-        #expect(editor.textSize == textSize + 1 && editor.timelineZoomStep == 1)
+        for (tag, expected) in [(61, textSize + 1), (19, textSize), (18, textSize + 1)] {
+            let item = try #require(menu.items.first { $0.tag == tag })
+            #expect(delegate.validateMenuItem(item))
+            #expect(item.title == (tag == 19 ? "Smaller Text" : "Bigger Text"))
+            _ = delegate.perform(action, with: item)
+            #expect(editor.textSize == expected && editor.timelineZoomStep == 1)
+        }
+        editor.zoom(3)
+        let actual = try #require(menu.items.first { $0.tag == 20 })
+        #expect(delegate.validateMenuItem(actual))
+        _ = delegate.perform(action, with: actual)
+        #expect(editor.textSize == DesignValues.transcriptTextSize, "Actual Size targets Versions too")
+        #expect(ShortcutsView.lines.contains { $0.hasPrefix("⌘= / ⌘−|") && $0.contains("Timeline zoom") })
         #expect(!version.isDocumentEdited && !version.hasUnautosavedChanges)
+    }
+
+    @Test func onlyLiveCanvasReceivesZoomCommands() async throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        model.timelineZoomStep = 3
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let fit = TimelineViewport.fitting(0...max(1, model.duration), width: canvas.viewport.width, axis: .edited)
+        #expect(abs(canvas.viewport.ptPerSecond - fit.ptPerSecond) < 0.001, "A rebuilt canvas does not replay earlier zoom keys")
+        let before = canvas.viewport.ptPerSecond
+        model.timelineZoomStep += 1
+        for _ in 0..<20 { await Task.yield() }
+        #expect(abs(canvas.viewport.ptPerSecond - before * 1.4) < 0.001, "A live canvas applies each new step once")
+        #expect(canvas.toolTip == "Click to seek. Drag to select words. Option-drag bypasses snapping. Double-click a cut to restore it.")
     }
 
     @Test func captionPagesStayEmptyUntilLoadedAndFollowCutsBeforeTheNextLayout() throws {
@@ -1023,7 +1055,11 @@ private actor TimelineTestSettings: SettingsStore {
     }
 
     @Test func toolbarControlsFitAndDropInTheSpecifiedOrder() throws {
-        let app = try app(), model = editor(app, project: try project())
+        let app = try app()
+        let root = app.locations.root
+        defer { #expect(!FileManager.default.fileExists(atPath: root.path), "Toolbar captures are removed with their test data") }
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = editor(app, project: try project())
         defer { model.close() }
         let shell = WorkspaceShell(app: app)
         model.selectedWordIDs = ["t20", "t21", "t22", "t23"]
