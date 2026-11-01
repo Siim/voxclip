@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+
+### 2026-11-01 — V2b review: zero-height Captions properties
+
+- The properties wrapper now accepts the split's zero-height proposal before its layout marker. This preserves the legacy scrollbar reserve without adding a point below a caption error at 324×322.
+- Added `captionErrorHonoursAZeroPropertiesProposalAtTheMinimumSize` to the App suite. Before the fix it fails twice (properties/descendants end at 323); the focused Captions and headless MacUI integration suites pass after the fix. Evidence: `dist/v11b-evidence/captions-red.log`, `captions-green.log`. No native window or CI.
+
+
 ### 2026-11-01 — v2-explorer V2b — Voices, Exports and reusable ledger rows
 
 - **Scope and data.** New `ExportsList.swift` has the UI-agnostic `ExportsListModel(project:records:labelPosition:)` and immutable `Row` projection, plus the editor's `exportsList` / explicit-row `presentExport(_:retry:)` adapter. It filters the open project, sorts newest first (deterministic target/aspect ties), numbers kept clips in transcript order and computes each row's fingerprint with its recorded aspect. The timeline EXPORTS tab can reuse this model after MVP merge. Removed targets stay visible with their saved name but cannot open a new export job. No command palette, key remap or monthly-spend work from the rest of V11b is included.

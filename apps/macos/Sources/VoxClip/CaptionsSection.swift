@@ -491,6 +491,7 @@ extension EditorModel {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("voxclip.captions.properties")
+        .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
         .columnLayoutEvidence("captions.properties")
     }
     private var wordsMenu: some View {

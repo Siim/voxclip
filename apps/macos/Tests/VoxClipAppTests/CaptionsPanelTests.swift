@@ -70,6 +70,22 @@ import Testing
                 Comment(rawValue: DebugColumnBounds.scrollerOverflow(in: view).joined(separator: "; ")))
     }
 
+    @Test func captionErrorHonoursAZeroPropertiesProposalAtTheMinimumSize() async throws {
+        let (shell, editor) = try await openShell()
+        defer { editor.close() }
+        let size = CGSize(width: 324, height: 322)
+        let view = await host(PanelHost(model: editor, shell: shell, width: size.width, height: size.height), size: size)
+        await editor.waitForPendingPreviewForAudit()
+        editor.captionError = "Captions couldn't be drawn. Your media and edits are safe. Choose another style or try again."
+        for _ in 0..<200 where DebugRightColumn.markers(in: view)["caption.error"] == nil {
+            view.layoutSubtreeIfNeeded(); await Task.yield()
+        }
+        view.layoutSubtreeIfNeeded()
+        let properties = try #require(DebugRightColumn.markers(in: view)["captions.properties"])
+        #expect(properties.height == 0 && properties.maxY <= size.height)
+        #expect(DebugRightColumn.viewOverflow(view).isEmpty)
+    }
+
     private func gallery(_ markers: [String: CGRect]) throws -> CGRect {
         try #require(markers.first { $0.key.hasPrefix("caption.gallery.") }?.value)
     }
