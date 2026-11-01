@@ -35,7 +35,7 @@ import Testing
         return (text, coordinator.renderer, scroll, coordinator)
     }
     private func appearance(_ model: EditorModel) -> TranscriptAppearance {
-        TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, scope: model.scopeBounds, activeClipID: model.activeClip?.id, playhead: model.sourceTime)
+        TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, scope: model.scopeBounds, activeClipID: model.activeClip?.id, playhead: model.sourceTime)
     }
     private func color(_ renderer: TranscriptRenderer, _ id: String) -> NSColor? { renderer.attributes[id]?[.foregroundColor] as? NSColor }
 

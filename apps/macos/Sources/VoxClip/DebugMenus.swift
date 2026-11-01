@@ -27,7 +27,7 @@ import VoxClipCore
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         func item(_ menu: String, _ title: String) -> NSMenuItem? {
             let items = NSApp.mainMenu?.item(withTitle: menu)?.submenu
-            return items?.item(withTitle: title) ?? (title == "Hide Cut Words" ? items?.item(withTitle: "Show Cut Words") : nil)
+            return items?.item(withTitle: title)
         }
         guard let delegate = NSApp.delegate as? AppDelegate else { throw CocoaError(.coderInvalidValue) }
         let bindings: [(String, String, String, NSEvent.ModifierFlags)] = [
@@ -47,7 +47,7 @@ import VoxClipCore
             ("Edit", "Cut Selection", String(UnicodeScalar(NSDeleteCharacter)!), []),
             ("Edit", "Restore Selection", String(UnicodeScalar(NSDeleteCharacter)!), .shift), ("Edit", "Correct Word", "c", []),
             ("Edit", "Cut Fillers", "u", [.command, .option]), ("Edit", "Tighten Pauses", "p", [.command, .option]),
-            ("Edit", "Restore All Cuts", "r", [.command, .option]), ("View", "Hide Cut Words", "h", [.command, .shift]),
+            ("Edit", "Restore All Cuts", "r", [.command, .option]), ("View", "Show Cuts", "c", [.command, .option]),
             ("Edit", "Find…", "f", .command), ("Edit", "Find Next", "g", .command), ("Edit", "Find Previous", "g", [.command, .shift]),
             ("Clip", "Make Clip from Selection", "k", .command), ("Clip", "Cancel Finding Clips", ".", .command),
             ("Clip", "Keep Suggestion", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),

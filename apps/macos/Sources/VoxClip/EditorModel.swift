@@ -23,16 +23,23 @@ struct EditorRenderSnapshot {
             rewriteOpenTask?.cancel()
             // Selecting other words ends an open inline correction, as a click elsewhere ends an inline rename.
             if let id = correctionID, !selectedWordIDs.contains(id) { endCorrection() }
+            collapseFoldsOutsideSelection()
         }
     }
-    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel() } } }
+    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); collapseFoldsOutsideSelection() } } }
     var previewStop: Double?
     var playhead: Double = 0
     var sourceTime: Double = 0
     var isPlaying = false
     var playbackRate: Float = 1
-    var showCuts = true
-    var showPauses = true
+    /// Show cuts (ux/v2 notes.md §5 and §6): on, the transcript shows every removed word
+    /// struck and every cut pause's length where a fold stands; off, each run of removals is
+    /// one fold. Off by default. A view setting: no undo step and no document change (impl-plan §3.3).
+    var showsCuts = false
+    /// Show Pauses: the lengths of uncut pauses in the open clip. An opt-in, off by default.
+    var showPauses = false
+    /// Folds a click opened (`expandFold`): each fold's first word or pause, with all it holds.
+    var expandedFolds: [String: Set<String>] = [:]
     var editedTimeline = false
     var findVisible = false
     var query = ""

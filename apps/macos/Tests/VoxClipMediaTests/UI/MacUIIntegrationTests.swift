@@ -301,6 +301,8 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             let showCutsToggleMaximumMS: Double
             let bulkEditMaximumMS: Double
             let rulerSpanMedianMS: Double
+            let caretTickRestyles: Int
+            let caretMoves: Int
         }
         // One entry per 10,000-word fixture: speakers alternating, and one speaker throughout.
         let measured = try JSONDecoder().decode([Metrics].self, from: Data(contentsOf: directory.appendingPathComponent("transcript-performance.json")))
@@ -319,6 +321,9 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             // A bulk fold edit (Cut Fillers) is at most one full rebuild, and the ruler's span is per frame.
             XCTAssertLessThanOrEqual(metrics.bulkEditMaximumMS, 150, metrics.fixture)
             XCTAssertLessThanOrEqual(metrics.rulerSpanMedianMS, 0.05, metrics.fixture)
+            // A playhead tick moves the caret and styles no span (impl-plan item 19).
+            XCTAssertEqual(metrics.caretTickRestyles, 0, metrics.fixture)
+            XCTAssertGreaterThan(metrics.caretMoves, 0, metrics.fixture)
         }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         for result in report {

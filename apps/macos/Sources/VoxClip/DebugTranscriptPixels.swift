@@ -21,7 +21,8 @@ import VoxClipCore
         project.edits = ProjectEdits(cutWordIds: ["pixel-cut"])
         let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
-        model.textSize = DesignValues.transcriptTextSize; model.mediaResolved = true; model.refresh()
+        // Show cuts on, so the cut word shows struck (notes.md §5).
+        model.textSize = DesignValues.transcriptTextSize; model.mediaResolved = true; model.showsCuts = true; model.refresh()
         let coordinator = TranscriptTextView.Coordinator(model: model)
         let scroll = TranscriptTextView.makeScrollView(model: model, coordinator: coordinator, width: 640, height: 160)
         guard let text = scroll.documentView as? TranscriptNSTextView else { throw CocoaError(.coderInvalidValue) }
@@ -32,7 +33,7 @@ import VoxClipCore
         defer { window.close() }
         renderer.rebuild(model: model)
         let revision = renderer.storageRevision
-        renderer.update(TranscriptAppearance(cutWords: ["pixel-cut"], fillers: ["pixel-filler"], playing: "pixel-playing", lowConfidence: true))
+        renderer.update(TranscriptAppearance(cutWords: ["pixel-cut"], lowConfidence: true, playhead: 1.4))
         guard let manager = text.textLayoutManager else { throw CocoaError(.coderInvalidValue) }
         manager.ensureLayout(for: manager.documentRange)
         manager.textViewportLayoutController.layoutViewport()
@@ -40,14 +41,6 @@ import VoxClipCore
         let font = DesignValues.transcriptFont(size: model.textSize)
         let baseline = text.textContainerOrigin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
         var results: [DebugUISuite.Result] = try wordAccessibility(app: app)
-        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            NSAppearance(named: appearance)?.performAsCurrentDrawingAppearance {
-                let background = DesignValues.nsColor("word.playingBackground")
-                let foreground = DesignValues.nsColor("word.playingForeground")
-                let contrast = DesignValues.contrast(foreground, background)
-                results.append(.init(name: "\(name) playing-word label contrast \(contrast):1", passed: contrast >= 4.5))
-            }
-        }
         let storedFont = text.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
         let style = text.textStorage?.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
         results.append(.init(name: "transcript uses the system font at 15 pt (notes.md §2)", passed: storedFont?.familyName == NSFont.systemFont(ofSize: 15).familyName && storedFont?.pointSize == 15))
@@ -66,13 +59,18 @@ import VoxClipCore
             guard let bitmap = captured, let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.85]) else { throw CocoaError(.fileWriteUnknown) }
             try jpeg.write(to: directory.appendingPathComponent("transcript-decorations-\(name).jpg"))
             appearance.performAsCurrentDrawingAppearance {
-                for (id, token, strike) in [("pixel-cut", "cut.stroke", true), ("pixel-filler", "word.filler", false), ("pixel-low", "word.lowConfidence", false)] {
+                // The removed word's 1 pt strike in its own grey; no filler underline (impl-plan item 11).
+                for (id, token, strike) in [("pixel-cut", "word.gone", true), ("pixel-filler", "word.filler", false), ("pixel-low", "word.lowConfidence", false)] {
                     guard let span = text.map.span(id: id) else { results.append(.init(name: "\(name) \(id) pixels", passed: false)); continue }
                     let lower = line.locationForCharacter(at: span.range.location).x + text.textContainerOrigin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX
                     let upper = line.locationForCharacter(at: NSMaxRange(span.range)).x + text.textContainerOrigin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX
                     let row = strike ? baseline - font.xHeight / 2 : baseline - font.underlinePosition + 1
                     let count = matchingColumns(bitmap, lower: lower, upper: upper, row: row, size: text.bounds.size, color: DesignValues.nsColor(token), background: text.backgroundColor)
                     probes.append(Probe(name: "\(name)-\(id)", row: row, width: upper - lower, matchingColumns: count))
+                    if id == "pixel-filler" {
+                        results.append(.init(name: "\(name) an uncut filler has no underline (\(count) word.filler columns)", passed: count == 0))
+                        continue
+                    }
                     let minimum = strike ? (upper - lower) * 0.45 : (upper - lower) * 0.15
                     results.append(.init(name: "\(name) \(id) decoration pixels at the expected row", passed: Double(count) >= minimum))
                 }
@@ -100,13 +98,19 @@ import VoxClipCore
                 text.accessibilityAttributedString(for: cut.range)?.string == text.accessibilityString(for: cut.range) && text.accessibilityString(for: cut.range)?.contains(", cut") == true && states?.first == "cut"))
         }
         if let pause = model.pauses.first {
-            let uncut = renderer.attributes[pause.id]?[.vcRounded] == nil
+            // Show Pauses is off by default, so an uncut pause shows nothing; under Show cuts a
+            // cut pause shows its length in word.gone, with no chip (notes.md §5).
+            let hidden = text.map.span(id: pause.id) == nil
             pageProject.edits.cutPauseIds = [pause.id]
             model.document.replaceProject(pageProject)
             model.refresh()
+            renderer.rebuild(model: model)
             pageState.cutPauses = [pause.id]
             renderer.update(pageState)
-            results.append(.init(name: "only a cut pause has the radius-6 chip", passed: uncut && renderer.attributes[pause.id]?[.vcRounded] is NSColor && renderer.attributes[pause.id]?[.vcRadius] as? Double == 6))
+            let shown = text.map.span(id: pause.id).map { (text.string as NSString).substring(with: $0.range) }
+            results.append(.init(name: "an uncut pause shows nothing and a cut one its length under Show cuts, without a chip (\(shown ?? "none"))", passed:
+                hidden && shown == "\(toFixed1(pause.duration))\u{00A0}s" && renderer.attributes[pause.id]?[.backgroundColor] == nil
+                && renderer.attributes[pause.id]?[.foregroundColor] as? NSColor === DesignValues.nsColor("word.gone")))
             results.append(.init(name: "the pause's accessible description includes duration and cut", passed: text.map.span(id: pause.id).flatMap { text.accessibilityString(for: $0.range) }?.hasSuffix(", cut") == true))
         }
         manager.ensureLayout(for: manager.documentRange)
@@ -116,8 +120,14 @@ import VoxClipCore
             window.appearance = appearance
             for pauseCut in [true, false] {
             appearance.performAsCurrentDrawingAppearance {
+                pageProject.edits.cutPauseIds = pauseCut ? model.pauses.map(\.id) : []
+                model.document.replaceProject(pageProject)
+                model.refresh()
+                renderer.rebuild(model: model)
                 pageState.cutPauses = pauseCut ? Set(model.pauses.map(\.id)) : []
                 renderer.update(pageState)
+                manager.ensureLayout(for: manager.documentRange)
+                manager.textViewportLayoutController.layoutViewport()
                 text.backgroundColor = DesignValues.nsColor("bg.surface")
                 text.needsDisplay = true
                 guard let cached = text.bitmapImageRepForCachingDisplay(in: text.bounds) else { return }
@@ -140,19 +150,32 @@ import VoxClipCore
                                   width: max(1, abs(end.x - start.x)), height: line.typographicBounds.height)
                 }
                 let scopedPixels = opaquePixels(bitmap, rect: rect("pixel-low"), size: text.bounds.size, color: DesignValues.nsColor("word.outside"))
-                let strikePixels = opaquePixels(bitmap, rect: rect("pixel-cut"), size: text.bounds.size, color: DesignValues.nsColor("cut.stroke"))
+                let strikePixels = opaquePixels(bitmap, rect: rect("pixel-cut"), size: text.bounds.size, color: DesignValues.nsColor("word.gone"))
                 if let pause = model.pauses.first {
-                    let pausePixels = opaquePixels(bitmap, rect: rect(pause.id), size: text.bounds.size, color: DesignValues.nsColor("pause.background"), patch: 3)
-                    results.append(.init(name: "\(name) \(pauseCut ? "cut" : "uncut") pause bitmap \(pauseCut ? "paints" : "has no") chip fill (\(pausePixels) pixels)", passed: pauseCut ? pausePixels >= 8 : pausePixels == 0))
+                    let lengthPixels = pauseCut ? opaquePixels(bitmap, rect: rect(pause.id), size: text.bounds.size, color: DesignValues.nsColor("word.gone")) : 0
+                    let chipPixels = pauseCut ? opaquePixels(bitmap, rect: rect(pause.id), size: text.bounds.size, color: DesignValues.nsColor("pause.background"), patch: 3) : 0
+                    results.append(.init(name: "\(name) a \(pauseCut ? "cut pause shows its length in word.gone" : "uncut pause shows nothing") and no chip (\(lengthPixels) glyph, \(chipPixels) chip pixels)",
+                                         passed: pauseCut ? lengthPixels >= 3 && chipPixels == 0 : text.map.span(id: pause.id) == nil))
                 }
                 results.append(.init(name: "\(name) out-of-clip glyphs paint opaque word.outside (\(scopedPixels) pixels)", passed: scopedPixels >= 3))
-                results.append(.init(name: "\(name) cut strike matches cut.stroke within three channels (\(strikePixels) pixels)", passed: strikePixels >= 3))
+                results.append(.init(name: "\(name) a removed word's strike is word.gone within three channels (\(strikePixels) pixels)", passed: strikePixels >= 3))
+                // No red anywhere (notes.md §3): cuts are absence. The caret is the one orange.
+                let caret = text.caret.map { $0.isHidden ? CGRect.null : $0.frame.insetBy(dx: -2, dy: -2) } ?? .null
+                let red = (0..<bitmap.pixelsHigh).reduce(0) { count, row in
+                    count + (0..<bitmap.pixelsWide).filter { column in
+                        let point = CGPoint(x: (CGFloat(column) + 0.5) * text.bounds.width / CGFloat(bitmap.pixelsWide), y: (CGFloat(row) + 0.5) * text.bounds.height / CGFloat(bitmap.pixelsHigh))
+                        guard !caret.contains(point), let pixel = bitmap.colorAt(x: column, y: row) else { return false }
+                        return pixel.redComponent - max(pixel.greenComponent, pixel.blueComponent) > 0.2
+                    }.count
+                }
+                results.append(.init(name: "\(name) the transcript paints no red pixels (\(red))", passed: red == 0))
                 if let data = bitmap.representation(using: .png, properties: [:]) { try? data.write(to: directory.appendingPathComponent("transcript-page-\(name)-\(pauseCut ? "cut" : "uncut")-pause.png")) }
             }
             }
         }
         try JSONEncoder().encode(probes).write(to: directory.appendingPathComponent("transcript-decoration-pixels.json"))
         results += try gutter(app: app, fixture: fixture, directory: directory)
+        results += try folds(app: app, fixture: fixture, directory: directory)
         return results
     }
     static func wordAccessibility(app: AppModel) throws -> [DebugUISuite.Result] {
@@ -178,7 +201,7 @@ import VoxClipCore
                     var state = project
                     for index in state.voiceLab.segments.indices { state.voiceLab.segments[index].enabled = ai }
                     model.replace(state, name: "Accessibility state")
-                    model.showCuts = true
+                    model.showsCuts = true
                     model.cutWordIDs = cut ? [word.id] : []
                     model.sourceTime = playing ? word.start : model.sourceDuration
                     model.voiceLabPlan = ai ? plan : nil
@@ -355,14 +378,15 @@ extension DebugTranscriptPixels {
         } else { check("a suggested clip shows a band", false) }
 
         // Full Take: no band, no bar, every paragraph's timecode is in the scope.
-        let fullTakeRestyles = renderer.scopeRestyles
+        let fullTakeRestyles = renderer.scopeRestyles + renderer.rebuildStyles
         model.activate(nil)
         pane.update()
         pane.scroll(toCharacter: renderer.paragraphs[3].offset)
         check("Full Take shows no band or range bar and styles every word word.text", text.backdrop?.isHidden == true && text.backdrop?.band == nil
               && renderer.attributes[outsideWord]?[.foregroundColor] as? NSColor === DesignValues.nsColor("word.text") && (0..<renderer.paragraphs.count).allSatisfy(renderer.isInScope(paragraph:)))
-        check("leaving a clip for Full Take restyles only the words outside it (\(renderer.scopeRestyles - fullTakeRestyles) of \(text.map.spans.count) spans)",
-              renderer.scopeRestyles > fullTakeRestyles && renderer.scopeRestyles - fullTakeRestyles < text.map.spans.count)
+        // The text outside the clip folds its cuts again, so the switch writes those paragraphs styled for Full Take.
+        let fullTakeStyles = renderer.scopeRestyles + renderer.rebuildStyles - fullTakeRestyles
+        check("leaving a clip for Full Take styles each span at most once (\(fullTakeStyles) of \(text.map.spans.count) spans)", fullTakeStyles > 0 && fullTakeStyles <= text.map.spans.count)
         bitmap = try pane.bitmap("v2-transcript-fulltake-dark", directory: directory)
         if let box = text.lineBox(atCharacter: renderer.paragraphs[4].offset) {
             check("Full Take paints no band behind the paragraphs", pane.matches(bitmap, CGPoint(x: 72, y: box.minY - 6), surface) && pane.matches(bitmap, CGPoint(x: 9, y: box.midY), surface))
@@ -411,7 +435,8 @@ extension DebugTranscriptPixels {
         }
         check("the Clips rotor lists each clip as the Explorer names it (\(labels))", labels == ["Clip 1, Think in sentences", "Clip 2, It has to work on mute", "Clip 3, And yeah, I mess up a lot",
                                                                                                   "Clip 4, The best thirty seconds", "Suggested clip 5, One habit for a bad week"])
-        check("VoiceOver reads the words alone: no timecode is in the transcript's text", text.accessibilityValue() == text.string && !text.string.contains(TranscriptGutter.timecode(renderer.paragraphs[1].start)))
+        let blanked = text.map.spans.filter { $0.kind == .fold }.reduce(text.string as NSString) { $0.replacingCharacters(in: $1.range, with: "   ") as NSString } as String
+        check("VoiceOver reads the words alone: no timecode is in the transcript's text, and a fold's characters read as spaces", text.accessibilityValue() == blanked && !text.string.contains(TranscriptGutter.timecode(renderer.paragraphs[1].start)))
 
         // A 400-word monologue lays out in paragraphs of at most 150 words.
         var long = model.project
@@ -486,6 +511,232 @@ extension DebugTranscriptPixels {
     }
 }
 
+/// V8b on the mockup's folded paragraphs (ux/v2 f1, f2 and zoom-transcript): folds, the
+/// filler-comma rule, Show cuts, the selection at text height, the caret, the fold popover
+/// and the outside-clip rule, in a 652 × 488 transcript. Writes `v2-transcript-folds-dark`,
+/// `v2-transcript-showcuts-dark` and `v2-transcript-popover-dark`.
+extension DebugTranscriptPixels {
+    /// The mockup's Clip 1 paragraphs as a take: fillers and the pauses `{seconds}` are cut,
+    /// pauses count from 0.75 s, and the second paragraph is another speaker's.
+    static func foldProject(from fixture: Project) -> Project {
+        let paragraphs: [[String]] = [
+            ["So,", "{1.4}", "uh,", "while", "you're", "speaking,", "{0.9}", "it,", "uh,", "{1.2}", "examines", "your,", "{1.0}", "uh,", "{0.8}", "app,", "makes", "videos,", "and", "adds", "clip", "in", "between", "your", "speech."],
+            ["And", "one", "cool", "feature", "I", "added", "is", "when", "you", "want", "to", "represent", "your", "project,", "you", "include,", "uh,", "{1.0}", "um,", "source", "directory."]
+        ]
+        var words: [TimedWord] = [], cutWords: [String] = [], cutPauses: [String] = [], gap = 0.1, end = 0.0
+        for (paragraph, tokens) in paragraphs.enumerated() {
+            for token in tokens {
+                if token.hasPrefix("{"), let seconds = Double(token.dropFirst().dropLast()) {
+                    gap = seconds
+                    if let last = words.last { cutPauses.append("pause-after-\(last.id)") }
+                    continue
+                }
+                let start = words.isEmpty ? 0 : end + gap
+                let word = TimedWord(id: "fold-\(words.count)", text: token, start: start, end: start + 0.3, speaker: "s\(paragraph)")
+                if token == "uh," || token == "um," { cutWords.append(word.id) }
+                words.append(word)
+                end = word.end; gap = 0.1
+            }
+        }
+        var project = fixture
+        project.transcript?.words = words
+        project.transcript?.durationSeconds = end + 1
+        project.media.source.durationSeconds = end + 1
+        project.edits = ProjectEdits(pauseThresholdSeconds: 0.75, cutWordIds: cutWords, cutPauseIds: cutPauses)
+        return project
+    }
+    /// The text as it reads, a fold as "•".
+    static func displayed(_ text: TranscriptNSTextView) -> [String] {
+        text.string.replacingOccurrences(of: TranscriptFold.text, with: "•").components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    static func folds(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
+        var results: [DebugUISuite.Result] = []
+        func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        let model = EditorModel(document: VoxClipDocument(project: foldProject(from: fixture), demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.textSize = DesignValues.transcriptTextSize; model.mediaResolved = true; model.refresh()
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
+        defer { pane.close() }
+        let text = pane.text, renderer = pane.renderer
+        func id(_ index: Int) -> String { model.words[index].id }
+
+        // Folds (notes.md §5): one dot per run of removals, glued to the word before it.
+        let folded = ["So•while you're speaking,•it•examines your•app, makes videos, and adds clip in between your speech.", "And one cool feature I added is when you want to represent your project, you include•source directory."]
+        let foldSpans = text.map.spans.filter { $0.kind == .fold }
+        check("each run of removed words and pauses is one fold, glued to the words either side (\(displayed(text)))", displayed(text) == folded && foldSpans.count == 5)
+        check("\"include, uh, um, source\" reads \"include • source\" and \"speaking, • it\" keeps its comma", displayed(text)[1].contains("include•source") && displayed(text)[0].contains("speaking,•it"))
+        let itFold = text.map.span(id: id(6))
+        check("a fold holds its words and pauses in reading order (\(itFold?.ids ?? []))", itFold?.kind == .fold && itFold?.ids == [id(6), "pause-after-\(id(6))"])
+        check("a fold reads what it removed: \"\(itFold.map(text.spoken) ?? "")\"", itFold.map(text.spoken) == "1 cut: uh, pause 1.2 seconds")
+        let rotor = NSAccessibilityCustomRotor(label: "Cuts", itemSearchDelegate: text)
+        let parameters = NSAccessibilityCustomRotor.SearchParameters()
+        parameters.searchDirection = .next
+        let first = text.rotor(rotor, resultFor: parameters)
+        check("the Cuts rotor lands on the first fold (\(first?.customLabel ?? "nothing"))", first?.targetRange == foldSpans.first?.range && first?.customLabel?.hasPrefix("1 cut: pause 1.4 seconds, uh") == true)
+
+        // The fold is 13 pt wide and a line never starts with it, at three measures.
+        pane.scroll(toCharacter: 0)
+        if let fold = foldSpans.first, let box = text.foldBox(fold) {
+            check("a fold is 13 pt wide (\(box.width))", abs(box.width - 13) < 0.01)
+        } else { check("the first fold is laid out", false) }
+        var starts: [String] = []
+        for width: CGFloat in [604, 652, 772] {
+            pane.resize(width: width)
+            guard let manager = text.textLayoutManager, let content = manager.textContentManager else { continue }
+            manager.enumerateTextLayoutFragments(from: content.documentRange.location, options: [.ensuresLayout]) { fragment in
+                guard let element = fragment.textElement?.elementRange else { return false }
+                let base = content.offset(from: content.documentRange.location, to: element.location)
+                for line in fragment.textLineFragments.dropFirst() {
+                    let start = base + line.characterRange.location
+                    if text.map.intersecting(NSRange(location: start, length: 1)).contains(where: { $0.kind == .fold && NSLocationInRange(start, $0.range) }) { starts.append("\(width):\(start)") }
+                }
+                return true
+            }
+        }
+        check("no line starts with a fold at measures 480, 528 and 648 (\(starts))", starts.isEmpty)
+        pane.resize(width: 652)
+
+        // The caret stands at the playhead's word, 2 × 19, and a tick restyles no span.
+        model.sourceTime = model.words[10].start + 0.05
+        pane.update()
+        pane.scroll(toCharacter: 0)
+        let playing = text.map.span(id: id(10))
+        let caretFrame = text.caret?.frame ?? .zero
+        let wordBox = playing.flatMap { text.lineBox(atCharacter: $0.range.location) }
+        check("the caret is 2 × 19 at the playhead's word (\(caretFrame))", text.caret?.isHidden == false && caretFrame.width == 2 && abs(caretFrame.height - 19) < 0.01
+              && renderer.caretOffset == playing?.range.location && wordBox.map { caretFrame.minY > $0.minY && caretFrame.maxY < $0.maxY } == true)
+        let applied = renderer.attributeUpdates, styled = renderer.rebuildStyles, moves = renderer.caretMoves
+        model.sourceTime = model.words[12].start + 0.05
+        pane.update()
+        check("a playhead tick moves the caret and restyles no span (\(caretFrame.minX) to \(text.caret?.frame.minX ?? 0))",
+              renderer.caretMoves == moves + 1 && renderer.attributeUpdates == applied && renderer.rebuildStyles == styled && text.caret?.frame.minX != caretFrame.minX)
+        model.sourceTime = model.words[10].start + 0.05
+        pane.update()
+
+        // The selection at text height in tint.selection, and no native selection.
+        model.selectedWordIDs = [id(3), id(4), id(5)]
+        pane.update()
+        let rects = text.selectionLayer?.rects ?? []
+        let font = renderer.font
+        check("the selection tint is the text's height, ascender to descender (\(rects.map(\.height)))", rects.count == 1 && rects.allSatisfy { abs($0.height - (font.ascender - font.descender)) < 0.01 })
+        // The selection across a fold maps to the words either side, never the fold's.
+        if let so = text.map.span(id: id(0)), let whilst = text.map.span(id: id(2)) {
+            text.setSelectedRange(NSRange(location: so.range.location, length: NSMaxRange(whilst.range) - so.range.location))
+            check("a selection across a fold selects the words around it (\(model.selectedWordIDs.sorted()))", model.selectedWordIDs == [id(0), id(2)] && model.selectedPauseIDs.isEmpty)
+            model.selectedWordIDs = [id(3), id(4), id(5)]
+            pane.update()
+        }
+        var bitmap = try pane.bitmap("v2-transcript-folds-dark", directory: directory)
+        let surface = TranscriptPane.color("bg.surface"), dot = TranscriptPane.color("fold.dot")
+        if let fold = foldSpans.first, let box = text.foldBox(fold) {
+            let dotRows = pane.count(bitmap, in: CGRect(x: box.midX - 1.5, y: box.minY, width: 3, height: box.height), dot)
+            check("a fold paints a fold.dot dot in its middle (\(dotRows) pixels)", dotRows >= 4)
+        }
+        // The orange tints are compared by hue: the capture is in the display's space, where
+        // a saturated sRGB token reads different components (greys do not).
+        let warm: (NSColor) -> Bool = { $0.redComponent - $0.blueComponent > 0.05 && $0.redComponent > $0.greenComponent }
+        if let rect = rects.first {
+            let inside = pane.count(bitmap, in: CGRect(x: rect.minX + 1, y: rect.minY + 1, width: 6, height: rect.height - 2), where: { warm($0) && !TranscriptPane.close($0, surface, 0.02) })
+            let above = pane.count(bitmap, in: CGRect(x: rect.minX + 1, y: rect.minY - 3, width: 6, height: 2), where: { !TranscriptPane.close($0, surface, 3.0 / 255) })
+            let below = pane.count(bitmap, in: CGRect(x: rect.minX + 1, y: rect.maxY + 1, width: 6, height: 2), where: { !TranscriptPane.close($0, surface, 3.0 / 255) })
+            check("the selection paints the orange tint at text height only, no native fill (\(inside) inside, \(above) above, \(below) below)", inside >= 12 && above == 0 && below == 0)
+        }
+        if let caret = text.caret?.frame {
+            let orange: (NSColor) -> Bool = { $0.redComponent > 0.7 && $0.redComponent - $0.blueComponent > 0.4 }
+            let painted = pane.count(bitmap, in: caret.insetBy(dx: 0.25, dy: 2), where: orange)
+            check("the caret paints the orange tint.text (\(painted) pixels)", painted >= 10)
+            // No red anywhere (notes.md §3): cuts are absence. The caret and the ruler's selection mark are the orange.
+            let ruler = pane.scroll.convert(pane.scroll.overviewRuler.frame, to: text)
+            let red: (NSColor) -> Bool = { $0.redComponent - max($0.greenComponent, $0.blueComponent) > 0.2 }
+            let visible = pane.scroll.convert(pane.scroll.bounds, to: text)
+            let count = pane.count(bitmap, in: visible, where: red) - pane.count(bitmap, in: caret.insetBy(dx: -2, dy: -2), where: red) - pane.count(bitmap, in: ruler.intersection(visible), where: red)
+            check("nothing but the caret and the ruler's selection mark paints red or orange (\(count) pixels)", count == 0)
+        }
+
+        // Hover: the dot lights with a halo and the popover lists "1.4 s uh" with Restore.
+        if let fold = foldSpans.first, let box = text.foldBox(fold) {
+            text.hover(at: CGPoint(x: box.midX, y: box.midY))
+            text.showFoldPopover(for: fold.id)
+            bitmap = try pane.bitmap("v2-transcript-popover-dark", directory: directory)
+            let lit = pane.count(bitmap, in: CGRect(x: box.midX - 1.5, y: box.minY, width: 3, height: box.height), TranscriptPane.color("text.secondary"))
+            check("a hovered fold's dot is text.secondary (\(lit) pixels) and its popover shows", text.hoveredFold == fold.id && lit >= 4 && text.foldPopoverVisible && text.popoverFold == fold.id)
+            check("the popover lists the pause and the word in reading order", model.foldItems(fold.ids) == [.pause(1.4), .word("uh")])
+            text.hover(at: nil)
+            check("leaving the fold hides its popover", !text.foldPopoverVisible && text.hoveredFold == nil)
+        }
+
+        // Show cuts: every fold opens, removed words struck in word.gone, pauses as lengths.
+        model.toggleShowsCuts()
+        pane.update(rebuild: true)
+        let shown = ["So, 1.4\u{00A0}s uh, while you're speaking, 0.9\u{00A0}s it, uh, 1.2\u{00A0}s examines your, 1.0\u{00A0}s uh, 0.8\u{00A0}s app, makes videos, and adds clip in between your speech.",
+                     "And one cool feature I added is when you want to represent your project, you include, uh, 1.0\u{00A0}s um, source directory."]
+        check("Show cuts opens every fold (\(displayed(text)))", displayed(text) == shown && !text.map.spans.contains { $0.kind == .fold })
+        let comma = text.map.span(id: "comma:\(id(0))")
+        check("a folded comma shows in word.gone, unstruck, and the filler struck in word.gone",
+              comma?.kind == .comma && renderer.attributes[comma?.id ?? ""]?[.foregroundColor] as? NSColor === DesignValues.nsColor("word.gone")
+              && renderer.attributes[id(1)]?[.vcStrike] as? Bool == true && renderer.attributes[id(1)]?[.foregroundColor] as? NSColor === DesignValues.nsColor("word.gone")
+              && renderer.attributes["pause-after-\(id(0))"]?[.foregroundColor] as? NSColor === DesignValues.nsColor("word.gone"))
+        pane.scroll(toCharacter: 0)
+        bitmap = try pane.bitmap("v2-transcript-showcuts-dark", directory: directory)
+        if let uh = text.map.span(id: id(1)), let (fragment, line, base) = pane.line(atCharacter: uh.range.location) {
+            let origin = text.textContainerOrigin
+            let left = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + line.locationForCharacter(at: uh.range.location - base).x
+            let right = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + line.locationForCharacter(at: NSMaxRange(uh.range) - base).x
+            let baseline = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
+            let row = baseline - font.xHeight / 2
+            let struck = pane.count(bitmap, in: CGRect(x: left, y: row - 0.75, width: right - left, height: 1.5), TranscriptPane.color("word.gone"))
+            check("Show cuts strikes a removed word in word.gone (\(struck) pixels)", struck >= Int(right - left))
+        } else { check("the struck word is laid out", false) }
+        model.toggleShowsCuts()
+        pane.update(rebuild: true)
+
+        // A click opens one fold and selects what it holds; leaving the selection folds it.
+        if let yourFold = text.map.span(id: "pause-after-\(id(8))") {
+            model.expandFold(yourFold.ids)
+            pane.update(rebuild: true)
+            check("an opened fold shows its words and pauses, and only it (\(displayed(text)[0]))",
+                  displayed(text)[0] == "So•while you're speaking,•it•examines your, 1.0\u{00A0}s uh, 0.8\u{00A0}s app, makes videos, and adds clip in between your speech."
+                  && model.selectedWordIDs == [id(9)] && model.selectedPauseIDs == ["pause-after-\(id(8))", "pause-after-\(id(9))"])
+            model.select(id(17))
+            pane.update(rebuild: true)
+            check("selecting elsewhere folds it again", displayed(text) == folded && model.expandedFolds.isEmpty)
+        }
+
+        // Restore is one undo step.
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        if let fold = text.map.span(id: id(6)) {
+            undo.beginUndoGrouping()
+            model.restoreFold(fold.ids)
+            undo.endUndoGrouping()
+            pane.update(rebuild: true)
+            let restored = !model.cutWordIDs.contains(id(6)) && !model.cutPauseIDs.contains("pause-after-\(id(6))") && text.map.span(id: id(6))?.kind == .text
+            check("Restore brings the fold's words and pauses back as one undo step, \"\(undo.undoActionName)\"", restored && undo.undoActionName == "Restore cut")
+            undo.undo()
+            pane.update(rebuild: true)
+            check("one undo folds them again", displayed(text) == folded)
+        }
+        model.undoManager = nil
+
+        // Outside the open clip the words read as said: no folds, no strikes, no pauses.
+        var clipped = model.project
+        clipped.edits.clips = [ClipRange(id: "fold-clip", startWordId: id(20), endWordId: id(model.words.count - 1), title: "Second paragraph")]
+        model.document.replaceProject(clipped)
+        model.refresh()
+        model.activate(model.project.edits.clips[0])
+        pane.update(rebuild: true)
+        check("outside the open clip the text shows no folds, markers or pauses (\(displayed(text)[0]))",
+              displayed(text)[0] == "So, uh, while you're speaking, it, uh, examines your, uh, app, makes videos, and adds clip in between your speech."
+              && displayed(text)[1] == folded[1] && renderer.attributes[id(1)]?[.vcStrike] as? Bool == false
+              && renderer.attributes[id(1)]?[.foregroundColor] as? NSColor === DesignValues.nsColor("word.outside"))
+        model.toggleShowsCuts()
+        pane.update(rebuild: true)
+        check("under Show cuts too, only the open clip shows its cuts", displayed(text)[0] == "So, uh, while you're speaking, it, uh, examines your, uh, app, makes videos, and adds clip in between your speech."
+              && displayed(text)[1] == shown[1])
+        return results
+    }
+}
+
 /// A transcript pane as the editor builds it, in an offscreen window that is never shown.
 @MainActor final class TranscriptPane {
     let model: EditorModel
@@ -512,10 +763,12 @@ extension DebugTranscriptPixels {
 
     /// Renders the model's state as `updateNSView` does, then lays the viewport out.
     func update(rebuild: Bool = false) {
-        if rebuild { renderer.rebuild(model: model) }
-        renderer.update(TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, playing: model.playingWordID,
-                                             scope: model.scopeBounds, activeClipID: model.activeClip?.id, playhead: model.sourceTime))
+        // As updateNSView: the text's own selection changes during the update are not the user's.
+        coordinator.updating = true
+        defer { coordinator.updating = false }
+        TranscriptTextView.render(model, coordinator: coordinator, force: rebuild)
         scroll.overviewRuler.marks = TranscriptOverviewRuler.marks(model: model)
+        TranscriptTextView.select(model: model, in: text)
         layout()
     }
     func layout() {
@@ -530,6 +783,15 @@ extension DebugTranscriptPixels {
         scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, box.minY - 24)))
         scroll.reflectScrolledClipView(scroll.contentView)
         layout()
+    }
+    /// The laid-out line holding a character, its fragment and the fragment's first character.
+    func line(atCharacter offset: Int) -> (NSTextLayoutFragment, NSTextLineFragment, Int)? {
+        guard let manager = text.textLayoutManager, let content = manager.textContentManager,
+              let location = content.location(content.documentRange.location, offsetBy: offset), let fragment = manager.textLayoutFragment(for: location),
+              let element = fragment.textElement?.elementRange else { return nil }
+        let base = content.offset(from: content.documentRange.location, to: element.location)
+        guard let line = fragment.textLineFragments.first(where: { NSLocationInRange(offset - base, $0.characterRange) }) else { return nil }
+        return (fragment, line, base)
     }
     func resize(width: CGFloat) {
         window.setContentSize(NSSize(width: width, height: scroll.frame.height))
