@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-11-01 - track/v2-core: first hosted CI compatibility
+
+- C7 enrollment replays cache their immutable statement/training WAV fixture bytes instead of rebuilding minute-long audio arrays at every preparation; the sample bytes and all replay assertions are unchanged.
+- The first Xcode 26 run exposed a slow type-check in the timeline room-tone fixture. `TimelineCanvasTests` now gives the noise fraction, dB value and amplitude explicit `Double` intermediates, preserving the generated samples.
+- `TranscriptFoldTests`, `TranscriptViewportTests`, `TranscriptGutterTests` and `TranscriptRendererTests` use DEBUG-only transcript/demo helpers, so their files now use the same DEBUG guard. They remain in the Debug headless app suite and no longer prevent the Release CLI E2E target from compiling. No product behavior or UI changed.
+
 ## C4 review corrections — pre-payment placement and explicit set scope (1 Nov 2026)
 
 - **Built.** The stricter single `.accept` output-scope check remains. `EditorModel` shares the same in-memory local-command reduction between acceptance and placement preflight. Before source decoding in `prepareTakes`, and again before the take quote in `RewriteGenerationSession.prepare`, the known window is projected through `VoiceLabOutputPlanner` with the review's final cuts. The projection and final acceptance share the selected-seam validator in `VoiceLabRenderContract`; no fake recipe, asset, voice or consent is created. Refusals stay in the existing inline problem text. The adjacent-cut regression confirms the single overload still refuses, no quote is prepared, and no payment, publication, document change or undo occurs.

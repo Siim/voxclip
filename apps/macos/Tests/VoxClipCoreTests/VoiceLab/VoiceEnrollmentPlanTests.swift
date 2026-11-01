@@ -40,14 +40,23 @@ private enum EnrollmentCrash: Error { case afterVerify }
 
 @Suite("C7 enrollment plan", .serialized, .timeLimit(.minutes(2)))
 struct VoiceEnrollmentPlanTests {
-    private var wav: Data { VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 4_000) }
+    private static let statementWav = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 4_000)
+    private static let matchingSamples = makeSamples(mismatch: false)
+    private static let mismatchingSamples = makeSamples(mismatch: true)
+    private var wav: Data { Self.statementWav }
     private func statement() throws -> VoiceConsentStatement {
         let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: FixtureLoader.data("fixtures/voice-lab/consent-record.json"))
         return .init(language: record.statement.language, text: record.statement.text, nonce: record.statement.nonce)
     }
+    private static func makeSamples(mismatch: Bool) -> [VoiceTrainingSample] {
+        (0..<4).map { index in
+            let fill: Int = mismatch ? -4_000 : 2_000 + index
+            let audio = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 240_000, fill: fill)
+            return VoiceTrainingSample(wav: audio, speech16k: [], seconds: 15, source: "readAloud", snrDb: 25)
+        }
+    }
     private func samples(mismatch: Bool = false) -> [VoiceTrainingSample] {
-        (0..<4).map { i in .init(wav: VoiceLabRequestFixtures.wav(rate: 16_000, frames: 240_000, fill: mismatch ? -4_000 : (2_000 + i)),
-                                speech16k: [], seconds: 15, source: "readAloud", snrDb: 25) }
+        mismatch ? Self.mismatchingSamples : Self.matchingSamples
     }
     private func client(_ probe: EnrollmentProbe, flow: String = "success") async -> ElevenLabsVoiceLab {
         let base = SpeechStubHTTP.register { request in
