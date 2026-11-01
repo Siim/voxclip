@@ -3438,6 +3438,97 @@ member VoxClip.Core.Domain.Editing.RelinkDecision :: field public NeedsConfirmat
 member VoxClip.Core.Domain.Editing.RelinkDecision :: field public Refused
 member VoxClip.Core.Domain.Editing.RelinkDecision :: field public value__
 member VoxClip.Core.Domain.Editing.Relinking :: method public Decide(long,string,double,long,string,double,bool)
+member VoxClip.Core.Domain.Editing.SMPTETimecode :: method public Format(double,int)
+member VoxClip.Core.Domain.Editing.SMPTETimecode :: method public Frame(double,int)
+member VoxClip.Core.Domain.Editing.SMPTETimecode :: method public String(double,int)
+member VoxClip.Core.Domain.Editing.TimelineAxis :: field public Edited
+member VoxClip.Core.Domain.Editing.TimelineAxis :: field public Source
+member VoxClip.Core.Domain.Editing.TimelineAxis :: field public value__
+member VoxClip.Core.Domain.Editing.TimelineCaptions :: field public Hold
+member VoxClip.Core.Domain.Editing.TimelineCaptions :: method public Cues(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineCaptions+Page>,VoxClip.Core.Domain.Editing.TimelineAxis,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimeRange>)
+member VoxClip.Core.Domain.Editing.TimelineCaptions :: method public Indices(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.TimelineCue>,VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public .ctor(VoxClip.Core.Domain.Shared.TimeRange,VoxClip.Core.Domain.Shared.TimeRange,string)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public Deconstruct(VoxClip.Core.Domain.Shared.TimeRange&,VoxClip.Core.Domain.Shared.TimeRange&,string&)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public Equals(VoxClip.Core.Domain.Editing.TimelineCaptions+Page)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public ToString()
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public get_Edited()
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public get_Source()
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public get_Text()
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public op_Equality(VoxClip.Core.Domain.Editing.TimelineCaptions+Page,VoxClip.Core.Domain.Editing.TimelineCaptions+Page)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineCaptions+Page,VoxClip.Core.Domain.Editing.TimelineCaptions+Page)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public set_Edited(VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public set_Source(VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.Core.Domain.Editing.TimelineCaptions+Page :: method public set_Text(string)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method private .ctor(VoxClip.Core.Domain.Editing.TimelineCue)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public .ctor(VoxClip.Core.Domain.Shared.TimeRange,string,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimeRange>)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public Deconstruct(VoxClip.Core.Domain.Shared.TimeRange&,string&,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimeRange>&)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public Equals(VoxClip.Core.Domain.Editing.TimelineCue)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public ToString()
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public get_Cuts()
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public get_Range()
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public get_Text()
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public op_Equality(VoxClip.Core.Domain.Editing.TimelineCue,VoxClip.Core.Domain.Editing.TimelineCue)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineCue,VoxClip.Core.Domain.Editing.TimelineCue)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public set_Cuts(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimeRange>)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public set_Range(VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.Core.Domain.Editing.TimelineCue :: method public set_Text(string)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public .ctor(VoxClip.Core.Domain.Shared.TimeRange,VoxClip.Core.Domain.Shared.TimeRange,VoxClip.Core.Domain.Editing.TimelinePieceKind)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public Deconstruct(VoxClip.Core.Domain.Shared.TimeRange&,VoxClip.Core.Domain.Shared.TimeRange&,VoxClip.Core.Domain.Editing.TimelinePieceKind&)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public Equals(VoxClip.Core.Domain.Editing.TimelinePiece)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public Range(VoxClip.Core.Domain.Editing.TimelineAxis)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public ToString()
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public get_Edited()
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public get_Kind()
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public get_Source()
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public op_Equality(VoxClip.Core.Domain.Editing.TimelinePiece,VoxClip.Core.Domain.Editing.TimelinePiece)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelinePiece,VoxClip.Core.Domain.Editing.TimelinePiece)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public set_Edited(VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public set_Kind(VoxClip.Core.Domain.Editing.TimelinePieceKind)
+member VoxClip.Core.Domain.Editing.TimelinePiece :: method public set_Source(VoxClip.Core.Domain.Shared.TimeRange)
+member VoxClip.Core.Domain.Editing.TimelinePieceKind :: field public Ai
+member VoxClip.Core.Domain.Editing.TimelinePieceKind :: field public Kept
+member VoxClip.Core.Domain.Editing.TimelinePieceKind :: field public value__
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public .ctor(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.TimelinePiece>)
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public .ctor(VoxClip.Core.Domain.VoiceLab.RenderTimeline)
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public Gaps(VoxClip.Core.Domain.Shared.TimeRange,double)
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public Indices(VoxClip.Core.Domain.Shared.TimeRange,VoxClip.Core.Domain.Editing.TimelineAxis)
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public IsSeam(int)
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public get_EditedDuration()
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public get_Pieces()
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public get_Seams()
+member VoxClip.Core.Domain.Editing.TimelinePieces :: method public get_SourceSpan()
+member VoxClip.Core.Domain.Editing.TimelineRuler :: field public LabelSpacing
+member VoxClip.Core.Domain.Editing.TimelineRuler :: field public MinorSpacing
+member VoxClip.Core.Domain.Editing.TimelineRuler :: method private .cctor()
+member VoxClip.Core.Domain.Editing.TimelineRuler :: method public LabelX(double,double,System.Collections.Generic.IReadOnlyList`1<double>,System.Nullable`1<double>,double)
+member VoxClip.Core.Domain.Editing.TimelineRuler :: method public MajorStep(double)
+member VoxClip.Core.Domain.Editing.TimelineRuler :: method public MinorStep(double)
+member VoxClip.Core.Domain.Editing.TimelineRuler :: method public Ticks(VoxClip.Core.Domain.Shared.TimeRange,double)
+member VoxClip.Core.Domain.Editing.TimelineRuler :: method public get_MajorSteps()
+member VoxClip.Core.Domain.Editing.TimelineRuler :: method public get_MinorSteps()
+member VoxClip.Core.Domain.Editing.TimelineTick :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public .ctor(double,bool)
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public Deconstruct(double&,bool&)
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public Equals(VoxClip.Core.Domain.Editing.TimelineTick)
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public Equals(object)
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public GetHashCode()
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public ToString()
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public get_Major()
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public get_Time()
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public op_Equality(VoxClip.Core.Domain.Editing.TimelineTick,VoxClip.Core.Domain.Editing.TimelineTick)
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public op_Inequality(VoxClip.Core.Domain.Editing.TimelineTick,VoxClip.Core.Domain.Editing.TimelineTick)
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public set_Major(bool)
+member VoxClip.Core.Domain.Editing.TimelineTick :: method public set_Time(double)
 member VoxClip.Core.Domain.Share.ShareDestination :: field public LinkedIn
 member VoxClip.Core.Domain.Share.ShareDestination :: field public VoxConvo
 member VoxClip.Core.Domain.Share.ShareDestination :: field public X
@@ -4668,6 +4759,12 @@ member VoxClip.Core.Domain.Transcript.TranscriptEngine :: field public Elevenlab
 member VoxClip.Core.Domain.Transcript.TranscriptEngine :: field public Whispercpp
 member VoxClip.Core.Domain.Transcript.TranscriptEngine :: field public value__
 member VoxClip.Core.Domain.Transcript.TranscriptJsonContext :: field private InstanceMemberBindingFlags
+member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: field public ForcedWindowStart
+member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: field public GapSeconds
+member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: field public MaximumWords
+member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: field public SentenceWords
+member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: method public EndsSentence(string)
+member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: method public Split(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.Transcript.TranscriptPostProcessor :: method public Process(VoxClip.Core.Domain.Transcript.RawTranscript,double,VoxClip.Core.Domain.Transcript.AudioEnvelope,string,System.DateTimeOffset)
 member VoxClip.Core.Domain.Transcript.TranscriptionOptions :: method private .ctor(VoxClip.Core.Domain.Transcript.TranscriptionOptions)
 member VoxClip.Core.Domain.Transcript.TranscriptionOptions :: method private PrintMembers(System.Text.StringBuilder)
@@ -11305,6 +11402,16 @@ type VoxClip.Core.Domain.Editing.MediaInterval
 type VoxClip.Core.Domain.Editing.Pause
 type VoxClip.Core.Domain.Editing.RelinkDecision
 type VoxClip.Core.Domain.Editing.Relinking
+type VoxClip.Core.Domain.Editing.SMPTETimecode
+type VoxClip.Core.Domain.Editing.TimelineAxis
+type VoxClip.Core.Domain.Editing.TimelineCaptions
+type VoxClip.Core.Domain.Editing.TimelineCaptions+Page
+type VoxClip.Core.Domain.Editing.TimelineCue
+type VoxClip.Core.Domain.Editing.TimelinePiece
+type VoxClip.Core.Domain.Editing.TimelinePieceKind
+type VoxClip.Core.Domain.Editing.TimelinePieces
+type VoxClip.Core.Domain.Editing.TimelineRuler
+type VoxClip.Core.Domain.Editing.TimelineTick
 type VoxClip.Core.Domain.Share.ShareDestination
 type VoxClip.Core.Domain.Share.ShareDisclosure
 type VoxClip.Core.Domain.Share.ShareTextRules
@@ -11387,6 +11494,7 @@ type VoxClip.Core.Domain.Transcript.TranscriberCapabilities
 type VoxClip.Core.Domain.Transcript.Transcript
 type VoxClip.Core.Domain.Transcript.TranscriptEngine
 type VoxClip.Core.Domain.Transcript.TranscriptJsonContext
+type VoxClip.Core.Domain.Transcript.TranscriptParagraphs
 type VoxClip.Core.Domain.Transcript.TranscriptPostProcessor
 type VoxClip.Core.Domain.Transcript.TranscriptionOptions
 type VoxClip.Core.Domain.Transcript.TranscriptionPlan

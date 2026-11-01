@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Domain.Clips;
@@ -695,13 +696,13 @@ public sealed class EditorViewModel : ObservableObject
             try { Summary = summarize(state); }
             catch (VoxClipException exception) { Notice = UiError.Message(exception, "Editing"); Summary = new(0, state.CutWordIds.Count, state.Pauses.Count, state.CutPauseIds.Count, false, false, false, true); }
             var start = 0;
-            for (var index = 1; index <= Words.Count; index++)
+            foreach (var range in TranscriptParagraphs.Split(Words))
             {
-                var split = index == Words.Count || (Words[index].Speaker != Words[index - 1].Speaker ||
-                    Words[index].Start - Words[index - 1].End >= 1.5 && Words[index - 1].Text.EndsWithAny(".!?")) || index - start >= 100;
-                if (!split || index < Words.Count && !PresentedWord(index).Visible) continue;
-                Paragraphs.Add(new(start, index - start, Timecode(Words[start].Start), Words[start].Speaker));
-                start = index;
+                var end = range.End.Value;
+                // Keep the existing presentation rule: a hidden next word cannot start a row.
+                if (end < Words.Count && !PresentedWord(end).Visible) continue;
+                Paragraphs.Add(new(start, end - start, Timecode(Words[start].Start), Words[start].Speaker));
+                start = end;
             }
             var source = project.Media.Source;
             var sampleRate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;

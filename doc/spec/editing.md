@@ -955,6 +955,14 @@ for [from, to, kind] in sections (in order):
 
 `2π · 180 · i / 16000` is evaluated as `((2 · π) · 180 · i) / 16000` from left to right, with π the binary64 nearest to pi. The analysis is mono at 16 kHz, so `frameSize = 160`.
 
+### 11.5 v2 display math shared vectors
+
+`tools/fixtures/v2/generate_v2.py` independently generates `shared/fixtures/v2/paragraphs.json` (`voxclip.v2.paragraphs.v1`, 27 cases) and `timeline-cases.json` (`voxclip.v2.timeline.v1`, 44 cases). Both Core replays require exactly `schema`, `caseCount` and `cases`, assert the schema and fixed case count, and compare every expected number, range and string exactly. Regeneration uses only ordinary binary64 arithmetic and integer operations; both files are byte-exact in `tools/fixtures/voice-lab/check_drift.py`. That check invokes the v2 generator so the existing hosted fixture job covers it without a workflow change. Future fixture categories require a new file and schema identifier rather than expanding these frozen contracts.
+
+Paragraphs are display-only and derived from source words. Break on a speaker change, a gap of at least 1.5 seconds after `.?!…`, or the first sentence end once the paragraph holds 80 words. If another word follows a 150-word paragraph, break after the word preceding the largest gap after words 120–150 (one-based, inclusive); later gaps win ties. Source corrections, cuts and clip scope do not alter the Core split. Windows uses this rule instead of the former 100-word limit, retaining its existing row timecodes, speaker labels and suppression of boundaries before hidden words. Vectors include a 10,000-word single speaker, exact 80/150 limits, null speakers and both forced-window edges.
+
+Timeline vectors pin legacy and synthetic render pieces, zero-length filtering, half-open visibility, seams and Source gaps, the ruler's 90 pt label and 6 pt minor spacing ladders, integer ticks, non-drop-frame SMPTE formatting and frame saturation. Caption cues hold to the next page when its Edited gap is at most `0.6 + 1e-9` seconds, on either axis; Source cues retain clipped removed ranges. Named non-finite inputs use strings, and malformed/unknown case kinds fail replay. These rules are the Swift math at the WC1 baseline; no native UI or media decoder participates.
+
 ## 12. Deferred and out of scope
 
 - **Leading and trailing silence trim.** The reference never creates pauses before the first item or after the last. `cutRange` already handles a pause with one neighbour (it keeps the breath on the word side), so this needs only new pause ids (`pause-lead`, `pause-tail`) and fixtures. It is not in 0.1.0.
