@@ -233,7 +233,7 @@ struct TimelineContent: Equatable {
 
     private func placePlayhead() {
         let overviewX = overview.x(playheadSource)
-        overlay.movePlayhead(x: TimelineMetrics.header + viewport.x(playheadTime), overviewX: overviewX)
+        overlay.movePlayhead(laneX: viewport.x(playheadTime), overviewX: overviewX)
         overlay.placeOverviewLabels(overview.labels(playheadX: overviewX), top: TimelineMetrics.overview.y)
     }
 
@@ -253,7 +253,7 @@ struct TimelineContent: Equatable {
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
         let top = TimelineMetrics.tracks.first?.y ?? TimelineMetrics.ruler.maxY
         overlay.showWash(content.selection.map { range in
-            let lower = TimelineMetrics.header + viewport.x(range.lowerBound), upper = TimelineMetrics.header + viewport.x(range.upperBound)
+            let lower = viewport.x(range.lowerBound), upper = viewport.x(range.upperBound)
             return NSRect(x: lower, y: top, width: max(0, upper - lower), height: TimelineMetrics.tracksEnd - top)
         })
         placePlayhead()
@@ -315,6 +315,8 @@ struct TimelineContent: Equatable {
         } else {
             apply()
         }
+        // A scrub may have left the playhead off the lanes: page to it now the pointer is up.
+        followPlayhead()
     }
 
     /// The open clip's In or Out under `x` in the ruler, within 5 pt, while it can be trimmed.
@@ -650,6 +652,9 @@ struct TimelineOverviewLabel: Equatable {
 /// Above the lanes, never drawing: the selection wash over the tracks, and the playhead in
 /// the overview and through the ruler and tracks, each a layer moved by transform.
 @MainActor final class TimelineOverlayView: NSView {
+    /// The overlay right of the track headers, clipped to itself: the wash and the playhead
+    /// live in it, in lane coordinates, so neither draws over the headers (notes.md §6).
+    let laneClip = CALayer()
     let wash = CALayer()
     let playhead = CALayer()
     let head = CAShapeLayer()
@@ -664,7 +669,8 @@ struct TimelineOverviewLabel: Equatable {
         root.isGeometryFlipped = true
         layer = root
         wantsLayer = true
-        for layer in [wash, playhead, head, line, overviewPlayhead] { layer.actions = ["position": NSNull(), "bounds": NSNull(), "transform": NSNull(), "hidden": NSNull(), "frame": NSNull(), "path": NSNull()] }
+        for layer in [laneClip, wash, playhead, head, line, overviewPlayhead] { layer.actions = ["position": NSNull(), "bounds": NSNull(), "transform": NSNull(), "hidden": NSNull(), "frame": NSNull(), "path": NSNull()] }
+        laneClip.masksToBounds = true
         // The head: 10.5 × 10.6 in the ruler's lower half; the line: 1 pt from the ruler's
         // foot through the tracks (notes.md §6). Both hang from x 0 of `playhead`.
         let top = TimelineMetrics.ruler.y + 11
@@ -678,12 +684,24 @@ struct TimelineOverviewLabel: Equatable {
         playhead.addSublayer(head)
         playhead.frame = CGRect(x: 0, y: 0, width: 0, height: TimelineMetrics.tracksEnd)
         overviewPlayhead.frame = CGRect(x: -0.75, y: TimelineMetrics.overview.y + 1, width: 1.5, height: 22)
-        root.addSublayer(wash)
+        laneClip.addSublayer(wash)
+        laneClip.addSublayer(playhead)
+        root.addSublayer(laneClip)
         root.addSublayer(overviewPlayhead)
-        root.addSublayer(playhead)
+        placeLaneClip()
         applyColors()
     }
     required init?(coder: NSCoder) { nil }
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        placeLaneClip()
+    }
+    private func placeLaneClip() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        laneClip.frame = CGRect(x: TimelineMetrics.header, y: 0, width: max(0, bounds.width - TimelineMetrics.header), height: bounds.height)
+        CATransaction.commit()
+    }
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func isAccessibilityElement() -> Bool { false }
@@ -701,12 +719,13 @@ struct TimelineOverviewLabel: Equatable {
         }
         for (layer, label) in zip(labelLayers, labels) { layer.foregroundColor = labelColor(open: label.open) }
     }
-    /// The playhead at `x` in the ruler and tracks and at `overviewX` in the overview.
-    func movePlayhead(x: Double, overviewX: CGFloat) {
+    /// The playhead `laneX` into the ruler and tracks (off them, clipped away) and at
+    /// `overviewX` in the overview.
+    func movePlayhead(laneX: Double, overviewX: CGFloat) {
         playheadMoves += 1
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        playhead.transform = CATransform3DMakeTranslation(CGFloat(x), 0, 0)
+        playhead.transform = CATransform3DMakeTranslation(CGFloat(laneX), 0, 0)
         overviewPlayhead.transform = CATransform3DMakeTranslation(overviewX, 0, 0)
         CATransaction.commit()
     }
@@ -751,7 +770,7 @@ struct TimelineOverviewLabel: Equatable {
         labelLayers.forEach { $0.contentsScale = window?.backingScaleFactor ?? 2 }
     }
 
-    /// The selection's 7% wash over the tracks, or none.
+    /// The selection's 7% wash over the tracks, in lane coordinates, or none.
     func showWash(_ rect: NSRect?) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)

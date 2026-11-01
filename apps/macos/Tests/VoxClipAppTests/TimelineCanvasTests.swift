@@ -61,6 +61,22 @@ private actor TimelineTestSettings: SettingsStore {
         return try #require(NSEvent(cgEvent: event))
     }
 
+    /// The canvas read back in sRGB, and `token` at `alpha` over `ground` read back the same way.
+    @MainActor private struct Pixels {
+        let bitmap: NSBitmapImageRep
+        let scale: CGFloat
+        init(_ view: NSView) throws {
+            bitmap = try DebugTimeline.sRGBBitmap(of: view)
+            scale = CGFloat(bitmap.pixelsWide) / view.bounds.width
+        }
+        func at(_ x: CGFloat, _ y: CGFloat) -> [Double] { DebugTimeline.pixel(bitmap, x: Int(x * scale), y: Int(y * scale)) }
+        // Expected colours go through the same drawing and read-back, so colour management treats both alike.
+        func shows(_ x: CGFloat, _ y: CGFloat, _ token: String, alpha: CGFloat = 1, over ground: String? = nil) throws -> Bool {
+            let actual = at(x, y), expected = try DebugTimeline.swatch(token, alpha: alpha, over: ground)
+            return actual.count == 3 && zip(actual, expected).allSatisfy { abs($0 - $1) < 3.0 / 255 }
+        }
+    }
+
     // MARK: Viewport
 
     @Test func fittingKeepsASecondOfLaneEachSideAsInF1() {
@@ -112,8 +128,10 @@ private actor TimelineTestSettings: SettingsStore {
         lanes.forEach { $0.layer?.displayIfNeeded() }
         #expect(lanes.map(\.draws) == draws)
         #expect(canvas.overlay.playheadMoves == moves + 30)
+        // The playhead layer lives in the lanes' clip, right of the headers.
         let x = Double(canvas.overlay.playhead.transform.m41)
-        #expect(abs(x - (Double(TimelineMetrics.header) + canvas.viewport.x(15))) < 1e-6)
+        #expect(abs(x - canvas.viewport.x(15)) < 1e-6)
+        #expect(canvas.overlay.laneClip.masksToBounds && canvas.overlay.laneClip.frame.minX == TimelineMetrics.header)
         // Clip 1's overview label steps 5 pt past a playhead that would sit on it, as a layer move.
         let block = canvas.overview.x(try #require(model.timelineOverviewClips.first).source.lowerBound)
         #expect(canvas.overview.labels(playheadX: block + 20).first?.x == block + 4)
@@ -267,6 +285,45 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(canvas.viewport == kept)
     }
 
+    /// notes.md §6: the headers are chrome over anything left of the lanes. A scrub dragged
+    /// over them and a selection that starts before the view leave the playhead and the
+    /// wash on the lanes alone, and letting go pages to the playhead.
+    @Test func thePlayheadAndTheWashStayOffTheTrackHeaders() throws {
+        let app = try app()
+        let model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        model.sourceTime = 20.4
+        model.playhead = model.timelineTime(source: 20.4, on: .edited)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        canvas.followPlayhead()
+        let y = TimelineMetrics.tracks[1].y + 10
+        canvas.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: TimelineMetrics.header + 300, y: y), in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: 40, y: y), in: canvas))
+        let early = canvas.viewport.time(atX: Double(40 - TimelineMetrics.header))
+        #expect(early > 0 && early < canvas.viewport.origin)
+        // The seek lands (the preview answers later); the view holds under the pointer.
+        model.sourceTime = early
+        model.playhead = model.timelineTime(source: early, on: .edited)
+        canvas.followPlayhead()
+        #expect(!canvas.viewport.visible.contains(early))
+        // Words 5–12, from before the view, selected.
+        model.selectedWordIDs = Set((5...12).map { "t\($0)" })
+        canvas.renderContent()
+        canvas.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let pixels = try Pixels(canvas)
+        #expect(try pixels.shows(40, y, "bg.window"))
+        #expect(try pixels.shows(80, y, "bg.window"))
+        #expect(try pixels.shows(TimelineMetrics.header + 4, y, "tint.wash", over: "timeline.lane"))
+        let zoom = canvas.viewport.ptPerSecond
+        canvas.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: 40, y: y), in: canvas))
+        #expect(canvas.viewport.visible.contains(early) && canvas.viewport.ptPerSecond == zoom)
+        #expect(abs(Double(canvas.overlay.playhead.transform.m41) - canvas.viewport.x(early)) < 1e-6)
+    }
+
     /// The panel lays out in a window that is never shown: the toolbar's readout resolves
     /// its token colours and the lanes are hosted under it.
     @Test func thePanelLaysOutWithItsToolbarAndLanes() throws {
@@ -300,38 +357,29 @@ private actor TimelineTestSettings: SettingsStore {
         let source = 20.4
         model.sourceTime = source
         model.playhead = model.timelineTime(source: source, on: .edited)
-        let canvas = TimelineCanvasView(model: model)
-        defer { canvas.tearDown() }
-        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: TimelineMetrics.height), styleMask: [.borderless], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: .darkAqua)
-        window.contentView = canvas
-        defer { window.close() }
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
         canvas.renderContent()
         canvas.followPlayhead()
         #expect(abs(canvas.viewport.origin - (axis == .edited ? -1 : 8.9)) < 1e-9)
         canvas.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
-        let cached = try DebugTimeline.sRGBBitmap(of: canvas)
-        let scale = CGFloat(cached.pixelsWide) / canvas.bounds.width
-        func pixel(_ x: CGFloat, _ y: CGFloat) -> [Double] { DebugTimeline.pixel(cached, x: Int(x * scale), y: Int(y * scale)) }
-        // Expected colours go through the same drawing and read-back, so colour management treats both alike.
-        func token(_ name: String, alpha: CGFloat = 1, over ground: String? = nil) throws -> [Double] { try DebugTimeline.swatch(name, alpha: alpha, over: ground) }
-        func near(_ actual: [Double], _ expected: [Double]) -> Bool { actual.count == 3 && zip(actual, expected).allSatisfy { abs($0 - $1) < 3.0 / 255 } }
+        let pixels = try Pixels(canvas)
+        let cached = pixels.bitmap
         let viewport = canvas.viewport
         let play = TimelineMetrics.header + CGFloat(viewport.x(model.timelinePlayhead(on: axis)))
-        #expect(near(pixel(play, TimelineMetrics.tracks[1].y + 10), try token("tint.default")))
-        #expect(near(pixel(play, TimelineMetrics.ruler.y + 14), try token("tint.default")))
+        #expect(try pixels.shows(play, TimelineMetrics.tracks[1].y + 10, "tint.default"))
+        #expect(try pixels.shows(play, TimelineMetrics.ruler.y + 14, "tint.default"))
         let inOut = try #require(model.timelineInOut(on: axis))
         let inX = TimelineMetrics.header + CGFloat(viewport.x(inOut.lowerBound))
-        #expect(near(pixel(inX + 0.75, TimelineMetrics.ruler.y + 12), try token("clip.label")))
-        #expect(near(pixel(inX + 3, TimelineMetrics.ruler.y + 13), try token("bg.window")))
-        #expect(near(pixel(inX - 6, TimelineMetrics.ruler.y + 13), try token("timeline.rulerOut")))
-        #expect(near(pixel(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18), try token("timeline.lane")))
+        #expect(try pixels.shows(inX + 0.75, TimelineMetrics.ruler.y + 12, "clip.label"))
+        #expect(try pixels.shows(inX + 3, TimelineMetrics.ruler.y + 13, "bg.window"))
+        #expect(try pixels.shows(inX - 6, TimelineMetrics.ruler.y + 13, "timeline.rulerOut"))
+        #expect(try pixels.shows(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18, "timeline.lane"))
         let block = canvas.overview.x(try #require(model.timelineOverviewClips.first).source.lowerBound + 0.3)
-        #expect(near(pixel(block, TimelineMetrics.overview.y + 12), try token("clip.label", alpha: 0.42, over: "timeline.lane")))
+        #expect(try pixels.shows(block, TimelineMetrics.overview.y + 12, "clip.label", alpha: 0.42, over: "timeline.lane"))
         // The header column and its hairline stay beside every lane.
-        #expect(near(pixel(TimelineMetrics.header - 0.5, TimelineMetrics.overview.y + 6), try token("line.default")))
+        #expect(try pixels.shows(TimelineMetrics.header - 0.5, TimelineMetrics.overview.y + 6, "line.default"))
         var red = false
         for row in stride(from: 0, to: cached.pixelsHigh, by: 2) {
             for column in stride(from: 0, to: cached.pixelsWide, by: 2) {
