@@ -74,4 +74,8 @@ import AppKit
         let hint = NSAttributedString(string: Self.shortcut, attributes: hintAttributes)
         hint.draw(at: NSPoint(x: x, y: ((bounds.height - hint.size().height) / 2).rounded()))
     }
+    /// The keyboard focus ring follows the rounded box: the cell has no title or image to
+    /// outline, so its own mask is empty.
+    override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill() }
+    override var focusRingMaskBounds: NSRect { bounds }
 }
