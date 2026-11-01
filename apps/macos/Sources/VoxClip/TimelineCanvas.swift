@@ -3,7 +3,7 @@ import QuartzCore
 import VoxClipCore
 
 // The v2 timeline's AppKit lanes (ux/v2 notes.md §6, impl-plan V7a, V7b and V9): overview,
-// ruler with In/Out, V1 filmstrip, A1 audio, CC cues, headers, scrollers and playhead. No view is wider
+// ruler with In/Out, V1 filmstrip, A1 audio, CC cues, FX Motion, headers, scrollers and playhead. No view is wider
 // than the panel: the viewport maps time to points, and each lane draws only what it shows.
 // The playhead is its own layer, moved by transform, so playback never redraws a lane.
 
@@ -24,8 +24,8 @@ enum TimelineMetrics {
     static let reach: CGFloat = 5
     static let overview = Row(y: 0, height: 24)
     static let ruler = Row(y: 24, height: 22)
-    /// V1, A1 and CC at the default track height (M).
-    static let tracks = [Row(y: 47, height: 36), Row(y: 84, height: 44), Row(y: 129, height: 24)]
+    /// V1, A1, CC and FX at the default track height (M).
+    static let tracks = [Row(y: 47, height: 36), Row(y: 84, height: 44), Row(y: 129, height: 24), Row(y: 154, height: 24)]
     static func rows(_ height: TrackHeight) -> [Row] {
         var y: CGFloat = 47
         return height.heights.map { value in
@@ -119,8 +119,9 @@ struct TimelineContent: Equatable {
     var headerWidth: CGFloat { (shell?.layout.windowWidth ?? Double(window?.frame.width ?? bounds.width)) < 1000 ? 64 : TimelineMetrics.header }
     let video = VideoLane()
     let captions = CaptionLane()
+    let motion = MotionLane()
     let trackClip = TimelineTrackClip()
-    let headers = [TrackHeaderView(id: "V1", name: "Video"), TrackHeaderView(id: "A1", name: "Voice"), TrackHeaderView(id: "CC", name: "Captions")]
+    let headers = [TrackHeaderView(id: "V1", name: "Video"), TrackHeaderView(id: "A1", name: "Voice"), TrackHeaderView(id: "CC", name: "Captions"), TrackHeaderView(id: "FX", name: "Motion")]
     let horizontalScroller = TimelineScroller()
     let verticalScroller = TimelineScroller()
     var trackHeight: TrackHeight { shell?.layout.trackHeight ?? .medium }
@@ -154,7 +155,7 @@ struct TimelineContent: Equatable {
         identifier = NSUserInterfaceItemIdentifier("voxclip.timeline.canvas")
         for lane in [overview, ruler, bed] as [NSView] { addSubview(lane) }
         addSubview(trackClip)
-        for lane in [video, audio, captions] as [NSView] { trackClip.addSubview(lane) }
+        for lane in [video, audio, captions, motion] as [NSView] { trackClip.addSubview(lane) }
         for header in headers { trackClip.addSubview(header) }
         headers[1].action = { [weak model] in
             guard let model else { return }
@@ -229,17 +230,17 @@ struct TimelineContent: Equatable {
         let rows = TimelineMetrics.rows(trackHeight)
         var trackRoom = max(0, bounds.height - TimelineMetrics.ruler.maxY - 10)
         if bounds.height + TimelineMetrics.toolbar < 184 {
-            // Keep CC wholly below the fold in short panels; vertical scrolling reveals it.
+            // Keep CC and FX wholly below the fold in short panels; vertical scrolling reveals it.
             trackRoom = min(trackRoom, rows[1].maxY - TimelineMetrics.ruler.maxY)
         }
         trackClip.frame = NSRect(x: 0, y: TimelineMetrics.ruler.maxY, width: width, height: trackRoom)
         verticalOffset = verticalOffset.clamped(to: 0...verticalMaximum)
-        for (index, lane) in ([video, audio, captions] as [TimelineLane]).enumerated() {
+        for (index, lane) in ([video, audio, captions, motion] as [TimelineLane]).enumerated() {
             let row = rows[index]
             lane.frame = NSRect(x: 0, y: row.y - TimelineMetrics.ruler.maxY - verticalOffset, width: width, height: row.height)
             headers[index].frame = NSRect(x: 0, y: lane.frame.minY, width: headerWidth - 1, height: row.height)
         }
-        for lane in [overview, ruler, bed, video, audio, captions] as [TimelineLane] { lane.headerWidth = headerWidth }
+        for lane in [overview, ruler, bed, video, audio, captions, motion] as [TimelineLane] { lane.headerWidth = headerWidth }
         overlay.headerWidth = headerWidth
         overlay.line.frame.size.height = max(0, min(trackClip.frame.maxY, rows.last!.maxY - verticalOffset) - TimelineMetrics.ruler.maxY + 1)
         overlay.frame = bounds
@@ -1205,11 +1206,27 @@ struct TimelineOverviewLabel: Equatable {
     }
 }
 
-/// The three MVP track sizes (notes.md §6). FX belongs to V9b.
+/// FX's empty state (V9b, notes.md §6 and v3 f10–f14). Director will own its
+/// word-anchored results later; there is no disabled or decorative action to press.
+@MainActor final class MotionLane: TimelineLane {
+    static let emptyHint = "Director results land here"
+    private static let hintFont = NSFont.systemFont(ofSize: 11)
+    override func drawLane(in context: CGContext) {
+        let lane = CGRect(x: headerWidth, y: 0, width: max(0, bounds.width - headerWidth), height: bounds.height)
+        context.setFillColor(DesignValues.nsColor("timeline.lane").cgColor)
+        context.fill(lane)
+        context.saveGState(); context.clip(to: lane)
+        let font = Self.hintFont
+        Self.draw(Self.emptyHint, font: font, color: DesignValues.nsColor("text.disabled"), x: headerWidth + 10, baseline: bounds.midY + font.xHeight / 2)
+        context.restoreGState()
+    }
+}
+
+/// The track sizes, V1/A1/CC/FX (notes.md §6).
 enum TrackHeight: String, CaseIterable {
     case small, medium, large
     var label: String { switch self { case .small: "S"; case .medium: "M"; case .large: "L" } }
-    var heights: [CGFloat] { switch self { case .small: [28, 32, 20]; case .medium: [36, 44, 24]; case .large: [52, 64, 28] } }
+    var heights: [CGFloat] { switch self { case .small: [28, 32, 20, 20]; case .medium: [36, 44, 24, 24]; case .large: [52, 64, 28, 28] } }
 }
 
 @MainActor final class TimelineTrackClip: NSView {
@@ -1235,7 +1252,7 @@ enum TrackHeight: String, CaseIterable {
         button.target = self; button.action = #selector(press)
         button.imagePosition = .imageOnly
         button.setAccessibilityIdentifier("voxclip.timeline.header.\(id)")
-        button.isHidden = id == "V1"
+        button.isHidden = id == "V1" || id == "FX"
         addSubview(button)
         update(on: true, enabled: true)
     }
@@ -1262,8 +1279,9 @@ enum TrackHeight: String, CaseIterable {
             TimelineLane.draw(name, font: nameFont, color: DesignValues.nsColor("text.tertiary"), x: trackID == "CC" ? 29 : 34, baseline: bounds.midY + nameFont.xHeight / 2)
         }
     }
-    override func isAccessibilityElement() -> Bool { trackID == "V1" }
+    override func isAccessibilityElement() -> Bool { trackID == "V1" || trackID == "FX" }
     override func accessibilityLabel() -> String? { "\(trackID) \(name)" }
+    override func accessibilityValue() -> Any? { trackID == "FX" ? MotionLane.emptyHint : nil }
     override func accessibilityRole() -> NSAccessibility.Role? { .group }
 }
 

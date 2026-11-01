@@ -44,8 +44,8 @@ private actor TimelineTestSettings: SettingsStore {
     }
 
     /// The lanes as the panel sizes them, in a dark window that is never shown.
-    private func windowed(_ model: EditorModel) -> (canvas: TimelineCanvasView, window: NSWindow) {
-        let canvas = TimelineCanvasView(model: model)
+    private func windowed(_ model: EditorModel, shell: WorkspaceShell? = nil) -> (canvas: TimelineCanvasView, window: NSWindow) {
+        let canvas = TimelineCanvasView(model: model, shell: shell)
         let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: TimelineMetrics.height), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
@@ -118,7 +118,7 @@ private actor TimelineTestSettings: SettingsStore {
         canvas.renderContent()
         model.waveform = DebugTimeline.speech(words: model.words, duration: 60)
         canvas.renderContent()
-        let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.audio]
+        let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.video, canvas.audio, canvas.captions, canvas.motion]
         // Lanes draw through their layers (the 60-minute budget measures this way).
         lanes.forEach { $0.layer?.displayIfNeeded() }
         let draws = lanes.map(\.draws)
@@ -856,13 +856,13 @@ private actor TimelineTestSettings: SettingsStore {
         let canvas = TimelineCanvasView(model: model, shell: shell)
         defer { canvas.tearDown() }
         let steps = model.undoSteps
-        #expect(TrackHeight.small.heights == [28, 32, 20])
-        #expect(TrackHeight.medium.heights == [36, 44, 24])
-        #expect(TrackHeight.large.heights == [52, 64, 28])
+        #expect(TrackHeight.small.heights == [28, 32, 20, 20])
+        #expect(TrackHeight.medium.heights == [36, 44, 24, 24])
+        #expect(TrackHeight.large.heights == [52, 64, 28, 28])
         for height in TrackHeight.allCases {
             shell.layout.trackHeight = height
             canvas.layoutSubtreeIfNeeded(); canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
-            #expect([canvas.video, canvas.audio, canvas.captions].map { $0.frame.height } == height.heights)
+            #expect([canvas.video, canvas.audio, canvas.captions, canvas.motion].map { $0.frame.height } == height.heights)
         }
         #expect(canvas.headers[0].button.isHidden)
         #expect(canvas.headers[2].button.accessibilityLabel() == "CC Captions, shown")
@@ -1293,6 +1293,51 @@ private actor TimelineTestSettings: SettingsStore {
         for result in results { #expect(result.passed, "\(result.name)") }
         for name in ["v2-timeline-selection-edited", "v2-timeline-selection-source", "v2-timeline-trim-preview"] {
             #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent("\(name).png").path))
+        }
+    }
+
+    @Test func motionHasAnEmptyHintAtEachHeightAndAnAccessibleHeader() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        let shell = WorkspaceShell(app: app)
+        shell.layout.windowWidth = 1280
+        let (canvas, window) = windowed(model, shell: shell)
+        defer { canvas.tearDown(); window.close() }
+        #expect(canvas.headers.count == 4)
+        #expect(canvas.headers[3].accessibilityLabel() == "FX Motion")
+        #expect(canvas.headers[3].accessibilityValue() as? String == "Director results land here")
+        #expect(canvas.headers[3].button.isHidden)
+        let expected: [CGFloat] = [20, 24, 28]
+        for (index, height) in TrackHeight.allCases.enumerated() {
+            shell.layout.trackHeight = height
+            canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded(); canvas.renderContent()
+            canvas.verticalScroller.changed?(1)
+            #expect(canvas.motion.frame.height == expected[index])
+            let bitmap = try DebugTimeline.sRGBBitmap(of: canvas.motion)
+            let scale = Double(bitmap.pixelsWide) / canvas.motion.bounds.width
+            let ground = try DebugTimeline.swatch("timeline.lane")
+            var ink = 0
+            for y in 0..<bitmap.pixelsHigh {
+                for x in Int((canvas.headerWidth + 10) * scale)..<Int((canvas.headerWidth + 180) * scale) {
+                    let pixel = DebugTimeline.pixel(bitmap, x: x, y: y)
+                    if zip(pixel.prefix(3), ground.prefix(3)).contains(where: { abs($0 - $1) > 0.035 }) { ink += 1 }
+                }
+            }
+            #expect(ink > 50, "FX hint must be drawn, not just exposed as a string")
+        }
+        #expect(model.undoSteps == 0 && !model.document.isDocumentEdited)
+    }
+
+    @Test func motionHeightAndHintScenesPassWithoutShowingWindows() throws {
+        let app = try app()
+        let directory = app.locations.root.appendingPathComponent("motion-scenes", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        print("V9b scenes: \(directory.path)")
+        let results = try DebugTimeline.motionScenes(app: app, fixture: try project(), directory: directory)
+        #expect(results.count == 11)
+        for result in results { #expect(result.passed, "\(result.name)") }
+        for name in ["s", "m", "l", "short-scrolled"] {
+            #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent("v2-timeline-motion-\(name).png").path))
         }
     }
 
