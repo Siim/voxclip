@@ -165,7 +165,8 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored private(set) var sending: Task<Bool, Never>?
     /// R3: the proposal an edit in the scope set aside, with its headline. An undo back to `project` shows it again.
     @ObservationIgnored private var setAside: (changes: ChangeSet, headline: PanelHeadline)?
-    /// The session applies its own changes (Apply, Use Takes): the edit that follows is not an edit in its scope.
+    /// The session applies its own changes (Apply, Use Takes): the edit that follows is not an edit in its scope. Set only
+    /// around the synchronous edit (`ownEdit`), so an edit the user makes while takes publish is still followed.
     @ObservationIgnored private var applying = false
 
     init(editor: EditorModel, scope rewriteScope: RewriteScope, instruction: String = "", envelope: AudioEnvelope?, connector: RewriteConnector?,
@@ -468,10 +469,7 @@ struct RewriteChange: Equatable, Sendable {
         let commands = localCommands(free)
         guard !commands.isEmpty else { return false }
         let first = free.compactMap(\.hunk.sourceWordIds.first).min { (editor.index($0) ?? 0) < (editor.index($1) ?? 0) }
-        applying = true
-        let applied = editor.apply(commands, name: task.words.title)
-        applying = false
-        guard applied else { return false }
+        guard ownEdit({ editor.apply(commands, name: task.words.title) }) else { return false }
         editor.closeRewrite(returnFocus: false)
         editor.announce(free.count == 1 ? "Applied 1 change" : "Applied \(free.count) changes")
         if let first { editor.select(first) }
@@ -481,11 +479,15 @@ struct RewriteChange: Equatable, Sendable {
     /// Uses the selected take with the free changes, one undo step (Use Takes), and closes Rewrite.
     @discardableResult func acceptTakes() async -> Bool {
         guard current, let generation else { return false }
-        applying = true
-        let accepted = await generation.accept(into: editor, localCommands: localCommands)
-        applying = false
+        let accepted = await generation.accept(into: editor, localCommands: localCommands) { [self] edit in try ownEdit(edit) }
         if accepted { editor.closeRewrite() }
         return accepted
+    }
+    /// The session's own edit: `follow` does not take it for an edit in the scope.
+    private func ownEdit<T>(_ edit: () throws -> T) rethrows -> T {
+        applying = true
+        defer { applying = false }
+        return try edit()
     }
     /// The free changes as edit commands: cuts of words not cut yet, and corrections.
     var localCommands: [EditCommand] { localCommands(freeChanges) }
@@ -552,8 +554,9 @@ struct RewriteChange: Equatable, Sendable {
         return true
     }
     /// The parts of `project` the scope reads: the transcript, the video, the pause and Voice Lab settings, and the cuts,
-    /// corrections and pauses of the scope's words and its clip's, with that clip's bounds. Other clips, Find Clips
-    /// results, captions, export and share settings lie outside it. Full take reads every word.
+    /// corrections and pauses of the scope's words and its clip's, with that clip's bounds. The clip's title, and whether it
+    /// is kept or suggested, lie outside it, as do other clips, Find Clips results, captions, export and share settings.
+    /// Full take reads every word.
     private func inside(_ project: Project) -> Project {
         let positions = editor.wordIndex
         var clipID: String?
@@ -574,7 +577,7 @@ struct RewriteChange: Equatable, Sendable {
         project.modifiedAt = .distantPast
         project.title = nil
         project.edits.activeClipId = nil
-        project.edits.clips = project.edits.clips.filter { $0.id == clipID }
+        project.edits.clips = project.edits.clips.filter { $0.id == clipID }.map { ClipRange(id: $0.id, startWordId: $0.startWordId, endWordId: $0.endWordId) }
         project.edits.cutWordIds = project.edits.cutWordIds.filter { positions[$0].map(words.contains) ?? true }
         project.edits.cutPauseIds = project.edits.cutPauseIds.filter { id in
             editor.pauseIndex[id].map { $0.afterIndex >= words.lowerBound && $0.afterIndex < words.upperBound } ?? true

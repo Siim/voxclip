@@ -167,7 +167,10 @@ import xlocale
         }
         await run.reject(row.id)
     }
-    @discardableResult func accept(into editor: EditorModel, localCommands: [EditCommand] = [], at date: Date = Date()) async -> Bool {
+    /// Publishes the selected take and applies it with `localCommands` as one edit. `wrap` runs that one synchronous edit,
+    /// so the caller can tell its own change from an edit the user makes while the take publishes (`RewriteSession.follow`).
+    @discardableResult func accept(into editor: EditorModel, localCommands: [EditCommand] = [], at date: Date = Date(),
+                                   wrap: (() throws -> Void) throws -> Void = { try $0() }) async -> Bool {
         guard !Task.isCancelled, readyToAccept, let input, let selected else { return false }
         let version = revision, project = editor.project
         accepting = true
@@ -200,7 +203,7 @@ import xlocale
                   let plan = selected.audio?.fit.plan else { return false }
             let segment = try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: candidates,
                 selected: selectedIndex, input: input, plan: plan)
-            try editor.applyVoiceLab(.accept(segment, assets: assets, voice: voice), localCommands: localCommands)
+            try wrap { try editor.applyVoiceLab(.accept(segment, assets: assets, voice: voice), localCommands: localCommands) }
             return true
         } catch is CancellationError {
         } catch { if version == revision { problem = RewriteSession.refusal(error) } }

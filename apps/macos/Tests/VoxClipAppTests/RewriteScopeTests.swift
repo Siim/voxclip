@@ -3,6 +3,7 @@ import AppKit
 import Foundation
 import Testing
 @_spi(Testing) @testable import VoxClipCore
+@testable import VoxClipMedia
 @testable import VoxClip
 
 /// A stub connector for Rewrite: a selection's passage request gets "A clearer passage"; a clip's or Full take's
@@ -36,6 +37,21 @@ private actor ScopeStub: LLMConnector {
     }
     var isWaiting: Bool { waiting != nil }
     func release() { waiting?.resume(); waiting = nil }
+}
+
+/// Takes never ask for an ElevenLabs key here: nothing is generated or sent.
+private struct ScopeTakeKeys: KeyProvider {
+    func key(for provider: String) async throws -> String? { Issue.record("Rewrite scope tests must not ask for credentials"); return nil }
+}
+
+/// Holds a take's publication until the test lets it go.
+@MainActor private final class PublicationHold {
+    private var reached = false
+    private var arrival: CheckedContinuation<Void, Never>?
+    private var release: CheckedContinuation<Void, Never>?
+    func pause() async { await withCheckedContinuation { release = $0; reached = true; arrival?.resume(); arrival = nil } }
+    func wait() async { if !reached { await withCheckedContinuation { arrival = $0 } } }
+    func resume() { release?.resume(); release = nil }
 }
 
 /// The sheets a run's route showed, answered yes.
@@ -81,6 +97,8 @@ private actor ScopeStub: LLMConnector {
         }
         let editor = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         editor.mediaResolved = true; editor.refresh()
+        // Nothing loads media here, so the waveform load that resolving it starts would replace the test's with none.
+        editor.waveformTask?.cancel()
         if waveform { editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 20_000)) }
         let undo = UndoManager()
         undo.groupsByEvent = false
@@ -96,6 +114,34 @@ private actor ScopeStub: LLMConnector {
         return session
     }
     private func step(_ undo: UndoManager, _ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
+    /// Turns Voice Lab's Rewrite on, with the ElevenLabs consent, so takes are current.
+    private func enableVoiceLab(_ app: AppModel) {
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        app.settings.values["transcription.elevenlabs.region"] = .string("default")
+    }
+    /// Gives `session` one reviewed take, ready to use: no provider is called.
+    private func giveTake(_ session: RewriteSession, editor: EditorModel) throws -> RewriteGenerationSession {
+        let root = editor.app.locations.root
+        session.configureGeneration(client: ElevenLabsVoiceLab(keys: ScopeTakeKeys(), region: .default),
+                                    store: VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])), speaker: .unavailable)
+        let generation = try #require(session.generation)
+        let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
+            trimStartFrame: 0, trimEndFrame: 24_000, windowStart: 1, windowEnd: 2, windowStartSample: 24_000, windowEndSample: 48_000,
+            outputFrames: 24_000, words: [VoiceLabWord(text: "Hello", start: 0.1, end: 0.9, synthetic: true)])
+        let audio = VoiceLabTakeAudio(sampleRate: 24_000, trimmed: [0.1], mixed: [0.1], patchRange: 0..<1, seams: [], gainDb: 0, roomTone: nil, fit: .exact(plan))
+        let qa = VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -20, speakerScore: 0.8), failures: [])
+        let row = VoiceLabTakeRow(id: UUID(), index: 0, seed: 0, audio: audio, qa: qa, score: 1, failure: nil)
+        let window = VoiceLabWindow(firstWordId: "w20", lastWordId: "w21", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 21, end: 22.4,
+            startSample: 21_000, endSample: 22_400, leftSeam: .init(kind: .gap, time: 21, sample: 21_000, fadeSamples: 20),
+            rightSeam: .init(kind: .gap, time: 22.4, sample: 22_400, fadeSamples: 20))
+        let input = VoiceLabTakeInput(text: "new words", modelID: "fixture-model", recordID: "fixture-record", language: "en", seed: 7,
+            contentKey: editor.project.media.source.contentKey, source: [], sourceSampleRate: 1_000, items: editor.words,
+            window: window, incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+        generation.review(VoiceLabTakeRunResult(rows: [row], end: .completed), input: input)
+        return generation
+    }
     private func proposal(_ session: RewriteSession) -> ChangeSet? { if case .proposal(let set) = session.task.state { set } else { nil } }
     private func texts(_ task: DirectorTask) -> [String] { task.cards.compactMap { if case .text(let text) = $0 { text } else { nil } } }
 
@@ -245,6 +291,64 @@ private actor ScopeStub: LLMConnector {
         await session.actionTask?.value
         #expect(proposal(session) != nil && session.task.turn == 2 && session.project == editor.project)
         #expect(await stub.requests.count == 2)
+    }
+
+    /// The clip's title, and keeping a suggested clip, lie outside the scope: the proposal stays, and so does one on a
+    /// selection inside the renamed clip (design.md R3 "Edits outside the scope don't affect the proposal").
+    @Test func renamingOrKeepingTheClipKeepsTheProposal() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        let (editor, undo) = try editor(app)
+        defer { editor.close() }
+        let session = try await rewrite(editor)
+        let set = try #require(proposal(session))
+        step(undo) { editor.apply(.renameClip(id: "c1", title: "Intro"), name: "Rename clip") }
+        #expect(proposal(session) == set && session.current && session.project == editor.project && session.applyTitle == "Apply 1 Change")
+
+        editor.selectedWordIDs = ["w12", "w13", "w14"]
+        let selection = try await rewrite(editor)
+        #expect(selection !== session && selection.scope == .clip("c1") && proposal(selection) != nil)
+        step(undo) { editor.apply(.renameClip(id: "c1", title: "Opening"), name: "Rename clip") }
+        #expect(proposal(selection) != nil && selection.current)
+
+        editor.selectedWordIDs = []
+        var project = editor.project
+        project.edits.clips[1].origin = .ai
+        project.edits.clips[1].selected = false
+        step(undo) { editor.replace(project, name: "Suggest") }
+        #expect(editor.setScope("c2") && editor.isSuggestion("c2"))
+        let suggestion = try await rewrite(editor)
+        let suggested = try #require(proposal(suggestion))
+        #expect(suggestion.rewriteScope == .clip("c2"))
+        step(undo) { editor.keep("c2") }
+        #expect(!editor.isSuggestion("c2") && proposal(suggestion) == suggested && suggestion.current && suggestion.isOpen)
+        #expect(!editor.announcements.contains("Clip 2 changed."))
+    }
+
+    /// While a take publishes for Use Takes, the user's edits are still followed: one outside the clip moves the session
+    /// on, one inside it shows R3, and the refused acceptance leaves it there.
+    @Test func editsWhileATakePublishesAreFollowed() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        enableVoiceLab(app)
+        let (editor, undo) = try editor(app)
+        defer { editor.close() }
+        let session = try await rewrite(editor)
+        let generation = try giveTake(session, editor: editor)
+        #expect(generation.readyToAccept)
+        let hold = PublicationHold()
+        generation.publishForTests = { _, _, _ in await hold.pause(); throw CancellationError() }
+        let accepting = Task { await session.acceptTakes() }
+        await hold.wait()
+        step(undo) { editor.apply(.cutSelection(ids: ["w60"]), name: "Cut selection") }
+        #expect(session.project == editor.project && session.current && proposal(session) != nil)
+        step(undo) { editor.apply(.cutSelection(ids: ["w20"]), name: "Cut selection") }
+        #expect(session.task.state == .changed && session.task.headline.text == "Clip 1 changed")
+        hold.resume()
+        #expect(await accepting.value == false)
+        #expect(session.isOpen && session.task.state == .changed && editor.project.voiceLab.segments.isEmpty)
+        undo.undo()
+        #expect(proposal(session) != nil && session.current)
     }
 
     /// An edit inside the scope while R1 runs stops it: nothing is applied and the late reply changes nothing.
