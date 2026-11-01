@@ -208,11 +208,13 @@ struct TranscriptAppearance: Equatable {
 ///
 /// `rebuild` reads the take into one `TranscriptParagraphContent` per display paragraph and
 /// writes the storage only for the paragraphs whose content changed, one edit each, so a cut,
-/// a correction or a fold edits one paragraph. The whole document is written again only for
-/// a new take, a new paragraph list (an AI passage over a paragraph break), a new text size,
-/// or a change to more than half the paragraphs (Show Cut Words). Span styles (`attributes`) and the TextKit rendering attributes of
-/// untouched paragraphs survive a rebuild: TextKit moves rendering attributes with the
-/// edits, and a replaced paragraph's new layout fragment is styled from `attributes` by the
+/// a correction or a fold edits one paragraph. More than `separateEdits` changed paragraphs
+/// (Cut Fillers, Show Pauses) are written in one edit over their extent. The whole document
+/// is written again only for a new take, a new paragraph list (an AI passage over a paragraph
+/// break), a new text size, or a change to more than half the paragraphs (Show Cut Words).
+/// Span styles (`attributes`) survive a rebuild, and so do the TextKit rendering attributes
+/// of the text no edit replaced: TextKit moves rendering attributes with the edits, and a
+/// replaced paragraph's new layout fragment is styled from `attributes` by the
 /// rendering-attributes validator when TextKit lays it out, so offscreen paragraphs cost
 /// nothing. `update` styles the spans whose state changed and applies them at once, because
 /// TextKit 2 calls the validator only for fragments it creates, not again after
@@ -243,9 +245,15 @@ struct TranscriptAppearance: Equatable {
     private(set) var storageRevision = 0
     /// Rebuilds that wrote the whole document.
     private(set) var documentRebuilds = 0
-    /// Paragraphs whose text a rebuild replaced, one storage edit each; a whole-document
-    /// rebuild counts every paragraph.
+    /// Paragraphs whose text a rebuild replaced; a whole-document rebuild counts every paragraph.
     private(set) var paragraphReplacements = 0
+    /// Storage edits rebuilds made: one per replaced paragraph up to `separateEdits`, else one.
+    private(set) var storageEdits = 0
+    /// The most changed paragraphs a rebuild writes one edit each; more are written in one
+    /// edit over their extent. A TextKit edit costs time in proportion to the document's
+    /// rendering attributes, about 1 ms at 10,000 words, and one edit over many paragraphs
+    /// about as much as four, mostly laying out the viewport again.
+    nonisolated static let separateEdits = 4
     /// Span styles a rebuild computed: the spans of replaced paragraphs, and words that
     /// became or stopped being AI words. Untouched paragraphs keep theirs.
     private(set) var rebuildStyles = 0
@@ -312,7 +320,16 @@ struct TranscriptAppearance: Equatable {
             storage.setAttributedString(value)
             documentRebuilds += 1
             paragraphReplacements += contents.count
-        } else {
+            storageEdits += 1
+        } else if let first = changed.first, let last = changed.last {
+            // More than `separateEdits` paragraphs are written in one edit from the first to the
+            // last, the paragraphs between copied unchanged, since every TextKit edit costs time
+            // in proportion to the document's rendering attributes (Cut Fillers, Show Pauses).
+            let start = offset(ofParagraph: first)
+            let batch = changed.count > Self.separateEdits
+                ? NSMutableAttributedString(attributedString: storage.attributedSubstring(from: NSRange(location: start, length: offset(ofParagraph: last) + blocks[last].length - start)))
+                : nil
+            let extent = NSRange(location: start, length: batch?.length ?? 0)
             // Last paragraph first, so each edit's offset is still the storage's.
             for index in changed.reversed() {
                 let old = blocks[index], built = build(contents[index], styles: styles)
@@ -321,8 +338,10 @@ struct TranscriptAppearance: Equatable {
                 text.map.replace(paragraph: index, with: built.spans, lengthChange: built.text.length - old.length)
                 blocks[index] = (contents[index], built.text.length)
                 styled.formUnion(style(paragraph: index))
-                storage.replaceCharacters(in: range, with: built.text)
+                if let batch { batch.replaceCharacters(in: NSRange(location: range.location - start, length: range.length), with: built.text) }
+                else { storage.replaceCharacters(in: range, with: built.text); storageEdits += 1 }
             }
+            if let batch { storage.replaceCharacters(in: extent, with: batch); storageEdits += 1 }
             paragraphReplacements += changed.count
         }
         builtTextSize = model.textSize

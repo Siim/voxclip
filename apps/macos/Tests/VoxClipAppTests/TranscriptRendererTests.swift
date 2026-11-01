@@ -11,18 +11,20 @@ import Testing
 /// 10,000 words in the profile build.
 @Suite("Incremental transcript renderer", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."))
 @MainActor struct TranscriptRendererTests {
-    /// Six speakers' turns of ten words, r0–r59, so six paragraphs. Every fifth word is cut,
-    /// r23 and r41 are fillers, a 1.2 s pause follows r14, and a clip spans the fifth paragraph.
-    private func editor(showCuts: Bool) throws -> EditorModel {
+    /// `paragraphs` turns of ten words by six speakers in turn, r0–r59 by default, each its own
+    /// paragraph. Every fifth word is cut, r23 and r41 are fillers, a 1.2 s pause follows r14,
+    /// and a clip spans the fifth paragraph.
+    private func editor(showCuts: Bool, paragraphs: Int = 6) throws -> EditorModel {
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
-        project.transcript?.words = (0..<60).map { index in
+        let count = paragraphs * 10
+        project.transcript?.words = (0..<count).map { index in
             let start = Double(index) * 0.5 + (index > 14 ? 1 : 0)
-            return TimedWord(id: "r\(index)", text: [23, 41].contains(index) ? "um" : index % 10 == 9 ? "end." : "word", start: start, end: start + 0.3, speaker: "s\(index / 10)")
+            return TimedWord(id: "r\(index)", text: [23, 41].contains(index) ? "um" : index % 10 == 9 ? "end." : "word", start: start, end: start + 0.3, speaker: "s\(index / 10 % 6)")
         }
-        project.transcript?.durationSeconds = 32
-        project.media.source.durationSeconds = 32
-        project.edits = ProjectEdits(cutWordIds: stride(from: 0, to: 60, by: 5).map { "r\($0)" })
+        project.transcript?.durationSeconds = Double(count) / 2 + 2
+        project.media.source.durationSeconds = Double(count) / 2 + 2
+        project.edits = ProjectEdits(cutWordIds: stride(from: 0, to: count, by: 5).map { "r\($0)" })
         project.edits.clips = [ClipRange(id: "fifth", startWordId: "r40", endWordId: "r49", title: "Fifth")]
         let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
         model.showCuts = showCuts
@@ -129,6 +131,44 @@ import Testing
         #expect(log.edits[0].range == NSRange(location: renderer.paragraphs[4].offset - log.edits[1].change, length: length(renderer, text, paragraph: 4)))
         #expect(renderer.paragraphReplacements == 6 + 2 && renderer.documentRebuilds == 1, "the first build and two paragraphs")
         try expectFreshBuild(model, text, renderer)
+    }
+
+    @Test func aBulkEditOverMoreThanTheSeparateEditsWritesOneEditOverItsParagraphs() throws {
+        let model = try editor(showCuts: false, paragraphs: 16); defer { model.close() }
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        #expect(renderer.paragraphs.count == 16)
+        let storage = try #require(text.textStorage), limit = TranscriptRenderer.separateEdits
+        // Up to the limit each changed paragraph is its own edit, as for a single cut.
+        var log = EditLog(storage)
+        model.apply(.cutSelection(ids: (0..<limit).map { "r\($0 * 20 + 2)" }), name: "Cut")
+        render(model, renderer)
+        log.stop()
+        #expect(log.edits.count == limit)
+        // One more, spread like Cut Fillers or Show Pauses over every second paragraph from the
+        // second: one edit from the first to the last, since every TextKit edit costs time in
+        // proportion to the whole document. That is still at most half the paragraphs.
+        let ids = (0...limit).map { "r\($0 * 20 + 12)" }, last = 2 * limit + 1
+        try #require(last < 15 && ids.count * 2 <= 16)
+        let rebuilds = renderer.documentRebuilds
+        for (restore, name) in [(false, "Cut"), (true, "Restore")] {
+            layOut(text)
+            let applied = renderer.attributeUpdates
+            log = EditLog(storage)
+            model.apply(restore ? .restoreSelection(ids: ids) : .cutSelection(ids: ids), name: name)
+            render(model, renderer)
+            log.stop()
+            let end = renderer.paragraphs[last].offset + length(renderer, text, paragraph: last)
+            #expect(log.edits.map(\.range) == [NSRange(location: renderer.paragraphs[1].offset, length: end - renderer.paragraphs[1].offset)], "\(name): one edit, from the second paragraph to the last changed one")
+            #expect(renderer.documentRebuilds == rebuilds, "\(name): \(ids.count) of 16 paragraphs is not a whole-document write")
+            layOut(text)
+            // The update applies the changed words, and the validator the extent's spans; the
+            // paragraphs before and after it keep their rendering attributes.
+            let extent = (1...last).reduce(0) { $0 + text.map.spans(inParagraph: $1).count }
+            #expect(renderer.attributeUpdates - applied <= extent + ids.count, "\(name): \(renderer.attributeUpdates - applied) applied, at most \(extent + ids.count)")
+            try expectRenderingAttributes(text, renderer, name)
+            try expectFreshBuild(model, text, renderer)
+        }
     }
 
     @Test func untouchedParagraphsKeepTheirStyles() throws {
