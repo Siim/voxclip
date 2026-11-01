@@ -10,14 +10,25 @@ actor RegressionExporter: Exporter {
     private var resumeFirst: CheckedContinuation<Void, Never>?
     private(set) var jobs: [ExportJob] = []
     init(failure: VoxClipError? = nil) { self.failure = failure }
-    func setHold(_ value: Bool) { hold = value }
+    private var resumeHold: CheckedContinuation<Void, Error>?
+    func setHold(_ value: Bool) {
+        hold = value
+        if !value { resumeHold?.resume(); resumeHold = nil }
+    }
+    private func cancelHold() { resumeHold?.resume(throwing: CancellationError()); resumeHold = nil }
+    private func waitForRelease() async throws {
+        try Task.checkCancellation()
+        try await withCheckedThrowingContinuation { resumeHold = $0 }
+    }
     func pauseFirstTarget() { pauseFirst = true }
     func releaseFirstTarget() { resumeFirst?.resume(); resumeFirst = nil }
     func export(_ job: ExportJob, progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
         jobs.append(job)
         progress(ExportProgress(phase: .encoding, fraction: 0.25))
         if pauseFirst && jobs.count == 1 { await withCheckedContinuation { resumeFirst = $0 } }
-        if hold { try await Task.sleep(for: .seconds(60)) }
+        if hold {
+            try await withTaskCancellationHandler { try await waitForRelease() } onCancel: { Task { await self.cancelHold() } }
+        }
         if let failure { throw failure }
         return ExportResult(outputURL: job.outputURL, srtURL: job.srtURL, durationSeconds: job.render.plan.duration, width: job.render.output.size.width, height: job.render.output.size.height, fps: job.render.output.fps, frames: 1, audioSampleRate: 48_000, audioSamples: 1, videoCodec: "h264", encoder: "fixture", elapsedSeconds: 0)
     }
@@ -45,7 +56,7 @@ actor RegressionExporter: Exporter {
         var draft = ShareCaptionDraft()
         draft.load(target: clip.id, model: model)
         draft.commit(model: model)
-        if captures { try await DebugUISuite.snapshot(ExportSheet(model: model).environment(app), name: "export-clip-result", size: NSSize(width: 668, height: 650), appearance: .aqua, directory: directory) }
+        if captures { try await DebugUISuite.snapshot(ExportJobView(model: model).environment(app), name: "export-clip-result", size: NSSize(width: 668, height: 650), appearance: .aqua, directory: directory) }
         let unchanged = model.project.share.captions == project.share.captions && !undo.canUndo && model.exports.count == 1
         draft.edit("Edited clip caption")
         undo.beginUndoGrouping(); draft.commit(model: model); undo.endUndoGrouping()
@@ -105,12 +116,12 @@ actor RegressionExporter: Exporter {
         undo.beginUndoGrouping(); model.replace(withSuggestion, name: "Suggestion fixture"); undo.endUndoGrouping()
         check("All clips includes manual kept clips but excludes suggestions", model.exportTargets(.allClips) == [.clip(clip.id)] && model.exportTargets(.fullVideo) == [.fullEdit])
         for (name, appearance) in appearances {
-            try await DebugUISuite.snapshot(ExportSheet(model: model).environment(app), name: "export-scope-\(name)", size: NSSize(width: 668, height: 650), appearance: appearance, directory: directory)
+            try await DebugUISuite.snapshot(ExportJobView(model: model).environment(app), name: "export-scope-\(name)", size: NSSize(width: 668, height: 650), appearance: appearance, directory: directory)
         }
         await exporter.setHold(true)
         model.beginExport(targets: [.clip(clip.id)], folder: directory)
         while await exporter.jobs.count < 2 { await Task.yield() }
-        try await Task.sleep(for: .milliseconds(20))
+        while model.exportProgress?.fraction != 0.25 { await Task.yield() }
         check("active export drives the row's percentage", model.exportRowStatus(clip.id) == .exporting(25))
         for (name, appearance) in appearances {
             try await DebugUISuite.snapshot(ClipRow(shell: shell, editor: model, clip: clip, suggested: false).padding(.vertical, 4), name: "export-progress-row-\(name)", size: NSSize(width: 270, height: 58), appearance: appearance, directory: directory)
@@ -124,9 +135,11 @@ actor RegressionExporter: Exporter {
         await exporter.setHold(false)
         let jobsBeforeRetry = await exporter.jobs.count
         model.retryExport(clip.id)
+        check("Retry opens Export setup for just the failed clip and folder", !model.exporting && model.exportJob.isOpen && model.exportJob.requestedIDs == [clip.id] && model.exportJob.folderOverride == directory)
+        model.beginExport(targets: model.exportTargets(model.exportJob.scope, requestedIDs: model.exportJob.requestedIDs), folder: model.exportJob.folderOverride ?? directory)
         await model.exportTask?.value
         let retryCount = await exporter.jobs.count
-        check("Retry runs just the failed clip and restores Exported", retryCount == jobsBeforeRetry + 1 && model.exportRowStatus(clip.id) == .exported)
+        check("the retry job exports just the failed clip and restores Exported", retryCount == jobsBeforeRetry + 1 && model.exportRowStatus(clip.id) == .exported)
         for (name, appearance) in appearances {
             try await DebugUISuite.snapshot(ClipRow(shell: shell, editor: model, clip: clip, suggested: false).padding(.vertical, 4), name: "export-success-row-\(name)", size: NSSize(width: 270, height: 58), appearance: appearance, directory: directory)
         }
@@ -205,8 +218,8 @@ actor RegressionExporter: Exporter {
     private static func fingerprints(project: Project, target: ExportTarget) throws -> [DebugUISuite.Result] {
         let baseline = try ExportFingerprint.value(project, target: target)
         var results: [DebugUISuite.Result] = []
-        results.append(.init(name: "required target uses exact export-sheet disclosure", passed: EditorModel.exportSheetDisclosure(required: true) == "This video contains AI-modified speech. It will show AI MODIFIED."))
-        results.append(.init(name: "unmodified target omits export-sheet disclosure", passed: EditorModel.exportSheetDisclosure(required: false) == nil))
+        results.append(.init(name: "required target uses exact export-job disclosure", passed: EditorModel.exportDisclosureNotice(required: true) == "This video contains AI-modified speech. It will show AI MODIFIED."))
+        results.append(.init(name: "unmodified target omits export-job disclosure", passed: EditorModel.exportDisclosureNotice(required: false) == nil))
         func compare(_ name: String, changed: Bool, edit: (inout Project) -> Void) throws {
             var next = project
             edit(&next)
@@ -255,5 +268,25 @@ actor RegressionExporter: Exporter {
         results.append(.init(name: "ledger retains independent entries per clip and aspect", passed: ledger.records.count == 2))
         return results
     }
+    /// Registered by sceneAudit; production routing is tested headlessly with a non-demo document.
+    static func sceneCaptures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
+        let shell = WorkspaceShell(app: app)
+        await shell.attachForTesting(VoxClipDocument(project: fixture, demo: true), selection: .fullTake)
+        guard let model = shell.editor else { throw CocoaError(.coderInvalidValue) }
+        defer { model.close() }
+        model.exportJob.isOpen = true
+        model.exportJob.fileNamePattern = "{project}-{clip}-{aspect}"
+        shell.choosePanelJob(.export, for: model)
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            try await DebugUISuite.snapshot(PanelHost(model: model, shell: shell, width: 404, height: 640), name: "export-job-setup-" + name, size: NSSize(width: 404, height: 640), appearance: appearance, directory: directory)
+        }
+        let url = directory.appendingPathComponent("Exported.mp4")
+        model.exports = [ExportResult(outputURL: url, durationSeconds: 38, width: 1080, height: 1920, fps: 30, frames: 1, audioSampleRate: 48_000, audioSamples: 1, videoCodec: "h264", encoder: "fixture", elapsedSeconds: 0)]
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            try await DebugUISuite.snapshot(PanelHost(model: model, shell: shell, width: 404, height: 640), name: "export-job-done-" + name, size: NSSize(width: 404, height: 640), appearance: appearance, directory: directory)
+        }
+        return [.init(name: "Export setup and optional-share result scenes", passed: true)]
+    }
+
 }
 #endif

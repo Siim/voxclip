@@ -101,7 +101,7 @@ import Darwin
             try bitmap(reviewCopy, name: "rewrite-copy-\(name)", width: 360, height: 420, scheme: scheme, directory: directory)
             session.edit(session.source.dropLast().map(\.text).joined(separator: " "))
             session.close()
-            let disclosure = EditorModel.exportSheetDisclosure(required: true) ?? ""
+            let disclosure = EditorModel.exportDisclosureNotice(required: true) ?? ""
             try bitmap(Label(disclosure, systemImage: "waveform").font(.caption).padding(16), name: "export-disclosure-\(name)", width: 500, height: 70, scheme: scheme, directory: directory)
         }
     }

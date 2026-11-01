@@ -60,7 +60,6 @@ struct EditorRenderSnapshot {
         guard progress != nil, let progressStage else { return nil }
         return .transcribing(fraction: progressStage == .transcribing ? progressFraction : nil, stage: progressStage)
     }
-    var showExport = false
     var showTranscribe = false
     var correctionID: String?
     var correctionText = ""
@@ -200,10 +199,31 @@ struct EditorRenderSnapshot {
     var activeExportKey: String?
     var failedExports: [String: URL] = [:]
     var exporting = false
-    func presentExport(clipIDs: [String]? = nil) {
+    var exportJob = ExportJobState()
+    @ObservationIgnored var onPresentExport: (() -> Void)?
+    @ObservationIgnored var onFinishExport: (() -> Void)?
+    func presentExport(clipIDs: [String]? = nil, folder: URL? = nil) {
         guard capabilities.writable, mediaExportable else { return }
-        if !exporting { exports = []; exportDisclosureLines = [:]; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
-        showExport = true
+        // Reopening the active job resumes it; an explicit row target starts new setup.
+        if !exporting && (!exportJob.isOpen || clipIDs != nil) {
+            let previous = exportJob.previousJob
+            exportJob.draft.commit(model: self)
+            exportJob = ExportJobState(); exportJob.previousJob = previous
+            exports = []; exportDisclosureLines = [:]; exportError = nil
+            exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? []
+            exportJob.requestedIDs = exportClipIDs
+            exportJob.scope = exportClipIDs.isEmpty ? .fullVideo : .thisClip
+            exportJob.folderOverride = folder
+            exportJob.fileNamePattern = app.string("export.fileNamePattern", fallback: "{project}-{clip}-{aspect}")
+        }
+        exportJob.isOpen = true
+        onPresentExport?()
+    }
+    func finishExportJob() {
+        guard !exporting else { return }
+        exportJob.draft.commit(model: self)
+        exportJob.isOpen = false
+        onFinishExport?()
     }
     var exportIndex = 0
     var exportStartedAt: Date?
@@ -454,6 +474,7 @@ struct EditorRenderSnapshot {
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
+        cancelMediaRelink()
         closeRewrite(returnFocus: false)
         previewRevision &+= 1
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); waveformTask?.cancel(); preview.close()
@@ -682,30 +703,65 @@ struct EditorRenderSnapshot {
     }
     /// The relink flow for missing media (editing §10.3): choose the file, confirm a
     /// different-looking one, and attach it as one "Locate media" step.
+    struct MediaRelinkCandidate {
+        let project: Project
+        let url: URL
+        let probe: MediaProbeResult
+    }
+    var mediaRelinkCandidate: MediaRelinkCandidate?
+    private var mediaRelinkRevision = 0
+    func cancelMediaRelink() { mediaRelinkRevision += 1; mediaRelinkCandidate = nil }
     func locateMedia() {
+        cancelMediaRelink()
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.movie]; panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        let revision = mediaRelinkRevision
         Task {
             do {
                 let probe = try await AVMediaProbe().probe(url)
-                let next: Project
-                do {
-                    next = try await app.projectStore.relink(project, to: url, probe: probe)
-                } catch VoxClipError.mediaMissing(_) {
-                    guard probe.durationSeconds.isFinite, abs(probe.durationSeconds - sourceDuration) <= 0.05 else {
-                        previewError = "This file's duration differs by more than 0.05 seconds. Choose another file. Edits are saved."
-                        return
-                    }
-                    let alert = NSAlert(); alert.messageText = "This file looks different. Use it anyway?"; alert.addButton(withTitle: "Use it"); alert.addButton(withTitle: "Choose another")
-                    guard alert.runModal() == .alertFirstButtonReturn else { return }
-                    next = try await app.projectStore.relink(project, to: url, probe: probe, confirmedDifferent: true)
-                }
-                mediaResolved = true
-                mediaUnreadable = false
-                replace(next, name: "Locate media")
-                await updatePreview(load: true)
-            } catch { previewError = await app.safeError(error) }
+                guard revision == mediaRelinkRevision else { return }
+                await prepareMediaRelink(url: url, probe: probe)
+            }
+            catch { if revision == mediaRelinkRevision { previewError = await app.safeError(error) } }
         }
+    }
+    func prepareMediaRelink(url: URL, probe: MediaProbeResult) async {
+        cancelMediaRelink()
+        previewError = nil
+        let revision = mediaRelinkRevision, base = project
+        guard !isLeaving, !cacheLeaseEnded else { return }
+        do {
+            let next: Project
+            do { next = try await app.projectStore.relink(base, to: url, probe: probe) }
+            catch VoxClipError.mediaMissing(_) {
+                guard probe.durationSeconds.isFinite, abs(probe.durationSeconds - base.media.source.durationSeconds) <= 0.05 else {
+                    previewError = "This file's duration differs by more than 0.05 seconds. Choose another file. Edits are saved."
+                    return
+                }
+                guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
+                mediaRelinkCandidate = MediaRelinkCandidate(project: base, url: url, probe: probe)
+                return
+            }
+            guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
+            await applyMediaRelink(next)
+        } catch { previewError = await app.safeError(error) }
+    }
+    /// Only the banner's explicit Use It action confirms different media.
+    func confirmMediaRelink() async {
+        guard let candidate = mediaRelinkCandidate else { return }
+        let revision = mediaRelinkRevision
+        mediaRelinkCandidate = nil
+        guard candidate.project == project, !isLeaving, !cacheLeaseEnded else { return }
+        do {
+            let next = try await app.projectStore.relink(candidate.project, to: candidate.url, probe: candidate.probe, confirmedDifferent: true)
+            guard revision == mediaRelinkRevision, candidate.project == project, !isLeaving, !cacheLeaseEnded else { return }
+            await applyMediaRelink(next)
+        } catch { previewError = await app.safeError(error) }
+    }
+    private func applyMediaRelink(_ next: Project) async {
+        mediaResolved = true; mediaUnreadable = false; previewError = nil
+        replace(next, name: "Locate media")
+        await updatePreview(load: true)
     }
     func apply(_ command: EditCommand, name: String, base: Project? = nil, announcing message: String? = nil) {
         guard capabilities.edit else { return }

@@ -1635,46 +1635,29 @@ Opening a video makes it playable at once (section 13, "Importing"). Transcripti
 
 ## 8. Export and share
 
-macOS: a sheet on the main window. Windows: a `ContentDialog` (`DefaultButton="Primary"`). It opens from **Export Video…** or **Export Clip…** (⌘E / Ctrl+E), the sidebar row menu (Export Clip…) and, on macOS, File > Export…. Disabled with the reason "Keep at least one word before exporting." when everything is cut (`!summary.canExport`), and with the reasons in §5.4.4 while the video is missing or unreadable and for demo projects.
+macOS: Export is a job in the right panel, below the existing reframed viewer (v3 f14). The header reads **Export · Clip 1** (or the captured full-edit/batch target) and keeps the panel switcher. The title-row **Export Video…** / **Export Clip…**, File > Export… (⌘E) and Explorer Export/Retry open that job with their requested target. There is no Export window or sheet. Windows retains its `ContentDialog` until its inline-actions lane migrates it. Existing export capability reasons still apply: keep at least one word, resolve missing/unreadable video, and leave demo projects before exporting.
 
-The sheet edits the project: **Aspect**, **Quality**, **Also save .srt** and **Save to** read and write the project's `export` object (`aspect`, `quality`, `srt`, `folder`), and the **Captions** picker reads and writes `captions.styleId`, the same value as Captions in the right column (§6.1); the picker keeps "Off" (`"off"`). New projects start from the Settings → Export defaults. Output size, bitrate and frame rate are derived from architecture.md section 4.1 and never stored.
+Setup uses the Captions job's flat spacing, 16 pt inset, 24 pt property rows, 12 pt labels, 11 pt metadata and hairlines. Settings scroll; the footer stays visible.
 
-```text
-┌ Export ───────────────────────────────────────────────────────────────┐
-│ ┌──────────────┐  What      (•) This clip · Clip 2 · 0:20              │
-│ │  first-frame │            ( ) All clips · All 4 clips                │
-│ │  thumbnail   │            ( ) Full video · 2:10                      │
-│ │  with the    │  Aspect    [9:16]  1:1  16:9  Original                │
-│ │  captions    │  Captions  Highlight ▾          [x] Also save .srt    │
-│ └──────────────┘  Quality   [Standard]  High                           │
-│                   Save to   ~/Movies/VoxClip ▾                         │
-│                                                                        │
-│                                             [ Cancel ]   [ Export ]    │
-└────────────────────────────────────────────────────────────────────────┘
+- **What:** This clip (number, title, duration), All N kept clips in transcript order, or Full video. The requested target is captured when the job opens. Export still uses `.fullEdit` or one `.clip(id)` per target.
+- **Aspect:** segmented **9:16 · 1:1 · 16:9 · Original**, with “Reframed on your face, preview above”. Values and suffixes remain `9x16`, `1x1`, `16x9`, `source`.
+- **Captions:** burn-in switch, the existing style picker including Off, and **Also save .srt**. Switching captions off preserves the last non-Off style for switching back on.
+- **Quality:** **Standard / High**, the engine's real option. f14's resolution/frame-rate rows map to read-only derived output size and fps. No new encoding options or persisted size/fps fields are introduced.
+- **Save to:** current folder and **Choose…** using the permitted system directory picker.
+- **File name:** editable job-specific pattern, initialized from Settings. `{project}-{clip}-{aspect}` uses the existing base-name sanitization, 100-character cap, fallback, safe folder containment and collision suffixes (` 2`, ` 3`). `{clip}` is `full` for a full edit.
+- Aspect, quality, SRT, folder and caption style edit the existing project settings. The file-name pattern and requested target belong to the job. Panel/tab switches preserve all setup state and share drafts.
+- **AI speech:** when an export includes AI voice, the read-aloud notice remains “This video contains AI-modified speech. It will show AI MODIFIED.” The mandatory burned-in video label and provenance are unchanged. The post line is optional, separately controlled below.
+- Footer: **0:38 · about 24 MB · H.264**, estimated from target edited duration and the resolved video/audio bitrates. The primary reads **Export Clip 1**, **Export 4 Clips** or **Export Full Edit**; after failure it reads **Try again**.
 
-after export (same sheet / dialog content replaced):
-┌ Export ───────────────────────────────────────────────────────────────┐
-│ ✓ Saved 2 videos to Movies/VoxClip                                     │
-│   interview-take-3-galley-9x16.mp4   0:42                              │
-│   interview-take-3-hooks-9x16.mp4    0:31                              │
-│                                                                        │
-│ Share   [ Show in Finder ]  [ Copy caption ]  [ Open X ]  [ Open LinkedIn ] │
-│ Caption ┌──────────────────────────────────────────────────┐ 212/280 X │
-│         │ Clip title + first sentence (editable)           │           │
-│         └──────────────────────────────────────────────────┘           │
-│                                                         [ Done ]       │
-└────────────────────────────────────────────────────────────────────────┘
-```
+While running, inline progress reads “Rendering 1 of 2 · 42% · about 1 min left” and exposes **Cancel**. The status bar continues showing its export progress. Switching panel or tab leaves the editor-owned export task running. Errors appear inline, and Retry in the Explorer opens setup for the failed target and folder. A successful target still records the export ledger (§6.2).
 
-- Single-choice options are segmented choice rows, not dropdowns (except the caption style, which has many values). Named levels, not numbers.
-- **What** is a single choice of **This clip** ("Clip 2 · It has to work on mute · 0:20"; only when a clip row is selected), **All clips** ("All 4 clips", the kept clips in transcript order, disabled when there are none) and **Full video** ("Full video · 2:10"). It defaults to the selected sidebar row. The `ExportTarget` lists are unchanged: `.fullEdit`, or one `.clip(id)` per clip.
-- **Aspect** offers `9:16 · 1:1 · 16:9 · Original`. The stored values and the file name suffixes (`9x16`, `1x1`, `16x9`, `source`) are unchanged. Windows must map options by value, not by index.
-- Progress replaces the form: "Rendering 1 of 2 · 42% · about 1 min left" with a fixed-width bar (Windows: fixed width, the Fluent `ProgressBar` minimum width otherwise pushes text) and **Cancel**. Closing the sheet keeps the export running. Progress shows on the sidebar row of the target being rendered ("Exporting 42%") instead of the toolbar subtitle or the Windows footer.
-- **Ledger.** A finished export writes the ledger record (§6.2).
-- **AI speech.** When the export target contains accepted AI speech, the sheet shows the disclosure line "This video contains AI-modified speech. It will show AI MODIFIED." above the buttons.
-- File name pattern: `{project}-{clip}-{aspect}.mp4` (`{clip}` is `full` for the full edit; aspect as `16x9`, `9x16`, `1x1`, `source`), de-duplicated with ` 2`, ` 3`.
-- **Share helpers (M1)**, behaviour in publishing.md section 2: Show in Finder / Show in Explorer, Copy caption (also offers the file for drag-out from the row), Open X (web intent with the caption), Open LinkedIn (composer with the caption). The caption field shows a per-destination count (X 280, LinkedIn 3,000).
-- M2 adds "Also post to VoxConvo @handle" (checkbox, only when connected, otherwise "Connect…") and the primary becomes **Export & post**. Posting follows publishing.md section 3: the button disables on press, the final post call is never retried automatically, "Try again" reuses the render.
+After export the result is **Exported · file name · Show in Finder · Done**. **Done** returns to the previous available panel job, falling back to Captions. Sharing is optional: **Share to X or LinkedIn…** starts collapsed, and its open/closed state is remembered in `ui.export.shareExpanded`. Done never prompts about sharing.
+
+Inside that section, the editable caption retains the X weight (`/280`) and LinkedIn scalar (`/3,000`) counters, **Copy caption**, **Open X**, **Open LinkedIn**, drag-out files, and “VoxClip copies the caption and reveals the file. Add the video in the browser; nothing is posted automatically.” For targets with a generated AI-voice disclosure line, the plain toggle **Add 'AI MODIFIED' line to the post** is **OFF by default always**, including AI-voiced exports. Turning it on adds the exact line from the rendered export after a blank paragraph; turning it off removes it with no interstitial or warning. Only an export with AI-voiced phrases shows “Your video still shows the AI MODIFIED label.” A target without AI voice has no generated post-line control or hint. The burned-in video label remains unchanged. Optional post text and truncation rules are in voice-lab.md §11.3 and publishing.md §2.1.
+
+Missing-media relinking uses an inline work-area banner: “This file looks different. Use it anyway?” and the candidate file name, **Use It**, **Choose Another…**, and **Cancel**. Only Use It confirms different media. Cancel or cancelling the system picker leaves the project unchanged. Duration mismatches beyond 0.05 seconds still refuse; a successful relink is one undo step. A stale candidate cannot change a project that has changed or is leaving.
+
+M2's future Export & post remains scoped by publishing.md §3; its final post call is never retried automatically.
 
 ---
 

@@ -258,7 +258,7 @@ extension EditorModel {
 
     func retryExport(target: ExportTarget) {
         guard let folder = failedExports[ExportLedger.key(target, aspect: project.export.aspect)], mediaExportable else { return }
-        beginExport(targets: [target], folder: folder)
+        presentExport(clipIDs: { if case .clip(let id) = target { return [id] }; return [] }(), folder: folder)
     }
 
     func exportDisclosure(_ targets: [ExportTarget]) -> String? {
@@ -266,12 +266,12 @@ extension EditorModel {
             let required: Bool
             switch target { case .fullEdit: required = containsAISpeech(); case .clip(let id): required = containsAISpeech(clipID: id) }
             if required {
-                return Self.exportSheetDisclosure(required: true)
+                return Self.exportDisclosureNotice(required: true)
             }
         }
         return nil
     }
-    static func exportSheetDisclosure(required: Bool) -> String? {
+    static func exportDisclosureNotice(required: Bool) -> String? {
         required ? "This video contains AI-modified speech. It will show AI MODIFIED." : nil
     }
 }

@@ -537,16 +537,16 @@ import VoxClipCore
         func texts(_ view: NSView) -> [String] { ((view as? NSTextField).map { [$0.stringValue] } ?? []) + view.subviews.flatMap(texts) }
         let modal = NSApp.modalWindow.map { "\(type(of: $0)) \"\($0.contentView.map(texts)?.joined(separator: " ") ?? $0.title)\"" }
         if let menu, let item, let index = menu.items.firstIndex(of: item) { menu.performActionForItem(at: index) }
-        for _ in 0..<40 where !editor.showExport { try await Task.sleep(for: .milliseconds(50)) }
+        for _ in 0..<40 where !editor.exportJob.isOpen { try await Task.sleep(for: .milliseconds(50)) }
         let exported = editor.exportClipIDs.map { (id: String) -> String in
             guard let index: Int = editor.keptClips.firstIndex(where: { (clip: ClipRange) -> Bool in clip.id == id }) else { return id }
             let number: Int = index + 1
             return "clip \(number)"
         }.joined(separator: ", ")
-        check("Export Clip… in a clip row's context menu opens Export for that clip and clears the earlier result (row \(row), menu from \(source), item enabled \(item?.isEnabled == true), modal \(modal ?? "none"), exportable \(editor.mediaExportable), Export shown \(editor.showExport) for \(exported))",
-              modal == nil && editor.showExport && editor.exportClipIDs == [kept[2]] && editor.exports.isEmpty && editor.exportError == nil
+        check("Export Clip… in a clip row's context menu opens Export for that clip and clears the earlier result (row \(row), menu from \(source), item enabled \(item?.isEnabled == true), modal \(modal ?? "none"), exportable \(editor.mediaExportable), Export shown \(editor.exportJob.isOpen) for \(exported))",
+              modal == nil && editor.exportJob.isOpen && editor.exportClipIDs == [kept[2]] && editor.exports.isEmpty && editor.exportError == nil
               && editor.project.edits.activeClipId == nil && shell.selection == .fullTake)
-        editor.showExport = false
+        editor.finishExportJob()
         try await Task.sleep(for: .milliseconds(300))
 
         // Find Clips focuses its first new suggestion; the list takes keyboard focus.

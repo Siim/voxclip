@@ -596,7 +596,7 @@ extension EditorModel {
 /// A property row (notes.md `.prop`): 24 high, the key in a 120 pt column (12,
 /// text.tertiary), then the value. VoiceOver reads the value's own control, which carries
 /// the key as its name; a value of several controls (Colour's swatches) is a group named so.
-@MainActor private struct CaptionPropertyRow<Value: View>: View {
+@MainActor struct CaptionPropertyRow<Value: View>: View {
     let title: String
     let marker: String
     let value: Value

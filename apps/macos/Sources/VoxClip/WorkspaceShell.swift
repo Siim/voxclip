@@ -517,13 +517,13 @@ enum SidebarItem: Hashable {
         attach(version, bringForward: false)
     }
 
-    private func attach(_ next: VoxClipDocument, bringForward: Bool = true) {
+    private func attach(_ next: VoxClipDocument, bringForward: Bool = true, testPreview: (any PreviewEngine)? = nil, exporter: (any Exporter)? = nil) {
         notice = nil
-        var preview: (any PreviewEngine)?
+        var preview: (any PreviewEngine)? = testPreview
         #if DEBUG
         if next.demo { preview = DemoPreviewEngine() }
         #endif
-        let model = EditorModel(document: next, app: app, preview: preview)
+        let model = EditorModel(document: next, app: app, preview: preview, exporter: exporter)
         model.undoManager = next.undoManager
         model.window = windowController?.window
         model.onActiveClipChange = { [weak self] id in self?.followScope(id) }
@@ -533,6 +533,17 @@ enum SidebarItem: Hashable {
             tabs.keepOpen(tab)
         }
         model.onNeedsSidebar = { [weak self] in self?.revealSidebar() }
+        model.onPresentExport = { [weak self, weak model] in
+            guard let self, let model else { return }
+            let current = self.panelJob(for: model)
+            if current != .export { model.exportJob.previousJob = current }
+            self.choosePanelJob(.export, for: model)
+            if !self.viewerShown { self.toggleViewer() }
+        }
+        model.onFinishExport = { [weak self, weak model] in
+            guard let self, let model else { return }
+            self.choosePanelJob(PanelJob.available(in: model).contains(model.exportJob.previousJob) ? model.exportJob.previousJob : .captions, for: model)
+        }
         model.onNeedsSuggestions = { [weak self] in self?.setExplorerExpanded(.suggested, true) }
         next.editorModel = model
         renaming = nil
@@ -590,8 +601,8 @@ enum SidebarItem: Hashable {
     }
     /// Offscreen captures and harness checks: attaches a project to a shell that has
     /// no window and waits for its editor to start.
-    func attachForTesting(_ next: VoxClipDocument, selection row: SidebarItem? = nil) async {
-        attach(next)
+    func attachForTesting(_ next: VoxClipDocument, selection row: SidebarItem? = nil, preview: (any PreviewEngine)? = nil, exporter: (any Exporter)? = nil) async {
+        attach(next, testPreview: preview, exporter: exporter)
         await started?.value
         if let row { selection = row }
     }
