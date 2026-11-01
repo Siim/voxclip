@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import Foundation
 import Testing
@@ -437,3 +438,4 @@ import Testing
         for result in results where !result.passed { Issue.record("\(result.name)") }
     }
 }
+#endif

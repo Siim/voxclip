@@ -796,7 +796,10 @@ private actor TimelineTestSettings: SettingsStore {
         var seed: UInt32 = 7
         for index in fine.indices where fine[index] == 0 {
             seed = seed &* 1_664_525 &+ 1_013_904_223
-            fine[index] = Float(pow(10, (-50 + 6 * Double(seed >> 8) / Double(1 << 24) - 3) / 20))
+            let noiseNumerator: Double = 6.0 * Double(seed >> 8)
+            let decibels: Double = -50.0 + noiseNumerator / 16_777_216.0 - 3.0
+            let amplitude: Double = pow(10.0, decibels / 20.0)
+            fine[index] = Float(amplitude)
         }
         #expect(fine.filter { $0 < 0.005 }.count * 100 / fine.count >= 55)
         expectSpeech(WaveformData(fine: fine), seconds: 120, typical: 0.55...0.70, "room tone")
