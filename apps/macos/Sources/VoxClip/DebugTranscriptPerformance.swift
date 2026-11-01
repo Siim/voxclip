@@ -13,6 +13,10 @@ import VoxClipCore
         let cutMaximumMS: Double
         let scrollMedianMS: Double
         let scrollP95MS: Double
+        /// Scrolling as the editor shows a take by default: Show cuts off, so every frame draws
+        /// fold dots, with a selection over several paragraphs and the caret to place.
+        let foldScrollMedianMS: Double
+        let foldScrollP95MS: Double
         let storageRebuildsDuringCuts: Int
         let changedSpansPerCut: Int
         let tabSwitchMaximumMS: Double
@@ -112,16 +116,23 @@ import VoxClipCore
             cutTimes.append(milliseconds(start.duration(to: .now)))
         }
         let storageRebuildsDuringCuts = renderer.storageRevision - revision
-        var scrollTimes: [Double] = []
-        for frame in 0..<120 {
-            let start = ContinuousClock.now
-            let maximum = max(0, text.bounds.height - scroll.contentView.bounds.height)
-            scroll.contentView.scroll(to: NSPoint(x: 0, y: min(maximum, Double(frame) * 28)))
-            scroll.reflectScrolledClipView(scroll.contentView)
-            manager.textViewportLayoutController.layoutViewport()
-            text.displayIfNeeded()
-            scrollTimes.append(milliseconds(start.duration(to: .now)))
+        /// 120 frames down the take from its top, 28 pt each, and how many showed a selection tint.
+        func scrollFrames() -> (times: [Double], tinted: Int) {
+            var tinted = 0
+            let times = (0..<120).map { frame in
+                let start = ContinuousClock.now
+                let maximum = max(0, text.bounds.height - scroll.contentView.bounds.height)
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: min(maximum, Double(frame) * 28)))
+                scroll.reflectScrolledClipView(scroll.contentView)
+                manager.textViewportLayoutController.layoutViewport()
+                text.displayIfNeeded()
+                let time = milliseconds(start.duration(to: .now))
+                if text.selectionLayer?.rects.isEmpty == false { tinted += 1 }
+                return time
+            }
+            return (times, tinted)
         }
+        let scrollTimes = scrollFrames().times
         // Playhead ticks: the caret moves from word to word and no span is styled again.
         var tickTimes: [Double] = []
         let tickBefore = (applied: renderer.attributeUpdates, styled: renderer.rebuildStyles, scoped: renderer.scopeRestyles, moves: renderer.caretMoves)
@@ -146,6 +157,17 @@ import VoxClipCore
             toggleRebuilds += renderer.documentRebuilds - rebuilds
         }
         toggle(false)
+        // The same frames with folds, the caret and a selection of 1,099 words over several
+        // paragraphs, whose ends are kept words, so no fold opens.
+        func show(_ ids: Set<String>) {
+            model.selectedWordIDs = ids
+            coordinator.updating = true
+            TranscriptTextView.select(model: model, in: text)
+            coordinator.updating = false
+        }
+        show(Set(words[101...1_199].map(\.id)))
+        let (foldScrollTimes, tintedFrames) = scrollFrames()
+        show([])
         // Tab switches with folds: Full Take to clip A, A to its neighbour B, B back to Full
         // Take. Outside the open clip the text shows no folds, so a switch writes the
         // paragraphs whose in-clip state changed, and restyles the words whose state changed.
@@ -230,14 +252,15 @@ import VoxClipCore
         let lengths = zip(renderer.paragraphs, renderer.paragraphs.dropFirst().map(\.firstWord) + [words.count]).map { $1 - $0.firstWord }
         let configuration = "DEBUG assertions=\(_isDebugAssertConfiguration())"
         let metrics = Metrics(fixture: name, wordCount: words.count, paragraphs: lengths.count, longestParagraph: lengths.max() ?? 0, cutMedianMS: percentile(cutTimes, 0.5), cutP95MS: percentile(cutTimes, 0.95),
-                              cutMaximumMS: cutTimes.max() ?? 0, scrollMedianMS: percentile(scrollTimes, 0.5), scrollP95MS: percentile(scrollTimes, 0.95), storageRebuildsDuringCuts: storageRebuildsDuringCuts,
+                              cutMaximumMS: cutTimes.max() ?? 0, scrollMedianMS: percentile(scrollTimes, 0.5), scrollP95MS: percentile(scrollTimes, 0.95),
+                              foldScrollMedianMS: percentile(foldScrollTimes, 0.5), foldScrollP95MS: percentile(foldScrollTimes, 0.95), storageRebuildsDuringCuts: storageRebuildsDuringCuts,
                               changedSpansPerCut: changedCounts.max() ?? 0, tabSwitchMaximumMS: switchTimes.max() ?? 0, tabSwitchRestyles: restyles, tabSwitchParagraphs: switchParagraphs,
                               caretTickMedianMS: percentile(tickTimes, 0.5), caretTickMaximumMS: tickTimes.max() ?? 0, caretTickRestyles: tickRestyles, caretMoves: caretMoves,
                               foldCutMedianMS: percentile(foldTimes, 0.5), foldCutP95MS: percentile(foldTimes, 0.95), foldCutMaximumMS: foldTimes.max() ?? 0,
                               paragraphsReplacedPerCut: replaced.max() ?? 0, documentRebuildsDuringCuts: documentRebuildsDuringFolds, stylesPerFoldCut: styles.max() ?? 0,
                               showCutsToggleMaximumMS: toggleTimes.max() ?? 0, bulkEditMaximumMS: bulkTimes.max() ?? 0, bulkEditParagraphs: bulkSizes, bulkEditStorageEdits: bulkEdits,
                               rulerSpanMedianMS: percentile(rulerTimes, 0.5),
-                              scope: "\(configuration). Production EditHistory.apply through EditorModel.refresh, timeline projection and TextKit display; 10,000 words with 2,000 initial cuts. Cuts with Show cuts on restyle their word. Playhead ticks move the caret. Tab switches with folds go through setActiveClip, the rebuild of the paragraphs whose in-clip state changed and the scope restyle. Fold edits rebuild the text with Show cuts off, as the editor does: 24 single toggles and 6 two-word edits across paragraph breaks, then bulk cuts and restores of one word in each of \(bulkSizes) paragraphs. Offscreen CPU frame times, not physical display refresh measurements.")
+                              scope: "\(configuration). Production EditHistory.apply through EditorModel.refresh, timeline projection and TextKit display; 10,000 words with 2,000 initial cuts. Cuts with Show cuts on restyle their word. Scrolling runs with Show cuts on, then with folds and a 1,099-word selection. Playhead ticks move the caret. Tab switches with folds go through setActiveClip, the rebuild of the paragraphs whose in-clip state changed and the scope restyle. Fold edits rebuild the text with Show cuts off, as the editor does: 24 single toggles and 6 two-word edits across paragraph breaks, then bulk cuts and restores of one word in each of \(bulkSizes) paragraphs. Offscreen CPU frame times, not physical display refresh measurements.")
         let map = text.map
         // Full Take to A restyles the words outside A; A to B only the 300 words of both; B to Full Take the words outside B.
         let outside = words.count - 150
@@ -260,6 +283,8 @@ import VoxClipCore
             DebugUISuite.Result(name: "\(name): a bulk fold edit stays within the 150 ms full-rebuild budget (\(String(format: "%.1f", metrics.bulkEditMaximumMS)) ms)",
                                 passed: _isDebugAssertConfiguration() || metrics.bulkEditMaximumMS <= 150),
             DebugUISuite.Result(name: "\(name): offscreen scrolling fits the 60 fps CPU budget", passed: metrics.scrollP95MS < 1000 / 60),
+            DebugUISuite.Result(name: "\(name): offscreen scrolling with folds, the caret and a selection over several paragraphs fits the 60 fps CPU budget (p95 \(String(format: "%.2f", metrics.foldScrollP95MS)) ms, \(tintedFrames) of 120 frames tinted)",
+                                passed: tintedFrames > 0 && metrics.foldScrollP95MS < 1000 / 60),
             DebugUISuite.Result(name: "\(name): the overview ruler's visible span costs at most 0.05 ms per viewport layout (\(String(format: "%.3f", metrics.rulerSpanMedianMS)) ms)",
                                 passed: rulerSpan != nil && (_isDebugAssertConfiguration() || metrics.rulerSpanMedianMS <= 0.05)),
             DebugUISuite.Result(name: "\(name): range map indexes last words and character intersections", passed: map.span(id: words.last!.id) == map.spans.last && map.intersecting(map.spans[5000].range).count == 1),

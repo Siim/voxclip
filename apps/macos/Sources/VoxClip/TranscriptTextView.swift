@@ -373,7 +373,9 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         let start = max(first.location, viewport.map { content.offset(from: documentStart, to: $0.location) } ?? 0)
         let end = min(NSMaxRange(last), viewport.map { content.offset(from: documentStart, to: $0.endLocation) } ?? NSMaxRange(last))
         guard start < end, let location = content.location(documentStart, offsetBy: start) else { return [] }
-        let origin = textContainerOrigin, font = renderer.font, string = self.string as NSString
+        // The storage's own string: bridging `string` would copy the whole text on every viewport layout.
+        guard let string = textStorage?.mutableString else { return [] }
+        let origin = textContainerOrigin, font = renderer.font
         var rects: [CGRect] = []
         manager.enumerateTextLayoutFragments(from: location, options: []) { fragment in
             guard let element = fragment.textElement?.elementRange else { return false }
