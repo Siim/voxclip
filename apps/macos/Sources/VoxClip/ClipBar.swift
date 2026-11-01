@@ -7,10 +7,10 @@ import VoxClipCore
 // "Suggested clip", Keep ⇧⌘↩ and Dismiss. A control that cannot act is not shown (design.md
 // §1.6), and with no editable scope (no transcript, a Versions window) the bar is empty; while the
 // video is missing or a relink waits for Use It, the verbs and the Ask field show dimmed, as v5 f24
-// draws the read-only editor (lead decision 7), and the status bar says why. Phase 0 meanings (impl-plan item 1): Rewrite and Ask run Rewrite on the scope now (V13:
-// the selection, else the tab's clip, else Full Take) with the field's text as the instruction;
-// Tighten cuts the scope's fillers and pauses as one undo step; Hook finds hook clips in the take
-// with one click.
+// draws the read-only editor (lead decision 7), and the status bar says why. Phase 0 meanings
+// (impl-plan item 1): Rewrite and Ask run Rewrite on the scope now (V13: the selection, else the
+// tab's clip, else Full Take) with the field's text as the instruction; Tighten cuts the scope's
+// fillers and pauses as one undo step; Hook finds hook clips in the take with one click.
 
 /// What the bar holds: nothing, a scope's verbs (the tab's clip, nil for Full Take), a suggestion's Keep and Dismiss, or
 /// the scope's verbs dimmed while the editor only reads until its video is found or confirmed.
