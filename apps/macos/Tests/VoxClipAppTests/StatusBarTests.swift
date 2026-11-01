@@ -174,6 +174,11 @@ import Testing
         #expect(reviewCount()?.hasSuffix("cuts") == true && bar.content[.summary]?.text.contains("to review") == false)
         undo.undo()
         #expect(reviewCount() == "4 changes to review")
+        // A change with no Keep or Undo (`reviewable`: a phrase that can't be made now) waits for no review, as the change
+        // list counts, though its state reads pending.
+        editor.proposal?.changes[2].reviewable = false
+        #expect(reviewCount() == "3 changes to review" && editor.proposal?[3]?.state == .pending)
+        editor.proposal?.changes[2].reviewable = true
         // A proposal belongs to its own tab.
         shell.selection = .clip(editor.keptClips[1].id)
         bar.render()

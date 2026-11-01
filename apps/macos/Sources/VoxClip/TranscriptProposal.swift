@@ -391,13 +391,14 @@ extension EditorModel {
             return words[shown.words.lowerBound].start...max(words[shown.words.lowerBound].start, words[shown.words.upperBound].end)
         }
     }
-    /// The changes of `clipID`'s proposal that wait for a review (notes.md §5): pending, not a punctuation-only fix and
-    /// not already in the project. Kept and undone (left out) changes never count. The tab's dirty dot, the status
-    /// bar's "{n} changes to review" and the Explorer Outline's green dots read them.
+    /// The changes of `clipID`'s proposal that wait for a review (notes.md §5): pending, reviewable, not a
+    /// punctuation-only fix and not already in the project. Kept and undone (left out) changes never count, nor does
+    /// one with no Keep or Undo (`reviewable`), as the change list counts. The tab's dirty dot, the status bar's
+    /// "{n} changes to review" and the Explorer Outline's green dots read them.
     func unreviewedChanges(clipID: String?) -> [TranscriptChange] {
         guard let proposal, proposal.clipID == clipID else { return [] }
         let reader = TranscriptChangeReader(self)
-        return proposal.changes.filter { $0.state == .pending && !reader.isPunctuationOnly($0) && !reader.isApplied($0) }
+        return proposal.changes.filter { $0.state == .pending && $0.reviewable && !reader.isPunctuationOnly($0) && !reader.isApplied($0) }
     }
     /// The clip's tab shows the dirty dot while its proposal has changes not yet reviewed (notes.md §5).
     func hasUnreviewedChanges(clipID: String?) -> Bool { !unreviewedChanges(clipID: clipID).isEmpty }
