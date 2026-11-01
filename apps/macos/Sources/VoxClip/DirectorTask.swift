@@ -282,7 +282,7 @@ enum PanelError: Equatable, Sendable {
     /// An API-key connector with no key.
     case noKey(provider: String, name: String)
     /// A local server that does not answer: "Ollama", "LM Studio".
-    case notRunning(server: String)
+    case notRunning(server: String, url: String)
     /// The model declined.
     case refused
     /// More than 3,000 entries (voice-lab.md §8.1); `count` is the scope's kept items.
@@ -445,6 +445,11 @@ enum PanelError: Equatable, Sendable {
     /// Space on the change list: leaves the focused change out, or keeps one left out, as its row's checkbox would
     /// (design.md R2). A kept cut or fix is in the project; ⌘Z takes it back. False when nothing acts.
     func pressSpace() -> Bool {
+        // A question's safe answer has the keyboard (`DirectorPanel`): Space chooses it, and leaves the list alone.
+        if let confirm {
+            confirm.cancel.perform()
+            return true
+        }
         guard let changes, let review, let item = changes.items.first(where: { $0.ordinal == changes.focused }), item.reviewable else { return false }
         switch item.state {
         case .pending: review(item.ordinal, .undo)

@@ -2,7 +2,7 @@ import Foundation
 
 extension SettingsDocument {
     static func isKnownKey(_ key: String) -> Bool {
-        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio"].contains(key) || layoutRanges[key] != nil ||
+        defaults[key] != nil || ["llm.baseUrl.ollama", "llm.baseUrl.lmstudio"].contains(key) || layoutRanges[key] != nil || layoutChoices[key] != nil ||
         ProjectValidation.matches(key, "(?:llm\\.model|llm\\.cloudConsent|voiceLab\\.providerConsent|voiceLab\\.monthlyCapUsd)\\.[a-z0-9]+(?:-[a-z0-9]+)*")
     }
 
@@ -29,6 +29,9 @@ extension SettingsDocument {
     public static let layoutRanges: [String: ClosedRange<Double>] = [
         "ui.layout.explorerWidth": 160...480, "ui.layout.rightWidth": 240...720, "ui.layout.timelineHeight": 40...1200
     ]
+    /// The Mac editor's layout choices (impl-plan §3.4): the timeline's track height (S, M or L, V9). No shared
+    /// default: missing is medium.
+    public static let layoutChoices: [String: [String]] = ["ui.layout.trackHeight": ["small", "medium", "large"]]
 
     public static let defaults: [String: JSONValue] = [
         "general.appearance": .string("system"), "general.transcriptTextSize": .null, "ui.rightColumnWidth": .null,
@@ -64,7 +67,7 @@ extension SettingsDocument {
             "transcription.engineMode": ["local", "apple", "elevenlabs", "ask"], "transcription.elevenlabs.region": ["default", "us", "eu", "in", "sg"],
             "export.defaultAspect": ["source", "16:9", "9:16", "1:1"], "export.quality": ["standard", "high"],
             "llm.clips.lastPreset": ["best", "hooks", "topics", "quotes", "custom"], "llm.tighten.strength": ["light", "normal", "strong"]
-        ]
+        ].merging(Self.layoutChoices) { current, _ in current }
         for (key, value) in values {
             if let allowed = enums[key] {
                 guard case .string(let text) = value, allowed.contains(text) else { throw VoxClipError.projectUnreadable("Invalid settings choice") }

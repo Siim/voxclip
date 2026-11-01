@@ -32,7 +32,7 @@ internal static class SettingsValidation
     private static readonly HashSet<string> KnownKeys = AppSettings.Defaults.Keys.ToHashSet(StringComparer.Ordinal);
 
     internal static bool KnownKey(string key)
-        => KnownKeys.Contains(key) || key is "llm.baseUrl.ollama" or "llm.baseUrl.lmstudio" ||
+        => KnownKeys.Contains(key) || key is "llm.baseUrl.ollama" or "llm.baseUrl.lmstudio" or "ui.layout.trackHeight" ||
             Regex.IsMatch(key, "\\A(?:llm\\.(?:model|cloudConsent)|voiceLab\\.(?:providerConsent|monthlyCapUsd))\\.[a-z0-9]+(?:-[a-z0-9]+)*\\z", RegexOptions.CultureInvariant);
 
     internal static void Validate(AppSettings settings)
@@ -44,6 +44,7 @@ internal static class SettingsValidation
             Require(value.ValueKind != JsonValueKind.Undefined);
             switch (pair.Key)
             {
+                case "ui.layout.trackHeight": Choice(value, "small", "medium", "large"); break;
                 case "general.appearance": Choice(value, "system", "light", "dark"); break;
                 case "general.transcriptTextSize": if (value.ValueKind != JsonValueKind.Null) Require(value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var size) && double.IsFinite(size) && size >= 13 && size <= 28); break;
                 case "ui.rightColumnWidth": if (value.ValueKind != JsonValueKind.Null) Require(value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var width) && double.IsFinite(width) && width >= 240 && width <= 720); break;

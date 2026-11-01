@@ -115,6 +115,7 @@ extension NSView {
     private var bottom: [(view: NSView, height: CGFloat)] = []
     private var fillView: NSView?
     private let fill: String?
+    var commandOverlay: NSView? { didSet { oldValue?.removeFromSuperview(); if let commandOverlay { addSubview(commandOverlay) }; needsLayout = true } }
     init(fill: String? = nil) {
         self.fill = fill
         super.init(frame: NSRect(x: 0, y: 0, width: 640, height: 480))
@@ -129,6 +130,10 @@ extension NSView {
     }
     override func layout() {
         super.layout()
+        if let overlay = commandOverlay {
+            let width = min(520, max(0, bounds.width - 16))
+            overlay.frame = NSRect(x: max(8, bounds.width - width - 8), y: ShellMetrics.titleRow, width: width, height: min(350, max(0, bounds.height - ShellMetrics.titleRow - 32)))
+        }
         var y: CGFloat = 0
         for row in top {
             if row.view.superview === self { row.view.frame = NSRect(x: 0, y: y, width: bounds.width, height: row.height) }
@@ -542,6 +547,9 @@ struct EditorShellState: Equatable {
     /// Home's title row and Home, while Home shows.
     private(set) var homeBand: ShellBand?
     let homeSearch = HomeSearchField()
+    private(set) var commandPalette: CommandPaletteView?
+    private var commandObservation: ShellObservation?
+    private lazy var homeCommands = CommandPaletteLauncher(shell: shell)
     /// Shows and hides the Explorer: in its header while it shows, else at the start of the work area's title row.
     let explorerToggle = ShellIconButton(symbol: "sidebar.left", identifier: "voxclip.shell.toggleExplorer")
 
@@ -592,6 +600,7 @@ struct EditorShellState: Equatable {
         // their minimums (impl-plan §3.5), so it never squeezes them or passes the width rule.
         content.divider.aroundDividerDrag = { [weak self] dragging in self?.limitExplorerDrag(dragging) }
         shell.chromeFocus = self
+        commandObservation = ShellObservation { [weak self] in self?.renderCommands() }
         let status = StatusBarView(shell: shell)
         status.shellGroup("Status")
         statusBar = status
@@ -625,7 +634,25 @@ struct EditorShellState: Equatable {
         placeChrome()
     }
 
+    private func renderCommands() {
+        _ = shell.commandPaletteRequest
+        if shell.showCommandPalette, let palette = commandPalette { palette.focus(); return }
+        if shell.showCommandPalette, commandPalette == nil {
+            let palette = CommandPaletteView()
+            commandPalette = palette
+            palette.onClose = { [weak self] in
+                self?.shell.showCommandPalette = false
+                (self?.view as? ShellStackView)?.commandOverlay = nil
+                self?.commandPalette = nil
+            }
+            (view as? ShellStackView)?.commandOverlay = palette
+            view.layoutSubtreeIfNeeded()
+            palette.open()
+        } else if !shell.showCommandPalette, let palette = commandPalette { palette.close() }
+    }
     func tearDown() {
+        commandPalette?.close()
+        commandObservation?.cancel()
         editorWork?.tearDown()
         statusBar?.tearDown()
     }
@@ -654,7 +681,7 @@ struct EditorShellState: Equatable {
         } else {
             let band = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "homeTitle")
             band.trailingInset = 8
-            band.set(leading: [], trailing: [homeSearch])
+            band.set(leading: [], trailing: [homeSearch, homeCommands])
             homeBand = band
             let home = ShellHost.controller(HomeView(shell: shell), app: shell.app)
             let stack = ShellStackView(fill: "bg.surface")
@@ -679,12 +706,12 @@ struct EditorShellState: Equatable {
             explorerHeader.set(leading: [], trailing: [explorerToggle])
             titleRow?.leadingInset = 0
             editorWork?.placeTabRow(explorerToggle: nil)
-            if titleRow === homeBand { homeBand?.set(leading: [], trailing: [homeSearch]) }
+            if titleRow === homeBand { homeBand?.set(leading: [], trailing: [homeSearch, homeCommands]) }
         } else {
             explorerHeader.set(leading: [], trailing: [])
             titleRow?.leadingInset = fullScreen ? 8 : ShellMetrics.windowButtons
             editorWork?.placeTabRow(explorerToggle: explorerToggle)
-            if titleRow === homeBand { homeBand?.set(leading: [explorerToggle], trailing: [homeSearch]) }
+            if titleRow === homeBand { homeBand?.set(leading: [explorerToggle], trailing: [homeSearch, homeCommands]) }
         }
     }
 
@@ -815,6 +842,7 @@ struct EditorShellState: Equatable {
     private var timelineShown = true
     private var observations: [ShellObservation] = []
     private(set) var findClipsPopover: NSPopover?
+    private lazy var commandLauncher = CommandPaletteLauncher(shell: shell)
     private var explorerToggle: NSView?
     private var sized = false
 
@@ -967,10 +995,10 @@ struct EditorShellState: Equatable {
     /// drag gap after the tabs (`EditorTabMetrics.dragGap`), so Show cuts never takes it.
     func placeTabRow(explorerToggle: NSView?) {
         self.explorerToggle = explorerToggle
-        let cluster: [NSView] = [export, timelineToggle, rightToggle]
         let rightShows = rightItem.map { !$0.isCollapsed } ?? true
-        tabRow.set(leading: [explorerToggle, tabBar].compactMap { $0 }, trailing: rightShows ? [showCuts, overflow] : [showCuts, overflow] + cluster)
-        rightTitle.set(leading: [], trailing: rightShows ? cluster : [])
+        tabRow.set(leading: [explorerToggle, tabBar].compactMap { $0 }, trailing: rightShows ? [showCuts, overflow] : [showCuts, overflow] + [export, timelineToggle, rightToggle])
+        rightTitle.fillsLeading = commandLauncher
+        rightTitle.set(leading: rightShows ? [commandLauncher] : [], trailing: rightShows ? [export, timelineToggle, rightToggle] : [])
     }
 
     private func renderExport() {

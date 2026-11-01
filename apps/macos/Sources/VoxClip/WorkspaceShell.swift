@@ -23,7 +23,8 @@ enum SidebarItem: Hashable {
     var explorerVisible = true
     var rightVisible = true
     var timelineVisible = true
-    /// The timeline fills the work area (V7a's maximize button); no V1a control sets it.
+    /// The timeline panel's Maximize (impl-plan V9): it takes the work area down to the
+    /// columns' minimum, until Maximize again or a drag of its edge. Per window, not kept.
     var timelineMaximized = false
     /// The window's content width, which the right column's starting width follows.
     var windowWidth = 1280.0
@@ -34,6 +35,7 @@ enum SidebarItem: Hashable {
     static let explorerWidthKey = "ui.layout.explorerWidth"
     static let rightWidthKey = "ui.layout.rightWidth"
     static let timelineHeightKey = "ui.layout.timelineHeight"
+    static let trackHeightKey = "ui.layout.trackHeight"
     /// The pre-v2 right-column width, which a saved settings file may still hold.
     static let retiredRightWidthKey = "ui.rightColumnWidth"
     /// Removes the pre-v2 right-column width from loaded settings (impl-plan item 18).
@@ -73,12 +75,24 @@ enum SidebarItem: Hashable {
     /// The timeline panel's height below its top edge: where the user last dragged that
     /// edge, else 216 within 40% of the work area (impl-plan §3.5).
     var timelineHeight: Double {
+        // Maximized: everything but the columns' minimum and the 1 pt edge.
+        if timelineMaximized { return (workHeight - Double(ShellMetrics.topMinimum) - 1).clamped(to: Self.timelineRange) }
         let start = min(Self.timelineDefault, (workHeight * Self.timelineShare).rounded(.down))
         return app.number(Self.timelineHeightKey, fallback: start).clamped(to: Self.timelineRange)
     }
     func rememberExplorerWidth(_ width: Double) { app.set(Self.explorerWidthKey, .number(width.rounded().clamped(to: Self.explorerRange))) }
     func rememberRightWidth(_ width: Double) { app.set(Self.rightWidthKey, .number(width.rounded().clamped(to: Self.rightRange))) }
-    func rememberTimelineHeight(_ height: Double) { app.set(Self.timelineHeightKey, .number(height.rounded().clamped(to: Self.timelineRange))) }
+    /// A drag of the timeline's edge also ends Maximize.
+    func rememberTimelineHeight(_ height: Double) {
+        timelineMaximized = false
+        app.set(Self.timelineHeightKey, .number(height.rounded().clamped(to: Self.timelineRange)))
+    }
+    /// V1, A1 and CC's height in the timeline (notes.md §6, impl-plan V9): the one the user
+    /// last picked, kept for every project, else M.
+    var trackHeight: TrackHeight {
+        get { TrackHeight(rawValue: app.string(Self.trackHeightKey)) ?? .medium }
+        set { app.set(Self.trackHeightKey, .string(newValue.rawValue)) }
+    }
 }
 
 /// State of the one main window (ADR-R29): the open project, its editor, the sidebar
@@ -98,6 +112,9 @@ enum SidebarItem: Hashable {
     /// The panel job picked in the right column's switcher (impl-plan V4, §3.4), until the
     /// project closes; `panelJob(for:)` reads it.
     var panelChoice: PanelJobChoice?
+    /// The job the Export job was opened from, where its Done goes back to (VX); with
+    /// `panelChoice`, the right panel's whole host state.
+    var exportReturnJob = PanelJob.captions
     /// Below `explorerCollapseWidth` (1,128) the Explorer shows over the editor on request
     /// (impl-plan §3.5): the Explorer toggle, View > Show Sidebar and Find Clips. Escape or
     /// a click on a row hides it again.
@@ -126,8 +143,10 @@ enum SidebarItem: Hashable {
             if abs(newValue - old) > 0.5 { fitColumns() }
         }
     }
-    /// Help > Keyboard Shortcuts (⌘/), also on Home.
-    var showShortcuts = false
+    /// The in-window command field (⌘K), also on Home.
+    var showCommandPalette = false
+    private(set) var commandPaletteRequest = 0
+    func openCommandPalette() { showCommandPalette = true; commandPaletteRequest += 1 }
     /// The right column was collapsed by the window's width, not by the user.
     @ObservationIgnored private var rightHiddenByWidth = false
     /// The Explorer was collapsed by the window's width, not by the user.
@@ -518,13 +537,13 @@ enum SidebarItem: Hashable {
         attach(version, bringForward: false)
     }
 
-    private func attach(_ next: VoxClipDocument, bringForward: Bool = true) {
+    private func attach(_ next: VoxClipDocument, bringForward: Bool = true, testPreview: (any PreviewEngine)? = nil, exporter: (any Exporter)? = nil) {
         notice = nil
-        var preview: (any PreviewEngine)?
+        var preview: (any PreviewEngine)? = testPreview
         #if DEBUG
         if next.demo { preview = DemoPreviewEngine() }
         #endif
-        let model = EditorModel(document: next, app: app, preview: preview)
+        let model = EditorModel(document: next, app: app, preview: preview, exporter: exporter)
         model.undoManager = next.undoManager
         model.window = windowController?.window
         model.onActiveClipChange = { [weak self] id in self?.followScope(id) }
@@ -534,6 +553,15 @@ enum SidebarItem: Hashable {
             tabs.keepOpen(tab)
         }
         model.onNeedsSidebar = { [weak self] in self?.revealSidebar() }
+        model.onPresentExport = { [weak self, weak model] in
+            guard let self, let model else { return }
+            self.choosePanelJob(.export, for: model)
+            if !self.viewerShown { self.toggleViewer() }
+        }
+        model.onFinishExport = { [weak self, weak model] in
+            guard let self, let model else { return }
+            self.leaveExportJob(for: model)
+        }
         model.onNeedsSuggestions = { [weak self] in self?.setExplorerExpanded(.suggested, true) }
         next.editorModel = model
         renaming = nil
@@ -541,6 +569,7 @@ enum SidebarItem: Hashable {
         rightOverlay = false
         tabs.reset()
         panelChoice = nil
+        exportReturnJob = .captions
         outlineHasPendingHunk = { [weak model] words in model?.hasUnreviewedChange(inWords: words) ?? false }
         document = next
         editor = model
@@ -574,6 +603,7 @@ enum SidebarItem: Hashable {
         started = nil
         tabs.reset()
         panelChoice = nil
+        exportReturnJob = .captions
         windowController?.window?.title = title
         (windowController as? MainWindowController)?.restorationDidChange()
     }
@@ -591,8 +621,8 @@ enum SidebarItem: Hashable {
     }
     /// Offscreen captures and harness checks: attaches a project to a shell that has
     /// no window and waits for its editor to start.
-    func attachForTesting(_ next: VoxClipDocument, selection row: SidebarItem? = nil) async {
-        attach(next)
+    func attachForTesting(_ next: VoxClipDocument, selection row: SidebarItem? = nil, preview: (any PreviewEngine)? = nil, exporter: (any Exporter)? = nil) async {
+        attach(next, testPreview: preview, exporter: exporter)
         await started?.value
         if let row { selection = row }
     }

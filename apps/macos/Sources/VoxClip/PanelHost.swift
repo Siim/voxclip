@@ -7,10 +7,11 @@ import VoxClipCore
 
 /// A job of the right column's one panel (notes.md §7).
 enum PanelJob: String, CaseIterable, Sendable {
-    case captions, rewrite, voice, takes, director
+    case captions, rewrite, voice, takes, director, export
 
     var title: String {
         switch self {
+        case .export: "Export"
         case .captions: "Captions"
         case .rewrite: "Rewrite"
         case .voice: "Voice"
@@ -21,6 +22,7 @@ enum PanelJob: String, CaseIterable, Sendable {
     /// The switcher's glyph, in the mockup's order: captions, pencil, waveform, chat.
     var symbol: String {
         switch self {
+        case .export: "square.and.arrow.up"
         case .captions: "captions.bubble"
         case .rewrite: "pencil"
         case .voice: "waveform"
@@ -30,12 +32,14 @@ enum PanelJob: String, CaseIterable, Sendable {
     }
 
     /// The jobs that can act in `model` now, in switcher order (design: "a control that
-    /// cannot act is not shown"). Captions always, and the job of the task open on the
-    /// active tab (Rewrite; Voice and Takes with V16–V18, Director with Phase 1).
+    /// cannot act is not shown"). Captions always, the job of the task open on the active
+    /// tab (Rewrite; Voice and Takes with V16–V18, Director with Phase 1), and Export while
+    /// its job is open (VX), which a render keeps open on any tab.
     @MainActor static func available(in model: EditorModel) -> [PanelJob] {
         var jobs: [PanelJob] = [.captions]
         if let task = model.panelTask { jobs.append(task.job) }
         if model.hasVoiceJob { jobs.append(.voice) }
+        if model.exportJob.isOpen { jobs.append(.export) }
         return jobs
     }
 }
@@ -72,25 +76,33 @@ extension EditorModel {
 
 extension WorkspaceShell {
     /// The panel's job for `model` in this window: the open task's job while it asks a
-    /// question (`PanelConfirm`), else the job picked in the switcher while it can act and the
+    /// question (`PanelConfirm`), else the job picked in the switcher while it can act and
+    /// either no task is open (a Rewrite closed under Export leaves Export showing) or the
     /// task and turn it was picked beside are still the open ones, else the open task's job,
-    /// else Captions. In memory only, per window: no undo step and no document change
-    /// (impl-plan §3.3).
+    /// else Captions. A job that does not show keeps its own state: an export renders on
+    /// behind Captions, Rewrite or its question. In memory only, per window: no undo step and
+    /// no document change (impl-plan §3.3).
     func panelJob(for model: EditorModel) -> PanelJob {
         let jobs = PanelJob.available(in: model)
         let task = model.openRewrite?.task
         if let asking = model.panelTask, asking.confirm != nil { return asking.job }
         let flow = model.app.voiceLabSession.flow
-        if let choice = panelChoice, choice.task === task, choice.turn == (task?.turn ?? 0),
+        if let choice = panelChoice, task == nil || choice.task === task && choice.turn == (task?.turn ?? 0),
            choice.voiceTurn == flow.turn, jobs.contains(choice.job) { return choice.job }
         if model.hasVoiceJob, flow.originTask === task, flow.originTurn == (task?.turn ?? 0) { return .voice }
         return model.panelTask?.job ?? .captions
     }
-    /// The switcher's pick.
+    /// The switcher's pick. Picking Export records the job it was opened from for its Done.
     func choosePanelJob(_ job: PanelJob, for model: EditorModel) {
         guard PanelJob.available(in: model).contains(job) else { return }
+        let current = panelJob(for: model)
+        if job == .export, current != .export { exportReturnJob = current }
         let task = model.openRewrite?.task
         panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0, voiceTurn: model.app.voiceLabSession.flow.turn)
+    }
+    /// The Export job's Done: back to the job it was opened from while that can act, else Captions.
+    func leaveExportJob(for model: EditorModel) {
+        choosePanelJob(PanelJob.available(in: model).contains(exportReturnJob) ? exportReturnJob : .captions, for: model)
     }
 }
 
@@ -130,6 +142,7 @@ extension WorkspaceShell {
             PanelHeader(model: model, shell: shell, job: job)
             Group {
                 if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
+                else if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
                 else if job == .rewrite, let session = model.rewrite {
                     DirectorPanel(task: session.task, model: model)
                 } else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
@@ -161,7 +174,7 @@ extension WorkspaceShell {
     var body: some View {
         // The tab's name follows the scope and the clips' numbering, which only these make observable.
         let scope = model.renderedActiveClipID, _ = model.projectRevision
-        let context = model.scopeName(scope)
+        let context = job == .export ? model.exportJobContext : model.scopeName(scope)
         HStack(spacing: 7) {
             Text(job.title).font(VCType.body.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
                 .fixedSize().accessibilityAddTraits(.isHeader)

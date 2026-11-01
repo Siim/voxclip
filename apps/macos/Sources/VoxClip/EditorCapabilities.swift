@@ -40,7 +40,7 @@ extension EditorModel {
     }
     var llmRuns: ProjectLlmRuns { app.projectLlmRuns(project.id) }
     var capabilities: EditorCapabilities {
-        EditorCapabilities(writable: !document.isVersion && !isLeaving, media: mediaResolved && !mediaUnreadable,
+        EditorCapabilities(writable: !document.isVersion && !isLeaving, media: mediaUsable,
             transcript: editingAvailable, exporting: exporting, aiBusy: llmRuns.isBusy)
     }
 }

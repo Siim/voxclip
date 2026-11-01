@@ -17,11 +17,11 @@ struct StatusText: Equatable {
 struct StatusItem: Equatable {
     /// The items, in the bar's order: harness, billing and task lead; summary, frame and export trail.
     enum Kind: String, CaseIterable {
-        case harness, billing, task, summary, frame, export
+        case harness, billing, task, summary, frame, spend, export
         static let leading: [Kind] = [.harness, .billing, .task]
-        static let trailing: [Kind] = [.summary, .frame, .export]
+        static let trailing: [Kind] = [.summary, .frame, .spend, .export]
         /// What a narrow bar drops first. The summary never goes; it truncates last.
-        static let dropOrder: [Kind] = [.billing, .frame, .export, .harness, .task]
+        static let dropOrder: [Kind] = [.billing, .spend, .frame, .export, .harness, .task]
     }
     /// What draws before the text: the AI's 6 pt dot (a ring before detection), a 13 pt symbol, or an 11 pt spinner.
     enum Lead: Equatable { case none, dot(token: String, filled: Bool), symbol(String), spinner }
@@ -46,11 +46,14 @@ struct StatusBarContent: Equatable {
 
     /// The items for `editor` in its window (none on Home), at `now`.
     @MainActor static func make(app: AppModel, editor: EditorModel?, now: Date) -> StatusBarContent {
-        guard let editor else { return StatusBarContent() }
         var content = StatusBarContent()
+        if let spend = app.monthlySpendLine {
+            content.items[.spend] = StatusItem(kind: .spend, lead: .symbol("waveform"), parts: [StatusText(string: spend)], spoken: spend, help: "Estimated spend, from the local ledger; not a provider invoice.")
+        }
+        guard let editor else { return content }
         for item in app.statusHarness { content.items[item.kind] = item }
         let task = editor.statusTask(now: now)
-        content.items[.task] = task?.item
+        content.items[.task] = task?.item ?? editor.statusReadOnly
         content.taskSince = task?.since
         content.items[.summary] = editor.statusSummary
         content.items[.frame] = editor.statusFrame
@@ -110,6 +113,12 @@ extension EditorModel {
         let elapsed = max(0, now.timeIntervalSince(since))
         return (StatusItem(kind: .task, lead: .spinner, parts: [StatusText(string: running.text + " "), StatusText(string: durationLabel(elapsed), mono: true)],
                            spoken: "\(words), \(SidebarStyle.spokenDuration(elapsed))"), since)
+    }
+
+    /// While the video is missing or a relink waits for Use It, the alert in the running task's place: "Read-only until
+    /// you locate the video" (v5 f24c), "Read-only until you confirm the video" (f24). Nothing runs meanwhile.
+    var statusReadOnly: StatusItem? {
+        mediaReadOnlyNote.map { StatusItem(kind: .task, lead: .symbol("exclamationmark.triangle"), parts: [StatusText(string: $0)], spoken: $0) }
     }
 
     /// The open tab's edit summary (notes.md, f1): "Clip 1 · 0:43 · 8 cuts · 5 changes to review", the duration in

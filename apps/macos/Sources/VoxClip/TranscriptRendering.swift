@@ -330,7 +330,8 @@ struct TranscriptAppearance: Equatable {
     /// Span styles a rebuild computed: the spans of replaced paragraphs, and words that
     /// became or stopped being AI words. Untouched paragraphs keep theirs.
     private(set) var rebuildStyles = 0
-    /// Rendering attributes set on spans, by `update` and by the validator.
+    /// All actual rendering-attribute writes, including TextKit validation. Performance
+    /// and zero-restyle tick checks keep measuring this total.
     private(set) var attributeUpdates = 0
     /// Spans whose style a scope change recomputed: only those whose in-clip state changed.
     private(set) var scopeRestyles = 0
@@ -894,21 +895,22 @@ struct TranscriptAppearance: Equatable {
     /// Applies the styles of the spans in a fragment TextKit just laid out: every paragraph
     /// when the document is new, and a replaced paragraph after a rebuild.
     /// TextKit can lay a fragment out while a storage edit is still being processed (a
-    /// selection the edit moved asks for it), and the edit then drops what the validator
-    /// applied. Those spans are applied again once the edit is done (`finishEdits`).
+    /// selection the edit moved asks for it). Defer its layout-neutral colour writes
+    /// until that edit finishes: storage processing would discard them, requiring a
+    /// second write. The final map then supplies the span's final character range.
     func validate(_ fragment: NSTextLayoutFragment) {
         guard let manager = fragment.textLayoutManager, let content = manager.textContentManager, let elementRange = fragment.textElement?.elementRange, let text else { return }
         let offset = content.offset(from: content.documentRange.location, to: elementRange.location)
         let length = content.offset(from: elementRange.location, to: elementRange.endLocation)
         guard offset != NSNotFound, length > 0 else { return }
         for span in text.map.intersecting(NSRange(location: offset, length: length)) {
-            apply(span)
             if editing { validatedDuringEdits.insert(span.id) }
+            else { apply(span) }
         }
     }
     private var editing = false
     private var validatedDuringEdits: Set<String> = []
-    /// Applies again the spans TextKit validated during the edits just made.
+    /// Applies once the spans TextKit validated during the edits just made.
     private func finishEdits() {
         editing = false
         guard !validatedDuringEdits.isEmpty, let text else { return }

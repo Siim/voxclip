@@ -9,6 +9,9 @@ namespace VoxClip.Core.Tests.Tracks.WinEditing;
 public sealed class AppSettingsTests
 {
     [Theory]
+    [InlineData("ui.layout.trackHeight", "\"small\"")]
+    [InlineData("ui.layout.trackHeight", "\"medium\"")]
+    [InlineData("ui.layout.trackHeight", "\"large\"")]
     [InlineData("voiceLab.labelPosition", "\"top-right\"")]
     [InlineData("voiceLab.labelPosition", "\"top-left\"")]
     [InlineData("voiceLab.labelPosition", "\"bottom-right\"")]
@@ -30,6 +33,9 @@ public sealed class AppSettingsTests
     }
 
     [Theory]
+    [InlineData("ui.layout.trackHeight", "\"huge\"")]
+    [InlineData("ui.layout.trackHeight", "null")]
+    [InlineData("ui.layout.trackHeight", "36")]
     [InlineData("voiceLab.labelPosition", "\"unknown\"")]
     [InlineData("voiceLab.labelPosition", "null")]
     [InlineData("voiceLab.labelPosition", "true")]

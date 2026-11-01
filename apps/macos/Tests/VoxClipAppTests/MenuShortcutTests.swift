@@ -53,6 +53,17 @@ import Testing
         }
     }
 
+    /// VX moved Export into the right panel's job: File › Export… keeps ⌘E, alone, and calls the panel's entry
+    /// (`exportProject`, then `presentExport`); Clip › Export Clip… is tag 45 alone, the Explorer row's entry.
+    @Test func fileExportKeepsCommandEAndClipExportItsTag() {
+        let items = menuItems()
+        let export = items.filter { Shortcut($0.keyEquivalent, $0.keyEquivalentModifierMask) == Shortcut("e", [.command]) }
+        #expect(export.map(\.title) == ["Export…"] && export.first?.action == NSSelectorFromString("exportProject:"))
+        #expect(export.first?.menu?.title == "File")
+        let clip = items.filter { $0.tag == 45 }
+        #expect(clip.map(\.title) == ["Export Clip…"] && clip.first?.keyEquivalent == "" && clip.first?.action == NSSelectorFromString("performEditorCommand:"))
+    }
+
     @Test func keepIsShiftCommandReturnAndTheTranscriptsChangeKeysStayOffTheMenu() {
         let items = menuItems()
         func holders(_ key: String, _ modifiers: NSEvent.ModifierFlags) -> [NSMenuItem] {

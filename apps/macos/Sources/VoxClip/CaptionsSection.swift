@@ -473,7 +473,8 @@ extension EditorModel {
                     fineTuneDisclosure.id("captions.fineTune")
                     if fineTune { fineTuneControls }
                 }
-                .padding(.horizontal, Metrics.inset)
+                .padding(.leading, Metrics.inset)
+                .padding(.trailing, Metrics.inset - 1)
                 .padding(.bottom, Metrics.propertiesBottomInset)
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -483,9 +484,14 @@ extension EditorModel {
             .onChange(of: fineTune) { _, expanded in
                 if expanded { reader.scrollTo("captions.fineTune", anchor: .top) }
             }
+            // Legacy NSScroller's AX frame extends 1 pt past its native frame. Keep
+            // that frame inside the column at the right and bottom window edges,
+            // including when Show scroll bars is Always. The gallery is already inset.
+            .padding([.trailing, .bottom], 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("voxclip.captions.properties")
+        .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
         .columnLayoutEvidence("captions.properties")
     }
     private var wordsMenu: some View {
@@ -596,7 +602,7 @@ extension EditorModel {
 /// A property row (notes.md `.prop`): 24 high, the key in a 120 pt column (12,
 /// text.tertiary), then the value. VoiceOver reads the value's own control, which carries
 /// the key as its name; a value of several controls (Colour's swatches) is a group named so.
-@MainActor private struct CaptionPropertyRow<Value: View>: View {
+@MainActor struct CaptionPropertyRow<Value: View>: View {
     let title: String
     let marker: String
     let value: Value

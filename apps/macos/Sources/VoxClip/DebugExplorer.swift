@@ -21,6 +21,14 @@ import VoxClipCore
               && ExplorerMetrics.thumbnailSize == CGSize(width: 36, height: 20))
         check("Explorer disclosures and row actions have at least 24 point targets", ExplorerMetrics.rowHeight >= EditorAccessibilityPolicy.minimumTarget
               && ExplorerMetrics.outlineHeight >= EditorAccessibilityPolicy.minimumTarget)
+        let exports = editor.exportsList.rows
+        let ledgerCount = shell.app.exportLedger.records.filter { $0.projectID == editor.project.id }.count
+        check("Explorer Exports equals the open project's ledger and speaks its count", exports.count == ledgerCount
+              && ExplorerHeader(shell: shell, section: .exports, count: exports.count).accessibilityName == ExplorerSection.exports.accessibilityLabel(count: ledgerCount))
+        let visibleVoices = shell.explorerShowsVoices ? shell.app.voiceLabSession.visibleRecords.count : 0
+        check("Explorer Voices follows the beta gate and visible records and speaks its count", shell.explorerVoices.count == visibleVoices
+              && (shell.app.bool("voiceLab.enabled") || !shell.explorerShowsVoices)
+              && ExplorerHeader(shell: shell, section: .voices, count: visibleVoices).accessibilityName == ExplorerSection.voices.accessibilityLabel(count: visibleVoices))
         return results
     }
 
@@ -139,7 +147,7 @@ import VoxClipCore
         editor.undoManager = undo
         func step(_ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
 
-        // Make Clip (⌘K): one undo step adds the clip and selects its row.
+        // Make Clip (⌥⌘K): one undo step adds the clip and selects its row.
         let words = editor.words
         guard let start = words.firstIndex(where: { $0.text == "One" }), start + 3 < words.count else { throw CocoaError(.coderInvalidValue) }
         editor.select(words[start].id); editor.select(words[start + 3].id, extend: true)
@@ -367,13 +375,11 @@ import VoxClipCore
         if let shortcuts, let action = shortcuts.action {
             if modal == nil { NSApp.sendAction(action, to: shortcuts.target, from: shortcuts) } else { _ = menuDelegate?.perform(action, with: shortcuts) }
         }
-        let showedShortcuts = app.shell.showShortcuts
-        app.shell.showShortcuts = false
+        let showedShortcuts = app.shell.showCommandPalette
+        app.shell.showCommandPalette = false
         check("Help > Keyboard Shortcuts and Workspace Tour are enabled with no editor", enabled)
-        check("Help > Keyboard Shortcuts opens its sheet with no editor, through \(modal.map { "its handler (app-modal \($0) open)" } ?? "the menu action")", showedShortcuts)
-        check("the shortcuts sheet lists the current bindings", ShortcutsView.lines.contains("⌘1 / ⌘2|Home / Full Take") && ShortcutsView.lines.contains("⇧⌘K|Find clips")
-              && ShortcutsView.lines.contains("⌥⌘I|Show / hide viewer") && ShortcutsView.lines.contains("⌃⌘S|Show / hide sidebar")
-              && !ShortcutsView.lines.contains { $0.contains("⌘3") || $0.contains("caption inspector") })
+        check("Help > Keyboard Shortcuts opens the command field with no editor, through \(modal.map { "its handler (app-modal \($0) open)" } ?? "the menu action")", showedShortcuts)
+        check("the command field replaces the shortcuts sheet", NSApp.mainMenu?.item(withTitle: "View")?.submenu?.items.contains { $0.tag == 61 && $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command } == true)
 
         // The transcript takes keyboard focus when a project opens; returning from Home
         // with the sidebar list focused leaves focus in the list (C4).
@@ -537,16 +543,16 @@ import VoxClipCore
         func texts(_ view: NSView) -> [String] { ((view as? NSTextField).map { [$0.stringValue] } ?? []) + view.subviews.flatMap(texts) }
         let modal = NSApp.modalWindow.map { "\(type(of: $0)) \"\($0.contentView.map(texts)?.joined(separator: " ") ?? $0.title)\"" }
         if let menu, let item, let index = menu.items.firstIndex(of: item) { menu.performActionForItem(at: index) }
-        for _ in 0..<40 where !editor.showExport { try await Task.sleep(for: .milliseconds(50)) }
+        for _ in 0..<40 where !editor.exportJob.isOpen { try await Task.sleep(for: .milliseconds(50)) }
         let exported = editor.exportClipIDs.map { (id: String) -> String in
             guard let index: Int = editor.keptClips.firstIndex(where: { (clip: ClipRange) -> Bool in clip.id == id }) else { return id }
             let number: Int = index + 1
             return "clip \(number)"
         }.joined(separator: ", ")
-        check("Export Clip… in a clip row's context menu opens Export for that clip and clears the earlier result (row \(row), menu from \(source), item enabled \(item?.isEnabled == true), modal \(modal ?? "none"), exportable \(editor.mediaExportable), Export shown \(editor.showExport) for \(exported))",
-              modal == nil && editor.showExport && editor.exportClipIDs == [kept[2]] && editor.exports.isEmpty && editor.exportError == nil
+        check("Export Clip… in a clip row's context menu opens Export for that clip and clears the earlier result (row \(row), menu from \(source), item enabled \(item?.isEnabled == true), modal \(modal ?? "none"), exportable \(editor.mediaExportable), Export shown \(editor.exportJob.isOpen) for \(exported))",
+              modal == nil && editor.exportJob.isOpen && editor.exportClipIDs == [kept[2]] && editor.exports.isEmpty && editor.exportError == nil
               && editor.project.edits.activeClipId == nil && shell.selection == .fullTake)
-        editor.showExport = false
+        editor.finishExportJob()
         try await Task.sleep(for: .milliseconds(300))
 
         // Find Clips focuses its first new suggestion; the list takes keyboard focus.

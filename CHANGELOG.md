@@ -9,7 +9,21 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Core preflights Rewrite placement against review cuts before quoting takes, refuses empty acceptance sets, and requires scoped app acceptance for sets (C4 review).
 - Core can accept every Rewrite take, cut and correction together, refuse invalid sets as a whole, and restore the review with one named Undo (C4; v2 Keep wiring follows in V15/V19).
 - Core provides speaker-first enrollment under one approval, with bounded recovery and creation-only recovery pricing.
+- On Mac, Escape during a timeline trim cancels the preview without changing the clip or adding an undo step.
+- On Mac, ⌘K opens an inline command field; ⌥⌘K makes a clip, and Keyboard Shortcuts opens the command list. Reopening the field keeps your search; moving focus outside closes it.
+- The Mac timeline has an Exports tab using the same files and actions as Explorer. Voice Lab shows estimated spend for this month in the status bar and AI menu.
+- Sign in to Claude Code or Codex from the Mac AI menu, with instructions and the result shown inline. Returning checks sign-in once, and successful sign-in hides its actions.
+- The Mac Explorer shows your voices and recent exports, with file actions, export status and Retry in place.
+- The Mac Captions panel keeps scrollbars inside its column, local AI errors name the server URL, and the viewer transport shows current time and scope length.
+- Export now opens in the right panel instead of a window.
+- The AI MODIFIED line in a post is now off by default.
+- Relinking a moved video asks in a banner instead of a dialog.
+- The Mac Explorer has compact Take, Clips, Outline and Suggested sections, preview tabs on single click, pinned tabs on double-click, and paragraph navigation with AI voice indicators.
+- The Mac editor's status bar shows your AI and its billing after detection, running work, the open clip's duration and cuts, available Rewrite changes, the export frame and export state. Choose an aspect directly from the status bar's Frame menu.
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
+- On Mac, the timeline adds an FX Motion lane with “Director results land here,” matching the saved S/M/L track heights and overlay scrolling.
+- On Mac, drag in the timeline or transcript to select the same words, trim In/Out with one undo step, navigate and select by word or sentence with the keyboard, and adjust the playhead, edges and zoom with VoiceOver. A click near a trim handle leaves the clip unchanged.
+- On Mac the timeline adds video filmstrips and caption cues, caption visibility and preview mute in the track headers, saved S/M/L track heights, zoom buttons and slider, pinch zoom, overlay scrolling, and Maximize. Source view leaves cut video empty, darkens cut parts inside caption cues, and dims media outside In/Out.
 - Import a video and transcribe it with word timestamps: ElevenLabs Scribe with your own key, local Whisper models, or Apple Speech on Mac. If a local model is missing, VoxClip offers to download it.
 - Cut by editing words. Remove filler words and tighten long pauses in a click, correct a word's text, and restore anything you cut.
 - Find clips with the AI you choose: your own API key, a local model (Ollama or LM Studio), your signed-in Claude Code or Codex, or Apple's on-device model on Mac.
@@ -48,5 +62,11 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - On Mac a clip bar sits under the tabs. Tighten cuts the open clip's fillers and long pauses in one undo step, with an Undo beside it; Hook finds hook clips in the take with one click; and Rewrite and its Ask field work on the open clip, the full take or the words you select, with what you type as the instruction. The AI menu at its end shows each AI with what it costs, checks them as it opens and is the same choice as AI settings. A suggestion's tab shows Keep (⇧⌘↩) and Dismiss instead.
 - The Mac editor's status bar shows your AI and its billing after detection, running work, the open clip's duration and cuts, available Rewrite changes, the export frame and export state. Choose an aspect directly from the status bar's Frame menu.
 - The Mac Explorer has compact Take, Clips, Outline and Suggested sections, preview tabs on single click, pinned tabs on double-click, and paragraph navigation with AI voice indicators.
-- On Mac, Rewrite asks in its panel, not in an alert, before a new run would discard takes or changes you edited: Keep Working or Discard Changes. Undoing a Keep no longer brings back a change you left out after it.
+- On Mac, Rewrite asks in its panel, not in an alert, before a new run would discard takes or changes you edited: Keep Working or Discard Changes, with the keyboard on Keep Working and back where you were once you answer. Undoing a Keep no longer brings back a change you left out after it.
+- Export now opens in the right panel instead of a window.
+- The AI MODIFIED line in a post is now off by default.
+- Relinking a moved video asks in a banner instead of a dialog.
+- The Mac Captions panel keeps scrollbars inside its column, local AI errors name the server URL, and the viewer transport shows current time and scope length.
+- The Mac Explorer shows your voices and recent exports, with file actions, export status and Retry in place.
+- While a moved video is missing or waits for you to confirm the file you chose, the Mac editor only reads: the clip bar's tools show dimmed, Rewrite and Export wait, and the status bar says why. Opening a project on a slow drive no longer claims the video is missing while VoxClip checks it.
 - Not tested on: TODO list the test machines that were not available (doc/plan.md section 6).

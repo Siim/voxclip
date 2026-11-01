@@ -92,6 +92,11 @@ enum UserMessages {
         case .notImplemented: return "This feature is not available in this build. Your video and edits are still here."
         }
     }
+    /// Shared by the clip bar, harness status and Rewrite job. Preserve the attempted
+    /// address supplied by the connector, rather than looking up a possibly changed setting.
+    static func localServerUnavailable(name: String, url: String) -> String {
+        "\(name) isn't answering at \(clean(url))."
+    }
     private static func clean(_ text: String) -> String {
         let suffixes = ["Your edits are saved.", "Your video is still here.", "Your video and edits are still here."]
         let text = suffixes.reduce(text) { $0.replacingOccurrences(of: $1, with: "") }
@@ -124,7 +129,7 @@ enum UserMessages {
         case .truncated: return "The clip suggestions were incomplete. Please try again."
         case .invalidOutput: return "The model's answer wasn't in the expected format. Try again or pick another model."
         case .unsupportedLanguage(let language): return "Apple's on-device model doesn't support \(clean(language)). Use an API key, a CLI or a local model for this project."
-        case .notRunning(let url): return label == "LM Studio" ? "LM Studio's server isn't running at \(clean(url)). Start it from LM Studio's Developer tab." : "Ollama isn't running at \(clean(url)). Start Ollama and try again."
+        case .notRunning(let url): return localServerUnavailable(name: label, url: url) + " Start it, then try again."
         case .noModels: return label == "LM Studio" ? "Load or download a model in LM Studio, then refresh." : "Ollama has no chat models. Run `ollama pull <model>`, then refresh."
         case .unavailable(let reason):
             if reason == "appleIntelligenceNotEnabled" { return "Turn on Apple Intelligence in System Settings to use the on-device model." }

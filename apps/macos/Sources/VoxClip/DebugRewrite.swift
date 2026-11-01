@@ -589,7 +589,7 @@ extension DebugRewrite {
             ("r1x-message", .claudeCode, "Claude Code", "cli", .message(LLMError.timeout.userMessage(label: "Claude Code", feature: .voiceRewrite) ?? "")),
             ("r1x-signed-out", .codex, "Codex", "cli", .signedOut(cli: "Codex", command: "codex login")),
             ("r1x-no-key", .anthropic, "Anthropic", "apiKey", .noKey(provider: "anthropic", name: "Anthropic")),
-            ("r1x-not-running", .ollama, "Ollama", "local", .notRunning(server: "Ollama")),
+            ("r1x-not-running", .ollama, "Ollama", "local", .notRunning(server: "Ollama", url: "http://127.0.0.1:11434")),
             ("r1x-refused", .claudeCode, "Claude Code", "cli", .refused),
         ]
         for (name, id, label, group, error) in errors {
@@ -681,6 +681,11 @@ extension DebugRewrite {
         add("r2-nothing-included", leftOut)
         // No changes: "No changes needed", the Ask field and Ask for Something Else.
         add("r2-no-changes", scene("r2-no-changes") { $0 })
+        // Ask again over a change edited in its popover: "Discard these 2 changes?" in the footer's place, Keep Working
+        // (the keyboard's answer) and Discard Changes (84384e1d, inline, not an alert).
+        let discard = scene("r2-discard") { replacing($0, ["word12": nil, "word20": "Word20"]) }
+        if discard.0.editChange(2, text: "Fresh") { discard.1.task.contextAction?.perform() }
+        add("r2-discard", discard)
         // The scenes keep what they show once the settings are put back.
         for (_, _, session) in made { session.proposalObservation += 1 }
         return made.map { DirectorScene(name: $0.0, task: $0.2.task, editor: $0.1) }
@@ -691,7 +696,10 @@ extension DebugRewrite {
     static func directorSceneChecks(_ scene: DirectorScene, host: NSView, width: Int) -> [DebugUISuite.Result] {
         let texts = DebugRightColumn.texts(in: host)
         let buttons = texts.filter { $0.key.hasPrefix("director.button.") }
-        var expected = [scene.task.close, scene.task.contextAction, scene.task.headline.stop, scene.task.footer.link, scene.task.footer.primary].compactMap { $0 }
+        // A question stands in the footer's place with its two answers.
+        let answers: [PanelAction?] = scene.task.confirm.map { [$0.confirm, $0.cancel] } ?? [scene.task.footer.link, scene.task.footer.primary]
+        let actions: [PanelAction?] = [scene.task.close, scene.task.contextAction, scene.task.headline.stop] + answers
+        var expected: [PanelAction] = actions.compactMap { $0 }
         for case .chooser(_, let saveKey?) in scene.task.cards { expected.append(saveKey) }
         let drawn = expected.allSatisfy { buttons["director.button.\($0.id)"] == $0.title }
         let disabled = buttons.filter { $0.value.hasPrefix(DirectorPanel.disabledPrefix) }.map(\.key).sorted()
@@ -705,6 +713,7 @@ extension DebugRewrite {
             .init(name: "v2-rewrite-\(scene.name) at \(width) draws every action of its task (\(expected.map(\.title)))", passed: drawn),
             .init(name: "v2-rewrite-\(scene.name) at \(width) shows no disabled button (\(disabled))", passed: disabled.isEmpty && !buttons.isEmpty),
             .init(name: "v2-rewrite-\(scene.name) at \(width) shows its headline", passed: texts["director.headline"] == scene.task.headline.text),
+            .init(name: "v2-rewrite-\(scene.name) at \(width) shows its question, if it asks one", passed: texts["director.question"] == scene.task.confirm?.question),
         ]
     }
 

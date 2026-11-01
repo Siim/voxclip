@@ -174,4 +174,85 @@ import Testing
         #expect(TimelineOverview.rows(for: [221...264, 236...262]) == [0, 1])
         #expect(TimelineOverview.rows(for: []).isEmpty)
     }
+
+    // MARK: Captions (V9)
+
+    /// notes.md §6: a cue holds until the next if the gap is at most 0.6 s, so cues butt (the
+    /// lane draws the 1 pt seam); a longer gap stays empty lane. On Source each cue is one
+    /// span in the take with the cut parts inside it, and its text is the Edited cue's.
+    @Test func cuesHoldAcrossShortGapsAndCarryTheirCutsOnSource() {
+        let pages = [
+            TimelineCaptions.Page(edited: 0..<1.2, source: 10..<11.6, text: "And one cool"),
+            TimelineCaptions.Page(edited: 1.7..<2.5, source: 12.1..<12.9, text: "feature I added,"),
+            TimelineCaptions.Page(edited: 3.2..<4, source: 13.6..<14.4, text: "is when"),
+            TimelineCaptions.Page(edited: 4..<4, source: 14.4..<14.4, text: "")
+        ]
+        let edited = TimelineCaptions.cues(pages, on: .edited)
+        // 0.5 s to the second page: held; 0.7 s to the third: not held. The empty page is skipped.
+        #expect(edited.map(\.range) == [0..<1.7, 1.7..<2.5, 3.2..<4])
+        #expect(edited.map(\.text) == ["And one cool", "feature I added,", "is when"])
+        #expect(edited.allSatisfy { $0.cuts.isEmpty })
+        // Source: the first cue holds to the second's first word in the take, with the cut
+        // (11.6–12.1) and one inside the third (13.8–14.0) darkened; a cut before the cues is not.
+        let removed: [Range<Double>] = [5..<9, 11.6..<12.1, 13.8..<14.0, 20..<21]
+        let source = TimelineCaptions.cues(pages, on: .source, removed: removed)
+        #expect(source.map(\.range) == [10..<12.1, 12.1..<12.9, 13.6..<14.4])
+        #expect(source.map(\.cuts) == [[11.6..<12.1], [], [13.8..<14.0]])
+        #expect(source.map(\.text) == edited.map(\.text))
+        // Without the hold rule the first cue would end at its last word, 1.2 s.
+        #expect(edited[0].range.upperBound == 1.7)
+    }
+
+    @Test func visibleCuesAreFoundByBinarySearch() {
+        let cues = (0..<2_000).map { TimelineCue(range: Double($0) * 2..<Double($0) * 2 + 1.5, text: "word") }
+        #expect(TimelineCaptions.indices(of: cues, overlapping: 10..<15) == 5..<8)
+        #expect(TimelineCaptions.indices(of: cues, overlapping: 11.6..<11.9) == 6..<6)
+        #expect(TimelineCaptions.indices(of: cues, overlapping: -5..<0.1) == 0..<1)
+        #expect(TimelineCaptions.indices(of: cues, overlapping: 5_000..<6_000).isEmpty)
+        #expect(TimelineCaptions.indices(of: [], overlapping: 0..<1).isEmpty)
+    }
+
+    /// notes.md §6 and the mockup's fitting: whole words that fit; a dim "…" when words were
+    /// dropped; the first word alone when its ellipsis would not fit; nothing under 24 pt; a
+    /// trailing comma never shows. Widths here are 6 pt a character and 8 pt for the ellipsis.
+    @Test func cueTextFitsWholeWords() {
+        func fit(_ text: String, _ width: Double) -> TimelineCueText.Fit? {
+            TimelineCueText.fit(text, width: width, ellipsisWidth: 8, measure: { Double($0.count) * 6 })
+        }
+        // "And one cool" is 72 pt: it needs 80 with the 4 pt padding each side.
+        #expect(fit("And one cool", 80) == .init(text: "And one cool", ellipsis: false))
+        // "And one" (42) + 1 + 8 = 51 fits 79 − 8; the third word is dropped.
+        #expect(fit("And one cool", 79) == .init(text: "And one", ellipsis: true))
+        #expect(fit("And one cool", 40) == .init(text: "And", ellipsis: true))
+        // "And" + "…" needs 18 + 9 = 27 > 32 − 8: the first word alone.
+        #expect(fit("And one cool", 32) == .init(text: "And", ellipsis: false))
+        // Under 24 pt nothing draws, even a word that would fit.
+        #expect(fit("So", 23.9) == nil)
+        #expect(fit("So", 24) == .init(text: "So", ellipsis: false))
+        // A first word that does not fit alone draws nothing.
+        #expect(fit("Unbelievable things", 30) == nil)
+        // A comma before a dropped word, or at the end, folds away.
+        #expect(fit("added, to the", 63) == .init(text: "added", ellipsis: true))
+        #expect(fit("feature I added,", 200) == .init(text: "feature I added", ellipsis: false))
+        #expect(fit("", 200) == nil)
+    }
+
+    // MARK: Filmstrip (V9)
+
+    @Test func filmstripCellsAreWholeFramesFromALadder() {
+        // A 39 pt tile at 20.7 pt/s (f1) stands for 1.9 s: the 2 s cell (60 frames).
+        #expect(TimelineFilmstrip.cellFrames(tileWidth: 39, ptPerSecond: 20.7) == 60)
+        // At 200 pt/s a tile is 0.195 s: 6 frames is 0.2 s, so the 10-frame cell after 5.
+        #expect(TimelineFilmstrip.cellFrames(tileWidth: 39, ptPerSecond: 200) == 10)
+        // A tile exactly a cell long takes that cell.
+        #expect(TimelineFilmstrip.cellFrames(tileWidth: 30, ptPerSecond: 30) == 30)
+        // A fitted hour (0.26 pt/s) needs 150 s: the 300 s cell. Nonsense zooms take the longest.
+        #expect(TimelineFilmstrip.cellFrames(tileWidth: 39, ptPerSecond: 0.26) == 9_000)
+        #expect(TimelineFilmstrip.cellFrames(tileWidth: 39, ptPerSecond: 0) == 108_000)
+        // A tile shows its cell's first frame, so nearby tiles and zooms share frames.
+        #expect(TimelineFilmstrip.frame(at: 4.1, cellFrames: 60) == 120)
+        #expect(TimelineFilmstrip.frame(at: 3.99, cellFrames: 60) == 60)
+        #expect(TimelineFilmstrip.frame(at: 4.1, cellFrames: 1) == 123)
+        #expect(TimelineFilmstrip.frame(at: -1, cellFrames: 60) == 0)
+    }
 }

@@ -16,6 +16,7 @@ import VoxClipCore
             } isTargeted: { shell.dropTargeted = $0 }
             .overlay { if shell.dropTargeted { DropOverlay(savedFirst: shell.isHome ? nil : shell.projectTitle) } }
             .onChange(of: shell.app.pauseBreathRevision) { _, _ in applyPauseBreath() }
+            .modifier(WorkspaceServiceUpdates(shell: shell))
             .frame(minWidth: 640, minHeight: 480)
             .onGeometryChange(for: Double.self) { $0.size.width } action: { shell.windowWidth = $0 }
     }
@@ -32,12 +33,10 @@ import VoxClipCore
             .ignoresSafeArea()
             .preferredColorScheme(shell.app.appearance)
     }
-    /// Export, Transcribe Again, Keyboard Shortcuts and the tour.
+    /// Transcribe Again and the tour.
     private func sheets(on content: some View) -> some View {
         content
-            .sheet(isPresented: editorFlag(\.showExport)) { if let editor = shell.editor { ExportSheet(model: editor) } }
             .sheet(isPresented: editorFlag(\.showTranscribe)) { if let editor = shell.editor { TranscriptionSheet(model: editor) } }
-            .sheet(isPresented: $shell.showShortcuts) { ShortcutsView() }
             .sheet(isPresented: Binding(get: { shell.app.showTour }, set: { shell.app.showTour = $0 })) { OnboardingView() }
     }
     /// A changed pause breath setting applies to the open project as one undo step.
@@ -54,6 +53,27 @@ import VoxClipCore
     /// A sheet or panel flag on the open editor; false while no project is open.
     private func editorFlag(_ flag: ReferenceWritableKeyPath<EditorModel, Bool>) -> Binding<Bool> {
         Binding(get: { shell.editor?[keyPath: flag] ?? false }, set: { shell.editor?[keyPath: flag] = $0 })
+    }
+}
+
+/// Keep service observations outside the workspace's layout expression for Xcode 26.
+@MainActor private struct WorkspaceServiceUpdates: ViewModifier {
+    let shell: WorkspaceShell
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: shell.app.voiceLabSession.busy) { _, busy in
+                if !busy { Task { await shell.app.refreshMonthlySpend() } }
+            }
+            .onChange(of: shell.editor?.rewrite?.generation?.phase) { _, _ in
+                Task { await shell.app.refreshMonthlySpend() }
+            }
+            .task(id: shell.app.bool("voiceLab.enabled")) { await shell.app.refreshMonthlySpend() }
+            .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+                Task { await shell.app.refreshMonthlySpend() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                Task { await shell.app.refreshMonthlySpend(); await shell.app.harnessSignIn.checkPending() }
+            }
     }
 }
 
@@ -147,7 +167,8 @@ import VoxClipCore
             if let notice = shell.notice { InlineNotice(text: notice) }
             if let error = model.error, !error.isEmpty { InlineNotice(text: error) }
             if let error = model.previewError, !error.isEmpty { InlineNotice(text: error) }
-            if !model.document.demo, !model.mediaResolved {
+            MediaRelinkBanner(model: model)
+            if !model.document.demo, model.mediaMissing {
                 Button("Locate…") { model.locateMedia() }
             }
             if let progress = model.progress {
@@ -166,5 +187,22 @@ import VoxClipCore
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.surface"))
         .scrollEdgeEffectStyle(.automatic, for: .vertical)
+    }
+}
+
+/// Missing media is resolved in the work area; system file pickers are the only modal step.
+@MainActor struct MediaRelinkBanner: View {
+    @Bindable var model: EditorModel
+    var body: some View {
+        if let candidate = model.mediaRelinkCandidate {
+            VStack(alignment: .leading, spacing: 6) {
+                InlineNotice(text: "This file looks different. Use it anyway? \(candidate.url.lastPathComponent)")
+                HStack {
+                    Button("Use It") { Task { await model.confirmMediaRelink() } }.accessibilityIdentifier("voxclip.relink.use")
+                    Button("Choose Another…") { model.locateMedia() }.accessibilityIdentifier("voxclip.relink.choose")
+                    Button("Cancel") { model.cancelMediaRelink() }.accessibilityIdentifier("voxclip.relink.cancel")
+                }.padding(.horizontal, 12)
+            }.accessibilityElement(children: .contain).accessibilityLabel("Locate media confirmation")
+        }
     }
 }

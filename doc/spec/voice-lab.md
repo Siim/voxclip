@@ -1652,7 +1652,7 @@ The label is drawn by the same compositor that draws captions: `FrameCompositor`
 
 ### 11.3 Post text line
 
-When `required`, a disclosure line is appended to the caption text that Copy caption, Open X, Open LinkedIn and VoxConvo publish use (`doc/publishing.md` §2.1). It sits on its own paragraph after a blank line.
+The post disclosure line is optional (user decision, 1 November 2026). In the Mac Export job, sharing starts in the collapsed “Share to X or LinkedIn…” section (`ui.export.shareExpanded`). **Add 'AI MODIFIED' line to the post** is **OFF by default always**, including exports containing AI-voiced phrases. Opting in appends the exact line below on its own paragraph after a blank line. Copy caption, Open X and Open LinkedIn use the current text without an interstitial. This does not change the required burned-in video label, render disclosure plan or provenance. Windows follows this contract when its inline Export lane lands; its existing dialog is pending migration.
 
 | Condition | en | et (draft, needs native review) |
 |---|---|---|
@@ -1663,10 +1663,10 @@ When `required`, a disclosure line is appended to the caption text that Copy cap
 
 - Core builds the line (`VoiceLabDisclosurePlan.postText`) from the sentences in this order: `tts`, then `voiceChanger` (own clone or stock voice), then `lipsync`, joined by single spaces. It is the only source of the line.
 - The line is Estonian when the primary language subtag of the transcript language (the part before the first `-`) is `et`, compared ASCII case-insensitively: `et`, `et-EE` and `ET` match, `eto` does not. Otherwise it is English.
-- The caption field opens with the saved or default caption. When a line exists and is not present, White_Space at the end of the caption is dropped and the line is appended after a blank line (`SharePostText.fieldText`). The field text stays within the 3,000 Unicode scalars of `share.captions`: when the caption, the blank line and the line would pass 3,000, the caption is cut with the composer rules of `doc/publishing.md` §2.1 (rules 4 to 6, with `…`), measured in Unicode scalars against 3,000. The line is never cut.
+- The caption field opens with the saved or default caption and the post-line toggle off; a previously appended exact generated line is omitted until the user opts in. When the user turns the toggle on, White_Space at the end of the caption is dropped and the line is appended after a blank line (`SharePostText.fieldText`). The field text stays within the 3,000 Unicode scalars of `share.captions`: when the caption, the blank line and the line would pass 3,000, the caption is cut with the composer rules of `doc/publishing.md` §2.1 (rules 4 to 6, with `…`), measured in Unicode scalars against 3,000. The line is never cut.
 - The line is present when the caption contains it after both are NFC-normalized, every run of White_Space is collapsed to one space and the ends are trimmed (`ShareDisclosure.isPresent`). Any other edit to the line counts as removing it.
-- The user may edit the line. Removing it shows "Your post no longer says the video contains AI-modified parts." before sharing, with [Share anyway] and [Restore line]. Restore line puts it back with `SharePostText.fieldText`.
-- Truncation for X and for VoxConvo's 2,048-unit `text` (the composer text in `doc/publishing.md` §2.1) removes the line's last occurrence, cuts the rest of the caption and appends the line after a blank line. The disclosure line is never cut, and in truncated text it is always last. A caption that fits is sent unchanged, wherever the line is. Copy caption and Open LinkedIn never truncate.
+- The user may edit the caption or turn the toggle off at any time. Turning it off removes the exact generated post line immediately, with no Share anyway / Restore line interstitial. Only when the rendered export actually contains AI-voiced phrases, show the inline hint “Your video still shows the AI MODIFIED label.” Nothing nags on Done.
+- When the user opted in, truncation for X and for VoxConvo's 2,048-unit `text` (the composer text in `doc/publishing.md` §2.1) removes the line's last occurrence, cuts the rest of the caption and appends the line after a blank line. The disclosure line is never cut, and in truncated text it is always last. A caption that fits is sent unchanged, wherever the line is. Copy caption and Open LinkedIn never truncate.
 
 ### 11.4 X
 
@@ -1675,13 +1675,13 @@ When `required`, a disclosure line is appended to the caption text that Copy cap
 
 ### 11.5 LinkedIn
 
-LinkedIn's posting API has no disclosure field. The post text line is the disclosure. C2PA (§11.7) is embedded in the MP4 when enabled. LinkedIn shows a "Cr" icon for C2PA credentials it reads; whether that happens for a self-signed manifest, and whether the manifest survives its transcode, is unverified.
+LinkedIn's posting API has no disclosure field. When the user opts in, the post text line supplies the text disclosure. C2PA (§11.7) is embedded in the MP4 when enabled. LinkedIn shows a "Cr" icon for C2PA credentials it reads; whether that happens for a self-signed manifest, and whether the manifest survives its transcode, is unverified.
 
 ### 11.6 VoxConvo
 
 - The publish call (`doc/publishing.md` §3.5.3) adds `aiDisclosure: { "modified": true, "kinds": ["tts","lipsync"], "aiSeconds": 4.1 }` to `NewPostInput`, and the text carries the line from §11.3.
 - This needs a vox-api schema change and a vox-web badge. Both go in the publishing change lists before M3.
-- `doc/publishing.md` §5.2 uses the same `aiDisclosure` object for cross-posting, plus the disclosure line.
+- `doc/publishing.md` §5.2 uses the same `aiDisclosure` object for cross-posting, plus the optional post line when the user opts in.
 
 ### 11.7 Machine-readable marking: XMP and C2PA Content Credentials
 

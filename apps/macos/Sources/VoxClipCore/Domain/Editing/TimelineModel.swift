@@ -224,3 +224,145 @@ public enum TimelineOverview {
         return rows
     }
 }
+
+/// A caption cue on the CC lane (notes.md §6), on the timeline's axis.
+public struct TimelineCue: Sendable, Equatable {
+    /// Where the cue's block runs on the axis.
+    public let range: Range<Double>
+    /// The cue's words, as the captions show them.
+    public let text: String
+    /// On Source, the cut take time inside the cue, drawn darkened; empty on Edited.
+    public let cuts: [Range<Double>]
+    public init(range: Range<Double>, text: String, cuts: [Range<Double>] = []) {
+        self.range = range
+        self.text = text
+        self.cuts = cuts
+    }
+}
+
+/// The CC lane's cues (notes.md §6, impl-plan V9) from the preview's caption pages.
+public enum TimelineCaptions {
+    /// A cue holds until the next one when the gap between them is at most this, so they butt.
+    public static let hold = 0.6
+
+    /// One caption page: its words' span on Edited (the scope's output) and in the take, and its text.
+    public struct Page: Sendable, Equatable {
+        public let edited: Range<Double>
+        public let source: Range<Double>
+        public let text: String
+        public init(edited: Range<Double>, source: Range<Double>, text: String) {
+            self.edited = edited
+            self.source = source
+            self.text = text
+        }
+    }
+
+    /// The cues of `pages` (in play order) on `axis`. Each runs from its first word to its
+    /// last and, when the next page starts at most `hold` seconds later on Edited, on to the
+    /// next one's first word, so butting cues show a seam rather than a gap. On Source each
+    /// cue is one span in the take, and `removed` (take ranges in order) inside it are its cuts.
+    public static func cues(_ pages: [Page], on axis: TimelineAxis, removed: [Range<Double>] = []) -> [TimelineCue] {
+        var cues: [TimelineCue] = []
+        cues.reserveCapacity(pages.count)
+        var cut = 0
+        for (index, page) in pages.enumerated() {
+            let next = index + 1 < pages.count ? pages[index + 1] : nil
+            let holds = next.map { $0.edited.lowerBound - page.edited.upperBound <= hold + 1e-9 } ?? false
+            let own = axis == .edited ? page.edited : page.source
+            let end = holds ? (axis == .edited ? next!.edited.lowerBound : next!.source.lowerBound) : own.upperBound
+            let upper: Double = max(own.upperBound, end)
+            guard upper > own.lowerBound, !page.text.isEmpty else { continue }
+            let range = own.lowerBound..<upper
+            var inside: [Range<Double>] = []
+            if axis == .source {
+                // The removed ranges ascend, so the search resumes where the last cue's left off.
+                while cut < removed.count, removed[cut].upperBound <= range.lowerBound { cut += 1 }
+                var probe = cut
+                while probe < removed.count, removed[probe].lowerBound < range.upperBound {
+                    inside.append(max(range.lowerBound, removed[probe].lowerBound)..<min(range.upperBound, removed[probe].upperBound))
+                    probe += 1
+                }
+            }
+            cues.append(TimelineCue(range: range, text: page.text, cuts: inside))
+        }
+        return cues
+    }
+
+    /// The cues that overlap `range`, by binary search: cue ranges ascend and never overlap
+    /// on Edited; on Source a cue's held end can pass the next cue's start, so the search
+    /// steps back over those.
+    public static func indices(of cues: [TimelineCue], overlapping range: Range<Double>) -> Range<Int> {
+        var lower = 0, upper = cues.count
+        while lower < upper {
+            let middle = (lower + upper) / 2
+            if cues[middle].range.lowerBound < range.lowerBound { lower = middle + 1 } else { upper = middle }
+        }
+        var first = lower
+        while first > 0, cues[first - 1].range.upperBound > range.lowerBound { first -= 1 }
+        var last = lower
+        while last < cues.count, cues[last].range.lowerBound < range.upperBound { last += 1 }
+        return first..<max(first, last)
+    }
+}
+
+/// Which of a cue's words its block shows (notes.md §6): whole words that fit, a dim "…"
+/// when words were dropped, the first word alone when its ellipsis would not fit, and nothing
+/// in a block under 24 pt. A trailing comma never shows.
+public enum TimelineCueText {
+    /// Blocks narrower than this show no text.
+    public static let minimumWidth = 24.0
+    /// The block's padding each side of its text.
+    public static let padding = 4.0
+    /// The gap before the ellipsis.
+    public static let ellipsisGap = 1.0
+
+    public struct Fit: Sendable, Equatable {
+        public let text: String
+        /// Words were dropped: a dim "…" follows the text.
+        public let ellipsis: Bool
+        public init(text: String, ellipsis: Bool) {
+            self.text = text
+            self.ellipsis = ellipsis
+        }
+    }
+
+    /// The words of `text` that fit a block `width` points wide, given each candidate's width
+    /// from `measure` and the ellipsis's `ellipsisWidth`; nil when nothing fits.
+    public static func fit(_ text: String, width: Double, ellipsisWidth: Double, measure: (String) -> Double) -> Fit? {
+        guard width >= minimumWidth else { return nil }
+        let room = width - 2 * padding
+        let words = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard !words.isEmpty else { return nil }
+        func trimmed(_ phrase: String) -> String { phrase.hasSuffix(",") ? String(phrase.dropLast()) : phrase }
+        for count in stride(from: words.count, through: 1, by: -1) {
+            let phrase = trimmed(words[..<count].joined(separator: " "))
+            let dropped = count < words.count
+            let needed: Double = measure(phrase) + (dropped ? ellipsisGap + ellipsisWidth : 0)
+            if needed <= room { return Fit(text: phrase, ellipsis: dropped) }
+        }
+        let first = trimmed(words[0])
+        return measure(first) <= room ? Fit(text: first, ellipsis: false) : nil
+    }
+}
+
+/// V1's filmstrip cells (impl-plan §3.1, V9): each tile shows the frame at the start of the
+/// cell its middle falls in. Cells are whole frames at 30 fps from a fixed ladder, so frames
+/// are shared across nearby zooms and a scroll only asks for the tiles it brings in.
+public enum TimelineFilmstrip {
+    public static let fps = 30
+    /// Cell lengths in frames, from a frame to an hour.
+    public static let steps: [Int64] = [1, 2, 3, 5, 10, 15, 30, 60, 90, 150, 300, 600, 900, 1_800, 3_600, 9_000, 18_000, 36_000, 108_000]
+
+    /// The shortest cell, in frames, at least as long as a tile `tileWidth` points wide.
+    public static func cellFrames(tileWidth: Double, ptPerSecond: Double) -> Int64 {
+        guard tileWidth.isFinite, tileWidth > 0, ptPerSecond.isFinite, ptPerSecond > 0 else { return steps.last! }
+        let seconds = tileWidth / ptPerSecond
+        return steps.first { Double($0) / Double(fps) >= seconds - 1e-9 } ?? steps.last!
+    }
+
+    /// The frame a tile whose middle is at take time `seconds` shows: the start of its cell.
+    public static func frame(at seconds: Double, cellFrames: Int64) -> Int64 {
+        let cell = max(1, cellFrames)
+        return SMPTETimecode.frame(seconds: seconds, fps: fps) / cell * cell
+    }
+}

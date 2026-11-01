@@ -63,6 +63,7 @@ extension StatusItem.Kind {
         case .task: "In progress"
         case .summary: "Edit summary"
         case .frame: "Frame"
+        case .spend: "Monthly spend"
         case .export: "Export"
         }
     }

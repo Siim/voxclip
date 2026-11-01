@@ -232,6 +232,45 @@ import Testing
         #expect(text.backdrop?.band != nil, "a finished layout places the active clip's band")
     }
 
+    @Test func validationDuringAStorageEditDefersItsWrites() throws {
+        let model = try editor(showCuts: false); defer { model.close() }
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        let storage = try #require(text.textStorage)
+        // A selection adjustment can ask TextKit to validate while replaceCharacters
+        // is processing. Force that ordering independently of other AppKit suites.
+        @MainActor final class Validations {
+            let text: TranscriptNSTextView
+            let renderer: TranscriptRenderer
+            var count = 0
+            var eagerWrites = 0
+            init(text: TranscriptNSTextView, renderer: TranscriptRenderer) { self.text = text; self.renderer = renderer }
+            func validate() {
+                guard let storage = text.textStorage, let manager = text.textLayoutManager,
+                      storage.editedMask.contains(.editedCharacters) else { return }
+                let before = renderer.attributeUpdates
+                manager.enumerateTextLayoutFragments(from: manager.documentRange.location, options: [.ensuresLayout]) { fragment in
+                    count += 1
+                    renderer.validate(fragment)
+                    return true
+                }
+                eagerWrites += renderer.attributeUpdates - before
+            }
+        }
+        let validations = Validations(text: text, renderer: renderer)
+        let token = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification, object: storage, queue: nil) { _ in
+            MainActor.assumeIsolated { validations.validate() }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+        model.apply(.toggle(id: "r21"), name: "Cut")
+        render(model, renderer)
+        #expect(validations.count > 0, "The validator ran inside the storage write")
+        #expect(validations.eagerWrites == 0, "Colour writes wait for storage processing to finish")
+        layOut(text)
+        try expectRenderingAttributes(text, renderer, "validation inside an edit")
+        try expectFreshBuild(model, text, renderer)
+    }
+
     @Test func untouchedParagraphsKeepTheirStyles() throws {
         let model = try editor(showCuts: false); defer { model.close() }
         let (text, renderer, coordinator) = try pane(model)

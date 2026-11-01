@@ -40,6 +40,14 @@ struct EditorRenderSnapshot {
     var showsCuts = false
     /// Show Pauses: the lengths of uncut pauses in the open clip. An opt-in, off by default.
     var showPauses = false
+    /// The A1 track header's speaker (impl-plan V9, item 9): the preview plays without sound.
+    /// A view setting: no undo step and no document change.
+    var previewMuted = false { didSet { nativePreview?.player.isMuted = previewMuted } }
+    /// The pages of the preview's caption layout, for the timeline's CC lane (impl-plan V9):
+    /// empty until the first preview load; CC also reads them as empty while captions are off.
+    var captionPages: [CaptionPage] = []
+    var timelineZoomStep = 0
+    var timelineSnapping = true
     /// The selection's first and last word or pause in reading order (a pause follows the
     /// word before it), one id when they are the same. A fold opens while one of them is in
     /// it (`openFoldEnds`), so what is selected always shows.
@@ -60,7 +68,6 @@ struct EditorRenderSnapshot {
         guard progress != nil, let progressStage else { return nil }
         return .transcribing(fraction: progressStage == .transcribing ? progressFraction : nil, stage: progressStage)
     }
-    var showExport = false
     var showTranscribe = false
     var correctionID: String?
     var correctionText = ""
@@ -269,20 +276,51 @@ struct EditorRenderSnapshot {
     var activeExportKey: String?
     var failedExports: [String: URL] = [:]
     var exporting = false
-    func presentExport(clipIDs: [String]? = nil) {
+    var exportJob = ExportJobState()
+    @ObservationIgnored var onPresentExport: (() -> Void)?
+    @ObservationIgnored var onFinishExport: (() -> Void)?
+    func presentExport(clipIDs: [String]? = nil, folder: URL? = nil) {
         guard capabilities.writable, mediaExportable else { return }
-        if !exporting { exports = []; exportDisclosureLines = [:]; exportError = nil; exportClipIDs = clipIDs ?? activeClip.map { [$0.id] } ?? [] }
-        showExport = true
+        // An idle entry follows the active tab; only a render in flight keeps its
+        // captured target regardless of where the user has navigated.
+        let requestedIDs = clipIDs ?? activeClip.map { [$0.id] } ?? []
+        if !exporting && (!exportJob.isOpen || clipIDs != nil || exportJob.requestedIDs != requestedIDs) {
+            exportJob.draft.commit(model: self)
+            exportJob = ExportJobState()
+            exports = []; exportDisclosureLines = [:]; exportError = nil
+            exportClipIDs = requestedIDs
+            exportJob.requestedIDs = exportClipIDs
+            exportJob.scope = exportClipIDs.isEmpty ? .fullVideo : .thisClip
+            exportJob.folderOverride = folder
+            exportJob.fileNamePattern = app.string("export.fileNamePattern", fallback: "{project}-{clip}-{aspect}")
+        }
+        exportJob.isOpen = true
+        onPresentExport?()
+    }
+    func finishExportJob() {
+        guard !exporting else { return }
+        exportJob.draft.commit(model: self)
+        exportJob.isOpen = false
+        onFinishExport?()
     }
     var exportIndex = 0
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
     var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { closeRewrite(returnFocus: false) }; followWaveformKey() } }
+    /// The video's check (as the project opens or reverts, or after its video changes) has answered, found or not. A
+    /// video not resolved before then is only not checked yet, so Locate… and the read-only note wait for the answer
+    /// rather than flash while a slow or external volume reads.
+    private(set) var mediaChecked = false
+    /// The latest check, so one that a newer check replaced doesn't answer for it.
+    @ObservationIgnored private var mediaCheck = 0
+    /// The video's check answered without finding it: Locate… shows and the editor only reads.
+    var mediaMissing: Bool { mediaChecked && !mediaResolved }
     /// The project has a transcript. Unlike `project`, views observe it, so a transcript
     /// that arrives or is undone redraws the transcript column.
     private(set) var transcribed = false
     /// Bumped by every refresh that finds the project changed. Views that derive what they
     /// show from `project`, which they can't observe, read it (the toolbar's Export).
+    @ObservationIgnored let exportsFingerprintCache = ExportsFingerprintCache()
     private(set) var projectRevision = 0
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
     var mediaUnreadable = false { didSet { if mediaUnreadable { closeRewrite(returnFocus: false) }; followWaveformKey() } }
@@ -462,11 +500,23 @@ struct EditorRenderSnapshot {
     /// "Export Video…" for the full take, "Export Clip…" for a clip (design §3.5).
     var exportTitle: String { activeClip == nil ? "Export Video…" : "Export Clip…" }
     /// The video is there to export: not a demo, found and readable (design §5.4.4).
-    var mediaExportable: Bool { !document.demo && mediaResolved && !mediaUnreadable }
+    var mediaExportable: Bool { !document.demo && mediaUsable }
+    /// The project's video is there, readable and confirmed: no relink waits for Use It. Until then the editor only
+    /// reads (editing.md §10.3, v5 f24c and f24, lead decision 7): the edit verbs, Rewrite and Export can't act, while
+    /// the transcript, selection, Explorer, timeline and caption position work.
+    var mediaUsable: Bool { mediaResolved && !mediaUnreadable && mediaRelinkCandidate == nil }
+    /// Why the editor only reads while its video is missing or a relink waits for Use It: the status bar's alert (v5
+    /// f24c, f24). Nil otherwise, and in demo projects and Versions windows, where Locate… does not apply.
+    var mediaReadOnlyNote: String? {
+        guard !document.demo, !document.isVersion else { return nil }
+        if mediaRelinkCandidate != nil { return "Read-only until you confirm the video" }
+        return mediaMissing ? "Read-only until you locate the video" : nil
+    }
     /// Why Export can't run for the scope, as its tooltip and accessible description
     /// (design §3.5 and §5.4.4); nil when it can or while an export runs.
     var exportUnavailable: String? {
         if document.demo { return "Demo projects have no video to export." }
+        if mediaRelinkCandidate != nil { return "Confirm the video to export." }
         if !mediaExportable { return "Locate the video to export." }
         if let clip = activeClip, isSuggestion(clip.id) { return "Keep this clip to export it." }
         return canExport || exporting ? nil : "Keep at least one word before exporting."
@@ -519,10 +569,13 @@ struct EditorRenderSnapshot {
                 previewError = await app.safeError(error)
             }
         }
+        // The check has answered (a project without a video path has none to make).
+        mediaChecked = true
         refresh()
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
+        cancelMediaRelink()
         closeRewrite(returnFocus: false)
         previewRevision &+= 1
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); waveformTask?.cancel(); preview.close()
@@ -542,10 +595,11 @@ struct EditorRenderSnapshot {
         planningSegments = nil; planningWordIndex = [:]; summaryCache.removeAll()
         correctionID = nil; selectedWordIDs = []; selectedPauseIDs = []
         fallbackNote = nil; focusedSuggestion = nil; clipError = nil; error = nil; previewError = nil
-        mediaResolved = document.demo
+        mediaResolved = document.demo; mediaChecked = false
         refresh()
         updateTask = Task { [weak self] in
-            guard let self, sourceURL.path != "/" else { return }
+            guard let self else { return }
+            guard sourceURL.path != "/" else { mediaChecked = true; return }
             do {
                 _ = try await resolveMediaIdentity()
                 await updatePreview(load: true)
@@ -580,6 +634,7 @@ struct EditorRenderSnapshot {
             }.map(\.id))
         }
         if transcriptChanged {
+            captionPages = []
             summaryCache.removeAll(keepingCapacity: true)
             wordIndex = Dictionary(uniqueKeysWithValues: words.enumerated().map { ($0.element.id, $0.offset) })
         }
@@ -635,6 +690,7 @@ struct EditorRenderSnapshot {
         transcriptRevision += 1
         followWaveformKey()
         if edits.activeClipId != renderedActiveClipID {
+            captionPages = []
             renderedActiveClipID = edits.activeClipId
             onActiveClipChange?(edits.activeClipId)
         }
@@ -704,7 +760,7 @@ struct EditorRenderSnapshot {
             guard let self else { return }
             do {
                 if mediaChanged, !document.demo {
-                    mediaResolved = false
+                    mediaResolved = false; mediaChecked = false
                     _ = try await resolveMediaIdentity()
                 }
                 try await Task.sleep(for: .milliseconds(150))
@@ -727,6 +783,10 @@ struct EditorRenderSnapshot {
         return positionEdit == candidate
     }
     func resolveMediaIdentity() async throws -> URL {
+        mediaCheck &+= 1
+        let check = mediaCheck
+        // Found, missing, unreadable or cancelled, the check has answered unless a newer one replaced it.
+        defer { if check == mediaCheck { mediaChecked = true } }
         let reference = project.media.source
         let resolved = try await app.projectStore.resolveSource(for: project, projectURL: document.fileURL ?? sourceURL.deletingLastPathComponent().appendingPathComponent("Untitled.voxclip"))
         try Task.checkCancellation()
@@ -748,30 +808,82 @@ struct EditorRenderSnapshot {
     }
     /// The relink flow for missing media (editing §10.3): choose the file, confirm a
     /// different-looking one, and attach it as one "Locate media" step.
+    struct MediaRelinkCandidate {
+        let url: URL
+        let probe: MediaProbeResult
+    }
+    /// A different-looking file waiting for the banner's Use It. The editor only reads meanwhile (`mediaUsable`), so an
+    /// open Rewrite closes as it does when the video goes missing.
+    var mediaRelinkCandidate: MediaRelinkCandidate? { didSet { if mediaRelinkCandidate != nil { closeRewrite(returnFocus: false) } } }
+    private var mediaRelinkRevision = 0
+    func cancelMediaRelink() { mediaRelinkRevision += 1; mediaRelinkCandidate = nil }
     func locateMedia() {
+        cancelMediaRelink()
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.movie]; panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        let revision = mediaRelinkRevision
         Task {
             do {
                 let probe = try await AVMediaProbe().probe(url)
-                let next: Project
-                do {
-                    next = try await app.projectStore.relink(project, to: url, probe: probe)
-                } catch VoxClipError.mediaMissing(_) {
-                    guard probe.durationSeconds.isFinite, abs(probe.durationSeconds - sourceDuration) <= 0.05 else {
-                        previewError = "This file's duration differs by more than 0.05 seconds. Choose another file. Edits are saved."
-                        return
-                    }
-                    let alert = NSAlert(); alert.messageText = "This file looks different. Use it anyway?"; alert.addButton(withTitle: "Use it"); alert.addButton(withTitle: "Choose another")
-                    guard alert.runModal() == .alertFirstButtonReturn else { return }
-                    next = try await app.projectStore.relink(project, to: url, probe: probe, confirmedDifferent: true)
-                }
-                mediaResolved = true
-                mediaUnreadable = false
-                replace(next, name: "Locate media")
-                await updatePreview(load: true)
-            } catch { previewError = await app.safeError(error) }
+                guard revision == mediaRelinkRevision else { return }
+                await prepareMediaRelink(url: url, probe: probe)
+            }
+            catch { if revision == mediaRelinkRevision { previewError = await app.safeError(error) } }
         }
+    }
+    func prepareMediaRelink(url: URL, probe: MediaProbeResult) async {
+        cancelMediaRelink()
+        previewError = nil
+        let revision = mediaRelinkRevision, base = project
+        guard !isLeaving, !cacheLeaseEnded else { return }
+        do {
+            let next: Project
+            do { next = try await app.projectStore.relink(base, to: url, probe: probe) }
+            catch VoxClipError.mediaMissing(_) {
+                guard probe.durationSeconds.isFinite, abs(probe.durationSeconds - base.media.source.durationSeconds) <= 0.05 else {
+                    previewError = "This file's duration differs by more than 0.05 seconds. Choose another file. Edits are saved."
+                    return
+                }
+                guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
+                mediaRelinkCandidate = MediaRelinkCandidate(url: url, probe: probe)
+                announce("This file looks different. Use it anyway? \(url.lastPathComponent)")
+                return
+            }
+            guard revision == mediaRelinkRevision, base == project, !isLeaving, !cacheLeaseEnded else { return }
+            await applyMediaRelink(next)
+        } catch { previewError = await app.safeError(error) }
+    }
+    /// Only the banner's explicit Use It action confirms different media.
+    func confirmMediaRelink() async {
+        guard let candidate = mediaRelinkCandidate else { return }
+        let revision = mediaRelinkRevision
+        guard !isLeaving, !cacheLeaseEnded else {
+            previewError = "This project is closing. Reopen it before locating the video. Edits are saved."
+            return
+        }
+        do {
+            let next = try await app.projectStore.relink(project, to: candidate.url, probe: candidate.probe, confirmedDifferent: true)
+            // Cancel or Choose Another deliberately retires this candidate. Otherwise
+            // a refusal stays in the banner, with an explanation beside its actions.
+            guard revision == mediaRelinkRevision else { return }
+            guard !isLeaving, !cacheLeaseEnded else {
+                previewError = "This project is closing. Reopen it before locating the video. Edits are saved."
+                return
+            }
+            // Hashing may suspend while another edit or tab switch lands. Only the
+            // media reference changes; keep the current title, edits and scope.
+            var current = project
+            current.media.source = next.media.source
+            mediaRelinkCandidate = nil
+            await applyMediaRelink(current)
+        } catch {
+            if revision == mediaRelinkRevision { previewError = await app.safeError(error) }
+        }
+    }
+    private func applyMediaRelink(_ next: Project) async {
+        mediaResolved = true; mediaUnreadable = false; previewError = nil
+        replace(next, name: "Locate media")
+        await updatePreview(load: true)
     }
     func apply(_ command: EditCommand, name: String, base: Project? = nil, announcing message: String? = nil) {
         guard capabilities.edit else { return }
@@ -834,7 +946,7 @@ struct EditorRenderSnapshot {
         let restore: Bool = !ids.isEmpty && ids.allSatisfy { (id: String) -> Bool in cutWordIDs.contains(id) || cutPauseIDs.contains(id) }
         cutSelection(restore: restore)
     }
-    /// Make Clip (⌘K, design §3.4): one undo step adds the clip and selects its row. A
+    /// Make Clip (⌥⌘K, design §3.4): one undo step adds the clip and selects its row. A
     /// selection an existing clip already covers selects that clip instead.
     func makeClip() {
         guard let start = selectedIDs.first, let end = selectedIDs.last else { return }
@@ -1188,6 +1300,7 @@ struct EditorRenderSnapshot {
         do {
             let request = try await renderRequest()
             guard revision == previewRevision, !Task.isCancelled else { return }
+            captionPages = request.captionLayout?.pages.map(\.page) ?? []
             if load { try await preview.load(request) } else { try await preview.update(request) }
             guard revision == previewRevision, !Task.isCancelled else { return }
             previewError = nil
