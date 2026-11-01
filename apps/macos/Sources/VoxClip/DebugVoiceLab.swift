@@ -59,7 +59,14 @@ private actor VoiceLabNoDispatchKeys: KeyProvider {
         let accounts = SecretStore.account(for: "fal") == "fal-api-key" && SecretStore.account(for: "syncso") == "syncso-api-key" && SecretStore.account(for: "elevenlabs") == "elevenlabs-api-key"
         app.settings.values["voiceLab.labelPosition"] = .string("bottom-left")
         let position = app.voiceLabLabelPosition == .bottomLeft
+        session.flow.state = .firstUse
+        let v0 = session.flow.state.rawValue == "V0" && !session.flow.keyReady
+        session.flow.state = .agree
+        let v1 = session.flow.state.rawValue == "V1"
+        session.flow.state = .statement
+        let v2 = session.flow.state.rawValue == "V2" && !session.recorder.recording
         return [
+            .init(name: "Voice job V0 key, V1 agreements and V2 inline recording states", passed: v0 && v1 && v2),
             .init(name: "Voice Lab beta off refuses all actions", passed: off && offRequest),
             .init(name: "Voice Lab Settings stays discoverable with beta off", passed: VoiceLabGate.settingsVisible(enabled: false, internalBuild: false)),
             .init(name: "Voice Lab no-voice Settings state", passed: noVoice),

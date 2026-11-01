@@ -124,7 +124,7 @@ import Synchronization
         let model = app.speakerModelLibrary.model
         let installed = app.speakerModelLibrary.installed
         let results = try await DebugVoiceLab.run(app: app)
-        #expect(results.count == 12)
+        #expect(results.count == 13)
         for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
         #expect(app.settings == settings)
         #expect(app.speakerModelLibrary.model?.id == model?.id)
@@ -341,7 +341,7 @@ import Synchronization
         app.settings.values["voiceLab.enabled"] = .bool(true)
         await session.refreshEnabledState()
         #expect(session.records == [record] && session.visibleRecords == [record])
-        #expect(session.subscription == nil && session.confirmation == .subscription)
+        #expect(session.subscription == nil && session.confirmation == nil)
         session.confirmation = nil
         app.settings.values["voiceLab.enabled"] = .bool(false)
         await session.refreshEnabledState()
@@ -646,7 +646,7 @@ import Synchronization
             "Checks your plan, then sends the consent recording and 47 s of speech from Interview to create your own voice. No video is sent. ≈ $0.00")
         #expect(VoiceLabSession.creationCopy(projectName: nil, keptSeconds: 47.99, cost: "≈ $0.00") ==
             "Checks your plan, then sends the consent recording and training audio to create your own voice. No video is sent. ≈ $0.00")
-        #expect(RewriteTakesView.createVoiceTitle == "Create Your Voice…")
+        #expect(RewriteTakesView.makeVoiceTitle == "Make Your Voice")
     }
     @Test func statementLanguageNeedsACalibratedSpeakerCheck() throws {
         let model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry

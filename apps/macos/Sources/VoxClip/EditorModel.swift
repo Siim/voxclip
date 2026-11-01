@@ -81,7 +81,7 @@ struct EditorRenderSnapshot {
     var outlineScrollWordID: String?
     var lastStyleId: String?
     /// Voice Lab's one-time beta sheet (voice-lab.md §5); R2's Turn On Voice Lab… opens it.
-    var showVoiceLabOptIn = false
+
     @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
     #if DEBUG
     /// Tests learn where Rewrite's Core work (a plan, a placement, a review) ran: true on the main thread.
@@ -236,7 +236,7 @@ struct EditorRenderSnapshot {
     func enableVoiceLab() {
         app.set("voiceLab.betaNoticeAccepted", .bool(true))
         app.set("voiceLab.enabled", .bool(true))
-        showVoiceLabOptIn = false
+
     }
     var preset = ClipPresetID.best
     var instruction = ""

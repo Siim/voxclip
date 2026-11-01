@@ -172,7 +172,7 @@ extension RewriteSession {
     }
 
     /// R2's footer cases (design.md R2), with "Nothing paid yet" and Keep All in v2's grammar (notes.md §7):
-    /// - Voice Lab off with voice changes: Turn On Voice Lab…, and Apply {k} Free Changes.
+    /// - Voice Lab off with voice changes: Turn On Voice Lab, and Apply {k} Free Changes.
     /// - Voice changes over the budget: the callout, and Apply {k} Free Changes.
     /// - More than one voice change included (impl-plan item 25, until takes place several windows): the one-passage line,
     ///   and Apply {k} Free Changes.
@@ -193,7 +193,7 @@ extension RewriteSession {
         let keepAll = pending.isEmpty ? nil : PanelAction(id: "keepAll", title: "Keep All") { [weak self] in self?.keepAll() }
         func phrases(_ count: Int) -> String { count == 1 ? "1 phrase needs" : "\(count) phrases need" }
         if !editor.app.voiceLabRewriteEnabled, !voices.isEmpty {
-            let turnOn = PanelAction(id: "turnOnVoiceLab", title: "Turn On Voice Lab…") { [weak self] in self?.editor.showVoiceLabOptIn = true }
+            let turnOn = PanelAction(id: "turnOnVoiceLab", title: "Turn On Voice Lab") { [weak self] in self?.editor.openVoiceJob() }
             return (PanelFooter(note: "\(phrases(voices.count)) your voice. Voice Lab (beta) makes it from this \(task.words.noun).", link: turnOn, primary: apply(beside: true)), nil, false)
         }
         if !included.isEmpty, let over = overBudget {
@@ -244,8 +244,7 @@ extension RewriteSession {
         }
         if generation.voices.isEmpty {
             let make = PanelAction(id: "makeVoice", title: "Make Your Voice") { [weak self] in
-                openVoxClipSettings(pane: "voiceLab")
-                self?.editor.app.voiceLabSession.openEnrollment()
+                self?.editor.openVoiceJob()
             }
             return PanelFooter(note: unpaid + " Next: make your voice from this \(task.words.noun). Once.", link: keepAll, primary: make)
         }

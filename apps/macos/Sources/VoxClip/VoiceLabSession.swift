@@ -3,6 +3,19 @@ import Observation
 import VoxClipCore
 import VoxClipMedia
 
+/// The enrollment job, separate from the Rewrite proposal it returns to. No document mutation or paid work on opening.
+@MainActor @Observable final class VoiceEnrollmentFlow {
+    enum State: String, CaseIterable { case firstUse = "V0", agree = "V1", statement = "V2", checking = "V3", ready = "V4", creating = "V5", finished = "V6" }
+    var state = State.firstUse
+    var keyReady = false
+    var keyChecked = false
+    var keyDraft = ""
+    var turn = 0
+    @ObservationIgnored weak var owner: EditorModel?
+    @ObservationIgnored weak var originTask: DirectorTask?
+    var originTurn = 0
+}
+
 @MainActor @Observable final class VoiceLabSession {
     enum Request: Identifiable, Equatable {
         case subscription, verify, create, delete(String), removeLocal(String), stopLooking(UUID)
@@ -39,6 +52,7 @@ import VoxClipMedia
     var message: String?
     var busy = false
     var showEnrollment = false
+    let flow = VoiceEnrollmentFlow()
     var displayName = ""
     var ownVoice = false
     var adult = false
@@ -75,7 +89,7 @@ import VoxClipMedia
     @ObservationIgnored private var keptSeconds: Double?
     let recorder = VoiceMicrophoneRecorder()
     private(set) var recordID = UUID().uuidString.lowercased()
-    @ObservationIgnored private unowned let app: AppModel
+    @ObservationIgnored unowned let app: AppModel
     @ObservationIgnored private let store: VoiceConsentStore
     @ObservationIgnored private var client: ElevenLabsVoiceLab?
     @ObservationIgnored private var enrollment: VoiceEnrollment?
@@ -117,10 +131,72 @@ import VoxClipMedia
         #endif
         return try await app.speakerModelLibrary.check(language: enrollmentLanguage)
     }
+    var voiceNeedHeadline: String {
+        let count = flow.owner?.openRewrite?.changes.filter { $0.hunk.kind == .voice }.count ?? 0
+        return count == 0 ? "Your voice" : count == 1 ? "1 phrase needs your voice" : "\(count) phrases need your voice"
+    }
+    func prepareVoiceJob() async {
+        await app.speakerModelLibrary.load()
+        flow.keyReady = await app.providerKeyStore.hasKey(for: "elevenlabs")
+        flow.keyChecked = true
+        if enabled && speakerReady && flow.keyReady && flow.state == .firstUse { continueAfterDownload() }
+    }
+    func saveVoiceKey() async {
+        guard !busy else { return }
+        busy = true; defer { busy = false }
+        do {
+            try await app.providerKeyStore.save(flow.keyDraft, for: "elevenlabs")
+            flow.keyDraft = ""; flow.keyReady = true; message = nil
+        } catch { message = "Couldn't save the key. " + (await app.safeError(error)) }
+    }
+    func turnOnVoiceJob() {
+        guard flow.keyReady, !busy else { return }
+        app.set("voiceLab.betaNoticeAccepted", .bool(true)); app.set("voiceLab.enabled", .bool(true))
+        if app.speakerModelLibrary.installed { continueAfterDownload() }
+        else { app.speakerModelLibrary.download(approved: true) }
+    }
+    func continueAfterDownload() {
+        guard enabled, app.speakerModelLibrary.installed, flow.keyReady else { return }
+        if flow.state == .firstUse { flow.state = .agree }
+        if let project = trainingProject, projectAudio == .noProject { startProjectAnalysis(project) }
+        flow.owner?.announce("Own-voice check installed. Finding your clear speech.")
+    }
+    func returnToRewrite() {
+        guard !busy else { return }
+        // Preserve local enrollment when switching jobs. Closing the proposal never approves a send.
+        if let owner = flow.owner { owner.app.shell.choosePanelJob(.rewrite, for: owner) }
+    }
+    func cancelVoiceAction() {
+        if app.speakerModelLibrary.progress != nil { app.speakerModelLibrary.cancelDownload(); return }
+        if recorder.recording { recorder.discard(); return }
+        returnToRewrite()
+    }
+    func voicePrimary(command: Bool) {
+        if flow.state == .firstUse {
+            if flow.keyReady { turnOnVoiceJob() } else { Task { await saveVoiceKey() } }
+        } else if flow.state == .agree { Task { await prepareVoiceStatement() } }
+        else if flow.state == .statement {
+            Task { if recorder.recording { await stopRecording() } else if recordingTraining { await beginTraining() } else { await beginStatement() } }
+        }
+    }
+    func changeVoiceAgreement() {
+        guard !busy, !recorder.recording else { return }
+        statement = nil; statementWAV = nil; verified = false; flow.state = .agree
+    }
+    func prepareVoiceStatement() async {
+        guard canRecord, let shared = app.shared else { return }
+        do {
+            let selected = enrollmentLanguage
+            let words = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/nonce-words-\(selected).txt"), encoding: .utf8).split(whereSeparator: \.isWhitespace).map(String.init)
+            var rng = SystemRandomNumberGenerator()
+            statement = try VoiceConsentText(shared: shared).statement(name: displayName, language: selected, date: Date(), words: words, rng: &rng)
+            script = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/scripts-\(selected).txt"), encoding: .utf8)
+            acceptedAt = Date(); flow.state = .statement; message = nil
+        } catch { message = await errorMessage(error) }
+    }
     func refreshEnabledState() async {
         guard enabled else { records = []; deleting = []; operations = []; return }
         await load()
-        if subscription == nil { request(.subscription) }
     }
     var enabled: Bool { app.bool("voiceLab.enabled") }
     var enrollmentLanguage: String {
@@ -319,21 +395,16 @@ import VoxClipMedia
     }
     func beginStatement() async {
         guard speakerReady else { message = VoiceConsentError.speakerUnavailable.localizedDescription; return }
-        guard canRecord, planMessage == nil else { return }
+        guard canRecord else { return }
+        if statement == nil { await prepareVoiceStatement() }
         busy = true; message = nil
         defer { busy = false }
         do {
-            guard try await app.speakerModelLibrary.check(language: enrollmentLanguage).available else { throw VoiceConsentError.speakerUnavailable }
-            guard let shared = app.shared else { throw VoxClipError.sharedResourcesMissing }
+            guard try await currentSpeakerCheck().available else { throw VoiceConsentError.speakerUnavailable }
             if let enrollment { try await enrollment.cancel(recordID: recordID) }
             try await store.abandonEnrollment(recordID: recordID)
             recordID = UUID().uuidString.lowercased()
-            let selected = enrollmentLanguage
-            let words = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/nonce-words-\(selected).txt"), encoding: .utf8).split(whereSeparator: \.isWhitespace).map(String.init)
-            var rng = SystemRandomNumberGenerator()
-            let data = try VoiceConsentText(shared: shared)
-            statement = try data.statement(name: displayName, language: selected, date: Date(), words: words, rng: &rng)
-            script = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/scripts-\(selected).txt"), encoding: .utf8)
+            guard statement != nil else { return }
             acceptedAt = Date(); verified = false; trainingReady = false; statementWAV = nil; training = []; recordingTraining = false; keptSeconds = nil
             try await recorder.start(maximumSeconds: 30)
         } catch { message = await errorMessage(error) }
@@ -361,7 +432,8 @@ import VoxClipMedia
                 let wav = try await Task.detached(priority: .userInitiated) { try VoiceTrainingAudio.wav(samples) }.value
                 try await store.saveStatement(wav, recordID: recordID)
                 statementWAV = wav
-                message = "Recording is ready. Verify statement sends only this recording to ElevenLabs."
+                flow.state = .ready
+                message = "Statement recorded. Nothing was sent."
             }
         } catch { message = await errorMessage(error); if recordingTraining { trainingReady = false } }
     }
@@ -411,7 +483,8 @@ import VoxClipMedia
     }
     /// Opens the sheet with the editor's project as the §6.5 (a) default.
     func openEnrollment() {
-        openEnrollment(project: app.shell.editor.map { Self.trainingProject(editor: $0, name: app.shell.projectTitle) })
+        guard let editor = app.shell.editor else { return }
+        editor.openVoiceJob()
     }
     /// The editor's project; its media is offered only when the editor reads it, never for a demo.
     static func trainingProject(editor: EditorModel, name: String) -> TrainingProject {
@@ -419,13 +492,16 @@ import VoxClipMedia
         return TrainingProject(project: editor.project, name: name, source: readable ? editor.sourceURL : nil)
     }
     /// §6.5.2: a project with a transcript makes its audio the default and starts the on-device analysis at once.
-    func openEnrollment(project: TrainingProject?) {
+    func openEnrollment(project: TrainingProject?, startAnalysis: Bool = true) {
         guard !showEnrollment else { return }
         showEnrollment = true
         analysis?.cancel(); analysis = nil; analysisID = UUID()
         trainingProject = project; projectRate = nil; projectMismatch = false; keptSeconds = nil
         projectName = project?.name ?? ""
         guard let project else { projectAudio = .noProject; trainingSource = .readAloud; return }
+        if startAnalysis { startProjectAnalysis(project) } else { projectAudio = .noProject }
+    }
+    private func startProjectAnalysis(_ project: TrainingProject) {
         guard project.project.transcript != nil else { projectAudio = .untranscribed; trainingSource = .readAloud; return }
         guard let source = project.source else { projectAudio = .unreadable; trainingSource = .readAloud; return }
         projectAudio = .finding; trainingSource = .project

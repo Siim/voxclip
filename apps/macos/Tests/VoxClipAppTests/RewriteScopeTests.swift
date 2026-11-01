@@ -673,12 +673,12 @@ private final class WorkThreads: Sendable {
         editor.selectedWordIDs = ["w12", "w13", "w14"]
         let session = try await rewrite(editor)
         #expect(session.review?.voiceHunks.isEmpty == false && !app.voiceLabRewriteEnabled)
-        #expect(!session.showsVoiceLab && session.task.headline.tag == nil && session.task.footer.link?.title == "Turn On Voice Lab…")
-        editor.showVoiceLabOptIn = true
+        #expect(!session.showsVoiceLab && session.task.headline.tag == nil && session.task.footer.link?.title == "Turn On Voice Lab")
+        editor.openVoiceJob()
         editor.enableVoiceLab()
         for _ in 0..<500 where session.task.headline.tag == nil { await Task.yield() }
-        #expect(app.voiceLabRewriteEnabled && !editor.showVoiceLabOptIn && session.showsVoiceLab && session.isOpen)
-        #expect(session.task.headline.tag == "Beta" && session.task.footer.link?.title != "Turn On Voice Lab…")
+        #expect(app.voiceLabRewriteEnabled && session.showsVoiceLab && session.isOpen)
+        #expect(session.task.headline.tag == "Beta" && session.task.footer.link?.title != "Turn On Voice Lab")
 
         editor.selectedWordIDs = []
         let clip = try await rewrite(editor)

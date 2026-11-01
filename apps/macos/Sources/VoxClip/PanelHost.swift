@@ -33,8 +33,10 @@ enum PanelJob: String, CaseIterable, Sendable {
     /// cannot act is not shown"). Captions always, and the job of the task open on the
     /// active tab (Rewrite; Voice and Takes with V16–V18, Director with Phase 1).
     @MainActor static func available(in model: EditorModel) -> [PanelJob] {
-        guard let task = model.panelTask else { return [.captions] }
-        return [.captions, task.job]
+        var jobs: [PanelJob] = [.captions]
+        if let task = model.panelTask { jobs.append(task.job) }
+        if model.hasVoiceJob { jobs.append(.voice) }
+        return jobs
     }
 }
 
@@ -44,11 +46,28 @@ struct PanelJobChoice {
     let job: PanelJob
     weak var task: DirectorTask?
     let turn: Int
+    var voiceTurn: Int = 0
 }
 
 extension EditorModel {
     /// The task the panel shows: the active tab's Rewrite session's. Text Rewrite needs no Voice Lab (impl-plan V13).
     var panelTask: DirectorTask? { rewrite?.task }
+    var hasVoiceJob: Bool { app.voiceLabSession.showEnrollment && app.voiceLabSession.flow.owner === self }
+    func openVoiceJob() {
+        guard capabilities.ai else { return }
+        let session = app.voiceLabSession
+        if session.showEnrollment, let owner = session.flow.owner, owner !== self {
+            announce("Finish making your voice in the other project first."); return
+        }
+        session.flow.owner = self; session.flow.originTask = openRewrite?.task
+        session.flow.originTurn = openRewrite?.task.turn ?? 0
+        session.flow.turn += 1
+        session.openEnrollment(project: VoiceLabSession.trainingProject(editor: self, name: app.shell.projectTitle), startAnalysis: false)
+        // Opening first use itself does not decode media or download a model.
+        if !app.speakerModelLibrary.installed || !session.enabled { session.analysis?.cancel(); session.projectAudio = .noProject }
+        if app.shell.editor === self, !app.shell.viewerShown { app.shell.toggleViewer() }
+        announce("Your voice. Step 1 of 2.")
+    }
 }
 
 extension WorkspaceShell {
@@ -61,14 +80,17 @@ extension WorkspaceShell {
         let jobs = PanelJob.available(in: model)
         let task = model.openRewrite?.task
         if let asking = model.panelTask, asking.confirm != nil { return asking.job }
-        if let choice = panelChoice, choice.task === task, choice.turn == task?.turn, jobs.contains(choice.job) { return choice.job }
+        let flow = model.app.voiceLabSession.flow
+        if let choice = panelChoice, choice.task === task, choice.turn == (task?.turn ?? 0),
+           choice.voiceTurn == flow.turn, jobs.contains(choice.job) { return choice.job }
+        if model.hasVoiceJob, flow.originTask === task, flow.originTurn == (task?.turn ?? 0) { return .voice }
         return model.panelTask?.job ?? .captions
     }
     /// The switcher's pick.
     func choosePanelJob(_ job: PanelJob, for model: EditorModel) {
         guard PanelJob.available(in: model).contains(job) else { return }
         let task = model.openRewrite?.task
-        panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0)
+        panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0, voiceTurn: model.app.voiceLabSession.flow.turn)
     }
 }
 
@@ -107,7 +129,8 @@ extension WorkspaceShell {
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if job == .rewrite, let session = model.rewrite {
+                if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
+                else if job == .rewrite, let session = model.rewrite {
                     DirectorPanel(task: session.task, model: model)
                 } else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }

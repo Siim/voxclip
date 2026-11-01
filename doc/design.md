@@ -1314,6 +1314,9 @@ Phase 0 connectors return one answer, so nothing streams: R1 waits until the rep
 
 #### 6.3.7 Your voice, from this clip
 
+**Mac inline job (V16, v3 f10 and v5 f23).** Rewrite's Turn On Voice Lab / Make Your Voice opens the right panel's Voice job, preserving the proposal. First use contains the beta notice, an inline ElevenLabs key field when needed, and the publisher, exact catalogue download size and licence immediately beside Turn On Voice Lab. That click enables the setting and approves that model download; installed models skip it. Progress, Cancel and Retry stay in the job. Nothing is uploaded. After setup, this Mac finds clear speech, shows the three explicit attestations and display name, and prepares the read-aloud statement before recording starts. The statement and recorder live in the job. Back to Rewrite keeps local work. Settings reuses the inline first-use card and is otherwise management (voices, deletion, storage, spend and turn off); it has no Create Your Voice entry or enrollment sheet. The speaker model's Settings row also places its licence and download action inline. The Mac enrollment flow supersedes the old opt-in and CreateVoiceSheet presentations.
+
+
 The steps run inside the panel, and the proposal stays in the transcript. The title is "Your voice", with Beta and "Step {i} of 3" ("of 4" when a read-aloud is needed), plus the back button "Back to rewrite".
 
 The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set to the scope's clip; on device and free; voice-lab.md §6.5.1) starts when R2 appears with voice changes and no voice. V1 therefore usually knows the result already.

@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+## V16 — inline Voice job, first use through the statement (1 Nov 2026)
+
+- Built `VoiceEnrollmentFlow` in VoiceLabSession and `DirectorVoiceSteps`: V0 key/beta/setup, V1 local speech analysis and three explicit attestations, V2 visible read-aloud plus recorder. The right-panel switcher retains Captions and Rewrite; reopening Voice raises its turn without discarding the proposal. First use does not download or decode. Turn On Voice Lab is the model-download approval with size/publisher/licence visible; installed models skip download; errors, progress and cancel are inline. Settings reuses that card and otherwise manages voices/spend/storage.
+- Deleted CreateVoiceSheet, VoiceLabOptInView, their sheet presentations and Create Your Voice entry points; removed the model confirmationDialog and automatic account approval on enabling. Settings-only deletion/account/recovery confirmations remain. The legacy verify/create service and tests are retired in the immediately following V17 commit together with its paid combined path; there is no editor UI for them in V16.
+- Tests: serial merged baseline Core 831/70 and App 385/32 passed. New isolated app tests cover first use/no download, installed check, all agreements/visible statement, explicit download approval/licence and off/missing-media gates. DebugVoiceLab adds V0–V2 state checks; launch still calls reconcileStartup. No paid/live calls, UI screenshots or CI dispatch.
+- Merge: minimal PanelHost job availability and choice turn changes overlap VX/V2b; preserve Export's task precedence and switcher when integrating. DebugMenus' former opt-in capture now uses the Voice job. `showEnrollment` is local job availability, no longer a sheet flag. Docs §6.3.7 records the replacement. Owes real-window f23/f10 comparison under the idle gate; V17 supplies checking/quote/create/recovery next, V18/V19 own takes/use.
+
+
 ## Voice lane foundations — Core C7/C4 and C3 merge (1 Nov 2026)
 
 - Base: origin/lead/v2-rewrite at c34e88bd. Merged exact Mac commits 063e51bd and 39284621; no moving Core branch or Windows WIP.

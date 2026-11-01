@@ -201,7 +201,7 @@ import VoxClipCore
         editor.finding = false; editor.findTask = nil
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             try await DebugUISuite.snapshot(ShortcutsView(), name: "keyboard-shortcuts-\(name)", size: NSSize(width: 628, height: 760), appearance: appearance, directory: directory)
-            try await DebugUISuite.snapshot(VoiceLabOptInView(editor: editor), name: "voice-lab-opt-in-\(name)", size: NSSize(width: 460, height: 270), appearance: appearance, directory: directory)
+            try await DebugUISuite.snapshot(DirectorVoiceSteps(session: app.voiceLabSession, model: editor), name: "voice-job-first-use-\(name)", size: NSSize(width: 404, height: 600), appearance: appearance, directory: directory)
         }
         let menus: [[String: Any]] = NSApp.mainMenu?.items.compactMap { parent in
             guard let submenu = parent.submenu else { return nil }
