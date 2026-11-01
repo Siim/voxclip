@@ -203,6 +203,19 @@ import Testing
         #expect(texts["explorer.export"] == nil && texts["explorer.voice"] == nil)
         #expect(texts["explorer.header.voices"] == "Voices, 1 item" && texts["explorer.header.exports"] == "Exports, 1 item")
     }
+    @Test func previewLibraryHasTheProductionInset() async throws {
+        let shell = try await shell(), editor = try #require(shell.editor)
+        defer { editor.close() }
+        func header(_ content: some View) throws -> CGRect {
+            let host = NSHostingView(rootView: content)
+            host.frame = NSRect(x: 0, y: 0, width: 224, height: 600); host.layoutSubtreeIfNeeded()
+            return try #require(DebugRightColumn.markers(in: host)["explorer.header.exports"])
+        }
+        let production = try header(ExplorerLibrarySections(shell: shell, editor: editor))
+        let preview = try header(ExplorerRowsPreview(shell: shell))
+        #expect(production.minX == preview.minX && production.width == preview.width)
+    }
+
     @Test func collapsedExportsOnlyCountAndExpandedRowsReuseFingerprints() async throws {
         let shell = try await shell(), editor = try #require(shell.editor)
         defer { editor.close() }

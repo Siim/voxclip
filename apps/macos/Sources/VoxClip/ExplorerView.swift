@@ -684,12 +684,11 @@ private struct ExplorerVoiceGlyph: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let document = shell.document, let editor = shell.editor {
-                ProjectSection(shell: shell, document: document, editor: editor, listFocused: false)
+                ProjectSection(shell: shell, document: document, editor: editor, listFocused: false).padding(.horizontal, 12)
             }
             Spacer(minLength: 0)
             if let editor = shell.editor { ExplorerLibrarySections(shell: shell, editor: editor) }
         }
-        .padding(.horizontal, 12)
         .frame(width: shell.layout.explorerWidth, alignment: .topLeading)
         .frame(maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.window"))

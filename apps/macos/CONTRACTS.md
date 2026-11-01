@@ -1,6 +1,11 @@
 # macOS implementation contracts
 
 
+### 2026-11-01 — V2b review: preview inset
+
+- The DEBUG preview insets project rows alone; the library retains its own 12 pt inset, matching production. `previewLibraryHasTheProductionInset` compares actual header geometry and fails against the prior double inset (`dist/v11b-evidence/library-layout-red.log`).
+
+
 ### 2026-11-01 — V2b review: bounded export projection cost
 
 - Collapsed Exports reads only the project's ledger count. Expanded rows share an editor-owned fingerprint cache keyed by project/revision, target, aspect and label position; only the current revision is retained. Output existence is checked once in the row's record-keyed task and reused by actions. `collapsedExportsOnlyCountAndExpandedRowsReuseFingerprints` covers collapsed cost, repeated reads and revision invalidation.
