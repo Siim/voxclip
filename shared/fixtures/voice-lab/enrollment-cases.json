@@ -143,5 +143,55 @@
       "action": "reject",
       "events": []
     }
+  ],
+  "retries": [
+    {
+      "id": "project-to-read-aloud",
+      "localPrepares": 4,
+      "expiredReprepares": 4,
+      "expectedSends": [
+        "plan",
+        "verify",
+        "create"
+      ]
+    }
+  ],
+  "journals": [
+    {
+      "id": "valid",
+      "ageSeconds": 86390,
+      "corruption": "none",
+      "retained": true
+    },
+    {
+      "id": "expired",
+      "ageSeconds": 86400,
+      "corruption": "none",
+      "retained": false
+    },
+    {
+      "id": "old",
+      "ageSeconds": 172800,
+      "corruption": "none",
+      "retained": false
+    },
+    {
+      "id": "undecodable",
+      "ageSeconds": 0,
+      "corruption": "json",
+      "retained": false
+    },
+    {
+      "id": "invalid-binding",
+      "ageSeconds": 0,
+      "corruption": "binding",
+      "retained": false
+    },
+    {
+      "id": "missing-statement",
+      "ageSeconds": 0,
+      "corruption": "statement",
+      "retained": false
+    }
   ]
 }

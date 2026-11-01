@@ -108,7 +108,7 @@ Rows without a mutation vary `rate` or `frames` to test sample rate and duration
 
 `take-batch-cases.json` pins one approval for every voice window's bounded take set in a Rewrite: the summed TTS and Scribe QA estimate, its one presentation with the monthly cap, the refusals, and the window-by-window run with early stop and the remainder a cap check weighs before each dispatch (voice-lab §8.6 with several hunks, §2.6, §3.1). `generate_take_batch.py` writes it from catalog list prices and its own reference of the rules; the Mac Core suite replays every case (the Windows twin is plan package W3) and `check_drift.py` requires its bytes to match exactly. See `take-batch-cases-README.md`.
 
-`enrollment-cases.json` pins C7's local-speaker-first enrollment, one combined approval, quote binding,
+`enrollment-cases.json` pins C7's local-speaker-first enrollment, one combined approval, quote binding, statement-identity retries, 24-hour journal cleanup,
 three attempts per ten minutes, and explicit recovery after verification but before creation dispatch.
 Generate with `python3 tools/fixtures/voice-lab/generate_enrollment.py`; Swift replays every row in
 `VoiceEnrollmentPlanTests` (the Windows twin is W4). It has only strings, integers and booleans and is

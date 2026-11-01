@@ -33,7 +33,16 @@ def main():
         recoveries.append(dict(id=name, elapsedSeconds=seconds, sameQuote=same, action=action, events=events))
     result = dict(schema="voxclip-enrollment-cases/1", flows=flows,
                   mutations=["same", "statementBytes", "statementText", "nonce", "files", "fileBytes", "order", "roles", "name", "language", "createdAt", "noiseRemoval", "recordID"],
-                  attempts=dict(limit=3, blockedAtSeconds=599, allowedAtSeconds=600), recoveries=recoveries)
+                  attempts=dict(limit=3, blockedAtSeconds=599, allowedAtSeconds=600), recoveries=recoveries,
+                  retries=[dict(id="project-to-read-aloud", localPrepares=4, expiredReprepares=4, expectedSends=["plan", "verify", "create"])],
+                  journals=[dict(id=name, ageSeconds=age, corruption=corruption, retained=retained)
+                            for name, age, corruption, retained in [
+                                ("valid", 86390, "none", True),
+                                ("expired", 86400, "none", False),
+                                ("old", 172800, "none", False),
+                                ("undecodable", 0, "json", False),
+                                ("invalid-binding", 0, "binding", False),
+                                ("missing-statement", 0, "statement", False)]])
     target = ROOT / "shared/fixtures/voice-lab/enrollment-cases.json"
     target.write_text(json.dumps(result, indent=2) + "\n")
 
