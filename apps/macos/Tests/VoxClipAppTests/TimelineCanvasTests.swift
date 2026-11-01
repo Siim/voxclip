@@ -75,6 +75,30 @@ private actor TimelineTestSettings: SettingsStore {
             let actual = at(x, y), expected = try DebugTimeline.swatch(token, alpha: alpha, over: ground)
             return actual.count == 3 && zip(actual, expected).allSatisfy { abs($0 - $1) < 3.0 / 255 }
         }
+        /// Whether a 1 pt line centred on `x` shows `token` at `y`, over what `ground`, the same
+        /// view without the line, shows there. At 2x the line fills a whole pixel column. At 1x,
+        /// as on the hosted runner, a line off the pixel grid covers two columns in part: each
+        /// holds the token over the ground, the larger part at least half, one column's worth in all.
+        func showsLine(_ x: CGFloat, _ y: CGFloat, _ token: String, ground: Pixels) throws -> Bool {
+            let ink = try DebugTimeline.swatch(token)
+            let row = Int(y * scale)
+            let left: CGFloat = (x - 0.5) * scale, right: CGFloat = (x + 0.5) * scale
+            var total: Double = 0, most: Double = 0
+            for column in Int(left.rounded(.down))..<Int(right.rounded(.up)) {
+                let actual = DebugTimeline.pixel(bitmap, x: column, y: row), paper = DebugTimeline.pixel(ground.bitmap, x: column, y: row)
+                guard actual.count == 3, paper.count == 3, ink.count == 3 else { return false }
+                let direction: [Double] = zip(ink, paper).map { $0 - $1 }
+                let difference: [Double] = zip(actual, paper).map { $0 - $1 }
+                let magnitude: Double = direction.reduce(0) { $0 + $1 * $1 }
+                guard magnitude > 0.001 else { return false }
+                let coverage: Double = zip(difference, direction).reduce(0) { $0 + $1.0 * $1.1 } / magnitude
+                // A colour off the way from the ground to the token is something else.
+                guard zip(difference, direction).allSatisfy({ abs($0 - $1 * coverage) < 0.06 }) else { return false }
+                total += coverage
+                most = max(most, coverage)
+            }
+            return most >= (scale >= 2 ? 0.95 : 0.45) && abs(total - Double(scale)) < 0.35
+        }
     }
 
     // MARK: Viewport
@@ -398,9 +422,13 @@ private actor TimelineTestSettings: SettingsStore {
         window.displayIfNeeded()
         let pixels = try Pixels(canvas)
         let cached = pixels.bitmap
+        // The lanes without the playhead, under its line.
+        canvas.overlay.playhead.isHidden = true
+        let ground = try Pixels(canvas)
+        canvas.overlay.playhead.isHidden = false
         let viewport = canvas.viewport
         let play = TimelineMetrics.header + CGFloat(viewport.x(model.timelinePlayhead(on: axis)))
-        #expect(try pixels.shows(play, TimelineMetrics.tracks[1].y + 10, "tint.default"))
+        #expect(try pixels.showsLine(play, TimelineMetrics.tracks[1].y + 10, "tint.default", ground: ground))
         #expect(try pixels.shows(play, TimelineMetrics.ruler.y + 14, "tint.default"))
         let inOut = try #require(model.timelineInOut(on: axis))
         let inX = TimelineMetrics.header + CGFloat(viewport.x(inOut.lowerBound))
