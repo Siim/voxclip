@@ -13,7 +13,7 @@ import Testing
 @Suite("Transcript viewport overlays", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
 @MainActor struct TranscriptViewportTests {
     /// Forty paragraphs of twenty words, each its own speaker's turn, so each wraps after
-    /// word 13 at the 528 measure and after word 17 at 680. The open clip spans the two
+    /// word 13 at the 528 measure and after word 17 at 680 (with overlay scrollers). The open clip spans the two
     /// paragraphs either side of `paragraph`, whose word 15 the playhead is on and whose words
     /// 10–16 are selected. With paragraph 14, paragraph 13 starts near the top after
     /// `scrollToThirteen`.
@@ -126,13 +126,17 @@ import Testing
         #expect(!before.bandHidden && !before.caretHidden && before.selection.count == 2, "\(before)")
         pane.window.setContentSize(NSSize(width: 820, height: 488))
         layoutPass(pane)
-        #expect(pane.text.bounds.width == 820 && pane.text.textContainer?.containerSize.width == 680, "the 680 measure at 820")
+        // A legacy scroller (a Mac with a mouse, the hosted runner) takes its width from the pane.
+        let width: CGFloat = pane.scroll.contentSize.width
+        let measure: CGFloat = CGFloat(TranscriptNSTextView.measure(forPane: Double(width)))
+        #expect(width > 800 && pane.text.bounds.width == width, "the text view takes the clip view's \(width)")
+        #expect(pane.text.textContainer?.containerSize.width == measure, "the \(measure) measure at \(width)")
         #expect(!pane.text.needsLayout)
         let (shown, measured) = try current(pane)
         #expect(shown == measured, "after the layout pass: \(shown), measured again: \(measured)")
         #expect(pane.text.visibleRect.minY == 0, "still at the top")
-        #expect(shown.bandFrame.width == 820 && !shown.bandHidden, "the band spans the wider pane: \(before) → \(shown)")
-        // Word 15 moves from the second line to the first at 680, where eighteen fit.
+        #expect(shown.bandFrame.width == width && !shown.bandHidden, "the band spans the wider pane: \(before) → \(shown)")
+        // Word 15 moves from the second line to the first at 680 (679 beside a legacy scroller), where eighteen fit.
         let caretBox = try #require(pane.text.textBox(of: NSRange(location: try caretOffset(pane), length: 0)))
         #expect(!shown.caretHidden && abs(shown.caret.midX - caretBox.minX) < 0.5 && shown.caret.minY < before.caret.minY && shown.caret.midX > before.caret.midX,
                 "the caret follows word 15 up to the first line: \(before) → \(shown)")
