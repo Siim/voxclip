@@ -426,7 +426,7 @@ private struct KeepButtonStyle: ButtonStyle {
             } else if let error = editor.clipError, error != EditorModel.noClipsMatched, !editor.finding {
                 SidebarCallout {
                     Text(error)
-                    Button { editor.findClips() } label: { Text("Retry").modifier(SidebarActionTarget()) }.controlSize(.small)
+                    Button { editor.retryFindClips() } label: { Text("Retry").modifier(SidebarActionTarget()) }.controlSize(.small)
                 }
             }
         }

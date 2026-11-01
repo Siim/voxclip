@@ -12,13 +12,15 @@ import Testing
 /// Whether an observation heard a change.
 private final class Heard: @unchecked Sendable { var value = false }
 
-/// A Find Clips connector that keeps what it was asked. It answers with no clips; nothing leaves the Mac.
+/// A Find Clips connector that keeps what it was asked. It answers with no clips; nothing leaves the Mac. A CLI with
+/// no sign-in method reads as signed out until `signIn` gives it one.
 private actor HookFixtureConnector: LLMConnector {
     nonisolated let id: ConnectorID
-    let authMethod: String?
+    private(set) var authMethod: String?
     private(set) var requests: [LLMRequest] = []
     private(set) var statuses = 0
     init(id: ConnectorID, authMethod: String?) { self.id = id; self.authMethod = authMethod }
+    func signIn(_ method: String?) { authMethod = method }
     func status() -> ConnectorStatus { statuses += 1; return .ready }
     func knownCLIAuthMethod() async -> String? { authMethod }
     func models(refresh: Bool) -> [LLMModel] { [LLMModel(id: "fixture-local", name: "Fixture", contextTokens: 128_000, source: .curated)] }
@@ -161,6 +163,42 @@ private actor HookFixtureConnector: LLMConnector {
         }
         #expect(editor.preset == .quotes && editor.instruction == "only the jokes" && !editor.showFindClips)
         #expect(!editor.finding && !editor.llmRuns.isBusy)
+    }
+    /// A Hook that fails (Claude Code signed out) shows the Explorer's error with Retry, and Retry sends Hooks again, not
+    /// the popover's style and instructions.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR; only stub connectors are called."))
+    func retryAfterAFailedHookSendsHooksAgain() async throws {
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        let fake = HookFixtureConnector(id: .claudeCode, authMethod: nil)
+        app.connectorOverride = { _ in fake }
+        app.set("llm.connector", .string("claude-code"))
+        app.set("llm.cloudConsent.claude-code", .bool(true))
+        let sheets = SheetReasons()
+        app.connectorConsentOverride = { _, _, sheet in sheets.reasons.append(sheet.reason); return false }
+        let shared = try SharedResources.locate()
+        let editor = DebugConnectorRequests.makeEditor(fixture: try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")), app: app)
+        defer { editor.close() }
+        editor.preset = .quotes
+        editor.instruction = "only the jokes"
+        let bar = ClipBarView(model: editor, shell: WorkspaceShell(app: app))
+        defer { bar.tearDown() }
+        bar.hook.performClick(nil)
+        await editor.findTask?.value
+        // Signed out: the route fails before anything is sent, and the Explorer shows the error with Retry.
+        #expect(await fake.requests.isEmpty && editor.clipError?.isEmpty == false && editor.clipError != EditorModel.noClipsMatched)
+        // Signed in on a plan, Retry sends the Hooks preset once, with no sheet.
+        await fake.signIn("claude.ai")
+        editor.retryFindClips()
+        await editor.findTask?.value
+        let requests = await fake.requests
+        let hooks = try presetInstruction("hooks"), quotes = try presetInstruction("quotes")
+        #expect(sheets.reasons.isEmpty && requests.count == 1)
+        #expect(requests.allSatisfy { ($0.system + $0.instruction).contains(hooks) && !($0.system + $0.instruction).contains(quotes) && !$0.instruction.contains("only the jokes") })
+        #expect(editor.preset == .quotes && editor.instruction == "only the jokes")
+        // A Find Clips run from the popover is what the next Retry repeats.
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(editor.lastFindRequest?.preset == .quotes && editor.lastFindRequest?.instruction == "only the jokes")
     }
     private func presetInstruction(_ id: String) throws -> String {
         let shared = try SharedResources.locate()

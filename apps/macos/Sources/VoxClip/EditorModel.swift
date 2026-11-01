@@ -165,6 +165,8 @@ struct EditorRenderSnapshot {
     }
     var preset = ClipPresetID.best
     var instruction = ""
+    /// The last Find Clips run's preset and instructions (Hook's or the popover's), which the Explorer's Retry sends again.
+    @ObservationIgnored private(set) var lastFindRequest: (preset: ClipPresetID, instruction: String)?
     var clipError: String?
     /// "Answered by {fallback} because {model} was busy." after a Find Clips run that
     /// used the fallback model (ai.md §4.3), shown under the Suggested header.
@@ -1155,6 +1157,10 @@ extension EditorModel {
         showFindClips = false
         findClips(preset: .hooks, instruction: "")
     }
+    /// Retry after a failed run: the same search again, a failed Hook with Hooks, not the popover's style.
+    func retryFindClips() {
+        findClips(preset: lastFindRequest?.preset, instruction: lastFindRequest?.instruction)
+    }
     /// Asks the chosen connector for clips with `preset` and `instruction`, the popover's when nil. They arrive as
     /// suggestions in one undo step.
     func findClips(preset requestedPreset: ClipPresetID? = nil, instruction requestedInstruction: String? = nil) {
@@ -1165,6 +1171,7 @@ extension EditorModel {
         let selectedSignature = rewriteConnectorSignature
         let selectedPreset = requestedPreset ?? preset
         let instructions = requestedInstruction ?? instruction
+        lastFindRequest = (selectedPreset, instructions)
         let snapshot = project
         do {
             guard self.capabilities.ai, self.project == snapshot, self.app.string("llm.connector") == provider.id,
