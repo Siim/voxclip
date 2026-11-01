@@ -202,6 +202,60 @@ private actor TimelineTestSettings: SettingsStore {
         canvas.tearDown()
     }
 
+    /// notes.md §6's pixels, drawn in a window that is never shown: the playhead's line and
+    /// head in the tint, the In bracket in clip.label, the ruler on chrome inside In/Out and
+    /// darker outside, the track lanes, the open clip's 42% overview block, no red.
+    @Test(arguments: [TimelineAxis.edited, .source]) func theLanesDrawNotesSixPixels(_ axis: TimelineAxis) throws {
+        let app = try app()
+        let model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = axis == .source
+        // The playhead inside the clip before the canvas follows it, so neither axis pages.
+        let source = 20.4
+        model.sourceTime = source
+        model.playhead = model.timelineTime(source: source, on: .edited)
+        let canvas = TimelineCanvasView(model: model)
+        defer { canvas.tearDown() }
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: TimelineMetrics.height), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = canvas
+        defer { window.close() }
+        canvas.renderContent()
+        canvas.followPlayhead()
+        #expect(abs(canvas.viewport.origin - (axis == .edited ? -1 : 8.9)) < 1e-9)
+        canvas.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let cached = try DebugTimeline.sRGBBitmap(of: canvas)
+        let scale = CGFloat(cached.pixelsWide) / canvas.bounds.width
+        func pixel(_ x: CGFloat, _ y: CGFloat) -> [Double] { DebugTimeline.pixel(cached, x: Int(x * scale), y: Int(y * scale)) }
+        // Expected colours go through the same drawing and read-back, so colour management treats both alike.
+        func token(_ name: String, alpha: CGFloat = 1, over ground: String? = nil) throws -> [Double] { try DebugTimeline.swatch(name, alpha: alpha, over: ground) }
+        func near(_ actual: [Double], _ expected: [Double]) -> Bool { actual.count == 3 && zip(actual, expected).allSatisfy { abs($0 - $1) < 3.0 / 255 } }
+        let viewport = canvas.viewport
+        let play = TimelineMetrics.header + CGFloat(viewport.x(model.timelinePlayhead(on: axis)))
+        #expect(near(pixel(play, TimelineMetrics.tracks[1].y + 10), try token("tint.default")))
+        #expect(near(pixel(play, TimelineMetrics.ruler.y + 14), try token("tint.default")))
+        let inOut = try #require(model.timelineInOut(on: axis))
+        let inX = TimelineMetrics.header + CGFloat(viewport.x(inOut.lowerBound))
+        #expect(near(pixel(inX + 0.75, TimelineMetrics.ruler.y + 12), try token("clip.label")))
+        #expect(near(pixel(inX + 3, TimelineMetrics.ruler.y + 13), try token("bg.window")))
+        #expect(near(pixel(inX - 6, TimelineMetrics.ruler.y + 13), try token("timeline.rulerOut")))
+        #expect(near(pixel(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18), try token("timeline.lane")))
+        let block = canvas.overview.x(try #require(model.timelineOverviewClips.first).source.lowerBound + 0.3)
+        #expect(near(pixel(block, TimelineMetrics.overview.y + 12), try token("clip.label", alpha: 0.42, over: "timeline.lane")))
+        // The header column and its hairline stay beside every lane.
+        #expect(near(pixel(TimelineMetrics.header - 0.5, TimelineMetrics.overview.y + 6), try token("line.default")))
+        var red = false
+        for row in stride(from: 0, to: cached.pixelsHigh, by: 2) {
+            for column in stride(from: 0, to: cached.pixelsWide, by: 2) {
+                guard let color = cached.colorAt(x: column, y: row)?.usingColorSpace(.sRGB) else { continue }
+                if color.redComponent > 0.55 && color.greenComponent < 0.3 && color.blueComponent < 0.3 { red = true }
+            }
+        }
+        #expect(!red)
+    }
+
     // MARK: The waveform
 
     /// impl-plan §3.1: the model loads the waveform when the media is there, so a hidden
