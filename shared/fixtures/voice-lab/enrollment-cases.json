@@ -1,0 +1,138 @@
+{
+  "schema": "voxclip-enrollment-cases/1",
+  "flows": [
+    {
+      "id": "success",
+      "events": [
+        "plan",
+        "verify",
+        "create"
+      ],
+      "outcome": "created"
+    },
+    {
+      "id": "verify-fail",
+      "events": [
+        "plan",
+        "verify"
+      ],
+      "outcome": "statementMismatch"
+    },
+    {
+      "id": "speaker-mismatch",
+      "events": [],
+      "outcome": "speakerMismatch"
+    },
+    {
+      "id": "declined",
+      "events": [],
+      "outcome": "consentRequired"
+    },
+    {
+      "id": "disabled",
+      "events": [],
+      "outcome": "consentRequired"
+    },
+    {
+      "id": "plan-denied",
+      "events": [
+        "plan"
+      ],
+      "outcome": "planUnavailable"
+    },
+    {
+      "id": "no-slots",
+      "events": [
+        "plan"
+      ],
+      "outcome": "noVoiceSlots"
+    }
+  ],
+  "mutations": [
+    "same",
+    "statementBytes",
+    "statementText",
+    "nonce",
+    "files",
+    "fileBytes",
+    "order",
+    "roles",
+    "name",
+    "language",
+    "createdAt",
+    "noiseRemoval",
+    "recordID"
+  ],
+  "attempts": {
+    "limit": 3,
+    "blockedAtSeconds": 599,
+    "allowedAtSeconds": 600
+  },
+  "recoveries": [
+    {
+      "id": "fresh",
+      "elapsedSeconds": 299,
+      "sameQuote": true,
+      "action": "create",
+      "events": [
+        "plan",
+        "create"
+      ]
+    },
+    {
+      "id": "expired",
+      "elapsedSeconds": 300,
+      "sameQuote": false,
+      "action": "create",
+      "events": [
+        "plan",
+        "create"
+      ]
+    },
+    {
+      "id": "unsent-intent",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "create",
+      "events": [
+        "plan",
+        "create"
+      ]
+    },
+    {
+      "id": "declined-recovery",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "decline",
+      "events": []
+    },
+    {
+      "id": "changed-statement",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "reject",
+      "events": []
+    },
+    {
+      "id": "different-creator",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "reject",
+      "events": []
+    },
+    {
+      "id": "dispatched",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "reject",
+      "events": []
+    },
+    {
+      "id": "cancelled",
+      "elapsedSeconds": 0,
+      "sameQuote": true,
+      "action": "reject",
+      "events": []
+    }
+  ]
+}
