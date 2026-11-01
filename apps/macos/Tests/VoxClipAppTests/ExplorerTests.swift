@@ -224,6 +224,35 @@ import Testing
         #expect(shell.outlineEntries.allSatisfy { !$0.pendingHunk })
     }
 
+    /// The Outline's green dots follow the transcript's proposal on the open tab (V14): a paragraph with a change that
+    /// waits, until it is kept or undone; ⌘Z of a Keep brings the dot back. An insertion marks the word it follows.
+    @Test func outlineDotsFollowTheProposalsPendingChanges() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        let entries = shell.outlineEntries
+        try #require(entries.count >= 3)
+        #expect(entries.allSatisfy { !$0.pendingHunk })
+        let first = try #require(editor.words[entries[0].words].first { !editor.cutWordIDs.contains($0.id) && $0.kind == .word })
+        let last = try #require(editor.words[entries[2].words].last { !editor.cutWordIDs.contains($0.id) && $0.kind == .word })
+        editor.proposal = TranscriptProposal(clipID: nil, title: "Rewrite full take", changes: [
+            TranscriptChange(ordinal: 1, parts: [.init(kind: .cut, sourceWordIDs: [first.id])]),
+            TranscriptChange(ordinal: 2, parts: [.init(kind: .voice, sourceWordIDs: [], newTokens: ["really"])], anchor: .after(last.id)),
+        ])
+        func dots() -> [Int] { shell.outlineEntries.filter(\.pendingHunk).map(\.id) }
+        #expect(dots() == [entries[0].id, entries[2].id])
+        #expect(editor.excludeChange(2))
+        #expect(dots() == [entries[0].id], "an undone change needs no review")
+        let undo = try #require(editor.undoManager)
+        undo.beginUndoGrouping(); #expect(editor.keepChange(1)); undo.endUndoGrouping()
+        #expect(dots().isEmpty, "a kept change needs no review")
+        undo.undo()
+        #expect(dots() == [entries[0].id], "⌘Z of the Keep brings its change back")
+        // A proposal on another tab marks nothing on this one.
+        editor.proposal?.clipID = "five-1"
+        #expect(dots().isEmpty)
+        editor.proposal = nil
+    }
+
     @Test func outlineKeepsBareRowKeysWhileTheKeepAlternateStillActsOnTheTab() throws {
         let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
             context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))

@@ -109,7 +109,8 @@ enum SidebarItem: Hashable {
     /// the project and Quit keep it before edits freeze (design §6.2).
     var renaming: String?
     var renameDraft = ""
-    /// V14 supplies pending hunk membership in take paragraph ranges.
+    /// Whether a take paragraph's words (a range of word indices) hold a change that waits for a review: the Outline's
+    /// green dot. `attach` points it at the editor's proposal (V14), so Keep and Undo take the dot away.
     var outlineHasPendingHunk: ((Range<Int>) -> Bool)?
     var notice: String?
     /// A file is being dragged over the window.
@@ -540,7 +541,7 @@ enum SidebarItem: Hashable {
         rightOverlay = false
         tabs.reset()
         panelChoice = nil
-        outlineHasPendingHunk = nil
+        outlineHasPendingHunk = { [weak model] words in model?.hasUnreviewedChange(inWords: words) ?? false }
         document = next
         editor = model
         selection = next.project.edits.activeClipId.map(SidebarItem.clip) ?? .fullTake

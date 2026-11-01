@@ -385,11 +385,26 @@ extension EditorModel {
             return words[shown.words.lowerBound].start...max(words[shown.words.lowerBound].start, words[shown.words.upperBound].end)
         }
     }
-    /// The clip's tab shows the dirty dot while its proposal has changes not yet reviewed (notes.md §5).
-    func hasUnreviewedChanges(clipID: String?) -> Bool {
-        guard let proposal, proposal.clipID == clipID else { return false }
+    /// The changes of `clipID`'s proposal that wait for a review (notes.md §5): pending, not a punctuation-only fix and
+    /// not already in the project. Kept and undone (left out) changes never count. The tab's dirty dot, the status
+    /// bar's "{n} changes to review" and the Explorer Outline's green dots read them.
+    func unreviewedChanges(clipID: String?) -> [TranscriptChange] {
+        guard let proposal, proposal.clipID == clipID else { return [] }
         let reader = TranscriptChangeReader(self)
-        return proposal.changes.contains { $0.state == .pending && !reader.isPunctuationOnly($0) && !reader.isApplied($0) }
+        return proposal.changes.filter { $0.state == .pending && !reader.isPunctuationOnly($0) && !reader.isApplied($0) }
+    }
+    /// The clip's tab shows the dirty dot while its proposal has changes not yet reviewed (notes.md §5).
+    func hasUnreviewedChanges(clipID: String?) -> Bool { !unreviewedChanges(clipID: clipID).isEmpty }
+    /// A change on the open tab that waits for a review touches the take's words `range` (word indices): the Explorer
+    /// Outline's green dot for that paragraph. An insertion counts at the word it stands beside.
+    func hasUnreviewedChange(inWords range: Range<Int>) -> Bool {
+        let index = wordIndex
+        return unreviewedChanges(clipID: project.edits.activeClipId).contains { change in
+            let beside: [String] = change.anchor.map { anchor in
+                switch anchor { case .after(let id), .before(let id): [id] }
+            } ?? []
+            return (change.span + beside).contains { index[$0].map(range.contains) ?? false }
+        }
     }
 
     /// Focuses a change, as ⌥↓, ⌥↑, a click on its new words and the Proposed changes rotor do,
