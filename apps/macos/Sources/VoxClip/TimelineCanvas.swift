@@ -94,6 +94,8 @@ struct TimelineContent: Equatable {
     var inOut: ClosedRange<Double>?
     /// The selection on the axis.
     var selection: ClosedRange<Double>?
+    /// The proposal's pending changes on the axis (V14, V15).
+    var changes: [ClosedRange<Double>] = []
     var clips: [TimelineOverviewClip] = []
     /// The scope's pieces and the take's waveform, for A1, and on Source the cut ranges in it.
     var pieces = TimelinePieces([])
@@ -200,6 +202,7 @@ struct TimelineContent: Equatable {
         next.scopeSource = model.scopeSourceRange
         next.inOut = model.timelineInOut(on: axis)
         next.selection = model.timelineSelection(on: axis)
+        next.changes = model.timelinePendingChanges(on: axis)
         next.clips = model.timelineOverviewClips
         next.pieces = model.timelinePieces
         next.waveform = model.waveform
@@ -265,7 +268,7 @@ struct TimelineContent: Equatable {
         }
         overview.state = TimelineOverviewLane.State(clips: content.clips, takeLength: content.takeLength, window: window,
                                                     takeLabel: durationLabel(content.takeLength))
-        ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection)
+        ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection, changes: content.changes)
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
         // On Source A1 dims outside the In/Out the ruler shows, the dragged edge included.
         audio.state = TimelineAudioLane.State(viewport: viewport, pieces: content.pieces, waveform: content.waveform, removed: content.removed,
@@ -596,13 +599,14 @@ struct TimelineOverviewLabel: Equatable {
 }
 
 /// The ruler (notes.md §6): Resolve-style timecode labels in its top half, 1 s ticks, the
-/// selection bar, In/Out brackets the full height, and darker ground outside In/Out. The
-/// playhead's head is the overlay's.
+/// selection bar over the pending changes' bars, In/Out brackets the full height, and darker
+/// ground outside In/Out. The playhead's head is the overlay's.
 @MainActor final class TimelineRulerLane: TimelineLane {
     struct State: Equatable {
         var viewport = TimelineViewport(axis: .edited, ptPerSecond: 20, origin: -1, width: 944)
         var inOut: ClosedRange<Double>?
         var selection: ClosedRange<Double>?
+        var changes: [ClosedRange<Double>] = []
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     static let labelFont = VCType.label.nsMono()
@@ -640,6 +644,9 @@ struct TimelineOverviewLabel: Equatable {
                 NSRect(x: tickX, y: 16, width: 1, height: 6).fill()
             }
         }
+        // Pending changes as 3 pt `change.add` bars, under the selection's (notes.md §6).
+        DesignValues.nsColor("change.add").setFill()
+        for change in state.changes { NSRect(x: x(change.lowerBound), y: 19, width: max(1, x(change.upperBound) - x(change.lowerBound)), height: 3).fill() }
         if let selection = state.selection {
             DesignValues.nsColor("tint.default").setFill()
             NSRect(x: x(selection.lowerBound), y: 19, width: max(1, x(selection.upperBound) - x(selection.lowerBound)), height: 3).fill()
