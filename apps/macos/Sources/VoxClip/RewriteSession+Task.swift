@@ -8,10 +8,9 @@ extension ProviderChoice {
     var choiceName: String { id == "apple-foundation" ? "Apple on-device" : label }
 }
 
-// The Rewrite job's states on the Director task (design.md §6.3.6, impl-plan V12m, V13): R0
-// chooses the AI, R1 runs with its four steps, R1x shows an error with its fix, R3 shows an
-// edit in the scope. The passage panel still shows the proposal, and the field while the task
-// waits for a new instruction, until the clip bar (V3b) and the change list (V15).
+// The Rewrite job's states on the Director task (design.md §6.3.6, impl-plan V12m, V13, V15):
+// R0 chooses the AI, R1 runs with its four steps, R1x shows an error with its fix, R2 lists the
+// proposal's changes (ChangeList.swift), R3 shows an edit in the scope.
 extension RewriteSession {
     /// The catalogue entry of the session's connector.
     var provider: ProviderChoice? { connector.flatMap { connector in editor.app.providers.first { $0.id == connector.connector.id.rawValue } } }
@@ -194,28 +193,15 @@ extension RewriteSession {
         guard task.state == .running else { return }
         task.update(runSteps(reached: reached))
     }
-    /// The reply is in: the proposal's changes, announced. The passage panel shows them until V15.
+    /// The reply is in: the proposal shows in the transcript and as the change list (R2), announced.
     func finishRun(seconds: Double) {
-        // A reply whose changes cannot be reviewed shows its problem at the field, unannounced.
-        guard review != nil else { showReady(); return }
-        let words = Dictionary(transcript.map { ($0.id, $0.text) }, uniquingKeysWith: { first, _ in first })
-        let order = Dictionary(transcript.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let items = changes.enumerated().map { index, change in
-            let hunk = change.hunk
-            // The removed words read in transcript order, with the events and unlabeled speech a voice change absorbs.
-            let removed = (hunk.sourceWordIds + hunk.absorbedItemIds).sorted { (order[$0] ?? 0) < (order[$1] ?? 0) }
-            return ProposalItem(ordinal: index + 1, kind: hunk.kind == .cut ? .cut : hunk.kind == .textOnly ? .fix : .voice,
-                                sourceWordIDs: hunk.sourceWordIds, newWords: hunk.newTokens,
-                                oldWords: removed.compactMap { words[$0] }, checkThis: change.checkThis)
-        }
-        let set = ChangeSet(items: items)
         refreshContext(answered: seconds)
-        task.show(.proposal(set), headline: PanelHeadline(text: set.headline, sub: set.subline))
-        editor.announce(items.isEmpty ? "No changes needed." : set.announcement)
-    }
-    /// Back to the passage panel with nothing sent: a declined sheet, or a send that went stale.
-    func showReady() {
-        task.show(.ready, headline: PanelHeadline(text: task.words.title))
+        // A reply whose changes cannot be reviewed shows R1x with the review's problem.
+        guard review != nil else { fail(.message(problem)); return }
+        showReplyInTranscript()
+        showProposal()
+        guard case .proposal(let set) = task.state else { return }
+        editor.announce(set.items.isEmpty ? "No changes needed." : set.announcement)
     }
 
     // MARK: R1x
@@ -270,8 +256,8 @@ extension RewriteSession {
             }
         case .notRunning(let server): cards = [.text("\(server) isn't running. Start it, then choose Try Again.")]
         case .refused:
-            cards = [.text("The model declined to rewrite this recording.")]
-            footer = PanelFooter(primary: PanelAction(id: "askElse", title: "Ask for Something Else") { [weak self] in self?.askForSomethingElse() })
+            cards = [.text("The model declined to rewrite this recording."), .ask(placeholder: AskField.placeholder(words))]
+            footer = PanelFooter(primary: askForSomethingElse)
         case .tooManyEntries, .tooMuchText:
             let findClips = task.scope == .fullTake ? PanelAction(id: "findClips", title: "Find Clips") { [weak editor] in
                 editor?.closeRewrite(returnFocus: false)
@@ -284,10 +270,10 @@ extension RewriteSession {
         if case .noKey = error { task.requestFocus() }
         editor.announce(problem ?? headline.text + ".")
     }
-    /// Refused: back to the passage panel with its field focused (design.md R1x).
-    func askForSomethingElse() {
-        task.handOverKeyboard()
-        showReady()
+    /// Ask for Something Else (R1x refused, R2 with no changes): the keyboard goes to the Ask field, which the clip bar
+    /// holds from V3b and the job's panel until then.
+    var askForSomethingElse: PanelAction {
+        PanelAction(id: "askElse", title: "Ask for Something Else") { [weak self] in self?.task.requestFocus() }
     }
     /// R1x for a scope over Rewrite's limits (voice-lab.md §8.1). Full take offers `findClips`;
     /// a clip has no primary, and Close closes.

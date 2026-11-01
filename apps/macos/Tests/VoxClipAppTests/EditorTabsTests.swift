@@ -177,7 +177,8 @@ import Testing
         let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.rewrite = session
         #expect(editor.rewrite === session && session.current && shell.dirtyTabs.isEmpty)
-        try session.receivePassage("A different opening")
+        // A reply that cuts the middle word: a change that waits for review shows the dot (V15).
+        try session.receivePassage(editor.words[lower].text + " " + editor.words[lower + 2].text)
         session.finishRun(seconds: 1)
         let proposal = session.task.state
         #expect(shell.dirtyTabs == [.clip("five-1")])
@@ -221,7 +222,7 @@ import Testing
             let start = try #require(editor.project.edits.clips.first { $0.id == id }.flatMap { editor.index($0.startWordId) })
             let session = RewriteSession(editor: editor, scope: .selection(start...(start + 2)), envelope: nil, connector: nil)
             editor.rewrite = session
-            try session.receivePassage("A different opening")
+            try session.receivePassage(editor.words[start].text + " " + editor.words[start + 2].text)
             session.finishRun(seconds: 1)
             return session
         }
@@ -257,7 +258,8 @@ import Testing
     /// tab, it still asks and the words go. A connector change, or an edit inside the
     /// session's clip, while it asks refuses: nothing is sent and no consent is kept, and
     /// the edit shows R3 (V13). An API-key send also confirms its cost on every send, after
-    /// the privacy consent (VS). ⇧⌘R runs at once; a declined sheet leaves the session open.
+    /// the privacy consent (VS). ⇧⌘R runs at once; a declined sheet on its first run closes
+    /// Rewrite with nothing sent, and one on a later run shows the proposal it would replace (V15).
     @Test func rewriteConsentFollowsTheSessionAcrossTabs() async throws {
         let (shell, editor, undo) = try await openShell()
         defer { editor.close() }
@@ -277,23 +279,28 @@ import Testing
         editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
         editor.selectedWordIDs = Set(editor.words[lower...(lower + 2)].map(\.id))
         let asks = ConsentAsks()
-        // The run ⇧⌘R starts at once is declined, so the session waits with nothing sent.
+        // The run ⇧⌘R starts at once is declined, so nothing is sent and Rewrite closes, as Stop does.
         app.connectorConsentOverride = { _, _, _ in asks.count += 1; return false }
+        editor.runRewrite()
+        await editor.rewriteOpenTask?.value
+        let declined = try #require(editor.openRewrite)
+        await declined.actionTask?.value
+        #expect(declined.connector != nil && declined.rewriteScope == .selection(lower...(lower + 2)) && declined.scope == .clip("five-1"))
+        #expect(asks.count == 1 && !declined.isOpen && editor.openRewrite == nil && !app.bool(consent))
+        #expect(await fake.sends == 0)
+
+        // Approved, the privacy consent and the cost sheet ask, and the words go.
+        app.connectorConsentOverride = { _, action, _ in asks.count += 1; return action == .rewrite }
         editor.runRewrite()
         await editor.rewriteOpenTask?.value
         let session = try #require(editor.openRewrite)
         await session.actionTask?.value
-        #expect(session.connector != nil && session.rewriteScope == .selection(lower...(lower + 2)) && session.scope == .clip("five-1"))
-        #expect(asks.count == 1 && session.task.state == .ready && !app.bool(consent))
-        #expect(await fake.sends == 0)
+        #expect(asks.count == 3 && app.bool(consent) && !session.changes.isEmpty)
+        #expect(await fake.sends == 1)
 
         shell.selection = .clip("five-2")
         step(undo) { editor.apply(.cutSelection(ids: [editor.words[other].id]), name: "Cut selection") }
         #expect(session.isOpen && editor.rewrite == nil && session.current)
-        app.connectorConsentOverride = { _, action, _ in asks.count += 1; return action == .rewrite }
-        #expect(await session.run())
-        #expect(asks.count == 3 && app.bool(consent) && !session.changes.isEmpty)
-        #expect(await fake.sends == 1)
 
         app.settings.values[consent] = .bool(false)
         app.connectorConsentOverride = { _, _, _ in

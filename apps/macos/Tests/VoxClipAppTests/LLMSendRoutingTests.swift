@@ -225,7 +225,8 @@ import Testing
     }
 
     /// Declining the cost sheet changes nothing: the route runs before anything is claimed sent, so nothing is sent or
-    /// announced, R1's steps never pass Read, the lease is free and no problem line shows. Approving sends once.
+    /// announced, R1's steps never pass Read, the lease is free, and the first run closes Rewrite as Stop does (V15).
+    /// Approving sends once.
     @Test func decliningTheRewriteCostSheetSendsAndAnnouncesNothing() async throws {
         let (app, fake, log) = try setUp("codex", authMethod: "api_key")
         app.set("llm.cloudConsent.codex", .bool(true))
@@ -235,12 +236,14 @@ import Testing
         _ = await app.connectorStatus(provider, using: fake)
         var stepsBehindSheet: [ActivityStep.Status] = []
         log.answer = { _ in stepsBehindSheet = editor.rewrite?.task.steps.map(\.status) ?? []; return false }
-        try await send(.rewrite, editor: editor, app: app)
+        editor.runRewrite()
+        await editor.rewriteOpenTask?.value
         let session = try #require(editor.rewrite)
+        await session.actionTask?.value
         #expect(log.take() == [.cost])
         #expect(await fake.sends == 0)
         #expect(stepsBehindSheet == [.done, .waiting, .waiting, .waiting])
-        #expect(editor.announcements.isEmpty && session.task.state == .ready && session.problem.isEmpty && !editor.llmRuns.isBusy)
+        #expect(editor.announcements.isEmpty && !session.isOpen && editor.openRewrite == nil && !editor.llmRuns.isBusy)
         log.answer = { _ in true }
         try await send(.rewrite, editor: editor, app: app)
         #expect(log.take() == [.cost])

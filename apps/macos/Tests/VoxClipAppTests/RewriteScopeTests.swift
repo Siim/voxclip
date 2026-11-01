@@ -344,9 +344,10 @@ private final class WorkThreads: Sendable {
         let (editor, undo) = try editor(app)
         defer { editor.close() }
         let session = try await rewrite(editor)
-        var set = try #require(proposal(session))
-        set.items[0].included = false
-        session.task.show(.proposal(set), headline: session.task.headline)
+        // The list's Undo leaves the change out (impl-plan item 7): no project change and no undo step.
+        session.review(1, .undo)
+        let set = try #require(proposal(session))
+        #expect(set.items.map(\.state) == [.excluded] && !undo.canUndo)
         step(undo) { editor.apply(.cutSelection(ids: ["w60"]), name: "Cut selection") }
         #expect(proposal(session) == set && session.current && session.project == editor.project)
         step(undo) { editor.apply(.cutSelection(ids: ["w20"]), name: "Cut selection") }
@@ -518,6 +519,63 @@ private final class WorkThreads: Sendable {
         _ = try await rewrite(editor)
         #expect(sheets.take() == route.later)
         #expect(await stub.requests.count == 2)
+    }
+
+    // MARK: Ask again (V15)
+
+    /// R2's Ask again sends the scope again with the Ask field's text and replaces the proposal (design.md §6.3.1).
+    @Test func askAgainSendsTheFieldsTextAgain() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        let (editor, _) = try editor(app)
+        defer { editor.close() }
+        let session = try await rewrite(editor)
+        let first = try #require(session.ownProposal)
+        #expect(session.task.contextAction?.title == "Ask again")
+        editor.rewriteInstruction = "Make it shorter"
+        session.task.contextAction?.perform()
+        await editor.rewriteOpenTask?.value
+        await session.actionTask?.value
+        let request = await stub.requests.last
+        #expect(await stub.requests.count == 2 && request?.instruction.hasSuffix("Instruction: Make it shorter, mostly by cutting. Keep my words and my voice.") == true)
+        #expect(session.task.turn == 2 && session.ownProposal != nil && session.ownProposal?.id != first.id && editor.openRewrite === session)
+    }
+
+    /// A change edited in its popover is the user's work: Ask again asks "Discard this change?" first, and Keep Working
+    /// sends nothing and keeps the proposal.
+    @Test func askAgainAsksBeforeDiscardingAnEditedChange() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        let (editor, _) = try editor(app)
+        defer { editor.close() }
+        let session = try await rewrite(editor)
+        let first = try #require(session.ownProposal)
+        #expect(!session.hasEditedChanges && editor.editChange(1, text: "hello") && session.hasEditedChanges)
+        var asked: [Int] = []
+        editor.discardAnswerForTests = { asked.append($0); return false }
+        session.task.contextAction?.perform()
+        await editor.rewriteOpenTask?.value
+        #expect(asked == [1] && session.ownProposal?.id == first.id && session.isOpen)
+        #expect(await stub.requests.count == 1)
+    }
+
+    /// A declined cost sheet on Ask again replaces nothing: the proposal shows again with its reviews, in the transcript
+    /// and the list, and nothing is sent.
+    @Test func aDeclinedAskAgainShowsTheProposalAgain() async throws {
+        let stub = ScopeStub(id: .anthropic)
+        let (app, sheets) = app("anthropic", stub: stub)
+        let (editor, _) = try editor(app)
+        defer { editor.close() }
+        let session = try await rewrite(editor)
+        session.review(1, .undo)
+        let shown = try #require(proposal(session))
+        #expect(sheets.take() == [.privacy, .cost] && session.task.contextAction?.title == "Ask again…")
+        app.connectorConsentOverride = { _, _, sheet in sheets.shown.append(sheet); return false }
+        session.task.contextAction?.perform()
+        await editor.rewriteOpenTask?.value
+        await session.actionTask?.value
+        #expect(sheets.take() == [.cost] && proposal(session) == shown && session.ownProposal?[1]?.state == .excluded && session.isOpen)
+        #expect(await stub.requests.count == 1)
     }
 
     // MARK: Entry

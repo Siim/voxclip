@@ -128,11 +128,8 @@ import VoxClipMedia
         try session.receivePassage("Here is my new draft")
         session.finishRun(seconds: 1)
         for (name, scheme) in [("light", ColorScheme.light), ("dark", .dark)] {
-            let panel = RewritePanel(session: session)
-            let panelContents = VStack(spacing: 0) { panel.contents; Divider(); panel.footer }
-            try DebugRound4.bitmap(panelContents, name: "rewrite-partial-native-fields-unsupported-\(name)", width: 360, height: 680, scheme: scheme, directory: directory)
-            let controls = RewriteProposalControls(session: session, rewrite: {}).padding(16)
-            try DebugRound4.bitmap(controls, name: "rewrite-refreshed-estimate-controls-\(name)", width: 360, height: 150, scheme: scheme, directory: directory)
+            let panel = DirectorPanel(task: session.task, model: captureEditor).environment(app)
+            try DebugRound4.bitmap(panel, name: "rewrite-partial-native-fields-unsupported-\(name)", width: 360, height: 680, scheme: scheme, directory: directory)
             app.settings.values["llm.connector"] = .string("codex")
             app.settings.values["llm.cloudConsent.codex"] = .bool(false)
             try DebugRound4.bitmap(FindClipsPopover(model: editor), name: "find-clips-unprobed-component-\(name)", width: 380, height: 330, scheme: scheme, directory: directory)

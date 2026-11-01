@@ -24,10 +24,11 @@ extension RewriteSession {
     func prepareTakes() async {
         // A review being built again after an edit outside the scope may move the window the takes are made for.
         if let reviewing { await reviewing.value }
-        guard current, let generation, let review, review.budget.copy == nil else { return }
-        guard review.voiceHunks.count == 1, let hunk = review.voiceHunks.first, let window = hunk.window,
-              let text = hunk.patchText else {
-            generation.fail("Rewrite one passage at a time. Keep one changed passage, then generate takes.")
+        guard current, let generation, review != nil, overBudget == nil else { return }
+        // The voice changes the change list includes (impl-plan item 25): takes are made for one at a time, from the
+        // words the AI proposed.
+        guard let ordinal = includedVoice.only, let hunk = voiceReview(ordinal), let window = hunk.window, let text = hunk.patchText else {
+            generation.fail(Self.onePassage)
             return
         }
         guard let recordID = generation.selectedVoiceID, let modelID = generation.selectedModelID,

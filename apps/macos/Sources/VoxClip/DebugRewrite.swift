@@ -166,9 +166,12 @@ enum RewriteFixtureReply {
             check("\(provider.id) Rewrite opening and Retry detect without sending", prepared.discoveries == 2 && prepared.sends == 0)
             _ = await session.run()
             let denied = await rewriteFake.counts()
-            check("\(provider.id) declined Rewrite sends nothing after detection", denied.discoveries == 2 && denied.sends == 0)
+            // A first run that sends nothing closes Rewrite, as Stop does (V15); the user runs it again.
+            check("\(provider.id) declined Rewrite sends nothing after detection and closes", denied.discoveries == 2 && denied.sends == 0 && !session.isOpen)
             app.set("llm.cloudConsent.\(provider.id)", .bool(true))
-            _ = await session.run()
+            let (grantedEditor, granted) = make(rewriteFake, group: "cli", consent: { app.bool("llm.cloudConsent.\(provider.id)") })
+            defer { grantedEditor.close() }
+            _ = await granted.run()
             let rewriteStatuses = await rewriteFake.statuses
             check("\(provider.id) granted Rewrite request follows explicit detection", rewriteStatuses == 3)
         }
@@ -266,8 +269,8 @@ enum RewriteFixtureReply {
                 check("summary is Core complete-patch summary", summary == review.summary)
                 check("complete placed patch pricing has a real catalogue amount", review.summary?.costEstimate?.usd != nil)
                 if case .proposal(let set) = session.task.state {
-                    check("each change reads what it removes and inserts", set.items.map { $0.spokenDescription(of: set.items.count) }
-                        == ["Proposed change 1 of 2: removed word10; inserted fresh", "Proposed change 2 of 2: removed word30; inserted fresh"])
+                    check("each change reads what it removes and inserts (\(set.items.map(\.spoken)))",
+                          zip(set.items.map(\.spoken), ["Change 1 of 2: removed word10; inserted fresh", "Change 2 of 2: removed word30; inserted fresh"]).allSatisfy { $0.hasPrefix($1) })
                 } else { check("the reply shows a proposal", false) }
             } else { check("voice review exists", false) }
             try propose(session, Array(repeating: "fresh", count: 61).joined(separator: " "))
@@ -319,8 +322,7 @@ enum RewriteFixtureReply {
                 check("\(group) consent \(granted) gates send and releases lease", proposed == granted && counts.sends == (granted ? 1 : 0) && !editor.llmRuns.isBusy)
                 check("\(group) consent precedes every discovery and the quote needs none", probe.consentCalls == 1 && probe.beforeDiscovery)
                 check("proposals are inert project data", editor.project == project)
-                let declinedState = if case .ready = session.task.state { true } else { false }
-                check("\(group) a declined sheet returns to the field silently", granted || (declinedState && editor.announcements.isEmpty))
+                check("\(group) a declined first sheet closes Rewrite silently", granted || (!session.isOpen && editor.announcements.isEmpty))
                 let asks = group == "apiKey"
                 check("\(group) button is the action, with an ellipsis only when the send asks first", session.proposalButton == (asks ? "Rewrite…" : "Rewrite"))
                 if group == "cli" { check("CLI on a plan names the plan", session.sendLine.contains("ChatGPT plan")) }
@@ -608,7 +610,81 @@ extension DebugRewrite {
         let (changedEditor, r3) = scoped(.clip("scene-clip"))
         r3.showChanged()
         scenes.append(DirectorScene(name: "r3", task: r3.task, editor: changedEditor))
-        return scenes
+        return scenes + proposalScenes(app: app, fixture: fixture)
+    }
+
+    /// R2, one scene per footer case of design.md R2 with impl-plan item 25 (V15), each a real reply to Rewrite clip 1
+    /// read through the passage diff and shown in the transcript: only cuts and fixes; phrases in your voice with Voice
+    /// Lab off; f3's Make Takes, with Keep All; Make Your Voice; Use Take 1; more than one phrase; over the voice budget;
+    /// every change left out; and no changes. Voice Lab's settings are put back, and each scene's change list stops
+    /// following them, so it shows its case when drawn.
+    static func proposalScenes(app: AppModel, fixture: Project) -> [DirectorScene] {
+        let keys = ["voiceLab.enabled", "voiceLab.betaNoticeAccepted", "voiceLab.providerConsent.elevenlabs"]
+        let saved = keys.map { app.settings.values[$0] }
+        defer { for (key, value) in zip(keys, saved) { app.settings.values[key] = value } }
+        let prices = app.shared.flatMap { try? VoiceLabPriceCatalog(data: Data(contentsOf: $0.root.appendingPathComponent("catalog/voice-lab.json"))) }
+        let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
+        /// Clip 1 over words 10–45 of an 80-word take, one second apart, and the reply `edit` makes of its words.
+        func scene(_ name: String, voiceLab: Bool = true, edit: ([String]) -> [String]) -> (EditorModel, RewriteSession) {
+            app.settings.values["voiceLab.enabled"] = .bool(voiceLab)
+            app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(voiceLab)
+            app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(voiceLab)
+            var project = fixture
+            project.id = UUID().uuidString.lowercased()
+            project.edits = ProjectEdits()
+            project.transcript?.words = (0..<80).map { TimedWord(id: "r2-\($0)", text: "word\($0)", start: Double($0) + 1, end: Double($0) + 1.4) }
+            project.media.source.durationSeconds = 100
+            project.transcript?.durationSeconds = 100
+            project.edits.clips = [ClipRange(id: "r2-clip", startWordId: "r2-10", endWordId: "r2-45")]
+            project.edits.activeClipId = "r2-clip"
+            let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+            editor.mediaResolved = true; editor.refresh()
+            editor.waveform = WaveformData(fine: envelope.levels)
+            let connector = RewriteConnector(connector: ConsentFixtureConnector(id: .claudeCode), model: "sonnet", name: "Claude Code", group: "cli", plan: "Claude plan")
+            let session = RewriteSession(editor: editor, scope: .clip("r2-clip"), envelope: envelope, connector: connector,
+                                         prices: prices, synthesisModel: "eleven_multilingual_v2")
+            editor.rewrite = session
+            try? session.receivePassage(edit(session.source.map(\.text)).joined(separator: " "))
+            session.finishRun(seconds: 14)
+            return (editor, session)
+        }
+        func replacing(_ words: [String], _ changes: [String: String?]) -> [String] {
+            words.compactMap { word in changes.keys.contains(word) ? changes[word] ?? nil : word }
+        }
+        var made: [(String, EditorModel, RewriteSession)] = []
+        func add(_ name: String, _ pair: (EditorModel, RewriteSession)) { made.append((name, pair.0, pair.1)) }
+        // Only cuts and fixes: "No AI voice needed. Nothing is sent." and Apply 2 Changes.
+        add("r2-free", scene("r2-free") { replacing($0, ["word12": nil, "word20": "Word20"]) })
+        // A phrase in your voice with Voice Lab off: Turn On Voice Lab… and Apply 2 Free Changes.
+        add("r2-voice-lab-off", scene("r2-voice-lab-off", voiceLab: false) { replacing($0, ["word12": nil, "word20": "Word20", "word30": "fresh"]) })
+        // f3: two cuts and a phrase in your voice, "Nothing paid yet.", Keep All and Make Takes.
+        add("r2-make-takes", scene("r2-make-takes") { replacing($0, ["word12": nil, "word13": nil, "word25": nil, "word30": "fresh"]) })
+        // No voice yet: Make Your Voice.
+        let noVoice = scene("r2-make-voice") { replacing($0, ["word12": nil, "word30": "fresh"]) }
+        try? DebugRewriteGeneration.install("no-voice", in: noVoice.1)
+        noVoice.1.showProposal()
+        add("r2-make-voice", noVoice)
+        // A take passed: Use Take 1.
+        let ready = scene("r2-use-take") { replacing($0, ["word12": nil, "word30": "fresh"]) }
+        try? DebugRewriteGeneration.install("ready", in: ready.1)
+        ready.1.showProposal()
+        add("r2-use-take", ready)
+        // Two phrases in your voice (impl-plan item 25): the one-passage line and Apply 1 Free Change.
+        add("r2-several-voices", scene("r2-several-voices") { replacing($0, ["word12": nil, "word20": "fresh", "word40": "new"]) })
+        // Over the voice budget: the callout and Apply 1 Free Change.
+        add("r2-over-budget", scene("r2-over-budget") { words in
+            // Fifteen words in a row in your voice, over the 12 of an 80-word take (15 %).
+            replacing(words, ["word12": nil]).map { (20...34).contains(Int($0.dropFirst(4)) ?? 0) ? "fresh" : $0 }
+        })
+        // Every change left out from the list: the note alone.
+        let leftOut = scene("r2-nothing-included") { replacing($0, ["word12": nil, "word20": "Word20"]) }
+        leftOut.1.review(1, .undo); leftOut.1.review(2, .undo)
+        add("r2-nothing-included", leftOut)
+        // No changes: "No changes needed", the Ask field and Ask for Something Else.
+        add("r2-no-changes", scene("r2-no-changes") { $0 })
+        // The scenes keep what they show once the settings are put back.
+        for (_, _, session) in made { session.proposalObservation += 1 }
+        return made.map { DirectorScene(name: $0.0, task: $0.2.task, editor: $0.1) }
     }
 
     /// The scene runner's checks on one scene laid out in `host`: every action the task offers is drawn, and no button
@@ -616,11 +692,17 @@ extension DebugRewrite {
     static func directorSceneChecks(_ scene: DirectorScene, host: NSView, width: Int) -> [DebugUISuite.Result] {
         let texts = DebugRightColumn.texts(in: host)
         let buttons = texts.filter { $0.key.hasPrefix("director.button.") }
-        var expected = [scene.task.close, scene.task.headline.stop, scene.task.footer.link, scene.task.footer.primary].compactMap { $0 }
+        var expected = [scene.task.close, scene.task.contextAction, scene.task.headline.stop, scene.task.footer.link, scene.task.footer.primary].compactMap { $0 }
         for case .chooser(_, let saveKey?) in scene.task.cards { expected.append(saveKey) }
         let drawn = expected.allSatisfy { buttons["director.button.\($0.id)"] == $0.title }
         let disabled = buttons.filter { $0.value.hasPrefix(DirectorPanel.disabledPrefix) }.map(\.key).sorted()
-        return [
+        // R2: every change has its row, named "Change {i} of {c}: …" as the transcript's rotor names it (design.md §6.3.5).
+        var rows: [DebugUISuite.Result] = []
+        for case .changes(let set) in scene.task.cards {
+            let named = set.items.allSatisfy { texts["director.change.\($0.ordinal)"] == $0.spoken && $0.spoken.hasPrefix("Change \($0.ordinal) of \(set.items.count): ") }
+            rows.append(.init(name: "v2-rewrite-\(scene.name) at \(width) draws a row per change named for its ordinal", passed: named && !set.items.isEmpty))
+        }
+        return rows + [
             .init(name: "v2-rewrite-\(scene.name) at \(width) draws every action of its task (\(expected.map(\.title)))", passed: drawn),
             .init(name: "v2-rewrite-\(scene.name) at \(width) shows no disabled button (\(disabled))", passed: disabled.isEmpty && !buttons.isEmpty),
             .init(name: "v2-rewrite-\(scene.name) at \(width) shows its headline", passed: texts["director.headline"] == scene.task.headline.text),

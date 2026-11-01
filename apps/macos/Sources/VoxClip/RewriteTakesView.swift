@@ -53,14 +53,13 @@ import VoxClipCore
                     ForEach(generation.models, id: \.id) { Text($0.name).tag($0.id) }
                 }.accessibilityLabel("Speech model")
             }
-            Text("Takes").font(.system(size: 12, weight: .semibold))
-            Button(generation.buttonTitle, action: generate)
-                .disabled(!generation.canExecute)
-                .help("Generate up to 3 new takes")
-                .accessibilityLabel(generation.buttonTitle)
-            Text("Sends the new words and a short audio check to ElevenLabs with your key. No video.")
-                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            // The Rewrite job's footer makes the first takes (Make Takes, with the send line); Generate Again stays here.
             if !generation.rows.isEmpty {
+                Text("Takes").font(.system(size: 12, weight: .semibold))
+                Button(generation.buttonTitle, action: generate)
+                    .disabled(!generation.canExecute)
+                    .help("Generate up to 3 new takes")
+                    .accessibilityLabel(generation.buttonTitle)
                 List(selection: Binding(get: { generation.selectedID }, set: { if let id = $0 { _ = generation.select(id) } })) {
                     ForEach(generation.rows) { row in
                         takeRow(row).tag(row.id).frame(height: 36).listRowSeparator(.hidden)
@@ -130,10 +129,10 @@ import VoxClipCore
             Text("Voice").font(.system(size: 12, weight: .semibold))
             Text(generation.voices.first?.voiceName ?? "No voice yet").font(.system(size: 12))
             if generation.voices.isEmpty { Text(Self.createVoiceTitle).foregroundStyle(DesignValues.color("accent.text")) }
-            Text("Takes").font(.system(size: 12, weight: .semibold))
-            Text(generation.buttonTitle).font(.system(size: 12, weight: .medium))
-            Text("Sends the new words and a short audio check to ElevenLabs with your key. No video.")
-                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            if !generation.rows.isEmpty {
+                Text("Takes").font(.system(size: 12, weight: .semibold))
+                Text(generation.buttonTitle).font(.system(size: 12, weight: .medium))
+            }
             ForEach(generation.rows) { row in takeRow(row).frame(height: 36) }
             if generation.phase == .generating { Text("Generating take \(min(3, generation.rows.count + 1)) of 3…"); Text("Cancel") }
             if generation.phase == .nonePassed { Text("These takes didn't sound right. Try different wording or re-record.").fixedSize(horizontal: false, vertical: true) }

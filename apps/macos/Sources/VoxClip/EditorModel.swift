@@ -83,7 +83,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var discardAnswerForTests: ((Int) -> Bool)?
     #endif
     /// The Ask field's text (design.md §6.3.1): what the next Rewrite asks; empty asks Fix mistakes. The clip bar's field
-    /// binds it once V3b adds it, and the passage panel's field until then. In memory only.
+    /// binds it once V3b adds it, and the Rewrite job's field after Ask for Something Else until then. In memory only.
     var rewriteInstruction = ""
     /// Rewrite's scope now (design.md §6.3): the word selection, else the tab's clip, kept or suggested, else Full take.
     /// Nil with no transcript.
@@ -141,17 +141,17 @@ struct EditorRenderSnapshot {
             openRewriteSession(scope: scope, instruction: instruction)
         }
     }
-    /// Sends `session` again, asking `instruction` when given: ⇧⌘R and the menu on its scope, and R3's Rewrite Again. A
-    /// proposal with takes, R2's or the one R3 set aside, asks first (design.md §6.3.1 "Proposal open"); edited changes
-    /// join with V14.
+    /// Sends `session` again, asking `instruction` when given: ⇧⌘R and the menu on its scope, R2's Ask again and R3's
+    /// Rewrite Again. A proposal with takes or a change edited in its popover, R2's or the one R3 set aside, asks first
+    /// (design.md §6.3.1 "Proposal open").
     func sendRewriteAgain(_ session: RewriteSession, instruction: String? = nil) {
         guard session.isOpen, !session.isProposing else { return }
         rewriteOpenTask?.cancel()
-        let takes = session.generation?.rows.isEmpty == false
+        let asks = session.generation?.rows.isEmpty == false || session.hasEditedChanges
         let count = session.proposalCount
         rewriteOpenTask = Task { [weak self] in
             guard let self else { return }
-            if takes && count > 0 { guard await confirmDiscard(count) else { return } }
+            if asks && count > 0 { guard await confirmDiscard(count) else { return } }
             guard !Task.isCancelled, session.isOpen else { return }
             session.actionTask?.cancel()
             session.actionTask = Task { _ = await session.run(instruction: instruction) }
@@ -678,7 +678,7 @@ struct EditorRenderSnapshot {
         }
         document.replaceProject(changed)
         // The open Rewrite session follows: an edit outside its scope moves it on, one inside shows R3 (design.md R3).
-        openRewrite?.follow(changed)
+        openRewrite?.follow(changed, name: name)
         // A relink, or its undo or redo, may change the content key: the lease moves with the project.
         if mediaChanged { holdCacheEntry() }
         recordDocumentChange()

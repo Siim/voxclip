@@ -78,7 +78,8 @@ struct RewriteConnector {
 }
 
 /// One change of a proposal, in transcript order: C2's hunk for a clip or Full take (`ScopeRewriteDiff.Hunk`), or the
-/// passage diff's for a selection. The transcript's hunks (V14) and the change list (V15) read it.
+/// passage diff's for a selection, as the AI's reply made it. The reply becomes the transcript's proposal
+/// (`EditorModel.proposal`), which the hunks (V14) and the change list (V15) review.
 struct RewriteChange: Equatable, Sendable {
     let hunk: VoiceLabDiffHunk
     /// An insertion's place in a clip or Full take: the item it follows, nil before the scope's first item, for a change
@@ -163,8 +164,39 @@ struct RewriteChange: Equatable, Sendable {
     @ObservationIgnored private let consent: @MainActor () async -> Bool
     /// The run in flight; `close` and an edit in the scope cancel it.
     @ObservationIgnored private(set) var sending: Task<Bool, Never>?
-    /// R3: the proposal an edit in the scope set aside, with its headline. An undo back to `project` shows it again.
-    @ObservationIgnored private var setAside: (changes: ChangeSet, headline: PanelHeadline)?
+    /// R3: what an edit in the scope set aside, the transcript's proposal and the panel as it showed it. An undo back to
+    /// `project` shows both again, with every review.
+    struct SetAside {
+        let proposal: TranscriptProposal?
+        let shown: DirectorTask.Shown
+    }
+    @ObservationIgnored private(set) var setAside: SetAside?
+    /// The transcript proposal this session made from the reply (`EditorModel.proposal`), which its change list reviews.
+    @ObservationIgnored private(set) var proposalID: UUID?
+    /// Each change's parts as the reply made them; a change whose parts differ was edited in the popover.
+    @ObservationIgnored private(set) var replyParts: [Int: [TranscriptChange.Part]] = [:]
+    /// The voice changes left out because they can't be made now (`voiceUnavailable`): Voice Lab's Turn on, or a review
+    /// that places them, includes them again (design.md R2).
+    @ObservationIgnored var leftOutUnavailable: Set<Int> = []
+    /// What a run replaced, shown again when the run ends with nothing sent or proposed: a declined sheet, a send gone
+    /// stale. Nil for a session's first run, which closes instead, as Stop does.
+    @ObservationIgnored private var replaced: Replaced?
+    /// A task's panel and the session's proposal as a run found them.
+    struct Replaced {
+        let shown: DirectorTask.Shown
+        let changes: [RewriteChange]
+        let review: RewriteReview?
+        let setAside: SetAside?
+        let proposal: TranscriptProposal?
+        let proposalID: UUID?
+        let replyParts: [Int: [TranscriptChange.Part]]
+        let leftOutUnavailable: Set<Int>
+    }
+    /// Counts R2's observations: the change list follows the transcript's reviews, Voice Lab and the takes
+    /// (`showProposal`), and only the latest observation shows it again.
+    @ObservationIgnored var proposalObservation = 0
+    /// Voice Lab's work a footer started (finding voices, Use Take); closing the session cancels it.
+    @ObservationIgnored var takesTask: Task<Void, Never>?
     /// The session applies its own changes (Apply, Use Takes): the edit that follows is not an edit in its scope. Set only
     /// around the synchronous edit (`ownEdit`), so an edit the user makes while takes publish is still followed.
     @ObservationIgnored private var applying = false
@@ -187,7 +219,7 @@ struct RewriteChange: Equatable, Sendable {
         passageService = editor.app.shared.map(VoiceRewriteService.init)
         scopeService = editor.app.shared.map(PatchRewriteService.init)
         let words = Self.scopeWords(rewriteScope, source: items, project: editor.project, editor: editor)
-        task = DirectorTask(scope: rewriteScope, words: words, state: connector == nil ? .choosingAI : .ready,
+        task = DirectorTask(scope: rewriteScope, words: words, state: connector == nil ? .choosingAI : .running,
                             close: PanelAction(id: "close", title: "Close Rewrite") { [weak editor] in editor?.closeRewrite() })
         if connector == nil { task.show(.choosingAI, headline: PanelHeadline(text: "Who should rewrite \(words.name)?"), cards: [.text("Checking which AIs are set up…")]) }
         refreshContext()
@@ -336,15 +368,19 @@ struct RewriteChange: Equatable, Sendable {
     private func begin() -> Task<Bool, Never>? {
         guard isOpen, !isProposing, let connector else { return nil }
         guard let lease = editor.llmRuns.acquire() else {
-            problem = editor.finding ? "Find Clips is still running. Choose Rewrite when it finishes."
-                                     : "Another AI request on this project is still running. Choose Rewrite when it finishes."
-            showReady()
+            let busy = editor.finding ? "Find Clips is still running. Choose Try Again when it finishes."
+                                      : "Another AI request on this project is still running. Choose Try Again when it finishes."
+            if case .error(let error) = task.state { fail(error, problem: busy) } else { fail(.message(busy)) }
             return nil
         }
         let runs = editor.llmRuns
+        replaced = hasRun ? Replaced(shown: task.shown, changes: changes, review: review, setAside: setAside, proposal: ownProposal,
+                                     proposalID: proposalID, replyParts: replyParts, leftOutUnavailable: leftOutUnavailable) : nil
+        hasRun = true
         invalidate()
         reread()
         changes = []; review = nil; setAside = nil; problem = ""
+        clearProposal()
         isProposing = true
         let expected = revision
         beginRun()
@@ -353,8 +389,9 @@ struct RewriteChange: Equatable, Sendable {
             let proposed = await send(connector, expected: expected, started: started)
             runs.release(lease)
             isProposing = false
-            // A declined sheet or a send gone stale changes nothing: back to the field, silently.
-            if isOpen, task.state == .running { showReady() }
+            // A declined sheet or a send gone stale changes nothing, silently: what the run replaced shows again, and a
+            // first run closes, as Stop does.
+            if isOpen, task.state == .running { restoreReplaced() }
             return proposed
         }
         sending = work
@@ -402,9 +439,9 @@ struct RewriteChange: Equatable, Sendable {
             finishRun(seconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
             return true
         } catch is CancellationError { return false } catch VoiceLabWordDiffError.tokenLimit {
-            // A reply too long to review shows its problem at the field, unannounced.
+            // A reply too long to review shows its problem (R1x).
             guard current, revision == expected else { return false }
-            problem = VoiceLabPatchBudget.disabledCopy
+            fail(.message(VoiceLabPatchBudget.disabledCopy))
             return false
         } catch {
             if current && revision == expected { await fail(error) }
@@ -500,52 +537,107 @@ struct RewriteChange: Equatable, Sendable {
         revision += 1; sending?.cancel()
         reviewing?.cancel(); reviewing = nil
     }
+    /// A run has started on this session: a later run replaces what it showed.
+    @ObservationIgnored private var hasRun = false
+    /// The transcript's proposal when it is this session's.
+    var ownProposal: TranscriptProposal? { editor.proposal.flatMap { $0.id == proposalID ? $0 : nil } }
+    /// Takes the session's proposal out of the transcript.
+    private func clearProposal() {
+        if ownProposal != nil { editor.proposal = nil }
+    }
+    /// Shows what the run replaced again, with the transcript's proposal and its reviews, or closes a first run.
+    private func restoreReplaced() {
+        guard let replaced else { editor.closeRewrite(returnFocus: false); return }
+        self.replaced = nil
+        changes = replaced.changes; review = replaced.review; setAside = replaced.setAside
+        proposalID = replaced.proposalID; replyParts = replaced.replyParts; leftOutUnavailable = replaced.leftOutUnavailable
+        if let proposal = replaced.proposal { editor.proposal = proposal }
+        task.show(replaced.shown)
+        if case .proposal = task.state { showProposal() }
+    }
+    /// Makes the reply's changes the transcript's proposal (design.md §6.3.5), numbered from 1 in transcript order. A
+    /// voice change that can't be made is left out as R2 shows it (`showProposal`).
+    func showReplyInTranscript() {
+        let cut = editor.cutWordIDs
+        let first = source.first { $0.kind == .word && !cut.contains($0.id) }?.id
+        // A selection's insertion stands before the word that owns its source token, as an edit popover's rediff places it.
+        let owners = source.flatMap { word in Array(repeating: word.id, count: max(1, EditingPrimitives.splitWords(word.text).count)) }
+        let made = changes.enumerated().map { offset, change -> TranscriptChange in
+            let hunk = change.hunk
+            var anchor: TranscriptChange.Anchor?
+            if hunk.sourceWordIds.isEmpty {
+                switch rewriteScope {
+                case .selection:
+                    anchor = owners.indices.contains(hunk.sourceStartIndex) ? .before(owners[hunk.sourceStartIndex]) : source.last.map { .after($0.id) }
+                case .clip, .fullTake:
+                    anchor = change.insertionAfterItemID.map(TranscriptChange.Anchor.after) ?? first.map(TranscriptChange.Anchor.before)
+                }
+            }
+            return TranscriptChange(ordinal: offset + 1, parts: [TranscriptChange.Part(hunk)], anchor: anchor)
+        }
+        replyParts = Dictionary(made.map { ($0.ordinal, $0.parts) }, uniquingKeysWith: { first, _ in first })
+        leftOutUnavailable = []
+        guard !made.isEmpty else { proposalID = nil; return }
+        let proposal = TranscriptProposal(clipID: project.edits.activeClipId, title: task.words.title, changes: made)
+        proposalID = proposal.id
+        editor.proposal = proposal
+    }
 
     // MARK: The proposal
 
-    /// The included changes that need no voice: cuts and text fixes.
-    private var freeChanges: [RewriteChange] {
-        guard case .proposal(let set) = task.state else { return [] }
-        let included = Set(set.items.filter(\.included).map(\.ordinal))
-        return changes.enumerated().filter { included.contains($0.offset + 1) && $0.element.hunk.kind != .voice }.map(\.element)
+    /// The transcript's changes still pending that need no voice: cuts and text fixes the project does not hold yet.
+    private var pendingFree: [TranscriptChange] {
+        guard case .proposal = task.state else { return [] }
+        let readings = editor.changeReadings
+        return readings.filter { $0.change.isFree && $0.change.state == .pending && !$0.applied }.map(\.change)
     }
-    /// The interim proposal's apply button (design.md R2's footers until V15): "Apply {c} Changes" when every included
-    /// change is free, "Apply {k} Free Changes" beside voice changes; nil with nothing free to apply.
+    /// R2's apply action (design.md R2's footers): "Apply {c} Changes" when only cuts and fixes are included, "Apply {k}
+    /// Free Changes" beside voice changes the footer can't make; nil when the footer offers none.
     var applyTitle: String? {
-        let free = freeChanges.count
+        guard case .proposal = task.state, let primary = task.footer.primary, primary.id == "apply" else { return nil }
+        return primary.title
+    }
+    static func applyTitle(free: Int, voice: Bool) -> String? {
         guard free > 0 else { return nil }
-        let all = changes.count == free
-        return free == 1 ? (all ? "Apply 1 Change" : "Apply 1 Free Change") : (all ? "Apply \(free) Changes" : "Apply \(free) Free Changes")
+        return free == 1 ? (voice ? "Apply 1 Free Change" : "Apply 1 Change") : (voice ? "Apply \(free) Free Changes" : "Apply \(free) Changes")
     }
     /// The changes a new run discards: the proposal's, or in R3 those of the proposal set aside.
     var proposalCount: Int {
         switch task.state {
         case .proposal(let set): return set.items.count
-        case .changed: return setAside?.changes.items.count ?? 0
+        case .changed: return setAside?.proposal?.changes.count ?? 0
         default: return 0
         }
+    }
+    /// A change was edited in the popover (design.md §6.3.1: a new run asks first then).
+    var hasEditedChanges: Bool {
+        let proposal = task.state == .changed ? setAside?.proposal : ownProposal
+        return proposal?.changes.contains { change in replyParts[change.ordinal].map { $0 != change.parts } ?? false } ?? false
     }
     /// The proposal has phrases in your voice and Voice Lab is on: the Beta badge, the takes and the AI MODIFIED line show.
     var showsVoiceLab: Bool { review?.voiceHunks.isEmpty == false && editor.app.voiceLabRewriteEnabled }
     /// The proposal has phrases in your voice and Voice Lab is off: R2's Turn On Voice Lab… (design.md §6.3.6).
     var offersVoiceLab: Bool { review?.voiceHunks.isEmpty == false && !editor.app.voiceLabRewriteEnabled }
-    /// Applies the included cuts and fixes as one undo step named for the scope ("Rewrite clip 1", design.md R2), announces
-    /// "Applied {c} changes", closes Rewrite and moves focus to the first changed word.
+    /// Applies every change still pending (Keep All) as one undo step named for the scope ("Rewrite clip 1", design.md
+    /// R2), announces "Applied {c} changes", closes Rewrite and moves focus to the first changed word. Voice changes that
+    /// wait are left out first: nothing voices them once Rewrite closes.
     @discardableResult func applyFreeChanges() -> Bool {
-        guard current, !isProposing else { return false }
-        let free = freeChanges
-        let commands = localCommands(free)
-        guard !commands.isEmpty else { return false }
-        let first = free.compactMap(\.hunk.sourceWordIds.first).min { (editor.index($0) ?? 0) < (editor.index($1) ?? 0) }
-        guard ownEdit({ editor.apply(commands, name: task.words.title) }) else { return false }
+        guard current, !isProposing, var proposal = ownProposal else { return false }
+        let free = pendingFree
+        guard !free.isEmpty else { return false }
+        let first = free.compactMap(\.span.first).min { (editor.index($0) ?? 0) < (editor.index($1) ?? 0) }
+        for index in proposal.changes.indices where !proposal.changes[index].isFree && proposal.changes[index].state == .pending {
+            proposal.changes[index].state = .excluded
+        }
+        editor.proposal = proposal
+        guard editor.keepAllChanges() else { return false }
         editor.closeRewrite(returnFocus: false)
-        editor.announce(free.count == 1 ? "Applied 1 change" : "Applied \(free.count) changes")
         if let first { editor.select(first) }
         focusTranscript(in: editor.window)
         return true
     }
-    /// Uses the selected take with the free changes, one undo step (Use Takes), and closes Rewrite. It waits for a review
-    /// being built again: when that moved a window, the takes no longer fit and are not used.
+    /// Uses the selected take with the free changes still pending, one undo step (Use Takes), and closes Rewrite. It waits
+    /// for a review being built again: when that moved a window, the takes no longer fit and are not used.
     @discardableResult func acceptTakes() async -> Bool {
         if let reviewing { await reviewing.value }
         guard current, let generation else { return false }
@@ -559,24 +651,12 @@ struct RewriteChange: Equatable, Sendable {
         defer { applying = false }
         return try edit()
     }
-    /// The free changes as edit commands: cuts of words not cut yet, and corrections.
-    var localCommands: [EditCommand] { localCommands(freeChanges) }
-    private func localCommands(_ free: [RewriteChange]) -> [EditCommand] {
-        var commands: [EditCommand] = []
-        for change in free {
-            let hunk = change.hunk
-            if hunk.kind == .cut {
-                let ids = hunk.sourceWordIds.filter { !editor.cutWordIDs.contains($0) }
-                if !ids.isEmpty { commands.append(.cutSelection(ids: ids)) }
-            } else if hunk.kind == .textOnly {
-                for (id, text) in zip(hunk.sourceWordIds, hunk.correctedTexts) { commands.append(.correct(id: id, text: text)) }
-            }
-        }
-        return commands
-    }
+    /// The free changes still pending as edit commands: cuts of words not cut yet, and corrections.
+    var localCommands: [EditCommand] { pendingFree.flatMap(editor.commands) }
     func close() {
         guard isOpen else { return }
-        isOpen = false; invalidate(); actionTask?.cancel()
+        isOpen = false; invalidate(); actionTask?.cancel(); takesTask?.cancel()
+        clearProposal()
     }
 
     // MARK: R3
@@ -585,7 +665,7 @@ struct RewriteChange: Equatable, Sendable {
     /// session on. One inside it sets an open proposal aside and shows R3, and stops a run; before a run it moves the
     /// session on, as the next run reads the scope again. In R3, an undo back to the proposal's revision shows it again
     /// with every inclusion and take. Another transcript or video, or a clip that is gone, closes the session.
-    func follow(_ next: Project) {
+    func follow(_ next: Project, name: String = "") {
         guard isOpen, !applying else { return }
         let next = next.scoped(to: project.edits.activeClipId)
         if next.transcript != project.transcript || next.media.source != project.media.source || !Self.scopeExists(rewriteScope, in: next) {
@@ -598,14 +678,22 @@ struct RewriteChange: Equatable, Sendable {
             move(to: next)
             if let setAside {
                 self.setAside = nil
-                task.show(.proposal(setAside.changes), headline: setAside.headline)
+                if let proposal = setAside.proposal { editor.proposal = proposal }
+                task.show(setAside.shown)
+                // The editor reads the edit after this (`EditorModel.refresh`); the list follows it, and the
+                // transcript's reviews, from there.
+                Task { @MainActor [weak self] in
+                    guard let self, isOpen, case .proposal = task.state else { return }
+                    showProposal()
+                }
             }
             return
         }
-        guard !unchanged else { move(to: next); return }
+        guard !unchanged, !reviews(next, name: name) else { move(to: next); return }
         switch task.state {
-        case .proposal(let set):
-            setAside = (set, task.headline)
+        case .proposal:
+            setAside = SetAside(proposal: ownProposal, shown: task.shown)
+            clearProposal()
             showChanged()
         case .running:
             invalidate()
@@ -638,6 +726,22 @@ struct RewriteChange: Equatable, Sendable {
                 generation?.inputsChanged()
             }
         }
+    }
+    /// An edit that only keeps changes of the session's proposal, or takes a Keep back (V14's "Keep change {i}" and Keep
+    /// All, named for the proposal, and their undo and redo): every word inside the scope it changes is one of those
+    /// changes'. It reviews the proposal and is not an edit to the scope (design.md R3).
+    private func reviews(_ next: Project, name: String) -> Bool {
+        guard case .proposal = task.state, let proposal = ownProposal else { return false }
+        let named = name == proposal.title ? proposal.changes : proposal.changes.filter { name == "Keep change \($0.ordinal)" }
+        guard !named.isEmpty else { return false }
+        let words = Set(named.flatMap { $0.parts.flatMap(\.sourceWordIDs) })
+        var before = inside(project), after = inside(next)
+        let cuts = Set(before.edits.cutWordIds).symmetricDifference(after.edits.cutWordIds)
+        let corrections = Set(before.edits.corrections.keys).union(after.edits.corrections.keys).filter { before.edits.corrections[$0] != after.edits.corrections[$0] }
+        guard cuts.union(corrections).isSubset(of: words) else { return false }
+        before.edits.cutWordIds = []; after.edits.cutWordIds = []
+        before.edits.corrections = [:]; after.edits.corrections = [:]
+        return before == after
     }
     private static func scopeExists(_ scope: RewriteScope, in project: Project) -> Bool {
         if case .clip(let id) = scope { return project.edits.clips.contains { $0.id == id } }

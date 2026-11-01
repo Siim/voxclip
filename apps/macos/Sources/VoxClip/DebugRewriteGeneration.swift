@@ -53,7 +53,9 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
             try install(state, in: session)
             for width: CGFloat in [300, 360, 560] {
                 for scheme: ColorScheme in [.light, .dark] {
-                    let content = RewritePanel(session: session).snapshot.frame(width: width).sceneAccent().environment(\.colorScheme, scheme)
+                    guard let generation = session.generation else { throw CocoaError(.coderInvalidValue) }
+                    let content = RewriteTakesView(session: session, generation: generation, generate: {}).snapshot.padding(16)
+                        .frame(width: width).sceneAccent().environment(\.colorScheme, scheme)
                     let renderer = ImageRenderer(content: content)
                     renderer.scale = 2
                     guard let image = renderer.nsImage, let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),

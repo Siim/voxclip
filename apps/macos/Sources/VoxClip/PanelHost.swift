@@ -109,11 +109,7 @@ extension WorkspaceShell {
             PanelHeader(model: model, shell: shell, job: job)
             Group {
                 if job == .rewrite, let session = model.panelRewrite {
-                    // The task's panel, or the passage panel while it waits for an instruction or shows a proposal (until V3b and V15).
-                    switch session.task.state {
-                    case .ready, .proposal: RewritePanel(session: session)
-                    case .choosingAI, .running, .error, .changed: DirectorPanel(task: session.task, model: model)
-                    }
+                    DirectorPanel(task: session.task, model: model)
                 } else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

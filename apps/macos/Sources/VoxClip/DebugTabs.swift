@@ -297,7 +297,8 @@ import VoxClipCore
         shell.selection = .clip(kept[0])
         let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.rewrite = session
-        try session.receivePassage("A different opening")
+        // A reply that cuts the middle word: a change waiting for review (a phrase in your voice with no audio is left out).
+        try session.receivePassage(editor.words[lower].text + " " + editor.words[lower + 2].text)
         session.finishRun(seconds: 1)
         bar.render()
         check("the session's tab shows the dirty dot while it proposes changes", shell.dirtyTabs == [.clip(kept[0])] && bar.items[.clip(kept[0])]?.showsDot == true)

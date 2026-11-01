@@ -322,7 +322,7 @@ private actor RefusingKeys: ProviderKeyStore {
     }
 
     /// R1 shows as the user sends, but claims nothing sent and announces nothing while the privacy consent and the
-    /// cost sheet ask; a declined sheet goes back to the passage panel, silently.
+    /// cost sheet ask; a declined sheet shows the proposal the run would have replaced again, silently (V15).
     @Test func whileTheSheetsAskNothingShowsAsSentOrIsAnnounced() async throws {
         let anthropic = StubConnector(id: .anthropic)
         let (app, _) = app("anthropic", connectors: ["anthropic": anthropic])
@@ -350,7 +350,7 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(sheets.asked == [.privacy, .cost, .cost] && editor.announcements.count == 2)
         sheets.answer(false)
         #expect(await declined.value == false)
-        #expect(task.state == .ready && editor.announcements.count == 2)
+        #expect(task.state == .proposal(changes) && editor.announcements.count == 2 && session.ownProposal != nil)
         #expect(await anthropic.sends == 1)
     }
 
@@ -432,7 +432,7 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(editor.project == before && !editor.llmRuns.isBusy && session.isOpen)
     }
 
-    @Test func tryAgainSendsAgainAndAskForSomethingElseReturnsToTheField() async throws {
+    @Test func tryAgainSendsAgainAndAskForSomethingElseAsksForTheField() async throws {
         let ollama = StubConnector(id: .ollama, failure: .timeout)
         let (app, _) = app("ollama", connectors: ["ollama": ollama])
         let editor = try editor(app)
@@ -448,8 +448,10 @@ private actor RefusingKeys: ProviderKeyStore {
         await ollama.set(failure: .refused(category: nil))
         _ = await send(session).value
         #expect(session.task.state == .error(.refused))
+        // The refusal shows the Ask field, and Ask for Something Else asks for the keyboard there.
+        #expect(session.task.cards.contains(.ask(placeholder: "What should change in these words?")) && session.task.focusRequest == 0)
         session.task.footer.primary?.perform()
-        #expect(session.task.state == .ready && session.isOpen)
+        #expect(session.task.state == .error(.refused) && session.task.focusRequest == 1 && session.isOpen)
     }
 
     /// R1x sends the user away (sign in, start the server, get a key); Try Again after the service's 300 s quote window
@@ -541,8 +543,8 @@ private actor RefusingKeys: ProviderKeyStore {
     // MARK: The panel
 
     /// The right column shows the job of the open task, and a new run of the task brings its
-    /// job back after the user switched to Captions. R0, R1 and R1x draw the task's panel; the
-    /// passage panel shows while it waits to send.
+    /// job back after the user switched to Captions. Every state draws the task's panel; R2 adds
+    /// the change list (V15).
     @Test func thePanelsJobFollowsTheTask() async throws {
         _ = NSApplication.shared
         let shell = WorkspaceShell(app: AppModel())
@@ -565,19 +567,26 @@ private actor RefusingKeys: ProviderKeyStore {
             host.layoutSubtreeIfNeeded()
             return DebugRightColumn.markers(in: host)
         }
-        #expect(shell.panelJob(for: editor) == .rewrite && panel()["director.panel"] == nil)
+        // A session with an AI runs as it opens: it starts on its first turn.
+        #expect(session.task.turn == 1 && shell.panelJob(for: editor) == .rewrite && panel()["director.panel"] != nil)
         shell.choosePanelJob(.captions, for: editor)
         #expect(shell.panelJob(for: editor) == .captions)
+        // The same turn's reply keeps the user's pick; R2 adds the change list to the task's panel.
+        try session.receivePassage("A clearer passage")
+        session.finishRun(seconds: 1)
+        #expect(shell.panelJob(for: editor) == .captions)
+        shell.choosePanelJob(.rewrite, for: editor)
+        #expect(panel()["director.panel"] != nil && panel()["director.changes"] != nil)
+        shell.choosePanelJob(.captions, for: editor)
+        // The next run brings the job back.
         session.beginRun()
-        #expect(shell.panelJob(for: editor) == .rewrite && panel()["director.panel"] != nil)
+        #expect(session.task.turn == 2 && shell.panelJob(for: editor) == .rewrite && panel()["director.panel"] != nil)
         shell.choosePanelJob(.captions, for: editor)
         // The same turn's error keeps the user's pick.
         session.fail(.refused)
         #expect(shell.panelJob(for: editor) == .captions)
         shell.choosePanelJob(.rewrite, for: editor)
         #expect(panel()["director.panel"] != nil)
-        session.showReady()
-        #expect(panel()["director.panel"] == nil)
     }
 
     /// A run keeps the keyboard where it was (design.md §10); moved into R1 (F6), Esc (and ⌘.) stop it there.
@@ -603,8 +612,8 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(await session.sending?.value == false)
     }
 
-    /// The passage panel takes the keyboard with the reply only when the keyboard was in the panel: a reply that arrives
-    /// while the user works elsewhere leaves focus there.
+    /// The reply keeps the keyboard where it was: in the panel when it was there (R2 replaces R1 in the same panel), and
+    /// elsewhere when the user works elsewhere.
     @Test(arguments: [true, false])
     func aReplyTakesTheKeyboardOnlyFromThePanel(stayed: Bool) async throws {
         let ollama = StubConnector(id: .ollama, hold: true)
@@ -625,11 +634,11 @@ private actor RefusingKeys: ProviderKeyStore {
         }
         await ollama.release()
         #expect(await session.sending?.value == true)
-        await panel.settle { !panel.showsTaskPanel }
-        #expect(!panel.showsTaskPanel, "the proposal shows in the passage panel")
+        await panel.settle { if case .proposal = session.task.state { true } else { false } }
+        #expect(panel.showsTaskPanel, "the proposal shows in the task's panel")
         if stayed {
-            await panel.settle { panel.fieldHasKeyboard }
-            #expect(panel.fieldHasKeyboard)
+            await panel.settle(turns: 500)
+            #expect(panel.paneHasKeyboard && session.task.keyboardInPanel)
         } else {
             await panel.settle(turns: 500)
             #expect(panel.window.firstResponder === panel.elsewhere, "the reply moved focus to \(String(describing: panel.window.firstResponder))")
@@ -651,7 +660,7 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(panel.window.firstResponder === panel.elsewhere)
         session.task.footer.primary?.perform()
         await panel.settle { panel.fieldHasKeyboard }
-        #expect(session.task.state == .ready && panel.fieldHasKeyboard)
+        #expect(session.task.state == .error(.refused) && panel.fieldHasKeyboard)
     }
 
     /// The DEBUG scene runner's scenes (R0, R0 with nothing, R1 and each R1x) at 404 and 300:
@@ -663,7 +672,9 @@ private actor RefusingKeys: ProviderKeyStore {
         let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
         let scenes = await DebugRewrite.directorScenes(app: app, fixture: fixture)
         defer { scenes.forEach { $0.editor?.close() } }
-        #expect(scenes.map(\.name) == ["r0", "r0-none", "r1", "r1-clip", "r1x-message", "r1x-signed-out", "r1x-no-key", "r1x-not-running", "r1x-refused", "r1x-too-many-words", "r1x-too-much-text", "r3"])
+        #expect(scenes.map(\.name) == ["r0", "r0-none", "r1", "r1-clip", "r1x-message", "r1x-signed-out", "r1x-no-key", "r1x-not-running", "r1x-refused", "r1x-too-many-words", "r1x-too-much-text", "r3",
+                                       "r2-free", "r2-voice-lab-off", "r2-make-takes", "r2-make-voice", "r2-use-take", "r2-several-voices", "r2-over-budget",
+                                       "r2-nothing-included", "r2-no-changes"])
         let output = ProcessInfo.processInfo.environment["VOXCLIP_DIRECTOR_SCENES"].map { URL(fileURLWithPath: $0, isDirectory: true) }
         for scene in scenes {
             for width in [404, 300] {
