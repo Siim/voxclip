@@ -112,6 +112,9 @@ internal sealed class RewriteSession : IDisposable
         var hunk = review.VoiceHunks[0];
         if (hunk.Window is not { } window || hunk.PatchText is not { } text)
             throw new RewriteGenerationException(hunk.Refusal ?? "This change can't be placed in this take. Your edits are saved.");
+        var combined = Editor.ProjectWithLocalOperations(Project, LocalOperations());
+        try { VoiceLabRenderContract.ValidatePlacement(combined, Scope, window); }
+        catch (VoiceLabProjectException) { throw new RewriteGenerationException("This change can't blend beside the proposed cuts. Keep more of the surrounding speech or re-record this sentence. Your edits are saved."); }
         var rate = Project.Media.Source.Audio?.SampleRate ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         var frames = checked((long)Math.Floor(Project.Media.Source.DurationSeconds * rate + 0.5));
         // The fit can borrow this silence, so the decoded source must reach past it.

@@ -19,7 +19,7 @@ import Testing
     }
     /// The mockup's two Clip 1 paragraphs: fillers and pauses cut (DebugTranscriptPixels.foldProject).
     private func editor() throws -> EditorModel {
-        EditorModel(document: VoxClipDocument(project: DebugTranscriptPixels.foldProject(from: try fixture()), demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        EditorModel(document: VoxClipDocument(project: DebugTranscriptPixels.foldProject(from: try fixture()), demo: true), app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
     }
     private func pane(_ model: EditorModel) throws -> (TranscriptNSTextView, TranscriptRenderer, TranscriptTextView.Coordinator) {
         let coordinator = TranscriptTextView.Coordinator(model: model)
@@ -433,7 +433,7 @@ import Testing
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-v8b-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let results = try DebugTranscriptPixels.folds(app: AppModel(), fixture: try fixture(), directory: directory)
+        let results = try DebugTranscriptPixels.folds(app: AppModel(settingsStore: RegressionSettingsStore()), fixture: try fixture(), directory: directory)
         #expect(results.count > 20)
         for result in results where !result.passed { Issue.record("\(result.name)") }
     }

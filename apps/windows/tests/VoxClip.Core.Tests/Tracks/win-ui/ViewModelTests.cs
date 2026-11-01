@@ -86,8 +86,35 @@ public sealed class ViewModelTests
     {
         var model = Demo();
         Assert.NotEmpty(model.Paragraphs); Assert.Equal(model.Words.Count, model.Paragraphs.Sum(item => item.Count));
-        Assert.All(model.Paragraphs, item => Assert.InRange(item.Count, 1, 100));
+        Assert.All(model.Paragraphs, item => Assert.InRange(item.Count, 1, TranscriptParagraphs.MaximumWords));
     }
+    [Theory]
+    [InlineData("monologue-10000")]
+    [InlineData("sentence-80-and-reset")]
+    [InlineData("later-tie-145")]
+    [InlineData("speaker-and-null-speaker")]
+    public void ParagraphRowsUseSharedTakeBoundaries(string caseId)
+    {
+        using var vectors = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!, "fixtures/v2/paragraphs.json")));
+        var item = vectors.RootElement.GetProperty("cases").EnumerateArray().Single(row => row.GetProperty("id").GetString() == caseId);
+        var words = item.GetProperty("words").EnumerateArray().Select((row, index) => new TimedWord($"w{index}", row[0].GetString()!, WordKind.Word,
+            row[1].GetDouble(), row[2].GetDouble(), null, null, null, row[3].ValueKind == System.Text.Json.JsonValueKind.Null ? null : row[3].GetString(), TimingSource.Native)).ToArray();
+        var source = Fixture();
+        var duration = words[^1].End + 1;
+        var project = source with { Transcript = source.Transcript! with { Words = words, DurationSeconds = duration },
+            Media = new(source.Media.Source with { DurationSeconds = duration }),
+            Edits = source.Edits with { CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>(), Clips = [], ActiveClipId = null } };
+        var model = new EditorViewModel(project);
+        var expected = item.GetProperty("expected").EnumerateArray().Select(row => (Start: row[0].GetInt32(), End: row[1].GetInt32())).ToArray();
+        Assert.Equal(expected, model.Paragraphs.Select(row => (Start: row.StartIndex, End: row.StartIndex + row.Count)));
+        Assert.All(model.Paragraphs, row => Assert.Equal(words[row.StartIndex].Speaker, row.Speaker));
+        Assert.All(model.Paragraphs, row => Assert.Equal(EditorViewModel.Timecode(words[row.StartIndex].Start), row.Timecode));
+        // Correcting the displayed sentence must not move the take's source-word boundaries.
+        model.Apply(new EditOperation.Correct(words[0].Id, "changed!"));
+        Assert.Equal(expected, model.Paragraphs.Select(row => (Start: row.StartIndex, End: row.StartIndex + row.Count)));
+    }
+
     [Fact]
     public void SelectionDoesNotSchedulePersistenceOrRecompose()
     {

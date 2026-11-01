@@ -277,6 +277,14 @@ public sealed class VoiceLabReleaseBoundaryTests
 
 #if !DEBUG
     [Fact]
+    public void ShippingMediaHasNoSyntheticEnrollmentSpeaker()
+    {
+        var media = AssemblyInspector.Read(typeof(VoxClip.Media.VoiceLab.VoiceTrainingAudio).Assembly.Location, Root);
+        foreach (var marker in new[] { "TestSpeaker", "SpeakerForTests", "VoxClip.Tests.Enrollment" })
+            Assert.DoesNotContain(media.Entries, entry => entry.Key.Contains(marker, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ReleaseSurrogateMatchesTheShippingAllowlistsExactly()
     {
         // Fast macOS precheck only: the typecheck surrogate (VoxClip.WinCheck.dll, UseWinUI=false), the Core and Media assemblies

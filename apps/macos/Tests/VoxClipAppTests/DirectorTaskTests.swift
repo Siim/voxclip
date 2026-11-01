@@ -66,36 +66,52 @@ private actor RefusingKeys: ProviderKeyStore {
     func answer(_ approved: Bool) { answer?.resume(returning: approved); answer = nil }
 }
 
+/// Drain ready AppKit/SwiftUI work without sleeping or ordering a window onscreen.
+@MainActor private func pumpPanelRunLoop() {
+    _ = RunLoop.current.run(mode: .default, before: Date())
+}
+
 /// The right column in a window that is never shown, with an AppKit text view that stands in for the transcript, so a
 /// test can move the keyboard out of the panel. SwiftUI focus runs in it as in the editor's window when the panel is the
 /// window's content view (in a plain container view it does not take focus while the window is not key).
 @MainActor private struct PanelWindow {
     let window: NSWindow
     let host: NSHostingView<AnyView>
+    let initialQuoteID: UUID?
     let elsewhere = NSTextView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
     init(editor: EditorModel) {
         _ = NSApplication.shared
+        initialQuoteID = editor.openRewrite?.quote?.id
         window = NSWindow(contentRect: CGRect(x: -10_000, y: -10_000, width: 404, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         host = NSHostingView(rootView: AnyView(PanelHost(model: editor, shell: WorkspaceShell(app: editor.app), width: 404, height: 600).environment(editor.app)))
         host.frame = CGRect(x: 0, y: 0, width: 404, height: 600)
         window.contentView = host
-        host.addSubview(elsewhere)
+        // The transcript stand-in is outside the panel's SwiftUI focus hierarchy.
+        host.superview?.addSubview(elsewhere)
     }
     /// Lays the panel out and lets SwiftUI run its updates and tasks, until `done` holds or for `turns` turns.
     func settle(turns: Int = 2_000, until done: () -> Bool = { false }) async {
         for _ in 0..<turns {
             host.layoutSubtreeIfNeeded()
+            pumpPanelRunLoop()
             if done() { return }
             await Task.yield()
         }
+    }
+    /// Let the mounted panel finish its initial preparation before the test starts a send.
+    /// Its .task must not overwrite the send's quote across the consent suspension.
+    func ready(_ session: RewriteSession) -> Bool {
+        fieldHasKeyboard && session.canPropose && session.quote?.id != initialQuoteID
     }
     /// The task's panel shows, not the passage panel.
     var showsTaskPanel: Bool { DebugRightColumn.markers(in: host)["director.panel"] != nil }
     /// A text field in the panel has the keyboard: the passage panel's instruction, or a key field.
     var fieldHasKeyboard: Bool { (window.firstResponder as? NSTextView).map { $0 !== elsewhere && $0.isDescendant(of: host) } ?? false }
     /// The task's panel itself has the keyboard (SwiftUI focus on a view that is not a text field).
-    var paneHasKeyboard: Bool { window.firstResponder === host }
+    var paneHasKeyboard: Bool {
+        !(window.firstResponder is NSTextView) && (window.firstResponder as? NSView).map { $0.isDescendant(of: host) } == true
+    }
     /// Esc, and ⌘., which AppKit sends as the same action.
     func escape() { window.firstResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil) }
     func close() { window.close() }

@@ -8,12 +8,14 @@ identical and every float agrees within REL_TOL / ABS_TOL; the committed bytes a
 byte-exact `git diff --exit-code` that follows checks only the other generators. Acceptance-set vectors also
 contain computed duration/trim floats and use the same tolerance. Window, several-window, continuity, scope rewrite plan
 and diff, LLM send cost, training span, enrollment and take batch vectors have an explicit byte-exact expectation, never float
-tolerance. Enrollment coverage includes local retries and bounded/corrupt recovery journals.
+tolerance. Both Cores replay enrollment (including local retries and bounded/corrupt recovery journals),
+the corrected acceptance set and its empty-set review file.
 Run from the repository root, after the generators."""
 import json
 import math
 import subprocess
 import sys
+from pathlib import Path
 
 TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json',
             'shared/fixtures/voice-lab/accept-all-cases.json']
@@ -22,7 +24,8 @@ EXACT = ['shared/fixtures/voice-lab/continuity-cases.json', 'shared/fixtures/voi
          'shared/fixtures/voice-lab/training-spans.json', 'shared/fixtures/voice-lab/take-batch-cases.json',
          'shared/fixtures/voice-lab/enrollment-cases.json',
          'shared/fixtures/voice-lab/accept-all-review-cases.json',
-         'shared/fixtures/voice-lab/window-cases.json', 'shared/fixtures/voice-lab/window-all-cases.json']
+         'shared/fixtures/voice-lab/window-cases.json', 'shared/fixtures/voice-lab/window-all-cases.json',
+         'shared/fixtures/v2/paragraphs.json', 'shared/fixtures/v2/timeline-cases.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
 
@@ -46,6 +49,9 @@ def differences(committed, regenerated, where='$'):
 
 
 def main():
+    # CI enumerates the older voice-lab generator directory; include the independent WC1 generator here.
+    root = Path(__file__).resolve().parents[3]
+    subprocess.run([sys.executable, str(root / "tools/fixtures/v2/generate_v2.py")], check=True)
     failed = False
     for path in EXACT:
         committed_bytes = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout

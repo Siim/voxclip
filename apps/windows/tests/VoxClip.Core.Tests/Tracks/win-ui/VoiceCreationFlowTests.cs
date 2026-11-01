@@ -192,7 +192,7 @@ public sealed class VoiceCreationFlowTests
     [InlineData("expired")]
     [InlineData("speaker-mismatch")]
     [InlineData("speaker-unavailable")]
-    public async Task DebugCreationFixturesExerciseRealTrainingAndNeverReadKeys(string scenario)
+    public async Task DebugCreationFixturesExerciseRealTrainingWithoutHttp(string scenario)
     {
         var root = Path.Combine(Path.GetTempPath(), "voxclip-r5-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -205,8 +205,9 @@ public sealed class VoiceCreationFlowTests
             var data = new DataLocations(root, Path.Combine(root, "settings.json"), Path.Combine(root, "models"), Path.Combine(root, "cache"), Path.Combine(root, "autosave"), Path.Combine(root, "secrets"), Path.Combine(root, "logs"));
             var clock = new VoiceSessionClock(); var capture = new FlowCapture();
             var scribe = new DebugConsentScribe(fixtures);
-            var inner = new VoiceStatementBackend(data, new NoKeys(), new QuietLog(), ElevenLabsRegion.Default, () => true, () => null, _ => Task.CompletedTask,
+            var inner = new VoiceStatementBackend(data, new SyntheticKeys(), new QuietLog(), ElevenLabsRegion.Default, () => true, () => null, _ => Task.CompletedTask,
                 clock, () => DebugAvailableSpeakerCheck.Available, scribe.TranscribeAsync);
+            CreateVoiceTests.SupplySyntheticSpeaker(inner);
             var client = DebugVoiceLabBackend.FromFixtures(fixtures, () => true, _ => Task.CompletedTask);
             await client.ReadAsync(Token);
             var backend = new DebugVoiceCreationBackend(inner, client, data, fixtures, clock);
@@ -608,6 +609,8 @@ public sealed class VoiceCreationFlowTests
         public void Discard() { if (take is not null) Array.Clear(take.Mono); take = null; Discarded = true; completion.TrySetResult(); }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
+    private sealed class SyntheticKeys : IKeyProvider
+    { public Task<string?> GetKeyAsync(string account, CancellationToken ct) => Task.FromResult<string?>("synthetic-creation-test-key"); }
     private sealed class NoKeys : IKeyProvider
     { public Task<string?> GetKeyAsync(string account, CancellationToken ct) => throw new InvalidOperationException("No key reads allowed"); }
     private sealed class QuietLog : ILog

@@ -48,9 +48,7 @@ import VoxClipCore
         .accessibilityElement(children: .contain)
         .accessibilityLabel(task.words.title)
         .accessibilityIdentifier("voxclip.director")
-        .modifier(EditorPaneFocus(model: model, pane: .panel))
-        // Whether the keyboard is anywhere in the panel, for the handover between the panel's views.
-        .focused($keyboardWithin)
+        .modifier(EditorPaneFocus(model: model, pane: .panel, focus: $keyboardWithin))
         // Esc and ⌘. (design.md §8): the safe answer to a question the panel asks, Stop while the task runs, which closes
         // it too, else Close.
         .onExitCommand { (task.confirm?.cancel ?? task.headline.stop ?? task.close).perform() }

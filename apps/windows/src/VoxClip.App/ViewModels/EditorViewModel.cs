@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Domain.Clips;
@@ -15,7 +16,7 @@ public sealed class EditorViewModel : ObservableObject
     private readonly Func<EditState, EditOperation, EditState> reduce;
     private readonly Func<EditState, EditSummary> summarize;
     private readonly Func<DateTimeOffset> now;
-    private sealed record History(EditState? State, Project Project, bool IsDirty);
+    private sealed record History(EditState? State, Project Project, bool IsDirty, string? ActionName = null);
     private readonly Stack<History> undo = new();
     private readonly Stack<History> redo = new();
     private Project project;
@@ -144,7 +145,7 @@ public sealed class EditorViewModel : ObservableObject
         savedJson = DirtyIdentity(snapshot);
         OnPropertyChanged(nameof(IsDirty));
     }
-    private History CaptureHistory() => new(state, project, IsDirty);
+    private History CaptureHistory(string? actionName = null) => new(state, project, IsDirty, actionName);
     internal IReadOnlySet<string> VoiceLabAssetReferences(IEnumerable<Project>? otherDocuments = null)
         => new[] { project, savedProject }.Concat(undo.Select(entry => entry.Project)).Concat(redo.Select(entry => entry.Project))
             .Concat(otherDocuments ?? []).SelectMany(VoiceLabAssetRetention.References).ToHashSet(StringComparer.Ordinal);
@@ -221,6 +222,8 @@ public sealed class EditorViewModel : ObservableObject
         try { return summarize(state with { ActiveClipId = clipId }).CanExport; }
         catch (VoxClipException) { return false; }
     }
+    public string? UndoActionName => undo.TryPeek(out var entry) ? entry.ActionName : null;
+    public string? RedoActionName => redo.TryPeek(out var entry) ? entry.ActionName : null;
     public bool CanUndo => undo.Count > 0;
     public bool CanRedo => redo.Count > 0;
     public int SelectionStart => Math.Min(selectionAnchor, selectionEnd);
@@ -309,20 +312,36 @@ public sealed class EditorViewModel : ObservableObject
         }
     }
 
+    internal Project ProjectWithLocalOperations(Project snapshot, IReadOnlyList<EditOperation> operations)
+    {
+        var local = EditingEngine.FromProject(snapshot) ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
+        foreach (var operation in operations) local = reduce(local, operation);
+        return snapshot with { Edits = new(local.PauseThresholdSeconds, local.PauseKeepSeconds, local.CutWordIds.ToArray(), local.CutPauseIds.ToArray(),
+            new Dictionary<string, string>(local.Corrections), local.Clips.ToArray(), local.ActiveClipId) };
+    }
+    public bool ApplyVoiceLab(IReadOnlyList<VoiceLabSegment> segments, IReadOnlyList<VoiceLabAsset> assets, VoiceLabVoiceReference voice,
+        VoiceLabOutputScope scope, string actionName, Project? expectedProject = null, IReadOnlyList<EditOperation>? localOperations = null)
+        => ApplyVoiceLabCore(new VoiceLabEditCommand.AcceptAll(segments, assets, voice), expectedProject, localOperations, scope, actionName);
     public bool ApplyVoiceLab(VoiceLabEditCommand command, Project? expectedProject = null, IReadOnlyList<EditOperation>? localOperations = null)
+    {
+        if (command is VoiceLabEditCommand.AcceptAll) return false;
+        return ApplyVoiceLabCore(command, expectedProject, localOperations, project.Edits.ActiveClipId is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full, null);
+    }
+    private bool ApplyVoiceLabCore(VoiceLabEditCommand command, Project? expectedProject, IReadOnlyList<EditOperation>? localOperations,
+        VoiceLabOutputScope scope, string? actionName)
     {
         if (!Monitor.TryEnter(voiceLabEdits)) return false;
         try
         {
             if (applyingVoiceLab || isLeaving || IsReadOnly || Busy || state is null) return false;
-            if (localOperations is { Count: > 0 } && command is not VoiceLabEditCommand.Accept) return false;
+            if (localOperations is { Count: > 0 } && command is not (VoiceLabEditCommand.Accept or VoiceLabEditCommand.AcceptAll)) return false;
             var snapshot = expectedProject ?? project;
             if (!ReferenceEquals(snapshot, project)) return false;
             applyingVoiceLab = true;
             try
             {
-                if (command is VoiceLabEditCommand.Accept accept)
-                    foreach (var asset in accept.Assets)
+                var acceptedAssets = command switch { VoiceLabEditCommand.Accept accept => accept.Assets, VoiceLabEditCommand.AcceptAll accept => accept.Assets, _ => [] };
+                foreach (var asset in acceptedAssets)
                         if (undo.Concat(redo).SelectMany(entry => entry.Project.VoiceLab.Assets ?? [])
                             .Any(retained => retained.Id == asset.Id && retained != asset))
                             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidAsset);
@@ -332,16 +351,19 @@ public sealed class EditorViewModel : ObservableObject
                 foreach (var operation in localOperations ?? []) nextState = reduce(nextState, operation);
                 var combined = nextState == state ? snapshot : snapshot with { Edits = new(nextState.PauseThresholdSeconds, nextState.PauseKeepSeconds,
                     nextState.CutWordIds.ToArray(), nextState.CutPauseIds.ToArray(), new Dictionary<string, string>(nextState.Corrections), nextState.Clips.ToArray(), nextState.ActiveClipId) };
-                var change = new VoiceLabEditHistory(combined, IsDirty).Apply(command, modifiedAt);
+                var history = new VoiceLabEditHistory(combined, IsDirty);
+                var change = command is VoiceLabEditCommand.AcceptAll all
+                    ? history.Apply(all.Segments, all.Assets, all.Voice, scope, actionName!, modifiedAt)
+                    : history.Apply(command, modifiedAt, scope);
                 if (ReferenceEquals(change.Present, combined) && nextState == state) return false;
                 CaptionDrag.Cancel();
                 if (!ReferenceEquals(project, snapshot) || isLeaving || IsReadOnly || Busy) return false;
-                undo.Push(CaptureHistory());
+                undo.Push(CaptureHistory(actionName ?? command.ActionName));
                 redo.Clear();
                 state = nextState;
                 project = change.Present;
                 Refresh();
-                Announcement?.Invoke(this, command.ActionName);
+                Announcement?.Invoke(this, actionName ?? command.ActionName);
                 return true;
             }
             finally { applyingVoiceLab = false; }
@@ -486,7 +508,7 @@ public sealed class EditorViewModel : ObservableObject
             !ReferenceEquals(from.Peek().Project.VoiceLab, project.VoiceLab))) return;
         CaptionDrag.Cancel();
         var next = from.Pop();
-        to.Push(CaptureHistory());
+        to.Push(CaptureHistory(next.ActionName));
         state = next.State;
         project = project with { Edits = next.Project.Edits, Captions = next.Project.Captions, VoiceLab = next.Project.VoiceLab,
             SchemaVersion = next.Project.SchemaVersion, ModifiedAt = next.Project.ModifiedAt };
@@ -528,7 +550,7 @@ public sealed class EditorViewModel : ObservableObject
         if (SameCaptions(project.Captions, captions)) return;
         undo.Push(CaptureHistory()); redo.Clear();
         project = project with { Captions = captions, ModifiedAt = DateTimeOffset.UtcNow };
-        foreach (var name in new[] { nameof(IsDirty), nameof(CanUndo), nameof(CanRedo) }) OnPropertyChanged(name);
+        foreach (var name in new[] { nameof(IsDirty), nameof(CanUndo), nameof(CanRedo), nameof(UndoActionName), nameof(RedoActionName) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -689,13 +711,13 @@ public sealed class EditorViewModel : ObservableObject
             try { Summary = summarize(state); }
             catch (VoxClipException exception) { Notice = UiError.Message(exception, "Editing"); Summary = new(0, state.CutWordIds.Count, state.Pauses.Count, state.CutPauseIds.Count, false, false, false, true); }
             var start = 0;
-            for (var index = 1; index <= Words.Count; index++)
+            foreach (var range in TranscriptParagraphs.Split(Words))
             {
-                var split = index == Words.Count || (Words[index].Speaker != Words[index - 1].Speaker ||
-                    Words[index].Start - Words[index - 1].End >= 1.5 && Words[index - 1].Text.EndsWithAny(".!?")) || index - start >= 100;
-                if (!split || index < Words.Count && !PresentedWord(index).Visible) continue;
-                Paragraphs.Add(new(start, index - start, Timecode(Words[start].Start), Words[start].Speaker));
-                start = index;
+                var end = range.End.Value;
+                // Keep the existing presentation rule: a hidden next word cannot start a row.
+                if (end < Words.Count && !PresentedWord(end).Visible) continue;
+                Paragraphs.Add(new(start, end - start, Timecode(Words[start].Start), Words[start].Speaker));
+                start = end;
             }
             var source = project.Media.Source;
             var sampleRate = source.Audio?.SampleRate is > 0 ? source.Audio.SampleRate : 48000;
@@ -722,7 +744,7 @@ public sealed class EditorViewModel : ObservableObject
         }
         else { FullTakeDuration = project.Media.Source.DurationSeconds; SummaryLine = ""; SummaryTooltip = ""; }
         RefreshExportRows();
-        foreach (var name in new[] { nameof(Project), nameof(State), nameof(IsDirty), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanFindClips), nameof(CanUndo), nameof(CanRedo), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
+        foreach (var name in new[] { nameof(Project), nameof(State), nameof(IsDirty), nameof(Summary), nameof(SummaryLine), nameof(SummaryTooltip), nameof(KeptClips), nameof(SuggestedClips), nameof(FillerLabel), nameof(CanExport), nameof(CanFindClips), nameof(CanUndo), nameof(CanRedo), nameof(UndoActionName), nameof(RedoActionName), nameof(HasTranscript), nameof(FullTakeDuration) }) OnPropertyChanged(name);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 }

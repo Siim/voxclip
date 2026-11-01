@@ -28,7 +28,7 @@ import Testing
         project.media.source.durationSeconds = 402
         project.edits = ProjectEdits(cutWordIds: [])
         project.edits.clips = [ClipRange(id: "middle", startWordId: "v\((paragraph - 2) * 20)", endWordId: "v\((paragraph + 3) * 20 - 1)", title: "Middle")]
-        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
         model.activate(model.project.edits.clips[0])
         model.sourceTime = Double(paragraph * 20 + 15) * 0.5 + 0.1
         model.selectedWordIDs = Set((paragraph * 20 + 10...paragraph * 20 + 16).map { "v\($0)" })
@@ -120,17 +120,22 @@ import Testing
     }
 
     /// At the take's top, where TextKit keeps the scroll position as lines rewrap.
-    @Test func aResizeRewrapsWhatFollowsTheLines() throws {
+    @Test(arguments: [NSScroller.Style.overlay, .legacy])
+    func aResizeRewrapsWhatFollowsTheLines(_ scrollerStyle: NSScroller.Style) throws {
         let model = try editor(paragraph: 2); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488)); defer { pane.close() }
+        pane.scroll.scrollerStyle = scrollerStyle
+        layoutPass(pane)
         let before = try overlays(pane)
         #expect(!before.bandHidden && !before.caretHidden && before.selection.count == 2, "\(before)")
         pane.window.setContentSize(NSSize(width: 820, height: 488))
+        // Deliver the host's frame as SwiftUI does; macOS 26 need not resize hidden window content synchronously.
+        pane.scroll.setFrameSize(NSSize(width: 820, height: 488))
         layoutPass(pane)
         // A legacy scroller (a Mac with a mouse, the hosted runner) takes its width from the pane.
         let width: CGFloat = pane.scroll.contentSize.width
         let measure: CGFloat = CGFloat(TranscriptNSTextView.measure(forPane: Double(width)))
-        #expect(width > 800 && pane.text.bounds.width == width, "the text view takes the clip view's \(width)")
+        #expect(pane.scroll.bounds.width == 820 && width > 800 && pane.text.bounds.width == width, "the text view takes the clip view's \(width)")
         #expect(pane.text.textContainer?.containerSize.width == measure, "the \(measure) measure at \(width)")
         #expect(!pane.text.needsLayout)
         let (shown, measured) = try current(pane)

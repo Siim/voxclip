@@ -240,7 +240,7 @@ public sealed class VoiceLabFixtureTests
         var request = VoiceLabTestCalls.CloneRequest(" Voice ä ");
         var consentSha256 = Convert.ToHexStringLower(SHA256.HashData(request.Samples[0].Wav));
         var before = handler.AllSends;
-        var clone = service.PrepareClone(request, Policy(null));
+        var clone = service.PrepareEnrollmentClone(request, Policy(null));
         Assert.Equal(before, handler.AllSends);
         Assert.Equal("Voice ä", clone.Review.DisplayName);
         Assert.Equal("audio/wav", clone.Review.MimeType);
@@ -257,7 +257,7 @@ public sealed class VoiceLabFixtureTests
         Assert.Contains("\r\n\r\n{\"language\":\"en\"}\r\n", multipart);
         Assert.DoesNotContain("filename*", multipart);
         Assert.DoesNotContain("text/plain", multipart);
-        Assert.Equal(VoiceLabErrorKind.InvalidInput, Assert.Throws<VoiceLabException>(() => service.PrepareClone(request with
+        Assert.Equal(VoiceLabErrorKind.InvalidInput, Assert.Throws<VoiceLabException>(() => service.PrepareEnrollmentClone(request with
             { Samples = [request.Samples[0], new(VoiceLabCloneSampleRole.Training, Encoding.ASCII.GetBytes("synthetic-audio/mp4"))] }, Policy(null))).Kind);
 
         await Discover(service);

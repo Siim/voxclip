@@ -45,18 +45,31 @@ public sealed record VoiceLabReview(VoiceLabOperation Operation, Guid RequestId,
 /// <summary>Claimed once by the service before dispatch. Construction is reserved to Core.</summary>
 public sealed record VoiceLabPreparedAction
 {
+    [System.Text.Json.Serialization.JsonConstructor]
     internal VoiceLabPreparedAction(Guid token, string fingerprint, DateTimeOffset expiresAt, VoiceLabEstimate estimate, VoiceLabReview review)
     { Token = token; Fingerprint = fingerprint; ExpiresAt = expiresAt; Estimate = estimate; Review = review; }
+    [System.Text.Json.Serialization.JsonInclude]
     internal Guid Token { get; }
+    [System.Text.Json.Serialization.JsonInclude]
     internal string Fingerprint { get; }
+    public Guid Id => Token;
     public DateTimeOffset ExpiresAt { get; }
     public VoiceLabEstimate Estimate { get; }
     public VoiceLabReview Review { get; }
+}
+/// <summary>Tracks a provider's accepted status line even if its response cannot produce a receipt.</summary>
+public sealed class VoiceLabRequestAcceptance
+{
+    private int accepted;
+    public bool Accepted => System.Threading.Volatile.Read(ref accepted) != 0;
+    internal void MarkAccepted() => System.Threading.Interlocked.Exchange(ref accepted, 1);
 }
 public sealed record VoiceLabAuthorization
 {
     internal VoiceLabRunDispatch? RunDispatch { get; init; }
     internal bool IsRunAuthorization { get; init; }
+    /// <summary>Carry a pinned window's authorization through its dispatch boundary.</summary>
+    public VoiceLabAuthorization ForDispatch(VoiceLabRunDispatch dispatch) => this with { RunDispatch = dispatch };
     internal VoiceLabAuthorization(Guid token, string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review)
     { Token = token; Fingerprint = fingerprint; Estimate = estimate; Review = review; }
     internal Guid Token { get; }

@@ -132,7 +132,7 @@ public sealed class VoiceLabCoreTests
         using var service = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(), handler, ElevenLabsRegion.Us);
         var clone = VoiceLabTestCalls.CloneRequest();
         await service.DiscoverSubscriptionAsync(TestContext.Current.CancellationToken);
-        var prepared = service.PrepareClone(clone, Policy(null));
+        var prepared = service.PrepareEnrollmentClone(clone, Policy(null));
         Assert.Equal(VoiceLabErrorKind.ConsentRequired, Assert.Throws<VoiceLabException>(() => service.Approve(prepared, false)).Kind);
         var approval = service.Approve(prepared, true);
         Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() =>
@@ -161,7 +161,7 @@ public sealed class VoiceLabCoreTests
         var clone = VoiceLabTestCalls.CloneRequest();
         await service.DiscoverSubscriptionAsync(TestContext.Current.CancellationToken);
         var createPolicy = Policy(null);
-        var create = service.Approve(service.PrepareClone(clone, createPolicy), true);
+        var create = service.Approve(service.PrepareEnrollmentClone(clone, createPolicy), true);
         var result = await service.CreateOwnCloneAsync(clone, createPolicy, create, TestContext.Current.CancellationToken);
         Assert.True(result.RequiresVerification);
         await service.DiscoverModelsAsync(TestContext.Current.CancellationToken);

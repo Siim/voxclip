@@ -158,7 +158,7 @@ public sealed class VoiceLabGenerationSessionTests
             Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
         {
             if (FailBeforeStart) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            await dispatch.AuthorizeAsync(ct);
+            await dispatch.AuthorizeAsync(quote.Takes[0].Synthesis.Review.RequestId, ct);
             return await dispatch.Start(() => ExecuteAsync(quote, true, progress, ct), ct);
         }
         public Task DiscardPendingAsync() { Pending = null; return Task.CompletedTask; }

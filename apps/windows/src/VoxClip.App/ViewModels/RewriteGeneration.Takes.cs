@@ -86,7 +86,7 @@ internal sealed partial class RewriteGeneration
             _ => ReviewPhase()
         };
         Announcement = BestTakeId is null ? TakeRowPresentation.NonePassed :
-            TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable));
+            TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable && !row.Stopped));
         Notify();
     }
     internal async Task<bool> SelectTakeAsync(Guid id)
@@ -151,6 +151,12 @@ internal sealed partial class RewriteGeneration
         try
         {
             await takes.Audition.StopAsync();
+            var scope = project.Edits.ActiveClipId is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full;
+            var combined = editor.ProjectWithLocalOperations(project, localOperations ?? []);
+            var fit = selected.Audio!.Fit.Plan;
+            var window = input.Window with { Start = fit.WindowStartSample / (double)input.SourceSampleRate, End = fit.WindowEndSample / (double)input.SourceSampleRate,
+                StartSample = fit.WindowStartSample, EndSample = fit.WindowEndSample };
+            VoiceLabRenderContract.ValidatePlacement(combined, scope, window);
             List<VoiceLabCandidate> candidates = []; List<VoiceLabAsset> assets = [];
             VoiceLabVoiceReference? voice = null; int? selectedIndex = null;
             var date = clock.GetUtcNow();
