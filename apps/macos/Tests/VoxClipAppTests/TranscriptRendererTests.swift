@@ -200,7 +200,7 @@ import Testing
         model.activate(model.project.edits.clips[0])
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
-        text.layOutViewport()
+        try #require(text.textLayoutManager).textViewportLayoutController.layoutViewport()
         #expect(text.backdrop?.band?.suggested == true, "a suggestion's bar is dashed")
         let revision = renderer.storageRevision
         model.keepAll()
@@ -211,6 +211,25 @@ import Testing
         model.apply(.setClipSelected(id: "fifth", selected: false), name: "Undo Keep All")
         render(model, renderer)
         #expect(text.backdrop?.band?.suggested == true, "undoing Keep All dashes the bar again")
+    }
+
+    @Test func theViewportRelayPassesLayoutToTheTextViewAndThenPlacesTheBackdrop() throws {
+        let model = try editor(showCuts: false); defer { model.close() }
+        model.activate(model.project.edits.clips[0])
+        let (text, _, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        let controller = try #require(text.textLayoutManager).textViewportLayoutController
+        let relay = try #require(controller.delegate as? TranscriptViewportRelay, "the relay is the viewport delegate")
+        text.relayViewportLayout()
+        #expect(controller.delegate === relay, "asking again keeps the one relay")
+        // Calls the relay does not name reach the text view as they would without it.
+        for name in ["textViewportLayoutControllerReceivedSetNeedsLayout:", "textViewportLayoutController:cacheRenderingSurface:forKey:", "doesNotExistForTheRelay:"] {
+            let selector = NSSelectorFromString(name)
+            #expect(relay.responds(to: selector) == text.responds(to: selector), "\(name)")
+        }
+        controller.layoutViewport()
+        #expect(!controller.viewportBounds.isEmpty, "the text view supplies the viewport")
+        #expect(text.backdrop?.band != nil, "a finished layout places the active clip's band")
     }
 
     @Test func untouchedParagraphsKeepTheirStyles() throws {

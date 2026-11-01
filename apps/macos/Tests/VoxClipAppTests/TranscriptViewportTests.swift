@@ -9,7 +9,8 @@ import Testing
 /// and the overview ruler's visible window) is current after AppKit's own layout pass, the
 /// one that lays out TextKit 2's viewport, after a scroll, a cut that refolds a paragraph and
 /// a resize. Nothing here calls the pane's `layout()`, which lays the viewport out itself.
-/// No `textViewportLayoutControllerDidLayout(_:)`: NSTextView declares it from macOS 27.
+/// `TranscriptViewportRelay` places them, not a `textViewportLayoutControllerDidLayout(_:)`
+/// override: NSTextView declares that from macOS 27.
 @Suite("Transcript viewport overlays", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
 @MainActor struct TranscriptViewportTests {
     /// Forty paragraphs of twenty words, each its own speaker's turn, so each wraps after

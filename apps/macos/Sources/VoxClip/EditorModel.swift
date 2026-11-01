@@ -69,6 +69,8 @@ struct EditorRenderSnapshot {
     /// which hold them only while the session's tab is active (EditorModel+Tabs).
     var openRewrite: RewriteSession?
     var openRewriteRange: ClosedRange<Int>?
+    /// A Rewrite proposal shown in the transcript as tracked changes (`TranscriptProposal`).
+    var proposal: TranscriptProposal?
     var focusedPane = EditorPane.transcript
     var paneFocusRequest = 0
     var scopeScrollRevision = 0
