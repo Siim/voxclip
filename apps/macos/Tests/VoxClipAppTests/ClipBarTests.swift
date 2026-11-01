@@ -34,6 +34,8 @@ private actor HookFixtureConnector: LLMConnector {
 /// Dismiss, VoiceOver's names, and the narrow widths. Stub connectors only, settings in memory, nothing shown.
 @Suite("Clip bar", .serialized)
 @MainActor struct ClipBarTests {
+    /// `performClick` sends its action through `NSApp`, so every test needs the application, also when it runs alone.
+    init() { _ = NSApplication.shared }
     /// The interview take with one clip, w1…w7, open: two fillers (w2 "um,", w6 "uh") and the pause after w3 inside it,
     /// the pause after w8 outside it, nothing cut.
     private func tightenProject() throws -> Project {
