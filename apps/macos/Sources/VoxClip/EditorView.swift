@@ -125,40 +125,6 @@ import VoxClipCore
     }
 }
 
-/// The right column (design §3.6): the viewer, a hairline, then Captions, which fills
-/// the rest and scrolls. It sits on the window background with no card or inset.
-@MainActor struct RightColumn: View {
-    @Bindable var model: EditorModel
-    var body: some View {
-        GeometryReader { geometry in
-            RightColumnContents(model: model, columnHeight: geometry.size.height, columnWidth: geometry.size.width)
-                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("voxclip.editor.right")
-        }
-    }
-}
-
-@MainActor struct RightColumnContents: View {
-    @Bindable var model: EditorModel
-    var columnHeight: CGFloat
-    var columnWidth: CGFloat
-    var fineTune = false
-    var visibleRewrite: RewriteSession? { model.app.voiceLabRewriteEnabled ? model.rewrite : nil }
-    var body: some View {
-        VStack(spacing: 0) {
-            ViewerSection(model: model, columnHeight: columnHeight, columnWidth: columnWidth)
-                .modifier(EditorPaneFocus(model: model, pane: .viewer))
-            Divider()
-            Group {
-                if let rewrite = visibleRewrite { RewritePanel(session: rewrite) }
-                else { CaptionsSection(model: model, fineTune: fineTune).modifier(EditorPaneFocus(model: model, pane: .panel)) }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .controlSize(.small)
-        }
-    }
-}
-
 /// Puts keyboard focus in the transcript, as when a project opens. Returns false while
 /// the transcript isn't in the window yet. It finds the text view anywhere in the
 /// window's shell, under the clip-bar row (impl-plan V1b).

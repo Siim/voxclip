@@ -95,6 +95,9 @@ enum SidebarItem: Hashable {
     /// The editor's tabs in this window (impl-plan V3a), Full Take only until the open
     /// project's clips open theirs.
     let tabs = EditorTabs()
+    /// The panel job picked in the right column's switcher (impl-plan V4, §3.4), until the
+    /// project closes; `panelJob(for:)` reads it.
+    var panelChoice: PanelJobChoice?
     /// Below `explorerCollapseWidth` (1,128) the Explorer shows over the editor on request
     /// (impl-plan §3.5): the Explorer toggle, View > Show Sidebar and Find Clips. Escape or
     /// a click on a row hides it again.
@@ -403,15 +406,16 @@ enum SidebarItem: Hashable {
         rightHiddenByWidth = false
         if layout.rightVisible { hideRightColumn() } else { layout.rightVisible = true }
     }
-    /// The timeline toggle in the title row. ⌘J and the hover transport arrive with V7a and V4;
-    /// until then the panel carries play and the timecode while the right column is hidden,
-    /// so it does not hide then (notes.md §1: "play and timecode are never lost").
+    /// The timeline toggle in the title row (⌘J arrives with V7a). Play and the timecode are
+    /// never lost (notes.md §1): the timeline panel carries them, and while it is hidden the
+    /// viewer's hover transport does (impl-plan V4). With the right column hidden too nothing
+    /// would, so the panel does not hide then.
     func toggleTimeline() {
         guard layout.rightVisible || !layout.timelineVisible else { return }
         layout.timelineVisible.toggle()
     }
-    /// Hides the right column, and shows the timeline panel, which carries the compact
-    /// transport while it is hidden (until V4).
+    /// Hides the right column, and with it the viewer's hover transport, so the timeline
+    /// panel shows to carry play and the timecode.
     private func hideRightColumn() {
         layout.rightVisible = false
         if !layout.timelineVisible { layout.timelineVisible = true }
@@ -520,6 +524,7 @@ enum SidebarItem: Hashable {
         sidebarOverlay = false
         rightOverlay = false
         tabs.reset()
+        panelChoice = nil
         document = next
         editor = model
         selection = next.project.edits.activeClipId.map(SidebarItem.clip) ?? .fullTake
@@ -550,6 +555,7 @@ enum SidebarItem: Hashable {
         editor = nil
         started = nil
         tabs.reset()
+        panelChoice = nil
         windowController?.window?.title = title
         (windowController as? MainWindowController)?.restorationDidChange()
     }

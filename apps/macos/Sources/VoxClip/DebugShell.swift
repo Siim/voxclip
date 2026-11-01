@@ -485,9 +485,15 @@ import VoxClipCore
         for (region, identifier) in [(ShellRegion.tabBar, "voxclip.shell.tabBar"), (.clipBar, "voxclip.shell.clipBar"), (.transcript, "voxclip.shell.transcript")] {
             if let rect = frame(identifier) { regions[region] = CGRect(x: start, y: rect.minY, width: end - start, height: rect.height) }
         }
-        if let right {
+        if let right, let column = view("voxclip.shell.right", in: root) {
             regions[.rightTitle] = CGRect(x: right.minX, y: right.minY, width: right.width, height: ShellMetrics.titleRow)
-            regions[.rightBody] = CGRect(x: right.minX, y: right.minY + ShellMetrics.titleRow, width: right.width, height: right.height - ShellMetrics.titleRow)
+            // The viewer, the panel header and the panel body are SwiftUI rows of PanelHost, found by their layout markers.
+            for (region, marker) in [(ShellRegion.viewer, "viewer.box"), (.panelHeader, "panel.header"), (.panelBody, "panel.body")] {
+                if let found = markerView(marker, in: column), found.bounds.width > 0, found.bounds.height > 0 {
+                    let rect = found.convert(found.bounds, to: nil)
+                    regions[region] = CGRect(x: rect.minX, y: height - rect.maxY, width: rect.width, height: rect.height)
+                }
+            }
         }
         if let timeline = frame("voxclip.shell.timeline") {
             regions[.timeline] = CGRect(x: start, y: timeline.minY, width: timeline.maxX - start, height: timeline.height)
@@ -495,7 +501,12 @@ import VoxClipCore
         return regions
     }
 
-    /// The `RightColumn` hosts under `controller`: one, whether the column or the overlay shows it.
+    /// The first layout marker named `name` under `root` (`columnLayoutEvidence`).
+    static func markerView(_ name: String, in root: NSView) -> ColumnLayoutMarker? {
+        if let marker = root as? ColumnLayoutMarker, marker.name == name { return marker }
+        return root.subviews.lazy.compactMap { markerView(name, in: $0) }.first
+    }
+    /// The `RightColumnHost` hosts under `controller`: one, whether the column or the overlay shows it.
     static func rightColumnHosts(in controller: NSViewController) -> [NSViewController] {
         let own = String(describing: type(of: controller)).contains("RightColumn") ? [controller] : []
         return own + controller.children.flatMap { rightColumnHosts(in: $0) }

@@ -32,10 +32,9 @@ enum ShellMetrics {
 /// top-left. The Explorer's divider and the right column's divider belong to the editor
 /// column's rows; the timeline's top edge belongs to the rows above it.
 enum ShellRegion: String, CaseIterable, Codable, Sendable {
-    case explorer, tabBar, clipBar, transcript, rightTitle, rightBody, timeline, statusBar
+    case explorer, tabBar, clipBar, transcript, rightTitle, viewer, panelHeader, panelBody, timeline, statusBar
 
-    /// notes.md §1 at 1280 × 800 with fresh defaults. The right body holds the viewer and
-    /// the panel together until V4 gives them their own rows.
+    /// notes.md §1 at 1280 × 800 with fresh defaults.
     @MainActor var reference: CGRect { reference(in: CGSize(width: 1280, height: 800)) ?? .zero }
 
     /// The region in a window of `size` with fresh defaults, by the rules of notes.md §1 and
@@ -49,13 +48,18 @@ enum ShellRegion: String, CaseIterable, Codable, Sendable {
         let timeline = min(WorkspaceLayout.timelineDefault, (workHeight * WorkspaceLayout.timelineShare).rounded(.down))
         let top = workHeight - timeline
         let editor = width - explorer - right
+        // The viewer is 16:9 of the right column's width, then the panel header and its body (impl-plan V4).
+        let viewer = Double(PanelHost.viewerHeight(width: CGFloat(right), height: CGFloat(top - titleRow)))
+        let header = Double(PanelHost.headerHeight)
         switch self {
         case .explorer: return explorer > 0 ? CGRect(x: 0, y: 0, width: explorer, height: workHeight) : nil
         case .tabBar: return CGRect(x: explorer, y: 0, width: editor, height: titleRow)
         case .clipBar: return CGRect(x: explorer, y: titleRow, width: editor, height: clipBar)
         case .transcript: return CGRect(x: explorer, y: titleRow + clipBar, width: editor, height: top - titleRow - clipBar)
         case .rightTitle: return right > 0 ? CGRect(x: width - right, y: 0, width: right, height: titleRow) : nil
-        case .rightBody: return right > 0 ? CGRect(x: width - right, y: titleRow, width: right, height: top - titleRow) : nil
+        case .viewer: return right > 0 ? CGRect(x: width - right, y: titleRow, width: right, height: viewer) : nil
+        case .panelHeader: return right > 0 ? CGRect(x: width - right, y: titleRow + viewer, width: right, height: header) : nil
+        case .panelBody: return right > 0 ? CGRect(x: width - right, y: titleRow + viewer + header, width: right, height: top - titleRow - viewer - header) : nil
         case .timeline: return CGRect(x: explorer, y: top, width: width - explorer, height: timeline)
         case .statusBar: return CGRect(x: 0, y: workHeight, width: width, height: statusBar)
         }
@@ -789,7 +793,7 @@ struct EditorShellState: Equatable {
     let timelineToggle = ShellIconButton(symbol: "rectangle.bottomthird.inset.filled", identifier: "voxclip.shell.toggleTimeline")
     let rightToggle = ShellIconButton(symbol: "sidebar.right", identifier: "voxclip.shell.toggleRight")
     private(set) var transcriptView: NSView?
-    /// The right column's viewer and panel (`RightColumn`): in the column under its title
+    /// The right column's viewer and panel (`PanelHost`): in the column under its title
     /// row, or in the overlay over the editor while that shows.
     private(set) var rightColumnHost: NSViewController!
     private var rightStack: ShellStackView!
@@ -912,9 +916,10 @@ struct EditorShellState: Equatable {
 
     /// Collapses or shows the right column and the timeline, shows the right column over the
     /// editor on request while it is collapsed below 904, and moves the right column's
-    /// controls into the tab row while it is collapsed. Until V4's hover transport the
-    /// timeline panel carries play and the timecode while the right column is collapsed, so
-    /// neither its toggle nor a drag of its edge can hide it then (notes.md §1).
+    /// controls into the tab row while it is collapsed. The timeline panel carries play and
+    /// the timecode, and the viewer's hover transport does while the panel is hidden; with
+    /// the right column collapsed only the panel can, so neither its toggle nor a drag of its
+    /// edge can hide it then (notes.md §1).
     func apply(rightVisible: Bool, timelineVisible: Bool, rightOverlay: Bool = false) {
         rightShown = rightVisible
         Self.setCollapsed(rightItem, !rightVisible)
@@ -929,7 +934,7 @@ struct EditorShellState: Equatable {
     }
 
     /// Shows the right column over the editor when it is asked for, and takes it down when
-    /// it goes. The overlay borrows the collapsed column's own `RightColumn` host, so a
+    /// it goes. The overlay borrows the collapsed column's own `RightColumnHost`, so a
     /// hidden copy never runs the viewer's and the panel's tasks and focus a second time.
     /// The host moves straight between the two, in the window, so its SwiftUI state and
     /// tasks (Rewrite's) carry over. Focus left in the overlay as it goes moves to the
@@ -1094,24 +1099,28 @@ struct EditorShellState: Equatable {
     }
 }
 
-/// The right column's root: `RightColumn`, and while it shows over the editor an Escape that
-/// nothing in it uses hides it (Escape outside it is MainWindow's).
+/// The right column's root under its title row: `PanelHost` at the column's size, and while
+/// it shows over the editor an Escape that nothing in it uses hides it (Escape outside it is
+/// MainWindow's).
 @MainActor private struct RightColumnHost: View {
     let model: EditorModel
     let shell: WorkspaceShell
     var body: some View {
-        RightColumn(model: model)
-            .onExitCommand(perform: shell.rightOverlay ? { shell.rightOverlay = false } : nil)
+        GeometryReader { geometry in
+            PanelHost(model: model, shell: shell, width: geometry.size.width, height: geometry.size.height)
+        }
+        .onExitCommand(perform: shell.rightOverlay ? { shell.rightOverlay = false } : nil)
     }
 }
 
-/// The timeline panel's content until V7a: today's 72 pt strip at the top of the panel.
-/// With the right column hidden it carries the compact transport.
+/// The timeline panel's content until V7a: today's 72 pt strip at the top of the panel,
+/// with play and the timecode, which left the viewer in V4 (the viewer's hover transport
+/// carries them while this panel is hidden).
 @MainActor private struct TimelinePanel: View {
     let model: EditorModel
     let shell: WorkspaceShell
     var body: some View {
-        TimelineStrip(model: model, compactTransport: !shell.layout.rightVisible)
+        TimelineStrip(model: model, compactTransport: true)
             .frame(height: VCTokens.sizeTimelineHeight)
             .modifier(EditorPaneFocus(model: model, pane: .timeline))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

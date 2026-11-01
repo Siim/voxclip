@@ -34,10 +34,10 @@ private struct AcceptanceTestKeys: KeyProvider {
         defer { model.close() }
         let session = RewriteSession(editor: model, range: 0...1, envelope: nil, connector: nil)
         model.rewrite = session
-        let column = RightColumnContents(model: model, columnHeight: 800, columnWidth: 300)
-        #expect(column.visibleRewrite === session)
+        let shell = WorkspaceShell(app: app)
+        #expect(model.panelRewrite === session && shell.panelJob(for: model) == .rewrite)
         app.settings.values["voiceLab.enabled"] = .bool(false)
-        #expect(column.visibleRewrite == nil && !session.current)
+        #expect(model.panelRewrite == nil && shell.panelJob(for: model) == .captions && !session.current)
     }
     @Test func wordAccessibilityCoversSourceAndAcceptedSpeechWithoutAWindow() throws {
         let results = try DebugTranscriptPixels.wordAccessibility(app: enabledApp())

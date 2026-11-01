@@ -31,14 +31,12 @@ struct EditorAccessibilityPolicy: Equatable {
 }
 
 enum EditorIconAction: CaseIterable {
-    case back, play, pause, forward, closeRewrite, hideViewer, showViewer, previousMatch, nextMatch, closeFind
+    case play, pause, closeRewrite, hideViewer, showViewer, previousMatch, nextMatch, closeFind
     case hideSidebar, showSidebar, hideTimeline, showTimeline, moreCommands
     var name: String {
         switch self {
-        case .back: "Back 3 seconds"
         case .play: "Play"
         case .pause: "Pause"
-        case .forward: "Forward 3 seconds"
         case .closeRewrite: "Close Rewrite"
         case .hideViewer: "Hide Viewer"
         case .showViewer: "Show Viewer"

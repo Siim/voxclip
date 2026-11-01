@@ -583,7 +583,7 @@ import VoxClipCore
         defer { model.close() }
         let left = NSViewController()
         let right = NSHostingController(rootView: GeometryReader { geometry in
-            RightColumnContents(model: model, columnHeight: geometry.size.height, columnWidth: geometry.size.width).frame(width: geometry.size.width, height: geometry.size.height)
+            PanelHost(model: model, shell: shell, width: geometry.size.width, height: geometry.size.height)
         })
         right.sizingOptions = []
         left.view = NSView(frame: NSRect(x: 0, y: 0, width: 700, height: 675))
@@ -630,8 +630,8 @@ import VoxClipCore
             fallback.invalidate()
             let stored = app.settings.values[key]
             check("a drag of the divider stores \(expected) points (\(start) → \(right.view.frame.width))", abs(right.view.frame.width - expected) < 1.5 && stored == .number(expected))
-            let stageSettled = await stageFits(right.view, width: expected)
-            check("the stage follows the dragged \(expected)-point column", stageSettled)
+            let viewerSettled = await viewerFits(right.view, width: expected)
+            check("the viewer follows the dragged \(expected)-point column", viewerSettled)
         }
         let expected: CGFloat = 560
         let stored = app.settings.values[key]
@@ -639,18 +639,18 @@ import VoxClipCore
             window.setContentSize(NSSize(width: width, height: 675))
             window.contentView?.layoutSubtreeIfNeeded()
             check("window resize to \(width) preserves the dragged right-column width", abs(right.view.frame.width - expected) < 1.5 && app.settings.values[key] == stored)
-            let stageSettled = await stageFits(right.view, width: expected)
-            check("the stage follows the preserved width after resize to \(width)", stageSettled)
+            let viewerSettled = await viewerFits(right.view, width: expected)
+            check("the viewer follows the preserved width after resize to \(width)", viewerSettled)
         }
         window.close()
         return results
     }
 
-    private static func stageFits(_ view: NSView, width: CGFloat) async -> Bool {
+    private static func viewerFits(_ view: NSView, width: CGFloat) async -> Bool {
         let started = ProcessInfo.processInfo.systemUptime
         repeat {
             view.window?.contentView?.layoutSubtreeIfNeeded()
-            if let stage = DebugRightColumn.markers(in: view)["viewer.stage"], abs(stage.width - (width - 32)) <= 0.5 { return true }
+            if let viewer = DebugRightColumn.markers(in: view)["viewer.box"], abs(viewer.width - width) <= 0.5 { return true }
             await Task.yield()
         } while ProcessInfo.processInfo.systemUptime - started < 2
         return false

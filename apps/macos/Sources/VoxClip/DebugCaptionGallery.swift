@@ -32,7 +32,7 @@ import VoxClipCore
             let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
             defer { model.close() }
             model.setAspect(.landscape)
-            let controller = NSHostingController(rootView: RightColumnContents(model: model, columnHeight: height, columnWidth: width))
+            let controller = NSHostingController(rootView: PanelHost(model: model, shell: WorkspaceShell(app: app), width: width, height: height))
             controller.sizingOptions = []
             let host = controller.view
             host.frame = CGRect(x: 0, y: 0, width: width, height: height)
