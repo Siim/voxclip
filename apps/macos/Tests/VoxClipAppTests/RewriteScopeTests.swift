@@ -434,14 +434,20 @@ private final class WorkThreads: Sendable {
     }
 
     /// While a take publishes for Use Takes, the user's edits are still followed: one outside the clip moves the session
-    /// on, one inside it shows R3, and the refused acceptance leaves it there.
+    /// on, one inside it shows R3, and the refused acceptance leaves it there. The take is the reply's one phrase's.
     @Test func editsWhileATakePublishesAreFollowed() async throws {
-        let stub = ScopeStub()
+        let stub = ScopeStub { lines in
+            lines.compactMap { line -> ScopeStub.Edit? in
+                guard line.words.contains("word20") else { return nil }
+                return (line.label, line.words.map { $0 == "word20" ? "new" : $0 == "word21" ? "words" : $0 }.joined(separator: " "), "Clearer")
+            }
+        }
         let (app, _) = app("ollama", stub: stub)
         enableVoiceLab(app)
         let (editor, undo) = try editor(app)
         defer { editor.close() }
         let session = try await rewrite(editor)
+        try #require(session.includedVoice.count == 1)
         let generation = try giveTake(session, editor: editor)
         #expect(generation.readyToAccept)
         let hold = PublicationHold()

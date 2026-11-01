@@ -135,6 +135,8 @@ struct RewriteChange: Equatable, Sendable {
             await self?.generationIsCurrent(region: region) ?? false
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
+        // The takes are for the one phrase the list includes now (impl-plan item 25).
+        takesVoice = includedVoice.only; includedVoiceSeen = takesVoice
         generation?.prepareQuote = { [weak self] in await self?.prepareTakes() }
         generation?.readMonthlyCap = { [weak self] in
             guard let self else { throw CancellationError() }
@@ -169,6 +171,12 @@ struct RewriteChange: Equatable, Sendable {
     /// The voice changes left out because they can't be made now (`voiceUnavailable`): Voice Lab's Turn on, or a review
     /// that places them, includes them again (design.md R2).
     @ObservationIgnored var leftOutUnavailable: Set<Int> = []
+    /// The phrase in your voice the generation's quote and takes are for (impl-plan item 25): the one the list included
+    /// alone when the generation was made, or the one it included alone since (`followIncludedVoice`). The footer offers
+    /// Make Takes and Use Take, and Use Take uses a take, only while the list includes it alone.
+    @ObservationIgnored var takesVoice: Int?
+    /// The phrase the list included alone when R2 last showed; nil for none or several.
+    @ObservationIgnored var includedVoiceSeen: Int?
     /// What a run replaced, shown again when the run ends with nothing sent or proposed: a declined sheet, a send gone
     /// stale. Nil for a session's first run, which closes instead, as Stop does.
     @ObservationIgnored private var replaced: Replaced?
@@ -631,7 +639,8 @@ struct RewriteChange: Equatable, Sendable {
     /// for a review being built again: when that moved a window, the takes no longer fit and are not used.
     @discardableResult func acceptTakes() async -> Bool {
         if let reviewing { await reviewing.value }
-        guard current, let generation else { return false }
+        // The take is the phrase's the list includes alone (impl-plan item 25), never one it left out since.
+        guard current, let generation, takesVoice != nil, takesVoice == includedVoice.only else { return false }
         let accepted = await generation.accept(into: editor, localCommands: localCommands) { [self] edit in try ownEdit(edit) }
         if accepted { editor.closeRewrite() }
         return accepted

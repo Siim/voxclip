@@ -151,5 +151,76 @@ import Testing
         #expect(changes(session)?.items.last?.state == .pending && editor.proposal?[3]?.state == .pending)
         #expect(session.task.footer.primary?.title == "Make Takes" && session.task.footer.link?.title == "Keep All")
     }
+
+    /// A take is made for one phrase (impl-plan item 25). With two phrases, Undo of one leaves the other's footer; once a
+    /// take of it passed, including the other phrase alone instead never offers that take's Use Take: the takes no longer
+    /// fit and the other phrase is quoted. Coming back to a phrase quotes it again too.
+    @Test func takesStayWithTheirPhrase() async throws {
+        let (editor, session, _, scenes) = try scene("r2-several-voices")
+        defer { scenes.forEach { $0.editor?.close() } }
+        editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        #expect(session.includedVoice == [2, 3] && session.task.footer.note == RewriteSession.onePassage)
+        session.review(3, .undo)
+        #expect(session.includedVoice == [2] && session.task.footer.primary?.title == "Make Takes")
+        // Phrase 2's takes: one passed. Nothing is quoted or sent here.
+        try DebugRewriteGeneration.install("ready", in: session)
+        let generation = try #require(session.generation)
+        var quotes = 0
+        generation.prepareQuote = { quotes += 1 }
+        session.showProposal()
+        #expect(session.takesVoice == 2 && generation.readyToAccept && session.task.footer.primary?.title == "Use Take 1")
+        // Keep phrase 3 too: several phrases, no takes. Then leave phrase 2 out: phrase 3 alone.
+        session.review(3, .keep)
+        #expect(session.task.footer.note == RewriteSession.onePassage && session.task.footer.primary?.title == "Apply 1 Free Change")
+        session.review(2, .undo)
+        await settle { quotes == 1 }
+        #expect(session.includedVoice == [3] && session.takesVoice == 3 && !generation.readyToAccept && quotes == 1)
+        #expect(session.task.footer.primary == nil && session.task.footer.note?.hasPrefix("Nothing paid yet.") == true)
+        #expect(await session.acceptTakes() == false && editor.project.voiceLab.segments.isEmpty)
+        // Back to phrase 2 alone: its takes no longer fit either, and it is quoted again.
+        session.review(2, .keep); session.review(3, .undo)
+        await settle { quotes == 2 }
+        #expect(session.includedVoice == [2] && session.takesVoice == 2 && quotes == 2 && session.task.footer.primary == nil)
+    }
+
+    /// A footer drawn for one phrase's quote makes no takes of another: a Make Takes the transcript's reviews left on screen
+    /// for a turn sends nothing, and the footer waits for the new phrase's quote.
+    @Test func makeTakesForALeftOutPhraseSendsNothing() async throws {
+        let (editor, session, _, scenes) = try scene("r2-several-voices")
+        defer { scenes.forEach { $0.editor?.close() } }
+        editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        session.review(3, .undo)
+        try DebugRewriteGeneration.install("none-passed", in: session)
+        let generation = try #require(session.generation)
+        var quotes = 0
+        generation.prepareQuote = { quotes += 1 }
+        generation.prepareForTests = { _ in
+            let takes = (0..<3).map { index in
+                let estimate = CostEstimate(provider: "elevenlabs", operation: "test", units: 1, unit: "take", usd: Decimal(string: "0.01"), basis: "test")
+                let quote = VoiceLabQuote(id: UUID(), operation: .textToSpeech, requestID: UUID(), estimate: estimate, region: .default,
+                                          endpoint: "test", languageMode: nil, fingerprint: "test")
+                return VoiceLabTakeQuote(index: index, seed: UInt32(index), synthesis: quote, qa: quote)
+            }
+            return VoiceLabTakeRunQuote(id: UUID(), takes: takes, preparedAt: Date())
+        }
+        generation.executeForTests = { _, _, _ in
+            Issue.record("No takes are made of a phrase the list left out")
+            return VoiceLabTakeRunResult(rows: [], end: .cancelled)
+        }
+        let review = try #require(session.voiceReview(2)), window = try #require(review.window)
+        await generation.prepare(VoiceLabTakeInput(text: try #require(review.patchText), modelID: try #require(generation.selectedModelID),
+            recordID: try #require(generation.selectedVoiceID), language: "en", seed: 7, contentKey: "test", source: [], sourceSampleRate: 48_000,
+            items: [], window: window, incomingSilence: nil, outgoingSilence: nil, providerConsent: true))
+        session.showProposal()
+        let stale = try #require(session.task.footer.primary)
+        #expect(stale.title.hasPrefix("Make Takes") && generation.canExecute)
+        // ⌘↩ on phrase 3 and ⌘⌫ on phrase 2 in the transcript; the list follows them on a later turn.
+        editor.keepChange(3); editor.excludeChange(2)
+        stale.perform()
+        #expect(generation.phase != .generating)
+        await settle { session.takesVoice == 3 && quotes == 1 }
+        #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary == nil)
+        await generation.finishGenerationForTests()
+    }
 }
 #endif

@@ -63,6 +63,7 @@ extension RewriteSession {
     func showProposal() {
         guard isOpen else { return }
         leaveOutUnavailableVoices()
+        followIncludedVoice()
         proposalObservation += 1
         let observation = proposalObservation
         let content = withObservationTracking { proposalContent() } onChange: { [weak self] in
@@ -93,6 +94,23 @@ extension RewriteSession {
             }
         }
         if changed { editor.proposal = proposal }
+    }
+
+    /// Keeps the takes with their phrase (impl-plan item 25) as the list's inclusions change: they are made for the one
+    /// phrase the list included when the generation was made (`takesVoice`). Including another phrase alone moves them to
+    /// that one: the takes made before no longer fit, and it is quoted (`inputsChanged`). Coming back to the takes' phrase
+    /// asks again for a quote it lost meanwhile. With none or several included, the footer offers no takes.
+    private func followIncludedVoice() {
+        let only = includedVoice.only
+        guard only != includedVoiceSeen else { return }
+        includedVoiceSeen = only
+        guard let generation, let only else { return }
+        if only != takesVoice {
+            takesVoice = only
+            generation.inputsChanged()
+        } else if generation.quote == nil, !generation.preparingQuote, generation.phase != .generating {
+            generation.requestQuote()
+        }
     }
 
     /// R2's set, cards, footer and Ask again, by design.md R2's footer cases with impl-plan item 25 for voice changes.
@@ -195,7 +213,8 @@ extension RewriteSession {
     /// Takes are made for one voice change at a time until C3 and C5 place several (impl-plan item 25).
     static let onePassage = "Rewrite one passage at a time. Keep one changed passage, then generate takes."
 
-    /// The footer while one voice change is included: Make Your Voice, Make Takes or Use Take {n}.
+    /// The footer while one voice change is included: Make Your Voice, Make Takes or Use Take {n}. Takes and their quote
+    /// act only for the phrase they are made for (`takesVoice`); for another, the footer waits for its quote.
     private func takesFooter(_ voice: ProposalItem, keepAll: PanelAction?) -> PanelFooter {
         if let parts = replyParts[voice.ordinal], ownProposal?[voice.ordinal]?.parts != parts {
             return PanelFooter(note: "Takes are made from the AI's words. Rewrite again to make takes of an edited change.", link: keepAll)
@@ -208,7 +227,8 @@ extension RewriteSession {
             } ?? ""
             return PanelFooter(note: unpaid + estimate, link: keepAll, primary: PanelAction(id: "makeTakes", title: "Make Takes") { [weak self] in self?.makeTakes() })
         }
-        if generation.readyToAccept {
+        let ours = takesVoice == voice.ordinal
+        if ours, generation.readyToAccept {
             return PanelFooter(note: "Exports show AI MODIFIED on the video and in the post.",
                                primary: PanelAction(id: "useTake", title: generation.acceptTitle) { [weak self] in self?.useTake() })
         }
@@ -220,7 +240,7 @@ extension RewriteSession {
             return PanelFooter(note: unpaid + " Next: make your voice from this \(task.words.noun). Once.", link: keepAll, primary: make)
         }
         let send = "Sends the new phrase and a short audio check to ElevenLabs with your key. No video."
-        guard generation.phase != .generating, generation.canExecute, let cost = generation.cost else {
+        guard ours, generation.phase != .generating, generation.canExecute, let cost = generation.cost else {
             return PanelFooter(note: generation.phase == .generating ? nil : unpaid + " " + send, link: keepAll)
         }
         let title: String = switch cost {
@@ -259,7 +279,8 @@ extension RewriteSession {
         if isOpen, case .proposal = task.state { showProposal() }
     }
     /// Make Takes: finds the consented voices first (asking for ElevenLabs once), then makes takes of the included voice
-    /// change, asking first when the cost confirms (voice-lab.md §3.1).
+    /// change, asking first when the cost confirms (voice-lab.md §3.1). A footer drawn before the list's inclusions
+    /// changed makes no takes of a phrase other than the one the quote is for.
     func makeTakes() {
         guard current else { return }
         takesTask?.cancel()
@@ -267,7 +288,7 @@ extension RewriteSession {
             takesTask = Task { [weak self] in await self?.discoverVoices() }
             return
         }
-        guard generation.canExecute else { return }
+        guard takesVoice != nil, takesVoice == includedVoice.only, generation.canExecute else { return }
         generation.approve(true, confirmation: { [weak self] copy in
             guard let window = self?.editor.window else { return false }
             return await RewriteApprovalSheet(title: "Make Takes", copy: copy, parent: window).confirm()
