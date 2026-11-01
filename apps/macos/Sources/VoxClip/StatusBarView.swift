@@ -157,7 +157,7 @@ extension EditorModel {
     /// several), "Export failed", "Edited since export", "Exported" or "Not exported", from the export ledger.
     var statusExport: StatusItem {
         if exporting {
-            let percent = Int(((exportProgress?.fraction ?? 0).clamped(to: 0...1) * 100).rounded())
+            let percent = exportPercent
             let total = exportClipIDs.count
             let text = total > 1 ? "Exporting \(max(1, exportIndex)) of \(total) · \(percent)%" : "Exporting \(percent)%"
             return StatusItem(kind: .export, lead: .symbol("square.and.arrow.up"), parts: [StatusText(string: text)], spoken: text.replacingOccurrences(of: " · ", with: ", "))
@@ -287,7 +287,6 @@ enum StatusBarMetrics {
             if !isHidden && item.lead == .spinner && StatusBarMetrics.motion { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
         }
     }
-    var naturalWidth: CGFloat { StatusBarMetrics.naturalWidth(item) }
     override func layout() {
         super.layout()
         let size = StatusBarMetrics.spinner
@@ -331,7 +330,6 @@ enum StatusBarMetrics {
         self.item = item
         needsDisplay = true
     }
-    var naturalWidth: CGFloat { StatusBarMetrics.naturalWidth(item) }
 
     override func draw(_ dirtyRect: NSRect) {
         let emphasized = isEnabled && (hovering || isHighlighted || openMenu != nil)
@@ -514,12 +512,14 @@ enum StatusBarMetrics {
             views[kind]?.frame = NSRect(x: x, y: 0, width: widths[kind]!, height: bounds.height)
             x += widths[kind]! + StatusBarMetrics.itemGap
         }
-        let leadingEnd = x - StatusBarMetrics.itemGap
+        // The summary may reach the bar's padding when nothing leads, as `total()` assumes.
+        let anyLeading = StatusItem.Kind.leading.contains(where: visible.contains)
+        let summaryStart = anyLeading ? x - StatusBarMetrics.itemGap + StatusBarMetrics.groupGap : StatusBarMetrics.barPadding
         var end = bounds.width - StatusBarMetrics.barPadding
         for kind in StatusItem.Kind.trailing.reversed() where visible.contains(kind) {
             var width = widths[kind]!
             // The summary takes what is left, truncated at its tail.
-            if kind == .summary { width = max(0, min(width, end - max(StatusBarMetrics.barPadding, leadingEnd + StatusBarMetrics.groupGap))) }
+            if kind == .summary { width = max(0, min(width, end - summaryStart)) }
             views[kind]?.frame = NSRect(x: end - width, y: 0, width: width, height: bounds.height)
             end -= width + StatusBarMetrics.itemGap
         }

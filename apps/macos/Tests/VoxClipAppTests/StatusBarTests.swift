@@ -336,7 +336,7 @@ import Testing
         lay(bar, width: 120)
         #expect(bar.shown == [.summary])
         let summary = try #require(bar.view(.summary))
-        #expect(summary.frame.minX >= 8 && summary.frame.maxX == 112 && summary.frame.width < StatusBarMetrics.naturalWidth(bar.content[.summary]!))
+        #expect(summary.frame.minX == 8 && summary.frame.maxX == 112 && summary.frame.width < StatusBarMetrics.naturalWidth(bar.content[.summary]!))
         editor.finding = false
     }
 

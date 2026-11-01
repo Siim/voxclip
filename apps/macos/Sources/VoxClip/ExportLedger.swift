@@ -235,16 +235,18 @@ extension EditorModel {
         exportRowStatus(target: .clip(id))
     }
 
+    /// The running export's progress in whole percent, 0–100 (typed steps keep Xcode 26's type-checker quick).
+    var exportPercent: Int {
+        let fraction: Double = (exportProgress?.fraction ?? 0).clamped(to: 0...1)
+        let scaled: Double = fraction * 100
+        let rounded: Double = scaled.rounded()
+        return Int(rounded)
+    }
+
     func exportRowStatus(target: ExportTarget) -> ClipExportStatus {
         let aspect = project.export.aspect
         let key = ExportLedger.key(target, aspect: aspect)
-        if exporting, activeExportKey == key {
-            let fraction: Double = (exportProgress?.fraction ?? 0).clamped(to: 0...1)
-            let scaled: Double = fraction * 100
-            let rounded: Double = scaled.rounded()
-            let percent: Int = Int(rounded)
-            return .exporting(percent)
-        }
+        if exporting, activeExportKey == key { return .exporting(exportPercent) }
         if failedExports[key] != nil { return .failed }
         guard let entry = app.exportLedger.entry(projectID: project.id, targetID: ExportLedger.targetID(target), aspect: aspect) else { return .none }
         return entry.planFingerprint == (try? ExportFingerprint.value(project, target: target, labelPosition: app.voiceLabLabelPosition)) ? .exported : .changed
