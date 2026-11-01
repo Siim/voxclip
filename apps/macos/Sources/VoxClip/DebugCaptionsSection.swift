@@ -172,7 +172,30 @@ import VoxClipCore
             delayed.shouldScroll(to: .tile("editorial"), geometry: [CGFloat(offset)])
         }
         let duplicate = delayed.shouldScroll(to: .tile("editorial"), geometry: [15])
+        // Fine tune scrolls on its own under the gallery, so with it open a new style still
+        // reveals its tile, layout keeps it revealed, and opening Fine tune, which leaves the
+        // gallery one row, reveals the selected tile even after the user scrolled.
+        var tuning = CaptionGalleryReveal()
+        tuning.begin(CaptionGalleryRequest(selection: "full/vox-bold", size: size, fineTune: true))
+        let openedFirst = tuning.pending
+        tuning.complete()
+        tuning.begin(CaptionGalleryRequest(selection: "full/box-highlight", size: size, fineTune: true))
+        let styleWhileTuning = tuning.pending && !tuning.interrupted
+        tuning.complete(); tuning.resumeForLayout()
+        let layoutWhileTuning = tuning.pending
+        var opening = CaptionGalleryReveal()
+        opening.begin(CaptionGalleryRequest(selection: "full/box-highlight", size: size, fineTune: false))
+        opening.complete(); opening.cancelForUserScroll()
+        opening.begin(CaptionGalleryRequest(selection: "full/box-highlight", size: size, fineTune: true))
+        let opened = opening.pending && !opening.interrupted
+        opening.complete(); opening.cancelForUserScroll()
+        opening.begin(CaptionGalleryRequest(selection: "full/box-highlight", size: CGSize(width: size.width, height: 64), fineTune: true))
+        let shrunkAfterScroll = !opening.pending && opening.interrupted
+        opening.begin(CaptionGalleryRequest(selection: "full/box-highlight", size: CGSize(width: size.width, height: 64), fineTune: false))
+        let closed = opening.pending && !opening.interrupted
         return [
+            .init(name: "with Fine tune open a new style reveals its tile and layout keeps it revealed", passed: openedFirst && styleWhileTuning && layoutWhileTuning),
+            .init(name: "opening or closing Fine tune reveals the selected tile, even after the user scrolled", passed: opened && shrunkAfterScroll && closed),
             .init(name: "changed viewport geometry can reveal again without duplicate commands", passed: corrections.allSatisfy { $0 } && !duplicate),
             .init(name: "scope changes reveal the selected tile with Fine Tune expanded", passed: expandedScope && nextScope),
             .init(name: "viewport resizing cannot resume a user-interrupted reveal", passed: resized),

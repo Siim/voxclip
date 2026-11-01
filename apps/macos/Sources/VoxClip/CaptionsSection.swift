@@ -647,7 +647,10 @@ struct CaptionGalleryReveal: Equatable {
     private var lastTarget: CaptionGalleryTarget?
     private var lastGeometry: [CGFloat] = []
     private var visibleTileSelection: String?
-    private var revealWhileExpanded = false
+    /// A new style or scope reveals the selected tile, and so does opening or closing Fine
+    /// tune, which resizes the gallery: Fine tune scrolls on its own, below the gallery, and
+    /// the selected tile is the one that previews its edits. Only a click on a tile in view
+    /// and the user's own scrolling leave the gallery where it is.
     mutating func begin(_ request: CaptionGalleryRequest) {
         guard self.request != request else { return }
         let previous = self.request
@@ -659,14 +662,9 @@ struct CaptionGalleryReveal: Equatable {
             return
         }
         visibleTileSelection = nil
-        let selectionChanged = previous?.selection != request.selection
-        let collapsed = previous?.fineTune == true && !request.fineTune
-        if selectionChanged || scopeChanged || collapsed {
-            revealWhileExpanded = scopeChanged && request.fineTune
-            pending = !request.fineTune || revealWhileExpanded
-            interrupted = false; lastTarget = nil
-        } else if request.fineTune && previous?.fineTune == false {
-            revealWhileExpanded = false; pending = false
+        let fineTuneToggled = previous.map { $0.fineTune != request.fineTune } ?? false
+        if previous?.selection != request.selection || scopeChanged || fineTuneToggled {
+            pending = true; interrupted = false; lastTarget = nil
         }
     }
     mutating func selectVisibleTile(_ selection: String) {
@@ -674,8 +672,8 @@ struct CaptionGalleryReveal: Equatable {
         cancelForUserScroll()
     }
     mutating func complete() { pending = false }
-    mutating func resumeForLayout() { if !interrupted { pending = request.map { !$0.fineTune || revealWhileExpanded } ?? false } }
-    mutating func restart() { pending = request.map { !$0.fineTune || revealWhileExpanded } ?? false; interrupted = false; lastTarget = nil }
+    mutating func resumeForLayout() { if !interrupted { pending = request != nil } }
+    mutating func restart() { pending = request != nil; interrupted = false; lastTarget = nil }
     mutating func cancelForUserScroll() { pending = false; interrupted = true }
     mutating func shouldScroll(to target: CaptionGalleryTarget, geometry: [CGFloat] = []) -> Bool {
         guard pending else { return false }

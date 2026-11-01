@@ -274,30 +274,18 @@ import Testing
         editor.undoManager = undo
         let order = CaptionsSection.galleryOrder(editor.app.styles).map(\.id)
         let start = try #require(order.firstIndex(of: "box-highlight"))
-        let view = NSHostingView(rootView: CaptionsSection(model: editor, width: 404).frame(width: 404, height: 265))
-        view.frame = CGRect(x: 0, y: 0, width: 404, height: 265)
-        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
-        window.contentView = view
+        let (window, view) = galleryWindow(editor)
         defer { window.close() }
-        _ = window.makeFirstResponder(view)
         let identifier = try await galleryIdentifier(view)
         NotificationCenter.default.post(name: CaptionGalleryAudit.notification, object: identifier, userInfo: ["focus": true])
         #expect(await settle(view) { snapshot(identifier)?.focused == true })
-        func press(_ code: UInt16, _ character: Int) {
-            let characters = String(Character(UnicodeScalar(character)!))
-            let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.numericPad, .function], timestamp: ProcessInfo.processInfo.systemUptime,
-                                         windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters,
-                                         isARepeat: false, keyCode: code)
-            if let event { window.sendEvent(event) }
-        }
         // One undo group per key, as the run loop makes one per event.
         undo.beginUndoGrouping()
-        press(124, NSRightArrowFunctionKey)
+        press(.rightArrow, in: window)
         #expect(await settle(view) { editor.project.captions.styleId == order[start + 1] }, Comment(rawValue: editor.project.captions.styleId))
         undo.endUndoGrouping()
         undo.beginUndoGrouping()
-        press(125, NSDownArrowFunctionKey)
+        press(.downArrow, in: window)
         #expect(await settle(view) { editor.project.captions.styleId == order[start + 4] }, Comment(rawValue: editor.project.captions.styleId))
         undo.endUndoGrouping()
         #expect(await settle(view) { DebugRightColumn.markers(in: view)["caption.focus.\(order[start + 4])"] != nil })
@@ -307,6 +295,74 @@ import Testing
         #expect(editor.project.captions.styleId == "box-highlight")
     }
 
+    /// Fine tune scrolls on its own under the gallery, so the reveal rules hold with it open:
+    /// a new style reveals its tile, and opening or closing Fine tune reveals the selected one.
+    @Test func theRevealRulesHoldWithFineTuneOpen() {
+        for result in DebugCaptionsSection.revealPolicyChecks() { #expect(result.passed, Comment(rawValue: result.name)) }
+    }
+
+    /// At 1280 × 800 opening Fine tune leaves the gallery one row (64). The selected tile, in
+    /// the second row, is revealed in it, and so is each style the arrow keys then choose, a row
+    /// down and across a row's end, so the tile that previews the edits never leaves the view.
+    @Test func withFineTuneOpenTheSelectedTileStaysInView() async throws {
+        let (_, editor) = try await openShell()
+        defer { editor.close() }
+        let order = CaptionsSection.galleryOrder(editor.app.styles).map(\.id)
+        let start = try #require(order.firstIndex(of: "box-highlight"))
+        #expect(start / Metrics.columns == 1 && start % Metrics.columns == 2, "the last tile of the second row")
+        let (window, view) = galleryWindow(editor)
+        defer { window.close() }
+        let identifier = try await galleryIdentifier(view)
+        /// The selected tile, ring included, lies inside the gallery's viewport: in the reveal's
+        /// own geometry and in the window's laid-out views.
+        func shown(_ style: String) -> Bool {
+            guard let state = snapshot(identifier), let paint = state.paint, state.consumed, !state.pending,
+                  state.selectedStyle == style, state.paintStyle == style, state.visible.height > 0 else { return false }
+            let markers = DebugRightColumn.markers(in: view)
+            guard let gallery = markers["caption.gallery.\(identifier)"], let target = markers["caption.target.\(style)"] else { return false }
+            return state.visible.insetBy(dx: -0.5, dy: -0.5).contains(paint)
+                && gallery.insetBy(dx: -Metrics.ringReserve - 0.5, dy: -0.5).contains(target.insetBy(dx: -Metrics.ringReserve, dy: 0))
+        }
+        func describe() -> Comment { Comment(rawValue: "\(editor.project.captions.styleId): \(String(describing: snapshot(identifier)))") }
+        #expect(await settle(view) { shown("box-highlight") }, describe())
+        NotificationCenter.default.post(name: CaptionGalleryAudit.notification, object: identifier, userInfo: ["fineTune": true])
+        #expect(await settle(view) {
+            guard let state = snapshot(identifier) else { return false }
+            return state.fineTune && abs(state.size.height - Metrics.oneRow) <= 0.5 && shown("box-highlight")
+        }, describe())
+        NotificationCenter.default.post(name: CaptionGalleryAudit.notification, object: identifier, userInfo: ["focus": true])
+        #expect(await settle(view) { snapshot(identifier)?.focused == true })
+        press(.downArrow, in: window)
+        #expect(await settle(view) { shown(order[start + Metrics.columns]) }, describe())
+        press(.rightArrow, in: window)
+        #expect(await settle(view) { shown(order[start + Metrics.columns + 1]) }, describe())
+        #expect(snapshot(identifier)?.fineTune == true)
+    }
+
+    /// The Captions body at 1280 × 800 (404 × 265) in a borderless window that is never shown.
+    private func galleryWindow(_ editor: EditorModel) -> (NSWindow, NSView) {
+        let view = NSHostingView(rootView: CaptionsSection(model: editor, width: 404).frame(width: 404, height: 265))
+        view.frame = CGRect(x: 0, y: 0, width: 404, height: 265)
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        _ = window.makeFirstResponder(view)
+        return (window, view)
+    }
+    /// Sends an arrow key's key-down to `window`, as the keyboard does.
+    private func press(_ key: KeyEquivalent, in window: NSWindow) {
+        let (code, character): (UInt16, Int) = switch key {
+        case .leftArrow: (123, NSLeftArrowFunctionKey)
+        case .rightArrow: (124, NSRightArrowFunctionKey)
+        case .downArrow: (125, NSDownArrowFunctionKey)
+        default: (126, NSUpArrowFunctionKey)
+        }
+        let characters = String(Character(UnicodeScalar(character)!))
+        let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.numericPad, .function], timestamp: ProcessInfo.processInfo.systemUptime,
+                                     windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                                     isARepeat: false, keyCode: code)
+        if let event { window.sendEvent(event) }
+    }
     private func galleryIdentifier(_ view: NSView) async throws -> String {
         var key: String?
         _ = await settle(view) {
