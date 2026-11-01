@@ -107,6 +107,55 @@ import Testing
         #expect(editor.undoSteps == steps && !editor.document.isDocumentEdited && !editor.document.hasUnautosavedChanges)
     }
 
+    @Test func rewriteOnAPreviewPinsBeforeTheNextExplorerChoice() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        editor.app.settings.values["voiceLab.enabled"] = .bool(true)
+        editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        editor.app.settings.values["llm.connector"] = .string("ollama")
+        editor.app.connectorOverride = { _ in ConsentFixtureConnector(id: .ollama) }
+        editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
+        shell.choose(.clip("five-1"))
+        let clip = try #require(editor.activeClip)
+        let lower = try #require(editor.index(clip.startWordId))
+        editor.selectedWordIDs = Set(editor.words[lower...(lower + 2)].map(\.id))
+        editor.beginRewrite(selectionAnchored: true)
+        await editor.rewriteOpenTask?.value
+        let session = try #require(editor.openRewrite)
+        #expect(shell.tabs.preview == nil && shell.tabs.clipTabs.contains(.clip("five-1")))
+        shell.choose(.clip("five-2"))
+        #expect(session.isOpen && editor.openRewrite === session && session.current)
+        #expect(shell.tabs.clipTabs.contains(.clip("five-1")) && shell.tabs.preview == .clip("five-2"))
+        shell.selectTab(.clip("five-1"))
+        #expect(editor.rewrite === session)
+    }
+
+    @Test func previewReplacementAlsoGuardsAnExistingSession() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        shell.choose(.clip("five-1"))
+        // Exercise the replacement guard independently of the eager open notification.
+        editor.onRewriteSessionOpen = nil
+        let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
+        let session = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        editor.openRewrite = session
+        #expect(shell.tabs.preview == .clip("five-1"))
+        shell.choose(.clip("five-2"))
+        #expect(shell.tabs.clipTabs.contains(.clip("five-1")) && session.isOpen && editor.openRewrite === session)
+        #expect(shell.tabs.preview == .clip("five-2"))
+    }
+
+    @Test func dirtyPreviewPinsImmediatelyAndSurvivesTheNextChoice() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        shell.choose(.clip("five-1"))
+        shell.tabs.dirty.insert(.clip("five-1"))
+        #expect(shell.tabs.preview == nil && shell.tabs.clipTabs.contains(.clip("five-1")))
+        shell.choose(.clip("five-2"))
+        #expect(shell.tabs.open.contains(.clip("five-1")) && shell.dirtyTabs.contains(.clip("five-1")))
+        #expect(shell.tabs.preview == .clip("five-2"))
+    }
+
     @Test func suggestionsShareThePreviewSlotAndKeepStillConvertsThem() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }

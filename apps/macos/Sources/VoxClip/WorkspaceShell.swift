@@ -168,6 +168,10 @@ enum SidebarItem: Hashable {
     init(app: AppModel) {
         self.app = app
         layout = WorkspaceLayout(app: app)
+        tabs.hasWork = { [weak self] tab in
+            guard let self else { return false }
+            return dirtyTabs.contains(tab) || (editor?.openRewrite.map { $0.isOpen && $0.project.edits.activeClipId == tab.clipID } ?? false)
+        }
     }
 
     /// No project is open.
@@ -524,6 +528,10 @@ enum SidebarItem: Hashable {
         model.window = windowController?.window
         model.onActiveClipChange = { [weak self] id in self?.followScope(id) }
         model.onClipsChange = { [weak self] in self?.syncTabs() }
+        model.onRewriteSessionOpen = { [weak self] id in
+            guard let self, let tab = tabs.open.first(where: { $0.clipID == id }) else { return }
+            tabs.keepOpen(tab)
+        }
         model.onNeedsSidebar = { [weak self] in self?.revealSidebar() }
         next.editorModel = model
         renaming = nil

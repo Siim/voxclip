@@ -38,7 +38,11 @@ enum EditorTab: Hashable, Sendable {
     private(set) var preview: EditorTab?
     /// The tab the editor is scoped to.
     private(set) var active: EditorTab = .fullTake
-    var dirty: Set<EditorTab> = []
+    var dirty: Set<EditorTab> = [] {
+        didSet { if let preview, dirty.contains(preview) { keepOpen(preview) } }
+    }
+    /// The shell supplies work owned by a session as well as pending review hunks.
+    @ObservationIgnored var hasWork: ((EditorTab) -> Bool)?
 
     /// The row's tabs, leading to trailing.
     var open: [EditorTab] { clipTabs + [.fullTake] + (preview.map { [$0] } ?? []) }
@@ -101,6 +105,7 @@ enum EditorTab: Hashable, Sendable {
     /// tab stays pinned; the next preview replaces only the temporary tab.
     func openPreview(_ tab: EditorTab) {
         guard tab.closable, !clipTabs.contains(tab) else { return }
+        if let preview, dirty.contains(preview) || hasWork?(preview) == true { keepOpen(preview) }
         preview = tab
     }
 
@@ -128,8 +133,7 @@ extension WorkspaceShell {
         closeRewriteWithoutTab()
     }
     /// An open Rewrite session closes with its tab, as Escape closes it: ×, a middle click,
-    /// ⌘W, Close Tab, or a preview tab that the next preview replaces. Left open, it would
-    /// wait unseen with no dot and come back with its words when its clip opened again.
+    /// ⌘W or Close Tab. Previews carrying work are pinned before replacement.
     private func closeRewriteWithoutTab() {
         guard let editor, let id = editor.openRewrite?.project.edits.activeClipId,
               !tabs.open.contains(where: { $0.clipID == id }) else { return }

@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-11-01 — v2-explorer V2 review — preserve preview work
+
+- **Integration.** Merged `origin/track/v2-shell` through V11a review fix `1d7da980`, including `EditorModel.exportPercent`, before this fix.
+- **P2-1.** Every `openRewrite` assignment notifies the owning shell, which pins the session's preview immediately; all entry points share this path. `EditorTabs.dirty` pins a newly dirty preview. `openPreview` also preserves the old preview if its dirty set or the shell's session/pending-hunk state carries work. Explicit tab close still closes the session; browsing another clip keeps the session open and its original clip pinned.
+- **Regression evidence.** The new production Rewrite-entry and dirty-preview tests fail against the reviewed code (2 tests, 6 issues). Added an independent replacement-guard test that disables the eager session notification. Updated the old tab-close test to expect a session's preview to survive `choose`. All 33 Explorer and EditorTabs tests pass locally with isolated data and resolved shared resources.
+
 ### 2026-11-01 — v2-explorer V2 — Take, Clips, Outline and Suggested
 
 - **Base and integration.** Work starts at `fe0e065d` (Feel + V3b); before V2 changes, the lane fetched and fast-forwarded `origin/track/v2-shell` through V11a `a31e0e93`. `DebugExplorer` includes V11a's added checks and uses `statusSummary` / `summaryDetail`, with no retired `subtitle` / `summaryLine`. `StatusBarView.swift` and `DebugStatusBar.swift` are unchanged by V2. Their shared fixture references retain a DEBUG `typealias DebugSidebar = DebugExplorer`; there is one implementation in the renamed file. Other DEBUG consumers and App tests now name `DebugExplorer` directly.

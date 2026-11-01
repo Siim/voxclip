@@ -206,8 +206,8 @@ import Testing
     }
 
     /// A Rewrite session closes with its tab, as Escape closes it: the active tab's × and
-    /// an inactive tab's middle click (both `closeTab`), and a preview tab that the next
-    /// preview replaces. Opening its clip again shows no session.
+    /// an inactive tab's middle click (both `closeTab`). A session pins its preview,
+    /// so the next preview preserves its work.
     @Test func closingASessionsTabClosesTheSession() async throws {
         let (shell, editor, undo) = try await openShell()
         defer { editor.close() }
@@ -242,9 +242,9 @@ import Testing
         project.edits.clips.append(extra)
         step(undo) { editor.replace(project, name: "Add suggestion fixture") }
         let preview = try open(on: "five-5")
-        #expect(shell.tabs.preview == .suggestion("five-5") && preview.isOpen)
-        shell.selection = .clip("tabs-suggestion")
-        #expect(shell.tabs.preview == .suggestion("tabs-suggestion") && !preview.isOpen && editor.openRewrite == nil)
+        #expect(shell.tabs.preview == nil && shell.tabs.clipTabs.contains(.suggestion("five-5")) && preview.isOpen)
+        shell.choose(.clip("tabs-suggestion"))
+        #expect(shell.tabs.preview == .suggestion("tabs-suggestion") && preview.isOpen && editor.openRewrite === preview)
     }
 
     /// The consent before words go to a connector follows the session, not the tab or the

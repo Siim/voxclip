@@ -67,7 +67,11 @@ struct EditorRenderSnapshot {
     /// The open Rewrite session and its words, on whichever tab it belongs to. The
     /// transcript, the timeline and the right column read `rewrite` and `rewriteRange`,
     /// which hold them only while the session's tab is active (EditorModel+Tabs).
-    var openRewrite: RewriteSession?
+    var openRewrite: RewriteSession? {
+        didSet {
+            if let session = openRewrite, session.isOpen { onRewriteSessionOpen?(session.project.edits.activeClipId) }
+        }
+    }
     var openRewriteRange: ClosedRange<Int>?
     var focusedPane = EditorPane.transcript
     var paneFocusRequest = 0
@@ -304,6 +308,8 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
     /// Called when a refresh finds the clips changed: made, kept, dismissed, removed, or back after Undo. The tabs follow it.
     @ObservationIgnored var onClipsChange: (() -> Void)?
+    /// Work on a preview belongs to a pinned tab, regardless of the Rewrite entry point.
+    @ObservationIgnored var onRewriteSessionOpen: ((String?) -> Void)?
     /// A new editor puts keyboard focus in its transcript once it shows.
     @ObservationIgnored var wantsTranscriptFocus = true
     /// Shows the sidebar for the Find Clips setup callout and a run's progress (design §6.2).
