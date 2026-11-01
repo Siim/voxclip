@@ -75,11 +75,11 @@ import VoxClipCore
                 Image(systemName: "xmark").font(.system(size: 11, weight: .medium))
                     .foregroundStyle(DesignValues.color("text.tertiary"))
                     .frame(width: 22, height: 22).contentShape(Rectangle())
+                    .modifier(PanelButtonEvidence(action: task.close))
             }
             .buttonStyle(.plain)
             .help("\(task.close.title) (Esc)")
             .accessibilityLabel(task.close.title)
-            .modifier(PanelButtonEvidence(action: task.close))
         }
         .frame(minHeight: 22)
     }
@@ -324,14 +324,14 @@ import VoxClipCore
     let kind: Kind
     var body: some View {
         Button(action.title, action: action.perform)
-            .buttonStyle(PanelButtonStyle(kind: kind))
+            .buttonStyle(PanelButtonStyle(kind: kind, action: action))
             .accessibilityIdentifier("voxclip.director.\(action.id)")
-            .modifier(PanelButtonEvidence(action: action))
     }
 }
 
 /// Records each button the panel draws and whether SwiftUI enables it, so a scene runner
-/// can assert design.md's "no disabled buttons" headless.
+/// can assert design.md's "no disabled buttons" headless. It sits inside the button's label,
+/// where a `disabled` on the button or any view around it reaches the environment.
 @MainActor private struct PanelButtonEvidence: ViewModifier {
     let action: PanelAction
     @Environment(\.isEnabled) private var isEnabled
@@ -347,8 +347,9 @@ extension DirectorPanel {
 
 private struct PanelButtonStyle: ButtonStyle {
     let kind: PanelButton.Kind
+    let action: PanelAction
     func makeBody(configuration: Configuration) -> some View {
-        let label = configuration.label.lineLimit(1).fixedSize()
+        let label = configuration.label.lineLimit(1).fixedSize().modifier(PanelButtonEvidence(action: action))
         switch kind {
         case .primary:
             label.font(VCType.body.font(.semibold)).foregroundStyle(DesignValues.color("tint.on"))
