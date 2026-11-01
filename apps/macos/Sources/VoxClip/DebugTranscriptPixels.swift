@@ -705,8 +705,9 @@ extension DebugTranscriptPixels {
             let right = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + line.locationForCharacter(at: NSMaxRange(uh.range) - base).x
             let baseline = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
             let row = baseline - font.xHeight / 2
-            let struck = pane.count(bitmap, in: CGRect(x: left, y: row - 0.75, width: right - left, height: 1.5), TranscriptPane.color("word.gone"))
-            check("Show cuts strikes a removed word in word.gone (\(struck) pixels)", struck >= Int(right - left))
+            // Every column but the two partly covered ends.
+            let struck = pane.inkedColumns(bitmap, left: left, right: right, row: row, ink: TranscriptPane.color("word.gone"), paper: TranscriptPane.color("bg.surface"))
+            check("Show cuts strikes a removed word in word.gone (\(struck.inked) of \(struck.of) columns)", struck.of > 0 && struck.inked >= struck.of - 2)
         } else { check("the struck word is laid out", false) }
         model.toggleShowsCuts()
         pane.update(rebuild: true)
@@ -905,8 +906,9 @@ extension DebugTranscriptPixels {
             let left = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + text.glyphX(line, local: how.range.location - base)
             let right = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + text.glyphX(line, local: NSMaxRange(how.range) - base)
             let row = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y - renderer.font.xHeight / 2
-            let struck = pane.count(bitmap, in: CGRect(x: left, y: row - 0.75, width: right - left, height: 1.5), TranscriptPane.color("word.gone"))
-            check("a removed word is struck in word.gone (\(struck) pixels)", struck >= Int(right - left))
+            // Every column but the two partly covered ends.
+            let struck = pane.inkedColumns(bitmap, left: left, right: right, row: row, ink: TranscriptPane.color("word.gone"), paper: band)
+            check("a removed word is struck in word.gone (\(struck.inked) of \(struck.of) columns)", struck.of > 0 && struck.inked >= struck.of - 2)
         } else { check("\"how\" is laid out", false) }
         // Change bars at x 66: the focused change at 100 %, the others at 50 %.
         if let first = renderer.changeRange(1).flatMap({ text.lineBox(atCharacter: $0.location) }), let second = renderer.changeRange(2).flatMap({ text.lineBox(atCharacter: $0.location) }) {
@@ -1141,6 +1143,27 @@ extension DebugTranscriptPixels {
         return count
     }
     func count(_ bitmap: NSBitmapImageRep, in rect: CGRect, _ color: NSColor) -> Int { count(bitmap, in: rect) { Self.close($0, color, 3.0 / 255) } }
+    /// Of the pixel columns from `left` to `right`, those with a pixel within a point of `row`
+    /// that is `ink` laid over `paper` at 40 % or more. A 1 pt line off the pixel grid fills no
+    /// pixel row at 1x, as on the hosted CI runner, so none of its pixels holds the exact colour.
+    func inkedColumns(_ bitmap: NSBitmapImageRep, left: CGFloat, right: CGFloat, row: CGFloat, ink: NSColor, paper: NSColor) -> (inked: Int, of: Int) {
+        let step = 1 / scale(bitmap)
+        let direction: [CGFloat] = [ink.redComponent - paper.redComponent, ink.greenComponent - paper.greenComponent, ink.blueComponent - paper.blueComponent]
+        let magnitude: CGFloat = direction.reduce(0) { $0 + $1 * $1 }
+        guard magnitude > 0 else { return (0, 0) }
+        func inked(_ pixel: NSColor) -> Bool {
+            let difference: [CGFloat] = [pixel.redComponent - paper.redComponent, pixel.greenComponent - paper.greenComponent, pixel.blueComponent - paper.blueComponent]
+            let coverage: CGFloat = zip(difference, direction).reduce(0) { $0 + $1.0 * $1.1 } / magnitude
+            return coverage >= 0.4 && coverage <= 1.1 && zip(difference, direction).allSatisfy { abs($0 - $1 * coverage) < 0.06 }
+        }
+        var columns = 0, total = 0
+        for x in stride(from: left + step / 2, to: right, by: step) {
+            let rows = stride(from: row - 1 + step / 2, to: row + 1, by: step)
+            if rows.contains(where: { y in pixel(bitmap, CGPoint(x: x, y: y)).map(inked) == true }) { columns += 1 }
+            total += 1
+        }
+        return (columns, total)
+    }
     /// The horizontal extent, in points, of the pixels in a rect that differ from its background.
     func inkExtent(_ bitmap: NSBitmapImageRep, in rect: CGRect, background: NSColor) -> ClosedRange<CGFloat>? {
         let scale = scale(bitmap), step = 1 / scale
