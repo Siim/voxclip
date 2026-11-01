@@ -472,7 +472,8 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         let y = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY
         return CGRect(x: x, y: y, width: renderer.foldGap, height: line.typographicBounds.height)
     }
-    /// Shows a fold's popover under its line, its dot 22 pt from the popover's leading edge.
+    /// Shows a fold's popover under its line, its dot 22 pt from the popover's leading edge,
+    /// or above the line when the pane has no room for it below.
     func showFoldPopover(for id: String) {
         guard let model, let span = map.span(id: id), span.kind == .fold, let box = foldBox(span), let line = lineBox(atCharacter: span.range.location + TranscriptFold.glyphOffset) else { return }
         let view = FoldPopover(items: model.foldItems(span.ids), description: model.foldDescription(span.ids), canRestore: model.capabilities.edit) { [weak self] in
@@ -484,7 +485,9 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         let size = host.fittingSize
         let visible = visibleRect
         let x = min(max(visible.minX + 4, box.midX - 22), visible.maxX - size.width - 4)
-        host.frame = CGRect(x: x, y: line.maxY + 2, width: size.width, height: size.height)
+        let below = line.maxY + 2, above = line.minY - 2 - size.height
+        let y = below + size.height <= visible.maxY || above < visible.minY ? below : above
+        host.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
         host.isHidden = false
         popoverFold = id
     }

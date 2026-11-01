@@ -405,6 +405,29 @@ import Testing
         model.endCorrection(keep: false); text.updateCorrection()
     }
 
+    @Test func aFoldsPopoverStaysInsideThePane() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try shown(model, height: 80); defer { pane.close() }
+        let text = pane.text
+        let fold = try #require(text.map.span(id: id(model, 36)))
+        let line = try #require(text.lineBox(atCharacter: fold.range.location + TranscriptFold.glyphOffset))
+        // The fold's line is the last the pane shows.
+        pane.scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, line.maxY + 2 - pane.scroll.contentView.bounds.height)))
+        pane.scroll.reflectScrolledClipView(pane.scroll.contentView); pane.layout()
+        let visible = text.visibleRect
+        #expect(line.maxY <= visible.maxY && line.maxY + 34 > visible.maxY, "\(line) in \(visible)")
+        text.showFoldPopover(for: fold.id)
+        let popover = try #require(text.foldPopoverAuditView)
+        #expect(visible.contains(popover.frame) && popover.frame.maxY <= line.minY, "above the line when it does not fit below (\(popover.frame) in \(visible))")
+        text.hideFoldPopover()
+        // With room below, it stays under its line.
+        pane.scroll.contentView.scroll(to: NSPoint(x: 0, y: max(0, line.minY - 4)))
+        pane.scroll.reflectScrolledClipView(pane.scroll.contentView); pane.layout()
+        text.showFoldPopover(for: fold.id)
+        let below = try #require(text.foldPopoverAuditView)
+        #expect(text.visibleRect.contains(below.frame) && below.frame.minY >= line.maxY, "\(below.frame) in \(text.visibleRect)")
+    }
+
     @Test func theFoldScenePassesEveryCheck() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-v8b-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
