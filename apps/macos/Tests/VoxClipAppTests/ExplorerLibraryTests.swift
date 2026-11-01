@@ -19,6 +19,7 @@ import Testing
         let shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
         await shell.attachForTesting(VoxClipDocument(project: try project()), selection: .fullTake, preview: DemoPreviewEngine(), exporter: exporter)
         let editor = try #require(shell.editor)
+        editor.app.exportLedger = ExportLedger(file: editor.app.locations.root.appendingPathComponent("LibraryTests/" + editor.project.id + "/exports.json"))
         editor.mediaResolved = true; editor.refresh()
         return shell
     }
@@ -189,12 +190,12 @@ import Testing
         #expect(texts["explorer.export"] == editor.exportsList.rows.first?.accessibilityLabel)
         #expect(texts["explorer.export.duration"] == "0:38")
         #expect(texts["explorer.export.facts"]?.hasPrefix("1080p · ") == true)
-        #expect(frames["explorer.export"]?.height == 28)
+        #expect(frames["explorer.export"]?.height == 40)
         editor.app.settings.values["voiceLab.enabled"] = .bool(true)
         (texts, frames) = drawn()
         #expect(texts["explorer.header.voices"] == "Voices, 1 item")
         #expect(texts["explorer.voice"] == shell.explorerVoices.first?.accessibilityLabel)
-        #expect(frames["explorer.voice"]?.height == 28 && texts["explorer.voice.state"] == "Ready")
+        #expect(frames["explorer.voice"]?.height == 40 && texts["explorer.voice.state"] == "Ready")
         editor.app.voiceLabSession.records[0].status = .verificationRequired
         (texts, frames) = drawn()
         #expect(texts["explorer.voice.state"] == "Needs attention")

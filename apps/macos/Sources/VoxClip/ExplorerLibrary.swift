@@ -10,7 +10,7 @@ import VoxClipCore
         let headers = shell.explorerShowsVoices ? 2 : 1
         let voiceCount = shell.explorerShowsVoices && shell.explorerExpanded(.voices) ? voices : 0
         let exportCount = shell.explorerExpanded(.exports) ? exports : 0
-        return CGFloat(headers + voiceCount + exportCount) * ExplorerMetrics.rowHeight + CGFloat(headers)
+        return CGFloat(headers) * ExplorerMetrics.rowHeight + CGFloat(voiceCount + exportCount) * ExplorerMetrics.libraryRowHeight + CGFloat(headers)
     }
     var body: some View {
         let count = editor.exportsCount
@@ -74,7 +74,7 @@ import VoxClipCore
                 .columnLayoutEvidence("explorer.voice.state", text: entry.state)
         }
         .foregroundStyle(DesignValues.color("text.primary"))
-        .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
+        .frame(height: ExplorerMetrics.libraryRowHeight).contentShape(Rectangle())
     }
 }
 
@@ -111,7 +111,7 @@ import VoxClipCore
             .accessibilityLabel("Export actions for \(row.title)")
         }
         .foregroundStyle(DesignValues.color("text.primary"))
-        .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
+        .frame(height: ExplorerMetrics.libraryRowHeight).contentShape(Rectangle())
         .task(id: row.record) { hasFile = row.outputURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false }
         .help(row.accessibilityLabel).onTapGesture(count: 2, perform: open)
         .contextMenu { actions }

@@ -1,6 +1,12 @@
 # macOS implementation contracts
 
 
+### 2026-11-01 — V2b review: two-line library rows
+
+- Lead decision supersedes the V2b 28 pt deviation below: Voices and Exports rows use f14's **40 pt** height for their title/metadata lines; navigation rows and disclosure headers remain 28 pt. The bounded footer height counts each kind separately. Production App geometry checks require 40 pt and fail on the former 28 pt rows (`dist/v11b-evidence/library-height-red.log`).
+- V2b review fixes are six small commits. Captions and ledger red/green logs, library geometry/performance verification, and the final App rerun are retained in `dist/v11b-evidence/`. Native gates remain owed under the console idle rule; no CI.
+
+
 ### 2026-11-01 — V2b review: preview inset
 
 - The DEBUG preview insets project rows alone; the library retains its own 12 pt inset, matching production. `previewLibraryHasTheProductionInset` compares actual header geometry and fails against the prior double inset (`dist/v11b-evidence/library-layout-red.log`).

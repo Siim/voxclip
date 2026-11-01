@@ -11,6 +11,8 @@ enum ExplorerSection: String, CaseIterable {
 
 enum ExplorerMetrics {
     static let rowHeight: CGFloat = 28
+    /// f14: library rows have a title and metadata, unlike the one-line navigation rows.
+    static let libraryRowHeight: CGFloat = 40
     static let outlineHeight: CGFloat = 24
     static let thumbnailSize = CGSize(width: 36, height: 20)
 }

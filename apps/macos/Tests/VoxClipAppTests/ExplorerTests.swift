@@ -345,7 +345,7 @@ import Testing
             host.frame = NSRect(x: 0, y: 0, width: 224, height: 28)
             host.layoutSubtreeIfNeeded()
             let marker = DebugRightColumn.markers(in: host)["explorer.export"]
-            #expect(marker?.height == ExplorerMetrics.rowHeight)
+            #expect(marker?.height == ExplorerMetrics.libraryRowHeight)
             return DebugRightColumn.texts(in: host)["explorer.exportWarning"]
         }
         try record(fingerprint)
