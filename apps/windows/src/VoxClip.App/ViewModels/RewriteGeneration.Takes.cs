@@ -151,6 +151,12 @@ internal sealed partial class RewriteGeneration
         try
         {
             await takes.Audition.StopAsync();
+            var scope = project.Edits.ActiveClipId is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full;
+            var combined = editor.ProjectWithLocalOperations(project, localOperations ?? []);
+            var fit = selected.Audio!.Fit.Plan;
+            var window = input.Window with { Start = fit.WindowStartSample / (double)input.SourceSampleRate, End = fit.WindowEndSample / (double)input.SourceSampleRate,
+                StartSample = fit.WindowStartSample, EndSample = fit.WindowEndSample };
+            VoiceLabRenderContract.ValidatePlacement(combined, scope, window);
             List<VoiceLabCandidate> candidates = []; List<VoiceLabAsset> assets = [];
             VoiceLabVoiceReference? voice = null; int? selectedIndex = null;
             var date = clock.GetUtcNow();
