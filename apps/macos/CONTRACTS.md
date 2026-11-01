@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+## V18/V19 plan-boundary failure accounting coverage (1 Nov 2026)
+
+- Added malformed TTS/QA responses through the stub HTTP service and explicitly missing TTS/QA results at the existing engine Backend boundary. Exact approved request IDs, once-only ledger amounts, distinct seeds, retained failed rows, zero acceptance and no resend beyond the approved candidates are asserted. The missing-result cases are deterministic engine-boundary fixtures, not live transport evidence.
+- Unknown-price actions require inline confirmation, retain unknown spend in the ledger and cannot bypass an enabled cap. A cap changed at retry dispatch sends nothing, preserves the selection/spend, rejects reuse and requires a fresh quote. Stop after accepted TTS/QA drains the suspended progress consumer, accounts both requests once and preserves only the genuinely completed fitting row. The actual unsaved-V6 cancellation regression now also verifies clean reentry.
+- Combined targeted accounting, stopped-progress and strict renderer run: 16 tests / 2 suites pass. A preliminary immediate URLProtocol-error fixture did not establish receipt of its status line; a subsequent receipt-wait experiment timed out and was terminated. Those failed logs remain preserved; the unreliable fixture was removed rather than weakening paid accounting or claiming acceptance.
+
 ## Pinned TextKit test portability hunk (1 Nov 2026)
 
 - Ported only `TranscriptRendererTests.validationDuringAStorageEditDefersItsWrites` from the parent-authorized `70b901ff707b56975383362d016d2f2c23cc7d9c`: retain a real unchanged first-paragraph fragment before the third-paragraph edit and invoke the renderer's validator directly while the storage is editing. Do not enumerate mutating `NSTextContentStorage` on macOS 26.6.

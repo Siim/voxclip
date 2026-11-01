@@ -471,8 +471,12 @@ import Synchronization
         await store.releaseOperation(operation.id)
         await #expect(throws: (any Error).self) { try await reconciler.reconcile(force: true) }
         session.unsavedRecord = record; session.showEnrollment = true
+        session.flow.state = .finished; session.flow.finishedRecord = record; session.flow.priceAppearedAt = .now
         await session.cancelEnrollment()
         #expect(session.unsavedRecord == nil && !session.showEnrollment)
+        #expect(session.flow.state == .firstUse && session.flow.finishedRecord == nil && session.flow.priceAppearedAt == nil)
+        session.openEnrollment(project: nil, startAnalysis: false)
+        #expect(session.flow.state == .firstUse && !session.canCreate)
         #expect(try await store.operations().isEmpty)
         #expect(try await store.load(record.id).status == .deleted)
         #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
