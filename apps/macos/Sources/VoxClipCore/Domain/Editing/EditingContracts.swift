@@ -2,6 +2,7 @@ import Foundation
 
 public enum VoiceLabEditCommand: Sendable {
     case accept(VoiceLabSegment, assets: [VoiceLabAsset], voice: VoiceLabVoiceReference)
+    case acceptAll(segments: [VoiceLabSegment], assets: [VoiceLabAsset], voice: VoiceLabVoiceReference)
     case setEnabled(segmentID: String, enabled: Bool)
     case delete(segmentID: String)
     case chooseCandidate(segmentID: String, index: Int)
@@ -9,24 +10,31 @@ public enum VoiceLabEditCommand: Sendable {
     public var actionName: String {
         switch self {
         case .accept: "Accept Voice Lab take"
+        case .acceptAll: "Rewrite full take"
         case .setEnabled(_, true): "Turn on Voice Lab"
         case .setEnabled(_, false): "Turn off Voice Lab"
         case .delete: "Delete Voice Lab segment"
         case .chooseCandidate: "Choose Voice Lab take"
         }
     }
-    public func applying(to project: Project) throws -> Project {
+    public func applying(to project: Project, outputScope: VoiceLabOutputScope = .full) throws -> Project {
         switch self {
         case .accept(let segment, let assets, let voice):
+            return try VoiceLabEditCommand.acceptAll(segments: [segment], assets: assets, voice: voice)
+                .applying(to: project, outputScope: outputScope)
+        case .acceptAll(let segments, let assets, let voice):
             var result = try VoiceLabProject.upgradeToV3(project)
             if let existing = result.voiceLab.voices?.first(where: { $0.id == voice.id }) {
                 guard existing == voice else { throw VoiceLabProjectError.consentUnverified }
             } else { result = try VoiceLabProject.addVoiceReference(voice, to: result) }
+            guard Set(assets.map(\.id)).count == assets.count else { throw VoiceLabProjectError.invalidAsset }
             let existing = result.voiceLab.assets ?? []
             for asset in assets {
                 if let previous = existing.first(where: { $0.id == asset.id }), previous != asset { throw VoiceLabProjectError.invalidAsset }
             }
-            return try VoiceLabProject.accept(segment, assets: assets.filter { asset in !existing.contains(where: { $0.id == asset.id }) }, into: result)
+            result = try VoiceLabProject.acceptAll(segments, assets: assets.filter { asset in !existing.contains(where: { $0.id == asset.id }) }, into: result)
+            try VoiceLabProject.validate(result, scope: outputScope, accepting: segments)
+            return result
         case .setEnabled(let id, let enabled): return try VoiceLabProject.setEnabled(enabled, id: id, in: project)
         case .delete(let id): return try VoiceLabProject.delete(id: id, in: project)
         case .chooseCandidate(let id, let index): return try VoiceLabProject.selectCandidate(index, id: id, in: project)

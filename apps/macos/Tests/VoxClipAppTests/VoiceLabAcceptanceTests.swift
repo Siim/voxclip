@@ -164,6 +164,93 @@ private struct AcceptanceTestKeys: KeyProvider {
         undo.redo()
         #expect(model.project == accepted)
     }
+    private struct AcceptanceSetVectors: Decodable {
+        let inputs: [String: AcceptanceSetInput]
+    }
+    private struct AcceptanceSetInput: Decodable {
+        var project: Project
+        var segments: [VoiceLabSegment]
+        var assets: [VoiceLabAsset]
+        var voice: VoiceLabVoiceReference
+    }
+    private func acceptanceSet(_ name: String = "mixed") throws -> AcceptanceSetInput {
+        let shared = try SharedResources.locate()
+        let data = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/accept-all-cases.json"))
+        return try #require(ProjectJSON.decoder().decode(AcceptanceSetVectors.self, from: data).inputs[name])
+    }
+
+    @Test(arguments: [RewriteScope.clip("clip-main"), .selection(3...5), .fullTake])
+    func wholeReviewIsOneNamedUndoStep(scope: RewriteScope) throws {
+        let input = try acceptanceSet()
+        let original = input.project
+        let document = VoxClipDocument(project: original, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        undo.groupsByEvent = false; model.undoManager = undo
+        document.updateChangeCount(.changeCleared)
+        model.editTimestampForTests = original.modifiedAt.addingTimeInterval(10)
+        undo.beginUndoGrouping()
+        try model.applyVoiceLab(input.segments, assets: input.assets, voice: input.voice, scope: scope, localCommands: [
+            .cutSelection(ids: ["w1"]), .toggle(id: "pause-after-w3"), .correct(id: "w2", text: "Corrected")
+        ])
+        undo.endUndoGrouping()
+        let accepted = model.project
+        let name: String
+        switch scope {
+        case .clip: name = "Rewrite clip 1"
+        case .selection: name = "Rewrite 3 words"
+        case .fullTake: name = "Rewrite full take"
+        }
+        #expect(undo.undoActionName == name)
+        // AppKit uses this title for Edit > Undo, including the supplied action name.
+        #expect(undo.undoMenuItemTitle == undo.undoMenuTitle(forUndoActionName: name))
+        #expect(undo.undoMenuItemTitle.contains(name))
+        #expect(model.undoSteps == 1)
+        #expect(accepted.voiceLab.segments == input.segments)
+        #expect(accepted.edits.cutWordIds.contains("w1") && accepted.edits.corrections["w2"] == "Corrected")
+        #expect(accepted.edits.cutPauseIds == ["pause-after-w3"])
+        #expect(document.isDocumentEdited)
+        undo.undo()
+        #expect(model.project == original && !undo.canUndo && !document.isDocumentEdited)
+        #expect(undo.redoActionName == name)
+        undo.redo()
+        #expect(model.project == accepted && document.isDocumentEdited)
+        #expect(undo.undoActionName == name)
+        undo.removeAllActions()
+    }
+
+    @Test func overlappingReviewAppliesNothingAndRegistersNoUndo() throws {
+        let input = try acceptanceSet("overlap")
+        let original = input.project
+        let document = VoxClipDocument(project: original, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        undo.groupsByEvent = true; model.undoManager = undo
+        document.updateChangeCount(.changeCleared)
+        #expect(throws: VoiceLabProjectError.overlappingReplacement) {
+            try model.applyVoiceLab(input.segments, assets: input.assets, voice: input.voice, scope: .fullTake,
+                localCommands: [.cutSelection(ids: ["w1"]), .correct(id: "w2", text: "Corrected")])
+        }
+        #expect(model.project == original)
+        #expect(!undo.canUndo && !document.isDocumentEdited)
+        #expect(model.undoSteps == 0)
+    }
+
+    @Test func finalCutsAreValidatedBeforeTheReviewIsCommitted() throws {
+        let input = try acceptanceSet("single")
+        let document = VoxClipDocument(project: input.project, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = true; model.undoManager = undo
+        #expect(throws: VoiceLabProjectError.invalidFadeHandles) {
+            try model.applyVoiceLab(input.segments, assets: input.assets, voice: input.voice, scope: .fullTake,
+                localCommands: [.setPauseKeep(seconds: 0.105), .tightenPauses])
+        }
+        #expect(model.project == input.project && !undo.canUndo)
+    }
+
     @Test(arguments: [false, true])
     func readyAcceptancePublishesOnceAndStalePublicationNeverMutates(cancel: Bool) async throws {
         var original = try fixture()

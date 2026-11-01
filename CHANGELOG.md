@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Core can accept every Rewrite take, cut and correction together, refuse invalid sets as a whole, and restore the review with one named Undo (C4; v2 Keep wiring follows in V15/V19).
+
 - Voice enrollment matches the speaker on device before any request, then verifies the live statement and creates the voice under one approval; a verified but undispatched creation can be offered again after a crash without repeating Scribe (C7 Core; v2 panel wiring follows in V16/V17).
 
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
