@@ -344,6 +344,14 @@ When Settings → **Test** triggers the sheet:
 
 Local and on-device connectors need no consent sheet.
 
+**Each send after the consent.** Every request then asks how its cost is presented, from the sign-in the readiness check just read (voice-lab.md §3.1, `VoiceLabCostPresentation.kind(forLLMSendTo:signIn:providerName:)`). A request that costs nothing extra starts at once: a CLI signed in on a plan, a local server on this computer or another, and Apple on-device. A request on an API key, or on a CLI signed in with an API key, asks on every send, for Find clips, Rewrite and Test alike. On the first such send the consent sheet comes first and this sheet follows. The answer is never stored, and Cancel sends nothing and keeps the consent.
+
+- Find clips: "Find clips?" with "Sends this project's transcript ({n} words, no audio or video) to {label} with your key." and **Find Clips**, **Cancel**.
+- Rewrite of a selection: "Rewrite {n} words?" with "Sends these {n} words to {label} with your key." and **Rewrite**, **Cancel**. A clip or Full take uses `doc/design.md` §6.3.6 R0b.
+- Test: "Send a test request?" with "Sends a short test request to {label} with your key. Nothing from your projects is sent." and **Test**, **Cancel**.
+
+For a CLI signed in with an API key, "to {label} with your key" reads "to Claude Code, billed to the API key it is signed in with" (Codex likewise). Each sheet ends with "VoxClip can't tell what this costs. Check {provider}'s pricing.", where {provider} is Anthropic for Claude Code, OpenAI for Codex and the label otherwise.
+
 ### 4.9 Logging and redaction
 
 One line per request attempt, metadata only:
