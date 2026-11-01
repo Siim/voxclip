@@ -8,7 +8,8 @@ identical and every float agrees within REL_TOL / ABS_TOL; the committed bytes a
 byte-exact `git diff --exit-code` that follows checks only the other generators. Acceptance-set vectors also
 contain computed duration/trim floats and use the same tolerance. Continuity, scope rewrite plan
 and diff, LLM send cost, training span, enrollment and take batch vectors have an explicit byte-exact expectation, never float
-tolerance. Enrollment coverage includes local retries and bounded/corrupt recovery journals.
+tolerance. Both Cores replay enrollment (including local retries and bounded/corrupt recovery journals),
+the corrected acceptance set and its empty-set review file.
 Run from the repository root, after the generators."""
 import json
 import math

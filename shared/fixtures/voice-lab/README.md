@@ -5,7 +5,7 @@
 fixtures. `inputs` holds complete project, segment-list, asset-list and consent
 reference values; every `cases` row names one input, `full` or a clip ID as its
 output scope, and either the exact accepted segment order or a typed refusal.
-Swift replays all 22 rows; W2 must replay the same rows without providers or paid
+All 22 rows are replayed by both Cores without providers or paid
 assets. Touching passages have a shared synth seam, and a two-member full-take
 group is valid only when staged together. The mixed set combines TTS and stock
 voice conversion. A supplied asset may reuse an identical stored asset; conflicting
@@ -22,7 +22,7 @@ it. Removing that loop must fail this row.
 The same generator writes `accept-all-review-cases.json`, schema
 `voxclip.accept-all-review.v1`. It has one empty-set refusal row, referencing the
 `single` input in `accept-all-cases.json` and overriding its segment list with `[]`.
-W2 must replay this file in addition to the unchanged 22-row file shape, refusing
+This file is replayed by both Cores in addition to the unchanged 22-row file shape, refusing
 `invalidSegment` both through the edit command and the direct project transition.
 It contains no computed floats and is checked byte for byte by `check_drift.py`.
 No new category or row was appended to the fixture the twin already pins.
@@ -123,6 +123,6 @@ Rows without a mutation vary `rate` or `frames` to test sample rate and duration
 
 `enrollment-cases.json` pins C7's local-speaker-first enrollment, one combined approval, quote binding, statement-identity retries, 24-hour journal cleanup,
 three attempts per ten minutes, and explicit recovery after verification but before creation dispatch.
-Generate with `python3 tools/fixtures/voice-lab/generate_enrollment.py`; Swift replays every row in
-`VoiceEnrollmentPlanTests` (the Windows twin is W4). It has only strings, integers and booleans and is
+Generate with `python3 tools/fixtures/voice-lab/generate_enrollment.py`; every row is replayed by both Cores in
+`VoiceEnrollmentPlanTests` (Swift C7 and C# W4). It has only strings, integers and booleans and is
 byte-exact in `check_drift.py`. See `enrollment-cases-README.md`.
