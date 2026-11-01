@@ -108,7 +108,7 @@ actor FilmstripCache {
         defer { lease?.release() }
         let name = "film-\(frame)-\(Int(pixelSize.width))x\(Int(pixelSize.height)).jpg"
         if let folder = ThumbnailCache.posterFolder(in: source.cache, contentKey: source.contentKey, create: false),
-           let image = ThumbnailCache.readPoster(folder.appendingPathComponent(name)) { return image }
+           let image = ThumbnailCache.readPoster(folder.appendingPathComponent(name), immediately: true) { return image }
         guard !Task.isCancelled else { return nil }
         let slack = CMTime(seconds: max(1.0 / Double(TimelineFilmstrip.fps), tolerance), preferredTimescale: 600)
         let request = FilmstripRequest(url: source.url, size: pixelSize, tolerance: slack)

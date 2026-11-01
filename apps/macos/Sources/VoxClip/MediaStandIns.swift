@@ -294,10 +294,13 @@ actor ThumbnailCache {
         folder.appendingPathComponent("poster-\(key.tenths)-\(key.width)x\(key.height).jpg")
     }
     /// A poster that is a regular file, never a link.
-    static func readPoster(_ url: URL) -> CGImage? {
+    static func readPoster(_ url: URL, immediately: Bool = false) -> CGImage? {
         guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]), values.isRegularFile == true, values.isSymbolicLink != true,
               let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        // Filmstrip's worker eagerly decodes disk JPEGs too, so drawing on the main actor
+        // never becomes their first decompression. Other poster callers keep their policy.
+        let options = immediately ? [kCGImageSourceShouldCache: true, kCGImageSourceShouldCacheImmediately: true] as CFDictionary : nil
+        return CGImageSourceCreateImageAtIndex(source, 0, options)
     }
     /// Also V1's filmstrip frames (FilmstripCache), in the same folder.
     static func writePoster(_ image: CGImage, to url: URL) {

@@ -1423,7 +1423,9 @@ enum TrackHeight: String, CaseIterable {
     private struct Tile { let rect: CGRect; let frame: Int64 }
     private func tileLayout(_ span: Span, rect: CGRect) -> [Tile] {
         guard rect.width >= 3 else { return [] }
-        let top = !span.coalesced && rect.width >= 60 ? 11.0 : 0
+        // The empty name band stays on narrow pieces too (f1 / zoom-timeline), so
+        // the filmstrip keeps one height across a cut; only the text needs 60 pt.
+        let top = 11.0
         let height = max(1, rect.height - top - 1)
         let width = height * 16 / 9
         let lower = max(rect.minX + 1, headerWidth), upper = min(rect.maxX - 1, bounds.width)
