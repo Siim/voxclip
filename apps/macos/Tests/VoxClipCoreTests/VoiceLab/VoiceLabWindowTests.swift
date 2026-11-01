@@ -18,7 +18,7 @@ private extension JSONValue {
 /// Shared `window-cases.json` vectors (tools/fixtures/voice-lab/generate_window.py) and a v3 round trip.
 @Suite("Voice Lab window geometry")
 struct VoiceLabWindowTests {
-    private static let categories = ["window", "placeAll", "handles", "trimHandles", "alignment", "trim", "relativeWords", "roomTone", "lendableSilence",
+    private static let categories = ["window", "handles", "trimHandles", "alignment", "trim", "relativeWords", "roomTone", "lendableSilence",
                                      "propertyCases", "multiSegmentCases"]
     /// The passage fixture. Its replacement is the template every recipe here starts from.
     private static let passage = try? JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
@@ -160,6 +160,7 @@ struct VoiceLabWindowTests {
     @Test func everyVectorIsConsumed() throws {
         let document = try document()
         #expect(Set(document.vectorFields.keys) == Set(Self.categories + ["schema", "constants", "caseCount", "lendableSilenceFuzz", "propertyFuzz", "multiSegmentFuzz"]))
+        #expect(document["caseCount"].vectorInteger == 606)
         #expect(try Self.categories.reduce(0) { try $0 + cases($1).count } == Int(document["caseCount"].vectorInteger))
         let constants = document["constants"]
         #expect(constants["SEAM_MIN_GAP"].vectorNumber == VoiceLabPatchConstants.SEAM_MIN_GAP)
@@ -236,8 +237,11 @@ struct VoiceLabWindowTests {
     }
 
     @Test func placeAllVectors() throws {
-        let tests = try cases("placeAll")
-        #expect(tests.count == 30)
+        let document = try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/voice-lab/window-all-cases.json"))
+        #expect(document["schema"].vectorString == "voxclip-voice-lab-window-all-cases/1")
+        #expect(Set(document.vectorFields.keys) == Set(["schema", "caseCount", "cases"]))
+        let tests = try #require(document["cases"].vectorItems)
+        #expect(tests.count == 32 && document["caseCount"].vectorInteger == Int64(tests.count))
         for test in tests {
             let input = test["input"], name = test["name"].vectorString ?? "?"
             let project = try take(input, tone: test["roomTone"])
@@ -248,6 +252,7 @@ struct VoiceLabWindowTests {
             #expect(results.count == expected.count, "\(name)")
             #expect(project == before, "\(name): planning changed the project")
             var rendered = project
+            rendered.edits.cutWordIds += hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds)
             var lastEnd: Int64?
             for (result, raw) in zip(results, expected) {
                 let expectedIndices = (raw["indices"].vectorItems ?? []).map { Int($0.vectorInteger) }

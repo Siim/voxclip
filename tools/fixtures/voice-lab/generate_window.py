@@ -2064,24 +2064,21 @@ print('multi-segment fuzz seed %d: %d cases, %d replacements (%d disabled), %d w
          multi['acceptedBesideReplacement'], multi['acceptedAfterLaterEdits'], multi['refused'],
          multi['invalidInputNamingReplacement'], len(multi_failures), len(multi_cases)))
 
-from generate_window_all import generate as generate_all_windows
-
-all_windows = generate_all_windows(globals())
 cases = {
     'schema': 'voxclip-voice-lab-window-cases/4',
     'constants': {'SEAM_MIN_GAP': SEAM_MIN_GAP, 'SEAM_SEARCH_WORDS': SEAM_SEARCH_WORDS, 'SEAM_FADE': SEAM_FADE,
                   'HARD_SEAM_FADE': HARD_SEAM_FADE, 'TTS_TRIM_LEAD': TTS_TRIM_LEAD, 'TTS_TRIM_TAIL': TTS_TRIM_TAIL,
                   'PAUSE_SLACK_KEEP': PAUSE_SLACK_KEEP, 'VOICED_FRAME': VOICED_FRAME, 'VOICED_FRAME_LEVEL': VOICED_FRAME_LEVEL,
                   'ROOM_TONE_MIN_RUN': ROOM_TONE_MIN_RUN, 'RMS_FRAME': RMS_FRAME},
-    'window': window, 'placeAll': '@@placeAll@@', 'handles': handles, 'trimHandles': trim_handles, 'alignment': alignment, 'trim': trim,
+    'window': window, 'handles': handles, 'trimHandles': trim_handles, 'alignment': alignment, 'trim': trim,
     'relativeWords': relative, 'roomTone': room, 'lendableSilence': lend, 'lendableSilenceFuzz': lend_stats,
     'propertyFuzz': fuzz, 'propertyCases': '@@propertyCases@@',
     'multiSegmentFuzz': multi, 'multiSegmentCases': '@@multiSegmentCases@@',
 }
-cases['caseCount'] = len(all_windows) + len(property_cases) + len(multi_cases) + sum(len(cases[key]) for key in (
+cases['caseCount'] = len(property_cases) + len(multi_cases) + sum(len(cases[key]) for key in (
     'window', 'handles', 'trimHandles', 'alignment', 'trim', 'relativeWords', 'roomTone', 'lendableSilence'))
 # One property case per line keeps the file reviewable.
 text = json.dumps(cases, indent=2)
-for key, sample in (('placeAll', all_windows), ('propertyCases', property_cases), ('multiSegmentCases', multi_cases)):
+for key, sample in (('propertyCases', property_cases), ('multiSegmentCases', multi_cases)):
     text = text.replace('"@@%s@@"' % key, '[\n' + ',\n'.join('    ' + json.dumps(case) for case in sample) + '\n  ]')
 OUT.write_text(text + '\n')

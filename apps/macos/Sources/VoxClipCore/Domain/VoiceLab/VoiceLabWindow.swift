@@ -163,6 +163,8 @@ public enum VoiceLabWindowPlanner {
     /// text-only hunks absorbed between its changes. No project, recipe or paid asset is persisted.
     public static func placeAll(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope,
                                 hunks: [VoiceLabDiffHunk]) -> [PlacedOrRefused] {
+        var planningProject = project
+        planningProject.edits.cutWordIds += hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds)
         let words = project.transcript?.words ?? []
         let positions = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
         let order = hunks.indices.filter { hunks[$0].kind == .voice }.sorted {
@@ -182,10 +184,10 @@ public enum VoiceLabWindowPlanner {
                     guard let first = current.sourceWordIds.first, let last = current.sourceWordIds.last else {
                         throw VoiceLabGeometryError.insertionUnsupported
                     }
-                    var placed = try place(project: project, scope: scope, envelope: envelope, firstWordId: first, lastWordId: last)
+                    var placed = try place(project: planningProject, scope: scope, envelope: envelope, firstWordId: first, lastWordId: last)
                     var hit = remaining.firstIndex { touches($0.window, placed) }
                     if hit == nil {
-                        var reservedProject = project
+                        var reservedProject = planningProject
                         var reservations: [String: Int] = [:]
                         for (position, earlier) in remaining.enumerated() {
                             var id = "voice-lab-review-\(position)"
