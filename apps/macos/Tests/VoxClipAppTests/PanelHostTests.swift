@@ -60,11 +60,44 @@ import Testing
         #expect(ViewerSection.stageSize(ratio: 1, in: box) == CGSize(width: 227, height: 227))
         // A wider frame than 16:9 is letterboxed.
         #expect(ViewerSection.stageSize(ratio: 2.39, in: box) == CGSize(width: 404, height: 169))
-        // The panel body keeps 96 below the 30 pt header; then the box gives way and pillarboxes 16:9.
+        // The panel body keeps 160 below the 30 pt header; then the box gives way and pillarboxes 16:9.
         #expect(PanelHost.viewerHeight(width: 404, height: 522) == 227)
-        #expect(PanelHost.viewerHeight(width: 404, height: 300) == 174)
-        #expect(ViewerSection.stageSize(ratio: 16 / 9, in: CGSize(width: 404, height: 174)) == CGSize(width: 309, height: 174))
+        #expect(PanelHost.viewerHeight(width: 404, height: 422) == 227)
+        #expect(PanelHost.viewerHeight(width: 324, height: 322) == 132)
+        #expect(PanelHost.viewerHeight(width: 404, height: 300) == 110)
+        #expect(ViewerSection.stageSize(ratio: 16 / 9, in: CGSize(width: 404, height: 110)) == CGSize(width: 196, height: 110))
     }
+
+    /// The 960 × 600 window minimum with the default timeline leaves the column 324 × 322. The
+    /// box gives way so the panel keeps a usable body: Captions' gallery scrolls in more than
+    /// two rows' height under its fixed header (it was 4 pt with the full box), and so does
+    /// Rewrite's scroll above its footer.
+    @Test func theShortestColumnKeepsThePanelUsable() async throws {
+        let (shell, editor) = try await openShell()
+        defer { editor.close() }
+        let size = CGSize(width: 324, height: 322)
+        func measure() async -> (markers: [String: CGRect], viewport: CGRect?) {
+            let host = NSHostingView(rootView: PanelHost(model: editor, shell: shell, width: size.width, height: size.height))
+            host.frame = CGRect(origin: .zero, size: size)
+            await settle(host) { !DebugRightColumn.scrollViews(in: host).isEmpty }
+            return (DebugRightColumn.markers(in: host), DebugRightColumn.scrollViews(in: host).first.map { $0.convert($0.bounds, to: host) })
+        }
+        let captions = await measure()
+        #expect(captions.markers["viewer.box"] == CGRect(x: 0, y: 0, width: 324, height: 132))
+        #expect(captions.markers["panel.body"] == CGRect(x: 0, y: 162, width: 324, height: 160))
+        let gallery = try #require(captions.viewport)
+        // Two 24 pt rows at least; the audit's floor in every state is one (DebugRightColumn.minimumViewport).
+        #expect(gallery.height >= 48, Comment(rawValue: "Captions' gallery scrolls in \(gallery)"))
+
+        editor.app.settings.values["voiceLab.enabled"] = .bool(true)
+        editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        editor.rewrite = RewriteSession(editor: editor, range: 3...5, envelope: nil, connector: nil)
+        let rewrite = await measure()
+        #expect(rewrite.markers["viewer.box"] == CGRect(x: 0, y: 0, width: 324, height: 132), "no Rewrite compaction")
+        let scroll = try #require(rewrite.viewport)
+        #expect(scroll.minY >= 162 && scroll.height >= 48, Comment(rawValue: "Rewrite scrolls in \(scroll)"))
+    }
+
 
     /// No Rewrite compaction: a session leaves the viewer at its size (design.md's 146 pt stage is gone).
     @Test func theViewerKeepsItsSizeWhileRewriteIsOpen() async throws {

@@ -96,8 +96,15 @@ import VoxClipMedia
             .init(name: "resized column \(measurement.width): visible descendants fit", passed: measurement.viewOverflow.isEmpty)
         ] }
     }
+    /// The least scroll height the panel's job keeps in every state at every size: one 24 pt
+    /// row, so its gallery or its fields can still be scrolled into view. Captions and a
+    /// resting Rewrite keep 54 or more; Rewrite's provider error, whose notice sits in its
+    /// fixed footer, keeps 30 at 960 × 600 and 35 at 1280 × 700 (V15 replaces that footer).
+    static let minimumViewport: CGFloat = 24
     /// The column under the title row at the v2 widths (impl-plan item 18) and heights: the
-    /// work area above the 216 pt timeline, less the 38 pt title row.
+    /// work area above the 216 pt timeline, less the 38 pt title row. Each size's box height
+    /// is written out: 16:9 of the width down to 1280 × 700, and at the 960 × 600 minimum the
+    /// box gives way so the body keeps `PanelHost.bodyMinimum`.
     static func measureHeights(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
         let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
@@ -105,9 +112,11 @@ import VoxClipMedia
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let sizes: [(String, CGFloat, CGFloat)] = [("1440x900", 444, 622), ("1280x800", 404, 522),
             ("1280x700", 404, 422), ("960x600", 324, 322)]
+        let boxHeights: [String: CGFloat] = ["1440x900": 250, "1280x800": 227, "1280x700": 227, "960x600": 132]
         let shell = WorkspaceShell(app: app)
         for (window, width, height) in sizes {
-            let extra = window == "1280x800" ? ["rewrite", "rewrite-budget", "fine-tune", "caption-error", "captions-off"] + DebugRewriteGeneration.variants : []
+            // Every job's state at the sizes where the body is shortest, as well as at 1280 × 800.
+            let extra = window == "1440x900" ? [] : ["rewrite", "rewrite-budget", "fine-tune", "caption-error", "captions-off"] + DebugRewriteGeneration.variants
             for variant in ["source", "9:16", "1:1", "16:9"] + extra {
                 try Data("\(window) \(variant)".utf8).write(to: directory.appendingPathComponent("height-progress.txt"), options: .atomic)
                 let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
@@ -138,17 +147,20 @@ import VoxClipMedia
         return measurements.flatMap { measurement -> [DebugUISuite.Result] in
             let rewriting = measurement.variant.hasPrefix("rewrite")
             let viewport = measurement.scrollFrames.first ?? .zero
-            // The box is 16:9 of the width wherever the panel body keeps its minimum below the
-            // header, which every v2 size does; the frame is fitted in it, with no Rewrite compaction.
-            let boxHeight = PanelHost.viewerHeight(width: measurement.width, height: measurement.height)
+            // The frame is fitted in the box, with no Rewrite compaction: every job gets the same box.
+            let boxHeight = boxHeights[measurement.window] ?? .nan
             let expected = ViewerSection.stageSize(ratio: ratio(measurement.variant, fixture: fixture), in: CGSize(width: measurement.width, height: boxHeight))
-            let boxMatches = abs(measurement.box.width - measurement.width) <= 0.5 && abs(measurement.box.height - ViewerSection.boxHeight(forWidth: measurement.width)) <= 0.5
+            let boxMatches = abs(measurement.box.width - measurement.width) <= 0.5 && abs(measurement.box.height - boxHeight) <= 0.5
+                && abs(PanelHost.viewerHeight(width: measurement.width, height: measurement.height) - boxHeight) <= 0.5
             let stageMatches = abs(measurement.stage.width - expected.width) <= 0.5 && abs(measurement.stage.height - expected.height) <= 0.5
             let headerMatches = abs(measurement.header.minY - measurement.box.maxY) <= 0.5 && abs(measurement.header.height - PanelHost.headerHeight) <= 0.5
+            let body = measurement.height - measurement.header.maxY
             let name = "right column \(measurement.window) \(measurement.variant)"
             return [
-                .init(name: "\(name): viewer \(measurement.box.size) is 16:9 of the width, stage \(measurement.stage.size) is \(expected), header 30 under it", passed: boxMatches && stageMatches && headerMatches),
-                .init(name: "\(name): visible descendants fit", passed: measurement.viewOverflow.isEmpty && viewport.height > 0 && measurement.scrollClipping.allSatisfy { $0 }),
+                .init(name: "\(name): viewer \(measurement.box.size) is \(boxHeight) high, stage \(measurement.stage.size) is \(expected), header 30 under it", passed: boxMatches && stageMatches && headerMatches),
+                .init(name: "\(name): the panel body (\(body)) keeps at least \(PanelHost.bodyMinimum)", passed: body >= PanelHost.bodyMinimum - 0.5),
+                .init(name: "\(name): visible descendants fit", passed: measurement.viewOverflow.isEmpty && measurement.scrollClipping.allSatisfy { $0 }),
+                .init(name: "\(name): the panel's scroll (\(viewport.height)) keeps at least \(minimumViewport)", passed: viewport.height >= minimumViewport - 0.5),
                 .init(name: "\(name): the panel scrolls inside its body (\(viewport.minY)–\(viewport.maxY))", passed: viewport.minY >= measurement.header.maxY - 0.5 && (rewriting || viewport.maxY <= measurement.height - 15.5))
             ]
         }

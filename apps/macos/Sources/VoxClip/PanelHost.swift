@@ -83,11 +83,15 @@ extension WorkspaceShell {
 
     /// notes.md §1: a 30 pt header (1 pt hairlines above and below its 28 pt row).
     static let headerHeight: CGFloat = 30
-    /// The panel body keeps at least four 24 pt property rows below the header.
-    static let bodyMinimum: CGFloat = 96
+    /// The panel body keeps at least this much below the header, so its job stays usable in
+    /// the shortest column: at the 960 × 600 window minimum (324 × 322), Captions' fixed
+    /// header and padding leave its gallery a 54 pt scroll, and a resting Rewrite a 99 pt one
+    /// (with the full 16:9 box Captions had 4). It is no more than the 1280 × 700 body
+    /// (165), so the box stays 16:9 at 1280 × 700 and above.
+    static let bodyMinimum: CGFloat = 160
     /// The viewer's height in a column `width` × `height`: 16:9 of the width (227 at 404),
     /// unless that would leave the panel body under `bodyMinimum`; then the box gives way
-    /// and the frame inside it is fitted to what is left.
+    /// (132 at 960 × 600) and the frame inside it is fitted to what is left.
     static func viewerHeight(width: CGFloat, height: CGFloat) -> CGFloat {
         min(ViewerSection.boxHeight(forWidth: width), max(0, height - headerHeight - bodyMinimum))
     }

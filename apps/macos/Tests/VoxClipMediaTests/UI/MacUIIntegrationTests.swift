@@ -55,17 +55,23 @@ extension HeavyMediaTests {
             let width: Double
             let height: Double
             let variant: String
+            let box: CGRect
             let stage: CGRect
             let scrollFrames: [CGRect]
             let scrollClipping: [Bool]
             let viewOverflow: [String]
         }
         let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
-        #expect(heights.count == 29)
+        #expect(heights.count == 55)
         #expect(Set(heights.map(\.height)) == [322, 422, 522, 622])
         for measurement in heights {
             let viewport = try #require(measurement.scrollFrames.first)
-            #expect(viewport.height > 0)
+            // One 24 pt row at least in every state (DebugRightColumn.minimumViewport).
+            #expect(viewport.height >= 23.5, Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height): \(viewport)"))
+            // 16:9 of the width down to 1280 × 700; at 960 × 600 the box gives way so the body keeps 160.
+            let boxHeight: Double = switch measurement.height { case 622: 250; case 322: 132; default: 227 }
+            #expect(abs(measurement.box.height - boxHeight) <= 0.5 && measurement.height - measurement.box.height - 30 >= 159.5,
+                Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height): box \(measurement.box)"))
             #expect(measurement.scrollClipping.allSatisfy { $0 })
             #expect(measurement.viewOverflow.isEmpty, Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height)"))
             if !measurement.variant.hasPrefix("rewrite") {
