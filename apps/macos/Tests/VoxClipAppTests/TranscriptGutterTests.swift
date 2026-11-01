@@ -86,7 +86,11 @@ import Testing
     @Test func aLongMonologueLaysOutInParagraphsOfAtMost150Words() throws {
         let model = try editor(); defer { model.close() }
         var project = model.project
-        project.transcript?.words = (0..<400).map { TimedWord(id: "m\($0)", text: $0 % 97 == 96 ? "word." : "word", start: Double($0) * 0.4, end: Double($0) * 0.4 + 0.3, speaker: "solo") }
+        project.transcript?.words = (0..<400).map { (index: Int) -> TimedWord in
+            let start: Double = Double(index) * 0.4
+            let end: Double = start + 0.3
+            return TimedWord(id: "m\(index)", text: index % 97 == 96 ? "word." : "word", start: start, end: end, speaker: "solo")
+        }
         project.edits = ProjectEdits()
         model.document.replaceProject(project); model.refresh()
         let (text, renderer, _, _) = try pane(model)

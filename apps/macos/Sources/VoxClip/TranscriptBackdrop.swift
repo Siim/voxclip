@@ -3,8 +3,8 @@ import CoreText
 
 /// The transcript gutter (notes.md §5), 80 pt left of the text, in points from its left edge:
 /// the clip range bar at 8, paragraph timecodes right-aligned at 42, one glyph per line in the
-/// 13 pt column at 49–63, and the 3 pt change-bar column at 66, which stays empty until
-/// proposals draw hunks. The text has 44 pt of right padding.
+/// 13 pt column at 49–63, and the 3 pt change bar at 66 beside a pending proposed change. The
+/// text has 44 pt of right padding.
 enum TranscriptGutter {
     static let width = VCTokens.spacingTranscriptGutter
     static let trailing: CGFloat = 44
@@ -17,11 +17,22 @@ enum TranscriptGutter {
     static let timecodeRight: CGFloat = 42
     static let glyphX: CGFloat = 49
     static let glyphSize: CGFloat = 14
+    static let changeBarX: CGFloat = 66
+    static let changeBarWidth: CGFloat = 3
+    /// A change's bar starts 4 pt below its first line's top and ends 4 pt above its last line's bottom.
+    static let changeBarInset: CGFloat = 4
 
     /// A line's glyph box: 14 pt at x 49 from the gutter's `left` edge, centred on the line's
     /// words (`box` from `visualBox(of:font:)`), so the glyph stays on its line at every zoom.
     static func glyphBox(left: CGFloat, line box: CGRect) -> CGRect {
         CGRect(x: left + glyphX, y: box.midY - glyphSize / 2, width: glyphSize, height: glyphSize)
+    }
+
+    /// A line's one glyph, by precedence (notes.md §5): the highest kind of a shown proposed
+    /// change on it (voice > fix > cut), else the AI voice waveform where it holds AI words.
+    @MainActor static func glyph(marks: [TranscriptChangeMark], aiVoice: Bool) -> GutterGlyph? {
+        if let kind = marks.filter({ $0.role != .slot }).map(\.kind).max() { return .change(kind) }
+        return aiVoice ? .aiVoice : nil
     }
 
     /// A paragraph's take time, `m:ss` (notes.md §5), whole seconds rounded down.
@@ -56,26 +67,49 @@ enum TranscriptGutter {
     }
 }
 
-/// The glyph column holds one glyph per line, by precedence (notes.md §5). Proposals add the
-/// hunk kinds, which rank above the AI voice (V14); title and zoom cues rank below it.
-@MainActor enum GutterGlyph {
+/// The glyph column holds one glyph per line, by precedence (notes.md §5): a proposed change's
+/// kind (voice waveform > pencil > scissors, in text.tertiary) above the AI voice waveform;
+/// title and zoom cues rank below it.
+@MainActor enum GutterGlyph: Equatable {
     /// A line holding words spoken by your AI voice: the waveform in ai.tint.
     case aiVoice
+    /// A line a shown proposed change touches: its kind's icon.
+    case change(TranscriptChange.Kind)
 
-    /// Draws the glyph centred in a 14 pt box: the mockup's 13 pt icon, round-capped bars
-    /// on a 20-unit grid at a 1.5-unit stroke.
+    /// Draws the glyph centred in a 14 pt box: the mockup's 13 pt icon (ux/v2 ui.py `wave`,
+    /// `pencil` and `scissors`) on a 20-unit grid at a 1.5-unit round stroke.
     func draw(in box: CGRect, context: CGContext) {
         let scale = 13.0 / 20, origin = CGPoint(x: box.midX - 6.5, y: box.midY - 6.5)
-        let bars: [(x: CGFloat, top: CGFloat, bottom: CGFloat)] = [(3.5, 8.5, 11.5), (6.5, 6, 14), (9.5, 3.8, 16.2), (12.5, 6.5, 13.5), (15.5, 8, 12)]
+        func at(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: origin.x + x * scale, y: origin.y + y * scale) }
+        let path = CGMutablePath()
+        let color: String
+        switch self {
+        case .aiVoice, .change(.voice):
+            color = self == .aiVoice ? "ai.tint" : "text.tertiary"
+            for bar: (x: CGFloat, top: CGFloat, bottom: CGFloat) in [(3.5, 8.5, 11.5), (6.5, 6, 14), (9.5, 3.8, 16.2), (12.5, 6.5, 13.5), (15.5, 8, 12)] {
+                path.move(to: at(bar.x, bar.top)); path.addLine(to: at(bar.x, bar.bottom))
+            }
+        case .change(.fix):
+            color = "text.tertiary"
+            // M4.5 15.5 l.8-3.2 7.9-7.9 a1.5 1.5 0 0 1 2.1 0 l.3.3 a1.5 1.5 0 0 1 0 2.1 l-7.9 7.9z M12 5.6 l2.4 2.4
+            path.move(to: at(4.5, 15.5)); path.addLine(to: at(5.3, 12.3)); path.addLine(to: at(13.2, 4.4))
+            path.addQuadCurve(to: at(15.3, 4.4), control: at(14.25, 3.54)); path.addLine(to: at(15.6, 4.7))
+            path.addQuadCurve(to: at(15.6, 6.8), control: at(16.46, 5.75)); path.addLine(to: at(7.7, 14.7)); path.closeSubpath()
+            path.move(to: at(12, 5.6)); path.addLine(to: at(14.4, 8))
+        case .change(.cut):
+            color = "text.tertiary"
+            path.addEllipse(in: CGRect(x: origin.x + 3.4 * scale, y: origin.y + 3.9 * scale, width: 4.2 * scale, height: 4.2 * scale))
+            path.addEllipse(in: CGRect(x: origin.x + 3.4 * scale, y: origin.y + 11.9 * scale, width: 4.2 * scale, height: 4.2 * scale))
+            path.move(to: at(7.2, 7.2)); path.addLine(to: at(16, 14.2))
+            path.move(to: at(7.2, 12.8)); path.addLine(to: at(16, 5.8))
+        }
         context.saveGState()
-        context.setStrokeColor(DesignValues.nsColor("ai.tint").cgColor)
+        context.setStrokeColor(DesignValues.nsColor(color).cgColor)
         context.setLineWidth(1.5 * scale)
         context.setLineCap(.round)
+        context.setLineJoin(.round)
         context.setLineDash(phase: 0, lengths: [])
-        for bar in bars {
-            context.move(to: CGPoint(x: origin.x + bar.x * scale, y: origin.y + bar.top * scale))
-            context.addLine(to: CGPoint(x: origin.x + bar.x * scale, y: origin.y + bar.bottom * scale))
-        }
+        context.addPath(path)
         context.strokePath()
         context.restoreGState()
     }

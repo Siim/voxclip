@@ -27,10 +27,12 @@ import VoxClipCore
         // background colour does not.
         text.selectedTextAttributes = [:]
         text.setAccessibilityLabel("Transcript. Select words, then Delete to cut. Return corrects spelling.")
-        text.setAccessibilityCustomRotors(["Cuts", "Pauses", "Suggested fillers", "Clips", "AI words"].map { NSAccessibilityCustomRotor(label: $0, itemSearchDelegate: text) })
+        text.updateRotors(proposal: false)
         text.configureAccessibilityActions()
         text.installBackdrop()
         text.installSelectionLayer()
+        text.installProposalLayer()
+        text.relayViewportLayout()
         scroll.documentView = text; scroll.hasVerticalScroller = true; scroll.drawsBackground = false
         text.observeSelectionScrolling(scroll)
         coordinator.text = text
@@ -50,6 +52,7 @@ import VoxClipCore
         scroll.overviewRuler.marks = TranscriptOverviewRuler.marks(model: model)
         Self.select(model: model, in: text)
         coordinator.updating = false; text.updateCorrection(); text.refreshSelectionBar()
+        Self.showProposal(model, coordinator: coordinator, in: text)
         if coordinator.scopeScrollRevision != model.scopeScrollRevision {
             coordinator.scopeScrollRevision = model.scopeScrollRevision
             let id = model.activeClip?.startWordId ?? model.words.first?.id
@@ -68,7 +71,7 @@ import VoxClipCore
     static func render(_ model: EditorModel, coordinator: Coordinator, force: Bool = false) {
         let content = Coordinator.Content(model: model)
         let appearance = TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence"),
-                                              activeClipID: model.activeClip?.id, playhead: model.sourceTime)
+                                              activeClipID: model.activeClip?.id, playhead: model.sourceTime, changesPending: content.proposal?.pending ?? false)
         if force || coordinator.content != content {
             coordinator.content = content
             coordinator.renderer.rebuild(model: model, appearance: appearance)
@@ -88,24 +91,39 @@ import VoxClipCore
         }
         text.updateSelectionLayer()
     }
+    /// After a render: the focused change's buttons, the Proposed changes rotor and, when the
+    /// focus moved by key or rotor, the change scrolled into view.
+    static func showProposal(_ model: EditorModel, coordinator: Coordinator, in text: TranscriptNSTextView) {
+        text.updateRotors(proposal: coordinator.content?.proposal != nil)
+        text.updateProposalButtons()
+        guard let proposal = model.proposal, coordinator.revealRevision != proposal.revealRevision else { return }
+        coordinator.revealRevision = proposal.revealRevision
+        if let focused = coordinator.content?.proposal?.focused, let range = coordinator.renderer.changeRange(focused) {
+            text.scrollRangeToVisible(range)
+            text.updateProposalButtons()
+        }
+    }
 
     @MainActor final class Coordinator: NSObject, NSTextViewDelegate, @preconcurrency NSTextLayoutManagerDelegate {
         /// What the text shows, beyond the take's words: when it changes, `rebuild` writes the
         /// paragraphs whose content changed. Folds follow the cuts, the open clip and the
-        /// selection's removed ends, so all three are part of it; a playhead tick is not.
+        /// selection's removed ends, so all three are part of it, and so is a proposal's state;
+        /// a playhead tick is not.
         struct Content: Equatable {
             var layout: Int, showsCuts: Bool, showPauses: Bool, textSize: Double, pauseThreshold: Double
             var scope: ClosedRange<Int>?, openEnds: [String], cutWords: Set<String>, cutPauses: Set<String>
+            var proposal: TranscriptProposalDisplay?
             @MainActor init(model: EditorModel) {
                 layout = model.transcriptLayoutRevision; showsCuts = model.showsCuts; showPauses = model.showPauses; textSize = model.textSize
                 pauseThreshold = model.project.edits.pauseThresholdSeconds; scope = model.scopeBounds; openEnds = model.openFoldEnds
                 cutWords = model.cutWordIDs; cutPauses = model.cutPauseIDs
+                proposal = model.proposalDisplay
             }
         }
         let model: EditorModel
         weak var text: TranscriptNSTextView?
         var content: Content?, updating = false
-        var scopeScrollRevision = 0
+        var scopeScrollRevision = 0, revealRevision = 0
         let renderer = TranscriptRenderer()
         init(model: EditorModel) { self.model = model }
         func textView(_ textView: NSTextView, willChangeSelectionFromCharacterRanges old: [NSValue], toCharacterRanges proposed: [NSValue]) -> [NSValue] {
@@ -152,8 +170,37 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     override func draw(at point: CGPoint, in context: CGContext) {
         let drawingContext = TranscriptDrawingContext(value: context)
         let fragment = TranscriptDrawingFragment(value: self)
+        MainActor.assumeIsolated { fragment.value.drawTints(at: point, in: drawingContext.value) }
         super.draw(at: point, in: context)
         MainActor.assumeIsolated { fragment.value.drawDecorations(at: point, in: drawingContext.value) }
+    }
+    /// Behind the glyphs: a proposed change's new words on `change.add` at 19 % (notes.md §5),
+    /// at the text's height, radius 2, one rect per line a run covers, without a trailing space.
+    /// Tints are drawn, not background attributes, which would fill the line height square.
+    private func drawTints(at point: CGPoint, in context: CGContext) {
+        guard let renderer, let text = renderer.text, let content = textLayoutManager?.textContentManager, let elementRange = textElement?.elementRange else { return }
+        let offset = content.offset(from: content.documentRange.location, to: elementRange.location)
+        let font = renderer.font
+        var rects: [CGRect] = []
+        for line in textLineFragments {
+            let lineRange = NSRange(location: offset + line.characterRange.location, length: line.characterRange.length)
+            let string = line.attributedString.string as NSString
+            for span in text.map.intersecting(lineRange) where span.kind == .inserted {
+                let intersection = NSIntersectionRange(span.range, lineRange)
+                guard intersection.length > 0 else { continue }
+                var upper = NSMaxRange(intersection) - offset
+                while upper > intersection.location - offset, upper - 1 < string.length, string.character(at: upper - 1) == 0x20 { upper -= 1 }
+                let start = text.glyphX(line, local: intersection.location - offset), end = text.glyphX(line, local: upper)
+                let baseline = point.y + line.typographicBounds.minY + line.glyphOrigin.y
+                rects.append(CGRect(x: point.x + line.typographicBounds.minX + start, y: baseline - font.ascender, width: max(1, end - start), height: font.ascender - font.descender))
+            }
+        }
+        guard !rects.isEmpty else { return }
+        context.saveGState()
+        context.setFillColor(DesignValues.nsColor("change.add").withAlphaComponent(TranscriptProposalLayer.addTint).cgColor)
+        for rect in rects { context.addPath(CGPath(roundedRect: rect, cornerWidth: 2, cornerHeight: 2, transform: nil)) }
+        context.fillPath()
+        context.restoreGState()
     }
     /// Over the glyphs: the gutter, fold dots, the strike of removed words under Show cuts,
     /// underlines, correction dots and the AI marker. No playing-word fill and no filler
@@ -163,9 +210,16 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         defer { context.restoreGState() }
         guard let renderer, let text = renderer.text, let content = textLayoutManager?.textContentManager, let element = textElement, let elementRange = element.elementRange else { return }
         let offset = content.offset(from: content.documentRange.location, to: elementRange.location)
-        for line in textLineFragments {
+        let lines = textLineFragments
+        // Each line's proposed-change marks, for its change bar and glyph and its neighbours' bars.
+        let marks: [[TranscriptChangeMark]] = lines.map { line in
             let lineRange = NSRange(location: offset + line.characterRange.location, length: line.characterRange.length)
-            drawGutter(line: line, lineRange: lineRange, offset: offset, at: point, renderer: renderer, text: text, context: context)
+            return text.map.intersecting(lineRange).compactMap { NSIntersectionRange($0.range, lineRange).length > 0 ? $0.change : nil }
+        }
+        for (number, line) in lines.enumerated() {
+            let lineRange = NSRange(location: offset + line.characterRange.location, length: line.characterRange.length)
+            drawGutter(line: line, lineRange: lineRange, offset: offset, marks: marks[number], above: number > 0 ? marks[number - 1] : [],
+                       below: number + 1 < lines.count ? marks[number + 1] : [], at: point, renderer: renderer, text: text, context: context)
             let baseline = point.y + line.typographicBounds.minY + line.glyphOrigin.y
             for span in text.map.intersecting(lineRange) {
                 let intersection = NSIntersectionRange(span.range, lineRange)
@@ -176,6 +230,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                 let rect = CGRect(x: point.x + line.typographicBounds.minX + min(start, end) - 2, y: point.y + line.typographicBounds.minY, width: max(4, abs(end - start) + 4), height: line.typographicBounds.height)
                 switch span.kind {
                 case .ai: drawMarker(span, rect: rect, renderer: renderer, context: context); continue
+                case .inserted, .spacer: continue
                 case .fold:
                     let glyph = span.range.location + TranscriptFold.glyphOffset
                     guard NSLocationInRange(glyph, lineRange) else { continue }
@@ -196,11 +251,12 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                     context.move(to: CGPoint(x: lower, y: baseline - font.xHeight / 2))
                     context.addLine(to: CGPoint(x: upper, y: baseline - font.xHeight / 2)); context.strokePath()
                 }
-                if attributes[.vcUnderline] != nil, let color = attributes[.vcUnderlineColor] as? NSColor {
+                if let underline = attributes[.vcUnderline] as? Int, let color = attributes[.vcUnderlineColor] as? NSColor {
                     let row = baseline - font.underlinePosition + 1
                     context.setStrokeColor(color.cgColor); context.setLineWidth(1)
                     context.setLineCap(.butt)
-                    context.setLineDash(phase: 0, lengths: [4, 3])
+                    // An excluded change's place is dotted; low confidence and AI words are dashed.
+                    context.setLineDash(phase: 0, lengths: underline == TranscriptChangeMark.slotUnderline ? [1, 2] : [4, 3])
                     context.move(to: CGPoint(x: lower, y: row)); context.addLine(to: CGPoint(x: upper, y: row)); context.strokePath()
                 }
                 if renderer.hasCorrection(span.id), intersection.location == span.range.location {
@@ -226,9 +282,13 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
 
     /// The gutter of one line (notes.md §5): the paragraph's timecode on its first line,
     /// right-aligned at 42 in SF Mono 11 (gutter.text in the open clip, gutter.textOut
-    /// outside, text.secondary for the playhead's paragraph), and the line's glyph at 49–63.
-    /// The change bar at 66 stays empty until proposals draw hunks.
-    private func drawGutter(line: NSTextLineFragment, lineRange: NSRange, offset: Int, at point: CGPoint, renderer: TranscriptRenderer, text: TranscriptNSTextView, context: CGContext) {
+    /// outside, text.secondary for the playhead's paragraph); the line's one glyph at 49–63,
+    /// a shown change's kind (voice waveform > pencil > scissors, in text.tertiary) above the
+    /// AI voice waveform; and at 66 the 3 pt `change.add` bar on every line a pending change
+    /// touches, the focused change's at 100 % and the others' at 50 %. A change's bar runs
+    /// through its lines, from 4 pt below its first line's top to 4 pt above its last line's bottom.
+    private func drawGutter(line: NSTextLineFragment, lineRange: NSRange, offset: Int, marks: [TranscriptChangeMark], above: [TranscriptChangeMark], below: [TranscriptChangeMark],
+                            at point: CGPoint, renderer: TranscriptRenderer, text: TranscriptNSTextView, context: CGContext) {
         let left = point.x - layoutFragmentFrame.minX - text.textContainerOrigin.x
         let box = TranscriptGutter.visualBox(of: line, font: renderer.font).offsetBy(dx: 0, dy: point.y)
         if line.characterRange.location == 0, let index = renderer.paragraph(atCharacter: offset), renderer.paragraphs[index].offset == offset {
@@ -236,9 +296,33 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                 : DesignValues.nsColor(renderer.isInScope(paragraph: index) ? "gutter.text" : "gutter.textOut")
             TranscriptGutter.drawTimecode(TranscriptGutter.timecode(renderer.paragraphs[index].start), color: color, right: left + TranscriptGutter.timecodeRight, box: box, in: context)
         }
-        if text.map.intersecting(lineRange).contains(where: { renderer.aiWordIDs.contains($0.id) && NSIntersectionRange($0.range, lineRange).length > 0 }) {
-            GutterGlyph.aiVoice.draw(in: TranscriptGutter.glyphBox(left: left, line: box), context: context)
+        let shown = marks.filter { $0.role != .slot }
+        let aiVoice = text.map.intersecting(lineRange).contains { renderer.aiWordIDs.contains($0.id) && NSIntersectionRange($0.range, lineRange).length > 0 }
+        TranscriptGutter.glyph(marks: marks, aiVoice: aiVoice)?.draw(in: TranscriptGutter.glyphBox(left: left, line: box), context: context)
+        func pending(_ marks: [TranscriptChangeMark], _ ordinal: Int) -> Bool { marks.contains { $0.ordinal == ordinal && $0.pending && $0.role != .slot } }
+        let bars = Self.changeBars(shown)
+        guard !bars.isEmpty else { return }
+        context.saveGState()
+        let add = DesignValues.nsColor("change.add")
+        for (ordinal, focused) in bars {
+            let top = pending(above, ordinal) ? box.minY : box.minY + TranscriptGutter.changeBarInset
+            let bottom = pending(below, ordinal) ? box.maxY : box.maxY - TranscriptGutter.changeBarInset
+            guard bottom > top else { continue }
+            context.setFillColor(add.withAlphaComponent(focused ? 1 : 0.5).cgColor)
+            let bar = CGRect(x: left + TranscriptGutter.changeBarX, y: top, width: TranscriptGutter.changeBarWidth, height: bottom - top)
+            context.addPath(CGPath(roundedRect: bar, cornerWidth: TranscriptGutter.changeBarWidth / 2, cornerHeight: min(TranscriptGutter.changeBarWidth / 2, bar.height / 2), transform: nil))
+            context.fillPath()
         }
+        context.restoreGState()
+    }
+
+    /// One change bar per pending change on a line, the focused ones last so they draw on
+    /// top, each group in ordinal order. Split into typed steps: as one chain it took the
+    /// type checker about 3 s.
+    private static func changeBars(_ marks: [TranscriptChangeMark]) -> [(ordinal: Int, focused: Bool)] {
+        let byOrdinal: [Int: [TranscriptChangeMark]] = Dictionary(grouping: marks.filter(\.pending), by: \.ordinal)
+        let bars: [(ordinal: Int, focused: Bool)] = byOrdinal.map { entry in (ordinal: entry.key, focused: entry.value.contains(where: \.focused)) }
+        return bars.sorted { first, second in first.focused != second.focused ? second.focused : first.ordinal < second.ordinal }
     }
 
     /// The AI passage's marker before its words, until the AI tint replaces it (V19).
@@ -268,6 +352,39 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
 }
 
+/// Stands between a transcript's viewport layout controller and its text view. It passes
+/// every delegate call on to the text view and, after each finished layout, lets the
+/// transcript place its layers. NSTextView declares its viewport delegate methods only from
+/// the macOS 27 SDK, so overriding them would not build with the macOS 26 SDK.
+final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDelegate {
+    private weak var base: (any NSTextViewportLayoutControllerDelegate)?
+    private let didLayout: @MainActor () -> Void
+    init(base: (any NSTextViewportLayoutControllerDelegate)?, didLayout: @escaping @MainActor () -> Void) {
+        self.base = base
+        self.didLayout = didLayout
+    }
+    func viewportBounds(for controller: NSTextViewportLayoutController) -> CGRect {
+        base?.viewportBounds(for: controller) ?? .zero
+    }
+    func textViewportLayoutController(_ controller: NSTextViewportLayoutController, configureRenderingSurfaceFor fragment: NSTextLayoutFragment) {
+        base?.textViewportLayoutController(controller, configureRenderingSurfaceFor: fragment)
+    }
+    func textViewportLayoutControllerWillLayout(_ controller: NSTextViewportLayoutController) {
+        base?.textViewportLayoutControllerWillLayout?(controller)
+    }
+    func textViewportLayoutControllerDidLayout(_ controller: NSTextViewportLayoutController) {
+        base?.textViewportLayoutControllerDidLayout?(controller)
+        let didLayout = didLayout
+        MainActor.assumeIsolated { didLayout() }
+    }
+    /// Delegate methods the relay does not name, such as the macOS 27 rendering surface cache
+    /// and set-needs-layout calls, go to the text view unchanged.
+    override func responds(to selector: Selector!) -> Bool {
+        super.responds(to: selector) || base?.responds(to: selector) == true
+    }
+    override func forwardingTarget(for selector: Selector!) -> Any? { base }
+}
+
 @MainActor final class TranscriptNSTextView: NSTextView, NSTextFieldDelegate, @preconcurrency NSAccessibilityCustomRotorItemSearchDelegate {
     weak var model: EditorModel?
 
@@ -279,9 +396,11 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         return max(120, min((width - gutter - Double(TranscriptGutter.trailing)).clamped(to: 480...Double(VCTokens.sizeTranscriptMeasureMax)), width - gutter))
     }
     /// A transcript that arrives after the editor showed, for example when transcription
-    /// finishes, takes the keyboard focus the editor still wants.
+    /// finishes, takes the keyboard focus the editor still wants. The viewport relay is
+    /// checked here too, in case AppKit made the view its controller's delegate again.
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        relayViewportLayout()
         guard let window, model?.wantsTranscriptFocus == true else { return }
         Task { @MainActor [weak self] in
             guard let self, self.window === window, let model = self.model, model.wantsTranscriptFocus else { return }
@@ -316,14 +435,25 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         addSubview(caret, positioned: .above, relativeTo: layer)
         selectionLayer = layer; self.caret = caret
     }
+    private var viewportRelay: TranscriptViewportRelay?
+    /// Puts the relay between the viewport layout controller and this view, so each finished
+    /// viewport layout also places the transcript's layers. Safe to call again: it rewraps
+    /// only when AppKit has made the view the controller's delegate again.
+    func relayViewportLayout() {
+        guard let controller = textLayoutManager?.textViewportLayoutController else { return }
+        if let viewportRelay, controller.delegate === viewportRelay { return }
+        let relay = TranscriptViewportRelay(base: controller.delegate) { [weak self] in self?.viewportDidLayout() }
+        viewportRelay = relay
+        controller.delegate = relay
+    }
     /// Every viewport layout (scrolling, resizing, new text) moves the backdrop, the
     /// selection, the caret and the overview ruler's visible window with the lines TextKit
     /// just placed.
-    override func textViewportLayoutControllerDidLayout(_ controller: NSTextViewportLayoutController) {
-        super.textViewportLayoutControllerDidLayout(controller)
+    func viewportDidLayout() {
         updateBackdrop()
         updateSelectionLayer()
         updateCaret()
+        updateProposalButtons()
         (enclosingScrollView as? TranscriptScrollView)?.overviewRuler.visibleSpan = visibleTakeSpan()
     }
     /// The laid-out line holding the character at `offset`, its fragment and the fragment's
@@ -376,6 +506,8 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         // The storage's own string: bridging `string` would copy the whole text on every viewport layout.
         guard let string = textStorage?.mutableString else { return [] }
         let origin = textContainerOrigin, font = renderer.font
+        // A proposed change's new words and the Keep and Undo blank are not text the selection holds.
+        let skipped = map.intersecting(NSRange(location: start, length: end - start)).filter { $0.kind == .inserted || $0.kind == .spacer }.map(\.range)
         var rects: [CGRect] = []
         manager.enumerateTextLayoutFragments(from: location, options: []) { fragment in
             guard let element = fragment.textElement?.elementRange else { return false }
@@ -383,14 +515,25 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             guard base < end else { return false }
             for line in fragment.textLineFragments {
                 let lineStart = base + line.characterRange.location
-                var lower = max(start, lineStart), upper = min(end, lineStart + line.characterRange.length)
-                // A line's trailing space, break or newline is not text.
-                while upper > lower, [0x20, 0x200B, 0x0A].contains(string.character(at: upper - 1)) { upper -= 1 }
-                guard upper > lower else { continue }
-                let left = glyphX(line, local: lower - base), right = glyphX(line, local: upper - base)
-                let x = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX
-                let baseline = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
-                rects.append(CGRect(x: x + left, y: baseline - font.ascender, width: max(1, right - left), height: font.ascender - font.descender))
+                let lineEnd = min(end, lineStart + line.characterRange.length)
+                var pieces: [(Int, Int)] = []
+                var lower = max(start, lineStart)
+                for gap in skipped where NSMaxRange(gap) > lower && gap.location < lineEnd {
+                    if gap.location > lower { pieces.append((lower, gap.location)) }
+                    lower = max(lower, NSMaxRange(gap))
+                }
+                if lineEnd > lower { pieces.append((lower, lineEnd)) }
+                for (first, last) in pieces {
+                    var lower = first, upper = last
+                    // A trailing or leading space, break or newline is not text.
+                    while upper > lower, [0x20, 0x200B, 0x0A].contains(string.character(at: upper - 1)) { upper -= 1 }
+                    while upper > lower, !skipped.isEmpty, [0x20, 0x200B].contains(string.character(at: lower)) { lower += 1 }
+                    guard upper > lower else { continue }
+                    let left = glyphX(line, local: lower - base), right = glyphX(line, local: upper - base)
+                    let x = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX
+                    let baseline = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
+                    rects.append(CGRect(x: x + left, y: baseline - font.ascender, width: max(1, right - left), height: font.ascender - font.descender))
+                }
             }
             return true
         }
@@ -498,6 +641,144 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         foldPopover?.isHidden = true
         popoverFold = nil
     }
+
+    // MARK: Proposed changes
+
+    private(set) var proposalLayer: TranscriptProposalLayer?
+    private var rotorsShowProposal: Bool?
+    private var changePopover: NSHostingView<ChangeEditPopover>?
+    /// The change whose edit popover shows.
+    private(set) var popoverChange: Int?
+    var changePopoverVisible: Bool { changePopover?.isHidden == false }
+    #if DEBUG
+    var changePopoverAuditView: NSView? { changePopoverVisible ? changePopover : nil }
+    #endif
+    /// Adds the focused change's Keep and Undo buttons above the text.
+    func installProposalLayer() {
+        guard proposalLayer == nil else { return }
+        let layer = TranscriptProposalLayer(frame: .zero)
+        layer.isHidden = true
+        layer.perform = { [weak self] action in
+            guard let self, let model = self.model else { return }
+            switch action {
+            case .keep: model.keepFocusedChange()
+            case .undo: model.excludeFocusedChange()
+            }
+            self.window?.makeFirstResponder(self)
+        }
+        addSubview(layer)
+        proposalLayer = layer
+    }
+    /// The Cuts, Pauses, Suggested fillers, Clips and AI words rotors, and Proposed changes while
+    /// a proposal shows (design.md §15).
+    func updateRotors(proposal: Bool) {
+        guard rotorsShowProposal != proposal else { return }
+        rotorsShowProposal = proposal
+        let labels = ["Cuts", "Pauses", "Suggested fillers", "Clips", "AI words"] + (proposal ? ["Proposed changes"] : [])
+        setAccessibilityCustomRotors(labels.map { NSAccessibilityCustomRotor(label: $0, itemSearchDelegate: self) })
+    }
+    /// Places the Keep and Undo buttons over the blank after the focused change (impl-plan item
+    /// 23), centred on its line; hidden while that line is outside the viewport.
+    func updateProposalButtons() {
+        guard let layer = proposalLayer else { return }
+        // Only a line in the viewport: asking TextKit for another paragraph's fragment would lay it out.
+        guard let renderer, let id = renderer.spacerID, let span = map.span(id: id), span.kind == .spacer, !renderer.spacerActions.isEmpty,
+              let manager = textLayoutManager, let content = manager.textContentManager, let viewport = manager.textViewportLayoutController.viewportRange,
+              case let start = content.offset(from: content.documentRange.location, to: viewport.location),
+              case let end = content.offset(from: content.documentRange.location, to: viewport.endLocation),
+              span.range.location >= start, span.range.location <= end,
+              let (fragment, line, base) = laidOutLine(atCharacter: span.range.location + TranscriptFold.glyphOffset),
+              case let glyph = span.range.location + TranscriptFold.glyphOffset - base, NSLocationInRange(glyph, line.characterRange) else { layer.hide(); return }
+        let origin = textContainerOrigin
+        let x = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + line.locationForCharacter(at: glyph).x
+        let box = TranscriptGutter.visualBox(of: line, font: renderer.font).offsetBy(dx: origin.x + fragment.layoutFragmentFrame.minX, dy: origin.y + fragment.layoutFragmentFrame.minY)
+        layer.show(renderer.spacerActions, blank: x, line: box)
+    }
+    /// Renders the model now, as `updateNSView` would, so a change focused from a click or the
+    /// rotor has its place in the text before it is measured.
+    private func renderNow() {
+        guard let model, let coordinator = delegate as? TranscriptTextView.Coordinator else { return }
+        coordinator.updating = true
+        TranscriptTextView.render(model, coordinator: coordinator)
+        coordinator.updating = false
+        updateProposalButtons()
+    }
+    /// The change whose new words lie under a point in this view.
+    func insertedChange(at point: CGPoint) -> Int? {
+        guard let manager = textLayoutManager, let content = manager.textContentManager, !map.isEmpty else { return nil }
+        let origin = textContainerOrigin
+        guard let fragment = manager.textLayoutFragment(for: CGPoint(x: point.x - origin.x, y: point.y - origin.y)), fragment.state == .layoutAvailable,
+              let element = fragment.textElement?.elementRange else { return nil }
+        let base = content.offset(from: content.documentRange.location, to: element.location)
+        let y = point.y - origin.y - fragment.layoutFragmentFrame.minY
+        guard let line = fragment.textLineFragments.first(where: { $0.typographicBounds.minY <= y && y < $0.typographicBounds.maxY }) else { return nil }
+        let lineRange = NSRange(location: base + line.characterRange.location, length: line.characterRange.length)
+        let left = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX
+        return map.intersecting(lineRange).first { span in
+            let overlap = NSIntersectionRange(span.range, lineRange)
+            guard span.kind == .inserted, overlap.length > 0 else { return false }
+            return point.x >= left + glyphX(line, local: overlap.location - base) && point.x <= left + glyphX(line, local: NSMaxRange(overlap) - base)
+        }?.change?.ordinal
+    }
+    /// Shows a change's edit popover under its last line, or above its first when the pane has
+    /// no room below, with its words in the field. A change out of view (scrolled away, or a
+    /// new proposal's first) comes into view first, and so does the popover, whose field takes
+    /// the keys, so nothing is typed into a field off screen.
+    func showChangePopover(_ ordinal: Int) {
+        guard let model, let renderer, let range = renderer.changeRange(ordinal) else { return }
+        scrollRangeToVisible(range)
+        textLayoutManager?.textViewportLayoutController.layoutViewport()
+        guard let first = lineBox(atCharacter: range.location), let last = lineBox(atCharacter: max(range.location, NSMaxRange(range) - 1)) else { return }
+        hideFoldPopover(); hideSelectionBar(); hideChangePopover(refocus: false)
+        let view = ChangeEditPopover(ordinal: ordinal, words: model.changeText(ordinal), fit: { [weak model] text in model?.changeFit(ordinal, text: text) },
+                                     save: { [weak self] text in self?.hideChangePopover(); self?.model?.editChange(ordinal, text: text) },
+                                     reject: { [weak self] in self?.hideChangePopover(); self?.model?.excludeChange(ordinal) },
+                                     cancel: { [weak self] in self?.hideChangePopover() })
+        let host = NSHostingView(rootView: view)
+        addSubview(host)
+        changePopover = host
+        let size = host.fittingSize, visible = visibleRect
+        let start = textBox(of: NSRange(location: range.location, length: 0))?.minX ?? first.minX
+        let x = min(max(visible.minX + 4, start - 12), visible.maxX - size.width - 4)
+        let below = last.maxY + 2, above = first.minY - 2 - size.height
+        let y = below + size.height <= visible.maxY || above < visible.minY ? below : above
+        host.frame = CGRect(x: x, y: y, width: size.width, height: size.height)
+        scrollToVisible(host.frame)
+        popoverChange = ordinal
+    }
+    func hideChangePopover(refocus: Bool = true) {
+        guard let host = changePopover else { return }
+        changePopover = nil; popoverChange = nil
+        host.removeFromSuperview()
+        if refocus { window?.makeFirstResponder(self) }
+    }
+    /// ⌘↩ keeps and ⌘⌫ undoes the focused change, ⌥↓ and ⌥↑ walk the changes, and F2, or
+    /// Return on the focused change or a selection in a change, edits it (impl-plan §3.2).
+    /// Returns false for any other key.
+    private func handleChangeKey(_ event: NSEvent, model: EditorModel) -> Bool {
+        guard let display = model.proposalDisplay else { return false }
+        let flags = event.modifierFlags.intersection([.command, .option, .shift, .control])
+        let returnKey = event.keyCode == 36 || event.keyCode == 76
+        switch (flags, event.keyCode) {
+        case (.command, _) where returnKey: model.keepFocusedChange(); return true
+        case (.command, 51): model.excludeFocusedChange(); return true
+        case (.option, 125), (.option, 126): model.focusNextChange(event.keyCode == 125 ? 1 : -1); return true
+        case ([], 120):
+            guard let focused = display.focused, !display.actions.isEmpty else { return false }
+            showChangePopover(focused); return true
+        case ([], _) where returnKey:
+            guard let ordinal = model.changeForReturn else { return false }
+            if ordinal != display.focused { model.focusChange(ordinal); renderNow() }
+            showChangePopover(ordinal); return true
+        default: return false
+        }
+    }
+    @objc func accessibleKeepChange() -> Bool { model?.keepFocusedChange() ?? false }
+    @objc func accessibleUndoChange() -> Bool { model?.excludeFocusedChange() ?? false }
+    @objc func accessibleEditChange() -> Bool {
+        guard let focused = model?.proposalDisplay?.focused else { return false }
+        showChangePopover(focused); return true
+    }
     /// Places the caret (impl-plan item 19): 2 × 19 at 15 pt, from 15 above the baseline to 4
     /// below, centred on the start of the playhead's word. Hidden while its line is offscreen.
     func updateCaret() {
@@ -600,7 +881,8 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     var selectionBarVisible: Bool { selectionBar?.isHidden == false }
     func refreshSelectionBar() {
         guard let model else { return }
-        let signature = "\(model.selectedWordIDs.sorted()):\(model.selectedPauseIDs.sorted()):\(model.findVisible):\(model.correctionID ?? ""):\(model.cutWordIDs):\(model.cutPauseIDs):\(model.capabilities):\(model.rewriteAsksFirst)"
+        let display = model.proposalDisplay
+        let signature = "\(model.selectedWordIDs.sorted()):\(model.selectedPauseIDs.sorted()):\(model.findVisible):\(model.correctionID ?? ""):\(model.cutWordIDs):\(model.cutPauseIDs):\(model.capabilities):\(model.rewriteAsksFirst):\(display?.focused ?? 0):\(display?.actions ?? [])"
         guard signature != barSignature else { return }
         barSignature = signature
         configureAccessibilityActions()
@@ -611,6 +893,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         if newSuperview == nil {
             hideSelectionBar()
             hideFoldPopover()
+            hideChangePopover(refocus: false)
             for token in scrollingTokens { NotificationCenter.default.removeObserver(token) }
             scrollingTokens = []
         }
@@ -622,6 +905,14 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             actions += [NSAccessibilityCustomAction(name: "Make Clip", target: self, selector: #selector(accessibleMakeClip)), NSAccessibilityCustomAction(name: "Cut selected words", target: self, selector: #selector(accessibleCut)), NSAccessibilityCustomAction(name: "Restore selection", target: self, selector: #selector(accessibleRestore)), NSAccessibilityCustomAction(name: "Correct spelling", target: self, selector: #selector(accessibleCorrect))]
         }
         if model?.capabilities.ai == true && RewriteEntryPolicy.buildEnabled { actions.append(NSAccessibilityCustomAction(name: "Rewrite", target: self, selector: #selector(accessibleRewrite))) }
+        // Keep and Undo are reached here and through the Proposed changes rotor, not the buttons (impl-plan §3.7).
+        if let display = model?.proposalDisplay, let focused = display.focused {
+            for action in display.actions {
+                actions.append(NSAccessibilityCustomAction(name: action == .keep ? "Keep change \(focused)" : "Undo change \(focused)", target: self,
+                                                           selector: action == .keep ? #selector(accessibleKeepChange) : #selector(accessibleUndoChange)))
+            }
+            if !display.actions.isEmpty { actions.append(NSAccessibilityCustomAction(name: "Edit change \(focused)", target: self, selector: #selector(accessibleEditChange))) }
+        }
         setAccessibilityCustomActions(actions)
     }
     func observeSelectionScrolling(_ scroll: NSScrollView) {
@@ -706,6 +997,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     @objc func accessiblePlay() -> Bool { guard let model else { return false }; model.transport(" ", shift: true); return true }
     func rotor(_ rotor: NSAccessibilityCustomRotor, resultFor parameters: NSAccessibilityCustomRotor.SearchParameters) -> NSAccessibilityCustomRotor.ItemResult? {
         guard let model else { return nil }
+        if rotor.label == "Proposed changes" { return changeRotor(parameters, model: model) }
         let clipStarts = Set(model.sortedClips.compactMap { map.span(id: $0.startWordId)?.id })
         let candidates = map.spans.filter { span in
             switch rotor.label {
@@ -730,6 +1022,25 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         result.customLabel = rotor.label == "Clips" ? clipNames(startingAt: span, model: model) : "\(spoken(span)), \(rotor.label)"
         return result
     }
+    /// The Proposed changes rotor (impl-plan §3.7): each shown change in transcript order, read
+    /// "Proposed change 1 of 5: removed to, to the; inserted your, in the". Landing on one focuses
+    /// it, so its Keep and Undo custom actions act on it.
+    private func changeRotor(_ parameters: NSAccessibilityCustomRotor.SearchParameters, model: EditorModel) -> NSAccessibilityCustomRotor.ItemResult? {
+        guard let display = model.proposalDisplay, let renderer else { return nil }
+        let items = display.shown.compactMap { shown in renderer.changeRange(shown.ordinal).map { (shown, $0) } }
+        let location = parameters.currentItem?.targetRange.location ?? NSNotFound
+        let item = parameters.searchDirection == .next ? items.first { location == NSNotFound || $0.1.location > location } : items.last { location == NSNotFound || $0.1.location < location }
+        guard let (shown, _) = item else { return nil }
+        if shown.ordinal != display.focused {
+            model.focusChange(shown.ordinal, announcing: false)
+            renderNow()
+        }
+        guard let range = renderer.changeRange(shown.ordinal) else { return nil }
+        let result = NSAccessibilityCustomRotor.ItemResult(targetElement: self)
+        result.targetRange = range
+        result.customLabel = shown.description
+        return result
+    }
     /// The Clips rotor names the clips that start at a word as the Explorer does ("Clip 1,
     /// Title" or "Suggested clip 3, Title"), since the transcript no longer marks them.
     private func clipNames(startingAt span: TranscriptSpan, model: EditorModel) -> String {
@@ -739,7 +1050,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         }.joined(separator: "; ")
     }
     override func accessibilityString(for range: NSRange) -> String? {
-        map.intersecting(range).filter { $0.selectable || $0.kind == .fold }.map(spoken).joined(separator: " ")
+        map.intersecting(range).filter { $0.selectable || $0.kind == .fold || $0.kind == .inserted }.map(spoken).joined(separator: " ")
     }
     override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
         let words = map.intersecting(range).filter(\.selectable)
@@ -759,7 +1070,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                 if let model { result.addAttribute(.accessibilityCustomText, value: [model.foldDescription(span.ids)], range: local) }
                 continue
             }
-            if span.kind == .ai { result.replaceCharacters(in: local, with: String(repeating: " ", count: local.length)); continue }
+            if span.kind == .ai || span.kind == .spacer { result.replaceCharacters(in: local, with: String(repeating: " ", count: local.length)); continue }
             if span.pause, overlap.location == span.range.location { result.replaceCharacters(in: NSRange(location: local.location, length: 1), with: " ") }
             let states = accessibilityStates(span)
             if !states.isEmpty { result.addAttribute(.accessibilityCustomText, value: states, range: local) }
@@ -768,7 +1079,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
     override func accessibilityValue() -> String? {
         let value = NSMutableString(string: string)
-        for span in map.spans where (span.kind == .ai || span.kind == .fold) && NSMaxRange(span.range) <= value.length {
+        for span in map.spans where (span.kind == .ai || span.kind == .fold || span.kind == .spacer) && NSMaxRange(span.range) <= value.length {
             value.replaceCharacters(in: span.range, with: String(repeating: " ", count: span.range.length))
         }
         return value as String
@@ -794,12 +1105,16 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
     private func accessibilityStates(_ span: TranscriptSpan) -> [String] {
         guard let model else { return [] }
+        // A proposed change's new words, and the words it removes: "in the, proposed", "to, proposed
+        // removal", read alike by word and as a line's attributed text.
+        if span.kind == .inserted { return ["proposed"] }
         if span.pause {
             guard let pause = model.pauseIndex[span.id] else { return [] }
             return ["pause \(toFixed1(pause.duration)) seconds"] + (model.cutPauseIDs.contains(span.id) ? ["cut"] : [])
         }
         let modified = aiModified(span)
         var states: [String] = []
+        if span.change?.role == .old { states.append("proposed removal") }
         // An accepted replacement never inherits the dormant source words' cut state.
         if !modified && model.cutWordIDs.contains(span.id) { states.append("cut") }
         if model.playingWordID.map({ span.id == $0 || span.ids.contains($0) }) == true { states.append("playing") }
@@ -810,7 +1125,9 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         model?.focusedPane = .transcript
         if event.keyCode == 53, model?.rewrite != nil { model?.closeRewrite(); return }
         guard let model, !hasMarkedText(), correction == nil else { super.keyDown(with: event); return }
+        if event.keyCode == 53, changePopoverVisible { hideChangePopover(); return }
         if event.keyCode == 53, foldPopoverVisible { hideFoldPopover(); return }
+        if handleChangeKey(event, model: model) { return }
         if event.keyCode == 53, selectionBarVisible { hideSelectionBar(dismissed: true); return }
         if event.keyCode == 53 { model.activate(nil); return }
         if EditorPane.entersSelectionBar(code: event.keyCode, modifiers: event.modifierFlags) {
@@ -843,6 +1160,17 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     override func mouseDown(with event: NSEvent) {
         finishCorrection()
         hideFoldPopover()
+        hideChangePopover(refocus: false)
+        // A click on a proposed change's new words focuses it and opens its edit popover (design.md §6.3.5).
+        if event.clickCount == 1, event.modifierFlags.isDisjoint(with: [.shift, .command, .option, .control]), let model,
+           let ordinal = insertedChange(at: convert(event.locationInWindow, from: nil)) {
+            hideSelectionBar()
+            window?.makeFirstResponder(self)
+            model.focusChange(ordinal)
+            renderNow()
+            if model.proposalDisplay?.actions.isEmpty == false { showChangePopover(ordinal) }
+            return
+        }
         // A click on a fold opens it and selects what it holds (notes.md §5).
         if event.clickCount == 1, event.modifierFlags.isDisjoint(with: [.shift, .command, .option, .control]), let model,
            let fold = fold(at: convert(event.locationInWindow, from: nil)) {
