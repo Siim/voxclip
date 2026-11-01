@@ -96,6 +96,7 @@ const tokenPairs = [
   ...['editor.band', 'bg.surface', 'bg.window'].map(background => ['ui', 'change.add', background, 'change bar, ruler mark and Outline dot']),
   ['ui', 'ai.wave', ['ai.tint@0.10', 'timeline.lane'], 'AI patch waveform on A1'],
   ...['bg.window', 'timeline.rulerOut'].map(background => ['text', 'timeline.rulerLabel', background, 'ruler timecode labels']),
+  ['ui', 'timeline.wave', 'timeline.audioPiece', 'A1 waveform core; its peak columns are the same colour at 62%'],
 ];
 
 // Colours kept below their minimum on purpose (impl-plan item 6), with the reason. Their
@@ -105,6 +106,8 @@ export const belowMinimum = {
   'text.disabled': 'v2 t4: disabled labels, keyboard hints and leading zero groups, which repeat a menu shortcut or a value read in full',
   'gutter.textOut': 'decorative: the paragraph time outside the open clip, which VoiceOver reads from the paragraph',
   'fold.dot': 'decorative: the fold reads "1 cut: uh, pause 1.4 seconds" and the Cuts rotor lands on it',
+  'timeline.piece': 'decorative 1 pt outline of a clip piece; its fill, filmstrip or waveform identify it',
+  'timeline.cutOutline': 'decorative dashed outline of a removed range in Source view; the empty lane, the transcript and the Cuts rotor carry the cut',
 };
 
 // Pairs measured with each colour's increaseContrast value where it has one (macOS Increase
@@ -117,6 +120,8 @@ const increaseContrastPairs = [
   ...['editor.band', 'bg.surface'].map(background => ['text', 'gutter.text', background]),
   ['text', 'gutter.textOut', 'bg.surface'],
   ['ui', 'fold.dot', 'editor.band'],
+  ...['timeline.lane', 'timeline.audioPiece'].map(background => ['ui', 'timeline.piece', background, 'A1 and V1 piece outlines']),
+  ['ui', 'timeline.cutOutline', 'timeline.lane', 'removed range outline on A1 in Source view'],
 ];
 
 // Colour tokens no pair checks, with the reason. Every other colour token must appear in a pair.
@@ -131,7 +136,7 @@ export const exempt = {
   'media.rim': 'decorative 1 px rim on media; the tile title and accessible name identify it',
   'media.sheen': 'loading shimmer; the Loading meta text and the accessible name carry the state',
   'tint.wash': 'selection wash over the timeline tracks; the ruler selection bar and the transcript selection carry it',
-  'timeline.piece': 'decorative 1 pt outline of a clip piece; its fill, filmstrip or waveform identify it',
+  'timeline.ghostWave': 'removed audio ghosted at 20% in Source view; the dashed outline, the transcript and the Cuts rotor carry the cut',
   'timeline.seam': 'decorative 1 pt cut seam; cuts are also folds in the transcript, the Cuts rotor and the status summary',
   'timeline.tick': 'decorative 6 pt minor ruler tick; the labelled major ticks carry the time',
 };

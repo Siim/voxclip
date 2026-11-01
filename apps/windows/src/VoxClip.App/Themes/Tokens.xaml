@@ -64,6 +64,10 @@
             <SolidColorBrush x:Key="VcTimelineLaneBrush" Color="#111214" />
             <SolidColorBrush x:Key="VcTimelineRulerOutBrush" Color="#131416" />
             <SolidColorBrush x:Key="VcTimelinePieceBrush" Color="#2E3035" />
+            <SolidColorBrush x:Key="VcTimelineAudioPieceBrush" Color="#1B1D21" />
+            <SolidColorBrush x:Key="VcTimelineWaveBrush" Color="#8B95A2" />
+            <SolidColorBrush x:Key="VcTimelineGhostWaveBrush" Color="#337F8996" />
+            <SolidColorBrush x:Key="VcTimelineCutOutlineBrush" Color="#3A3C41" />
             <SolidColorBrush x:Key="VcTimelineSeamBrush" Color="#0B0C0D" />
             <SolidColorBrush x:Key="VcTimelineRulerLabelBrush" Color="#8A8D93" />
             <SolidColorBrush x:Key="VcTimelineTickBrush" Color="#3A3C41" />
@@ -156,6 +160,10 @@
             <SolidColorBrush x:Key="VcTimelineLaneBrush" Color="#E4E2DC" />
             <SolidColorBrush x:Key="VcTimelineRulerOutBrush" Color="#E9E7E1" />
             <SolidColorBrush x:Key="VcTimelinePieceBrush" Color="#C9C7C0" />
+            <SolidColorBrush x:Key="VcTimelineAudioPieceBrush" Color="#F1F0EC" />
+            <SolidColorBrush x:Key="VcTimelineWaveBrush" Color="#5F6670" />
+            <SolidColorBrush x:Key="VcTimelineGhostWaveBrush" Color="#335F6670" />
+            <SolidColorBrush x:Key="VcTimelineCutOutlineBrush" Color="#B9BBBF" />
             <SolidColorBrush x:Key="VcTimelineSeamBrush" Color="#FAF9F6" />
             <SolidColorBrush x:Key="VcTimelineRulerLabelBrush" Color="#5E6168" />
             <SolidColorBrush x:Key="VcTimelineTickBrush" Color="#C9C7C0" />
@@ -248,6 +256,10 @@
             <SolidColorBrush x:Key="VcTimelineLaneBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcTimelineRulerOutBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="VcTimelinePieceBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcTimelineAudioPieceBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="VcTimelineWaveBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="VcTimelineGhostWaveBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="VcTimelineCutOutlineBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
             <SolidColorBrush x:Key="VcTimelineSeamBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcTimelineRulerLabelBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="VcTimelineTickBrush" Color="{ThemeResource SystemColorWindowTextColor}" />

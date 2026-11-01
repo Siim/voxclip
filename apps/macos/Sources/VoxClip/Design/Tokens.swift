@@ -387,9 +387,39 @@ extension Color {
     })
 
     static let vcTimelinePiece = Color(nsColor: NSColor(name: NSColor.Name("vcTimelinePiece")) { appearance in
+        switch appearance.bestMatch(from: [.darkAqua, .aqua, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastAqua]) ?? .aqua {
+        case .accessibilityHighContrastDarkAqua: NSColor(srgbRed: 108.0 / 255, green: 110.0 / 255, blue: 117.0 / 255, alpha: 255.0 / 255)
+        case .accessibilityHighContrastAqua: NSColor(srgbRed: 116.0 / 255, green: 118.0 / 255, blue: 125.0 / 255, alpha: 255.0 / 255)
+        case .darkAqua: NSColor(srgbRed: 46.0 / 255, green: 48.0 / 255, blue: 53.0 / 255, alpha: 255.0 / 255)
+        default: NSColor(srgbRed: 201.0 / 255, green: 199.0 / 255, blue: 192.0 / 255, alpha: 255.0 / 255)
+        }
+    })
+
+    static let vcTimelineAudioPiece = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineAudioPiece")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(srgbRed: 46.0 / 255, green: 48.0 / 255, blue: 53.0 / 255, alpha: 255.0 / 255)
-            : NSColor(srgbRed: 201.0 / 255, green: 199.0 / 255, blue: 192.0 / 255, alpha: 255.0 / 255)
+            ? NSColor(srgbRed: 27.0 / 255, green: 29.0 / 255, blue: 33.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 241.0 / 255, green: 240.0 / 255, blue: 236.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcTimelineWave = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineWave")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 139.0 / 255, green: 149.0 / 255, blue: 162.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 95.0 / 255, green: 102.0 / 255, blue: 112.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcTimelineGhostWave = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineGhostWave")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 127.0 / 255, green: 137.0 / 255, blue: 150.0 / 255, alpha: 51.0 / 255)
+            : NSColor(srgbRed: 95.0 / 255, green: 102.0 / 255, blue: 112.0 / 255, alpha: 51.0 / 255)
+    })
+
+    static let vcTimelineCutOutline = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineCutOutline")) { appearance in
+        switch appearance.bestMatch(from: [.darkAqua, .aqua, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastAqua]) ?? .aqua {
+        case .accessibilityHighContrastDarkAqua: NSColor(srgbRed: 108.0 / 255, green: 110.0 / 255, blue: 117.0 / 255, alpha: 255.0 / 255)
+        case .accessibilityHighContrastAqua: NSColor(srgbRed: 116.0 / 255, green: 118.0 / 255, blue: 125.0 / 255, alpha: 255.0 / 255)
+        case .darkAqua: NSColor(srgbRed: 58.0 / 255, green: 60.0 / 255, blue: 65.0 / 255, alpha: 255.0 / 255)
+        default: NSColor(srgbRed: 185.0 / 255, green: 187.0 / 255, blue: 191.0 / 255, alpha: 255.0 / 255)
+        }
     })
 
     static let vcTimelineSeam = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineSeam")) { appearance in
