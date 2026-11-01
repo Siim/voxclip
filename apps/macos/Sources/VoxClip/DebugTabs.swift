@@ -341,22 +341,41 @@ import VoxClipCore
         return results
     }
 
-    /// At 1280 six tabs shrink together, never under 96, with no chevron; at 960 they
-    /// overflow: each at most 96, the row scrolls to the active tab, and the chevron lists
-    /// them all (impl-plan §3.5).
+    /// At 1280 the tabs get what Show cuts and ⋯ leave of the 652 pt tab row, less the drag
+    /// gap: 460, room for four at 96. Four shrink together, never under 96, with no chevron,
+    /// and a fifth scrolls behind it. At 960 six overflow: each at most 96, the row scrolls
+    /// to the active tab, and the chevron lists them all (impl-plan §3.5).
     private static func narrowChecks(window: NSWindow, shell: WorkspaceShell, bar: EditorTabBarView, kept: [String], suggested: [String]) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         guard let root = window.contentView else { return results }
-        for id in kept { shell.selection = .clip(id) }
-        shell.selection = .clip(suggested[0])
-        bar.render()
-        root.layoutSubtreeIfNeeded()
+        guard let showCuts = DebugShell.firstView(ShowCutsToggle.self, in: root) else { return [.init(name: "the tab row holds Show cuts", passed: false)] }
+        func settle() {
+            bar.render()
+            root.layoutSubtreeIfNeeded()
+        }
+        func ends() -> [CGFloat] { bar.overflowing ? [bar.overflowButton.frame.maxX] : bar.order.compactMap { bar.items[$0]?.frame.maxX } }
+        // Clip 1, Clip 2, Full Take and the suggestion's preview tab ("Suggested clip 5").
+        for tab in shell.tabs.open where tab != .fullTake { shell.closeTab(tab) }
+        for id in [kept[0], kept[1], suggested[0]] { shell.selection = .clip(id) }
+        settle()
+        check("at 1280 Show cuts, with its label, and ⋯ end the tab row after the tab bar (bar \(Int(bar.frame.width)), Show cuts \(Int(showCuts.frame.minX))+\(Int(showCuts.frame.width)))",
+              !showCuts.isHidden && !showCuts.compact && showCuts.superview === bar.superview && bar.frame.maxX <= showCuts.frame.minX)
+        let naturals = bar.order.compactMap { bar.items[$0]?.naturalWidth }
         let widths = bar.order.compactMap { bar.items[$0]?.frame.width }
-        check("at 1280 six tabs shrink to fit, none under 96, with no chevron (\(widths.map { Int($0) }))",
-              widths.count == 6 && widths.allSatisfy { $0 >= EditorTabMetrics.minimumWidth } && widths.reduce(0, +) <= bar.tabRoom + 0.5 && !bar.overflowing && bar.overflowButton.isHidden)
+        check("at 1280 four tabs shrink to fit beside Show cuts, none under 96, with no chevron (\(naturals.map { Int($0) }) to \(widths.map { Int($0) }) in \(Int(bar.tabRoom)))",
+              widths.count == 4 && naturals.reduce(0, +) > bar.tabRoom + 0.5 && widths.allSatisfy { $0 >= EditorTabMetrics.minimumWidth } && widths.reduce(0, +) <= bar.tabRoom + 0.5
+              && !bar.overflowing && bar.overflowButton.isHidden && ends().allSatisfy { $0 <= bar.tabRoom + 0.5 })
         check("at 1280 the shrunk tabs leave the row's end to the title row, which moves the window (\(dragGapHit(bar, in: root).map { String(describing: type(of: $0)) } ?? "nothing"))",
               (dragGapHit(bar, in: root) as? ShellBand)?.movesWindow == true)
+        shell.selection = .clip(kept[2])
+        settle()
+        check("at 1280 a fifth tab scrolls behind the chevron: the row has room for four at 96 (\(Int(bar.tabRoom)))",
+              bar.order.count == 5 && Int(bar.tabRoom / EditorTabMetrics.minimumWidth) == 4 && bar.overflowing && !bar.overflowButton.isHidden && ends().allSatisfy { $0 <= bar.tabRoom + 0.5 })
+        check("at 1280 the chevron leaves the row's end to the title row (\(dragGapHit(bar, in: root).map { String(describing: type(of: $0)) } ?? "nothing"))",
+              (dragGapHit(bar, in: root) as? ShellBand)?.movesWindow == true)
+        // Six tabs, the preview active, for the window minimum.
+        for id in [kept[3], suggested[0]] { shell.selection = .clip(id) }
         window.setContentSize(NSSize(width: 960, height: 600))
         shell.windowWidth = 960
         // SwiftUI applies the narrow layout (the Explorer folds away) a pass or two later.
