@@ -174,6 +174,7 @@ import VoxClipMedia
     func returnToRewrite() {
         leaveVoiceControls()
         guard !busy else { return }
+        if flow.state == .finished, unsavedRecord == nil { finishCreation() }
         // Preserve local enrollment when switching jobs. Closing the proposal never approves a send.
         if let owner = flow.owner { owner.app.shell.choosePanelJob(.rewrite, for: owner) }
     }
@@ -642,10 +643,19 @@ import VoxClipMedia
     }
     var creationTitle: String { "Create My Voice · " + creationCost }
     func finishCreation() {
+        guard !busy, unsavedRecord == nil else { return }
+        resetEnrollmentDraft()
+    }
+    private func resetEnrollmentDraft() {
+        leaveVoiceControls()
         recordID = UUID().uuidString.lowercased()
         statement = nil; statementWAV = nil; training = []; flow.plan = nil; flow.recoveryIDs = []; flow.finishedRecord = nil
         trainingReady = false; recordingTraining = false
         statementPlayer?.stop(); recorder.discard(); showEnrollment = false
+        flow.state = .firstUse; flow.priceAppearedAt = nil; flow.capWarning = nil; flow.statementSeconds = 0
+        flow.keyDraft = ""; flow.keyChecked = false; flow.keyReady = false; flow.turn += 1
+        ownVoice = false; adult = false; ownVideosOnly = false; displayName = ""; script = ""
+        trainingSource = .readAloud; projectMismatch = false; message = nil
         closeProjectAudio()
     }
     func cancelEnrollment() async {
@@ -657,9 +667,7 @@ import VoxClipMedia
             try await store.abandonEnrollment(recordID: recordID)
         } catch { message = "The statement recording could not be removed. Retry Remove This Voice to finish cleanup."; return }
         unsavedRecord = nil
-        statementWAV = nil; training = []; trainingReady = false; statement = nil; flow.plan = nil
-        showEnrollment = false
-        closeProjectAudio()
+        resetEnrollmentDraft()
         await load(force: true)
     }
     func withdrawOperation(_ operation: VoiceOperation) async {

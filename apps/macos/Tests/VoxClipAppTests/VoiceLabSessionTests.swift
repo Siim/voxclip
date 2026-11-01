@@ -345,7 +345,8 @@ import Synchronization
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = VoiceConsentStore(locations: locations(root))
-        let session = VoiceLabSession(app: AppModel(), store: store)
+        let app = AppModel(locations: locations(root))
+        let session = VoiceLabSession(app: app, store: store)
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
         let shared = try SharedResources.locate()
         var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))) as? [String: Any])
@@ -355,10 +356,23 @@ import Synchronization
         let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
         try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
         session.trainingReady = true
-        session.finishCreation()
+        session.flow.state = .finished; session.flow.finishedRecord = record
+        session.flow.capWarning = "Old warning"; session.flow.priceAppearedAt = .now; session.flow.statementSeconds = 5
+        session.voicePrimary(command: true)
         #expect(session.recordID != record.id && !session.trainingReady && session.statement == nil)
-        session.showEnrollment = true
+        #expect(session.flow.state == .firstUse && session.flow.finishedRecord == nil && session.flow.priceAppearedAt == nil)
+        #expect(session.flow.capWarning == nil && session.flow.statementSeconds == 0 && !session.canCreate)
+        session.openEnrollment(project: nil, startAnalysis: false)
+        #expect(session.showEnrollment && session.flow.state == .firstUse)
+        session.flow.state = .finished; session.flow.finishedRecord = record
+        session.unsavedRecord = record
+        session.finishCreation()
+        #expect(session.flow.state == .finished && session.unsavedRecord == record)
+        session.unsavedRecord = nil
         await session.cancelEnrollment()
+        #expect(session.flow.state == .firstUse && session.flow.finishedRecord == nil && !session.showEnrollment)
+        session.openEnrollment(project: nil, startAnalysis: false)
+        #expect(session.flow.state == .firstUse && !session.canCreate)
         #expect(try await store.load(record.id) == record)
         #expect(try await store.statement(recordID: record.id) == wav)
         await #expect(throws: VoiceConsentError.inactive) { try await store.withdrawCreation(recordID: record.id) }
@@ -366,6 +380,20 @@ import Synchronization
         let restarted = VoiceConsentStore(locations: locations(root))
         await #expect(throws: (any Error).self) { try await restarted.reconcileAbandonedEnrollments() }
         #expect(FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/record.json").path))
+    }
+
+    @Test func temporaryVoiceNavigationPreservesTheCompletedDraftAndState() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(locations: locations(root)); app.settings.values["voiceLab.enabled"] = .bool(true)
+        let session = app.voiceLabSession
+        session.showEnrollment = true; session.flow.state = .statement
+        session.recorder.simulateTake(samples: [Float](repeating: 0.1, count: 5 * 48_000), at: .now) {}
+        await session.stopRecording()
+        let id = session.recordID
+        #expect(session.hasStatementRecording)
+        session.returnToRewrite()
+        #expect(session.showEnrollment && session.flow.state == .statement && session.hasStatementRecording && session.recordID == id)
     }
     @Test func enablingBetaLoadsExistingRecordsBeforeAccountApproval() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

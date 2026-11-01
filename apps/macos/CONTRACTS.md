@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## F3 — terminal enrollment reset is distinct from navigation (1 Nov 2026)
+
+- Successful Done/Back and successful cancellation reset transient V-state, plan/price/recovery presentation, agreement boxes, statement/training draft and recording turn to clean first use. Reopening evaluates actual prerequisites and cannot show stale V6 or a paid-ready action without a plan. Temporary job navigation preserves completed local draft audio and its state, while F1 discards an ongoing take.
+- Unsaved remote creation cannot be dismissed with Done; Retry Save/Remove remains required. Reset rotates only the current draft ID and never abandons the prior saved active voice. Regression tests exercise the real keyboard footer action, reopen, cancel/reset, unsaved-dismiss refusal and preservation of saved consent/audio.
+
 ## F2 — recovery upload disclosure matches immutable clone payload (1 Nov 2026)
 
 - All three inline recovery surfaces use one copy: saved statement **and** training audio go to ElevenLabs; only the statement check is not repeated, and no video is sent. Creation-only quote, immutable recovery payload and request pricing are unchanged.

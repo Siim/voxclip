@@ -1467,6 +1467,8 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 
 Leaving Voice via Back, the job switcher, a tab/scope change, Home, hidden right column or window/owner exit stops and discards an ongoing statement/read-aloud before hiding its controls. Already completed local draft audio survives temporary navigation. Automatic stop is session-owned and handled once even without a mounted view; canceled or late results cannot restore a discarded recording. No background/invisible recording is supported.
 
+Done/Back after successful creation and successful cancellation are terminal: they reset the transient enrollment step, price/plan, recovery presentation and agreement/recording draft. Reopening starts at actual prerequisites/agreement, never stale success. Saved voices and their consent audio survive. An unsaved remote creation must still be saved or explicitly removed; Done cannot silently drop it.
+
 | State | Where | Copy and action |
 |---|---|---|
 | No ElevenLabs key | V0 | §6.3.7 V0 |
