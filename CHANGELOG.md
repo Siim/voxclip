@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Repeated voice retries now retire evicted private audio after playback consumers stop, keeping only the three visible take slots without deleting paid assets.
+
 - Finishing or canceling voice enrollment clears stale steps and approval copy; reopening starts from current prerequisites without deleting saved voices.
 
 - Voice creation recovery now clearly discloses that saved statement and training audio are uploaded again, without repeating the statement check.

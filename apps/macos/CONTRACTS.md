@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+## F4 — bounded private retry scratch and drained eviction (1 Nov 2026)
+
+- The existing per-phrase backend exposes `retire` → `VoiceLabTakeRun.reject`. A full three-slot row retires only its unselected evicted slot, awaiting consumer shutdown and private mixed/fitted/snapshot removal before the retry proceeds. Selected and surviving slots stay usable. Original/published paid assets are not garbage-collected.
+- Private retained scratches are bounded to three per phrase plus at most one staged/in-flight attempt in the serialized set runner. Progress/final duplicates are deduplicated within the bounded current batch, so an evicted row is not resurrected. Stop drains execution/eviction; the invalidation task also drains the outstanding operation. Stale results still update known spend accounting but cannot update display slots and retire their private scratch.
+- Deterministic retry coverage retains the evicted lease and blocks a registered consumer: files exist until that consumer releases, then both private directories disappear. Repeated retries assert three live scratches, preserved selection, publication from every surviving slot and original paid data after invalidation. No unity, short-speech or QA guard changed.
+
 ## F3 — terminal enrollment reset is distinct from navigation (1 Nov 2026)
 
 - Successful Done/Back and successful cancellation reset transient V-state, plan/price/recovery presentation, agreement boxes, statement/training draft and recording turn to clean first use. Reopening evaluates actual prerequisites and cannot show stale V6 or a paid-ready action without a plan. Temporary job navigation preserves completed local draft audio and its state, while F1 discards an ongoing take.

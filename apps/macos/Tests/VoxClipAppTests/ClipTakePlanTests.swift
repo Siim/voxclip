@@ -325,19 +325,76 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let plan = fixture.plan
         await plan.prepare(); await plan.start(approved: true)
         let original = try #require(plan.phrases[0].selectedID)
+        var held: [UUID: VoiceLabTakeScratch] = [:]
+        let initialScratch = try #require(await plan.scratch(take: original, phrase: 0))
+        held[original] = initialScratch
         for _ in 0..<3 {
             await plan.prepareAnother(phrase: 0)
             await plan.tryAnother(phrase: 0, approved: true)
+            for take in plan.phrases[0].takes {
+                let scratch = try #require(await plan.scratch(take: take.id, phrase: 0))
+                held[take.id] = scratch
+            }
         }
         #expect(ClipTakeHTTP.state.withLock { $0.seeds == [7, 10, 11, 12] })
         #expect(plan.phrases[0].takes.count == 3)
         #expect(plan.phrases[0].takes.map(\.number).sorted() == [1, 2, 3])
         #expect(plan.phrases[0].takes.contains { $0.id == original })
+        #expect(held.count == 4 && held.values.filter(\.isValid).count == 3)
         let selected = try #require(plan.phrases[0].selectedID)
         let scratch = await plan.scratch(take: selected, phrase: 0)
         #expect(scratch?.isValid == true)
         let output = try await plan.acceptance()
         #expect(output.segments.count == 1)
+    }
+
+    @Test func repeatedRetryRetiresOnlyEvictedScratchesAndDrainsConsumers() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare(); await plan.start(approved: true)
+        let selected = try #require(plan.phrases[0].selectedID)
+        for _ in 0..<2 { await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true) }
+        #expect(plan.select(take: selected, phrase: 0))
+        let number = plan.phrases[0].nextTakeNumber
+        let evicted = try #require(plan.phrases[0].takes.first { $0.number == number })
+        let scratch = try #require(await plan.scratch(take: evicted.id, phrase: 0))
+        let privateMixed = scratch.mixedAudioURL.deletingLastPathComponent()
+        let privatePaid = scratch.fitted.snapshot.url.deletingLastPathComponent()
+        let barrier = ClipTakeBarrier()
+        _ = try scratch.attach {
+            #expect(FileManager.default.fileExists(atPath: privateMixed.path) && FileManager.default.fileExists(atPath: privatePaid.path))
+            await barrier.pause()
+        }
+        await plan.prepareAnother(phrase: 0)
+        let retry = Task { await plan.tryAnother(phrase: 0, approved: true) }
+        await barrier.wait()
+        #expect(!scratch.isValid && plan.generating)
+        #expect(FileManager.default.fileExists(atPath: privateMixed.path) && FileManager.default.fileExists(atPath: privatePaid.path))
+        #expect(plan.phrases[0].selectedID == selected)
+        barrier.resume(); await retry.value
+        #expect(!FileManager.default.fileExists(atPath: privateMixed.path) && !FileManager.default.fileExists(atPath: privatePaid.path))
+        #expect(await plan.scratch(take: evicted.id, phrase: 0) == nil)
+        var allIDs = Set(plan.phrases[0].takes.map(\.id)); allIDs.insert(evicted.id)
+        for _ in 0..<4 {
+            #expect(plan.select(take: selected, phrase: 0))
+            await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
+            allIDs.formUnion(plan.phrases[0].takes.map(\.id))
+            var live = 0
+            for id in allIDs {
+                if let retained = await plan.scratch(take: id, phrase: 0) { #expect(retained.isValid); live += 1 }
+            }
+            #expect(live == 3 && plan.phrases[0].takes.count == 3 && plan.phrases[0].takes.contains { $0.id == selected })
+            for take in plan.phrases[0].takes {
+                #expect(plan.select(take: take.id, phrase: 0))
+                #expect(try await plan.acceptance().segments.count == 1)
+            }
+        }
+        var survivors: [VoiceLabTakeScratch] = []
+        for take in plan.phrases[0].takes { survivors.append(try #require(await plan.scratch(take: take.id, phrase: 0))) }
+        plan.invalidate(); await plan.invalidation?.value
+        #expect(survivors.allSatisfy { !$0.isValid })
+        let paid = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(fixture.source.id)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: paid.path).contains { $0.hasSuffix(".wav") })
     }
 
     @Test func changedLengthIsVisibleButCannotBeAccepted() async throws {

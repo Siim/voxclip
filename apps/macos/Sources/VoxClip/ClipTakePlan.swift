@@ -46,6 +46,7 @@ import VoxClipMedia
         var invalidate: @MainActor () async -> Void
         var publish: @MainActor (Int, VoiceLabTakeRow, VoiceLabTakeInput, Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord)
         var scratch: @MainActor (Int, UUID) async -> VoiceLabTakeScratch?
+        var retire: @MainActor (Int, UUID) async -> Void
 
         init(runs: [VoiceLabTakeRun]) {
             prepare = { inputs, indices, candidates in
@@ -59,6 +60,7 @@ import VoxClipMedia
             invalidate = { for run in runs { await run.invalidate() } }
             publish = { phrase, row, input, date in try await runs[phrase].publishForAcceptance(row, input: input, at: date) }
             scratch = { phrase, take in await runs[phrase].scratch(for: take) }
+            retire = { phrase, take in await runs[phrase].reject(take) }
         }
     }
     private(set) var phrases: [Phrase]
@@ -71,6 +73,8 @@ import VoxClipMedia
     private(set) var spent = VoiceLabTakeRunQuote.total(of: [], takes: 0)
     let audition: VoiceLabAudition
     @ObservationIgnored private var auditionTurn = UUID()
+    @ObservationIgnored private var receivedInBatch: Set<UUID> = []
+    @ObservationIgnored private(set) var invalidation: Task<Void, Never>?
     @ObservationIgnored private let project: Project
     @ObservationIgnored private let scope: VoiceLabOutputScope
     @ObservationIgnored private let makeInput: @MainActor (Phrase) async throws -> VoiceLabTakeInput
@@ -225,7 +229,7 @@ import VoxClipMedia
         guard approved, !generating, !preparing, !publishing, !retired, operation == nil, let batch, let backend else { return }
         guard quoteID == batch.id else { return }
         stopAudition()
-        generating = true; problem = ""
+        generating = true; problem = ""; receivedInBatch = []
         let version = revision
         operation = Task { [weak self] in
             guard let self else { return }
@@ -243,7 +247,7 @@ import VoxClipMedia
                     let result = try await backend.execute(batch, offset, phrase) { [weak self] rows in
                         await self?.receive(rows, phrase: phrase, batch: batch, version: version)
                     }
-                    receive(result.rows, phrase: phrase, batch: batch, version: version)
+                    await receive(result.rows, phrase: phrase, batch: batch, version: version)
                     try checkCurrent(version)
                     try progress?.finish(window: offset, result: result)
                     if result.end == .cancelled || result.end == .invalidated { throw CancellationError() }
@@ -291,9 +295,11 @@ import VoxClipMedia
 
     func invalidate() {
         stopAudition()
+        guard !retired else { return }
         retired = true; revision += 1; operation?.cancel(); batch = nil; cost = nil
         let backend = backend
-        Task { await backend?.invalidate() }
+        let operation = operation
+        invalidation = Task { await backend?.invalidate(); await operation?.value }
     }
 
     @discardableResult func select(take: UUID, phrase: Int) -> Bool {
@@ -340,8 +346,7 @@ import VoxClipMedia
         return stillCurrent ? scratch : nil
     }
 
-    private func receive(_ rows: [VoiceLabTakeRow], phrase: Int, batch: VoiceLabTakeBatch, version: Int) {
-        guard (revision == version || stopping), !retired else { return }
+    private func receive(_ rows: [VoiceLabTakeRow], phrase: Int, batch: VoiceLabTakeBatch, version: Int) async {
         for row in rows {
             let newIDs = row.acceptedRequestIDs.subtracting(sent)
             if !newIDs.isEmpty {
@@ -351,16 +356,28 @@ import VoxClipMedia
                 }
                 spent = VoiceLabTakeRunQuote.total(of: charges, takes: madeRequests.count)
             }
+            guard (revision == version || stopping), !retired, isCurrent() else {
+                await backend?.retire(phrase, row.id)
+                continue
+            }
+            guard receivedInBatch.insert(row.id).inserted else { continue }
             guard !phrases[phrase].takes.contains(where: { $0.id == row.id }) else { continue }
             if phrases[phrase].takes.count == 3 {
                 let number = phrases[phrase].nextTakeNumber
                 if let replaced = phrases[phrase].takes.firstIndex(where: { $0.number == number }) {
+                    let evicted = phrases[phrase].takes[replaced].id
+                    await backend?.retire(phrase, evicted)
+                    guard (revision == version || stopping), !retired, isCurrent() else {
+                        await backend?.retire(phrase, row.id)
+                        continue
+                    }
                     phrases[phrase].takes[replaced] = Take(number: number, row: row)
                 }
             } else {
                 phrases[phrase].takes.append(Take(number: phrases[phrase].takes.count + 1, row: row))
             }
         }
+        guard (revision == version || stopping), !retired, isCurrent() else { return }
         let best = phrases[phrase].takes.filter { $0.row.selectable }.max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
         if let best { phrases[phrase].selectedID = best.id }
     }
