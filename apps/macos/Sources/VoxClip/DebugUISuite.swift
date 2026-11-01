@@ -1069,7 +1069,11 @@ import ApplicationServices
         hosting.layoutSubtreeIfNeeded()
         func prepare(_ view: NSView) {
             if let text = view as? NSTextView {
-                if let manager = text.textLayoutManager, let range = manager.textContentManager?.documentRange { manager.ensureLayout(for: range); manager.textViewportLayoutController.layoutViewport() }
+                if let manager = text.textLayoutManager, let range = manager.textContentManager?.documentRange {
+                    manager.ensureLayout(for: range)
+                    // The transcript moves its backdrop, selection, caret and ruler window with it.
+                    if let transcript = text as? TranscriptNSTextView { transcript.layOutViewport() } else { manager.textViewportLayoutController.layoutViewport() }
+                }
                 text.displayIfNeeded()
             }
             view.subviews.forEach(prepare)

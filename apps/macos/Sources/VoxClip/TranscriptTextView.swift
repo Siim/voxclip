@@ -316,11 +316,27 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         addSubview(caret, positioned: .above, relativeTo: layer)
         selectionLayer = layer; self.caret = caret
     }
-    /// Every viewport layout (scrolling, resizing, new text) moves the backdrop, the
-    /// selection, the caret and the overview ruler's visible window with the lines TextKit
-    /// just placed.
-    override func textViewportLayoutControllerDidLayout(_ controller: NSTextViewportLayoutController) {
-        super.textViewportLayoutControllerDidLayout(controller)
+    /// TextKit 2 lays the viewport out in the text view's layout pass, which scrolling,
+    /// resizing and new text each ask for, so after it the backdrop, the selection, the caret
+    /// and the overview ruler's visible window move with the lines it placed. Not
+    /// `textViewportLayoutControllerDidLayout(_:)`: NSTextView declares it from macOS 27 only.
+    override func layout() {
+        super.layout()
+        viewportDidLayout()
+    }
+    /// Lays the viewport out now, as the layout pass does, for the DEBUG checks and tests.
+    func layOutViewport() {
+        textLayoutManager?.textViewportLayoutController.layoutViewport()
+        viewportDidLayout()
+    }
+    /// Moves what follows the laid-out lines. Where a layout pass left the viewport short of
+    /// the visible rect, it is laid out first, so these never measure lines from before a scroll.
+    func viewportDidLayout() {
+        if let controller = textLayoutManager?.textViewportLayoutController, case let visible = visibleRect, !visible.isEmpty {
+            // The viewport is in text container coordinates.
+            let needed = visible.offsetBy(dx: -textContainerOrigin.x, dy: -textContainerOrigin.y)
+            if !controller.viewportBounds.insetBy(dx: -1, dy: -1).contains(needed) { controller.layoutViewport() }
+        }
         updateBackdrop()
         updateSelectionLayer()
         updateCaret()

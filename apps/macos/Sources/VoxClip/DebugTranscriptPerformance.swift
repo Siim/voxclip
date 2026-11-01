@@ -101,7 +101,7 @@ import VoxClipCore
         model.showsCuts = true
         render()
         manager.ensureLayout(for: manager.documentRange)
-        manager.textViewportLayoutController.layoutViewport()
+        text.layOutViewport()
         text.displayIfNeeded()
         let revision = renderer.storageRevision
         var cutTimes: [Double] = []
@@ -124,7 +124,7 @@ import VoxClipCore
                 let maximum = max(0, text.bounds.height - scroll.contentView.bounds.height)
                 scroll.contentView.scroll(to: NSPoint(x: 0, y: min(maximum, Double(frame) * 28)))
                 scroll.reflectScrolledClipView(scroll.contentView)
-                manager.textViewportLayoutController.layoutViewport()
+                text.layOutViewport()
                 text.displayIfNeeded()
                 let time = milliseconds(start.duration(to: .now))
                 if text.selectionLayer?.rects.isEmpty == false { tinted += 1 }

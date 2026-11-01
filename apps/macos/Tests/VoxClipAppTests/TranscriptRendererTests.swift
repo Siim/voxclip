@@ -176,7 +176,7 @@ import Testing
         model.activate(model.project.edits.clips[0])
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
-        try #require(text.textLayoutManager).textViewportLayoutController.layoutViewport()
+        text.layOutViewport()
         #expect(text.backdrop?.band?.suggested == true, "a suggestion's bar is dashed")
         let revision = renderer.storageRevision
         model.keepAll()

@@ -36,7 +36,7 @@ import VoxClipCore
         renderer.update(TranscriptAppearance(cutWords: ["pixel-cut"], lowConfidence: true, playhead: 1.4))
         guard let manager = text.textLayoutManager else { throw CocoaError(.coderInvalidValue) }
         manager.ensureLayout(for: manager.documentRange)
-        manager.textViewportLayoutController.layoutViewport()
+        text.layOutViewport()
         guard let fragment = manager.textLayoutFragment(for: manager.documentRange.location), let line = fragment.textLineFragments.first else { throw CocoaError(.coderInvalidValue) }
         let font = DesignValues.transcriptFont(size: model.textSize)
         let baseline = text.textContainerOrigin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
@@ -114,7 +114,7 @@ import VoxClipCore
             results.append(.init(name: "the pause's accessible description includes duration and cut", passed: text.map.span(id: pause.id).flatMap { text.accessibilityString(for: $0.range) }?.hasSuffix(", cut") == true))
         }
         manager.ensureLayout(for: manager.documentRange)
-        manager.textViewportLayoutController.layoutViewport()
+        text.layOutViewport()
         for (name, mode) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             let appearance = NSAppearance(named: mode)!
             window.appearance = appearance
@@ -127,7 +127,7 @@ import VoxClipCore
                 pageState.cutPauses = pauseCut ? Set(model.pauses.map(\.id)) : []
                 renderer.update(pageState)
                 manager.ensureLayout(for: manager.documentRange)
-                manager.textViewportLayoutController.layoutViewport()
+                text.layOutViewport()
                 text.backgroundColor = DesignValues.nsColor("bg.surface")
                 text.needsDisplay = true
                 guard let cached = text.bitmapImageRepForCachingDisplay(in: text.bounds) else { return }
@@ -795,7 +795,7 @@ extension DebugTranscriptPixels {
         scroll.tile()
         guard let manager = text.textLayoutManager else { return }
         manager.ensureLayout(for: manager.documentRange)
-        manager.textViewportLayoutController.layoutViewport()
+        text.layOutViewport()
     }
     /// Scrolls the line holding a character to 24 pt below the top.
     func scroll(toCharacter offset: Int) {
