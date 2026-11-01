@@ -295,7 +295,11 @@ How it is built:
 
 ### 3.4 Sidebar rows
 
-**Shared order:**
+**macOS v2 Explorer.** The flat pane keeps a native plain `List` and its system selection highlight (the accepted deviation from the mockup's `selrow`). In the editor its sections are Take, Clips, Outline and Suggested. Each disclosure has an uppercase 11 pt semibold heading, a count and a spoken name such as "Clips, 2 items". Expanded state persists under `ui.explorer.take`, `.clips`, `.outline`, `.suggested` and `.recent`; this never edits the project. Home shows Home and Recent.
+
+A single click previews a clip or suggestion in the one temporary tab. Double-click keeps that tab open; selecting an already pinned tab leaves it pinned. Return still keeps a suggestion or renames a kept clip, and Delete dismisses or removes it. The Outline uses the take's `TranscriptParagraphs`, filtered by overlap with the open tab, with take time in mono `m:ss` and the first six words. A click scrolls through the transcript's scope-scroll path without moving scope, playhead or word selection. A green dot means pending changes (wired when V14 and V2 are both merged); a blue dot means enabled AI speech in that paragraph. Both states are spoken. Outline Return/Delete do not rename or remove the open clip; ⇧⌘↩ still keeps its suggestion.
+
+**Windows order:**
 
 1. Home.
 2. A separator (Windows) or section gap (macOS).
@@ -308,16 +312,18 @@ How it is built:
 
 | Element | macOS | Windows |
 |---|---|---|
-| Nav row (Home, Recent items) | 30 high; Recent thumbnails 36×20 | 40 high; Recent thumbnails 32×18, two lines (title, then "2:36 · Today" in 12 `text.secondary`) |
-| Project header | `Section` header: project title only, 11/600 `text.secondary` | `NavigationViewItemHeader`: title 14/20 semibold over the file name, 12 `text.secondary` |
-| Full take row | 58 high; 16 badge column left empty; 36×20 landscape thumbnail centred in a 36 column; "Full Take" 13/500; meta | 44 high; 32×18 thumbnail; "Full take" 14; meta |
-| Clip row | 58 high (74 with a second status line); 16 badge column; 26×46 thumbnail (9:16); title 13/500, one line, truncated at the tail; meta 11 | 60 high (76 with a second status line); 27×48 thumbnail in a 32 column with the 16×16 badge over its top-left corner (offset −4, 1 px page ring); title 14 at x 60; meta 12 |
-| Selection | native `List` selection, radius 10. Unfocused: neutral system fill. Focused (`backgroundProminence == .increased`): system accent fill and white text; the badge becomes a 1 px white outline with a white numeral; meta and the Exported glyph are white at 88%; the thumbnail gets a 1 px white 55% ring | native `NavigationView` pill (Ink through the accent override: ink in light, paper in dark) with the subtle selected fill |
-| Suggested sub-header | sparkles + "Suggested" 11/600 `text.secondary`, with a borderless **Keep All** on the right | `NavigationViewItemHeader` "Suggested", or "Suggested (N)" from 2 up, with a **Keep all** `HyperlinkButton` on the right |
-| Suggestion row | as a clip row; on line 2, right-aligned, a bordered 24×24 ✓ (Keep, tooltip "Keep (Return)") and a borderless 24×24 ✕ (Dismiss, tooltip "Dismiss (⌫)") | as a clip row; two trailing 32×32 subtle icon buttons ✓ and ✕ (tooltips "Keep (Ctrl+Enter)" and "Dismiss (Delete)"). Their `Tapped` handler sets `e.Handled = true` |
+| Nav row (Home, Recent items) | 28 high; Recent thumbnails 36×20 | 40 high; Recent thumbnails 32×18, two lines (title, then "2:36 · Today" in 12 `text.secondary`) |
+| Project header | disclosure, 11/600 uppercase `text.tertiary`, count trailing; project title in the take heading tooltip | `NavigationViewItemHeader`: title 14/20 semibold over the file name, 12 `text.secondary` |
+| Full take row | 28 high; 36×20 landscape thumbnail, "Full Take" 13, edited duration in SF Mono 11; progress and Cancel while transcribing | 44 high; 32×18 thumbnail; "Full take" 14; meta |
+| Clip row | 28 high; plain 10 pt mono number, 36×20 thumbnail; title 13, one line truncated at the tail; SF Mono 11 edited duration; blue waveform glyph for AI voice | 60 high (76 with a second status line); 27×48 thumbnail in a 32 column with the 16×16 badge over its top-left corner (offset −4, 1 px page ring); title 14 at x 60; meta 12 |
+| Selection | native plain `List` selection; system focused/unfocused fill and readable selected text; no badge capsule; thumbnail gets a 1 px white 55% ring | native `NavigationView` pill (Ink through the accent override: ink in light, paper in dark) with the subtle selected fill |
+| Suggested sub-header | uppercase disclosure and count, with borderless **Keep All** on the right | `NavigationViewItemHeader` "Suggested", or "Suggested (N)" from 2 up, with a **Keep all** `HyperlinkButton` on the right |
+| Suggestion row | 28 high, with a dashed range bar; Keep and Dismiss in the clip bar, context menu and accessibility actions; Return/⌫ retained | as a clip row; two trailing 32×32 subtle icon buttons ✓ and ✕ (tooltips "Keep (Ctrl+Enter)" and "Dismiss (Delete)"). Their `Tapped` handler sets `e.Handled = true` |
 | Actions | borderless `Button`s in the section footer (not rows, never selectable, never arrow-key stops): 28 high, label 13, glyph `text.secondary`, key hint SF Mono 11 `text.secondary`. Disabled: label and glyph `text.tertiary` at 55% | `NavigationViewItem`s with `SelectsOnInvoked="False"`, the shortcut as trailing 12 `text.secondary` text, `IsEnabled` bound |
 
-**Meta line grammar.** The duration, a separator, then one status:
+**Windows meta line grammar.** On macOS v2 the row shows duration, with AI speech as a blue waveform glyph. Export status is spoken and available in row help/context actions and the status bar; failed exports retain Retry export in the context menu. Rows keep their 28 pt height.
+
+The duration, a separator, then one status:
 
 - The duration is the edited length of the clip or of the full take, from the same edit plan as the viewer and export, as `m:ss` in SF Mono 11 or Cascadia Mono 12, `text.secondary`.
 - The separator is " · ".
@@ -334,7 +340,7 @@ How it is built:
 
 Export statuses come from an app-local export ledger (§6.2), not from the project file.
 
-**Rewrite on a row** (§6.3).
+**Rewrite on a row** (§6.3). On macOS v2 the kept row's context menu offers **Rewrite Clip {n}**. Until V13 supplies whole-scope Rewrite, it selects that clip's kept words and enters the existing selection Rewrite policy; the clip is pinned so the session cannot disappear on the next preview. The hover-button rules below describe Windows.
 
 - The selected kept clip's row shows a **Rewrite** button after its meta line. Other kept rows, suggestion rows and Full take show it while the pointer is over them. No row shows it while a task is open. Its target is at least 24 pt (§15), and its accessible name is "Rewrite clip {n}" ("Rewrite full take" on Full take).
 - Clicking it selects the row if needed, then runs Rewrite with the scope bar's field text, or with Fix mistakes when the field is empty.
@@ -343,7 +349,7 @@ Export statuses come from an app-local export ledger (§6.2), not from the proje
 - After an accepted rewrite with voice changes, the meta reads "{m:ss} · AI modified" (the AI modified status above). After cuts and fixes only, the meta is unchanged.
 - Windows: a hover `Button` in the `SidebarItems` template, and the `ContextFlyout` item "Rewrite clip {n}".
 
-**Badges.**
+**Windows badges.** macOS v2 uses a plain number, with no capsule.
 
 - **Neutral, the default:** 16×16 (macOS) or 16×16 overlaid (Windows). Radius 4. Numeral in SF Mono 11/600 or Cascadia Mono 11/600, `text.secondary`, on `clip.badgeBackground`.
 - **Selected clip:** the accent fill (macOS `Color.accentColor`; Windows `AccentFillColorDefaultBrush`) with `accent.on` or `TextOnAccentFillColorPrimaryBrush`.
@@ -352,9 +358,9 @@ Export statuses come from an app-local export ledger (§6.2), not from the proje
 
 **Thumbnails.**
 
-- A clip shows the first kept frame of the clip (the start of its first uncut word), centre-cropped to 9:16. The full take shows the first kept frame of the edited video at its own aspect.
+- A clip shows the first kept frame of the clip (the start of its first uncut word), centre-cropped to 36×20 on macOS and 9:16 on Windows. The full take shows the first kept frame of the edited video at its own aspect.
 - Thumbnails are generated off the main thread and cached by `(media contentKey, source time rounded to 0.1 s, pixel size)`. They regenerate when the clip's first kept word changes.
-- Border: a 1 px `line.default` hairline, radius 4.
+- Border: a 1 px `line.default` hairline, radius 3 on macOS and 4 on Windows.
 - Frames come from VoxClip's own decoder, never from the system shell (§5.4.7).
 - With no frame, the thumbnail is the caption card at sidebar size: a downscaled card with no plates (§5.4.3). Loading follows the §5.4.5 ladder, and the media states are in §5.4.4.
 
