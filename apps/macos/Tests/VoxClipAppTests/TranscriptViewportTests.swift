@@ -9,11 +9,12 @@ import Testing
 /// and the overview ruler's visible window) is current after AppKit's own layout pass, the
 /// one that lays out TextKit 2's viewport, after a scroll, a cut that refolds a paragraph and
 /// a resize. Nothing here calls the pane's `layout()`, which lays the viewport out itself.
-/// No `textViewportLayoutControllerDidLayout(_:)`: NSTextView declares it from macOS 27.
+/// `TranscriptViewportRelay` places them, not a `textViewportLayoutControllerDidLayout(_:)`
+/// override: NSTextView declares that from macOS 27.
 @Suite("Transcript viewport overlays", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
 @MainActor struct TranscriptViewportTests {
     /// Forty paragraphs of twenty words, each its own speaker's turn, so each wraps after
-    /// word 13 at the 528 measure and after word 17 at 680. The open clip spans the two
+    /// word 13 at the 528 measure and after word 17 at 680 (with overlay scrollers). The open clip spans the two
     /// paragraphs either side of `paragraph`, whose word 15 the playhead is on and whose words
     /// 10–16 are selected. With paragraph 14, paragraph 13 starts near the top after
     /// `scrollToThirteen`.
@@ -131,16 +132,17 @@ import Testing
         // Deliver the host's frame as SwiftUI does; macOS 26 need not resize hidden window content synchronously.
         pane.scroll.setFrameSize(NSSize(width: 820, height: 488))
         layoutPass(pane)
-        let contentWidth = pane.scroll.contentSize.width
-        let measure = min(680, contentWidth - TranscriptGutter.width - TranscriptGutter.trailing)
-        #expect(pane.scroll.bounds.width == 820 && pane.text.bounds.width == contentWidth && pane.text.textContainer?.containerSize.width == measure,
-                "the capped measure at 820 with \(scrollerStyle): text \(pane.text.bounds.width), content \(contentWidth), measure \(measure)")
+        // A legacy scroller (a Mac with a mouse, the hosted runner) takes its width from the pane.
+        let width: CGFloat = pane.scroll.contentSize.width
+        let measure: CGFloat = CGFloat(TranscriptNSTextView.measure(forPane: Double(width)))
+        #expect(pane.scroll.bounds.width == 820 && width > 800 && pane.text.bounds.width == width, "the text view takes the clip view's \(width)")
+        #expect(pane.text.textContainer?.containerSize.width == measure, "the \(measure) measure at \(width)")
         #expect(!pane.text.needsLayout)
         let (shown, measured) = try current(pane)
         #expect(shown == measured, "after the layout pass: \(shown), measured again: \(measured)")
         #expect(pane.text.visibleRect.minY == 0, "still at the top")
-        #expect(shown.bandFrame.width == contentWidth && !shown.bandHidden, "the band spans the wider pane: \(before) → \(shown)")
-        // Word 15 moves from the second line to the first at 680, where eighteen fit.
+        #expect(shown.bandFrame.width == width && !shown.bandHidden, "the band spans the wider pane: \(before) → \(shown)")
+        // Word 15 moves from the second line to the first at 680 (679 beside a legacy scroller), where eighteen fit.
         let caretBox = try #require(pane.text.textBox(of: NSRange(location: try caretOffset(pane), length: 0)))
         #expect(!shown.caretHidden && abs(shown.caret.midX - caretBox.minX) < 0.5 && shown.caret.minY < before.caret.minY && shown.caret.midX > before.caret.midX,
                 "the caret follows word 15 up to the first line: \(before) → \(shown)")
@@ -163,6 +165,21 @@ import Testing
         layoutPass(pane)
         let (shown, _) = try current(pane)
         #expect(caught == shown && !caught.caretHidden && !caught.selectionHidden, "the same overlays as after the layout pass: \(caught) vs \(shown)")
+    }
+
+    /// The relay's call after a layout only places the overlays. Laying the viewport out again
+    /// from there would start a layout inside a layout, and TextKit 2 does not stop that
+    /// recursion where the viewport stays short of the visible rect.
+    @Test func theRelaysCallAfterALayoutNeverLaysTheViewportOutAgain() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488)); defer { pane.close() }
+        let controller = try #require(pane.text.textLayoutManager).textViewportLayoutController
+        let relay = try #require(controller.delegate as? TranscriptViewportRelay)
+        try scrollToThirteen(pane)
+        let top = controller.viewportBounds
+        #expect(top.minY + pane.text.textContainerOrigin.y < pane.text.visibleRect.minY - 100, "the viewport is still the top's")
+        relay.textViewportLayoutControllerDidLayout(controller)
+        #expect(controller.viewportBounds == top, "the relay laid nothing out: \(top) → \(controller.viewportBounds)")
     }
 }
 #endif

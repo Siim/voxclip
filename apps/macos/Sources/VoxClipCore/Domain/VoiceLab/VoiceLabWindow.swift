@@ -129,10 +129,188 @@ enum VoiceLabGeometry {
     }
 }
 
-/// §8.4 join placement for a replace hunk `[a..b]`. Insertion stays reserved by §10.1.
+/// A single-window refusal or a collision with an earlier input hunk of the same review (§8.4).
+public enum VoiceLabWindowRefusal: Error, Equatable, Sendable {
+    case geometry(VoiceLabGeometryError)
+    case collidesWithChange(Int)
+
+    public var copy: String? {
+        if case .collidesWithChange = self {
+            return "Too close to the change before it to voice separately. Edit them together or leave one out."
+        }
+        return nil
+    }
+}
+
+/// One accepted (possibly merged) voice hunk, or one original voice hunk that could not be placed.
+public enum PlacedOrRefused: Sendable, Equatable {
+    case placed(indices: [Int], hunk: VoiceLabDiffHunk, window: VoiceLabWindow)
+    case refused(index: Int, hunk: VoiceLabDiffHunk, reason: VoiceLabWindowRefusal)
+}
+
+/// §8.4 join placement for replace hunks. Insertion stays reserved by §10.1.
 public enum VoiceLabWindowPlanner {
     /// §8.4: a hard seam sits `min(0.03, gap / 2)` outside the replaced word.
     static let hardSeamReach = 0.03
+
+    private struct ReviewWindow {
+        var indices: [Int]
+        var hunk: VoiceLabDiffHunk
+        var window: VoiceLabWindow
+    }
+
+    /// Places voice hunks only. Indices address the supplied review, not the sorted output; a merged result also names
+    /// text-only hunks absorbed between its changes. No project, recipe or paid asset is persisted.
+    public static func placeAll(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope,
+                                hunks: [VoiceLabDiffHunk]) -> [PlacedOrRefused] {
+        var planningProject = project
+        planningProject.edits.cutWordIds += hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds)
+        let words = project.transcript?.words ?? []
+        let positions = Dictionary(words.enumerated().map { ($0.element.id, $0.offset) }, uniquingKeysWith: { first, _ in first })
+        let order = hunks.indices.filter { hunks[$0].kind == .voice }.sorted {
+            let left = hunks[$0].sourceWordIds.first.flatMap { positions[$0] } ?? Int.max
+            let right = hunks[$1].sourceWordIds.first.flatMap { positions[$0] } ?? Int.max
+            return left == right ? $0 < $1 : left < right
+        }
+        var accepted: [ReviewWindow] = []
+        var refused: [(Int, PlacedOrRefused)] = []
+        for (offset, index) in order.enumerated() {
+            var remaining = accepted
+            var current = hunks[index]
+            var indices = [index]
+            var collision: Int?
+            do {
+                while true {
+                    guard let first = current.sourceWordIds.first, let last = current.sourceWordIds.last else {
+                        throw VoiceLabGeometryError.insertionUnsupported
+                    }
+                    var placed = try place(project: planningProject, scope: scope, envelope: envelope, firstWordId: first, lastWordId: last)
+                    var hit = remaining.firstIndex { touches($0.window, placed) }
+                    if hit == nil {
+                        var reservedProject = planningProject
+                        var reservations: [String: Int] = [:]
+                        for (position, earlier) in remaining.enumerated() {
+                            var id = "voice-lab-review-\(position)"
+                            while reservedProject.voiceLab.segments.contains(where: { $0.id == id }) { id += "-" }
+                            reservations[id] = position
+                            reservedProject.voiceLab.segments.append(reservation(id: id, window: earlier.window))
+                        }
+                        do {
+                            placed = try place(project: reservedProject, scope: scope, envelope: envelope,
+                                               firstWordId: first, lastWordId: last)
+                            hit = remaining.firstIndex { touches($0.window, placed) }
+                        } catch let error as VoiceLabGeometryError {
+                            switch error {
+                            case .overlapsReplacement(let id), .adjacentReplacement(let id), .invalidInput(.some(let id)):
+                                guard let position = reservations[id] else { throw error }
+                                hit = position
+                            default: throw error
+                            }
+                        }
+                    }
+                    if let hit {
+                        let earlier = remaining[hit]
+                        if collision == nil { collision = earlier.indices[0] }
+                        current = try merge(earlier.hunk, current, project: project, hunks: hunks, positions: positions)
+                        indices = Array(Set(indices + earlier.indices + hunks.indices.filter { candidate in
+                            hunks[candidate].kind == .textOnly && !hunks[candidate].sourceWordIds.isEmpty
+                                && hunks[candidate].sourceWordIds.allSatisfy { current.sourceWordIds.contains($0) }
+                        })).sorted {
+                            let left = hunks[$0].sourceWordIds.first.flatMap { positions[$0] } ?? Int.max
+                            let right = hunks[$1].sourceWordIds.first.flatMap { positions[$0] } ?? Int.max
+                            return left == right ? $0 < $1 : left < right
+                        }
+                        remaining.remove(at: hit)
+                        continue
+                    }
+                    if collision != nil {
+                        var budgetHunks = remaining.map { budgetHunk($0.hunk, window: $0.window, project: project) }
+                        budgetHunks.append(budgetHunk(current, window: placed, project: project))
+                        budgetHunks += order.dropFirst(offset + 1).map { hunks[$0] }
+                        guard VoiceLabPatchBudget.evaluate(hunks: budgetHunks, transcript: words).flag == .allowed else {
+                            throw VoiceLabGeometryError.invalidInput()
+                        }
+                    }
+                    remaining.append(ReviewWindow(indices: indices, hunk: current, window: placed))
+                    remaining.sort { $0.window.startSample < $1.window.startSample }
+                    accepted = remaining
+                    break
+                }
+            } catch {
+                let reason: VoiceLabWindowRefusal = collision.map { .collidesWithChange($0) }
+                    ?? .geometry(error as? VoiceLabGeometryError ?? .invalidInput())
+                refused.append((index, .refused(index: index, hunk: hunks[index], reason: reason)))
+            }
+        }
+        let results = accepted.map { ($0.indices[0], PlacedOrRefused.placed(indices: $0.indices, hunk: $0.hunk, window: $0.window)) } + refused
+        return results.sorted { left, right in
+            let leftPosition = order.firstIndex(of: left.0) ?? Int.max
+            let rightPosition = order.firstIndex(of: right.0) ?? Int.max
+            return leftPosition < rightPosition
+        }.map(\.1)
+    }
+
+    private static func touches(_ left: VoiceLabWindow, _ right: VoiceLabWindow) -> Bool {
+        left.start <= right.end && right.start <= left.end
+            || left.startSample <= right.endSample && right.startSample <= left.endSample
+    }
+
+    private static func merge(_ earlier: VoiceLabDiffHunk, _ later: VoiceLabDiffHunk, project: Project,
+                              hunks: [VoiceLabDiffHunk], positions: [String: Int]) throws -> VoiceLabDiffHunk {
+        guard let leftID = earlier.sourceWordIds.last, let rightID = later.sourceWordIds.first,
+              let left = positions[leftID], let right = positions[rightID], left < right,
+              let words = project.transcript?.words else { throw VoiceLabGeometryError.invalidInput() }
+        let between = Array(words[(left + 1)..<right])
+        let cutIDs = Set(project.edits.cutWordIds + hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds))
+        guard between.allSatisfy({ $0.kind == .word && !cutIDs.contains($0.id) }) else {
+            throw VoiceLabGeometryError.invalidInput()
+        }
+        var corrections = project.edits.corrections
+        for hunk in hunks where hunk.kind == .textOnly {
+            for (id, text) in zip(hunk.sourceWordIds, hunk.correctedTexts) { corrections[id] = text }
+        }
+        let bridges = between.map(\.id)
+        return VoiceLabDiffHunk(kind: .voice, sourceWordIds: earlier.sourceWordIds + bridges + later.sourceWordIds,
+                                newTokens: earlier.newTokens + between.flatMap { EditingPrimitives.splitWords(corrections[$0.id] ?? $0.text) } + later.newTokens,
+                                correctedTexts: [], absorbedItemIds: earlier.absorbedItemIds + later.absorbedItemIds,
+                                bridgeWordIds: earlier.bridgeWordIds + bridges + later.bridgeWordIds,
+                                sourceStartIndex: earlier.sourceStartIndex, sourceEndIndex: later.sourceEndIndex, anchorSeconds: nil)
+    }
+
+    private static func budgetHunk(_ hunk: VoiceLabDiffHunk, window: VoiceLabWindow, project: Project) -> VoiceLabDiffHunk {
+        let words = project.transcript?.words ?? []
+        func tokens(_ ids: [String]) -> [String] {
+            ids.flatMap { id in words.first(where: { $0.id == id }).map { EditingPrimitives.splitWords(project.edits.corrections[id] ?? $0.text) } ?? [] }
+        }
+        return VoiceLabDiffHunk(kind: .voice, sourceWordIds: hunk.sourceWordIds,
+                                newTokens: tokens(window.leftBridgeWordIds) + hunk.newTokens + tokens(window.rightBridgeWordIds),
+                                correctedTexts: [], absorbedItemIds: hunk.absorbedItemIds, bridgeWordIds: hunk.bridgeWordIds,
+                                sourceStartIndex: hunk.sourceStartIndex, sourceEndIndex: hunk.sourceEndIndex, anchorSeconds: nil)
+    }
+
+    private static func reservation(id: String, window: VoiceLabWindow) -> VoiceLabSegment {
+        let audio = VoiceLabAudio(assetId: "", trimStart: 0, trimEnd: 0)
+        let provenance = VoiceLabProvenance(provider: "", endpoint: "", model: "", voiceId: "", consentRecordId: nil,
+                                          requestId: nil, seed: nil, createdAt: Date(timeIntervalSince1970: 0))
+        func seam(_ edge: VoiceLabSeamPlacement) -> VoiceLabSeam {
+            VoiceLabSeam(kind: edge.kind, fadeSamples: edge.fadeSamples, sourceHandleSamples: 0, assetHandleFrames: 0)
+        }
+        var candidate = VoiceLabCandidate(assetId: nil, score: nil)
+        candidate.recipe = VoiceLabRenderRecipe(audio: audio, words: nil, outDuration: 0, seed: 0, chunks: [], roomTone: nil,
+            seams: VoiceLabSeams(in: seam(window.leftSeam), out: seam(window.rightSeam)),
+            video: VoiceLabVideoRecipe(mode: .source, sourceStartSample: window.startSample, sourceEndSample: window.endSample,
+                                      outputSamples: window.endSample - window.startSample, retimeFactor: nil, zoom: nil,
+                                      faceX: nil, faceY: nil, assetId: nil, provider: nil, model: nil, requestId: nil,
+                                      windowStartSample: nil, windowEndSample: nil, syncMode: nil),
+            qa: VoiceLabRenderQA(transcriptTokens: nil, transcriptExact: nil, transcriptMatch: nil, lufsJumpLu: 0,
+                                 peakDbfs: 0, speakerScore: nil, speakerThreshold: nil, speakerModel: nil, speakerPassed: nil),
+            provenance: provenance, cost: VoiceLabCost(quoteId: "", usd: nil), voiceSource: .own,
+            voiceRefId: nil, consentVerifiedAt: nil)
+        return VoiceLabSegment(id: id, kind: .tts, enabled: true,
+            replace: VoiceLabReplacement(start: window.start, end: window.end, firstWordId: window.firstWordId, lastWordId: window.lastWordId),
+            outDuration: 0, audio: audio, text: nil, words: nil, provenance: provenance, qa: VoiceLabQA(),
+            candidates: [candidate], selectedCandidateIndex: 0)
+    }
 
     /// A synth piece of the output plan: an enabled replacement in the scope, with its selected recipe's seams, or the window
     /// being placed.

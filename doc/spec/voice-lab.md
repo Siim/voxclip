@@ -187,7 +187,7 @@ A CLI's sign-in method is one of three, each named by what the detection of ai.m
 - **API key**: Claude Code's `authMethod` is an API key, or Codex's status says "Logged in using an API key".
 - **Unknown**: anything else. That includes Claude Code's `third_party` (Bedrock or Vertex, billed to the user's cloud account), `none` or a missing method, and any other successful Codex output. An unknown method sends nothing (ai.md §4.8): no sheet, no confirmation and no inline send.
 
-A method is never a plan just because it is not an API key. The first-use consent sheet (ai.md §4.8) still comes before each connector's first send. `VoiceLabCostPresentation`, or a helper beside it, applies this rule on both platforms from the connector kind and the sign-in method that ai.md §6.8–§6.10 detection already reads; it adds no setting or field. The table below covers every other estimate.
+A method is never a plan just because it is not an API key. The first-use privacy confirmation (ai.md §4.8, inline on Mac) still comes before each connector's first send; a first API-key send combines privacy and billing in that one inline row. `VoiceLabCostPresentation`, or a helper beside it, applies this rule on both platforms from the connector kind and the sign-in method that ai.md §6.8–§6.10 detection already reads; it adds no setting or field. The table below covers every other estimate.
 
 | Estimate | Presentation |
 |---|---|
@@ -406,10 +406,10 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 
 ## 5. M3 beta: gate and settings
 
-- Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default in release builds; development builds turn it on (below). Turning it on shows a one-time sheet:
+- Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default in release builds; development builds turn it on (below). On Mac, turning it on opens the inline Voice first-use card; Windows retains its one-time presentation:
   - "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
   - Buttons [Turn on] and [Cancel].
-- **Rewrite** (the scope bar, the sidebar row's Rewrite, the selection bar and the menus; `doc/design.md` §6.3) does not need Voice Lab. It proposes cuts, text fixes and phrases in your voice. Cuts and fixes apply with Voice Lab off. Phrases in your voice, making your voice, takes, **Insert Words…**, **Change Voice…** and lip sync need `voiceLab.enabled` and `voiceLab.betaNoticeAccepted`. With Voice Lab off, voice changes stay visible but excluded, with "Needs Voice Lab (beta)", and the panel offers **Turn On Voice Lab…**, which shows this one-time sheet.
+- **Rewrite** (the scope bar, the sidebar row's Rewrite, the selection bar and the menus; `doc/design.md` §6.3) does not need Voice Lab. It proposes cuts, text fixes and phrases in your voice. Cuts and fixes apply with Voice Lab off. Phrases in your voice, making your voice, takes, **Insert Words…**, **Change Voice…** and lip sync need `voiceLab.enabled` and `voiceLab.betaNoticeAccepted`. With Voice Lab off, voice changes stay visible but excluded, with "Needs Voice Lab (beta)", and the panel offers **Turn On Voice Lab…**, which opens the inline Voice job on Mac (the one-time presentation on Windows).
 - Your voice is made inside Rewrite (§6.5.2). Settings → Voice Lab lists and deletes voices; it no longer creates them.
 - Settings → Voice Lab also shows:
   - the ElevenLabs, fal.ai and sync.so key rows (§2);
@@ -498,7 +498,7 @@ Then process the samples:
 4. **Add the consent statement recording as one of the samples.** This makes the clone provably derived from the consenting speaker.
 5. Set `remove_background_noise=false`. It "can make the quality worse" on clean audio. Use `true` only when the SNR is below 20 dB and Clean audio has not been applied to the source take. Project spans always pass 20 dB, so they send `false`.
 
-Training WAVs of either source are temporary. They are kept in memory or private temporary files and deleted after the upload, or when the sheet closes without one.
+Training WAVs of either source are temporary. They are kept in memory or private temporary files and deleted after the upload, or when the enrollment is explicitly discarded without an upload.
 
 #### 6.5.1 Span selection (project audio)
 
@@ -655,6 +655,8 @@ The boundary is `voxclip-` plus 32 lowercase hex, quoted in the request's Conten
 
 ### 6.8 Consent record
 
+Creation-only recovery reuses the saved clone request: it uploads the saved consent statement **and** training audio to ElevenLabs. Only the Scribe statement check is skipped. The recovery list, ready rows and priced-action send line all disclose both uploads and no video; quote/payload pricing is unchanged.
+
 Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never uploaded, and never inside a project file:
 
 ```json
@@ -678,7 +680,9 @@ Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never upload
 }
 ```
 
-After the on-device match, macOS `VoiceEnrollment.preparePlan` and C# `VoiceEnrollment.PreparePlanAsync` return an `EnrollmentQuote(verify, create)` without provider calls. `execute(approved:)` requires an in-app affirmative action and runs the plan check, Scribe verification and creation in that order. Until V16/V17 replace the live Create Your Voice sheet, the compatibility `verify` API preserves its separate approval: it validates the live statement's on-device speaker embedding, sends Scribe under that approved verification quote, and records the match and creator fingerprint. Training is chosen afterward and `prepare` runs the full speaker comparison before offering creation. Its `create` uses a `verificationPassed` plan and runs the plan check then creation, with no Scribe request. A mismatch at Verify clears the recording so the user can record again. Both entry points use one private Scribe verification helper. The new panel uses the explicit combined plan API; the legacy sheet's copy is unchanged. Windows W4 mirrors this logic while its native speaker parity gate remains closed: the shipping `CreateVoiceSession` / `VoiceCreationFlow` cannot reach a paid enrollment. The future W8/WV10 panel must use `PreparePlanAsync` → one reviewed `EnrollmentQuote.Estimate` → `ExecuteAsync`; recovery uses `RecoverPlanAsync` and an explicit new click. The current legacy backend uses the quoted client Scribe transport, while injected fixture transcription remains a test seam.
+After the on-device match, macOS `VoiceEnrollment.preparePlan` returns an `EnrollmentQuote(verify, create)` without provider calls. The inline Voice job shows the statement playback, send line and **Create My Voice · {quote price}**. That single click approves `execute(approved:)`, which runs the plan check, Scribe verification and creation in that order. A speaker mismatch sends no request. A statement mismatch clears the recording and returns to recording, creating nothing. The former sheet and its compatibility `verify`, `prepare` and `create` APIs have been deleted; tests exercise the combined job and its Core plan. A verified crash boundary offers **Resume Creation** to prepare a creation-only quote, followed by an explicit priced click. Recovery never automatically replays Scribe or creation.
+
+Windows W4 mirrors the combined plan through `PreparePlanAsync` → one reviewed `EnrollmentQuote.Estimate` → `ExecuteAsync`; recovery uses `RecoverPlanAsync` followed by an explicit priced click. The existing `CreateVoiceSession` / `VoiceCreationFlow` legacy entry points remain compatibility paths until W8/WV10 replaces their UI. The native speaker parity gate remains closed, so the shipping app cannot reach a paid enrollment.
 
 A passed Scribe verification is atomically journaled at `<data>/VoiceLab/consent/<recordId>/enrollment.json` before the creation intent. This private, temporary journal holds the combined quote, exact WAV file set, verified consent draft and training duration. It is separate from the minimal remote-operation journal below. Startup preserves this verified enrollment only before the original creation time plus 24 hours, and exposes it for **Create again**, never an automatic paid retry. At the 24-hour boundary it removes the temporary journal, statement and training audio. An undecodable, invalid-bound or stale journal is abandoned and reported by count, without preventing other valid journals or saved voices from loading. Recovery binds the original key fingerprint and region, statement hash, file roles and bytes, name, language, creation time and speaker model/threshold. It reuses the original unsent create quote only within its original five-minute lifetime; otherwise it prepares a new creation quote and requires a new click. A recovered `EnrollmentQuote.verify` is absent and its `estimate` counts creation alone, matching exactly what `execute` will send. It does not prepare another verification quote or resend the already verified statement to Scribe. A creation already dispatched cannot use this path and follows remote reconciliation instead. Cancellation clears the temporary journal before attempting withdrawal or statement removal; successful creation and dispatched-operation reconciliation also remove it.
 
@@ -694,7 +698,7 @@ Recovery lists owned voices of category `cloned`. It matches the recovery label 
 
 A candidate carrying a different recovery nonce is not ours, even if its name and creation time match. It is never deleted by fallback matching. An ambiguous or unprovable candidate keeps the obligation visible for user review.
 
-Completing or recovering a successful creation resets the enrollment session to a new record ID. Cancelling a later sheet cannot withdraw a saved active voice. Withdrawal without an unfinished creation refuses active and verification-required records. Startup cleanup removes only absent records or pending drafts; a non-pending record that fails validation is preserved and reported, never inferred to be abandoned.
+Completing or recovering a successful creation resets the enrollment session to a new record ID. Discarding a later enrollment cannot withdraw a saved active voice. Withdrawal without an unfinished creation refuses active and verification-required records. Startup cleanup removes only absent records or pending drafts; a non-pending record that fails validation is preserved and reported, never inferred to be abandoned.
 
 The transcript keeps clip boundaries inside an atomic accepted replacement visible: interior start badges map to its leading edge and interior end brackets to its trailing edge, each in source order. Source clip ranges are unchanged. Disabling, undoing and redoing the replacement rebuilds those markers from the same source IDs.
 
@@ -706,7 +710,7 @@ On macOS, production speaker-check construction has a private initializer and on
 
 Creation proceeds `intent` → `dispatched` → `created` → `saved`, then removes the journal. `dispatched` is flushed immediately before the POST, after key and speaker/consent checks. A restart from an undispatched intent with a C7 verified-enrollment journal removes the unsent operation intent and offers **Create again** without a provider call. Legacy intents without that journal remove the statement and unsent draft. An uncertain dispatch also removes the statement and unresolved draft at once, retaining only the recovery metadata needed to list owned voices by the original label; it never repeats the create POST. Listings use persisted exponential backoff from 30 seconds to one hour. The 24-hour deadline only bounds creation blocking: after it, an operation no longer blocks a new creation, regardless of listing outcome. Cleanup remains open after a failed listing, with a future retry and Settings copy “Checking your ElevenLabs account for an unfinished voice…” plus Retry. Only a successful empty listing after the deadline marks the operation `abandoned` and stops retrying. A late match is withdrawn, including after the blocking deadline.
 
-Creation can instead move to `withdrawing` → `withdrawn`; the journal is removed only after the local statement and any known remote voice are gone. A known creation with valid consent can finish a failed local save without another create request. The sheet also offers **Remove This Voice**, which durably requests withdrawal before removing the statement. Settings lists every unfinished operation with its plain state and Retry, including the unfinished-account check described above. Only live `dispatched` and `created` operations before the 24-hour deadline block a new creation; withdrawing and abandoned operations do not. One reconciler runs at launch, when Voice Lab opens and when a persisted retry becomes due. The store actor writes and claims a live creation intent in one call, before another task can observe it. The creator releases the claim on every outcome, including local cleanup failures; operation claims prevent concurrent reconciliation and dispatch of the same operation.
+Creation can instead move to `withdrawing` → `withdrawn`; the journal is removed only after the local statement and any known remote voice are gone. A known creation with valid consent can finish a failed local save without another create request. The Voice job also offers **Remove This Voice**, which durably requests withdrawal before removing the statement. Settings lists every unfinished operation with its plain state and Retry, including the unfinished-account check described above. Only live `dispatched` and `created` operations before the 24-hour deadline block a new creation; withdrawing and abandoned operations do not. One reconciler runs at launch, when Voice Lab opens and when a persisted retry becomes due. The store actor writes and claims a live creation intent in one call, before another task can observe it. The creator releases the claim on every outcome, including local cleanup failures; operation claims prevent concurrent reconciliation and dispatch of the same operation.
 
 ### 6.9 Use-time guard
 
@@ -975,11 +979,17 @@ For each accepted voice hunk replacing source words `[a..b]`, or inserting betwe
 
 When several rules fail, the first in this order is reported: `invalidInput` for the window's own samples, `overlapsReplacement`, `windowCrossesWord` (a crossing item, then a lost word), `seamFadeOutsideTake`, then for the incoming side `adjacentReplacement` (or `invalidInput` naming that replacement) and `seamFadeCrossesCut`, then the same for the outgoing side, `windowTooShort`, and finally each replacement in source order, its incoming seam, outgoing seam and then the kept piece after it, with `adjacentReplacement` or `invalidInput` and its ID.
 
-**Several hunks.** `placeAll(project:scope:envelope:hunks:)` places a review's voice hunks in source order. Each placed window counts as a replacement for the later hunks, under the same `overlapsReplacement`, `adjacentReplacement` and fade rules.
+**Several hunks.** `placeAll(project:scope:envelope:hunks:)` places a review's voice hunks in source order. Before either single-window placement or placement beside reservations, a temporary local project adds every review cut hunk's word IDs to `edits.cutWordIds`. Seam search therefore sees those deletions, never kept bridge words; the caller's project is not changed. Each placed window counts as a replacement for the later hunks, under the same `overlapsReplacement`, `adjacentReplacement` and fade rules.
 
 When a window would overlap or touch an earlier window of the same review, the two hunks are merged into one: the words between them become bridges, re-voiced. The merge is kept only if the merged hunk still passes this section and the §8.2 patch budget. Otherwise the later hunk is refused with `collidesWithChange(index)`, copy "Too close to the change before it to voice separately. Edit them together or leave one out." `place` itself is unchanged.
 
-Its vectors go in `window-cases.json`, and both Cores replay them.
+The Swift input is `[VoiceLabDiffHunk]` (a scope review maps its `ScopeRewriteDiff.Hunk.hunk`). Only voice hunks produce `PlacedOrRefused` results. A placed result holds the merged hunk, its window and the original input `indices`, in source order; a refusal holds the original hunk, its original input `index` and `VoiceLabWindowRefusal`. A geometry refusal wraps the unchanged `VoiceLabGeometryError`. A collision's index names the first original voice hunk of the earlier placed group, not its sorted row number. Absorbed text-only hunks also join `indices`, so the caller removes their separate rows and combines the original lines, reasons and `checkThis` flags. Cuts and unabsorbed text-only hunks remain with the caller.
+
+Placement first checks the unchanged single-window geometry, then places beside every earlier accepted window using their exact seam kinds and fades. A collision includes touching source-sample ranges and insufficient kept source for both windows' fades, not just overlapping seconds. Merging is transitive: every expanded window is placed again, and can collide with another earlier group. Intervening kept word items become bridges with project corrections and any review text-only correction applied. A cut word, a cut hunk, an event or unlabeled speech between the changes prevents a merge. An existing project replacement is never merged or edited. A failed merge restores every earlier group unchanged; only the later original hunk is refused.
+
+After a provisional merge, the patch budget counts the whole review: the other accepted groups, the merged group and the remaining voice hunks. Already placed groups and the merged group include the words added by seam widening on both sides as well as their internal bridges. Previously refused voice hunks do not count. Count with integer arithmetic as in §8.2; exactly 15% and exactly 60 tokens still pass. Planning writes no project edits or paid recipes; its temporary reservations are not renderable assets and must never be saved. Insert-only hunks keep `place`'s `insertionUnsupported` refusal.
+
+Its vectors are the separate `window-all-cases.json` file (schema `voxclip-voice-lab-window-all-cases/1`), generated by standalone `generate_window_all.py`. The legacy `window-cases.json` remains byte-identical. Both files require exact regeneration, not float tolerance. The Swift suite replays every case and validates and prepares each accepted union beside existing segments with the review cuts applied locally. The C# twin (W2) must add a separate replay of the same outcomes, input-index identities, bridge surfaces, seconds, samples and seam fades with binary64 arithmetic, inclusive comparisons and the existing jsRound conversion; it must not introduce an epsilon or recompute take-edge seconds from sample counts.
 
 ### 8.5 TTS request
 
@@ -1047,6 +1057,12 @@ A field that is empty after this is omitted. The quote binds the seed and the tr
 
 ### 8.6 Candidates
 
+Mac review authorization pins the editor project, pending local edit commands, complete review hunks and proposal change content/states, included voice ordinals, scope/session revision, selected voice/model and region. Changing only a pending correction or its inclusion invalidates both the old displayed quote and acceptance, including corrected bridge speech. Focus-only movement does not. An unpaid plan needs fresh preparation and an explicit new approval; a paid plan remains guarded by the existing discard question and is never silently replaced. Dispatched work retains that owner while accepted charges are still pending delivery to the plan. Invalidation drains the operation before clearing its busy state and retains all accepted-charge accounting.
+
+An explicit selectable take UUID survives progress, failed or better retries, Stop and three-slot eviction. Automatic ranking applies only until the user chooses a take. Row audition pauses source preview; source Play, Space and playback shortcuts stop audition, including a pending scratch startup. Selection, Stop, leaving and invalidation still tear down audition. Accepted-charge updates refresh the local monthly spend cache even after Stop/cancellation or a late obsolete/unpriced response. This reads the local ledger only, never a provider refresh. Daily transcription and monthly Voice Lab amounts share one status slot with distinct labels, not one combined ledger.
+
+Paid plain Return uses the original AppKit event timestamp, not a delayed handler's time, for the 500 ms appearance guard. Key repeat and Space cannot spend; explicit Command-Return retains its existing policy, and inline questions choose the safe answer.
+
 - Generate up to `CANDIDATES` takes, one after another, with seeds `s`, `s+1` and `s+2` modulo 2^32, where `s` is a random UInt32 per hunk stored with the segment. Prepare all per-take quotes before the run. One affirmative approval covers exactly this bounded set and its summed TTS plus Scribe QA cap (S14, §2.6). Every new run requires a new approval. Provider auth, quota or consent failures stop the run; missing or malformed timestamp alignment also stops the run, because no candidate can be accepted without it (§2.6). A non-fatal failed take remains a row and the next independently quoted seed may run.
 - Each candidate goes through §8.7 to §8.11, and the fit planner (§8.9.2) runs before the QA gate. A candidate is **rejected** when it fails QA (§8.11), when the clipping check fails, or when the speaker score is below τ.
 - **Early stop.** Generation stops at the first take that passes QA and that the fit planner fits exactly (`exact`, §8.9.2). The already-prepared unsent quotes are discarded, never dispatched or recorded.
@@ -1060,6 +1076,28 @@ A field that is empty after this is omitted. The quote binds the seed and the tr
 - Another run (Try Another or Try Again, design.md §6.3.8) needs a new user action and its own quote; no take is generated automatically. The estimate shown before a run covers all `CANDIDATES` takes (§3.2), and the spend ledger records only the takes that were sent (§3.1).
 
 With several hunks, all per-take quotes for all hunks are prepared before the run. One affirmative approval covers the union of the bounded sets and their summed TTS plus Scribe QA cap. The run takes one hunk at a time, in source order, with early stop per hunk. Try Another on one phrase is a new approval for that phrase's set.
+
+The Mac clip takes engine (V18a, UI integration in V18) places the entire included review with
+`placeAll` before decoding source audio or preparing any take quote. It preflights all pending
+windows together against the final review cuts, using the same output-piece and seam checks as
+`acceptAll`; one invalid member refuses the set without payment. The engine exposes one summed
+estimate and approval, then runs phrases in source order. Stop drains the active operation and
+keeps completed takes and selections; later phrases remain waiting. Its configured spending cap
+is checked against the ledger and the unsent remainder before execution, between phrases and
+immediately before every paid request. An unreadable ledger, unknown price with a cap, or a
+cap overrun stops the next request and preserves completed work. This engine does not override
+the cap under an earlier approval; the single-passage compatibility workflow retains §3.1's
+soft-cap confirmation until its UI is replaced.
+
+The phrase rows retain three selectable slots. V18a's Try Another prepares and prices one new
+candidate for that phrase only (one TTS plus its Scribe QA), under its own affirmative action.
+It uses a fresh seed beyond that phrase's previously quoted candidates and preserves the old
+playable takes. A deferred approval is bound to the displayed quote ID, never a newer quote.
+It fills an unused slot, or replaces the lowest-ranked unselected slot when all three are full;
+the selected take and other phrases stay intact. A length-changed take can be selected for
+audition and length comparison but is left out of Phase 0 acceptance. The engine publishes
+selected exact-fit, QA-passing takes as a segment/asset list and voice reference; V19 passes
+that list, the final cuts/fixes and the actual scope to C4 `acceptAll` once (§8.12).
 
 ### 8.7 Trim, level, room tone
 
@@ -1252,6 +1290,8 @@ Private take invalidation is explicit and idempotent: first stop every registere
 
 ### 8.11 QA gate (before Accept is enabled)
 
+On Mac the inline phrase rows read `RewriteSession.takePlan` (`ClipTakePlan`), not the compatibility passage generator. The displayed action captures the held `approvalID` and passes it as `quoteID` to deferred start or phrase-only retry. Replacing, expiring or invalidating that quote requires fresh preparation and another explicit approval. A retry prepares one candidate for its phrase; it never regenerates another phrase. Stop drains the operation and ends audition without discarding completed takes. Every failure remains visible. A QA-passing changed-duration take is auditionable but left out of Phase 0 acceptance: no nonunity fitting or video-mode fallback is enabled. Future changed-duration rendering still requires an explicit, unremembered choice for each rewrite (§8.9).
+
 Scribe QA is separately priced as `speechToText`/`scribe_v2`, but its bounded quote is included inside the approved run total, not approved after synthesis. The run reserves at most 290 seconds per QA request, including the half-second source context on each available side. A candidate whose final QA buffer exceeds that cap is invalid and is not sent to Scribe. The spend ledger retains the conservative quoted estimate only for accepted sends; it is not an actual provider invoice. Mac W4 reads back the private float32 scratch WAV containing the fitted audio, static gain, room-tone loop and centred seams. Scribe's PCM16 upload is encoded from that readback; mixed sample peak and seam loudness jump measure the same readback. Speaker matching and flatness still measure the ungained trimmed paid take, not source context or room tone. Scribe dispatch uses the same voice and current-input gates as TTS. Missing or malformed alignment remains invalid under §2.6. The §8.8 fallback is not enabled until its LCS tie-breaking and interpolation bounds at missing leading/trailing neighbours are defined precisely; no alignment repair is silently purchased.
 
 The W3 input holds decoded source audio on the source sample grid, an already-placed window and complete patch text including bridge words. W4 owns bounded media extraction and scratch sizing; W3 bounds each paid candidate and its QA buffer as above. Source level and room tone are checked before any paid request. The existing W2 calibration requires at least three seconds of voiced speech for an embedding; shorter generated takes remain failed, unselectable speaker-QA rows and do not buy Scribe QA. W3 does not pad or repeat short speech, borrow the owner's source speech into the candidate embedding, or invent a short-duration threshold. A calibrated short-take policy remains an open release item, particularly for one-to-three-word patches.
@@ -1273,6 +1313,12 @@ For the W3 transcript comparison, assign a Scribe word to the fitted patch when 
 QA results are stored with the segment (§10.1). A candidate that fails is not offered.
 
 ### 8.12 Accept
+
+macOS take review retains at most three private scratches per phrase plus one staged/in-flight attempt across the serialized set runner. Evicting an unselected retry slot awaits its consumer-aware retirement before another attempt proceeds; the selected and other visible slots survive. Stop and invalidation drain that cleanup. Original/published paid assets remain retained. Late results from stale inputs cannot restore rows or playback; actual accepted request costs remain accounted.
+
+macOS V19 routes the inline **Use Takes** action through `RewriteSession.acceptTakes` and the scoped C4 list overload. Publication of every selected fitting phrase finishes and is revalidated before one snapshot mutation includes the pending cuts and corrections. A stopped run may deliberately use only its finished fitting subset; a transaction never commits a prefix of the selected set. Refused/stale publication shows neither success feedback nor an undo entry. Changed-duration rows still cannot be accepted; the explicit future per-rewrite video-choice policy is unchanged.
+
+After success, a six-second announced toast and the same host's in-use Voice rows show the actual accepted count. The footer reports actual take spend (including paid failed/retried attempts), or "Spend unavailable", and **Undo Voice**. This restores all voice segments, assets, cuts and fixes with the one scoped native undo; charges are not refunded. Feedback is in-memory and valid only for the accepted project/revision, with Undo also checking the top native action. It does not mislabel a later unrelated undo, survive a changed project, or fabricate success on redo. AI transcript tint/underline, viewer **AI voice**, export disclosure and optional post disclosure OFF by default reuse the existing implementations.
 
 Accepting stores the segment (`kind: "tts"`) with its assets, words, provenance and QA, as one undo step.
 
@@ -1646,7 +1692,7 @@ The label is drawn by the same compositor that draws captions: `FrameCompositor`
 
 ### 11.3 Post text line
 
-When `required`, a disclosure line is appended to the caption text that Copy caption, Open X, Open LinkedIn and VoxConvo publish use (`doc/publishing.md` §2.1). It sits on its own paragraph after a blank line.
+The post disclosure line is optional (user decision, 1 November 2026). In the Mac Export job, sharing starts in the collapsed “Share to X or LinkedIn…” section (`ui.export.shareExpanded`). **Add 'AI MODIFIED' line to the post** is **OFF by default always**, including exports containing AI-voiced phrases. Opting in appends the exact line below on its own paragraph after a blank line. Copy caption, Open X and Open LinkedIn use the current text without an interstitial. This does not change the required burned-in video label, render disclosure plan or provenance. Windows follows this contract when its inline Export lane lands; its existing dialog is pending migration.
 
 | Condition | en | et (draft, needs native review) |
 |---|---|---|
@@ -1657,10 +1703,10 @@ When `required`, a disclosure line is appended to the caption text that Copy cap
 
 - Core builds the line (`VoiceLabDisclosurePlan.postText`) from the sentences in this order: `tts`, then `voiceChanger` (own clone or stock voice), then `lipsync`, joined by single spaces. It is the only source of the line.
 - The line is Estonian when the primary language subtag of the transcript language (the part before the first `-`) is `et`, compared ASCII case-insensitively: `et`, `et-EE` and `ET` match, `eto` does not. Otherwise it is English.
-- The caption field opens with the saved or default caption. When a line exists and is not present, White_Space at the end of the caption is dropped and the line is appended after a blank line (`SharePostText.fieldText`). The field text stays within the 3,000 Unicode scalars of `share.captions`: when the caption, the blank line and the line would pass 3,000, the caption is cut with the composer rules of `doc/publishing.md` §2.1 (rules 4 to 6, with `…`), measured in Unicode scalars against 3,000. The line is never cut.
+- The caption field opens with the saved or default caption and the post-line toggle off; a previously appended exact generated line is omitted until the user opts in. When the user turns the toggle on, White_Space at the end of the caption is dropped and the line is appended after a blank line (`SharePostText.fieldText`). The field text stays within the 3,000 Unicode scalars of `share.captions`: when the caption, the blank line and the line would pass 3,000, the caption is cut with the composer rules of `doc/publishing.md` §2.1 (rules 4 to 6, with `…`), measured in Unicode scalars against 3,000. The line is never cut.
 - The line is present when the caption contains it after both are NFC-normalized, every run of White_Space is collapsed to one space and the ends are trimmed (`ShareDisclosure.isPresent`). Any other edit to the line counts as removing it.
-- The user may edit the line. Removing it shows "Your post no longer says the video contains AI-modified parts." before sharing, with [Share anyway] and [Restore line]. Restore line puts it back with `SharePostText.fieldText`.
-- Truncation for X and for VoxConvo's 2,048-unit `text` (the composer text in `doc/publishing.md` §2.1) removes the line's last occurrence, cuts the rest of the caption and appends the line after a blank line. The disclosure line is never cut, and in truncated text it is always last. A caption that fits is sent unchanged, wherever the line is. Copy caption and Open LinkedIn never truncate.
+- The user may edit the caption or turn the toggle off at any time. Turning it off removes the exact generated post line immediately, with no Share anyway / Restore line interstitial. Only when the rendered export actually contains AI-voiced phrases, show the inline hint “Your video still shows the AI MODIFIED label.” Nothing nags on Done.
+- When the user opted in, truncation for X and for VoxConvo's 2,048-unit `text` (the composer text in `doc/publishing.md` §2.1) removes the line's last occurrence, cuts the rest of the caption and appends the line after a blank line. The disclosure line is never cut, and in truncated text it is always last. A caption that fits is sent unchanged, wherever the line is. Copy caption and Open LinkedIn never truncate.
 
 ### 11.4 X
 
@@ -1669,13 +1715,13 @@ When `required`, a disclosure line is appended to the caption text that Copy cap
 
 ### 11.5 LinkedIn
 
-LinkedIn's posting API has no disclosure field. The post text line is the disclosure. C2PA (§11.7) is embedded in the MP4 when enabled. LinkedIn shows a "Cr" icon for C2PA credentials it reads; whether that happens for a self-signed manifest, and whether the manifest survives its transcode, is unverified.
+LinkedIn's posting API has no disclosure field. When the user opts in, the post text line supplies the text disclosure. C2PA (§11.7) is embedded in the MP4 when enabled. LinkedIn shows a "Cr" icon for C2PA credentials it reads; whether that happens for a self-signed manifest, and whether the manifest survives its transcode, is unverified.
 
 ### 11.6 VoxConvo
 
 - The publish call (`doc/publishing.md` §3.5.3) adds `aiDisclosure: { "modified": true, "kinds": ["tts","lipsync"], "aiSeconds": 4.1 }` to `NewPostInput`, and the text carries the line from §11.3.
 - This needs a vox-api schema change and a vox-web badge. Both go in the publishing change lists before M3.
-- `doc/publishing.md` §5.2 uses the same `aiDisclosure` object for cross-posting, plus the disclosure line.
+- `doc/publishing.md` §5.2 uses the same `aiDisclosure` object for cross-posting, plus the optional post line when the user opts in.
 
 ### 11.7 Machine-readable marking: XMP and C2PA Content Credentials
 
@@ -1758,7 +1804,7 @@ The Guidelines do not settle whether a free, open-source, bring-your-own-key des
 |---|---|---|
 | Source audio for Clean audio | to ElevenLabs, only on the user's click | cache input WAV (evictable); result in `<data>/VoiceLab/<contentKey>/` |
 | Consent statement audio | to ElevenLabs STT (check) and IVC (one sample) | `<data>/VoiceLab/consent/<recordId>/` until the voice is deleted |
-| Training samples (project spans or a read-aloud) | to ElevenLabs IVC | temporary; deleted locally after upload or when the sheet closes; hashes kept |
+| Training samples (project spans or a read-aloud) | to ElevenLabs IVC | temporary; deleted locally after upload or explicit enrollment discard; hashes kept |
 | Patch text and context text | to ElevenLabs TTS (`previous_text` / `future_text`, ≤ 100 or 300 characters) | in the project segment |
 | Lip-sync window video and audio | to fal.ai or sync.so | deleted remotely where the API allows; result in `<data>/VoiceLab/<projectId>/` |
 | Speaker embeddings | never | in the consent record |

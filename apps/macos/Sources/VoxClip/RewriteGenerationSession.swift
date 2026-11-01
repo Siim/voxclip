@@ -34,6 +34,7 @@ import xlocale
     @ObservationIgnored private var cleanup: Task<Void, Never>?
     @ObservationIgnored private var quotePreparation: Task<Void, Never>?
     @ObservationIgnored var prepareQuote: (@MainActor () async -> Void)?
+    @ObservationIgnored var onInputsChanged: (@MainActor () -> Void)?
     @ObservationIgnored var readMonthlyCap: (@MainActor () async throws -> VoiceLabMonthlyCap?)?
     @ObservationIgnored private var preparedCap: VoiceLabMonthlyCap?
     @ObservationIgnored private var activeQuote: VoiceLabTakeRunQuote?
@@ -168,7 +169,10 @@ import xlocale
         }
         await run.reject(row.id)
     }
-    @discardableResult func accept(into editor: EditorModel, localCommands: [EditCommand] = [], at date: Date = Date()) async -> Bool {
+    /// Publishes the selected take and applies it with `localCommands` as one edit. `wrap` runs that one synchronous edit,
+    /// so the caller can tell its own change from an edit the user makes while the take publishes (`RewriteSession.follow`).
+    @discardableResult func accept(into editor: EditorModel, localCommands: [EditCommand] = [], at date: Date = Date(),
+                                   wrap: (() throws -> Void) throws -> Void = { try $0() }) async -> Bool {
         guard !Task.isCancelled, readyToAccept, let input, let selected else { return false }
         let version = revision, project = editor.project
         accepting = true
@@ -207,7 +211,7 @@ import xlocale
                   let plan = selected.audio?.fit.plan else { return false }
             let segment = try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: candidates,
                 selected: selectedIndex, input: input, plan: plan)
-            try editor.applyVoiceLab(.accept(segment, assets: assets, voice: voice), localCommands: localCommands)
+            try wrap { try editor.applyVoiceLab(.accept(segment, assets: assets, voice: voice), localCommands: localCommands) }
             return true
         } catch is CancellationError {
         } catch { if version == revision { problem = RewriteSession.refusal(error) } }
@@ -220,8 +224,10 @@ import xlocale
     var inputsMatchCurrentSelection: Bool { input?.recordID == selectedVoiceID && input?.modelID == selectedModelID }
     func discover(language: String) async {
         guard inputsAreCurrent() else { return }
+        let version = revision
         do {
             let choices = try await run.discover(language: language)
+            guard version == revision, inputsAreCurrent(), !Task.isCancelled else { return }
             models = choices.models; voices = choices.voices
             if !voices.contains(where: { $0.id == selectedVoiceID }) { chooseVoice(nil) }
             if !models.contains(where: { $0.id == selectedModelID }) { chooseModel(nil) }
@@ -239,7 +245,8 @@ import xlocale
         guard id != selectedModelID else { return }
         selectedModelID = id; inputsChanged()
     }
-    func inputsChanged() {
+    func inputsChanged(prepareNewQuote: Bool = true) {
+        onInputsChanged?()
         let execution = sending
         sending?.cancel(); sending = nil
         reviewedInputsCurrent = false
@@ -254,13 +261,13 @@ import xlocale
             await execution?.value
             if self?.executionRevision == executionRevision { self?.executionRevision = nil }
         }
-        requestQuote()
+        requestQuote(prepareNewQuote: prepareNewQuote)
     }
-    func requestQuote() {
+    func requestQuote(prepareNewQuote: Bool = true) {
         quotePreparation?.cancel()
         revision += 1; quote = nil; cost = nil; quotedInput = nil; preparingQuote = false
         quotePreparationFailed = false; problem = ""
-        guard let prepareQuote else { return }
+        guard prepareNewQuote, let prepareQuote else { return }
         quotePreparation = Task {
             guard !Task.isCancelled else { return }
             await prepareQuote()

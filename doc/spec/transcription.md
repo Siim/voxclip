@@ -656,7 +656,7 @@ Always map `logprob` to `conf` as above, never a constant. Never log transcript 
   - Never retry 400, 401, 403 or 422.
   - A transport failure during the upload counts as one attempt.
 - Mapping: 401 → `keyRejected`. 403, or a 401 whose JSON body mentions a permission → `keyPermissionMissing`. 422 → `providerError` with `detail[0].msg`. A body that mentions quota or credits → `quotaExceeded`. Bodies are truncated to 200 characters after redaction.
-- Cancelling invalidates the task, and the transcript column says "Cancelled. ElevenLabs may still bill audio it already received."
+- Cancelling invalidates the task. On Mac, before upload the transcript column says “Cancelled. Nothing has been sent and nothing is billed. Your video is still here.” Once upload starts it says “Cancelled. ElevenLabs may still bill audio it already received.” plus the request's estimated upper bound. Partial results are discarded; an existing transcript is kept. Windows retains its current cancellation copy until ported.
 
 ### 8.4 Limits
 
@@ -674,14 +674,11 @@ ElevenLabs transcribes files longer than 8 minutes in parallel internally, with 
 
 ### 8.5 Cost, privacy, key test
 
-- **Cost line**, shown in the import sheet and the engine picker: `durationHours × 0.22 USD`, × 1.2 when keyterms are used (catalogue `pricing`). Silence is billed. Format "≈ $0.04", with two significant digits and "< $0.01" as the minimum.
+- **Cost line**, shown in the inline Mac Transcribe block (Windows import dialog) and the engine picker: `durationHours × 0.22 USD`, × 1.2 when keyterms are used (catalogue `pricing`). Silence is billed. Format "≈ $0.04", with two significant digits and "< $0.01" as the minimum.
 - **Privacy line**: "Sends the audio track to ElevenLabs. ElevenLabs keeps it under its terms." (`doc/design.md` §10).
-- **First-use consent.** Before the first ElevenLabs upload, show a sheet (macOS sheet on the window, Windows `ContentDialog`) unless the setting `transcription.cloudConsent.elevenlabs` is true:
-  - Title: "Transcribe with ElevenLabs?"
-  - Body: "ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent."
-  - Buttons: [Continue] (default) stores `transcription.cloudConsent.elevenlabs = true` and uploads; [Cancel] uploads nothing and leaves the project "Not transcribed".
-  - The Test button (below) sends no audio and needs no consent.
-  - The Mac headless App harness checks the same consent gate used by the sheet: no upload or project change before consent, cancellation without a stored grant, persistence before the first upload, and no repeat prompt after loading that grant. It uses a fake upload, not a provider call. The corresponding Windows App behavior/tests are owed to the Windows track.
+- **Mac v2: explicit approval on every run.** The transcript's inline block shows “Uploads this video's audio to ElevenLabs with your key.” and **Upload and Transcribe · ≈ $X**, from duration × the bundled catalogue rate (plus keyterms). The first priced click stores `transcription.cloudConsent.elevenlabs = true` and authorizes that run. Before it, show “{duration} of sound, no video frames. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. Asked once.” Later runs omit the terms, but still require the priced click. Missing keys use an inline secure field and Save Key; saving makes no request. Never auto-focus the paid primary. Ignore key repeat, pre-row Return and Return within its first 0.5 s; ⌘Return approves explicitly. Space plays. Cancel/Not now uploads nothing and stores no consent. Headless tests use stub transcribers and the same controller as the UI.
+- **Windows first-use consent (until this inline flow is ported).** Before the first upload, the existing ContentDialog says “Transcribe with ElevenLabs?” and “ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent.” [Continue] stores the consent and uploads; [Cancel] sends nothing.
+- The Test button below sends no audio and needs no paid approval.
 - **Test button**: `GET {base}/v1/user/subscription`. The button makes no paid call.
   - 200 shows "Works."
   - A 401 or 403 whose body says the key lacks a permission shows "The key works. It can't read account details (user_read), and that is fine for transcription." This proves the key is valid but does not prove it has `speech_to_text`.
@@ -960,7 +957,7 @@ case .supported, .downloading:
   | anything else | `speechAssetsUnavailable` |
 
 - While downloading, the UI shows "Downloading Apple's {Language} speech model…" with the fraction. macOS hosts the files, and VoxClip shows no size it does not know.
-- Settings → Transcription lists the selected language's Apple speech model, with Download, progress and Cancel, Retry after failure, or Installed. Auto asks the user to choose a language. A missing-assets message in the transcription sheet opens that pane through Models and keys…. Downloads are app-owned and continue after Settings closes; cancellation is silent. A language chosen during a download is checked after that download finishes.
+- Settings → Transcription lists the selected language's Apple speech model, with Download, progress and Cancel, Retry after failure, or Installed. Auto asks the user to choose a language. The Mac v2 transcript block downloads missing assets inline; the Windows import dialog retains its Models and keys… route. Downloads are app-owned and continue after Settings closes; cancellation is silent. A language chosen during a download is checked after that download finishes.
 
 ### 10.4 Analysis
 
@@ -1013,10 +1010,10 @@ VoxClip does not call `SFSpeechRecognizer.requestAuthorization` up front. If ana
   - `apple`, labelled "Apple on-device": macOS only;
   - `elevenlabs`, labelled "ElevenLabs Scribe";
   - `ask`, labelled "Ask each time".
-- **Language**, chosen per import in the import sheet (`doc/design.md` §7.1, which also says when the sheet appears). The default is Settings → Transcription → Language, which is `auto` unless the user set it. The value is `auto` or a BCP 47 primary subtag.
+- **Language**, chosen per import in the Mac v2 transcript block or Windows import dialog (`doc/design.md` §7.1). The default is Settings → Transcription → Language, which is `auto` unless the user set it. The value is `auto` or a BCP 47 primary subtag.
 - The platform, the installed models (`ModelManager`), whether an ElevenLabs key is present, `SpeechTranscriber` support, and the installed RAM.
 
-An explicit engine choice in the import sheet overrides the rules below. It is still checked with `supports`.
+An explicit engine choice in the Mac transcript block or Windows import dialog overrides the rules below. It is still checked with `supports`.
 
 ### 11.2 Algorithm
 
@@ -1053,6 +1050,8 @@ The resulting defaults:
 Estonian takes often contain English terms. Always force `et` on the TalTech model, which was trained for that mix.
 
 ### 11.3 Re-routing and prompts
+
+**Mac v2 override (v5 §8):** show choices inline. A free installed engine starts without the choice block; English's default is Apple Speech. Choices remain editable during model downloads; completion uses the current ready free choice. Switching to ElevenLabs always waits for a new priced click, even with stored privacy consent. Remember persists only the language. Download and Transcribe accepts the displayed publisher terms inline, with no second dialog. Windows retains the prompts described below until ported.
 
 - If a routed engine fails with `transcriptionLanguageUnsupported`, offer the next candidate from 11.2 as a button. Never switch engines silently, and never upload without a click (`doc/architecture.md` §10.1 rule 6).
 - Prompt copy (`doc/design.md` §13):
@@ -1140,7 +1139,7 @@ A catalogue update that changes a hash marks the old install "Update available".
 
 1. **Queue.** `download(modelId)` does nothing if the model is installed or already queued. It queues the `requires` models first. One model download runs at a time.
 2. **Free space.** The volume needs `remaining bytes × 1.1 + 1 GiB` free. Check with `volumeAvailableCapacityForImportantUsageKey` on macOS and `DriveInfo.AvailableFreeSpace` on Windows. If there is not enough, fail with `diskFull`. macOS model-store unit tests inject capacity independently of the host's free space; production initializers keep the real volume lookup.
-3. **Confirm.** Before the first byte of each model, show a confirmation, once per model: a sheet on the window on macOS, a `ContentDialog` on Windows.
+3. **Confirm.** Before the first byte of each model, show a confirmation, once per model: the Mac v2 transcript block displays these terms above **Download and Transcribe**, whose click approves only the named model and its dependencies (§11.3). Mac Settings retains its sheet; Windows uses a `ContentDialog`.
    - Title: "Download {displayName} from huggingface.co?"
    - Body: "This model is published by {publisher}, not by VoxClip. It downloads from the publisher ({size}) and runs on this {Mac/PC}. Licence: {license}. By downloading you accept the publisher's terms." Then a blank line and `{attribution}`.
    - Buttons: [Download] (default), [Cancel], [Open source page] (opens `sourcePage`).
@@ -1193,12 +1192,14 @@ Screen readers hear an announcement every 10%. Under Reduce Motion, indeterminat
 
 ### 13.2 Cancellation
 
-- Every stage can be cancelled from the import sheet and the transcript column.
+- Every stage can be cancelled from the inline Mac transcript block (Windows import dialog). Before an ElevenLabs upload, cancellation bills nothing; after upload begins the inline note names the possible bill and keeps the estimate as an upper bound. Download cancellation retains resumable bytes.
 - Local engines must stop within 1 s:
   - whisper: through `abort_callback` on macOS and the `CancellationToken` on Windows;
   - Apple Speech: through `cancelAndFinishNow()`.
-- Partial results are discarded. The project returns to "Not transcribed" (`transcript: null`) and the video stays playable. The extracted audio stays in the cache for the retry.
-- Cancellation shows no error message and is logged at `info`.
+- Partial results are discarded. A new import stays “Not transcribed” (`transcript: null`); Transcribe Again keeps its prior transcript and edits until successful replacement. The video stays playable and extracted audio stays in the cache for retry.
+- On Mac, starting an approved transcription synchronously binds its full project/source snapshot, plan and estimate before creating the worker. A local download approval retains its project baseline through installation; completion still uses the current ready free choice, without rebasing intervening project edits. Source path, content key and duration come from that snapshot, not later live project reads. Revalidate after lease/extraction waits, immediately before provider upload attempts (including after key lookup), and before replacing the transcript. Post-approval edits refuse a stale run/result and retain the current edits and pending Rewrite review; a successful replacement alone clears them and adds one undo step.
+- Upload/cache evidence belongs to the request and is recorded independently of throttled UI progress. Closing or cancelling a request does not erase possible billing: an uploaded obsolete request records its own estimate once as uncertain, even if its completion ignores cancellation. A recognized paid cache result adds no charge even if later mapping/alignment fails. Old progress, errors, cancellation notes, key state and announcements cannot mutate a newer run, including across error-sanitization or spend-ledger awaits. Cancel/close cancels its progress watcher; worker completion joins it. Ordinary Return freshness uses the event timestamp at least 0.5 s after the paid action appears, never merely a delayed handler time; nonrepeat ⌘Return remains explicit approval, except that Transcribe Again leaves it unbound.
+- Cancellation is logged at `info`; it is not an error. Mac shows the inline billing/cancellation note from §8.3, with **Transcribe…** to retry. Existing exports stay.
 
 ### 13.3 Logging
 
@@ -1258,6 +1259,8 @@ The normalised `Transcript` lives only in the project file. It is not cached.
 - A paid response is never overwritten. Before an ElevenLabs upload, a file at the entry path that is not this request's readable entry (it does not decode, or it has another key or schema; on macOS, anything but this key's own placeholder) is renamed to `<name>.unreadable-<unix ms>`, never replacing an existing file. If the rename fails, transcription stops with the cache-unavailable error. Set-aside files are never read back; eviction keeps them with `transcripts/` in its first pass and removes them only with the whole entry (`doc/architecture.md` §8.2).
 
 ### 14.4 Re-transcription
+
+The integrated Mac inline route requires a writable document, a checked and usable media identity with no unresolved relink, and a finite positive duration. These checks hold both before approval and throughout the request-local snapshot's worker. Missing/unreadable media, a pending relink, reload, owner leave or close cancels scoped work; a late accepted upload retains its own uncertain accounting but cannot replace the current project. Version windows cannot start transcription. Daily pending/uncertain transcription spend and monthly Voice Lab spend remain separate ledgers with distinct labels inside one status slot.
 
 "Transcribe again…" lets the user choose a different engine, model or language. It builds a new `Transcript` with new ids. `editing.md` §10.5 then requires clearing the cuts, corrections, clips and AI results, after a confirmation that names what will be lost.
 

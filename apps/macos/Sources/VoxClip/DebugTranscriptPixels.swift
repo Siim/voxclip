@@ -36,7 +36,7 @@ import VoxClipCore
         renderer.update(TranscriptAppearance(cutWords: ["pixel-cut"], lowConfidence: true, playhead: 1.4))
         guard let manager = text.textLayoutManager else { throw CocoaError(.coderInvalidValue) }
         manager.ensureLayout(for: manager.documentRange)
-        text.layOutViewport()
+        manager.textViewportLayoutController.layoutViewport()
         guard let fragment = manager.textLayoutFragment(for: manager.documentRange.location), let line = fragment.textLineFragments.first else { throw CocoaError(.coderInvalidValue) }
         let font = DesignValues.transcriptFont(size: model.textSize)
         let baseline = text.textContainerOrigin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
@@ -114,7 +114,7 @@ import VoxClipCore
             results.append(.init(name: "the pause's accessible description includes duration and cut", passed: text.map.span(id: pause.id).flatMap { text.accessibilityString(for: $0.range) }?.hasSuffix(", cut") == true))
         }
         manager.ensureLayout(for: manager.documentRange)
-        text.layOutViewport()
+        manager.textViewportLayoutController.layoutViewport()
         for (name, mode) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             let appearance = NSAppearance(named: mode)!
             window.appearance = appearance
@@ -127,7 +127,7 @@ import VoxClipCore
                 pageState.cutPauses = pauseCut ? Set(model.pauses.map(\.id)) : []
                 renderer.update(pageState)
                 manager.ensureLayout(for: manager.documentRange)
-                text.layOutViewport()
+                manager.textViewportLayoutController.layoutViewport()
                 text.backgroundColor = DesignValues.nsColor("bg.surface")
                 text.needsDisplay = true
                 guard let cached = text.bitmapImageRepForCachingDisplay(in: text.bounds) else { return }
@@ -176,6 +176,7 @@ import VoxClipCore
         try JSONEncoder().encode(probes).write(to: directory.appendingPathComponent("transcript-decoration-pixels.json"))
         results += try gutter(app: app, fixture: fixture, directory: directory)
         results += try folds(app: app, fixture: fixture, directory: directory)
+        results += try proposal(app: app, fixture: fixture, directory: directory)
         return results
     }
     static func wordAccessibility(app: AppModel) throws -> [DebugUISuite.Result] {
@@ -281,7 +282,7 @@ extension DebugTranscriptPixels {
     static func gutter(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
-        let model = EditorModel(document: VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), app: app, preview: DemoPreviewEngine())
+        let model = EditorModel(document: VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
         model.textSize = DesignValues.transcriptTextSize; model.mediaResolved = true; model.refresh()
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
@@ -454,10 +455,11 @@ extension DebugTranscriptPixels {
 
     /// The editor at 1280 × 800 with clip 2 of the five-questions take open and the playhead
     /// in it, for side by side with f1: `v2-transcript-1280-dark` offscreen in `-uiSelfTest`,
-    /// and `v2-transcript-1280` from the window server in `-sceneAudit` (`native`).
+    /// and `v2-transcript-1280` from the window server in `-sceneAudit` (`native`); then the
+    /// same clip with three proposed changes, beside f3: `v2-transcript-hunks-1280(-dark)`.
     static func scenes(app: AppModel, fixture: Project, directory: URL, native: Bool = false) async throws -> [DebugUISuite.Result] {
         let shell = WorkspaceShell(app: app)
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .clip("five-2"))
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), selection: .clip("five-2"))
         guard let editor = shell.editor, let clip = editor.activeClip, let start = editor.index(clip.startWordId) else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()
@@ -468,7 +470,23 @@ extension DebugTranscriptPixels {
             band = window.contentView.flatMap(transcript(in:))?.backdrop?.band
             return nil
         })
-        if native { return [.init(name: "native v2 transcript: the open clip shows its band", passed: band != nil)] }
+        // The same clip with a proposal of three changes, change 1 focused, beside f3: "that
+        // matters → counts most", "if someone only reads" without "only", "caption," → "captions,".
+        let ids = editor.words.map(\.id)
+        guard editor.words.count > start + 28, editor.words[start + 4].text == "matters", editor.words[start + 25].text == "only", editor.words[start + 28].text == "caption," else { throw CocoaError(.coderInvalidValue) }
+        editor.proposal = TranscriptProposal(clipID: clip.id, title: "Rewrite clip 2", changes: [
+            TranscriptChange(ordinal: 1, parts: [.init(kind: .voice, sourceWordIDs: [ids[start + 4]], newTokens: ["counts"])]),
+            TranscriptChange(ordinal: 2, parts: [.init(kind: .cut, sourceWordIDs: [ids[start + 25]])]),
+            TranscriptChange(ordinal: 3, parts: [.init(kind: .textOnly, sourceWordIDs: [ids[start + 28]], newTokens: ["captions,"], correctedTexts: ["captions,"])])
+        ])
+        var buttons = false
+        try await DebugUISuite.snapshot(WorkspaceView(shell: shell).environment(app), name: native ? "v2-transcript-hunks-1280" : "v2-transcript-hunks-1280-dark", size: NSSize(width: 1280, height: 800),
+                                        appearance: .darkAqua, directory: directory, active: true, mainWindow: true, native: native, beforeCapture: { window in
+            buttons = window.contentView.flatMap(transcript(in:))?.proposalLayer?.isHidden == false
+            return nil
+        })
+        editor.proposal = nil
+        if native { return [.init(name: "native v2 transcript: the open clip shows its band", passed: band != nil), .init(name: "native v2 transcript: the focused change shows Keep and Undo", passed: buttons)] }
         return []
     }
     private static func transcript(in view: NSView) -> TranscriptNSTextView? {
@@ -687,8 +705,9 @@ extension DebugTranscriptPixels {
             let right = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + line.locationForCharacter(at: NSMaxRange(uh.range) - base).x
             let baseline = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
             let row = baseline - font.xHeight / 2
-            let struck = pane.count(bitmap, in: CGRect(x: left, y: row - 0.75, width: right - left, height: 1.5), TranscriptPane.color("word.gone"))
-            check("Show cuts strikes a removed word in word.gone (\(struck) pixels)", struck >= Int(right - left))
+            // Every column but the two partly covered ends.
+            let struck = pane.inkedColumns(bitmap, left: left, right: right, row: row, ink: TranscriptPane.color("word.gone"), paper: TranscriptPane.color("bg.surface"))
+            check("Show cuts strikes a removed word in word.gone (\(struck.inked) of \(struck.of) columns)", struck.of > 0 && struck.inked >= struck.of - 2)
         } else { check("the struck word is laid out", false) }
         model.toggleShowsCuts()
         pane.update(rebuild: true)
@@ -757,6 +776,262 @@ extension DebugTranscriptPixels {
     }
 }
 
+/// V14 on the mockup's proposal (ux/v2 f3 and zoom-transcript): a clip of four paragraphs with
+/// five proposed changes, two cuts and three in your voice, change 1 focused. Checks each
+/// treatment's pixels, the Keep and Undo buttons at three measures, the map with inserted runs,
+/// Keep, Undo and Keep All, the rotor and the edit popover. Writes `v2-transcript-hunks-dark`,
+/// `v2-transcript-hunks-excluded-dark` and `v2-transcript-hunk-popover-dark`.
+extension DebugTranscriptPixels {
+    /// The take of f3's Clip 1, between a paragraph before it and one after it. A filler and
+    /// a pause are cut in the second paragraph, so a fold sits beside the changes.
+    static func proposalProject(from fixture: Project) -> Project {
+        let paragraphs: [[String]] = [
+            ["regenerates", "basically", "your", "video", "with-", "without", "making", "it", "10", "tries", "before", "you", "can", "actually", "post", "it."],
+            ["And", "one", "cool", "feature", "I", "added", "is", "when", "you", "want", "to", "represent", "your", "project,", "you", "include", "source", "directory", "to,", "to", "the", "clip."],
+            ["So,", "{1.4}", "uh,", "while", "you're", "speaking,", "it", "examines", "your", "app,", "makes", "videos,", "and", "adds", "clip", "in", "between", "your", "speech."],
+            ["So", "this", "is", "interesting", "way", "how", "to", "represent", "stuff", "and", "of", "course", "websites,", "whatever", "you're", "speaking", "about."],
+            ["It", "just", "pulls", "the", "site,", "and", "it", "just", "gets", "the", "si-", "into", "the", "site", "and", "shows", "the", "thing", "that", "you", "are", "talking", "about.",
+             "So", "it's", "like", "automatic", "clipper,", "clipping", "assistant."],
+            ["Let's", "see", "how", "far", "it", "can", "go."]
+        ]
+        var words: [TimedWord] = [], cutWords: [String] = [], cutPauses: [String] = [], gap = 0.1, end = 230.0
+        for (paragraph, tokens) in paragraphs.enumerated() {
+            for token in tokens {
+                if token.hasPrefix("{"), let seconds = Double(token.dropFirst().dropLast()) {
+                    gap = seconds
+                    if let last = words.last { cutPauses.append("pause-after-\(last.id)") }
+                    continue
+                }
+                let start = end + gap
+                let word = TimedWord(id: "hunk-\(words.count)", text: token, start: start, end: start + 0.3, speaker: "s\(paragraph % 2)")
+                if token == "uh," { cutWords.append(word.id) }
+                words.append(word)
+                end = word.end; gap = 0.1
+            }
+            gap = 1.6
+        }
+        var project = fixture
+        project.transcript?.words = words
+        project.transcript?.durationSeconds = end + 1
+        project.media.source.durationSeconds = end + 1
+        let first = paragraphs[0].count, last = words.count - paragraphs[5].count - 1
+        project.edits = ProjectEdits(pauseThresholdSeconds: 0.75, cutWordIds: cutWords, cutPauseIds: cutPauses,
+                                     clips: [ClipRange(id: "hunk-clip", startWordId: words[first].id, endWordId: words[last].id, title: "Clips that show")])
+        return project
+    }
+    /// f3's five changes over `proposalProject`, change 1 focused: "include your source directory
+    /// in the clip", "is an interesting way to", two cuts and "like an automatic clipping
+    /// assistant". The parts are C2's shapes: merged voice hunks with their bridges, and cuts.
+    static func proposal(for model: EditorModel) -> TranscriptProposal {
+        func ids(_ texts: [String], after: Int = 0) -> [String] {
+            let words = model.words
+            guard let start = (after..<words.count).first(where: { start in start + texts.count <= words.count && words[start..<(start + texts.count)].map(\.text) == texts }) else { return [] }
+            return words[start..<(start + texts.count)].map(\.id)
+        }
+        let first = ids(["source", "directory", "to,", "to", "the"])
+        let second = ids(["interesting", "way", "how"])
+        let site = ids(["and", "it", "just", "gets", "the", "si-", "into", "the", "site"])
+        let that = ids(["that"])
+        let clipper = ids(["automatic", "clipper,"])
+        let changes = [
+            TranscriptChange(ordinal: 1, parts: [.init(kind: .voice, sourceWordIDs: first, newTokens: ["your", "source", "directory", "in", "the"], bridgeWordIDs: Array(first.prefix(2)))]),
+            TranscriptChange(ordinal: 2, parts: [.init(kind: .voice, sourceWordIDs: second, newTokens: ["an", "interesting", "way"], bridgeWordIDs: Array(second.prefix(2)))]),
+            TranscriptChange(ordinal: 3, parts: [.init(kind: .cut, sourceWordIDs: site)]),
+            TranscriptChange(ordinal: 4, parts: [.init(kind: .cut, sourceWordIDs: that)]),
+            TranscriptChange(ordinal: 5, parts: [.init(kind: .voice, sourceWordIDs: clipper, newTokens: ["an", "automatic"], bridgeWordIDs: Array(clipper.prefix(1)))])
+        ]
+        return TranscriptProposal(clipID: "hunk-clip", title: "Rewrite clip 1", changes: changes)
+    }
+
+    static func proposal(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
+        var results: [DebugUISuite.Result] = []
+        func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        let model = EditorModel(document: VoxClipDocument(project: proposalProject(from: fixture), demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.textSize = DesignValues.transcriptTextSize; model.mediaResolved = true; model.refresh()
+        model.activate(model.project.edits.clips[0])
+        model.proposal = proposal(for: model)
+        model.sourceTime = model.words[16].start + 0.05
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
+        defer { pane.close() }
+        let text = pane.text, renderer = pane.renderer
+        func id(_ index: Int) -> String { model.words[index].id }
+        func spans(_ ordinal: Int) -> [TranscriptSpan] { text.map.spans.filter { $0.change?.ordinal == ordinal } }
+
+        // The text: new words beside the words they replace, removed words kept in place, folds unchanged.
+        let shown = displayed(text).map { $0.replacingOccurrences(of: TranscriptFold.text, with: "•") }
+        let expected = ["regenerates basically your video with- without making it 10 tries before you can actually post it.",
+                        "And one cool feature I added is when you want to represent your project, you include your source directory to, to the in the clip.•",
+                        "So•while you're speaking, it examines your app, makes videos, and adds clip in between your speech.",
+                        "So this is an interesting way how to represent stuff and of course websites, whatever you're speaking about.",
+                        "It just pulls the site, and it just gets the si- into the site and shows the thing that you are talking about. So it's like an automatic clipper, clipping assistant.",
+                        "Let's see how far it can go."]
+        check("each change shows its new words beside the words it removes, and the Keep and Undo blank after \"clip.\" (\(shown))", shown == expected)
+        let inserted = text.map.spans.filter { $0.kind == .inserted }
+        check("new words are display-only runs, never selectable (\(inserted.count) runs)", inserted.count == 4 && inserted.allSatisfy { !$0.selectable && $0.change?.role == .new })
+        check("the words a change removes are struck in word.gone and the words it keeps stay plain",
+              ["to,", "to", "the", "how", "clipper,"].allSatisfy { word in text.map.spans.contains { $0.change?.role == .old && (text.string as NSString).substring(with: $0.range) == word } }
+              && renderer.attributes[id(34)]?[.vcStrike] as? Bool == true && renderer.attributes[id(34)]?[.foregroundColor] as? NSColor === DesignValues.nsColor("word.gone")
+              && renderer.attributes[id(32)]?[.vcStrike] as? Bool == false && text.map.span(id: id(32))?.change?.role == .kept)
+        // Selection snaps around new words: a drag over "your source" holds "source" only.
+        if let your = inserted.first, let source = text.map.span(id: id(32)) {
+            let ranges = text.map.selectionRanges(in: NSRange(location: your.range.location, length: NSMaxRange(source.range) - your.range.location))
+            check("a selection over new words skips them (\(ranges))", ranges == [source.range])
+        }
+        // The map round-trips with inserted runs: every span by id and by character.
+        let roundTrip = text.map.spans.allSatisfy { span in text.map.span(id: span.id) == span && text.map.intersecting(span.range).contains(span) }
+            && model.words.allSatisfy { word in text.map.span(id: word.id) != nil }
+        check("the range map round-trips with the inserted runs", roundTrip)
+
+        pane.scroll(toCharacter: 0)
+        var bitmap = try pane.bitmap("v2-transcript-hunks-dark", directory: directory)
+        let band = TranscriptPane.color("editor.band")
+        // The greens are compared by hue and strength: the capture is in the display's space,
+        // where a saturated sRGB token reads different components (greys do not).
+        let tinted: (NSColor) -> Bool = { $0.greenComponent - $0.redComponent > 0.05 && $0.greenComponent > $0.blueComponent && $0.greenComponent < 0.35 }
+        let fullBar: (NSColor) -> Bool = { $0.greenComponent - $0.redComponent > 0.3 && $0.greenComponent > 0.6 }
+        let halfBar: (NSColor) -> Bool = { $0.greenComponent - $0.redComponent > 0.15 && (0.35...0.6).contains($0.greenComponent) }
+        // New words on change.add at 19 %, at the text's height: above "your" only tint.
+        if let your = inserted.first, let box = text.textBox(of: your.range) {
+            let font = renderer.font
+            let baseline = (pane.line(atCharacter: your.range.location).map { fragment, line, _ in text.textContainerOrigin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y }) ?? 0
+            let top = baseline - font.ascender
+            let inside = pane.count(bitmap, in: CGRect(x: box.minX + 2, y: top + 1, width: box.width - 4, height: 3), where: tinted)
+            let above = pane.count(bitmap, in: CGRect(x: box.minX + 2, y: top - 4, width: box.width - 4, height: 3), where: { !TranscriptPane.close($0, band, 3.0 / 255) })
+            check("new words sit on change.add at 19 % at the text's height (\(inside) tinted, \(above) above)", inside >= Int((box.width - 4) * 2) && above == 0)
+        } else { check("the first new words are laid out", false) }
+        // The removed "how" is struck in word.gone.
+        if let how = text.map.span(id: id(61)), let (fragment, line, base) = pane.line(atCharacter: how.range.location) {
+            let origin = text.textContainerOrigin
+            let left = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + text.glyphX(line, local: how.range.location - base)
+            let right = origin.x + fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + text.glyphX(line, local: NSMaxRange(how.range) - base)
+            let row = origin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y - renderer.font.xHeight / 2
+            // Every column but the two partly covered ends.
+            let struck = pane.inkedColumns(bitmap, left: left, right: right, row: row, ink: TranscriptPane.color("word.gone"), paper: band)
+            check("a removed word is struck in word.gone (\(struck.inked) of \(struck.of) columns)", struck.of > 0 && struck.inked >= struck.of - 2)
+        } else { check("\"how\" is laid out", false) }
+        // Change bars at x 66: the focused change at 100 %, the others at 50 %.
+        if let first = renderer.changeRange(1).flatMap({ text.lineBox(atCharacter: $0.location) }), let second = renderer.changeRange(2).flatMap({ text.lineBox(atCharacter: $0.location) }) {
+            let full = pane.count(bitmap, in: CGRect(x: 66, y: first.minY + 6, width: 3, height: first.height - 12), where: fullBar)
+            let half = pane.count(bitmap, in: CGRect(x: 66, y: second.minY + 6, width: 3, height: second.height - 12), where: halfBar)
+            let gap = pane.count(bitmap, in: CGRect(x: 66, y: first.minY, width: 3, height: 3), where: { !TranscriptPane.close($0, band, 3.0 / 255) })
+            check("the focused change's bar is change.add, the others' at 50 %, 4 pt in from the line (\(full), \(half), \(gap) at the top)", full >= 30 && half >= 30 && gap == 0)
+            let unchanged = text.lineBox(atCharacter: text.map.span(id: id(40))?.range.location ?? 0)
+            let none = unchanged.map { pane.count(bitmap, in: CGRect(x: 66, y: $0.minY, width: 3, height: $0.height), where: { !TranscriptPane.close($0, band, 3.0 / 255) }) } ?? -1
+            check("a line no change touches has no bar (\(none))", none == 0)
+            // The glyph column shows the change's kind in text.tertiary.
+            let glyph = pane.count(bitmap, in: CGRect(x: 49, y: first.midY - 7, width: 14, height: 14), where: { !TranscriptPane.close($0, band, 0.04) })
+            check("a changed line shows its kind's glyph at 49–63 (\(glyph) pixels)", glyph >= 6)
+        } else { check("changes 1 and 2 are laid out", false) }
+        // One glyph per line by precedence: a line with a cut and a voice change shows the waveform.
+        let mixed: [TranscriptChangeMark] = [.init(ordinal: 4, kind: .cut, role: .old, pending: true, focused: false), .init(ordinal: 5, kind: .voice, role: .new, pending: true, focused: false)]
+        check("the glyph column ranks voice over fix over cut over the AI waveform",
+              TranscriptGutter.glyph(marks: mixed, aiVoice: true) == .change(.voice) && TranscriptGutter.glyph(marks: [mixed[0]], aiVoice: true) == .change(.cut)
+              && TranscriptGutter.glyph(marks: [], aiVoice: true) == .aiVoice && TranscriptGutter.glyph(marks: [.init(ordinal: 1, kind: .voice, role: .slot, pending: false, focused: false)], aiVoice: false) == nil)
+        // No red: the only warm pixels are the caret's and the ruler's.
+        if let caret = text.caret?.frame {
+            let red: (NSColor) -> Bool = { $0.redComponent - max($0.greenComponent, $0.blueComponent) > 0.2 }
+            let ruler = pane.scroll.convert(pane.scroll.overviewRuler.frame, to: text), visible = pane.scroll.convert(pane.scroll.bounds, to: text)
+            let count = pane.count(bitmap, in: visible, where: red) - pane.count(bitmap, in: caret.insetBy(dx: -2, dy: -2), where: red) - pane.count(bitmap, in: ruler.intersection(visible), where: red)
+            check("no red anywhere: changes are green, removals grey (\(count) pixels)", count == 0)
+        }
+
+        // The buttons stand over the blank after "clip.", Keep then Undo, inside the text container at three measures.
+        var placements: [String] = []
+        for width: CGFloat in [604, 652, 772] {
+            pane.resize(width: width)
+            pane.scroll(toCharacter: renderer.changeRange(1)?.location ?? 0)
+            text.updateProposalButtons()
+            guard let layer = text.proposalLayer, !layer.isHidden, let spacer = renderer.spacerID.flatMap({ text.map.span(id: $0) }),
+                  let clip = text.map.span(id: id(37)), let line = text.lineBox(atCharacter: clip.range.location), let container = text.textContainer else { placements.append("\(width): hidden"); continue }
+            let right = text.textContainerOrigin.x + container.containerSize.width
+            let clipEnd = text.textBox(of: clip.range)?.maxX ?? 0
+            let ok = layer.frame.maxX <= right && abs(layer.frame.minX - clipEnd - TranscriptProposalLayer.margin) < 1 && abs(layer.frame.midY - line.midY) <= 1
+                && layer.buttons.map(\.kind) == [.keep, .undo] && layer.buttons.allSatisfy { $0.frame.height == 20 } && text.lineBox(atCharacter: spacer.range.location) == line
+            if !ok { placements.append("\(width): \(layer.frame) right \(right) word end \(clipEnd) line \(line)") }
+        }
+        check("Keep and Undo stand 10 pt after \"clip.\", centred on its line, inside the text container at measures 480, 528 and 648 (\(placements))", placements.isEmpty)
+        pane.resize(width: 652)
+        pane.scroll(toCharacter: 0)
+
+        // The rotor reads each change.
+        let rotor = NSAccessibilityCustomRotor(label: "Proposed changes", itemSearchDelegate: text)
+        let parameters = NSAccessibilityCustomRotor.SearchParameters()
+        parameters.searchDirection = .next
+        text.configureAccessibilityActions()
+        let firstItem = text.rotor(rotor, resultFor: parameters)
+        check("the Proposed changes rotor reads \"\(firstItem?.customLabel ?? "nothing")\"", firstItem?.customLabel == "Proposed change 1 of 5: removed to, to the; inserted your, in the" && firstItem?.targetRange == renderer.changeRange(1))
+        check("the transcript offers Keep and Undo as custom actions", (text.accessibilityCustomActions() ?? []).map(\.name).contains("Keep change 1") && (text.accessibilityCustomActions() ?? []).map(\.name).contains("Undo change 1"))
+
+        // Undo excludes change 2: original words with a dotted place, no project change, no undo step.
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let before = model.project
+        model.focusChange(2, announcing: false)
+        pane.update()
+        model.excludeFocusedChange()
+        pane.update()
+        check("Undo leaves a change out with no project change and no undo step, and focuses the next pending change",
+              model.project == before && !undo.canUndo && model.proposal?[2]?.state == .excluded && model.proposalDisplay?.focused == 3
+              && displayed(text)[3] == "So this is interesting way how to represent stuff and of course websites, whatever you're speaking about."
+              && text.map.span(id: id(61))?.change?.role == .slot && renderer.attributes[id(61)]?[.vcUnderline] as? Int == TranscriptChangeMark.slotUnderline)
+        bitmap = try pane.bitmap("v2-transcript-hunks-excluded-dark", directory: directory)
+        // The excluded change keeps a dotted underline under "how", which has no descender.
+        if let how = text.map.span(id: id(61)), let box = text.textBox(of: how.range), let (fragment, line, _) = pane.line(atCharacter: how.range.location) {
+            let baseline = text.textContainerOrigin.y + fragment.layoutFragmentFrame.minY + line.typographicBounds.minY + line.glyphOrigin.y
+            let row = baseline - renderer.font.underlinePosition + 1
+            let dots = pane.count(bitmap, in: CGRect(x: box.minX, y: row - 1, width: box.width, height: 2), where: { !TranscriptPane.close($0, band, 0.04) })
+            let gaps = pane.count(bitmap, in: CGRect(x: box.minX, y: row - 1, width: box.width, height: 2), where: { TranscriptPane.close($0, band, 0.04) })
+            check("an excluded change's words keep a dotted underline (\(dots) inked, \(gaps) clear)", dots >= Int(box.width / 3) && gaps >= Int(box.width / 3))
+        } else { check("\"how\" is laid out after Undo", false) }
+        // Keep on a cut applies it as one undo step; the kept words fold like any cut.
+        undo.beginUndoGrouping()
+        model.keepFocusedChange()
+        undo.endUndoGrouping()
+        pane.update()
+        check("Keep applies a cut as one undo step, \"\(undo.undoActionName)\", and its words fold",
+              undo.undoActionName == "Keep change 3" && model.cutWordIDs.isSuperset(of: (78...86).map(id)) && text.map.span(id: id(78))?.kind == .fold && spans(3).isEmpty
+              && model.proposalDisplay?.focused == 4)
+        undo.undo()
+        pane.update()
+        check("undoing the Keep shows the change again, pending", model.proposalDisplay?.shown(3)?.state == .pending && !spans(3).isEmpty)
+        // Keep on a voice change includes it for takes: no project change, no undo step, no bar.
+        let kept = model.project
+        model.keepChange(1)
+        pane.update()
+        check("Keep on a voice change includes it for takes with no project change or undo step, and its bar goes",
+              model.project == kept && !undo.canUndo && model.proposal?[1]?.state == .kept && !spans(1).isEmpty && spans(1).allSatisfy { $0.change?.pending == false })
+        // Keep All: every free change still pending applies as one undo step named for the scope.
+        undo.beginUndoGrouping()
+        model.keepAllChanges()
+        undo.endUndoGrouping()
+        pane.update()
+        check("Keep All applies the free changes as one step, \"\(undo.undoActionName)\", and includes the voice ones",
+              undo.undoActionName == "Rewrite clip 1" && model.cutWordIDs.contains(id(91)) && model.proposal?[5]?.state == .kept && model.proposal?[2]?.state == .excluded
+              && !model.hasUnreviewedChanges(clipID: "hunk-clip"))
+        undo.undo()
+        pane.update()
+        check("one undo takes Keep All back: the cuts return and the voice changes wait again",
+              !model.cutWordIDs.contains(id(91)) && model.proposal?[5]?.state == .pending && model.proposal?[1]?.state == .kept && model.hasUnreviewedChanges(clipID: "hunk-clip"))
+        undo.redo()
+        check("and one redo keeps them all again", model.cutWordIDs.contains(id(91)) && model.proposal?[5]?.state == .kept)
+        model.undoManager = nil
+
+        // The edit popover holds the change's words; saving rediffs it locally and sends nothing.
+        model.proposal = proposal(for: model)
+        pane.update(rebuild: true)
+        pane.scroll(toCharacter: 0)
+        text.showChangePopover(1)
+        if let popover = text.changePopoverAuditView, let range = renderer.changeRange(1), let line = text.lineBox(atCharacter: NSMaxRange(range) - 1) {
+            bitmap = try pane.bitmap("v2-transcript-hunk-popover-dark", directory: directory)
+            check("the edit popover opens under the change with its new words (\(model.changeText(1)))", popover.frame.minY >= line.maxY && model.changeText(1) == "your source directory in the")
+        } else { check("the edit popover opens", false) }
+        text.hideChangePopover(refocus: false)
+        model.editChange(1, text: "")
+        check("emptying a voice change's words turns it into a cut", model.proposal?[1]?.kind == .cut && model.proposal?[1]?.parts.first?.sourceWordIDs == (32...36).map(id))
+        return results
+    }
+}
+
 /// A transcript pane as the editor builds it, in an offscreen window that is never shown.
 @MainActor final class TranscriptPane {
     let model: EditorModel
@@ -796,7 +1071,7 @@ extension DebugTranscriptPixels {
         scroll.tile()
         guard let manager = text.textLayoutManager else { return }
         manager.ensureLayout(for: manager.documentRange)
-        text.layOutViewport()
+        manager.textViewportLayoutController.layoutViewport()
     }
     /// Scrolls the line holding a character to 24 pt below the top.
     func scroll(toCharacter offset: Int) {
@@ -874,6 +1149,27 @@ extension DebugTranscriptPixels {
         return count
     }
     func count(_ bitmap: NSBitmapImageRep, in rect: CGRect, _ color: NSColor) -> Int { count(bitmap, in: rect) { Self.close($0, color, 3.0 / 255) } }
+    /// Of the pixel columns from `left` to `right`, those with a pixel within a point of `row`
+    /// that is `ink` laid over `paper` at 40 % or more. A 1 pt line off the pixel grid fills no
+    /// pixel row at 1x, as on the hosted CI runner, so none of its pixels holds the exact colour.
+    func inkedColumns(_ bitmap: NSBitmapImageRep, left: CGFloat, right: CGFloat, row: CGFloat, ink: NSColor, paper: NSColor) -> (inked: Int, of: Int) {
+        let step = 1 / scale(bitmap)
+        let direction: [CGFloat] = [ink.redComponent - paper.redComponent, ink.greenComponent - paper.greenComponent, ink.blueComponent - paper.blueComponent]
+        let magnitude: CGFloat = direction.reduce(0) { $0 + $1 * $1 }
+        guard magnitude > 0 else { return (0, 0) }
+        func inked(_ pixel: NSColor) -> Bool {
+            let difference: [CGFloat] = [pixel.redComponent - paper.redComponent, pixel.greenComponent - paper.greenComponent, pixel.blueComponent - paper.blueComponent]
+            let coverage: CGFloat = zip(difference, direction).reduce(0) { $0 + $1.0 * $1.1 } / magnitude
+            return coverage >= 0.4 && coverage <= 1.1 && zip(difference, direction).allSatisfy { abs($0 - $1 * coverage) < 0.06 }
+        }
+        var columns = 0, total = 0
+        for x in stride(from: left + step / 2, to: right, by: step) {
+            let rows = stride(from: row - 1 + step / 2, to: row + 1, by: step)
+            if rows.contains(where: { y in pixel(bitmap, CGPoint(x: x, y: y)).map(inked) == true }) { columns += 1 }
+            total += 1
+        }
+        return (columns, total)
+    }
     /// The horizontal extent, in points, of the pixels in a rect that differ from its background.
     func inkExtent(_ bitmap: NSBitmapImageRep, in rect: CGRect, background: NSColor) -> ClosedRange<CGFloat>? {
         let scale = scale(bitmap), step = 1 / scale

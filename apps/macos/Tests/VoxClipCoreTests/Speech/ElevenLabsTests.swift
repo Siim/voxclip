@@ -3,6 +3,24 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
+private actor ApprovalBoundaryKeys: KeyProvider {
+    private var waiting = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var observer: CheckedContinuation<Void, Never>?
+    func key(for provider: String) async throws -> String? {
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation; waiting = true
+            observer?.resume(); observer = nil
+        }
+        return "synthetic-key-for-tests"
+    }
+    func waitUntilRead() async {
+        guard !waiting else { return }
+        await withCheckedContinuation { observer = $0 }
+    }
+    func resumeRead() { continuation?.resume(); continuation = nil }
+}
+
 @Suite("ElevenLabs Scribe v2", .timeLimit(.minutes(1)))
 struct ElevenLabsTests {
     private struct RecordedExpectation: Decodable {
@@ -51,13 +69,18 @@ struct ElevenLabsTests {
         #expect(raw.language == expected.language)
         let service = TranscriptionService(locations: SpeechTestFiles.locations(directory))
         let request = try SpeechTestFiles.request(directory, options: TranscriptionOptions(diarize: expected.diarize))
-        for _ in 0..<2 {
+        for attempt in 0..<2 {
+            let evidence = TranscriptionEvidence()
             do {
-                if throughService { _ = try await service.transcribe(request, using: engine, envelope: nil) }
+                if throughService { _ = try await service.transcribeResult(request, using: engine, envelope: nil, evidence: evidence) }
                 else { _ = try await engine.transcribe(request) { _ in } }
                 Issue.record("Expected recorded import error")
             } catch let error as VoxClipError {
                 #expect(error.code == expected.importError)
+            }
+            if throughService {
+                #expect(evidence.snapshot.uploadStarted == (attempt == 0))
+                #expect(evidence.snapshot.fromCache == (attempt > 0))
             }
         }
         #expect(calls.withLock { $0 } == expected.expectedUploads)
@@ -83,8 +106,10 @@ struct ElevenLabsTests {
             let request = try SpeechTestFiles.request(root, language: .forced(alias))
             if route == "direct" { #expect(try await engine.transcribe(request) { _ in }.language == "et") }
             else {
-                let result = try await service.transcribeResult(request, using: engine, envelope: nil)
+                let evidence = TranscriptionEvidence()
+                let result = try await service.transcribeResult(request, using: engine, envelope: nil, evidence: evidence)
                 #expect(result.fromCache == (index > 0))
+                #expect(evidence.snapshot.fromCache == result.fromCache && evidence.snapshot.uploadStarted == (index == 0))
                 if let rawKey { #expect(result.transcript.rawKey == rawKey) }
                 else { rawKey = result.transcript.rawKey }
             }
@@ -100,6 +125,34 @@ struct ElevenLabsTests {
         let expected = SpeechRawCacheKey(request: try SpeechTestFiles.request(root, language: .forced("et")), identity: EngineRef(id: .elevenlabs, modelId: "scribe_v2", engineVersion: "scribe_v2"))
         #expect(cached.key == expected)
         #expect(try cached.key.digest() == expected.digest())
+    }
+
+    @Test(arguments: [false, true])
+    func approvalIsRecheckedAfterKeyLookupBeforeUpload(throughService: Bool) async throws {
+        let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let calls = Mutex(0), valid = Mutex(true)
+        let base = SpeechStubHTTP.register { _ in calls.withLock { $0 += 1 }; return (200, [:], RecordedSpeech.scribe) }
+        let keys = ApprovalBoundaryKeys()
+        let engine = ElevenLabsTranscriber(keys: keys, session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)), catalog: try SpeechTestFiles.catalog())
+        let request = try SpeechTestFiles.request(root)
+        let evidence = TranscriptionEvidence()
+        let validate: @Sendable () async throws -> Void = {
+            guard valid.withLock({ $0 }) else { throw VoxClipError.transcriptionFailed("Approval changed") }
+        }
+        let worker = Task {
+            if throughService {
+                _ = try await TranscriptionService(locations: SpeechTestFiles.locations(root)).transcribeResult(request, using: engine, envelope: nil, evidence: evidence, validate: validate)
+            } else {
+                _ = try await engine.transcribeWithCache(request, cacheURL: root.appendingPathComponent("approval-cache.json"), evidence: evidence, validate: validate) { _ in }
+            }
+        }
+        await keys.waitUntilRead()
+        valid.withLock { $0 = false }
+        await keys.resumeRead()
+        do { try await worker.value; Issue.record("Stale approval must refuse the upload") }
+        catch let error as VoxClipError { #expect(error == .transcriptionFailed("Approval changed")) }
+        #expect(calls.withLock { $0 } == 0)
+        #expect(!evidence.snapshot.uploadStarted && !evidence.snapshot.fromCache)
     }
 
     @Test func multipartOrderAndPrivacy() throws {

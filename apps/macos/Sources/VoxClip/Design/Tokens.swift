@@ -47,6 +47,12 @@ extension Color {
             : NSColor(srgbRed: 227.0 / 255, green: 225.0 / 255, blue: 219.0 / 255, alpha: 255.0 / 255)
     })
 
+    static let vcBgStatusBar = Color(nsColor: NSColor(name: NSColor.Name("vcBgStatusBar")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 20.0 / 255, green: 21.0 / 255, blue: 23.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 235.0 / 255, green: 233.0 / 255, blue: 227.0 / 255, alpha: 255.0 / 255)
+    })
+
     static let vcLineDefault = Color(nsColor: NSColor(name: NSColor.Name("vcLineDefault")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 40.0 / 255, green: 41.0 / 255, blue: 45.0 / 255, alpha: 255.0 / 255)
@@ -438,6 +444,30 @@ extension Color {
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 58.0 / 255, green: 60.0 / 255, blue: 65.0 / 255, alpha: 255.0 / 255)
             : NSColor(srgbRed: 201.0 / 255, green: 199.0 / 255, blue: 192.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcTimelineVideoPiece = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineVideoPiece")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 21.0 / 255, green: 23.0 / 255, blue: 26.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 239.0 / 255, green: 238.0 / 255, blue: 233.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcTimelineCue = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineCue")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 36.0 / 255, green: 38.0 / 255, blue: 42.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 214.0 / 255, green: 212.0 / 255, blue: 205.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcTimelineCueText = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineCueText")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 154.0 / 255, green: 157.0 / 255, blue: 162.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 85.0 / 255, green: 88.0 / 255, blue: 94.0 / 255, alpha: 255.0 / 255)
+    })
+
+    static let vcTimelineScroller = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineScroller")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 236.0 / 255, green: 236.0 / 255, blue: 234.0 / 255, alpha: 41.0 / 255)
+            : NSColor(srgbRed: 26.0 / 255, green: 27.0 / 255, blue: 31.0 / 255, alpha: 41.0 / 255)
     })
 
     static let vcTimelineTrack = Color(nsColor: NSColor(name: NSColor.Name("vcTimelineTrack")) { appearance in

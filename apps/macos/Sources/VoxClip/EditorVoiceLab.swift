@@ -47,7 +47,7 @@ extension EditorModel {
         try VoiceLabRenderContract.validatePlacement(voiceLabReviewProject(localCommands: localCommands), scope: output, window: window)
     }
 
-    private func voiceLabReviewProject(localCommands: [EditCommand]) throws -> Project {
+    func voiceLabReviewProject(localCommands: [EditCommand]) throws -> Project {
         var changed = project
         if !localCommands.isEmpty {
             guard var state = editState() else { throw VoiceLabProjectError.invalidSegment }

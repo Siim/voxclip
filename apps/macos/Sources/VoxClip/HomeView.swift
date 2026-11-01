@@ -88,7 +88,20 @@ import VoxClipCore
         .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusSheet).strokeBorder(DesignValues.color("line.strong"), style: Self.dashedStroke))
     }
 
+    static func showsHarnessSignIn(readiness: ConnectorStatus?, result: String?) -> Bool { readiness == .cliSignedOut || result != nil }
+
     @ViewBuilder private var callouts: some View {
+        if let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }),
+           provider.cli != nil,
+           Self.showsHarnessSignIn(readiness: readiness, result: app.harnessSignIn.message(for: provider)) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(readiness == .cliSignedOut ? "Sign in to \(provider.shortName) in the AI picker to use Find Clips with AI." : "Who does the work")
+                HomeHarnessPicker(app: app).frame(width: 200, height: HarnessPicker.height)
+                if let result = app.harnessSignIn.message(for: provider) { Text(result).font(VCType.small.font()) }
+            }
+            .padding(.top, VCTokens.spacing5)
+            .accessibilityElement(children: .contain).accessibilityLabel("AI sign-in")
+        }
         if let update = app.update {
             HomeCallout(text: "VoxClip \(update.version) is available.", action: "Download") { NSWorkspace.shared.open(update.htmlURL) }
                 .padding(.top, VCTokens.spacing5)
@@ -104,12 +117,7 @@ import VoxClipCore
             return ("Find Clips with AI isn't set up yet. You can still make clips by hand.", "Set Up AI…", { openVoxClipSettings(pane: "ai") })
         }
         switch readiness {
-        case .cliSignedOut:
-            return ("\(provider.label) isn't signed in, so Find Clips with AI can't run. You can still make clips by hand.", "Sign-in Help", {
-                let alert = NSAlert(); alert.messageText = "Sign in to \(provider.label)"
-                alert.informativeText = provider.cli?.signInHint ?? ""
-                alert.runModal()
-            })
+        case .cliSignedOut: return nil // The harness row below owns the instructions, action and result.
         case .needsKey:
             return ("Add your \(provider.label) key to use Find Clips with AI. You can still make clips by hand.", "Set Up AI…", { openVoxClipSettings(pane: "ai") })
         case .notRunning:
@@ -262,30 +270,5 @@ import VoxClipCore
         app.recent.removeAll { $0 == url }
         NSDocumentController.shared.clearRecentDocuments(nil)
         for remaining in app.recent.reversed() { NSDocumentController.shared.noteNewRecentDocumentURL(remaining) }
-    }
-}
-
-@MainActor struct ShortcutsView: View {
-    var rewriteEnabled = false
-    /// The current bindings: "keys|what they do".
-    static let lines = bindings(internalBuild: RewriteEntryPolicy.buildEnabled)
-    nonisolated static func bindings(internalBuild: Bool) -> [String] {
-        var lines: [String] = ["Space|Play / pause", "J / K / L|Back / stop / forward", "Delete / ⇧Delete|Cut / restore selection", "Return / C|Correct spelling", "⌘Z / ⇧⌘Z|Undo / redo", "← / →|Previous / next word", "⌥← / ⌥→|Previous / next sentence", "⇧← / ⇧→|Extend selection", "⌘K|Make clip from selection", "I / O|Set clip start / end", "[ / ]|Previous / next clip", "P|Preview this cut", "⌥⌘U / ⌥⌘P / ⌥⌘R|Cut fillers / tighten / restore", "⌘F / ⌘G / ⇧⌘G|Find / next / previous", "⌘1 / ⌘2|Home / Full Take", "⌃Tab / ⌃⇧Tab|Next / previous tab", "⌘W|Close tab (on Full Take, the project)", "⇧⌘K|Find clips", "Escape|Dismiss selection bar, then Full Take", "⌥⌘I|Show / hide viewer", "⌃⌘S|Show / hide sidebar", "⌘J|Show / hide timeline", "⌥⌘C|Show / hide cuts", "⌘+ / ⌘− / ⌘0|Text size", "⌘E / ⌘O / ⌘,|Export / open / settings"]
-        if internalBuild, let index = lines.firstIndex(of: "⇧⌘K|Find clips") { lines.insert("⇧⌘R|Rewrite", at: index + 1) }
-        return lines
-    }
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Keyboard shortcuts").font(.title2)
-            Text("Select words in the transcript. Single-letter keys work in the editor, never while typing a correction or in a text field.").foregroundStyle(.secondary)
-            Grid(alignment: .leading, horizontalSpacing: 40, verticalSpacing: 8) {
-                ForEach(Self.lines.filter { rewriteEnabled || $0 != "⇧⌘R|Rewrite" }, id: \.self) { line in
-                    let parts = line.split(separator: "|")
-                    GridRow { Text(parts[0]).font(DesignValues.mono()); Text(parts[1]) }
-                }
-            }
-            HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
-        }.padding(24).frame(width: 580)
     }
 }

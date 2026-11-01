@@ -6,7 +6,7 @@ platforms: a hosted Ubuntu runner and an Apple silicon Mac disagree by 1 ULP on 
 ~1e-13 on accumulated loudness values. Such a file passes when its structure, strings, booleans and integers are
 identical and every float agrees within REL_TOL / ABS_TOL; the committed bytes are then restored so the
 byte-exact `git diff --exit-code` that follows checks only the other generators. Acceptance-set vectors also
-contain computed duration/trim floats and use the same tolerance. Continuity, scope rewrite plan
+contain computed duration/trim floats and use the same tolerance. Window, several-window, continuity, scope rewrite plan
 and diff, LLM send cost, training span, enrollment and take batch vectors have an explicit byte-exact expectation, never float
 tolerance. Both Cores replay enrollment (including local retries and bounded/corrupt recovery journals),
 the corrected acceptance set and its empty-set review file.
@@ -22,7 +22,8 @@ EXACT = ['shared/fixtures/voice-lab/continuity-cases.json', 'shared/fixtures/voi
          'shared/fixtures/voice-lab/scope-rewrite-diff-cases.json', 'shared/fixtures/voice-lab/llm-send-cost-cases.json',
          'shared/fixtures/voice-lab/training-spans.json', 'shared/fixtures/voice-lab/take-batch-cases.json',
          'shared/fixtures/voice-lab/enrollment-cases.json',
-         'shared/fixtures/voice-lab/accept-all-review-cases.json']
+         'shared/fixtures/voice-lab/accept-all-review-cases.json',
+         'shared/fixtures/voice-lab/window-cases.json', 'shared/fixtures/voice-lab/window-all-cases.json']
 REL_TOL = 1e-10
 ABS_TOL = 1e-12
 

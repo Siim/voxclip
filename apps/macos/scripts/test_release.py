@@ -660,11 +660,11 @@ fi
     def test_release_build_never_reads_unset_voice_lab_settings_as_on(self):
         # Development builds read an unset Voice Lab switch and beta notice as on (doc/spec/voice-lab.md section 5).
         # Only DEBUG turns that on, and the release swift build is -c release with no extra compiler conditions.
-        policy = (PACKAGE / "Sources/VoxClip/RewriteSession.swift").read_text()
-        self.assertIn("static var buildEnabled: Bool {\n        #if DEBUG\n        true\n        #else\n        false\n        #endif\n    }", policy)
+        policy = (PACKAGE / "Sources/VoxClip/VoiceLabSession.swift").read_text()
+        self.assertIn("static var internalBuild: Bool {\n        #if DEBUG\n        true\n        #else\n        false\n        #endif\n    }", policy)
         model = (PACKAGE / "Sources/VoxClip/Services/AppModel.swift").read_text()
         self.assertEqual(re.findall(r"VoiceLabGate\.developmentDefaults\([^)]*\)", model),
-                         ["VoiceLabGate.developmentDefaults(internalBuild: RewriteEntryPolicy.buildEnabled)"])
+                         ["VoiceLabGate.developmentDefaults(internalBuild: Self.internalBuild)"])
         self.assertIn("developmentDefaults && settingsStore == nil ?", model)
         gate = (PACKAGE / "Sources/VoxClipCore/Domain/VoiceLab/VoiceConsent.swift").read_text()
         self.assertIn("guard internalBuild else { return [:] }", gate)

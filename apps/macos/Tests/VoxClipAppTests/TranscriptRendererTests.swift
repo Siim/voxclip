@@ -119,6 +119,29 @@ import Testing
         try expectFreshBuild(model, text, renderer)
     }
 
+    /// Another transcript open first, with no folds, leaves Foundation's shared attribute
+    /// dictionaries holding its paragraph style. Every run still holds the one style for the
+    /// text size, so the storage sets no style again over the edited paragraph and its line
+    /// break as it processes a fold edit.
+    @Test func aFoldEditBesideAnotherTranscriptWritesOnlyItsParagraph() throws {
+        let other = try editor(showCuts: true, paragraphs: 3); defer { other.close() }
+        let (otherText, _, otherCoordinator) = try pane(other)
+        defer { withExtendedLifetime((otherText, otherCoordinator)) {} }
+        let model = try editor(showCuts: false); defer { model.close() }
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        let storage = try #require(text.textStorage), style = TranscriptRenderer.paragraphStyle(textSize: model.textSize)
+        let log = EditLog(storage); defer { log.stop() }
+        model.apply(.toggle(id: "r21"), name: "Cut")
+        render(model, renderer)
+        #expect(log.edits.map(\.range) == [NSRange(location: renderer.paragraphs[2].offset, length: length(renderer, text, paragraph: 2))], "one edit, the third paragraph without its line break")
+        var others: [NSRange] = []
+        storage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
+            if (value as? NSParagraphStyle) !== style { others.append(range) }
+        }
+        #expect(others.isEmpty, "runs holding another paragraph style: \(others)")
+    }
+
     @Test func cutsInTwoParagraphsEditOnlyThoseTwo() throws {
         let model = try editor(showCuts: false); defer { model.close() }
         let (text, renderer, coordinator) = try pane(model)
@@ -178,7 +201,7 @@ import Testing
         model.activate(model.project.edits.clips[0])
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
-        text.layOutViewport()
+        try #require(text.textLayoutManager).textViewportLayoutController.layoutViewport()
         #expect(text.backdrop?.band?.suggested == true, "a suggestion's bar is dashed")
         let revision = renderer.storageRevision
         model.keepAll()
@@ -189,6 +212,72 @@ import Testing
         model.apply(.setClipSelected(id: "fifth", selected: false), name: "Undo Keep All")
         render(model, renderer)
         #expect(text.backdrop?.band?.suggested == true, "undoing Keep All dashes the bar again")
+    }
+
+    @Test func theViewportRelayPassesLayoutToTheTextViewAndThenPlacesTheBackdrop() throws {
+        let model = try editor(showCuts: false); defer { model.close() }
+        model.activate(model.project.edits.clips[0])
+        let (text, _, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        let controller = try #require(text.textLayoutManager).textViewportLayoutController
+        let relay = try #require(controller.delegate as? TranscriptViewportRelay, "the relay is the viewport delegate")
+        text.relayViewportLayout()
+        #expect(controller.delegate === relay, "asking again keeps the one relay")
+        // Calls the relay does not name reach the text view as they would without it.
+        for name in ["textViewportLayoutControllerReceivedSetNeedsLayout:", "textViewportLayoutController:cacheRenderingSurface:forKey:", "doesNotExistForTheRelay:"] {
+            let selector = NSSelectorFromString(name)
+            #expect(relay.responds(to: selector) == text.responds(to: selector), "\(name)")
+        }
+        controller.layoutViewport()
+        #expect(!controller.viewportBounds.isEmpty, "the text view supplies the viewport")
+        #expect(text.backdrop?.band != nil, "a finished layout places the active clip's band")
+    }
+
+    @Test func validationDuringAStorageEditDefersItsWrites() throws {
+        let model = try editor(showCuts: false); defer { model.close() }
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        let storage = try #require(text.textStorage)
+        // A selection adjustment can ask the renderer to validate while replaceCharacters
+        // is processing. Retain an unchanged fragment before editing TextKit storage.
+        let manager = try #require(text.textLayoutManager)
+        var fragments: [NSTextLayoutFragment] = []
+        manager.enumerateTextLayoutFragments(from: manager.documentRange.location, options: [.ensuresLayout]) { fragment in
+            fragments.append(fragment)
+            return false
+        }
+        try #require(fragments.count == 1)
+        @MainActor final class Validations {
+            let text: TranscriptNSTextView
+            let renderer: TranscriptRenderer
+            let fragments: [NSTextLayoutFragment]
+            var count = 0
+            var eagerWrites = 0
+            init(text: TranscriptNSTextView, renderer: TranscriptRenderer, fragments: [NSTextLayoutFragment]) {
+                self.text = text; self.renderer = renderer; self.fragments = fragments
+            }
+            func validate() {
+                guard let storage = text.textStorage, storage.editedMask.contains(.editedCharacters) else { return }
+                let before = renderer.attributeUpdates
+                for fragment in fragments {
+                    count += 1
+                    renderer.validate(fragment)
+                }
+                eagerWrites += renderer.attributeUpdates - before
+            }
+        }
+        let validations = Validations(text: text, renderer: renderer, fragments: fragments)
+        let token = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification, object: storage, queue: nil) { _ in
+            MainActor.assumeIsolated { validations.validate() }
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+        model.apply(.toggle(id: "r21"), name: "Cut")
+        render(model, renderer)
+        #expect(validations.count > 0, "The validator ran inside the storage write")
+        #expect(validations.eagerWrites == 0, "Colour writes wait for storage processing to finish")
+        layOut(text)
+        try expectRenderingAttributes(text, renderer, "validation inside an edit")
+        try expectFreshBuild(model, text, renderer)
     }
 
     @Test func untouchedParagraphsKeepTheirStyles() throws {

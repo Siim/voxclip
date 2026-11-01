@@ -53,17 +53,21 @@ public actor ElevenLabsTranscriber: Transcriber {
     func normalizedRequest(_ request: TranscriptionRequest) async throws -> TranscriptionRequest {
         try await SpeechRawCacheKey.normalizedRequest(request, catalog: catalog)
     }
-    func transcribeWithCache(_ request: TranscriptionRequest, cacheURL: URL, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> (raw: RawTranscript, fromCache: Bool) {
+    func transcribeWithCache(_ request: TranscriptionRequest, cacheURL: URL, evidence: TranscriptionEvidence? = nil,
+                             validate: @escaping @Sendable () async throws -> Void = {},
+                             progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> (raw: RawTranscript, fromCache: Bool) {
         do {
             let request = try await normalizedRequest(request)
             let bytes = try await validateRequest(request)
             let key = cacheKey(request)
             if let entry = try? SpeechRawCacheEntry.read(cacheURL), entry.key == key, entry.schema == "voxclip-raw-transcript/1" {
                 if let raw = entry.matchingRaw(for: key) {
+                    evidence?.recordCacheHit()
                     guard raw.tokens.contains(where: { ($0.kind ?? .word) == .word }) else { throw VoxClipError.noSpeech }
                     return (raw, true)
                 }
                 if let data = try entry.providerData() {
+                    evidence?.recordCacheHit()
                     return (try await mapAndCache(data, request: request, key: key, url: cacheURL), true)
                 }
             }
@@ -73,7 +77,7 @@ public actor ElevenLabsTranscriber: Transcriber {
             try FileManager.default.createDirectory(at: cacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try SpeechRawCacheEntry.setAside(cacheURL, unlessPlaceholderFor: key)
             try SpeechRawCacheEntry(key: key, raw: nil, providerResponse: nil).write(cacheURL)
-            let raw = try await performTranscription(request, cacheURL: cacheURL, bytes: bytes, key: apiKey, progress: progress)
+            let raw = try await performTranscription(request, cacheURL: cacheURL, bytes: bytes, key: apiKey, evidence: evidence, validate: validate, progress: progress)
             return (raw, false)
         }
         catch {
@@ -91,7 +95,9 @@ public actor ElevenLabsTranscriber: Transcriber {
         try Self.validateOptions(request.plan.options)
         return bytes
     }
-    private func performTranscription(_ request: TranscriptionRequest, cacheURL: URL, bytes: Int, key: String, progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
+    private func performTranscription(_ request: TranscriptionRequest, cacheURL: URL, bytes: Int, key: String,
+                                      evidence: TranscriptionEvidence?, validate: @escaping @Sendable () async throws -> Void,
+                                      progress: @escaping @Sendable (TranscriptionProgress) -> Void) async throws -> RawTranscript {
         try Task.checkCancellation()
         await logger.register(secret: key)
         await Log(logger: logger).write(.info, category: "transcribe", message: "engine=elevenlabs model=scribe_v2 bytes=\(bytes) duration=\(request.audio.durationSeconds)")
@@ -110,6 +116,9 @@ public actor ElevenLabsTranscriber: Transcriber {
         for attempt in 0..<3 {
             try Task.checkCancellation()
             do {
+                try await validate()
+                try Task.checkCancellation()
+                evidence?.recordUploadStarted()
                 reporter.report(TranscriptionProgress(stage: .uploading, fraction: 0))
                 let delegate = ScribeUploadDelegate { sent, total in
                     reporter.report(TranscriptionProgress(stage: sent >= total ? .transcribing : .uploading, fraction: sent >= total ? nil : Double(sent) / Double(max(1, total))))

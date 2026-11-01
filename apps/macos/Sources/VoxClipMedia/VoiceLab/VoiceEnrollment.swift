@@ -32,7 +32,6 @@ public actor VoiceEnrollment {
     private let reconciler: VoiceOperationReconciler
     private let transcribe: Transcribe?
     private var attempts: [String: Date] = [:]
-    private var verified: [String: Verified] = [:]
     private var pending: [UUID: Pending] = [:]
     private var busy = false
     private var plans: [UUID: VoiceEnrollmentPlan] = [:]
@@ -78,7 +77,7 @@ public actor VoiceEnrollment {
         guard !busy else { throw VoiceLabError.invalidInput }
         let attempt = try statementAttempt(statement: statement, wav: wav, now: now)
         busy = true; defer { busy = false }
-        pending.removeAll(); plans.removeAll(); verified.removeValue(forKey: recordID)
+        pending.removeAll(); plans.removeAll()
         try await store.validateEnrollmentStart(recordID: recordID)
         try await store.clearEnrollmentRecovery(recordID: recordID)
         try await store.saveStatement(wav, recordID: recordID)
@@ -121,7 +120,7 @@ public actor VoiceEnrollment {
         }
         try await client.approveRun(plan.quote.id, quotes: quotes)
         plans.removeValue(forKey: plan.quote.id); pending.removeValue(forKey: plan.quote.id)
-        verified.removeValue(forKey: plan.recordID)
+
         do {
             if !plan.verificationPassed {
                 let verification = try await verifyStatement(draft.verified, wav: draft.request.samples[0].wav, quote: plan.quote.verify)
@@ -183,40 +182,6 @@ public actor VoiceEnrollment {
         return plan
     }
 
-    // The live sheet keeps its separate Verify approval until V16/V17 replace it.
-    public func verify(recordID: String, statement: VoiceConsentStatement, wav: Data, attestations: VoiceConsentRecord.Attestations,
-                       approved: Bool, enabled: Bool, now: Date = Date(), verificationQuote: VoiceLabQuote? = nil) async throws {
-        guard approved, enabled else { throw VoiceLabError.consentRequired }
-        guard attestations.complete else { throw VoiceConsentError.attestationsRequired }
-        guard speaker.supports(language: statement.language) else { throw VoiceConsentError.speakerUnavailable }
-        guard !busy else { throw VoiceLabError.invalidInput }
-        let attempt = try statementAttempt(statement: statement, wav: wav, now: now)
-        busy = true; defer { busy = false }
-        verified.removeValue(forKey: recordID)
-        pending.removeAll(); plans.removeAll()
-        try await store.validateEnrollmentStart(recordID: recordID)
-        try await store.clearEnrollmentRecovery(recordID: recordID)
-        try await store.saveStatement(wav, recordID: recordID)
-        if attempts[attempt] == nil { attempts[attempt] = now }
-        let draft = Verified(statement: statement, match: nil, hash: VoiceLabFingerprint.bytes(wav), attestations: attestations)
-        verified[recordID] = try await verifyStatement(draft, wav: wav, quote: verificationQuote)
-    }
-
-    public func prepare(recordID: String, displayName: String, samples: [VoiceTrainingSample],
-                        enabled: Bool, now: Date = Date()) async throws -> VoiceLabQuote {
-        guard enabled else { throw VoiceLabError.consentRequired }
-        guard !busy else { throw VoiceLabError.invalidInput }
-        guard speaker.available else { throw VoiceConsentError.speakerUnavailable }
-        guard let verification = verified[recordID], verification.match != nil else { throw VoiceLabError.consentRequired }
-        busy = true; defer { busy = false }
-        pending.removeAll(); plans.removeAll()
-        let create = try await prepareDraft(recordID: recordID, displayName: displayName, samples: samples, verification: verification, now: now)
-        let draft = pending[create.id]!
-        let quote = try EnrollmentQuote(verify: nil, create: create, request: draft.request, statement: verification.statement)
-        plans[quote.id] = VoiceEnrollmentPlan(recordID: recordID, quote: quote, trainingSeconds: draft.trainingSeconds, verificationPassed: true)
-        return create
-    }
-
     private func statementAttempt(statement: VoiceConsentStatement, wav: Data, now: Date) throws -> String {
         attempts = attempts.filter { now.timeIntervalSince($0.value) < 600 }
         let key = VoiceLabFingerprint.fields([VoiceLabFingerprint.bytes(wav)] + statement.nonce)
@@ -224,10 +189,9 @@ public actor VoiceEnrollment {
         return key
     }
 
-    /// One Scribe path for the live two-click sheet and the combined v2 approval.
+    /// The Scribe check under the combined approval, after the local speaker match.
     private func verifyStatement(_ draft: Verified, wav: Data, quote: VoiceLabQuote?) async throws -> Verified {
-        // The legacy sheet has no training audio yet. Validate its live speaker embedding here;
-        // prepareDraft will compare the selected training against it before creation is offered.
+        // Recheck the live statement embedding before its approved Scribe request.
         _ = try await speaker.embedding(VoiceConsentAudio.pcm16k(wav))
         let fingerprint = try await client.creatorKeyFingerprint()
         let raw: RawTranscript
@@ -293,13 +257,6 @@ public actor VoiceEnrollment {
         pending[quote.id] = Pending(request: request, policy: authorization, verified: verification, samples: hashes, trainingSeconds: total(accepted), embedding: owner)
         return quote
     }
-    /// The training seconds a prepared quote sends, after the speaker match: the §6.5.2 confirmation's `m`.
-    public func trainingSeconds(quote: VoiceLabQuote) -> Double? { pending[quote.id]?.trainingSeconds }
-    public func create(quote: VoiceLabQuote, approved: Bool, enabled: Bool, appVersion: String) async throws -> VoiceConsentRecord {
-        guard enabled, approved else { throw VoiceLabError.consentRequired }
-        guard let plan = plans[quote.id], plan.quote.create == quote else { throw VoiceLabError.invalidInput }
-        return try await execute(plan, approved: approved, enabled: enabled, appVersion: appVersion)
-    }
     private func createPrepared(quote: VoiceLabQuote, draft: Pending, appVersion: String, creatorFingerprint: String) async throws -> VoiceConsentRecord {
         guard let embedder = speaker.embedder else { throw VoiceConsentError.speakerUnavailable }
         try await embedder.validateAvailability()
@@ -346,7 +303,7 @@ public actor VoiceEnrollment {
         }
         try await store.clearEnrollmentRecovery(recordID: template.id)
         let record = template.assigningVoice(result.voiceID, requiresVerification: result.requiresVerification)
-        verified.removeValue(forKey: record.id)
+
         do {
             _ = try await store.transition(operation.id, to: .created, at: Date(), remoteVoiceID: result.voiceID, requiresVerification: result.requiresVerification)
         } catch {
@@ -363,7 +320,7 @@ public actor VoiceEnrollment {
     }
     public func cancel(recordID: String) async throws {
         guard !busy else { throw VoiceLabError.invalidInput }
-        verified.removeValue(forKey: recordID)
+
         pending.removeAll(); plans.removeAll()
         try await store.clearEnrollmentRecovery(recordID: recordID)
         try await store.abandonEnrollment(recordID: recordID)

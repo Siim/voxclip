@@ -39,16 +39,17 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     }
     private var controls: some View {
         HStack(spacing: 4) {
-            Button { model.makeClip(); dismiss() } label: { label("Make Clip", "⌘K") }
+            Button { model.makeClip(); dismiss() } label: { label("Make Clip", "⌥⌘K") }
                 .background(Color(nsColor: .unemphasizedSelectedContentBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
                 .focused($focused)
                 .help(makeClipHelp)
             Button { model.cutSelection(); dismiss() } label: { label("Cut", "⌫") }
             Button { model.cutSelection(restore: true); dismiss() } label: { label("Restore", "⇧⌫") }
                 .disabled(model.selectedWordIDs.isDisjoint(with: model.cutWordIDs) && model.selectedPauseIDs.isDisjoint(with: model.cutPauseIDs))
-            if model.app.voiceLabRewriteEnabled {
+            // Text Rewrite of the selected words (design.md §8), with no Voice Lab gate.
+            if !model.selectedIDs.isEmpty {
                 Divider().frame(height: 18)
-                Button { model.beginRewrite(); dismiss() } label: { label("Rewrite…", "⇧⌘R") }.disabled(!model.capabilities.ai)
+                Button { model.runRewrite(); dismiss() } label: { label(model.rewriteAsksFirst ? "Rewrite…" : "Rewrite", "⇧⌘R") }.disabled(!model.capabilities.ai)
             }
         }
         .buttonStyle(.plain)
@@ -78,6 +79,6 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
         if let clip = model.sortedClips.first(where: { $0.startWordId == model.selectedIDs.first && $0.endWordId == model.selectedIDs.last }), let number = model.clipNumber(clip.id) {
             return "Clip \(number) already covers these words."
         }
-        return "Make Clip (⌘K)"
+        return "Make Clip (⌥⌘K)"
     }
 }

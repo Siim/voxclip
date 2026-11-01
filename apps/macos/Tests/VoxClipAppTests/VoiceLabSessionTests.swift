@@ -9,6 +9,52 @@ import Synchronization
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test(arguments: ["back", "switcher", "tab", "close", "disappear"], [false, true])
+    func leavingVoiceDiscardsCaptureWithoutAViewObserver(exit: String, training: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(locations: locations(root))
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        let shared = try SharedResources.locate()
+        let source = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        let editor = EditorModel(document: VoxClipDocument(project: source, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { editor.close() }
+        let session = app.voiceLabSession
+        session.flow.owner = editor; session.flow.state = .statement; session.showEnrollment = true
+        session.recordingTraining = training
+        var released = 0
+        session.recorder.simulateTake(samples: [Float](repeating: 0.1, count: 5 * 48_000), at: .now) { released += 1 }
+        switch exit {
+        case "back": session.returnToRewrite()
+        case "switcher": app.shell.choosePanelJob(.captions, for: editor)
+        case "tab": #expect(editor.setScope(nil))
+        case "close": editor.close()
+        default: session.leaveVoiceControls(owner: editor)
+        }
+        #expect(!session.recorder.recording && session.recorder.samples.isEmpty && released == 1)
+        session.recorder.stop()
+        await session.recordingCompletion?.value
+        #expect(!session.trainingReady && !session.hasStatementRecording && session.flow.plan == nil)
+        #expect(session.message?.contains("Recording discarded") == true)
+    }
+
+    @Test func automaticRecorderCompletionIsSessionOwnedAndConsumedOnceWithoutAView() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(locations: locations(root)); app.settings.values["voiceLab.enabled"] = .bool(true)
+        let session = app.voiceLabSession
+        session.flow.state = .statement; session.showEnrollment = true
+        session.recorder.simulateTake(samples: [Float](repeating: 0.1, count: 5 * 48_000), at: .now) {}
+        session.recorder.stop()
+        await session.recordingCompletion?.value
+        #expect(session.hasStatementRecording && !session.recorder.recording && session.recorder.samples.isEmpty)
+        let stored = try await VoiceConsentStore(locations: locations(root)).statement(recordID: session.recordID)
+        session.recorder.stop(); await session.stopRecording()
+        #expect(try await VoiceConsentStore(locations: locations(root)).statement(recordID: session.recordID) == stored)
+        #expect(session.flow.statementSeconds == 5 && session.flow.plan == nil)
+    }
+
     @Test(arguments: [2, 3], [false, true]) func recoveryOperationAccessibilityIdentifiesEachVoiceAndAction(count: Int, sharedSuffix: Bool) throws {
         let shared = try SharedResources.locate()
         let date = try #require(ISO8601DateFormatter().date(from: "2026-10-30T12:00:00Z"))
@@ -124,7 +170,7 @@ import Synchronization
         let model = app.speakerModelLibrary.model
         let installed = app.speakerModelLibrary.installed
         let results = try await DebugVoiceLab.run(app: app)
-        #expect(results.count == 12)
+        #expect(results.count == 20)
         for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
         #expect(app.settings == settings)
         #expect(app.speakerModelLibrary.model?.id == model?.id)
@@ -159,15 +205,14 @@ import Synchronization
         #expect(VoiceLabSettings.createdDate("2026-10-26T12:00:00Z", shared: try SharedResources.locate()) == "26 October 2026")
         #expect(VoiceLabSettings.createdDate("invalid", shared: try SharedResources.locate()) == "Date unavailable")
     }
-    @Test(arguments: ["success", "mismatch", "cancel"])
-    func legacyVerifySendsUnderItsQuoteAndCreateDoesNotVerifyAgain(mode: String) async throws {
-        let mismatch = mode == "mismatch"
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString); defer { try? FileManager.default.removeItem(at: root) }
+    @Test(arguments: ["success", "statement-mismatch", "local-mismatch", "crash-recovery"])
+    func combinedJobUsesOnePaidClickAndRetainsCrashRecovery(mode: String) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
         let store = VoiceConsentStore(locations: locations(root), fault: { step in
-            if mode == "cancel", step == .enrollmentVerified || step == .removeStatement { throw CocoaError(.fileWriteUnknown) }
+            if mode == "crash-recovery", step == .enrollmentVerified { throw CocoaError(.fileWriteUnknown) }
         })
-        let app = AppModel()
-        app.settings.values["voiceLab.enabled"] = .bool(true)
+        let app = AppModel(); app.settings.values["voiceLab.enabled"] = .bool(true)
         app.speakerModelLibrary.model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
         app.speakerModelLibrary.installed = true
         let session = VoiceLabSession(app: app, store: store)
@@ -177,49 +222,59 @@ import Synchronization
         let statement = VoiceConsentStatement(language: record.statement.language, text: record.statement.text, nonce: record.statement.nonce)
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 16_000), rate: 16_000)
         let response = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-scribe.json"))
-        let probe = LegacyEnrollmentProbe(mismatch: mismatch, response: response)
-        LegacyEnrollmentHTTP.probe.withLock { $0 = probe }
-        defer { LegacyEnrollmentHTTP.probe.withLock { $0 = nil } }
-        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [LegacyEnrollmentHTTP.self]
+        let probe = JobEnrollmentProbe(mismatch: mode == "statement-mismatch", localMismatch: mode == "local-mismatch", response: response)
+        JobEnrollmentHTTP.probe.withLock { $0 = probe }; defer { JobEnrollmentHTTP.probe.withLock { $0 = nil } }
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [JobEnrollmentHTTP.self]
         let client = ElevenLabsVoiceLab(keys: VoiceLabAppKeys(), session: URLSession(configuration: config), prices: try VoiceLabPriceCatalog.load(shared: shared))
-        let speaker = VoiceSpeakerCheck(embedder: LegacyEnrollmentEmbedder(probe: probe), calibratedThreshold: 0.8)
         session.displayName = "Example"; session.ownVoice = true; session.adult = true; session.ownVideosOnly = true
-        session.stageVerificationForTests(statement: statement, wav: wav, client: client, speaker: speaker)
-        await session.request(.verify)?.value
-        #expect(session.confirmation == .verify)
-        #expect(probe.events.withLock { $0.isEmpty })
-        #expect(session.verificationCost.contains("0.01"))
-        await session.approve(.verify)
-        #expect(probe.events.withLock { $0 } == ["verify"])
-        if mismatch {
-            #expect(!session.verified && !session.hasStatementRecording && session.statement == nil)
-            #expect(session.message == VoiceConsentError.statementMismatch.localizedDescription)
-            #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(session.recordID)/statement.wav").path))
-        } else {
-            #expect(session.verified && session.message == VoiceLabSession.readAloudNextCopy)
-            let trainingWAV = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 15 * 16_000), rate: 16_000)
-            let samples = (0..<4).map { _ in VoiceTrainingSample(wav: trainingWAV, speech16k: [], seconds: 15, source: "readAloud", snrDb: 25) }
-            session.stageTrainingForTests(samples)
-            await session.prepareCreation()
-            #expect(session.confirmation == .create)
-            #expect(session.creationCost == "This action is free.")
-            await session.approve(.create)
-            let expected = mode == "cancel" ? ["verify"] : ["verify", "create"]
-            #expect(probe.events.withLock { $0.filter { $0 != "plan" } } == expected)
-            if mode == "cancel" {
-                let journal = store.root.appendingPathComponent("\(session.recordID)/enrollment.json")
-                #expect(FileManager.default.fileExists(atPath: journal.path))
-                await session.cancelEnrollment()
-                // Even if removing the statement fails, cancellation must already have cleared the journal.
-                #expect(!FileManager.default.fileExists(atPath: journal.path))
-            } else { #expect(session.records.count == 1 && !session.verified) }
+        session.stageEnrollmentForTests(statement: statement, wav: wav, client: client, speaker: VoiceSpeakerCheck(embedder: JobEnrollmentEmbedder(probe: probe), calibratedThreshold: 0.8))
+        let trainingWAV = try VoiceTrainingAudio.wav([Float](repeating: mode == "local-mismatch" ? -0.1 : 0.1, count: 15 * 16_000), rate: 16_000)
+        session.stageTrainingForTests((0..<4).map { _ in .init(wav: trainingWAV, speech16k: [], seconds: 15, source: "readAloud", snrDb: 25) })
+        await session.prepareCreation()
+        if mode == "local-mismatch" {
+            #expect(session.flow.state == .statement && session.flow.plan == nil && !session.canCreate)
+            #expect(probe.events.withLock { $0.isEmpty })
+            #expect(session.hasStatementRecording && session.message == VoiceConsentError.speakerMismatch.localizedDescription)
+            session.stopRecovery(); return
         }
+        #expect(session.flow.state == .ready && session.canCreate && session.confirmation == nil)
+        #expect(probe.events.withLock { $0.isEmpty })
+        #expect(session.creationTitle.contains("0.01"))
+        await session.createVoice()
+        let expected = mode == "success" ? ["verify", "create"] : ["verify"]
+        #expect(probe.events.withLock { $0.filter { $0 != "plan" } } == expected)
+        if mode == "statement-mismatch" {
+            #expect(session.flow.state == .statement && session.flow.plan == nil && !session.hasStatementRecording)
+            #expect(session.message == VoiceConsentError.statementMismatch.localizedDescription)
+        } else if mode == "crash-recovery" {
+            let journal = store.root.appendingPathComponent("\(session.recordID)/enrollment.json")
+            #expect(FileManager.default.fileExists(atPath: journal.path))
+            let fresh = VoiceLabSession(app: app, store: VoiceConsentStore(locations: locations(root)))
+            let freshClient = ElevenLabsVoiceLab(keys: VoiceLabAppKeys(), session: URLSession(configuration: config), prices: try VoiceLabPriceCatalog.load(shared: shared))
+            fresh.stageEnrollmentForTests(statement: statement, wav: wav, client: freshClient, speaker: VoiceSpeakerCheck(embedder: JobEnrollmentEmbedder(probe: probe), calibratedThreshold: 0.8))
+            await fresh.load(recover: false)
+            let before = probe.events.withLock { $0 }
+            await fresh.recoverVoice(session.recordID)
+            #expect(fresh.flow.plan?.verificationPassed == true && fresh.flow.plan?.quote.verify == nil && fresh.canCreate)
+            #expect(VoiceLabSession.recoveryCreationCopy == "Sends your saved statement and training audio to ElevenLabs to finish creation. The statement check is not repeated. No video is sent.")
+            #expect(probe.events.withLock { $0 } == before)
+            await fresh.createVoice()
+            #expect(fresh.flow.state == .finished && fresh.records.count == 1)
+            #expect(probe.events.withLock { $0.filter { $0 == "verify" }.count } == 1)
+            #expect(probe.events.withLock { $0.filter { $0 == "create" }.count } == 1)
+            let body = try #require(probe.creationBodies.withLock { $0.first })
+            #expect(body.range(of: Data("filename=\"consent-statement.wav\"".utf8)) != nil)
+            #expect(body.range(of: Data("filename=\"sample-02.wav\"".utf8)) != nil)
+            #expect(body.range(of: wav) != nil && body.range(of: trainingWAV) != nil)
+            #expect(!FileManager.default.fileExists(atPath: journal.path))
+            fresh.stopRecovery()
+        } else { #expect(session.flow.state == .finished && session.records.count == 1) }
         session.stopRecovery()
     }
 
     @Test func deletionNeverUsesTheDestructiveDefault() {
         #expect(VoiceLabSession.Request.delete("voice").defaultIsCancel)
-        for request: VoiceLabSession.Request in [.subscription, .verify, .create] { #expect(!request.defaultIsCancel) }
+        for request: VoiceLabSession.Request in [.subscription] { #expect(!request.defaultIsCancel) }
     }
     @Test func unavailableSpeakerCheckPreventsRecordingAndPaidApproval() async {
         let app = AppModel(); app.settings.values["voiceLab.enabled"] = .bool(true)
@@ -228,9 +283,9 @@ import Synchronization
         #expect(!session.canRecord)
         await session.beginStatement()
         #expect(!session.recorder.recording && session.statement == nil)
-        session.request(.verify)
+        await session.prepareCreation()
         #expect(session.confirmation == nil)
-        await session.approve(.verify)
+        await session.createVoice()
         #expect(session.message == VoiceConsentError.speakerUnavailable.localizedDescription)
         #expect(!app.bool("voiceLab.providerConsent.elevenlabs"))
         for available in [false, true] {
@@ -262,21 +317,12 @@ import Synchronization
         configuration.protocolClasses = [VoiceLabAppHTTP.self]
         let client = ElevenLabsVoiceLab(keys: VoiceLabNoPaidKeys(), session: URLSession(configuration: configuration))
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
-        session.stageVerificationForTests(statement: statement, wav: wav, client: client)
+        session.stageEnrollmentForTests(statement: statement, wav: wav, client: client)
         let reason = VoiceConsentError.speakerUnavailable.localizedDescription
         #expect(!session.speakerReady && !session.canRecord && !session.canCreate)
         #expect(session.speakerMessage == reason)
         await session.beginStatement()
         #expect(!session.recorder.recording && session.message == reason)
-        for action: VoiceLabSession.Request in [.verify, .create] {
-            session.stageVerificationForTests(statement: statement, wav: wav, client: client)
-            let task = session.request(action)
-            #expect(task == nil && session.confirmation == nil)
-            await task?.value
-            await session.approve(action)
-            #expect(session.message == reason && !session.busy)
-            #expect(!app.bool("voiceLab.providerConsent.elevenlabs"))
-        }
         await session.prepareCreation()
         #expect(session.confirmation == nil && session.message == reason)
         session.stopRecovery()
@@ -299,7 +345,8 @@ import Synchronization
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = VoiceConsentStore(locations: locations(root))
-        let session = VoiceLabSession(app: AppModel(), store: store)
+        let app = AppModel(locations: locations(root))
+        let session = VoiceLabSession(app: app, store: store)
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 48_000))
         let shared = try SharedResources.locate()
         var json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))) as? [String: Any])
@@ -308,11 +355,24 @@ import Synchronization
         statement["audioSha256"] = VoiceLabFingerprint.bytes(wav); json["statement"] = statement
         let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: json))
         try await store.saveStatement(wav, recordID: record.id); try await store.save(record)
-        session.verified = true; session.trainingReady = true
+        session.trainingReady = true
+        session.flow.state = .finished; session.flow.finishedRecord = record
+        session.flow.capWarning = "Old warning"; session.flow.priceAppearedAt = .now; session.flow.statementSeconds = 5
+        session.voicePrimary(command: true)
+        #expect(session.recordID != record.id && !session.trainingReady && session.statement == nil)
+        #expect(session.flow.state == .firstUse && session.flow.finishedRecord == nil && session.flow.priceAppearedAt == nil)
+        #expect(session.flow.capWarning == nil && session.flow.statementSeconds == 0 && !session.canCreate)
+        session.openEnrollment(project: nil, startAnalysis: false)
+        #expect(session.showEnrollment && session.flow.state == .firstUse)
+        session.flow.state = .finished; session.flow.finishedRecord = record
+        session.unsavedRecord = record
         session.finishCreation()
-        #expect(session.recordID != record.id && !session.verified && !session.trainingReady && session.statement == nil)
-        session.showEnrollment = true
+        #expect(session.flow.state == .finished && session.unsavedRecord == record)
+        session.unsavedRecord = nil
         await session.cancelEnrollment()
+        #expect(session.flow.state == .firstUse && session.flow.finishedRecord == nil && !session.showEnrollment)
+        session.openEnrollment(project: nil, startAnalysis: false)
+        #expect(session.flow.state == .firstUse && !session.canCreate)
         #expect(try await store.load(record.id) == record)
         #expect(try await store.statement(recordID: record.id) == wav)
         await #expect(throws: VoiceConsentError.inactive) { try await store.withdrawCreation(recordID: record.id) }
@@ -320,6 +380,20 @@ import Synchronization
         let restarted = VoiceConsentStore(locations: locations(root))
         await #expect(throws: (any Error).self) { try await restarted.reconcileAbandonedEnrollments() }
         #expect(FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/record.json").path))
+    }
+
+    @Test func temporaryVoiceNavigationPreservesTheCompletedDraftAndState() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(locations: locations(root)); app.settings.values["voiceLab.enabled"] = .bool(true)
+        let session = app.voiceLabSession
+        session.showEnrollment = true; session.flow.state = .statement
+        session.recorder.simulateTake(samples: [Float](repeating: 0.1, count: 5 * 48_000), at: .now) {}
+        await session.stopRecording()
+        let id = session.recordID
+        #expect(session.hasStatementRecording)
+        session.returnToRewrite()
+        #expect(session.showEnrollment && session.flow.state == .statement && session.hasStatementRecording && session.recordID == id)
     }
     @Test func enablingBetaLoadsExistingRecordsBeforeAccountApproval() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -341,7 +415,7 @@ import Synchronization
         app.settings.values["voiceLab.enabled"] = .bool(true)
         await session.refreshEnabledState()
         #expect(session.records == [record] && session.visibleRecords == [record])
-        #expect(session.subscription == nil && session.confirmation == .subscription)
+        #expect(session.subscription == nil && session.confirmation == nil)
         session.confirmation = nil
         app.settings.values["voiceLab.enabled"] = .bool(false)
         await session.refreshEnabledState()
@@ -397,8 +471,12 @@ import Synchronization
         await store.releaseOperation(operation.id)
         await #expect(throws: (any Error).self) { try await reconciler.reconcile(force: true) }
         session.unsavedRecord = record; session.showEnrollment = true
+        session.flow.state = .finished; session.flow.finishedRecord = record; session.flow.priceAppearedAt = .now
         await session.cancelEnrollment()
         #expect(session.unsavedRecord == nil && !session.showEnrollment)
+        #expect(session.flow.state == .firstUse && session.flow.finishedRecord == nil && session.flow.priceAppearedAt == nil)
+        session.openEnrollment(project: nil, startAnalysis: false)
+        #expect(session.flow.state == .firstUse && !session.canCreate)
         #expect(try await store.operations().isEmpty)
         #expect(try await store.load(record.id).status == .deleted)
         #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(record.id)/statement.wav").path))
@@ -482,8 +560,7 @@ import Synchronization
         #expect(session.trainingSource == .project && session.projectAudioUsable)
         #expect(session.projectAudioLine == "32 s of clear speech found in Interview")
         #expect(VoiceLabSession.projectChoice == "Use this project's audio (recommended)" && VoiceLabSession.readAloudChoice == "Record a read-aloud (about 90 s)")
-        session.verified = true
-        #expect(session.canCreate)
+        #expect(!session.canCreate) // A locally prepared, matching quote is also required.
         session.chooseTrainingSource(.readAloud)
         #expect(session.trainingSource == .readAloud && !session.canCreate)
         session.chooseTrainingSource(.project)
@@ -526,45 +603,39 @@ import Synchronization
             #expect(!session.projectChoiceEnabled)
         }
     }
-    @Test(arguments: [false, true]) func speakerMismatchBlocksProjectAudioAndKeepsTheVerifiedStatement(radio: Bool) async throws {
+    @Test(arguments: [false, true]) func speakerMismatchBlocksProjectAudioAndKeepsTheLocalStatement(radio: Bool) async throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let (_, session) = try session()
         session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: try take(in: root)))
         await session.analysis?.value
         let statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
-        session.statement = statement; session.verified = true
+        session.statement = statement
         let mismatch = "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead."
         await session.creationFailed(VoiceConsentError.speakerMismatch)
         #expect(session.projectMismatch && session.message == mismatch && session.projectAudioLine == "32 s of clear speech found in Interview")
-        #expect(!session.projectChoiceEnabled && !session.canCreate && session.verifiedCopy == VoiceLabSession.readAloudNextCopy)
+        #expect(!session.projectChoiceEnabled && !session.canCreate)
         // Record a Read-Aloud and the read-aloud radio leave the same state: the project option stays off and says why.
         if radio { session.chooseTrainingSource(.readAloud) } else { session.useReadAloud() }
         #expect(session.trainingSource == .readAloud && session.projectMismatch && session.message == nil)
         #expect(!session.projectChoiceEnabled && session.projectAudioLine == mismatch)
         session.chooseTrainingSource(.project)
-        #expect(session.trainingSource == .readAloud && session.verified && session.statement == statement)
+        #expect(session.trainingSource == .readAloud && session.statement == statement)
         await session.creationFailed(VoiceConsentError.speakerMismatch)
         #expect(session.message == VoiceConsentError.speakerMismatch.localizedDescription)
         session.finishCreation()
         #expect(!session.projectMismatch)
     }
-    /// §6.5.2: the status after verification offers a choice only when the project option can be taken.
-    @Test func verifiedStatusNamesAChoiceOnlyWhenThereIsOne() async throws {
+    @Test func unavailableProjectAudioChoosesReadAloudWithoutClaimingVerification() async throws {
         let root = try folder(); defer { try? FileManager.default.removeItem(at: root) }
         let (_, session) = try session()
         let url = try take(in: root)
-        session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: url))
-        #expect(session.verifiedCopy == "Statement verified. Choose your training audio next.")
-        await session.analysis?.value
-        #expect(session.verifiedCopy == VoiceLabSession.chooseTrainingCopy)
         for project: VoiceLabSession.TrainingProject? in [nil, .init(project: try project(bursts: 2), name: "Interview", source: url),
                                                           .init(project: try project(bursts: 4), name: "Interview", source: nil)] {
             session.showEnrollment = false
             session.openEnrollment(project: project)
-            session.message = VoiceLabSession.chooseTrainingCopy
             await session.analysis?.value
-            #expect(session.verifiedCopy == "Statement verified. Record your training read-aloud next.")
-            if project?.source != nil { #expect(session.message == VoiceLabSession.readAloudNextCopy) }
+            #expect(session.trainingSource == .readAloud && !session.projectChoiceEnabled)
+            #expect(session.flow.plan == nil && !session.canCreate && session.message == nil)
         }
     }
     /// A failed cut falls back to the read-aloud with the line under the choice, not the same sentence twice.
@@ -574,9 +645,11 @@ import Synchronization
         let url = try take(in: root)
         session.openEnrollment(project: .init(project: try project(bursts: 4), name: "Interview", source: url))
         await session.analysis?.value
-        session.statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
-        session.verified = true
-        #expect(session.canCreate)
+        let statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
+        session.displayName = "Example"; session.ownVoice = true; session.adult = true; session.ownVideosOnly = true
+        let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 80_000), rate: 16_000)
+        session.stageEnrollmentForTests(statement: statement, wav: wav, client: ElevenLabsVoiceLab(keys: VoiceLabNoPaidKeys(), region: .default))
+        #expect(!session.canCreate)
         try FileManager.default.removeItem(at: url)
         await session.prepareCreation()
         #expect(session.projectAudio == .unreadable && session.trainingSource == .readAloud && session.confirmation == nil)
@@ -646,7 +719,7 @@ import Synchronization
             "Checks your plan, then sends the consent recording and 47 s of speech from Interview to create your own voice. No video is sent. ≈ $0.00")
         #expect(VoiceLabSession.creationCopy(projectName: nil, keptSeconds: 47.99, cost: "≈ $0.00") ==
             "Checks your plan, then sends the consent recording and training audio to create your own voice. No video is sent. ≈ $0.00")
-        #expect(RewriteTakesView.createVoiceTitle == "Create Your Voice…")
+        #expect(DirectorTakeRows.makeVoiceTitle == "Make Your Voice")
     }
     @Test func statementLanguageNeedsACalibratedSpeakerCheck() throws {
         let model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
@@ -675,18 +748,22 @@ import Synchronization
     func finished() async { if !done { await withCheckedContinuation { completion = $0 } } }
 }
 
-private final class LegacyEnrollmentProbe: Sendable {
+private final class JobEnrollmentProbe: Sendable {
     let events = Mutex<[String]>([])
+    let creationBodies = Mutex<[Data]>([])
     let embeddings = Mutex(0)
-    let mismatch: Bool; let response: Data
-    init(mismatch: Bool, response: Data) { self.mismatch = mismatch; self.response = response }
+    let mismatch: Bool; let localMismatch: Bool; let response: Data
+    init(mismatch: Bool, localMismatch: Bool = false, response: Data) { self.mismatch = mismatch; self.localMismatch = localMismatch; self.response = response }
 }
-private struct LegacyEnrollmentEmbedder: SpeakerEmbedder {
-    let modelID = "fixture-calibrated"; let dimension = 2; let probe: LegacyEnrollmentProbe
-    func embed(_ pcm16k: [Float]) async throws -> [Float] { probe.embeddings.withLock { $0 += 1 }; return [1, 0] }
+private struct JobEnrollmentEmbedder: SpeakerEmbedder {
+    let modelID = "fixture-calibrated"; let dimension = 2; let probe: JobEnrollmentProbe
+    func embed(_ pcm16k: [Float]) async throws -> [Float] {
+        probe.embeddings.withLock { $0 += 1 }
+        return probe.localMismatch && (pcm16k.first ?? 0) < 0 ? [0, 1] : [1, 0]
+    }
 }
-private final class LegacyEnrollmentHTTP: URLProtocol, @unchecked Sendable {
-    static let probe = Mutex<LegacyEnrollmentProbe?>(nil)
+private final class JobEnrollmentHTTP: URLProtocol, @unchecked Sendable {
+    static let probe = Mutex<JobEnrollmentProbe?>(nil)
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -702,13 +779,28 @@ private final class LegacyEnrollmentHTTP: URLProtocol, @unchecked Sendable {
             data = Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":1000,"can_use_instant_voice_cloning":true,"voice_slots_used":0,"voice_limit":3}"#.utf8)
         case "/v1/voices/add":
             probe.events.withLock { $0.append("create") }
+            do { let body = try Self.body(request); probe.creationBodies.withLock { $0.append(body) } }
+            catch { Issue.record("Missing clone multipart body: \(error)") }
             data = Data(#"{"voice_id":"fixtureOwnVoice","requires_verification":false}"#.utf8)
-        default: Issue.record("Unexpected legacy enrollment request \(request.url!.path)"); data = Data()
+        default: Issue.record("Unexpected enrollment request \(request.url!.path)"); data = Data()
         }
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json", "request-id": "fixture-consent-response"])!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+    private static func body(_ request: URLRequest) throws -> Data {
+        if let data = request.httpBody { return data }
+        let stream = try #require(request.httpBodyStream)
+        stream.open(); defer { stream.close() }
+        var data = Data(), buffer = [UInt8](repeating: 0, count: 8_192)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count >= 0 else { throw URLError(.cannotDecodeRawData) }
+            if count == 0 { break }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+        return data
+    }
 }
 private struct VoiceLabAppKeys: KeyProvider {
     func key(for provider: String) async throws -> String? { "synthetic-journal-ui-key" }

@@ -6,13 +6,59 @@ import VoxClipCore
 /// The sidebar (step 5) on the "Five questions" fixture from the design mockups: four
 /// kept clips and one AI suggestion, with clip numbering, Keep, Keep All, Dismiss,
 /// Remove, Rename and row scoping, and light and dark captures.
-@MainActor enum DebugSidebar {
+@MainActor enum DebugExplorer {
+    /// V2's model and geometry checks are headless; the ported checks below retain their names.
+    static func explorerChecks(shell: WorkspaceShell) -> [DebugUISuite.Result] {
+        guard let editor = shell.editor else { return [.init(name: "Explorer has an editor", passed: false)] }
+        var results: [DebugUISuite.Result] = []
+        func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        let paragraphs: [Range<Int>] = TranscriptParagraphs.split(words: editor.words)
+        let entries = shell.outlineEntries
+        check("Explorer Outline entries equal TranscriptParagraphs", entries.map(\.words) == paragraphs)
+        check("Explorer headers name their groups and counts", ExplorerSection.clips.accessibilityLabel(count: editor.keptClips.count) == "Clips, \(editor.keptClips.count) items"
+              && ExplorerHeader(shell: shell, section: .take, count: 1).accessibilityName == "\(shell.projectTitle), 1 item")
+        check("Explorer rows are 28, Outline rows 24 and thumbnails 36 by 20", ExplorerMetrics.rowHeight == 28 && ExplorerMetrics.outlineHeight == 24
+              && ExplorerMetrics.thumbnailSize == CGSize(width: 36, height: 20))
+        check("Explorer disclosures and row actions have at least 24 point targets", ExplorerMetrics.rowHeight >= EditorAccessibilityPolicy.minimumTarget
+              && ExplorerMetrics.outlineHeight >= EditorAccessibilityPolicy.minimumTarget)
+        let exports = editor.exportsList.rows
+        let ledgerCount = shell.app.exportLedger.records.filter { $0.projectID == editor.project.id }.count
+        check("Explorer Exports equals the open project's ledger and speaks its count", exports.count == ledgerCount
+              && ExplorerHeader(shell: shell, section: .exports, count: exports.count).accessibilityName == ExplorerSection.exports.accessibilityLabel(count: ledgerCount))
+        let visibleVoices = shell.explorerShowsVoices ? shell.app.voiceLabSession.visibleRecords.count : 0
+        check("Explorer Voices follows the beta gate and visible records and speaks its count", shell.explorerVoices.count == visibleVoices
+              && (shell.app.bool("voiceLab.enabled") || !shell.explorerShowsVoices)
+              && ExplorerHeader(shell: shell, section: .voices, count: visibleVoices).accessibilityName == ExplorerSection.voices.accessibilityLabel(count: visibleVoices))
+        return results
+    }
+
+    static func sceneCaptures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
+        let saved = app.settings
+        defer { app.settings = saved }
+        for section in ExplorerSection.allCases { app.settings.values[section.key] = .bool(true) }
+        for key in [WorkspaceLayout.explorerWidthKey, WorkspaceLayout.rightWidthKey, WorkspaceLayout.timelineHeightKey] { app.settings.values[key] = nil }
+        let shell = WorkspaceShell(app: app)
+        await shell.attachForTesting(VoxClipDocument(project: try fiveQuestions(from: fixture), demo: true), selection: .fullTake)
+        guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
+        defer { editor.close() }
+        editor.mediaResolved = true; editor.refresh()
+        var results: [DebugUISuite.Result] = []
+        for (name, row) in [("take", SidebarItem.fullTake), ("clip", .clip("five-1")), ("suggested", .clip("five-5"))] {
+            shell.choose(row)
+            try await DebugUISuite.snapshot(WorkspaceView(shell: shell).environment(app), name: "v2-explorer-\(name)",
+                size: NSSize(width: 1280, height: 800), appearance: .darkAqua, directory: directory, active: true, mainWindow: true, native: true)
+            results.append(.init(name: "v2 Explorer \(name) scene", passed: true))
+        }
+        return results
+    }
+
     static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         let shell = WorkspaceShell(app: app)
         await shell.attachForTesting(VoxClipDocument(project: try fiveQuestions(from: fixture), demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
+        results += explorerChecks(shell: shell)
         let kept = editor.keptClips, suggested = editor.suggestedClips
         check("Five questions has four kept clips and one suggestion numbered 5", kept.count == 4 && suggested.count == 1 && suggested.first.flatMap { editor.clipNumber($0.id) } == 5
               && kept.map(\.title) == ["Think in sentences", "It has to work on mute", "And yeah, I mess up a lot", "The best thirty seconds"])
@@ -24,7 +70,7 @@ import VoxClipCore
         }
 
         for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            try await DebugUISuite.snapshot(SidebarRowsPreview(shell: shell).environment(app), name: "sidebar-rows-\(suffix)", size: NSSize(width: 252, height: 640), appearance: appearance, directory: directory, active: true)
+            try await DebugUISuite.snapshot(ExplorerRowsPreview(shell: shell).environment(app), name: "sidebar-rows-\(suffix)", size: NSSize(width: 252, height: 640), appearance: appearance, directory: directory, active: true)
         }
         results += try await editorLayout(app: app, shell: shell, directory: directory)
         let rowSteps = editor.undoSteps
@@ -101,7 +147,7 @@ import VoxClipCore
         editor.undoManager = undo
         func step(_ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
 
-        // Make Clip (⌘K): one undo step adds the clip and selects its row.
+        // Make Clip (⌥⌘K): one undo step adds the clip and selects its row.
         let words = editor.words
         guard let start = words.firstIndex(where: { $0.text == "One" }), start + 3 < words.count else { throw CocoaError(.coderInvalidValue) }
         editor.select(words[start].id); editor.select(words[start + 3].id, extend: true)
@@ -201,7 +247,7 @@ import VoxClipCore
             check("an untranscribed take reads \"Not transcribed\" and its actions say \"Transcribe the video to select words.\"",
                   SidebarStyle.fullTakeMeta(model) == "Not transcribed" && SidebarStyle.untranscribedReason(model) == "Transcribe the video to select words.")
             for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                try await DebugUISuite.snapshot(SidebarRowsPreview(shell: untranscribed).environment(app), name: "sidebar-untranscribed-\(suffix)", size: NSSize(width: 252, height: 240), appearance: appearance, directory: directory, active: true)
+                try await DebugUISuite.snapshot(ExplorerRowsPreview(shell: untranscribed).environment(app), name: "sidebar-untranscribed-\(suffix)", size: NSSize(width: 252, height: 240), appearance: appearance, directory: directory, active: true)
             }
             model.close()
         } else { check("an untranscribed take opens", false) }
@@ -329,13 +375,11 @@ import VoxClipCore
         if let shortcuts, let action = shortcuts.action {
             if modal == nil { NSApp.sendAction(action, to: shortcuts.target, from: shortcuts) } else { _ = menuDelegate?.perform(action, with: shortcuts) }
         }
-        let showedShortcuts = app.shell.showShortcuts
-        app.shell.showShortcuts = false
+        let showedShortcuts = app.shell.showCommandPalette
+        app.shell.showCommandPalette = false
         check("Help > Keyboard Shortcuts and Workspace Tour are enabled with no editor", enabled)
-        check("Help > Keyboard Shortcuts opens its sheet with no editor, through \(modal.map { "its handler (app-modal \($0) open)" } ?? "the menu action")", showedShortcuts)
-        check("the shortcuts sheet lists the current bindings", ShortcutsView.lines.contains("⌘1 / ⌘2|Home / Full Take") && ShortcutsView.lines.contains("⇧⌘K|Find clips")
-              && ShortcutsView.lines.contains("⌥⌘I|Show / hide viewer") && ShortcutsView.lines.contains("⌃⌘S|Show / hide sidebar")
-              && !ShortcutsView.lines.contains { $0.contains("⌘3") || $0.contains("caption inspector") })
+        check("Help > Keyboard Shortcuts opens the command field with no editor, through \(modal.map { "its handler (app-modal \($0) open)" } ?? "the menu action")", showedShortcuts)
+        check("the command field replaces the shortcuts sheet", NSApp.mainMenu?.item(withTitle: "View")?.submenu?.items.contains { $0.tag == 61 && $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command } == true)
 
         // The transcript takes keyboard focus when a project opens; returning from Home
         // with the sidebar list focused leaves focus in the list (C4).
@@ -499,16 +543,16 @@ import VoxClipCore
         func texts(_ view: NSView) -> [String] { ((view as? NSTextField).map { [$0.stringValue] } ?? []) + view.subviews.flatMap(texts) }
         let modal = NSApp.modalWindow.map { "\(type(of: $0)) \"\($0.contentView.map(texts)?.joined(separator: " ") ?? $0.title)\"" }
         if let menu, let item, let index = menu.items.firstIndex(of: item) { menu.performActionForItem(at: index) }
-        for _ in 0..<40 where !editor.showExport { try await Task.sleep(for: .milliseconds(50)) }
+        for _ in 0..<40 where !editor.exportJob.isOpen { try await Task.sleep(for: .milliseconds(50)) }
         let exported = editor.exportClipIDs.map { (id: String) -> String in
             guard let index: Int = editor.keptClips.firstIndex(where: { (clip: ClipRange) -> Bool in clip.id == id }) else { return id }
             let number: Int = index + 1
             return "clip \(number)"
         }.joined(separator: ", ")
-        check("Export Clip… in a clip row's context menu opens Export for that clip and clears the earlier result (row \(row), menu from \(source), item enabled \(item?.isEnabled == true), modal \(modal ?? "none"), exportable \(editor.mediaExportable), Export shown \(editor.showExport) for \(exported))",
-              modal == nil && editor.showExport && editor.exportClipIDs == [kept[2]] && editor.exports.isEmpty && editor.exportError == nil
+        check("Export Clip… in a clip row's context menu opens Export for that clip and clears the earlier result (row \(row), menu from \(source), item enabled \(item?.isEnabled == true), modal \(modal ?? "none"), exportable \(editor.mediaExportable), Export shown \(editor.exportJob.isOpen) for \(exported))",
+              modal == nil && editor.exportJob.isOpen && editor.exportClipIDs == [kept[2]] && editor.exports.isEmpty && editor.exportError == nil
               && editor.project.edits.activeClipId == nil && shell.selection == .fullTake)
-        editor.showExport = false
+        editor.finishExportJob()
         try await Task.sleep(for: .milliseconds(300))
 
         // Find Clips focuses its first new suggestion; the list takes keyboard focus.
@@ -526,7 +570,7 @@ import VoxClipCore
         window.setContentSize(NSSize(width: 900, height: 800))
         for _ in 0..<40 where shell.windowWidth >= shell.explorerCollapseWidth { try await Task.sleep(for: .milliseconds(25)) }
         app.settings.values["llm.connector"] = nil
-        editor.requestFindClips(from: .overflow)
+        editor.requestFindClips(from: .clipBar)
         check("at 900 Find Clips opens its popover without expanding the collapsed sidebar",
               shell.windowWidth < shell.explorerCollapseWidth && editor.showFindClips && !editor.showAISetup && !shell.sidebarOverlay && !shell.layout.explorerVisible)
         editor.showFindClips = false
@@ -667,24 +711,24 @@ import VoxClipCore
         await shell.attachForTesting(VoxClipDocument(project: five, demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         let kept = editor.keptClips
-        let full = editor.summaryLine
-        check("the full take reads \"2:10 after cuts · 8 cuts\" (\(full))", editor.cutCount == 8 && full == "2:10 after cuts · 8 cuts" && editor.subtitle == full)
+        let full = editor.statusSummary.text
+        check("the full take's status summary reads \"Full Take · 2:10 · 8 cuts\" (\(full))", editor.cutCount == 8 && full == "Full Take · 2:10 · 8 cuts")
         let detail = editor.summaryDetail
         check("the edit summary's detail reads \"2:23 source · 19 words cut in 5 places · 3 pauses cut\" (\(detail))", detail == "2:23 source · 19 words cut in 5 places · 3 pauses cut")
         check("Export reads Export Video… for the full take and gives the demo reason", editor.exportTitle == "Export Video…" && editor.exportUnavailable == "Demo projects have no video to export.")
         shell.selection = .clip(kept[1].id)
-        let second = editor.summaryLine, secondDetail = editor.summaryDetail
-        check("a clip reads \"Clip 2 · 0:20 after cuts · 2 cuts\" (\(second))", second == "Clip 2 · 0:20 after cuts · 2 cuts" && editor.exportTitle == "Export Clip…")
+        let second = editor.statusSummary.text, secondDetail = editor.summaryDetail
+        check("a clip reads \"Clip 2 · 0:20 · 2 cuts\" (\(second))", second == "Clip 2 · 0:20 · 2 cuts" && editor.exportTitle == "Export Clip…")
         check("a clip's detail reads \"0:21 source · 2 words cut in 2 places · 0 pauses cut\" (\(secondDetail))", secondDetail == "0:21 source · 2 words cut in 2 places · 0 pauses cut")
         shell.selection = .clip(kept[3].id)
-        let fourth = editor.summaryLine
+        let fourth = editor.statusSummary.text
         check("a clip with no cuts reads \"Clip 4 · 0:11 · No cuts yet\" (\(fourth))", fourth == "Clip 4 · 0:11 · No cuts yet")
         if let bounds = editor.scopeBounds, bounds.count > 2 {
             let pair = [editor.words[bounds.lowerBound + 1].id, editor.words[bounds.lowerBound + 2].id]
             editor.apply(.cutSelection(ids: pair), name: "Cut selection")
-            let one = editor.summaryLine
+            let one = editor.statusSummary.text
             editor.apply(.restoreSelection(ids: pair), name: "Restore selection")
-            check("two adjacent cut words are one cut: \"Clip 4 · {edited} after cuts · 1 cut\" (\(one))", one.hasPrefix("Clip 4 · ") && one.hasSuffix(" after cuts · 1 cut"))
+            check("two adjacent cut words are one cut: \"Clip 4 · {edited} · 1 cut\" (\(one))", one.hasPrefix("Clip 4 · ") && one.hasSuffix(" · 1 cut"))
         } else { check("clip 4 has words to cut", false) }
         shell.selection = .fullTake
         if let pause = editor.pauses.first(where: { !editor.cutPauseIDs.contains($0.id) }) {
@@ -703,7 +747,14 @@ import VoxClipCore
         guard let located = real.editor, let suggestion = located.suggestedClips.first else { throw CocoaError(.coderInvalidValue) }
         check("a missing video disables Export: \"Locate the video to export.\"", !located.mediaResolved && located.exportUnavailable == "Locate the video to export.")
         real.selection = .clip(suggestion.id)
-        check("a row change the editor refuses (missing video) returns the selection to Full Take", real.selection == .fullTake && located.project.edits.activeClipId == nil)
+        check("a missing video permits a tab scope change (V3a)", real.selection == .clip(suggestion.id) && located.project.edits.activeClipId == suggestion.id)
+        real.selection = .fullTake
+        // V3a allows scope changes with missing media. Exercise the retained refusal
+        // check while the missing-media editor is leaving, which still refuses them.
+        located.isLeaving = true
+        real.selection = .clip(suggestion.id)
+        check("a row change the editor refuses (leaving) returns the selection to Full Take", real.selection == .fullTake && located.project.edits.activeClipId == nil)
+        located.isLeaving = false
         located.mediaResolved = true
         check("with the video found, Export Video… is available", located.exportUnavailable == nil && located.canExport)
         real.selection = .clip(suggestion.id)
@@ -726,8 +777,11 @@ import VoxClipCore
         }
         check("a system accent's text colour mixes toward text.primary until it reads at 4.5:1 on bg.surface", readable)
         // The transcript's selection is its own tint at text height (ux/v2 notes.md §5), never the platform's.
-        let transcript = TranscriptTextView.makeScrollView(model: located, coordinator: TranscriptTextView.Coordinator(model: located)).documentView as? TranscriptNSTextView
-        check("selected transcript words draw the tint.selection layer, not the platform selection", transcript?.selectedTextAttributes.isEmpty == true && transcript?.selectionLayer != nil)
+        let coordinator = TranscriptTextView.Coordinator(model: located)
+        let transcript = TranscriptTextView.makeScrollView(model: located, coordinator: coordinator).documentView as? TranscriptNSTextView
+        withExtendedLifetime(coordinator) {
+            check("selected transcript words draw the tint.selection layer, not the platform selection", transcript?.selectedTextAttributes.isEmpty == true && transcript?.selectionLayer != nil)
+        }
         return results
     }
 
@@ -831,7 +885,7 @@ import VoxClipCore
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         func capture(_ shell: WorkspaceShell, _ name: String) async throws {
             for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-                try await DebugUISuite.snapshot(SidebarRowsPreview(shell: shell).environment(app), name: "\(name)-\(suffix)", size: NSSize(width: 252, height: 520), appearance: appearance, directory: directory, active: true)
+                try await DebugUISuite.snapshot(ExplorerRowsPreview(shell: shell).environment(app), name: "\(name)-\(suffix)", size: NSSize(width: 252, height: 520), appearance: appearance, directory: directory, active: true)
             }
         }
         let keys = ["llm.connector", "llm.model.ollama", "llm.clips.snapToLines"]
@@ -847,8 +901,8 @@ import VoxClipCore
 
         app.settings.values["llm.connector"] = nil
         shell.layout.explorerVisible = false
-        model.requestFindClips(from: .overflow)
-        check("with no connector, Find Clips immediately opens the popover and preserves the hidden sidebar", !model.showAISetup && model.showFindClips && model.findClipsAnchor == .overflow && !shell.layout.explorerVisible)
+        model.requestFindClips(from: .clipBar)
+        check("with no connector, Find Clips immediately opens the popover and preserves the hidden sidebar", !model.showAISetup && model.showFindClips && model.findClipsAnchor == .clipBar && !shell.layout.explorerVisible)
         for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             try await DebugUISuite.snapshot(FindClipsPopover(model: model).environment(app), name: "find-clips-no-connector-\(suffix)", size: NSSize(width: 380, height: 300), appearance: appearance, directory: directory, active: true)
         }
@@ -867,7 +921,7 @@ import VoxClipCore
         app.connectorOverride = { _ in FixtureClipConnector(spans: [(20, 70), (95, 145), (170, 220)]) }
         shell.layout.explorerVisible = false
         let steps = model.undoSteps
-        let playhead = model.playhead, exportTitle = model.exportTitle, subtitle = model.subtitle
+        let playhead = model.playhead, exportTitle = model.exportTitle, summary = model.statusSummary
         // The sidebar opens once the send is authorized, inside the run (VS), so read it when the run ends.
         model.findClips()
         await model.findTask?.value
@@ -875,9 +929,9 @@ import VoxClipCore
         check("Find Clips adds three suggestions and keeps none", model.suggestedClips.count == 3 && model.keptClips.isEmpty && model.project.ai.results.count == 1 && model.clipError == nil)
         check("a run shows the hidden sidebar for its progress", revealed)
         let first = model.suggestedClips.first?.id
-        check("Find Clips focuses its first new suggestion without selecting it, in one undo step: the scope, playhead, Export and subtitle stay",
+        check("Find Clips focuses its first new suggestion without selecting it, in one undo step: the scope, playhead, Export and status summary stay",
               first != nil && model.focusedSuggestion == first && model.project.edits.activeClipId == nil && shell.selection == .fullTake
-              && model.playhead == playhead && model.exportTitle == exportTitle && model.subtitle == subtitle && model.undoSteps == steps + 1)
+              && model.playhead == playhead && model.exportTitle == exportTitle && model.statusSummary == summary && model.undoSteps == steps + 1)
         model.undoManager?.undo()
         check("one undo removes the three suggestions and their AI result", model.suggestedClips.isEmpty && model.project.ai.results.isEmpty && shell.selection == .fullTake)
         model.undoManager?.redo()
@@ -933,8 +987,8 @@ import VoxClipCore
             "And yeah, I, I, um, I mess up a lot. That's fine. I pause, take a breath and say the line again. Then I cut the bad take, which, uh, which is the worst part. Then I cut the bad take in the transcript. It takes seconds, because I'm deleting words, not hunting through a waveform.",
             "The best thirty seconds of your week are already on your phone. Post those. One habit for a bad week: film anyway, and keep only the sentence that still sounds true."
         ]
-        // Each paragraph's pace makes the summaries read the checklist's acceptance values
-        // (step 8): "2:10 after cuts · 8 cuts", "Clip 2 · 0:20 after cuts · 2 cuts" and
+        // Each paragraph's pace makes the status bar's summaries read the checklist's acceptance
+        // values (step 8): "Full Take · 2:10 · 8 cuts", "Clip 2 · 0:20 · 2 cuts" and
         // "Clip 4 · 0:11 · No cuts yet". Gaps stay under the pause threshold inside a paragraph.
         let paces = [1.33, 1.33, 1.33, 1.33, 0.92, 1.33, 2.14]
         var words: [TimedWord] = []

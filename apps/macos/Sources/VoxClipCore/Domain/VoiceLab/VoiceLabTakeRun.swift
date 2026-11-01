@@ -191,9 +191,12 @@ public enum VoiceLabTakeRunEnd: String, Sendable, Equatable { case completed, ea
 public struct VoiceLabTakeRunResult: Sendable, Equatable {
     public let rows: [VoiceLabTakeRow]
     public let end: VoiceLabTakeRunEnd
+    public let failure: VoiceLabTakeFailure?
     public var ranked: [VoiceLabTakeRow] {
         rows.filter(\.selectable).sorted { $0.score == $1.score ? $0.index < $1.index : ($0.score ?? 0) > ($1.score ?? 0) }
     }
     public var best: VoiceLabTakeRow? { ranked.first }
-    package init(rows: [VoiceLabTakeRow], end: VoiceLabTakeRunEnd) { self.rows = rows; self.end = end }
+    package init(rows: [VoiceLabTakeRow], end: VoiceLabTakeRunEnd, failure: VoiceLabTakeFailure? = nil) {
+        self.rows = rows; self.end = end; self.failure = failure
+    }
 }

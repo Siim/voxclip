@@ -3,6 +3,7 @@ import Observation
 import VoxClipCore
 
 @MainActor @Observable final class ModelDownloadConfirmation {
+    var approvedModelIDs: Set<String> = []
     private(set) var pending: ModelDescriptor?
     private(set) var totalBytes: Int64 = 0
     @ObservationIgnored private var requestID: UUID?
@@ -12,6 +13,7 @@ import VoxClipCore
     #endif
     func request(_ model: ModelDescriptor, bytes: Int64) async throws -> Bool {
         try Task.checkCancellation()
+        if approvedModelIDs.contains(model.id) { return true }
         let id = UUID()
         let accepted = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in

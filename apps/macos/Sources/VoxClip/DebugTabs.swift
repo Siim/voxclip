@@ -29,7 +29,7 @@ import VoxClipCore
         app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
 
         let shell = WorkspaceShell(app: app)
-        let document = VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true)
+        let document = VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true)
         await shell.attachForTesting(document, selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
@@ -157,7 +157,7 @@ import VoxClipCore
         check("Dismiss on the last row closes its tab and falls back to Full Take", shell.tabs.active == .fullTake && !shell.tabs.open.contains(.suggestion(suggested[0])))
         undo.undo()
 
-        results += rewriteChecks(window: window, bar: bar, editor: editor, shell: shell, kept: kept, undo: undo)
+        results += try rewriteChecks(window: window, bar: bar, editor: editor, shell: shell, kept: kept, undo: undo)
         results += try await narrowChecks(window: window, shell: shell, bar: bar, kept: kept, suggested: suggested)
 
         // VoiceOver: a tab group of tab buttons, the active one selected; a dirty tab says so.
@@ -249,8 +249,8 @@ import VoxClipCore
         }
         check("Show Next Tab is ⌃⇥ and Show Previous Tab ⌃⇧⇥, with ⇧⌘] and ⇧⌘[ as hidden alternates",
               next.keyEquivalent == "\t" && next.keyEquivalentModifierMask == .control && previous.keyEquivalent == "\t" && previous.keyEquivalentModifierMask == [.control, .shift]
-              && windowMenu?.items.contains { $0.isHidden && $0.keyEquivalent == "}" && $0.allowsKeyEquivalentWhenHidden && $0.tag == next.tag } == true
-              && windowMenu?.items.contains { $0.isHidden && $0.keyEquivalent == "{" && $0.allowsKeyEquivalentWhenHidden && $0.tag == previous.tag } == true)
+              && windowMenu?.items.contains { $0.isHidden && $0.keyEquivalent == "]" && $0.keyEquivalentModifierMask == [.command, .shift] && $0.allowsKeyEquivalentWhenHidden && $0.tag == next.tag } == true
+              && windowMenu?.items.contains { $0.isHidden && $0.keyEquivalent == "[" && $0.keyEquivalentModifierMask == [.command, .shift] && $0.allowsKeyEquivalentWhenHidden && $0.tag == previous.tag } == true)
         shell.selection = .clip(kept[0])
         shell.selection = .clip(kept[1])
         _ = delegate.validateMenuItem(close)
@@ -284,10 +284,10 @@ import VoxClipCore
     }
 
     /// A Rewrite session belongs to its tab (impl-plan §3.3): it survives a tab switch and
-    /// edits outside its clip and stays current; on another tab the right column, the
-    /// transcript's mark and Escape leave it alone, and its tab shows the dirty dot while its
-    /// new words differ. Back on its tab it shows again; an edit inside its clip closes it.
-    private static func rewriteChecks(window: NSWindow, bar: EditorTabBarView, editor: EditorModel, shell: WorkspaceShell, kept: [String], undo: UndoManager) -> [DebugUISuite.Result] {
+    /// edits outside its clip and stays current; on another tab the right column and Escape
+    /// leave it alone, and its tab shows the dirty dot while it proposes changes. Back on its
+    /// tab it shows again; an edit inside its clip shows R3, and undoing it the proposal (V13).
+    private static func rewriteChecks(window: NSWindow, bar: EditorTabBarView, editor: EditorModel, shell: WorkspaceShell, kept: [String], undo: UndoManager) throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         func step(_ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
@@ -295,16 +295,17 @@ import VoxClipCore
         guard let one = clips.first(where: { $0.id == kept[0] }), let two = clips.first(where: { $0.id == kept[1] }),
               let lower = editor.index(one.startWordId), let other = editor.index(two.startWordId) else { return [.init(name: "Clips 1 and 2 are in the fixture", passed: false)] }
         shell.selection = .clip(kept[0])
-        let session = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.rewrite = session
-        editor.rewriteRange = lower...(lower + 2)
-        session.edit("A different opening")
+        // A reply that cuts the middle word: a change waiting for review (a phrase in your voice with no audio is left out).
+        try session.receivePassage(editor.words[lower].text + " " + editor.words[lower + 2].text)
+        session.finishRun(seconds: 1)
         bar.render()
-        check("the session's tab shows the dirty dot while its new words differ", shell.dirtyTabs == [.clip(kept[0])] && bar.items[.clip(kept[0])]?.showsDot == true)
+        check("the session's tab shows the dirty dot while it proposes changes", shell.dirtyTabs == [.clip(kept[0])] && bar.items[.clip(kept[0])]?.showsDot == true)
         shell.selectTab(.clip(kept[1]))
         bar.render()
         check("a Rewrite session survives a tab switch, hidden on the other tab with its words unmarked",
-              session.isOpen && editor.openRewrite === session && editor.rewrite == nil && editor.rewriteRange == nil)
+              session.isOpen && editor.openRewrite === session && editor.rewrite == nil && editor.rewriteScope == nil)
         check("on another tab the session stays current and its tab keeps the dot", session.current && bar.items[.clip(kept[0])]?.showsDot == true)
         // With no words selected the transcript's Escape leaves the clip (no selection bar to dismiss first).
         editor.selectedWordIDs = []
@@ -321,18 +322,22 @@ import VoxClipCore
         check("an edit outside the session's clip leaves it open", session.isOpen && editor.openRewrite === session)
         shell.selectTab(.clip(kept[0]))
         check("back on its tab the session shows again, on the current project and still current",
-              editor.rewrite === session && editor.rewriteRange == lower...(lower + 2) && session.project == editor.project && session.current)
+              editor.rewrite === session && editor.rewriteScope == .selection(lower...(lower + 2)) && session.project == editor.project && session.current)
+        let proposal = session.task.state
         step { editor.apply(.cutSelection(ids: [editor.words[lower + 1].id]), name: "Cut selection") }
         bar.render()
-        check("an edit inside the session's clip closes it (design.md R3) and the dot goes",
-              !session.isOpen && editor.openRewrite == nil && editor.rewrite == nil && shell.dirtyTabs.isEmpty && bar.items[.clip(kept[0])]?.showsDot == false)
+        check("an edit inside the session's words shows R3 (design.md R3) and the dot stays",
+              session.isOpen && session.task.state == .changed && editor.rewrite === session && shell.dirtyTabs == [.clip(kept[0])] && bar.items[.clip(kept[0])]?.showsDot == true)
         undo.undo()
+        check("undoing that edit shows the proposal again", session.isOpen && session.task.state == proposal && session.current)
         undo.undo()
+        editor.closeRewrite(returnFocus: false)
         // Closing the session's tab closes the session, as Escape does.
         shell.selection = .clip(kept[0])
-        let closing = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        let closing = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.rewrite = closing
-        closing.edit("Another opening")
+        try closing.receivePassage("Another opening")
+        closing.finishRun(seconds: 1)
         shell.closeTab(.clip(kept[0]))
         shell.selection = .clip(kept[0])
         bar.render()
@@ -414,7 +419,7 @@ import VoxClipCore
 
     /// A Versions window switches tabs and never writes them.
     private static func versionChecks(fixture: Project) async throws -> [DebugUISuite.Result] {
-        let version = VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true)
+        let version = VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true)
         version.versionForTesting = true
         version.makeWindowControllers()
         defer { version.close() }
@@ -434,7 +439,7 @@ import VoxClipCore
     static func sceneCaptures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         guard !DebugUISuite.sessionLocked else { throw CocoaError(.userCancelled) }
         let shell = WorkspaceShell(app: app)
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()

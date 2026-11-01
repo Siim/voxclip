@@ -127,6 +127,7 @@ struct VoiceLabWindowTests {
         project.transcript?.words = items(input["words"])
         project.edits.cutWordIds = edits["cutWordIds"].vectorStrings ?? []
         project.edits.cutPauseIds = edits["cutPauseIds"].vectorStrings ?? []
+        project.edits.corrections = edits["corrections"].vectorFields.compactMapValues(\.vectorString)
         project.edits.pauseThresholdSeconds = edits["pauseThresholdSeconds"].vectorNumber
         project.edits.pauseKeepSeconds = edits["pauseKeepSeconds"].vectorNumber
         project.edits.clips = (edits["clips"].vectorItems ?? []).map {
@@ -159,6 +160,7 @@ struct VoiceLabWindowTests {
     @Test func everyVectorIsConsumed() throws {
         let document = try document()
         #expect(Set(document.vectorFields.keys) == Set(Self.categories + ["schema", "constants", "caseCount", "lendableSilenceFuzz", "propertyFuzz", "multiSegmentFuzz"]))
+        #expect(document["caseCount"].vectorInteger == 606)
         #expect(try Self.categories.reduce(0) { try $0 + cases($1).count } == Int(document["caseCount"].vectorInteger))
         let constants = document["constants"]
         #expect(constants["SEAM_MIN_GAP"].vectorNumber == VoiceLabPatchConstants.SEAM_MIN_GAP)
@@ -223,6 +225,62 @@ struct VoiceLabWindowTests {
     @Test func windowVectors() throws {
         let (accepted, passages, rendered) = try replayWindows(try cases("window"))
         #expect(passages > 0 && passages < accepted && rendered == accepted)
+    }
+
+    private func diffHunk(_ value: JSONValue) throws -> VoiceLabDiffHunk {
+        VoiceLabDiffHunk(kind: try #require(VoiceLabDiffHunkKind(rawValue: value["kind"].vectorString ?? "")),
+                         sourceWordIds: value["sourceWordIds"].vectorStrings ?? [], newTokens: value["newTokens"].vectorStrings ?? [],
+                         correctedTexts: value["correctedTexts"].vectorStrings ?? [], absorbedItemIds: value["absorbedItemIds"].vectorStrings ?? [],
+                         bridgeWordIds: value["bridgeWordIds"].vectorStrings ?? [], sourceStartIndex: Int(value["sourceStartIndex"].vectorInteger),
+                         sourceEndIndex: Int(value["sourceEndIndex"].vectorInteger),
+                         anchorSeconds: value["anchorSeconds"].isVectorNull ? nil : value["anchorSeconds"].vectorNumber)
+    }
+
+    @Test func placeAllVectors() throws {
+        let document = try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/voice-lab/window-all-cases.json"))
+        #expect(document["schema"].vectorString == "voxclip-voice-lab-window-all-cases/1")
+        #expect(Set(document.vectorFields.keys) == Set(["schema", "caseCount", "cases"]))
+        let tests = try #require(document["cases"].vectorItems)
+        #expect(tests.count == 32 && document["caseCount"].vectorInteger == Int64(tests.count))
+        for test in tests {
+            let input = test["input"], name = test["name"].vectorString ?? "?"
+            let project = try take(input, tone: test["roomTone"])
+            let before = project
+            let hunks = try (input["hunks"].vectorItems ?? []).map { try diffHunk($0) }
+            let results = VoiceLabWindowPlanner.placeAll(project: project, scope: scope(input), envelope: envelope(input["envelope"]), hunks: hunks)
+            let expected = test["expected"].vectorItems ?? []
+            #expect(results.count == expected.count, "\(name)")
+            #expect(project == before, "\(name): planning changed the project")
+            var rendered = project
+            rendered.edits.cutWordIds += hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds)
+            var lastEnd: Int64?
+            for (result, raw) in zip(results, expected) {
+                let expectedIndices = (raw["indices"].vectorItems ?? []).map { Int($0.vectorInteger) }
+                switch result {
+                case let .placed(indices, hunk, placed):
+                    #expect(raw["status"].vectorString == "placed", "\(name)")
+                    #expect(indices == expectedIndices, "\(name)")
+                    #expect(hunk == (try diffHunk(raw["hunk"])), "\(name)")
+                    #expect(placed == window(raw["window"]), "\(name)")
+                    if let lastEnd { #expect(lastEnd < placed.startSample, "\(name)") }
+                    lastEnd = placed.endSample
+                    rendered = try assemble(rendered, window: placed, tone: nil, words: nil, trimStart: 0.5,
+                                             patch: nil, scope: scope(input), id: "all-\(indices[0])").0
+                case let .refused(index, hunk, reason):
+                    #expect(raw["status"].vectorString == "refused", "\(name)")
+                    #expect([index] == expectedIndices && hunk == hunks[index], "\(name)")
+                    switch reason {
+                    case .collidesWithChange(let earlier):
+                        #expect(raw["reason"]["error"].vectorString == "collidesWithChange", "\(name)")
+                        #expect(earlier == Int(raw["reason"]["index"].vectorInteger), "\(name)")
+                        #expect(reason.copy == "Too close to the change before it to voice separately. Edit them together or leave one out.")
+                    case .geometry(let error):
+                        #expect(described(error) == expectedError(raw["reason"]), "\(name)")
+                        #expect(reason.copy == nil)
+                    }
+                }
+            }
+        }
     }
 
     @Test(arguments: ["hard-fade-outside-take-start", "hard-fade-outside-take-end"])

@@ -1,12 +1,11 @@
 import SwiftUI
 import VoxClipCore
 
-/// The Explorer pane's list (design §3.4 and §6.2): the sidebar's rows in a plain list
-/// on the chrome, hosted by the shell (impl-plan V1a). V2 restyles the rows.
-@MainActor struct WorkspaceSidebar: View {
+/// The v2 Explorer: a native plain List on the shell's flat chrome (impl-plan V2).
+@MainActor struct ExplorerView: View {
     @Bindable var shell: WorkspaceShell
     var body: some View {
-        SidebarList(shell: shell)
+        ExplorerList(shell: shell)
             .modifier(EditorPaneFocus(model: shell.editor, pane: .sidebar))
     }
 }
@@ -17,7 +16,7 @@ import VoxClipCore
 @MainActor struct SidebarOverlay: View {
     @Bindable var shell: WorkspaceShell
     var body: some View {
-        SidebarList(shell: shell, overlay: true)
+        ExplorerList(shell: shell, overlay: true)
             .modifier(EditorPaneFocus(model: shell.editor, pane: .sidebar))
             .frame(width: shell.layout.explorerWidth)
             .frame(maxHeight: .infinity)
@@ -34,16 +33,16 @@ import VoxClipCore
 /// actions, and on Home the recent projects. Selecting a row scopes the editor; Return
 /// keeps a suggestion, renames a kept clip or opens a Recent row, and Delete dismisses
 /// a suggestion or removes a kept clip. The selected row scrolls into view when the
-/// editor moves it, for example after ⌘K. After Find Clips the first new suggestion is
+/// editor moves it, for example after ⌥⌘K. After Find Clips the first new suggestion is
 /// focused, not selected: Return keeps it, ⌫ dismisses it, and an arrow key selects it.
-@MainActor private struct SidebarList: View {
+@MainActor private struct ExplorerList: View {
     @Bindable var shell: WorkspaceShell
     var overlay = false
     @FocusState private var listFocused: Bool
 
     var body: some View {
         ScrollViewReader { rows in
-            keys(list)
+            content
                 // A rename ends, and keeps its text, when the selection changes.
                 .onChange(of: shell.selection) { _, row in
                     shell.endRename()
@@ -54,13 +53,25 @@ import VoxClipCore
                     rows.scrollTo(SidebarItem.clip(id))
                     listFocused = true
                 }
-                .accessibilityLabel("Workspace navigation")
+                .accessibilityLabel("Explorer")
+        }
+    }
+    private var content: some View {
+        VStack(spacing: 0) {
+            keys(list)
+            if !shell.showsHome, let editor = shell.editor {
+                ExplorerLibrarySections(shell: shell, editor: editor)
+            }
         }
     }
     private var list: some View {
         List(selection: Binding(get: { shell.selection }, set: { if let row = $0 { shell.choose(row) } })) {
-            Label("Home", systemImage: "house").frame(minHeight: EditorAccessibilityPolicy.minimumTarget).modifier(SidebarRowForeground(emphasized: shell.selection == .home && listFocused)).tag(SidebarItem.home)
-            if let document = shell.document, let editor = shell.editor {
+            if shell.showsHome {
+                Label("Home", systemImage: "house").frame(height: ExplorerMetrics.rowHeight)
+                    .modifier(ExplorerRowForeground(emphasized: shell.selection == .home && listFocused)).tag(SidebarItem.home)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)).listRowSeparator(.hidden)
+            }
+            if !shell.showsHome, let document = shell.document, let editor = shell.editor {
                 ProjectSection(shell: shell, document: document, editor: editor, listFocused: listFocused)
             }
             if shell.showsHome { RecentSection(shell: shell, listFocused: listFocused) }
@@ -68,7 +79,16 @@ import VoxClipCore
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(DesignValues.color("bg.window"))
-        .environment(\.defaultMinListRowHeight, EditorAccessibilityPolicy.minimumTarget)
+        .environment(\.defaultMinListRowHeight, ExplorerMetrics.outlineHeight)
+        .contextMenu(forSelectionType: SidebarItem.self) { rows in
+            if rows.count == 1, case .clip(let id) = rows.first, let editor = shell.editor {
+                if let clip = editor.project.edits.clips.first(where: { $0.id == id }) {
+                    ExplorerClipMenu(shell: shell, editor: editor, clip: clip, suggested: editor.isSuggestion(id))
+                }
+                Divider()
+                Button("Keep Tab Open") { shell.pinExplorerRows(rows) }
+            }
+        } primaryAction: { rows in shell.pinExplorerRows(rows) }
         .focused($listFocused)
         .onChange(of: listFocused) { _, focused in if focused { shell.editor?.focusedPane = .sidebar } }
     }
@@ -109,36 +129,116 @@ import VoxClipCore
     let listFocused: Bool
 
     var body: some View {
-        Section {
-            FullTakeRow(editor: editor, selectedFocused: shell.selection == .fullTake && listFocused).tag(SidebarItem.fullTake).id(SidebarItem.fullTake)
-            if editor.sortedClips.isEmpty && !editor.finding && editor.clipError != EditorModel.noClipsMatched && !editor.words.isEmpty {
-                Text("No clips yet. Select words and press ⌘K.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary")).selectionDisabled()
-            }
-            ForEach(editor.keptClips, id: \.id) { clip in
-                ClipRow(shell: shell, editor: editor, clip: clip, suggested: false, selectedFocused: shell.selection == .clip(clip.id) && listFocused).tag(SidebarItem.clip(clip.id)).id(SidebarItem.clip(clip.id))
-            }
-            let suggestions = editor.suggestedClips
-            let noMatch = editor.clipError == EditorModel.noClipsMatched
-            if !suggestions.isEmpty || editor.finding || noMatch {
-                SuggestedHeader(editor: editor, keepAll: !suggestions.isEmpty).selectionDisabled()
-                if let note = editor.fallbackNote, !suggestions.isEmpty { FallbackNote(note: note).selectionDisabled() }
-                if editor.finding { FindingRow(editor: editor).selectionDisabled() }
-                if noMatch { NoMatchRow(editor: editor).selectionDisabled() }
-                ForEach(suggestions, id: \.id) { clip in
-                    ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: listFocused && editor.focusedSuggestion == clip.id, selectedFocused: shell.selection == .clip(clip.id) && listFocused)
-                        .tag(SidebarItem.clip(clip.id)).id(SidebarItem.clip(clip.id))
+        Group {
+            Section {
+                if shell.explorerExpanded(.take) {
+                    FullTakeRow(editor: editor, selectedFocused: shell.selection == .fullTake && listFocused)
+                        .tag(SidebarItem.fullTake).id(SidebarItem.fullTake)
                 }
-            }
-        } header: {
-            Text(shell.projectTitle).lineLimit(1)
-        } footer: {
-            if !shell.showsHome { SidebarActions(editor: editor) }
+            } header: { ExplorerHeader(shell: shell, section: .take, count: 1) }
+            .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.take.accessibilityLabel(count: 1, title: shell.projectTitle))
+            Section {
+                if shell.explorerExpanded(.clips) {
+                    if editor.keptClips.isEmpty && !editor.words.isEmpty {
+                        Text("No clips yet. Select words and press ⌥⌘K.")
+                            .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).selectionDisabled()
+                    }
+                    ForEach(editor.keptClips, id: \.id) { clip in
+                        ClipRow(shell: shell, editor: editor, clip: clip, suggested: false, selectedFocused: shell.selection == .clip(clip.id) && listFocused)
+                            .tag(SidebarItem.clip(clip.id)).id(SidebarItem.clip(clip.id))
+                    }
+                }
+            } header: { ExplorerHeader(shell: shell, section: .clips, count: editor.keptClips.count) }
+            .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.clips.accessibilityLabel(count: editor.keptClips.count))
+            let outline = shell.outlineEntries
+            Section {
+                if shell.explorerExpanded(.outline) {
+                    ForEach(outline) { entry in
+                        ExplorerOutlineRow(entry: entry, selectedFocused: shell.selection == .outline(entry.id) && listFocused)
+                            .tag(SidebarItem.outline(entry.id)).id(SidebarItem.outline(entry.id))
+                    }
+                }
+            } header: { ExplorerHeader(shell: shell, section: .outline, count: outline.count) }
+            .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.outline.accessibilityLabel(count: outline.count))
+            let suggestions = editor.suggestedClips
+            Section {
+                if shell.explorerExpanded(.suggested) {
+                    if let note = editor.fallbackNote, !suggestions.isEmpty { FallbackNote(note: note).selectionDisabled() }
+                    if editor.finding { FindingRow(editor: editor).selectionDisabled() }
+                    if editor.clipError == EditorModel.noClipsMatched { NoMatchRow(editor: editor).selectionDisabled() }
+                    ForEach(suggestions, id: \.id) { clip in
+                        ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: listFocused && editor.focusedSuggestion == clip.id,
+                                selectedFocused: shell.selection == .clip(clip.id) && listFocused)
+                            .tag(SidebarItem.clip(clip.id)).id(SidebarItem.clip(clip.id))
+                    }
+                }
+            } header: { SuggestedHeader(shell: shell, editor: editor, keepAll: !suggestions.isEmpty) }
+            .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.suggested.accessibilityLabel(count: suggestions.count))
+            if !shell.showsHome { SidebarActions(editor: editor).selectionDisabled() }
         }
+        .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12))
+        .listRowSeparator(.hidden)
     }
 }
 
-/// Full Take: an empty badge column, the take's 36×20 thumbnail, "Full Take" and its
-/// edited length, or the transcription status with Cancel.
+/// A disclosure is a 24 pt target, with the same count in its visible and spoken names.
+@MainActor struct ExplorerHeader: View {
+    @Bindable var shell: WorkspaceShell
+    let section: ExplorerSection
+    let count: Int
+    private var title: String { section == .take ? shell.projectTitle : section.title }
+    var accessibilityName: String { section.accessibilityLabel(count: count, title: title) }
+    var body: some View {
+        Button { shell.setExplorerExpanded(section, !shell.explorerExpanded(section)) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: shell.explorerExpanded(section) ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).frame(width: 10)
+                Text(title.uppercased()).font(.system(size: 11, weight: .semibold)).tracking(0.55)
+                    .lineLimit(1).truncationMode(.tail).layoutPriority(1)
+                    .columnLayoutEvidence("explorer.header.title.\(section.rawValue)", text: title.uppercased())
+                Spacer(minLength: 0)
+                if section == .outline, let editor = shell.editor {
+                    ViewThatFits(in: .horizontal) {
+                        Text(editor.scopeName(shell.tabs.active.clipID)).font(.system(size: 11)).fixedSize()
+                            .columnLayoutEvidence("explorer.header.trailing.outline", text: editor.scopeName(shell.tabs.active.clipID))
+                        Color.clear.frame(width: 0, height: 0)
+                    }
+                } else if section != .take {
+                    Text("\(count)").font(.system(size: 11))
+                        .columnLayoutEvidence("explorer.header.trailing.\(section.rawValue)", text: "\(count)")
+                }
+            }
+            .foregroundStyle(DesignValues.color("text.tertiary"))
+            .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).selectionDisabled()
+        .help(section == .take ? shell.projectTitle : "")
+        .accessibilityLabel(accessibilityName)
+        .accessibilityValue(shell.explorerExpanded(section) ? "Expanded" : "Collapsed")
+        .accessibilityIdentifier("voxclip.explorer.\(section.rawValue)")
+        .columnLayoutEvidence("explorer.header.\(section.rawValue)", text: accessibilityName)
+    }
+}
+
+@MainActor struct ExplorerOutlineRow: View {
+    let entry: ExplorerOutlineEntry
+    var selectedFocused = false
+    @Environment(\.controlActiveState) private var activeState
+    var body: some View {
+        let emphasized = selectedFocused && activeState == .key
+        HStack(spacing: 8) {
+            Text(entry.time).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
+            Text(entry.title).font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 0)
+            if entry.pendingHunk { Circle().fill(DesignValues.color("change.add")).frame(width: 5, height: 5).accessibilityHidden(true) }
+            if entry.aiVoice { Circle().fill(DesignValues.color("ai.tint")).frame(width: 5, height: 5).accessibilityHidden(true) }
+        }
+        .frame(height: ExplorerMetrics.outlineHeight).contentShape(Rectangle())
+        .modifier(ExplorerRowForeground(emphasized: emphasized))
+        .accessibilityElement(children: .ignore).accessibilityLabel(entry.accessibilityLabel)
+    }
+}
+
+/// Full Take's 28 pt row: 36×20 frame, title and edited length, or progress and Cancel.
 @MainActor struct FullTakeRow: View {
     let editor: EditorModel
     var selectedFocused = false
@@ -147,47 +247,35 @@ import VoxClipCore
     var body: some View {
         let emphasized = selectedFocused && activeState == .key
         HStack(spacing: 8) {
-            Color.clear.frame(width: 16, height: 16)
-            SidebarThumbnail(editor: editor, clip: nil, emphasized: emphasized).frame(width: 36)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Full Take").font(.system(size: 13, weight: .medium)).lineLimit(1)
-                if editor.progress != nil {
-                    HStack(spacing: 6) {
-                        Text(editor.progressFraction.map { "Transcribing · \(Int($0 * 100))%" } ?? "Transcribing").monospacedDigit()
-                        Spacer(minLength: 4)
-                        Button { editor.workTask?.cancel(); editor.progress = nil } label: { Text("Cancel").modifier(SidebarActionTarget()) }.buttonStyle(.borderless).font(.system(size: 11, weight: .medium))
-                    }
-                    .font(.system(size: 11)).foregroundStyle(SidebarStyle.meta(emphasized))
-                } else {
-                    HStack(spacing: 4) {
-                        Text(SidebarStyle.fullTakeMeta(editor)).font(editor.transcribed ? DesignValues.mono(11) : .system(size: 11))
-                        if editor.containsAISpeech() { Text("AI modified").font(.system(size: 11)) }
-                        if !exportStatus.secondLine && exportStatus != .none { Text(exportStatus.label).font(.system(size: 11)) }
-                    }.foregroundStyle(SidebarStyle.meta(emphasized))
-                    if exportStatus.secondLine {
-                        HStack(spacing: 4) {
-                            Text(exportStatus.label).font(.system(size: 11))
-                            if exportStatus == .failed {
-                                Button { editor.retryExport(target: .fullEdit) } label: { Text("Retry").modifier(SidebarActionTarget()) }.buttonStyle(.plain).font(.system(size: 11))
-                                    .disabled(!editor.canExport)
-                            }
-                        }.foregroundStyle(DesignValues.color("status.warning"))
-                    }
-                }
-            }
+            ExplorerThumbnail(editor: editor, clip: nil, emphasized: emphasized)
+            Text("Full Take").font(.system(size: 13)).lineLimit(1)
             Spacer(minLength: 0)
+            if editor.progress != nil {
+                Text(editor.progressFraction.map { "\(Int($0 * 100))%" } ?? "Transcribing")
+                    .font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized))
+                Button { editor.workTask?.cancel(); editor.progress = nil } label: { Text("Cancel").modifier(SidebarActionTarget()) }
+                    .buttonStyle(.borderless).font(.system(size: 11))
+            } else {
+                if editor.containsAISpeech() { ExplorerVoiceGlyph() }
+                Text(SidebarStyle.fullTakeMeta(editor)).font(editor.transcribed ? DesignValues.mono(11) : .system(size: 11))
+                    .foregroundStyle(SidebarStyle.meta(emphasized)).lineLimit(1)
+            }
         }
-        .frame(height: exportStatus.secondLine ? 66 : 50)
-        .modifier(SidebarRowForeground(emphasized: emphasized))
+        .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
+        .modifier(ExplorerRowForeground(emphasized: emphasized))
+        .help(exportStatus.label)
+        .contextMenu {
+            if exportStatus == .failed { Button("Retry export") { editor.retryExport(target: .fullEdit) }.disabled(!editor.canExport) }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel((!editor.transcribed && editor.progress == nil ? "Full take, not transcribed" : "Full take, \(SidebarStyle.spokenDuration(editor.editedDuration(nil))) after cuts") + (exportStatus == .none ? "" : ", \(exportStatus.label)") + (editor.containsAISpeech() ? ", AI modified" : ""))
     }
     private var exportStatus: ClipExportStatus { editor.exportRowStatus(target: .fullEdit) }
 }
 
-/// A kept clip or a suggestion: badge, 26×46 thumbnail, title and meta. Suggestions
-/// carry Keep and Dismiss on their second line; a focused suggestion draws the
-/// keyboard focus ring without being selected.
+/// A kept clip or suggestion: number, 36×20 frame, title and mono duration in 28 pt.
+/// Keep/Dismiss live in the clip bar, context menu and accessibility actions. A focused
+/// suggestion draws the keyboard focus ring without becoming selected.
 @MainActor struct ClipRow: View {
     @Bindable var shell: WorkspaceShell
     let editor: EditorModel
@@ -206,70 +294,34 @@ import VoxClipCore
         let duration = editor.editedDuration(clip)
         let exportStatus: ClipExportStatus = suggested ? .none : editor.exportRowStatus(clip.id)
         HStack(spacing: 8) {
-            ClipBadge(number: number, kind: suggested ? .suggested : editor.project.edits.activeClipId == clip.id ? .selected : .neutral, emphasized: emphasized)
-            SidebarThumbnail(editor: editor, clip: clip, emphasized: emphasized).frame(width: 36)
-            VStack(alignment: .leading, spacing: 2) {
-                if shell.renaming == clip.id {
-                    // Return, a click elsewhere, a selection change, leaving the project or
-                    // Quit keeps the new title; Escape keeps the old one.
-                    TextField("Clip title", text: $shell.renameDraft)
-                        .textFieldStyle(.roundedBorder).font(.system(size: 13)).focused($editing)
-                        .onAppear { editing = true }
-                        .onSubmit { shell.endRename() }
-                        .onExitCommand { shell.endRename(keep: false) }
-                } else {
-                    Text(title).font(.system(size: 13, weight: .medium)).lineLimit(1).truncationMode(.tail)
-                }
-                HStack(spacing: 4) {
-                    Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized))
-                    if editor.containsAISpeech(clipID: clip.id) { Text("AI modified").font(.system(size: 11)).foregroundStyle(SidebarStyle.meta(emphasized)) }
-                    if !exportStatus.secondLine, exportStatus != .none {
-                        Text(exportStatus.label).font(.system(size: 11)).foregroundStyle(SidebarStyle.meta(emphasized)).lineLimit(1)
-                    }
-                    Spacer(minLength: 4)
-                    if suggested {
-                        Button { editor.keep(clip.id) } label: { Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)) }
-                            .buttonStyle(KeepButtonStyle(emphasized: emphasized)).help("Keep (Return)")
-                            .disabled(!editor.capabilities.edit)
-                            .accessibilityLabel(EditorIconAction.suggestion(keep: true, number: number))
-                        Button { editor.dismiss(clip.id) } label: { Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).frame(width: 24, height: 24) }
-                            .buttonStyle(.borderless).foregroundStyle(SidebarStyle.meta(emphasized)).help("Dismiss (⌫)")
-                            .disabled(!editor.capabilities.edit)
-                            .accessibilityLabel(EditorIconAction.suggestion(keep: false, number: number))
-                    }
-                }
-                if exportStatus.secondLine {
-                    HStack(spacing: 4) {
-                        Text(exportStatus.label).font(.system(size: 11)).foregroundStyle(emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.color("status.warning")).lineLimit(1)
-                        if exportStatus == .failed {
-                            Button { editor.retryExport(clip.id) } label: { Text("Retry").modifier(SidebarActionTarget()) }.font(.system(size: 11)).buttonStyle(.plain)
-                                .foregroundStyle(emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.accentText)
-                                .disabled(!editor.canExport || !editor.mediaExportable)
-                        }
-                    }
-                }
+            Text("\(number)").font(DesignValues.mono(10)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize().frame(minWidth: 13).accessibilityHidden(true)
+                .columnLayoutEvidence("explorer.clipNumber", text: "\(number)")
+            ExplorerThumbnail(editor: editor, clip: clip, emphasized: emphasized)
+            if shell.renaming == clip.id {
+                TextField("Clip title", text: $shell.renameDraft)
+                    .textFieldStyle(.plain).font(.system(size: 13)).focused($editing)
+                    .onAppear { editing = true }.onSubmit { shell.endRename() }.onExitCommand { shell.endRename(keep: false) }
+            } else {
+                Text(title).font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
             }
             Spacer(minLength: 0)
+            if editor.containsAISpeech(clipID: clip.id) { ExplorerVoiceGlyph() }
+            Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
         }
-        .frame(height: exportStatus.secondLine ? 66 : 50)
-        .modifier(SidebarRowForeground(emphasized: emphasized))
-        .overlay {
-            if focused { RoundedRectangle(cornerRadius: VCTokens.radiusXs).strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 2).padding(-2) }
-        }
-        .onChange(of: editing) { _, editing in if !editing, shell.renaming == clip.id { shell.endRename() } }
-        .help(suggested ? reason : "")
-        .contextMenu {
+        .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
+        .overlay(alignment: .leading) {
             if suggested {
-                Button("Keep Clip") { editor.keep(clip.id) }.disabled(!editor.capabilities.edit)
-                Button("Dismiss") { editor.dismiss(clip.id) }.disabled(!editor.capabilities.edit)
-            } else {
-                Button("Export Clip…") { editor.presentExport(clipIDs: [clip.id]) }.disabled(!editor.canExport || !editor.mediaExportable)
-                Button("Rename…") { shell.beginRename(clip.id) }.disabled(!editor.capabilities.edit)
-                Button("Copy Text") { copyText(clipText) }
-                Divider()
-                Button("Remove Clip") { editor.removeClip(clip.id) }.disabled(!editor.capabilities.edit)
+                Path { path in path.move(to: CGPoint(x: -5, y: 4)); path.addLine(to: CGPoint(x: -5, y: 24)) }
+                    .stroke(DesignValues.color("clip.label"), style: StrokeStyle(lineWidth: 2, dash: [3, 2])).accessibilityHidden(true)
             }
         }
+        .modifier(ExplorerRowForeground(emphasized: emphasized))
+        .overlay {
+            if focused { RoundedRectangle(cornerRadius: 3).strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 2).padding(-2) }
+        }
+        .onChange(of: editing) { _, editing in if !editing, shell.renaming == clip.id { shell.endRename() } }
+        .help(suggested ? reason : exportStatus.label)
+        .contextMenu { ExplorerClipMenu(shell: shell, editor: editor, clip: clip, suggested: suggested) }
         .accessibilityElement(children: shell.renaming == clip.id ? .contain : .combine)
         .accessibilityLabel((suggested ? "Suggested clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))" : "Clip \(number), \(title), \(SidebarStyle.spokenDuration(duration))") + (editor.containsAISpeech(clipID: clip.id) ? ", AI modified" : ""))
         .accessibilityHint((suggested ? reason : exportStatus.label) + (editor.containsAISpeech(clipID: clip.id) ? ", AI modified" : ""))
@@ -295,70 +347,60 @@ import VoxClipCore
         return "\(found.score)/10 · \(found.reason)"
     }
 
-    private var clipText: String {
-        guard let lower = editor.words.firstIndex(where: { $0.id == clip.startWordId }), let upper = editor.words.firstIndex(where: { $0.id == clip.endWordId }), lower <= upper else { return "" }
-        let cut = Set(editor.project.edits.cutWordIds)
-        return editor.words[lower...upper].filter { !cut.contains($0.id) }.map { editor.text($0) }.joined(separator: " ")
-    }
 }
 
-/// A clip's number (design §3.4): neutral on clip.badgeBackground, the accent fill
-/// when selected, a dashed outline for suggestions, and a white outline in a focused
-/// selected row.
-@MainActor private struct ClipBadge: View {
-    enum Kind { case neutral, selected, suggested }
-    let number: Int
-    let kind: Kind
-    let emphasized: Bool
-
+/// One menu definition for the native List and the standalone DEBUG rows.
+@MainActor private struct ExplorerClipMenu: View {
+    let shell: WorkspaceShell
+    let editor: EditorModel
+    let clip: ClipRange
+    let suggested: Bool
     var body: some View {
-        Text("\(number)")
-            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-            .foregroundStyle(emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : kind == .selected ? DesignValues.color("accent.on") : DesignValues.color("text.secondary"))
-            .frame(width: 16, height: 16)
-            .background {
-                if !emphasized, kind == .selected { RoundedRectangle(cornerRadius: 4).fill(.tint) }
-                else if !emphasized, kind == .neutral { RoundedRectangle(cornerRadius: 4).fill(DesignValues.color("clip.badgeBackground")) }
+        if suggested {
+            Button("Keep Clip") { editor.keep(clip.id) }.disabled(!editor.capabilities.edit)
+            Button("Dismiss") { editor.dismiss(clip.id) }.disabled(!editor.capabilities.edit)
+        } else {
+            if shell.canRewriteExplorerClip(clip.id) {
+                Button("Rewrite Clip \(editor.clipNumber(clip.id) ?? 0)") { shell.rewriteExplorerClip(clip.id) }
+                Divider()
             }
-            .overlay {
-                if emphasized { RoundedRectangle(cornerRadius: 4).strokeBorder(Color(nsColor: .alternateSelectedControlTextColor), lineWidth: 1) }
-                else if kind == .suggested { RoundedRectangle(cornerRadius: 4).strokeBorder(DesignValues.color("line.strong"), style: StrokeStyle(lineWidth: 1, dash: [2, 2])) }
+            Button("Export Clip…") { editor.presentExport(clipIDs: [clip.id]) }.disabled(!editor.canExport || !editor.mediaExportable)
+            if editor.exportRowStatus(clip.id) == .failed {
+                Button("Retry export") { editor.retryExport(clip.id) }.disabled(!editor.canExport || !editor.mediaExportable)
             }
-            .accessibilityHidden(true)
+            Button("Rename…") { shell.beginRename(clip.id) }.disabled(!editor.capabilities.edit)
+            Button("Copy Text") { copyText(clipText) }
+            Divider()
+            Button("Remove Clip") { editor.removeClip(clip.id) }.disabled(!editor.capabilities.edit)
+        }
+    }
+    private var clipText: String {
+        guard let lower = editor.index(clip.startWordId), let upper = editor.index(clip.endWordId), lower <= upper else { return "" }
+        return editor.words[lower...upper].filter { !editor.cutWordIDs.contains($0.id) }.map { editor.text($0) }.joined(separator: " ")
     }
 }
 
-/// Keep on a suggestion row (design §3.4): a bordered 24×24 control beside the
-/// borderless 24×24 Dismiss.
-private struct KeepButtonStyle: ButtonStyle {
-    let emphasized: Bool
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .frame(width: 24, height: 24)
-            .background(RoundedRectangle(cornerRadius: VCTokens.radiusXs).fill(Color(nsColor: configuration.isPressed ? .selectedControlColor : .controlColor).opacity(emphasized ? 0.25 : 1)))
-            .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusXs).strokeBorder(emphasized ? Color(nsColor: .alternateSelectedControlTextColor).opacity(0.7) : DesignValues.color("line.strong"), lineWidth: 1))
-            .contentShape(Rectangle())
+/// AI voice has one meaning and retains a spoken label on the enclosing row.
+private struct ExplorerVoiceGlyph: View {
+    var body: some View {
+        Image(systemName: "waveform").font(.system(size: 11)).foregroundStyle(DesignValues.color("ai.tint")).accessibilityHidden(true)
     }
 }
 
 /// The non-selectable "Suggested" sub-header with Keep All.
 @MainActor private struct SuggestedHeader: View {
+    @Bindable var shell: WorkspaceShell
     let editor: EditorModel
     var keepAll = true
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: "sparkles").font(.system(size: 10))
-            Text("Suggested").font(.system(size: 11, weight: .semibold))
-            Spacer()
+            ExplorerHeader(shell: shell, section: .suggested, count: editor.suggestedClips.count)
             if keepAll {
-                Button { editor.keepAll() } label: { Text("Keep All").modifier(SidebarActionTarget()) }.buttonStyle(.borderless).font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(DesignValues.color("text.primary"))
+                Button { editor.keepAll() } label: { Text("Keep All").modifier(SidebarActionTarget()) }
+                    .buttonStyle(.borderless).font(.system(size: 11, weight: .medium)).fixedSize()
+                    .disabled(!editor.capabilities.edit)
             }
-        }
-        .foregroundStyle(DesignValues.color("text.secondary"))
-        .padding(.top, VCTokens.spacing3)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Suggested clips")
+        }.selectionDisabled()
     }
 }
 
@@ -412,7 +454,7 @@ private struct KeepButtonStyle: ButtonStyle {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             let untranscribed = SidebarStyle.untranscribedReason(editor)
-            SidebarAction(title: "New Clip from Selection", symbol: "plus", hint: "⌘K", enabled: !editor.selectedIDs.isEmpty, reason: untranscribed) { editor.makeClip() }
+            SidebarAction(title: "New Clip from Selection", symbol: "plus", hint: "⌥⌘K", enabled: !editor.selectedIDs.isEmpty, reason: untranscribed) { editor.makeClip() }
             SidebarAction(title: "Find Clips with AI", symbol: "sparkles", hint: "⇧⌘K", enabled: !editor.words.isEmpty && !editor.finding, reason: untranscribed) { editor.requestFindClips(from: .sidebar) }
                 .popover(isPresented: Binding(get: { editor.showFindClips && editor.findClipsAnchor == .sidebar }, set: { if !$0 { editor.showFindClips = false } }), arrowEdge: .trailing) {
                     FindClipsPopover(model: editor)
@@ -421,12 +463,12 @@ private struct KeepButtonStyle: ButtonStyle {
                 SidebarCallout {
                     Text("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.")
                     Button { openVoxClipSettings(pane: "ai") } label: { Text("Set Up AI…").modifier(SidebarActionTarget()) }.controlSize(.small)
-                    Text("You can also select words and press ⌘K to make a clip yourself.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
+                    Text("You can also select words and press ⌥⌘K to make a clip yourself.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
                 }
             } else if let error = editor.clipError, error != EditorModel.noClipsMatched, !editor.finding {
                 SidebarCallout {
                     Text(error)
-                    Button { editor.findClips() } label: { Text("Retry").modifier(SidebarActionTarget()) }.controlSize(.small)
+                    Button { editor.retryFindClips() } label: { Text("Retry").modifier(SidebarActionTarget()) }.controlSize(.small)
                 }
             }
         }
@@ -442,7 +484,7 @@ private struct KeepButtonStyle: ButtonStyle {
             .fixedSize(horizontal: false, vertical: true)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(DesignValues.color("status.infoBackground"), in: .rect(cornerRadius: VCTokens.radiusPane))
+            .overlay(alignment: .leading) { Rectangle().fill(DesignValues.color("line.default")).frame(width: 1) }
             .padding(.top, VCTokens.spacing3)
             .accessibilityElement(children: .contain)
     }
@@ -489,12 +531,16 @@ private struct KeepButtonStyle: ButtonStyle {
         let open = shell.document?.fileURL?.standardizedFileURL
         let urls = Array(app.recent.filter { $0.standardizedFileURL != open }.prefix(12))
         if !urls.isEmpty {
-            Section("Recent") {
-                ForEach(urls, id: \.self) { url in
-                    RecentRow(url: url, item: recents.items[url], sources: recents.sources(url, row: true), status: recents.status(url), shell: shell, emphasized: shell.selection == .recent(url) && listFocused)
-                        .tag(SidebarItem.recent(url))
+            Section {
+                if shell.explorerExpanded(.recent) {
+                    ForEach(urls, id: \.self) { url in
+                        RecentRow(url: url, item: recents.items[url], sources: recents.sources(url, row: true), status: recents.status(url), shell: shell, emphasized: shell.selection == .recent(url) && listFocused)
+                            .tag(SidebarItem.recent(url))
+                            .listRowInsets(EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12)).listRowSeparator(.hidden)
+                    }
                 }
-            }
+            } header: { ExplorerHeader(shell: shell, section: .recent, count: urls.count) }
+            .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.recent.accessibilityLabel(count: urls.count))
         }
     }
 }
@@ -522,11 +568,11 @@ private struct KeepButtonStyle: ButtonStyle {
                         .font(.system(size: 11)).foregroundStyle(DesignValues.color("status.warning")).lineLimit(1)
                 }
             }
-            .frame(height: EditorAccessibilityPolicy.minimumTarget)
+            .frame(height: ExplorerMetrics.rowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .modifier(SidebarRowForeground(emphasized: emphasized))
+        .modifier(ExplorerRowForeground(emphasized: emphasized))
         .accessibilityLabel(status.spokenState.map { "\(title), \($0)" } ?? title)
     }
 }
@@ -534,7 +580,7 @@ private struct KeepButtonStyle: ButtonStyle {
 /// A row's thumbnail (design §3.4 and §5.4): the scope's first kept frame and its
 /// caption card at sidebar size (no plates), between which VoxClipCore's precedence
 /// picks. It regenerates when the scope's card, the caption style or the media changes.
-@MainActor private struct SidebarThumbnail: View {
+@MainActor private struct ExplorerThumbnail: View {
     let editor: EditorModel
     let clip: ClipRange?
     let emphasized: Bool
@@ -553,17 +599,18 @@ private struct KeepButtonStyle: ButtonStyle {
 
     var body: some View {
         let app = editor.app
-        let size = clip == nil ? CGSize(width: 36, height: 20) : CGSize(width: 26, height: 46)
+        let size = ExplorerMetrics.thumbnailSize
         let scope: CaptionCardScope = clip.map { .clip($0.id) } ?? .fullTake
         let project = editor.project
         let key = Key(text: editor.cardText(scope, wordsVisible: app.bool("general.showPlaceholderWords", fallback: true)), styleId: app.cardStyle(for: project)?.id ?? "",
                       overrides: (try? String(decoding: JSONEncoder().encode(project.captions.overrides), as: UTF8.self)) ?? "",
                       frameTime: editor.firstKeptTime(clip), source: editor.sourceURL.path,
                       ready: editor.mediaResolved && !editor.mediaUnreadable && !editor.document.demo && project.media.source.video != nil)
-        MediaThumbnail(status: status, sources: StandInSources(frame: frame, card: drawn, styleId: key.styleId, cardImage: card), surface: .row, cornerRadius: VCTokens.radiusXs)
+        MediaThumbnail(status: status, sources: StandInSources(frame: frame, card: drawn, styleId: key.styleId, cardImage: card), surface: .row, cornerRadius: 3)
             .frame(width: size.width, height: size.height)
+            .columnLayoutEvidence("explorer.thumbnail")
             .overlay {
-                if emphasized { RoundedRectangle(cornerRadius: VCTokens.radiusXs).strokeBorder(Color(nsColor: .alternateSelectedControlTextColor).opacity(0.55), lineWidth: 1) }
+                if emphasized { RoundedRectangle(cornerRadius: 3).strokeBorder(Color(nsColor: .alternateSelectedControlTextColor).opacity(0.55), lineWidth: 1) }
             }
             .task(id: key) { await load(key, size: size) }
     }
@@ -578,9 +625,8 @@ private struct KeepButtonStyle: ButtonStyle {
         let app = editor.app, project = editor.project
         var image: CGImage?
         if let style = app.styles.first(where: { $0.id == key.styleId }) {
-            let captionY = style.aspects?.portrait?.y ?? style.position.y
             image = await app.captions.card(CaptionCardInput(text: key.text, style: style, previewBackground: app.previewBackgrounds[style.id], overrides: project.captions.overrides,
-                                                             language: project.transcript?.language, fit: clip == nil ? .row() : .clip(captionY: captionY)))
+                                                             language: project.transcript?.language, fit: .row()))
         }
         guard !Task.isCancelled else { return }
         card = image
@@ -598,7 +644,7 @@ private struct KeepButtonStyle: ButtonStyle {
     }
 }
 
-@MainActor private struct SidebarRowForeground: ViewModifier {
+@MainActor private struct ExplorerRowForeground: ViewModifier {
     let emphasized: Bool
     @Environment(\.controlActiveState) private var activeState
 
@@ -608,11 +654,11 @@ private struct KeepButtonStyle: ButtonStyle {
 }
 
 @MainActor enum SidebarStyle {
-    /// Meta text: text.secondary, or the selected-text colour in a focused selected row.
+    /// Meta text: text.tertiary, or the selected-text colour in a focused selected row.
     /// It is full strength, not the delta's 88%, so 11 pt meta reads at 4.5:1 on the
     /// dark accent selection.
     static func meta(_ emphasized: Bool) -> Color {
-        emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.color("text.secondary")
+        emphasized ? Color(nsColor: .alternateSelectedControlTextColor) : DesignValues.color("text.tertiary")
     }
     /// Full Take's meta: its edited length, or "Not transcribed" (design C7).
     static func fullTakeMeta(_ editor: EditorModel) -> String {
@@ -631,46 +677,21 @@ private struct KeepButtonStyle: ButtonStyle {
 }
 
 #if DEBUG
-/// The sidebar's rows outside the native List, for captures while the window server
-/// can't draw the List (a locked session): layout, badges, thumbnails and meta. The
-/// first clip shows the focused selection: accent fill and increased prominence.
-@MainActor struct SidebarRowsPreview: View {
+/// Production Explorer rows without a native List for the existing DEBUG row captures.
+/// Captures obey the same unlocked, idle console gate as the window scenes.
+@MainActor struct ExplorerRowsPreview: View {
     let shell: WorkspaceShell
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let editor = shell.editor {
-                Text(shell.projectTitle).font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary"))
-                FullTakeRow(editor: editor)
-                if editor.sortedClips.isEmpty && !editor.finding && editor.clipError != EditorModel.noClipsMatched && !editor.words.isEmpty {
-                    Text("No clips yet. Select words and press ⌘K.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
-                }
-                ForEach(Array(editor.keptClips.enumerated()), id: \.element.id) { index, clip in
-                    if index == 0 {
-                        ClipRow(shell: shell, editor: editor, clip: clip, suggested: false)
-                            .padding(.horizontal, 6).background(.tint, in: .rect(cornerRadius: 10))
-                            .foregroundStyle(Color(nsColor: .alternateSelectedControlTextColor))
-                            .environment(\.backgroundProminence, .increased)
-                    } else {
-                        ClipRow(shell: shell, editor: editor, clip: clip, suggested: false).padding(.horizontal, 6)
-                    }
-                }
-                if !editor.suggestedClips.isEmpty || editor.finding || editor.clipError == EditorModel.noClipsMatched {
-                    SuggestedHeader(editor: editor, keepAll: !editor.suggestedClips.isEmpty).padding(.horizontal, 6)
-                    if let note = editor.fallbackNote, !editor.suggestedClips.isEmpty { FallbackNote(note: note).padding(.horizontal, 6) }
-                    if editor.finding { FindingRow(editor: editor).padding(.horizontal, 6) }
-                    if editor.clipError == EditorModel.noClipsMatched { NoMatchRow(editor: editor).padding(.horizontal, 6) }
-                    ForEach(editor.suggestedClips, id: \.id) { clip in
-                        ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: editor.focusedSuggestion == clip.id).padding(.horizontal, 6)
-                    }
-                }
-                SidebarActions(editor: editor).padding(.horizontal, 6)
+        VStack(alignment: .leading, spacing: 0) {
+            if let document = shell.document, let editor = shell.editor {
+                ProjectSection(shell: shell, document: document, editor: editor, listFocused: false).padding(.horizontal, 12)
             }
             Spacer(minLength: 0)
+            if let editor = shell.editor { ExplorerLibrarySections(shell: shell, editor: editor) }
         }
-        .padding(12)
-        .frame(width: 252, alignment: .topLeading)
+        .frame(width: shell.layout.explorerWidth, alignment: .topLeading)
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(DesignValues.color("bg.sunken"))
+        .background(DesignValues.color("bg.window"))
     }
 }
 #endif

@@ -29,7 +29,7 @@ import VoxClipCore
                     Button("Configure and test this connector…") { openVoxClipSettings() }
                 }
                 Text("Sends transcript text only. No audio or video.").foregroundStyle(.secondary)
-                Text("You can always make clips yourself: select words, press ⌘K.")
+                Text("You can always make clips yourself: select words, press ⌥⌘K.")
                 Spacer()
             } else {
                 Grid(alignment: .leading, horizontalSpacing: 32, verticalSpacing: 14) {

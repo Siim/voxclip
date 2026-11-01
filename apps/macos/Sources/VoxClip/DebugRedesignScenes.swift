@@ -124,26 +124,24 @@ import VoxClipMedia
         shell.selection = .fullTake; editor.finding = true
         try await scene("live-finding")
         editor.finding = false; shell.selection = .clip(second.id)
-        try await scene("live-export-clip", appearance: .aqua) { window in
-            editor.window = window
-            guard !editor.mediaExportable else { throw CocoaError(.coderInvalidValue) }
-            editor.exportClipIDs = [second.id]
-            editor.showExport = true
-            await DebugConnectorRequests.wait { window.attachedSheet != nil }
-            guard let sheet = window.attachedSheet else { throw VoxClipError.exportFailed("The staged export sheet did not appear.") }
-            return sheet
-        }
-        editor.showExport = false
+        editor.exportClipIDs = [second.id]
+        editor.exportJob.isOpen = true
+        editor.exportJob.requestedIDs = [second.id]
+        editor.exportJob.scope = .thisClip
+        editor.exportJob.fileNamePattern = "{project}-{clip}-{aspect}"
+        shell.choosePanelJob(.export, for: editor)
+        try await scene("live-export-clip", appearance: .aqua)
+        editor.finishExportJob()
         shell.selection = .fullTake
         editor.selectedWordIDs = Set(editor.words[12...15].map(\.id))
-        editor.beginRewrite()
+        editor.rewriteInstruction = "Make this clearer"
+        editor.runRewrite()
         await DebugConnectorRequests.wait { editor.rewrite != nil }
         guard let session = editor.rewrite else { throw CocoaError(.coderInvalidValue) }
-        session.setInstruction("Make this clearer")
-        await session.detectConnector(); await session.prepare()
-        if let quote = session.quote { session.markEstimateShown(quote.id) }
+        await session.actionTask?.value
         try await scene("live-rewrite")
         editor.closeRewrite(returnFocus: false)
+        editor.rewriteInstruction = ""
         try ProjectJSON.encoder().encode(results).write(to: directory.appendingPathComponent("redesign-scenes.json"), options: .atomic)
         return results
     }

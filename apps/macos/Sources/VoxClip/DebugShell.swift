@@ -6,7 +6,7 @@ import VoxClipCore
 /// The v2 shell (impl-plan V1a and V1b): the regions at 1280 × 800 with fresh defaults
 /// against notes.md §1 and at 1440 × 900, 1128 × 800, 960 × 600 and 800 × 600 by the
 /// narrow-size rule (§3.5), the Explorer and right-column overlays, the window chrome, what
-/// the title rows' clicks reach, F6 and the VoiceOver groups, the Find Clips anchor at ⋯,
+/// the title rows' clicks reach, F6 and the VoiceOver groups, the Find Clips anchor at the clip bar,
 /// every editor state under the clip-bar row, a Versions window, and a saved pre-v2
 /// right-column width being ignored. Captures `v2-shell-*` and `v2-state-*` offscreen;
 /// `sceneCaptures` takes the real-window `v2-shell-1280.png` and `v2-shell-fullscreen.png`.
@@ -28,7 +28,7 @@ import VoxClipCore
         app.settings.values[WorkspaceLayout.retiredRightWidthKey] = .number(500)
 
         let shell = WorkspaceShell(app: app)
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()
@@ -127,9 +127,11 @@ import VoxClipCore
         let tab = hit(CGPoint(x: 260, y: 19)) as? EditorTabItemView
         check("a click on the Full Take tab reaches the tab, which does not move the window (\(hit(CGPoint(x: 260, y: 19)).map { String(describing: type(of: $0)) } ?? "nothing"))",
               tab?.tab == .fullTake && tab?.mouseDownCanMoveWindow == false)
-        check("a click in the clip-bar row does not move the window", (hit(CGPoint(x: 600, y: 55)) as? ShellBand)?.movesWindow == false)
+        let clipBarHit = hit(CGPoint(x: 600, y: 55))
+        check("a click in the clip-bar row reaches the clip bar, which does not move the window (\(clipBarHit.map { String(describing: type(of: $0)) } ?? "nothing"))",
+              view("voxclip.shell.clipBar", in: root).map { bar in clipBarHit?.isDescendant(of: bar) == true } == true && clipBarHit?.mouseDownCanMoveWindow == false)
 
-        // Find Clips from ⇧⌘K in the transcript and from ⋯ opens its popover at ⋯. The Clip
+        // Find Clips from ⇧⌘K in the transcript and from ⋯ opens its popover at the clip bar. The Clip
         // menu's Find Clips… (tag 34) is DebugMenus' check.
         func popoverShown() -> Bool { NSApp.windows.contains { $0.isVisible && String(describing: type(of: $0)).contains("Popover") } }
         let work = view("voxclip.shell.work", in: root)?.nextResponder as? EditorWorkController
@@ -141,14 +143,14 @@ import VoxClipCore
             transcript.keyDown(with: key)
         }
         for _ in 0..<40 where !popoverShown() { try await Task.sleep(for: .milliseconds(25)) }
-        check("⇧⌘K in the transcript opens Find Clips in its popover at ⋯", editor.showFindClips && editor.findClipsAnchor == .overflow && work?.findClipsPopover?.isShown == true && popoverShown())
+        check("⇧⌘K in the transcript opens Find Clips in its popover at the clip bar", editor.showFindClips && editor.findClipsAnchor == .clipBar && work?.findClipsPopover?.isShown == true && popoverShown())
         editor.showFindClips = false
         for _ in 0..<40 where work?.findClipsPopover?.isShown == true { try await Task.sleep(for: .milliseconds(25)) }
         check("closing Find Clips closes the popover", work?.findClipsPopover?.isShown != true)
         if let menu = work?.overflowMenu(), let index = menu.items.firstIndex(where: { $0.title == "Find Clips…" }) {
             check("⋯ lists the toolbar's commands and Find Clips…", menu.items.map(\.title).filter { !$0.isEmpty }.map { $0.hasPrefix("Cut Fillers") ? "Cut Fillers" : $0 } == ["Cut Fillers", "Tighten Pauses", "Restore Cuts", "Find Clips…"])
             menu.performActionForItem(at: index)
-            check("⋯ › Find Clips… opens the popover at ⋯", editor.showFindClips && editor.findClipsAnchor == .overflow)
+            check("⋯ › Find Clips… opens the popover at the clip bar", editor.showFindClips && editor.findClipsAnchor == .clipBar)
             editor.showFindClips = false
         } else { check("⋯ › Find Clips… exists", false) }
 
@@ -173,7 +175,8 @@ import VoxClipCore
             return own + view.subviews.flatMap(groups)
         }
         let named = shellRoot.map(groups) ?? []
-        check("VoiceOver reads the shell as Explorer, Editor, Viewer and panel, Timeline and Status (\(named.joined(separator: ", ")))", named == ["Explorer", "Editor", "Viewer and panel", "Timeline", "Status"])
+        check("VoiceOver reads the shell as Explorer, Editor (with the clip bar's Full Take tools), Viewer and panel, Timeline and Status (\(named.joined(separator: ", ")))",
+              named == ["Explorer", "Editor", "Full Take tools", "Viewer and panel", "Timeline", "Status"])
 
         // F6 (impl-plan §3.2): the AppKit stops take focus, the transcript is found in the new tree.
         // TranscriptFocusOnShow gave the transcript focus when the window opened, and F6 starts
@@ -319,7 +322,7 @@ import VoxClipCore
         func label(_ text: String) -> Expectation { (text, { $0.label.contains(text) }) }
         func button(_ title: String) -> Expectation { ("the \(title) button", { $0.role == kAXButtonRole && $0.label == title }) }
 
-        let five = try DebugSidebar.fiveQuestions(from: fixture)
+        let five = try DebugExplorer.fiveQuestions(from: fixture)
         let shell = WorkspaceShell(app: app)
         await shell.attachForTesting(VoxClipDocument(project: five, demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
@@ -363,7 +366,7 @@ import VoxClipCore
     private static func versionChecks(app: AppModel, fixture: Project) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
-        let version = VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true)
+        let version = VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true)
         version.versionForTesting = true
         version.makeWindowControllers()
         defer { version.close() }
@@ -415,7 +418,7 @@ import VoxClipCore
     static func sceneCaptures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         guard !DebugUISuite.sessionLocked else { throw CocoaError(.userCancelled) }
         let shell = WorkspaceShell(app: app)
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()

@@ -16,7 +16,7 @@ import Testing
     private func project() throws -> Project {
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
-        var project = try DebugSidebar.fiveQuestions(from: base)
+        var project = try DebugExplorer.fiveQuestions(from: base)
         project.export.aspect = .landscape
         return project
     }
@@ -101,7 +101,7 @@ import Testing
 
         editor.app.settings.values["voiceLab.enabled"] = .bool(true)
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
-        editor.rewrite = RewriteSession(editor: editor, range: 3...5, envelope: nil, connector: nil)
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(3...5), envelope: nil, connector: nil)
         let rewrite = await measure()
         #expect(rewrite.markers["viewer.box"] == CGRect(x: 0, y: 0, width: 324, height: 132), "no Rewrite compaction")
         let scroll = try #require(rewrite.viewport)
@@ -116,7 +116,7 @@ import Testing
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         let size = CGSize(width: 404, height: 422)
         let before = markers(PanelHost(model: editor, shell: shell, width: size.width, height: size.height), size: size)
-        editor.rewrite = RewriteSession(editor: editor, range: 3...5, envelope: nil, connector: nil)
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(3...5), envelope: nil, connector: nil)
         let after = markers(PanelHost(model: editor, shell: shell, width: size.width, height: size.height), size: size)
         for found in [before, after] {
             #expect(found["viewer.box"] == CGRect(x: 0, y: 0, width: 404, height: 227))
@@ -212,22 +212,29 @@ import Testing
         #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
     }
 
-    /// The hover transport shows the timeline toolbar's readout (`TimelineReadout`,
-    /// HH:MM:SS:FF on the timeline's axis), and its Edited / Source is Show cuts, so one
-    /// switch flips the timeline, the transport and the transcript together.
-    @Test func theHoverTransportReadsTheTimelinesTimecodeAndFollowsShowCuts() async throws {
-        let (_, editor) = try await openShell()
+    @Test func hoverTimeIncludesTheScopeLengthOnBothAxes() async throws {
+        let (shell, editor) = try await openShell()
         defer { editor.close() }
-        editor.playhead = 14.8
-        editor.sourceTime = 74.4
-        let host = NSHostingView(rootView: ViewerSection(model: editor, columnWidth: 404, timelineVisible: false, hovering: true))
-        host.frame = CGRect(x: 0, y: 0, width: 404, height: 227)
-        func time() -> String? { DebugRightColumn.texts(in: host)["timeline.readout"] }
-        await settle(host) { time() != nil }
-        #expect(editor.timelineAxis == .edited && time() == "00:00:14:24")
-        editor.toggleShowsCuts()
-        await settle(host) { time() == "00:01:14:12" }
-        #expect(editor.timelineAxis == .source && time() == "00:01:14:12")
+        for selection in [SidebarItem.fullTake, .clip("five-1")] {
+            shell.choose(selection)
+            if case .clip(let id) = selection { #expect(editor.activeClip?.id == id) }
+            editor.playhead = 12
+            editor.sourceTime = 14
+            let host = NSHostingView(rootView: ViewerSection(model: editor, columnWidth: 404, timelineVisible: false, hovering: true))
+            host.frame = CGRect(x: 0, y: 0, width: 404, height: 227)
+            let timeline = NSHostingView(rootView: TimelineReadout(model: editor))
+            timeline.frame = CGRect(x: 0, y: 0, width: 160, height: 30)
+            for source in [false, true] {
+                if editor.showsCuts != source { editor.toggleShowsCuts() }
+                let smpte = source ? "00:00:14:00" : "00:00:12:00"
+                await settle(timeline) { DebugRightColumn.texts(in: timeline)["timeline.readout"] == smpte }
+                #expect(DebugRightColumn.texts(in: timeline)["timeline.readout"] == smpte)
+                let expected = "\(durationLabel(source ? 14 : 12)) / \(durationLabel(source ? editor.sourceDuration : editor.duration))"
+                await settle(host) { DebugRightColumn.texts(in: host)["viewer.readout"] == expected }
+                #expect(DebugRightColumn.texts(in: host)["viewer.readout"] == expected,
+                        "\(selection), Source \(source): \(expected)")
+            }
+        }
     }
 
     /// The transport is never only a hover target: keyboard focus inside the viewer (the box
@@ -299,7 +306,7 @@ import Testing
 
         shell.selection = .clip("five-1")
         let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
-        let session = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.rewrite = session
         #expect(PanelJob.available(in: editor) == [.captions, .rewrite] && shell.panelJob(for: editor) == .rewrite)
         // The switcher shows Captions beside the open session, with no undo step and no document change.
@@ -317,12 +324,12 @@ import Testing
         // A new session shows Rewrite again, as opening one always has.
         editor.closeRewrite(returnFocus: false)
         #expect(shell.panelJob(for: editor) == .captions)
-        let next = RewriteSession(editor: editor, range: lower...(lower + 1), envelope: nil, connector: nil)
+        let next = RewriteSession(editor: editor, scope: .selection(lower...(lower + 1)), envelope: nil, connector: nil)
         editor.rewrite = next
         #expect(shell.panelJob(for: editor) == .rewrite)
-        // Voice Lab's Rewrite off hides the job.
+        // Text Rewrite needs no Voice Lab (impl-plan V13): with it off the job stays.
         editor.app.settings.values["voiceLab.enabled"] = .bool(false)
-        #expect(PanelJob.available(in: editor) == [.captions] && shell.panelJob(for: editor) == .captions)
+        #expect(PanelJob.available(in: editor) == [.captions, .rewrite] && shell.panelJob(for: editor) == .rewrite)
         #expect(!undo.canUndo && !editor.document.isDocumentEdited)
     }
 
@@ -331,7 +338,7 @@ import Testing
     @Test func theHeaderNamesTheJobAndTheOpenTab() async throws {
         let (shell, editor) = try await openShell()
         defer { editor.close() }
-        #expect(PanelJob.allCases.map(\.title) == ["Captions", "Rewrite", "Voice", "Takes", "Director"])
+        #expect(PanelJob.allCases.map(\.title) == ["Captions", "Rewrite", "Voice", "Takes", "Director", "Export"])
         let found = markers(PanelHeader(model: editor, shell: shell, job: .captions).frame(width: 404), size: CGSize(width: 404, height: 30))
         #expect(found["panel.header"]?.size == CGSize(width: 404, height: 30))
         #expect(found["panel.job.captions"]?.size == CGSize(width: 26, height: 22))
@@ -349,7 +356,7 @@ import Testing
         editor.app.settings.values["voiceLab.enabled"] = .bool(true)
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
-        editor.rewrite = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         await settle(host) { shown() == ["Rewrite", "Clip 1"] }
         #expect(shown() == ["Rewrite", "Clip 1"])
         shell.selection = .clip("five-2")

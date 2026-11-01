@@ -2,21 +2,15 @@
 import Foundation
 import Testing
 @testable import VoxClipCore
-@testable import VoxClipMedia
 @testable import VoxClip
 
 /// The sheets one routed send showed, and the action each was for.
 @MainActor private final class SheetLog {
-    var sheets: [LLMSendSheet] = []
+    var sheets: [ConnectorSendPrompt] = []
     var actions: [ConnectorConsentAction] = []
     /// Answers a sheet; true approves it.
-    var answer: (LLMSendSheet) -> Bool = { _ in true }
-    func take() -> [LLMSendSheet.Reason] { defer { sheets = []; actions = [] }; return sheets.map(\.reason) }
-}
-
-/// Voice Lab's ElevenLabs client in these tests never reaches for a key: no take is generated or priced.
-private struct NoVoiceLabKeys: KeyProvider {
-    func key(for provider: String) async throws -> String? { Issue.record("Routing tests must not ask for credentials"); return nil }
+    var answer: (ConnectorSendPrompt) -> Bool = { _ in true }
+    func take() -> [ConnectorSendPrompt.Reason] { defer { sheets = []; actions = [] }; return sheets.map(\.reason) }
 }
 
 /// Every LLM send (Find clips, Rewrite and Settings → Test) asks C8's `kind(forLLMSendTo:signIn:providerName:)` after
@@ -31,8 +25,8 @@ private struct NoVoiceLabKeys: KeyProvider {
         let authMethod: String?
         let baseURL: String?
         /// The sheets of the first send, and of every later one.
-        let first: [LLMSendSheet.Reason]
-        let later: [LLMSendSheet.Reason]
+        let first: [ConnectorSendPrompt.Reason]
+        let later: [ConnectorSendPrompt.Reason]
         var testDescription: String { name }
     }
 
@@ -42,8 +36,8 @@ private struct NoVoiceLabKeys: KeyProvider {
     nonisolated static let rows: [Row] = [
         Row(name: "Claude Code on a plan", connector: "claude-code", authMethod: "claude.ai", baseURL: nil, first: [.privacy], later: []),
         Row(name: "Codex on a plan", connector: "codex", authMethod: "chatgpt", baseURL: nil, first: [.privacy], later: []),
-        Row(name: "Claude Code on an API key", connector: "claude-code", authMethod: "api_key", baseURL: nil, first: [.privacy, .cost], later: [.cost]),
-        Row(name: "Codex on an API key", connector: "codex", authMethod: "api_key", baseURL: nil, first: [.privacy, .cost], later: [.cost]),
+        Row(name: "Claude Code on an API key", connector: "claude-code", authMethod: "api_key", baseURL: nil, first: [.cost], later: [.cost]),
+        Row(name: "Codex on an API key", connector: "codex", authMethod: "api_key", baseURL: nil, first: [.cost], later: [.cost]),
         Row(name: "Ollama on this Mac", connector: "ollama", authMethod: nil, baseURL: "http://127.0.0.1:11434", first: [], later: []),
         Row(name: "LM Studio on this Mac", connector: "lmstudio", authMethod: nil, baseURL: nil, first: [], later: []),
         Row(name: "Ollama on another computer", connector: "ollama", authMethod: nil, baseURL: "http://192.168.1.20:11434", first: [.privacy], later: []),
@@ -73,23 +67,17 @@ private struct NoVoiceLabKeys: KeyProvider {
         return DebugConnectorRequests.makeEditor(fixture: fixture, app: app)
     }
 
-    /// One send through the entry the user presses: the Find Clips button, Rewrite in the panel, or Settings → Test.
+    /// One send through the entry the user presses: the Find Clips button, ⇧⌘R (which runs Rewrite at once), or Settings → Test.
     private func send(_ action: ConnectorConsentAction, editor: EditorModel, app: AppModel) async throws {
         switch action {
         case .findClips:
             editor.findClips()
             await editor.findTask?.value
         case .rewrite:
-            if editor.rewrite == nil {
-                editor.beginRewrite()
-                await editor.rewriteOpenTask?.value
-                let session = try #require(editor.rewrite)
-                await session.detectConnector(); await session.prepare()
-            }
+            editor.runRewrite()
+            await editor.rewriteOpenTask?.value
             let session = try #require(editor.rewrite)
-            let quote = try #require(session.quote)
-            session.markEstimateShown(quote.id)
-            _ = await session.propose(quote)
+            await session.actionTask?.value
         case .test:
             let provider = try #require(app.providers.first { $0.id == app.string("llm.connector") })
             _ = await testProvider(provider, app: app)
@@ -123,13 +111,12 @@ private struct NoVoiceLabKeys: KeyProvider {
         let editor = try editor(app)
         defer { editor.close() }
         try await send(.rewrite, editor: editor, app: app)
-        #expect(log.take() == [.privacy, .cost])
+        #expect(log.take() == [.cost])
         #expect(await fake.sends == 1)
         try await send(.rewrite, editor: editor, app: app)
         #expect(log.take() == [.cost])
         #expect(await fake.sends == 2)
-        #expect(editor.rewrite?.proposalButton == "Rewrite…")
-        #expect(editor.rewrite?.estimateCopy == "VoxClip can't tell what this costs. Check \(provider.label)'s pricing.")
+        #expect(editor.rewrite?.proposalButton == "Rewrite…" && editor.rewriteMenuTitle == "Rewrite Selection…")
         for action in [ConnectorConsentAction.findClips, .test] {
             for _ in 0..<2 {
                 #expect(try await app.authorizeConnectorRequest(provider, connector: fake, action: action, wordCount: 80))
@@ -146,14 +133,12 @@ private struct NoVoiceLabKeys: KeyProvider {
         defer { editor.close() }
         switch action {
         case .rewrite:
-            editor.beginRewrite()
+            editor.runRewrite()
             await editor.rewriteOpenTask?.value
             let session = try #require(editor.rewrite)
-            await session.detectConnector(); await session.prepare()
-            let quote = try #require(session.quote)
-            session.markEstimateShown(quote.id)
-            let sent = await session.propose(quote)
-            #expect(!sent)
+            await session.actionTask?.value
+            // The sign-in it can't place reads as signed out: R1x says how to sign in, and nothing was sent.
+            #expect(session.changes.isEmpty && session.task.state == .error(.signedOut(cli: "Claude Code", command: "claude")))
         default: try await send(action, editor: editor, app: app)
         }
         #expect(log.sheets.isEmpty)
@@ -161,15 +146,15 @@ private struct NoVoiceLabKeys: KeyProvider {
     }
 
     @Test(arguments: [ConnectorConsentAction.findClips, .rewrite, .test])
-    func decliningTheCostSendsNothingKeepsTheConsentAndAsksAgain(action: ConnectorConsentAction) async throws {
+    func decliningTheCombinedRowSendsNothingAndStoresNoConsent(action: ConnectorConsentAction) async throws {
         let (app, fake, log) = try setUp("codex", authMethod: "api_key")
         let editor = try editor(app)
         defer { editor.close() }
         log.answer = { $0.reason == .privacy }
         try await send(action, editor: editor, app: app)
-        #expect(log.take() == [.privacy, .cost])
+        #expect(log.take() == [.cost])
         #expect(await fake.sends == 0)
-        #expect(app.bool("llm.cloudConsent.codex"))
+        #expect(!app.bool("llm.cloudConsent.codex"))
         log.answer = { _ in true }
         try await send(action, editor: editor, app: app)
         #expect(log.take() == [.cost])
@@ -190,24 +175,20 @@ private struct NoVoiceLabKeys: KeyProvider {
     }
 
     @Test func costSheetsSayWhereTheWordsGoAndThatThePriceIsUnknown() async throws {
-        let cases: [(String, String?, ConnectorConsentAction, Int, LLMSendSheet)] = [
-            ("anthropic", nil, .findClips, 80, LLMSendSheet(reason: .cost, title: "Find clips?",
-                message: "Sends this project's transcript (80 words, no audio or video) to Anthropic with your key.\n\nVoxClip can't tell what this costs. Check Anthropic's pricing.", confirm: "Find Clips")),
-            ("gemini", nil, .rewrite, 3, LLMSendSheet(reason: .cost, title: "Rewrite 3 words?",
-                message: "Sends these 3 words to Google Gemini with your key.\n\nVoxClip can't tell what this costs. Check Google Gemini's pricing.", confirm: "Rewrite")),
-            ("openai", nil, .rewrite, 1, LLMSendSheet(reason: .cost, title: "Rewrite 1 word?",
-                message: "Sends this word to OpenAI with your key.\n\nVoxClip can't tell what this costs. Check OpenAI's pricing.", confirm: "Rewrite")),
-            ("claude-code", "api_key", .test, 0, LLMSendSheet(reason: .cost, title: "Send a test request?",
-                message: "Sends a short test request to Claude Code, billed to the API key it is signed in with. Nothing from your projects is sent.\n\nVoxClip can't tell what this costs. Check Anthropic's pricing.", confirm: "Test")),
-            ("codex", "api_key", .rewrite, 7, LLMSendSheet(reason: .cost, title: "Rewrite 7 words?",
-                message: "Sends these 7 words to Codex, billed to the API key it is signed in with.\n\nVoxClip can't tell what this costs. Check OpenAI's pricing.", confirm: "Rewrite")),
-        ]
-        for (connector, method, action, words, expected) in cases {
+        for (connector, method, action, words) in [
+            ("anthropic", nil as String?, ConnectorConsentAction.findClips, 80),
+            ("gemini", nil, .rewrite, 3), ("openai", nil, .rewrite, 1),
+            ("claude-code", "api_key", .test, 0), ("codex", "api_key", .rewrite, 7)] {
             let (app, fake, log) = try setUp(connector, authMethod: method)
             app.set("llm.cloudConsent.\(connector)", .bool(true))
             let provider = try #require(app.providers.first { $0.id == connector })
             #expect(try await app.authorizeConnectorRequest(provider, connector: fake, action: action, wordCount: words))
-            #expect(log.sheets == [expected])
+            let prompt = try #require(log.sheets.first)
+            #expect(log.sheets.count == 1 && prompt.reason == .cost && prompt.confirm == "Send")
+            #expect(prompt.message.contains(provider.cliName ?? provider.label))
+            #expect(prompt.note == "VoxClip can't tell what this costs. Check \(provider.pricingName)'s pricing.")
+            #expect(prompt.details.first?.contains("No audio or video.") == true)
+            #expect(!prompt.message.contains("$") && prompt.pricingURL != nil)
         }
     }
 
@@ -224,71 +205,45 @@ private struct NoVoiceLabKeys: KeyProvider {
         let editor = try editor(app)
         defer { editor.close() }
         let connector = RewriteConnector(connector: fake, model: "fixture-local", name: "Fixture", group: "cli", plan: "Claude plan")
-        let session = RewriteSession(editor: editor, range: 3...5, envelope: AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000)),
+        let session = RewriteSession(editor: editor, scope: .selection(3...5), envelope: AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000)),
                                      connector: connector)
         defer { session.close() }
-        await session.prepare()
+        // Before detection the sign-in is not known: that send neither starts nor asks, so no "…" (ai.md §4.8).
         #expect(session.sendLine == "Sends these 3 words to Fixture with your sign-in.")
         #expect(session.proposalButton == "Rewrite")
-        #expect(session.estimateCopy == "")
+        #expect(app.llmSendKind(.claudeCode) == nil)
         _ = await app.connectorStatus(provider, using: fake)
-        await session.prepare()
         #expect(session.proposalButton == button)
         #expect(session.sendLine == line)
-        #expect(session.estimateCopy == price)
+        // C8's sentence is the cost sheet's, shown only by a send that asks first.
+        let asked: String? = if case .confirm(let text) = app.llmSendKind(.claudeCode) { text } else { nil }
+        #expect(asked == (price.isEmpty ? nil : price))
     }
 
-    /// A take that passes review, so Voice Lab's Accept is ready.
-    private func readyTake() -> VoiceLabTakeRow {
-        let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
-            trimStartFrame: 0, trimEndFrame: 24_000, windowStart: 1, windowEnd: 2, windowStartSample: 24_000, windowEndSample: 48_000,
-            outputFrames: 24_000, words: [VoiceLabWord(text: "Hello", start: 0.1, end: 0.9, synthetic: true)])
-        let audio = VoiceLabTakeAudio(sampleRate: 24_000, trimmed: [0.1], mixed: [0.1], patchRange: 0..<1, seams: [], gainDb: 0, roomTone: nil, fit: .exact(plan))
-        let qa = VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -20, speakerScore: 0.8), failures: [])
-        return VoiceLabTakeRow(id: UUID(), index: 0, seed: 0, audio: audio, qa: qa, score: 1, failure: nil)
-    }
-
-    /// Declining the cost sheet changes nothing: the route runs before `propose` touches the session, so no spinner shows
-    /// behind the sheet, Voice Lab's reviewed take stays acceptable and unpriced again, and the same estimate can be sent.
-    @Test func decliningTheRewriteCostSheetLeavesVoiceLabAndTheEstimateAsTheyWere() async throws {
+    /// Declining the cost sheet changes nothing: the route runs before anything is claimed sent, so nothing is sent or
+    /// announced, R1's steps never pass Read, the lease is free, and the first run closes Rewrite as Stop does (V15).
+    /// Approving sends once.
+    @Test func decliningTheRewriteCostSheetSendsAndAnnouncesNothing() async throws {
         let (app, fake, log) = try setUp("codex", authMethod: "api_key")
         app.set("llm.cloudConsent.codex", .bool(true))
-        app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
         let editor = try editor(app)
         defer { editor.close() }
-        editor.beginRewrite()
+        let provider = try #require(app.providers.first { $0.id == "codex" })
+        _ = await app.connectorStatus(provider, using: fake)
+        var stepsBehindSheet: [ActivityStep.Status] = []
+        log.answer = { _ in stepsBehindSheet = editor.rewrite?.task.steps.map(\.status) ?? []; return false }
+        editor.runRewrite()
         await editor.rewriteOpenTask?.value
         let session = try #require(editor.rewrite)
-        await session.detectConnector(); await session.prepare()
-        session.configureGeneration(client: ElevenLabsVoiceLab(keys: NoVoiceLabKeys(), region: .default),
-            store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
-        let generation = try #require(session.generation)
-        var quoteRequests = 0
-        generation.prepareQuote = { quoteRequests += 1 }
-        let take = readyTake()
-        generation.review(.init(rows: [take], end: .completed))
-        #expect(generation.readyToAccept)
-        let quote = try #require(session.quote)
-        session.markEstimateShown(quote.id)
-        var proposingBehindSheet = false
-        log.answer = { _ in proposingBehindSheet = session.isProposing; return false }
-        let declined = await session.propose(quote)
-        await generation.finishQuotePreparationForTests()
-        #expect(!declined)
+        await session.actionTask?.value
         #expect(log.take() == [.cost])
         #expect(await fake.sends == 0)
-        #expect(!proposingBehindSheet)
-        #expect(generation.readyToAccept && generation.selectedID == take.id && generation.rows == [take])
-        #expect(quoteRequests == 0)
-        #expect(session.quote == quote && session.canPropose && session.problem.isEmpty && !editor.llmRuns.isBusy)
+        #expect(stepsBehindSheet == [.done, .waiting, .waiting, .waiting])
+        #expect(editor.announcements.isEmpty && !session.isOpen && editor.openRewrite == nil && !editor.llmRuns.isBusy)
         log.answer = { _ in true }
-        let approved = await session.propose(quote)
-        await generation.finishQuotePreparationForTests()
-        #expect(approved)
+        try await send(.rewrite, editor: editor, app: app)
         #expect(log.take() == [.cost])
         #expect(await fake.sends == 1)
-        #expect(!generation.readyToAccept && quoteRequests > 0)
-        session.close()
     }
 
     /// Find clips shows its progress only once the route says yes (design §6.2: the consent, then "while it runs").
@@ -333,11 +288,33 @@ private struct NoVoiceLabKeys: KeyProvider {
         #expect(editor.clipError == "Load or download a model in LM Studio, then refresh. Your edits are saved.")
     }
 
+    @Test(arguments: [("lmstudio", "LM Studio", "http://localhost:1234"),
+                      ("ollama", "Ollama", "http://127.0.0.1:11434")])
+    func stoppedLocalServerKeepsItsURLAcrossSendSurfaces(connector: String, name: String, url: String) async throws {
+        let (app, fake, log) = try setUp(connector, authMethod: nil, readiness: .notRunning(url: url))
+        let editor = try editor(app)
+        defer { editor.close() }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(editor.clipError?.contains("\(name) isn't answering at \(url).") == true)
+        #expect(app.harnessStatus.stateWords?.contains(url) == true)
+        let rewriteEditor = try self.editor(app)
+        defer { rewriteEditor.close() }
+        try await send(.rewrite, editor: rewriteEditor, app: app)
+        let session = try #require(rewriteEditor.rewrite)
+        let messages = session.task.cards.compactMap { card -> String? in
+            if case .text(let text) = card { return text }; return nil
+        }
+        #expect(messages.contains { $0.contains("\(name) isn't answering at \(url).") })
+        #expect(await fake.sends == 0)
+        #expect(log.sheets.isEmpty)
+    }
+
     /// The Rewrite panel's readiness error names the chosen connector, as Find clips does: the route now runs for local
     /// connectors too, and LM Studio's server is off until the user starts it. The error is R1x on the session's task
     /// (V12m), with nothing sent, no sheet and the passage panel's problem line untouched.
     @Test(arguments: [
-        ("lmstudio", ConnectorStatus.notRunning(url: "http://localhost:1234"), PanelError.notRunning(server: "LM Studio")),
+        ("lmstudio", ConnectorStatus.notRunning(url: "http://localhost:1234"), PanelError.notRunning(server: "LM Studio", url: "http://localhost:1234")),
         ("lmstudio", .noModels, .message("Load or download a model in LM Studio, then refresh. Your edits are saved.")),
         ("claude-code", .cliSignedOut, .signedOut(cli: "Claude Code", command: "claude")),
         ("openai", .needsKey, .noKey(provider: "openai", name: "OpenAI")),
@@ -348,7 +325,7 @@ private struct NoVoiceLabKeys: KeyProvider {
         defer { editor.close() }
         try await send(.rewrite, editor: editor, app: app)
         let session = try #require(editor.rewrite)
-        #expect(log.sheets.isEmpty)
+        #expect(readiness == .needsKey ? log.sheets.first?.needsKey == true : log.sheets.isEmpty)
         #expect(await fake.sends == 0)
         #expect(session.task.state == .error(error), "\(session.task.state)")
         #expect(session.problem.isEmpty && !editor.llmRuns.isBusy)

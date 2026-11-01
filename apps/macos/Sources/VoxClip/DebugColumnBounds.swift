@@ -52,6 +52,19 @@ import VoxClipCore
         return windows.flatMap { descendants($0, depth: 0) }.compactMap(element)
             .first { $0.role == kAXRadioButtonRole && $0.label == label && $0.frame.minX >= column.minX && $0.frame.maxX <= column.maxX }
     }
+    /// Also works in a never-shown window: AppKit reports the legacy scrollbar's
+    /// accessibility frame 1 pt beyond its native view bounds on every edge.
+    static func scrollerOverflow(in host: NSView) -> [String] {
+        let bounds = host.accessibilityFrame().insetBy(dx: -0.5, dy: -0.5)
+        return DebugRightColumn.scrollViews(in: host).flatMap { scroll in
+            [scroll.verticalScroller, scroll.horizontalScroller].compactMap { scroller -> String? in
+                guard let scroller, !scroller.isHiddenOrHasHiddenAncestor else { return nil }
+                let frame = scroller.accessibilityFrame()
+                guard frame.width > 0, frame.height > 0, !bounds.contains(frame) else { return nil }
+                return "Native scrollbar accessibility frame leaves column: \(frame)"
+            }
+        }
+    }
     static func assertBounds(window: NSWindow, name: String, directory: URL) throws {
         let editorWindow = window.sheetParent ?? window
         guard let contentView = editorWindow.contentView else { return }
@@ -69,7 +82,7 @@ import VoxClipCore
         let shown = overlay ?? right
         let column = screenFrame(shown, window: editorWindow)
         let collapsed = overlay == nil && split.isSubviewCollapsed(right)
-        var failures: [String] = []
+        var failures: [String] = collapsed ? [] : scrollerOverflow(in: shown)
         var elements: [Element] = []
         var unmeasured: [String] = []
         var scrolled: [Element] = []
@@ -142,7 +155,7 @@ import VoxClipCore
             // The viewer and the panel header with its switcher (impl-plan V4). Play and the time
             // are the timeline's, and the hover transport's only while the timeline is hidden.
             for required in ["voxclip.viewer.stage", "voxclip.panel.title", "voxclip.panel.job.captions"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
-            if !identifiers.contains("voxclip.rewrite") {
+            if !identifiers.contains("voxclip.director") {
                 for required in ["voxclip.captions.switch", "voxclip.captions.properties", "voxclip.captions.gallery"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
                 if !elements.contains(where: { $0.role == kAXRadioButtonRole && $0.label.contains(": ") }) { failures.append("Missing caption gallery choices") }
                 for (identifier, roles) in [

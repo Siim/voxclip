@@ -489,8 +489,8 @@ import ApplicationServices
             check("imported video can preview and export without transcript", editor.mediaResolved && editor.canExport && editor.project.transcript == nil)
             try await waitUntil { statusSummary(in: window)?.accessibilityHelp() == editor.summaryDetail }
             let summary = statusSummary(in: window)
-            check("the status bar shows the edit summary and VoiceOver reads its detail (\(editor.summaryDetail); summary \(summary.map { "\"\($0.stringValue)\", help \($0.accessibilityHelp() ?? "none")" } ?? "not found"))",
-                  summary?.stringValue == editor.subtitle && summary?.accessibilityHelp() == editor.summaryDetail && window.subtitle.isEmpty && window.titleVisibility == .hidden)
+            check("the status bar shows the edit summary and VoiceOver reads its detail (\(editor.summaryDetail); summary \(summary.map { "\"\($0.item.text)\", help \($0.accessibilityHelp() ?? "none")" } ?? "not found"))",
+                  summary?.item == editor.statusSummary && summary?.accessibilityHelp() == editor.summaryDetail && window.subtitle.isEmpty && window.titleVisibility == .hidden)
 
             // The editor's flows in the new layout: Find Clips readiness in its popover,
             // Make Clip, Transcribe Again's warning, Export from the title row and 1024 wide.
@@ -515,18 +515,15 @@ import ApplicationServices
             try await capture(window: window, name: "scene-menu-ready", directory: destination)
             let transcribeItem = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu?.item(withTitle: "Transcribe Again…")
             let dispatched = transcribeItem.flatMap { item in item.action.map { NSApp.sendAction($0, to: item.target, from: item) } } ?? false
-            try await waitUntil { window.attachedSheet != nil }
+            try await waitUntil { editor.transcription.phase == .choosing }
             let warning = AppDelegate.retranscriptionWarning(for: editor.project)
             // Editor menu commands need the main window to be key, so an inactive app
             // (a locked console) can't reach them.
             let inactive = NSApp.keyWindow !== window ? "the app isn't active, so the main window isn't key and editor menu commands are off" : nil
-            let warned = dispatched && window.attachedSheet != nil && !editor.showTranscribe && warning.contains("1 cuts") && warning.contains("1 corrections") && warning.contains("1 clips")
+            let warned = dispatched && window.attachedSheet == nil && editor.transcription.again && warning.contains("1 cut") && warning.contains("1 correction") && warning.contains("1 clip")
             results.append(Result(name: "Transcribe Again warns about lost cuts, corrections and clips", passed: warned, skipped: warned ? nil : inactive))
-            if let sheet = window.attachedSheet {
-                if let cancel = button(titled: "Cancel", in: sheet.contentView) { cancel.performClick(nil) } else { sheet.cancelOperation(nil) }
-            }
-            try await waitUntil { window.attachedSheet == nil }
-            let kept = window.attachedSheet == nil && !editor.showTranscribe && editor.project.edits.cutWordIds.count == 1 && editor.project.edits.corrections.count == 1 && editor.project.edits.clips.count == 1
+            editor.transcription.notNow()
+            let kept = window.attachedSheet == nil && editor.transcription.phase == .hidden && editor.project.edits.cutWordIds.count == 1 && editor.project.edits.corrections.count == 1 && editor.project.edits.clips.count == 1
             results.append(Result(name: "cancelling Transcribe Again keeps the edits", passed: kept && warned, skipped: kept && !warned ? inactive : nil))
             if let clip = made {
                 shell.selection = .clip(clip.id)
@@ -537,14 +534,10 @@ import ApplicationServices
                           export.exportTitle == "Export Clip…" && export.accessibilityLabel() == "Export Clip…" && export.isEnabled)
                     export.performClick(nil)
                 } else { check("the title row's Export button is discoverable", false) }
-                try await waitUntil { window.attachedSheet != nil }
-                check("Export from the title row opens Export for the selected clip", editor.showExport && editor.activeClip?.id == clip.id && editor.exportClipIDs == [clip.id])
-                if let sheet = window.attachedSheet {
-                    check("clip export opens an attached sheet", sheet.isVisible)
-                } else { check("clip export opens an attached sheet", false) }
-                editor.showExport = false
-                try await waitUntil { window.attachedSheet == nil }
-                check("the export sheet closes before the editor changes", window.attachedSheet == nil && !editor.showExport)
+                try await waitUntil { shell.panelJob(for: editor) == .export }
+                check("Export from the title row opens the right-panel job for the selected clip", editor.exportJob.isOpen && editor.activeClip?.id == clip.id && editor.exportClipIDs == [clip.id] && window.attachedSheet == nil)
+                editor.finishExportJob()
+                check("Done returns from Export without a sheet", window.attachedSheet == nil && !editor.exportJob.isOpen)
                 shell.selection = .fullTake
             }
             let appearance = app.string("general.appearance", fallback: "system")
@@ -634,8 +627,14 @@ import ApplicationServices
             let interview = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
             results += try await DebugShell.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTabs.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugClipBar.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugExplorer.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugExport.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugStatusBar.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: interview, directory: destination, native: true)
             results += try await DebugRewrite.directorCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugInlineConfirm.captures(app: app, directory: destination)
+            results += try await DebugInlineTranscribe.captures(app: app, fixture: interview, directory: destination)
         } catch {
             results.append(Result(name: "scene audit: \(error.localizedDescription)", passed: false))
         }
@@ -645,8 +644,8 @@ import ApplicationServices
     }
     static var sessionLocked: Bool { (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool == true }
     /// The status bar's edit summary, which carries what the hidden window subtitle showed.
-    private static func statusSummary(in window: NSWindow) -> NSTextField? {
-        window.contentView.flatMap { DebugShell.view("voxclip.status.summary", in: $0) as? NSTextField }
+    private static func statusSummary(in window: NSWindow) -> StatusItemView? {
+        window.contentView.flatMap { DebugShell.view("voxclip.status.summary", in: $0) as? StatusItemView }
     }
     /// Find Clips readiness in the popover (design §6.2), as main's Clips inspector
     /// checked it: a missing key, saving and forgetting it, a stopped local service, a
@@ -685,7 +684,7 @@ import ApplicationServices
             app.providerKeyStoreOverride = nil
         }
         app.set("llm.connector", .string("openai"))
-        editor.requestFindClips(from: .overflow)
+        editor.requestFindClips(from: .clipBar)
         check("Find Clips shows a missing key in its popover", await hasInspectorStatus("Key missing", in: window))
         check("Find Clips stays actionable with a missing key", inspectorElement("findClipsAction", in: window)?.enabled == true)
         do {
@@ -841,14 +840,14 @@ import ApplicationServices
         }
         exit(FileManager.default.fileExists(atPath: destination.appendingPathComponent("failure.txt").path) ? 1 : 0)
     }
-    static func performance(app: AppModel, destination: URL) {
+    static func performance(app: AppModel, destination: URL) async {
         var passed = false
         do {
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
             guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
             let project = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
             var results = try DebugTranscriptPerformance.run(app: app, fixture: project, directory: destination)
-            results += try DebugTimeline.performance(app: app, fixture: project, directory: destination)
+            results += try await DebugTimeline.performance(app: app, fixture: project, directory: destination)
             try JSONEncoder().encode(results).write(to: destination.appendingPathComponent("results.json"), options: .atomic)
             passed = results.allSatisfy { $0.passed }
         } catch { try? Data("Performance fixture failed".utf8).write(to: destination.appendingPathComponent("failure.txt")) }
@@ -976,7 +975,7 @@ import ApplicationServices
             let unavailable = await app.safeError(VoxClipError.notImplemented("mac-media"))
             check("unimplemented service is truthful", unavailable.contains("not available") && unavailable.contains("Your video and edits are still here."))
             results += try await DebugHome.run(app: app, fixture: project, directory: destination)
-            results += try await DebugSidebar.run(app: app, fixture: project, directory: destination)
+            results += try await DebugExplorer.run(app: app, fixture: project, directory: destination)
             let editorShell = WorkspaceShell(app: app)
             await editorShell.attachForTesting(VoxClipDocument(project: project, demo: true))
             check("an attached project shows its editor scoped to Full take", !editorShell.showsHome && editorShell.selection == .fullTake && editorShell.title == project.title)
@@ -1005,11 +1004,13 @@ import ApplicationServices
             try await snapshot(SettingsView().environment(app), name: "settings-light", size: NSSize(width: 800, height: 560), appearance: .aqua, directory: destination)
             check("closing Settings preserves AppModel library and download task", app.modelLibrary === library && library.task != nil && !downloadTask.isCancelled)
             try await snapshot(OnboardingView().environment(app), name: "onboarding-light", size: NSSize(width: 616, height: 536), appearance: .aqua, directory: destination)
-            try await snapshot(ExportSheet(model: model).environment(app), name: "export-light", size: NSSize(width: 668, height: 500), appearance: .aqua, directory: destination)
-            try await snapshot(ExportSheet(model: model).environment(app), name: "export-dark", size: NSSize(width: 668, height: 500), appearance: .darkAqua, directory: destination)
+            try await snapshot(ExportJobView(model: model).environment(app), name: "export-light", size: NSSize(width: 668, height: 500), appearance: .aqua, directory: destination)
+            try await snapshot(ExportJobView(model: model).environment(app), name: "export-dark", size: NSSize(width: 668, height: 500), appearance: .darkAqua, directory: destination)
             try await snapshot(OnboardingView().environment(app), name: "onboarding-dark", size: NSSize(width: 616, height: 536), appearance: .darkAqua, directory: destination)
             results += try await DebugShell.run(app: app, fixture: project, directory: destination)
             results += try await DebugTabs.run(app: app, fixture: project, directory: destination)
+            results += try await DebugClipBar.run(app: app, fixture: project, directory: destination)
+            results += try await DebugStatusBar.run(app: app, fixture: project, directory: destination)
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: project, directory: destination)
             model.close()
         } catch { results.append(Result(name: "suite: \(error.localizedDescription)", passed: false)) }
@@ -1069,11 +1070,7 @@ import ApplicationServices
         hosting.layoutSubtreeIfNeeded()
         func prepare(_ view: NSView) {
             if let text = view as? NSTextView {
-                if let manager = text.textLayoutManager, let range = manager.textContentManager?.documentRange {
-                    manager.ensureLayout(for: range)
-                    // The transcript moves its backdrop, selection, caret and ruler window with it.
-                    if let transcript = text as? TranscriptNSTextView { transcript.layOutViewport() } else { manager.textViewportLayoutController.layoutViewport() }
-                }
+                if let manager = text.textLayoutManager, let range = manager.textContentManager?.documentRange { manager.ensureLayout(for: range); manager.textViewportLayoutController.layoutViewport() }
                 text.displayIfNeeded()
             }
             view.subviews.forEach(prepare)

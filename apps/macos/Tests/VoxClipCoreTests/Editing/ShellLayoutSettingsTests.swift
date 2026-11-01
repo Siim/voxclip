@@ -17,4 +17,14 @@ import Testing
         }
         #expect(SettingsDocument.isKnownKey("ui.rightColumnWidth"))
     }
+
+    /// The timeline's track height (impl-plan V9, §3.4): S, M or L by name, no shared default.
+    @Test func trackHeightIsAKnownChoice() throws {
+        let key = "ui.layout.trackHeight"
+        #expect(SettingsDocument.isKnownKey(key))
+        #expect(SettingsDocument.defaults[key] == nil)
+        for choice in ["small", "medium", "large"] { try SettingsDocument(values: [key: .string(choice)]).validate() }
+        #expect(throws: VoxClipError.self) { try SettingsDocument(values: [key: .string("huge")]).validate() }
+        #expect(throws: VoxClipError.self) { try SettingsDocument(values: [key: .number(36)]).validate() }
+    }
 }

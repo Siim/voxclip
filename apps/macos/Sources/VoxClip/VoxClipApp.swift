@@ -16,7 +16,8 @@ import VoxClipCore
     /// The opt-in tour's Help item. DebugMenus checks it by this name, so the checklist's
     /// obsolete-workspace search finds only the item itself.
     nonisolated static let tourTitle = "Welcome Tour"
-    private let model = AppModel.sharedModel
+    private let model: AppModel
+    init(model: AppModel = AppModel.sharedModel) { self.model = model; super.init() }
     private var bufferedURLs: [URL] = []
     private var settingsWindow: NSWindow?
     private var terminating = false
@@ -57,9 +58,19 @@ import VoxClipCore
             Task {
                 await model.start()
                 do {
-                    let results = CommandLine.arguments[index] == "-captionGalleryAudit"
-                        ? try await DebugCaptionGallery.run(app: model, directory: directory)
-                        : try await DebugRightColumn.run(app: model, directory: directory)
+                    let results: [DebugUISuite.Result]
+                    if CommandLine.arguments.contains("-timelinePerformanceAudit") {
+                        // Headless counterpart of the timeline portion of -uiPerformanceTest.
+                        // Keep -layoutAudit so AppModel uses the test-session launch path.
+                        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                        guard let shared = model.shared else { throw VoxClipError.sharedResourcesMissing }
+                        let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
+                        results = try await DebugTimeline.performance(app: model, fixture: fixture, directory: directory)
+                    } else {
+                        results = CommandLine.arguments[index] == "-captionGalleryAudit"
+                            ? try await DebugCaptionGallery.run(app: model, directory: directory)
+                            : try await DebugRightColumn.run(app: model, directory: directory)
+                    }
                     try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("results.json"), options: .atomic)
                     exit(results.allSatisfy(\.passed) ? 0 : 1)
                 } catch { fputs("Layout audit failed: \(error)\n", stderr); exit(1) }
@@ -117,7 +128,7 @@ import VoxClipCore
                 } else if let position = CommandLine.arguments.firstIndex(of: "-settingsAudit"), position + 1 < CommandLine.arguments.count {
                     await DebugUISuite.settingsAudit(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 } else if let position = CommandLine.arguments.firstIndex(of: "-uiPerformanceTest"), position + 1 < CommandLine.arguments.count {
-                    DebugUISuite.performance(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
+                    await DebugUISuite.performance(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 } else if let position = CommandLine.arguments.firstIndex(of: "-demoCapture"), position + 1 < CommandLine.arguments.count {
                     await DebugUISuite.captureDemo(app: model, destination: URL(fileURLWithPath: CommandLine.arguments[position + 1]))
                 }
@@ -159,7 +170,14 @@ import VoxClipCore
 
     #if DEBUG
     weak var commandWindowForTesting: NSWindow?
+    var commandEventForTesting: NSEvent?
     #endif
+    private var commandEvent: NSEvent? {
+        #if DEBUG
+        if let commandEventForTesting { return commandEventForTesting }
+        #endif
+        return NSApp.currentEvent
+    }
     private var mainWindowIsKey: Bool {
         #if DEBUG
         if let commandWindowForTesting { return commandWindowForTesting === model.shell.windowController?.window }
@@ -199,10 +217,6 @@ import VoxClipCore
         if let url = item.representedObject as? URL { openFile(url, app: model) }
     }
     func menuNeedsUpdate(_ menu: NSMenu) {
-        if menu.title == "Edit" {
-            menu.items.first { $0.tag == 38 }?.isHidden = !model.voiceLabRewriteEnabled
-            return
-        }
         menu.removeAllItems()
         model.recentProjects.refresh(model.recent)
         for url in model.recent {
@@ -249,15 +263,27 @@ import VoxClipCore
         case 50, 51: keyShell?.showAdjacentTab(item.tag == 50 ? -1 : 1); return
         // Show Cuts is a view setting, so it works in the key window, a Versions window too.
         case 60: if validateMenuItem(item) { keyEditor?.toggleShowsCuts() }; return
-        // Help works on Home and with no project open; both sheets belong to the main window.
-        case 35: MainWindowController.shared.show(); shell.showShortcuts = true; return
+        case 20:
+            if validateMenuItem(item) { keyEditor?.zoom(0) }
+            return
+        case 18, 19:
+            guard validateMenuItem(item), let editor = keyEditor else { return }
+            let direction = item.tag == 19 ? -1 : 1
+            if editor.focusedPane == .timeline { editor.timelineZoomStep += direction }
+            else { editor.zoom(Double(direction)) }
+            return
+        // Commands belong to the active window; Help also works with no project open.
+        case 35, 61:
+            if let keyShell { keyShell.openCommandPalette() }
+            else { MainWindowController.shared.show(); shell.openCommandPalette() }
+            return
         case 36: MainWindowController.shared.show(); model.showTour = true; return
         default: break
         }
         guard let editor, validateMenuItem(item) else { return }
         switch item.tag {
         case 1:
-            if NSApp.currentEvent?.type == .keyDown { editor.toggleSelectionCut() }
+            if !MenuCommandIndex.isInvoking, commandEvent?.type == .keyDown { editor.toggleSelectionCut() }
             else { editor.cutSelection() }
         case 2: editor.cutSelection(restore: true)
         case 3: editor.beginCorrection()
@@ -269,9 +295,6 @@ import VoxClipCore
         case 9: editor.apply(.restoreCuts, name: "Restore cuts")
         case 11: editor.showPauses.toggle()
         case 12: model.shell.toggleViewer()
-        case 18: editor.zoom(1)
-        case 19: editor.zoom(-1)
-        case 20: editor.zoom(0)
         case 21: editor.transport(" ")
         case 22: editor.transport(" ", shift: true)
         case 23: editor.transport("p")
@@ -285,10 +308,9 @@ import VoxClipCore
         case 31: editor.setClipEdge(start: false)
         case 32: editor.moveClip(-1)
         case 33: editor.moveClip(1)
-        case 34: editor.requestFindClips(from: .overflow)
-        case 37: confirmRetranscription()
-        case 38: editor.beginRewrite(entry: .menu)
-        case 39: editor.beginRewrite(inserting: true)
+        case 34: editor.requestFindClips(from: .clipBar)
+        case 37: openRetranscription()
+        case 38: editor.runRewrite()
         case 40: if let id = selectedClipID { editor.keep(id) }
         case 41: if let id = selectedClipID { editor.dismiss(id) }
         case 42: editor.keepAll()
@@ -307,8 +329,11 @@ import VoxClipCore
     /// 9:16 · 1:1 · 16:9 · Original, tags 52–55.
     static let frameAspects: [AspectRatio] = [.portrait, .square, .landscape, .source]
     private var selectedClipID: String? {
-        guard case .clip(let id) = model.shell.selection else { return nil }
-        return id
+        switch model.shell.selection {
+        case .clip(let id): return id
+        case .outline: return model.shell.editor?.activeClip?.id
+        default: return nil
+        }
     }
     @objc private func checkUpdates(_ sender: Any?) {
         if let url = model.update?.htmlURL, url.host == "github.com" { NSWorkspace.shared.open(url) }
@@ -319,24 +344,17 @@ import VoxClipCore
     }
     @objc private func revealLogs(_ sender: Any?) { model.revealLogs() }
     @objc private func copyDiagnostics(_ sender: Any?) { Task { copyText(await model.diagnostics()) } }
-    private func confirmRetranscription() {
+    private func openRetranscription() {
         guard let editor else { return }
-        let alert = NSAlert()
-        alert.messageText = "Transcribe again?"
-        alert.informativeText = Self.retranscriptionWarning(for: editor.project)
-        alert.addButton(withTitle: "Transcribe Again")
-        alert.addButton(withTitle: "Cancel")
-        if let window = editor.window {
-            alert.beginSheetModal(for: window) { response in
-                if response == .alertFirstButtonReturn { editor.showTranscribe = true }
-            }
-        } else if alert.runModal() == .alertFirstButtonReturn {
-            editor.showTranscribe = true
-        }
+        Task { await editor.transcription.open(again: true) }
     }
+
     static func retranscriptionWarning(for project: Project) -> String {
         let edits = project.edits
-        return "This replaces the transcript and removes \(edits.cutWordIds.count + edits.cutPauseIds.count) cuts, \(edits.corrections.count) corrections, \(edits.clips.count) clips and the AI suggestions."
+        let counts = [(edits.cutWordIds.count + edits.cutPauseIds.count, "cut"), (edits.corrections.count, "correction"), (edits.clips.count, "clip")]
+        let parts = counts.filter { $0.0 > 0 }.map { "\($0.0) \($0.1)\($0.0 == 1 ? "" : "s")" }
+        let removed = parts.isEmpty ? "the AI suggestions" : parts.joined(separator: ", ") + " and the AI suggestions"
+        return "This replaces the transcript and removes \(removed)."
     }
 
     static func focusedControlKeepsKey(_ item: NSMenuItem, responder: NSResponder?) -> Bool {
@@ -355,6 +373,18 @@ import VoxClipCore
               event.charactersIgnoringModifiers?.lowercased() == item.keyEquivalent.lowercased() else { return true }
         return responder is TranscriptNSTextView
     }
+    /// Keep, Dismiss, Rename and Remove (tags 40, 41, 43, 44) by their bare Return and Delete act on the Explorer's
+    /// row, so those keys reach them only from the Explorer's list: never while text is typed (the clip bar's Ask field,
+    /// the transcript, another field), a clip is renamed or an input method composes. Keep Suggestion's hidden ⇧⌘↩, the
+    /// clip bar's Keep (impl-plan §3.2, V3b), works from anywhere in the window on a suggestion's tab.
+    static func clipRowKeyEnabled(_ item: NSMenuItem, event: NSEvent?, pane: EditorPane, renaming: Bool, responder: NSResponder?, row: SidebarItem? = nil) -> Bool {
+        guard !MenuCommandIndex.isInvoking, event?.type == .keyDown, [40, 41, 43, 44].contains(item.tag) else { return true }
+        if renaming { return false }
+        if let input = responder as? any NSTextInputClient, input.hasMarkedText() { return false }
+        guard item.keyEquivalentModifierMask.isDisjoint(with: [.command, .control, .option]) else { return true }
+        if case .outline = row { return false }
+        return pane == .sidebar && !(responder is NSText)
+    }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(checkUpdates(_:)) {
             item.title = model.update.map { "VoxClip \($0.version) Available…" } ?? "Check for Updates…"
@@ -364,6 +394,7 @@ import VoxClipCore
             return NSApp.keyWindow != nil
         }
         if item.action == #selector(performEditorCommand(_:)) {
+            if item.tag == 38 { item.title = editor?.rewriteMenuTitle ?? "Rewrite Full Take" }
             switch item.tag {
             case 13: return mainWindowIsKey
             case 14: return mainWindowIsKey && model.shell.document != nil
@@ -375,8 +406,13 @@ import VoxClipCore
                 let shell = model.shell
                 item.title = shell.layout.timelineVisible ? "Hide Timeline" : "Show Timeline"
                 return mainWindowIsKey && shell.editor != nil && !shell.showsHome && (shell.layout.rightVisible || !shell.layout.timelineVisible)
-            case 35, 36: return true
+            case 35, 36, 61: return true
             case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
+            case 20: return keyEditor != nil
+            case 18, 19:
+                let timeline = keyEditor?.focusedPane == .timeline
+                item.title = item.tag != 19 ? (timeline ? "Zoom Timeline In" : "Bigger Text") : (timeline ? "Zoom Timeline Out" : "Smaller Text")
+                return keyEditor != nil
             case 60:
                 guard let editor = keyEditor else { return false }
                 item.state = editor.showsCuts ? .on : .off
@@ -385,11 +421,9 @@ import VoxClipCore
             }
             guard let editor else { return false }
             if editor.mutationEnabled(item.tag) == false { return false }
-            if NSApp.currentEvent?.type == .keyDown, Self.focusedControlKeepsKey(item, responder: NSApp.keyWindow?.firstResponder) { return false }
-            if NSApp.currentEvent?.type == .keyDown, [40, 41, 43, 44].contains(item.tag) {
-                guard editor.focusedPane == .sidebar, model.shell.renaming == nil else { return false }
-                if let input = NSApp.keyWindow?.firstResponder as? any NSTextInputClient, input.hasMarkedText() { return false }
-            }
+            if !MenuCommandIndex.isInvoking, commandEvent?.type == .keyDown, Self.focusedControlKeepsKey(item, responder: NSApp.keyWindow?.firstResponder) { return false }
+            if !Self.clipRowKeyEnabled(item, event: commandEvent, pane: editor.focusedPane, renaming: model.shell.renaming != nil,
+                                       responder: NSApp.keyWindow?.firstResponder, row: model.shell.selection) { return false }
             if [1, 2, 3, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33, 38, 46].contains(item.tag) {
                 guard editor.correctionID == nil else { return false }
                 let responder = NSApp.keyWindow?.firstResponder
@@ -400,8 +434,7 @@ import VoxClipCore
             }
             switch item.tag {
             case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
-            case 38: return RewriteEntryPolicy.resolve(.menu, enabled: model.bool("voiceLab.enabled"), noticeAccepted: model.bool("voiceLab.betaNoticeAccepted"), editable: editor.capabilities.ai, selection: !editor.selectedIDs.isEmpty) != .unavailable
-            case 39: return false
+            case 38: return RewriteEntryPolicy.canRun(editable: editor.capabilities.ai, scope: editor.rewriteScopeNow)
             case 48: return !editor.selectedIDs.isEmpty
             case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
             case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true
@@ -409,7 +442,7 @@ import VoxClipCore
             case 49: return editor.finding
             case 43, 44: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.capabilities.edit
             case 45: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.canExport && editor.mediaExportable
-            case 46: return editor.mediaResolved && Self.backStepEnabled(item, event: NSApp.currentEvent, responder: NSApp.keyWindow?.firstResponder)
+            case 46: return editor.mediaResolved && Self.backStepEnabled(item, event: commandEvent, responder: NSApp.keyWindow?.firstResponder)
             case 47: return editor.mediaResolved
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
             case 8: return editor.capabilities.edit && editor.summary.canTighten
@@ -428,7 +461,19 @@ import VoxClipCore
         if item.action == #selector(revealMedia(_:)) { return editor != nil }
         return true
     }
-    private func installMenus() {
+    /// Shared by the installed View menu and the headless menu audit.
+    func addZoomCommands(to menu: NSMenu) {
+        for (title, tag, key) in [("Bigger Text", 18, "="), ("Bigger Text", 18, "+"), ("Smaller Text", 19, "-"), ("Actual Size", 20, "0")] {
+            let item = NSMenuItem(title: title, action: #selector(performEditorCommand(_:)), keyEquivalent: key)
+            item.tag = tag; item.target = self; item.keyEquivalentModifierMask = .command
+            // Preserve the shifted plus spelling without a second visible action.
+            item.isHidden = key == "+"
+            item.allowsKeyEquivalentWhenHidden = key == "+"
+            menu.addItem(item)
+        }
+    }
+    /// Builds the main menu. Internal so a headless test can check its key equivalents and tags.
+    func installMenus() {
         // The windows never tab (`tabbingMode = .disallowed`), so AppKit adds no tab items of
         // its own beside the editor's Show Next Tab and Show Previous Tab (⌃Tab, impl-plan V3a).
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -496,10 +541,8 @@ import VoxClipCore
         command(edit, "Cut Selection", 1, String(UnicodeScalar(NSDeleteCharacter)!), [])
         command(edit, "Restore Selection", 2, String(UnicodeScalar(NSDeleteCharacter)!), [.shift])
         command(edit, "Correct Word", 3, "c", [])
-        command(edit, "Rewrite…", 38, "r", [.command, .shift])
-        edit.delegate = self
-        edit.items.first { $0.tag == 38 }?.isHidden = !model.voiceLabRewriteEnabled
-        edit.items.first { $0.tag == 38 }?.allowsKeyEquivalentWhenHidden = false
+        // Edit › Rewrite {scope} (design.md §8): `validateMenuItem` retitles it for the scope and the AI.
+        command(edit, "Rewrite Full Take", 38, "r", [.command, .shift])
         command(edit, "Copy Text", 48)
         command(edit, "Find…", 4, "f")
         command(edit, "Find Next", 5, "g")
@@ -512,18 +555,17 @@ import VoxClipCore
         command(view, "Show Cuts", 60, "c", [.command, .option])
         command(view, "Show Pauses", 11)
         command(view, "Hide Viewer", 12, "i", [.command, .option])
+        command(view, "Search or Run a Command…", 61, "k")
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")
         command(view, "Hide Sidebar", 16, "s", [.command, .control])
         command(view, "Hide Timeline", 56, "j")
         let frame = NSMenuItem(title: "Frame", action: nil, keyEquivalent: "")
         let frameMenu = NSMenu(title: "Frame")
-        for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect == .source ? "Original" : aspect.rawValue, 52 + offset, "", []) }
+        for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect.frameName, 52 + offset, "", []) }
         frame.submenu = frameMenu
         view.addItem(frame)
-        command(view, "Bigger Text", 18, "+")
-        command(view, "Smaller Text", 19, "-")
-        command(view, "Actual Size", 20, "0")
+        addZoomCommands(to: view)
         add(view, "Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control])
         let playback = menu("Playback")
         command(playback, "Play/Pause", 21, " ", [])
@@ -537,10 +579,14 @@ import VoxClipCore
         command(playback, "Back 3 Seconds", 46, "j", [])
         command(playback, "Forward 3 Seconds", 47)
         let clip = menu("Clip")
-        command(clip, "Make Clip from Selection", 29, "k")
+        command(clip, "Make Clip from Selection", 29, "k", [.command, .option])
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
         command(clip, "Cancel Finding Clips", 49, ".")
         command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
+        // The clip bar's Keep ⇧⌘↩ on a suggestion's tab (impl-plan §3.2, V3b), a hidden alternate.
+        command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [.command, .shift])
+        clip.items.last?.isHidden = true
+        clip.items.last?.allowsKeyEquivalentWhenHidden = true
         command(clip, "Dismiss Suggestion", 41, String(UnicodeScalar(NSDeleteCharacter)!), [])
         command(clip, "Keep All Suggestions", 42)
         command(clip, "Rename Clip…", 43, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
