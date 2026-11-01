@@ -247,7 +247,7 @@ public sealed class ClipSemanticsTests
         var whole = Clip(model, 0, 9);
         Assert.Equal("Tere! Täna näitan, kuidas lõigata videot sõnade", model.Clips.Single(clip => clip.Id == whole).Title);
         model.Select(2);
-        model.Correct("näitasin,");
+        model.BeginCorrection(); model.CorrectionText = "näitasin,"; model.EndCorrection();
         var corrected = Clip(model, 1, 3);
         Assert.Equal("Täna näitasin, kuidas", model.Clips.Single(clip => clip.Id == corrected).Title);
         Assert.Equal("Täna näitasin, kuidas", model.Project.Edits.Clips.Single(clip => clip.Id == corrected).Title);

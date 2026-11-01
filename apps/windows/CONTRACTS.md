@@ -1,5 +1,11 @@
 # Windows fixed contracts
 
+### 2026-11-01 — parity-copy-2 review follow-up
+
+- Return/Tab keep unsavable inline correction drafts open with their text. A valid Tab saves and opens the next word's correction field; the last word closes. Focus loss still drops invalid drafts; Esc cancels. Line-break regression drafts differ from the original word (`Today\n`, `\rToday`).
+- Windows validates correction emptiness/length with Core JsTrim and passes raw text to EditOperation.Correct for Core normalization. NEL, NFC and noncharacter tests use BeginCorrection/EndCorrection. The obsolete Correct(string) API and allowlist entry are removed.
+- Owed native: correction focus and keyboard behavior, Settings layout, and platform screen-reader checks. No windows or live provider calls were used.
+
 ### 2026-11-01 — parity-copy-2 — correction, download and beta copy parity
 
 - Inline corrections save valid typed text when focus leaves, on outside clicks, when the selection changes, and before transport actions. Esc cancels; empty, multiline and over-limit drafts are dropped. The view model owns the draft and closes the popup; the light-dismiss implementation is removed. Play/Pause waits for edit refreshes and uses the state before saving, so Pause during playback saves and stays paused. Headless `InlineCorrectionTests` cover these boundaries.

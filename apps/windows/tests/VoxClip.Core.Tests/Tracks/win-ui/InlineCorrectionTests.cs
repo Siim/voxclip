@@ -98,8 +98,8 @@ public sealed class InlineCorrectionTests
     [InlineData("   ")]
     [InlineData("to\nday")]
     [InlineData("to\r\nday")]
-    [InlineData("today\n")]
-    [InlineData("\rtoday")]
+    [InlineData("Today\n")]
+    [InlineData("\rToday")]
     public void TextThatCannotBeSavedClosesTheFieldAndKeepsTheWord(string text)
     {
         var model = Editor();
@@ -126,6 +126,62 @@ public sealed class InlineCorrectionTests
         Correcting(model, 2, longest);
         model.EndCorrection();
         Assert.Equal(longest, model.Project.Edits.Corrections["w3"]);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ReturnAndTabKeepUnsavableDraftsOpen(bool advance, bool tooLong)
+    {
+        var model = Editor();
+        var draft = tooLong ? new string('a', EditingLimits.MaxCorrectionCodePoints + 1) : "";
+        Correcting(model, 2, draft);
+        Assert.False(model.SaveCorrection(advance));
+        Assert.Equal("w3", model.CorrectionWordId);
+        Assert.Equal(draft, model.CorrectionText);
+        Assert.Equal(2, model.SelectionEnd);
+        Assert.False(model.CanUndo);
+    }
+
+    [Fact]
+    public void TabSavesAndOpensTheNextWordButStopsAtTheLastWord()
+    {
+        var model = Editor();
+        Correcting(model, 2, "Today");
+        Assert.True(model.SaveCorrection(advance: true));
+        Assert.Equal("Today", model.Project.Edits.Corrections["w3"]);
+        Assert.Equal(3, model.SelectionEnd);
+        Assert.Equal(model.Words[3].Id, model.CorrectionWordId);
+        Assert.Equal(model.DisplayText(model.Words[3]), model.CorrectionText);
+        Correcting(model, model.Words.Count - 1, "last");
+        Assert.True(model.SaveCorrection(advance: true));
+        Assert.Null(model.CorrectionWordId);
+    }
+
+    [Fact]
+    public void NextLineIsCountedAtTheCorrectionLimit()
+    {
+        var model = Editor();
+        var draft = new string('a', EditingLimits.MaxCorrectionCodePoints) + (char)0x0085;
+        Correcting(model, 2, draft);
+        Assert.False(model.SaveCorrection());
+        Assert.Equal(draft, model.CorrectionText);
+        Assert.Equal("w3", model.CorrectionWordId);
+        model.EndCorrection();
+        Assert.False(model.Project.Edits.Corrections.ContainsKey("w3"));
+    }
+
+    [Fact]
+    public void ReturnSavesAndClosesWithoutMovingSelection()
+    {
+        var model = Editor();
+        Correcting(model, 2, "Today");
+        Assert.True(model.SaveCorrection());
+        Assert.Equal("Today", model.Project.Edits.Corrections["w3"]);
+        Assert.Null(model.CorrectionWordId);
+        Assert.Equal(2, model.SelectionEnd);
     }
 
     [Fact]
@@ -221,6 +277,9 @@ public sealed class InlineCorrectionTests
     {
         var view = AppSource("Controls/TranscriptView.cs");
         Assert.DoesNotContain("IsLightDismissEnabled", view);
+        Ordered(view, "model.CorrectionText = text.Text;", "args.Handled = true;",
+            "if (!model.SaveCorrection(advance: args.Key == Windows.System.VirtualKey.Tab)) return;",
+            "if (model.CorrectionWordId is null) Focus(FocusState.Keyboard);");
         Ordered(view, "private void OpenCorrectionField(string id)", "text.TextChanged += (_, _) =>", "model.CorrectionText = text.Text;",
             "model.EndCorrection(keep: false);", "text.LostFocus += (_, _) =>", "model?.EndCorrection();",
             "root.AddHandler(PointerPressedEvent, CorrectionPress, true);");

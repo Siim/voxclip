@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-11-01 — parity-copy-2 review follow-up
+
+- Return/Tab keep unsavable inline correction drafts open with their text. A valid Tab saves and opens the next word's correction field; the last word closes. Focus loss still drops invalid drafts; Esc cancels. Line-break regression drafts differ from the original word (`Today\n`, `\rToday`).
+- Owed native: correction focus and keyboard behavior, Settings layout, and platform screen-reader checks. No windows or live provider calls were used.
+
 ### 2026-11-01 — parity-copy-2 — Voice Lab 0.1.0 copy
 
 - The one-time notice uses `VoiceLabSession.betaCopy` in Settings and the editor. It promises own-voice creation and rewritten words with ElevenLabs only; Change Voice and Lip sync are M3+. `VoiceLabSessionTests` checks the exact copy. Estonian consent QA is not applicable after the failed et-v1 calibration (89% versus 95% required).

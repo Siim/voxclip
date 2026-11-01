@@ -149,7 +149,7 @@ public sealed class ViewModelTests
     [Fact]
     public void RestoreCutsRetainsCorrections()
     {
-        var model = Demo(); model.Select(1); model.Correct("corrected"); model.CutSelection(); model.Apply(new EditOperation.RestoreCuts());
+        var model = Demo(); model.Select(1); model.BeginCorrection(); model.CorrectionText = "corrected"; model.EndCorrection(); model.CutSelection(); model.Apply(new EditOperation.RestoreCuts());
         Assert.Equal("corrected", model.DisplayText(model.Words[1])); Assert.Empty(model.State!.CutWordIds);
     }
     [Theory]
@@ -165,7 +165,8 @@ public sealed class ViewModelTests
         }, DemoProject.Summarize);
         var pasted = "  pasted " + (char)codeUnit + " e" + (char)0x0301 + "  ";
         model.Select(1);
-        var exception = Record.Exception(() => model.Correct(pasted));
+        model.BeginCorrection(); model.CorrectionText = pasted;
+        var exception = Record.Exception(() => model.EndCorrection());
         Assert.Null(exception);
         Assert.NotNull(received);
         Assert.Equal(model.Words[1].Id, received.Id);
@@ -176,7 +177,7 @@ public sealed class ViewModelTests
     {
         var model = new EditorViewModel(Fixture());
         model.Select(1);
-        model.Correct("  cafe" + (char)0x0301 + "  ");
+        model.BeginCorrection(); model.CorrectionText = "  cafe" + (char)0x0301 + "  "; model.EndCorrection();
         Assert.Equal("caf" + (char)0x00E9, model.State!.Corrections[model.Words[1].Id]);
     }
     [Theory]
@@ -186,7 +187,7 @@ public sealed class ViewModelTests
     {
         var model = new EditorViewModel(Fixture());
         model.Select(1);
-        model.Correct("  pasted " + (char)input + " e" + (char)0x0301 + "  ");
+        model.BeginCorrection(); model.CorrectionText = "  pasted " + (char)input + " e" + (char)0x0301 + "  "; model.EndCorrection();
         Assert.Equal("pasted " + (char)expected + " " + (char)0x00E9, model.State!.Corrections[model.Words[1].Id]);
         Assert.Equal("", model.Notice);
     }

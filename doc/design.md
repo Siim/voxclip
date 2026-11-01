@@ -482,7 +482,7 @@ Live transcript while recording (M2): partial words in `text.muted` italic; a "J
 |---|---|
 | Click a word | Caret and selection on that word. When paused, the playhead moves to the word's start so the frame updates |
 | Drag / ⇧-click / ⇧← → | Extend the selection by whole words |
-| Double-click a word | **Correct** in place: an inline field sized to the word, text selected. Return saves, Esc cancels, Tab saves and moves to the next word. Correcting changes caption text only; the audio stays the same |
+| Double-click a word | **Correct** in place: an inline field sized to the word, text selected. Return saves, Esc cancels, Tab saves and opens the correction field on the next word. Correcting changes caption text only; the audio stays the same |
 | Triple-click | Select the sentence |
 | ⌫ / Delete on a selection | **Cut.** If the whole selection is already cut, **restore** it (toggle, like VoxConvo's tap to cut, tap again to restore) |
 | ⇧⌫ / Shift+Backspace | Restore the selection |
@@ -490,7 +490,7 @@ Live transcript while recording (M2): partial words in `text.muted` italic; a "J
 | Right-click | Context menu: Rewrite (⇧⌘R) · Type New Words… · Make Clip (⌘K) · Cut · Restore · Correct Spelling… · Play from Here · Preview This Cut (P) · Copy Text. Later (M3+), with a caret between words and Voice Lab on: Insert Words… (§6.3.6) |
 | Drop a file on the window | The whole-window overlay (§7). With a project open, it is saved first, then the new video opens in its place |
 
-On both platforms, an inline correction ends when focus leaves its field, on a click elsewhere, when the selection changes, and before any transport action. Save valid typed text on the word the field opened for; drop empty text, text containing a line break, or text beyond the project's correction limit, keeping the word unchanged. Esc cancels. Return and Tab keep their behavior above. Play/Pause uses the playing state before saving: Space or Pause during playback saves and stays paused, including when the save refreshes the preview.
+On both platforms, an inline correction ends when focus leaves its field, on a click elsewhere, when the selection changes, and before any transport action. Save valid typed text on the word the field opened for; drop empty text, text containing a line break, or text beyond the project's correction limit, keeping the word unchanged. Esc cancels. Return and Tab with an unsavable draft keep the field open with its text, on both platforms. Return with valid text saves and closes; Tab with valid text saves and opens the next word's correction field, or closes at the last word. Play/Pause uses the playing state before saving: Space or Pause during playback saves and stays paused, including when the save refreshes the preview.
 
 After every cut the edit summary updates (§3.5) and VoiceOver or Narrator announces "Cut 'um'". Undo groups by command: one Cut Fillers is one undo step.
 

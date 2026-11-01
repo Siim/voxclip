@@ -217,7 +217,7 @@ public sealed class RoundThreeTests
     public void SelectedNextLineCorrectionIsNotDroppedByPlatformWhitespaceRules()
     {
         var model = new EditorViewModel(Fixture()); model.Select(0);
-        model.Correct(((char)0x0085).ToString());
+        model.BeginCorrection(); model.CorrectionText = ((char)0x0085).ToString(); model.EndCorrection();
         Assert.Equal(((char)0x0085).ToString(), model.State!.Corrections[model.Words[0].Id]);
     }
     [Fact]

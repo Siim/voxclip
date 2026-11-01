@@ -679,9 +679,10 @@ public sealed class TranscriptView : UserControl
             if (args.Key is Windows.System.VirtualKey.Enter or Windows.System.VirtualKey.Tab)
             {
                 model.CorrectionText = text.Text;
-                model.EndCorrection();
-                if (args.Key == Windows.System.VirtualKey.Tab) { model.Select(model.SelectionEnd + 1); KeepWordInView(model.SelectionCaret); }
-                Focus(FocusState.Keyboard); args.Handled = true;
+                args.Handled = true;
+                if (!model.SaveCorrection(advance: args.Key == Windows.System.VirtualKey.Tab)) return;
+                KeepWordInView(model.SelectionCaret);
+                if (model.CorrectionWordId is null) Focus(FocusState.Keyboard);
             }
             if (args.Key == Windows.System.VirtualKey.Escape) { model.EndCorrection(keep: false); Focus(FocusState.Keyboard); args.Handled = true; }
         };

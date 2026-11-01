@@ -64,6 +64,11 @@ class RewriteSpecTests(unittest.TestCase):
         cls.design = read('doc/design.md')
         cls.ai = read('doc/spec/ai.md')
 
+    def test_correction_keyboard_rule_is_explicit_for_both_platforms(self):
+        interaction = section(self.design, '### 4.2')
+        self.assertIn('Return and Tab with an unsavable draft keep the field open with its text, on both platforms.', interaction)
+        self.assertIn("Tab with valid text saves and opens the next word's correction field", interaction)
+
     def test_llm_send_plan_sign_in_is_a_closed_list(self):
         rule = between(section(self.voice_lab, '### 3.1'), 'An LLM send (', '| Estimate |')
         # A plan is named positively, never as "not an API key".
