@@ -135,6 +135,8 @@ import VoxClipCore
                 let labels = nativeWindow.map { (element: AXUIElement) -> [String] in accessibilityLabels(element) } ?? []
                 check("\(name) Reset to Style is the accessible action label", labels.contains("Reset to Style"))
                 check("\(name) the property menus are named by their rows", ["Words per caption", "Case", "Position", "Size"].allSatisfy(labels.contains))
+                // The row keys are hidden from VoiceOver, so the swatches' group carries "Colour".
+                check("\(name) the Colour swatches are named by their row", labels.contains("Colour") && ["Yellow", "Paper"].allSatisfy(labels.contains))
                 try JSONEncoder().encode(labels).write(to: directory.appendingPathComponent("captions-fine-tune-\(name)-ax.json"))
                 if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("captions-fine-tune-\(name).png")) }
             }
