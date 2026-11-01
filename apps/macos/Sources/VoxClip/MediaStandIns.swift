@@ -299,7 +299,8 @@ actor ThumbnailCache {
               let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
     }
-    private static func writePoster(_ image: CGImage, to url: URL) {
+    /// Also V1's filmstrip frames (FilmstripCache), in the same folder.
+    static func writePoster(_ image: CGImage, to url: URL) {
         let folder = url.deletingLastPathComponent()
         // Never replace a link or a folder that sits where the poster goes.
         if let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]), values.isRegularFile != true || values.isSymbolicLink == true { return }
