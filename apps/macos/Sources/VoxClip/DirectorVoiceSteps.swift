@@ -8,7 +8,6 @@ import VoxClipCore
     var model: EditorModel?
     var prepareOnAppear = true
     @FocusState private var fieldFocused: Bool
-    @State private var holds = false
     private var flow: VoiceEnrollmentFlow { session.flow }
     var body: some View {
         VStack(spacing: 0) {
@@ -48,7 +47,7 @@ import VoxClipCore
         .background(DesignValues.color("bg.window"))
         .accessibilityElement(children: .contain).accessibilityLabel("Your voice, " + stepLabel)
         .accessibilityIdentifier("voxclip.voice.job")
-        .modifier(EditorPaneFocus(model: model, pane: .panel, holds: $holds))
+        .modifier(EditorPaneFocus(model: model, pane: .panel))
         .onExitCommand { session.cancelVoiceAction() }
         .onKeyPress(keys: [.space], phases: [.down, .repeat]) { press in
             guard !fieldFocused, !(NSApp.keyWindow?.firstResponder is NSTextView) else { return .ignored }
