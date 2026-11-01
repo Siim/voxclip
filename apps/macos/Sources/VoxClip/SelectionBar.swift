@@ -39,7 +39,7 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
     }
     private var controls: some View {
         HStack(spacing: 4) {
-            Button { model.makeClip(); dismiss() } label: { label("Make Clip", "⌘K") }
+            Button { model.makeClip(); dismiss() } label: { label("Make Clip", "⌥⌘K") }
                 .background(Color(nsColor: .unemphasizedSelectedContentBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
                 .focused($focused)
                 .help(makeClipHelp)
@@ -78,6 +78,6 @@ func selectionBarFrame(lineRects: [CGRect], visibleRect: CGRect, barSize: CGSize
         if let clip = model.sortedClips.first(where: { $0.startWordId == model.selectedIDs.first && $0.endWordId == model.selectedIDs.last }), let number = model.clipNumber(clip.id) {
             return "Clip \(number) already covers these words."
         }
-        return "Make Clip (⌘K)"
+        return "Make Clip (⌥⌘K)"
     }
 }

@@ -4,6 +4,9 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- On Mac, ⌘K opens an inline command field; ⌥⌘K makes a clip, and Keyboard Shortcuts opens the command list.
+- The Mac timeline has an Exports tab using the same files and actions as Explorer. Voice Lab shows estimated spend for this month in the status bar and AI menu.
+- Sign in to Claude Code or Codex from the Mac AI menu, with instructions and the result shown inline.
 - The Mac Explorer shows your voices and recent exports, with file actions, export status and Retry in place.
 - The Mac Captions panel keeps scrollbars inside its column, local AI errors name the server URL, and the viewer transport shows current time and scope length.
 - Export now opens in the right panel instead of a window.

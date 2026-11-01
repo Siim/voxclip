@@ -824,7 +824,14 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         let shift = event.modifierFlags.contains(.shift)
         if event.modifierFlags.contains(.command) {
             if event.charactersIgnoringModifiers?.lowercased() == "k" {
-                if shift { model.requestFindClips(from: .clipBar) } else { model.makeClip() }
+                let modifiers = event.modifierFlags.intersection([.command, .option, .shift, .control])
+                if modifiers == [.command, .shift] { model.requestFindClips(from: .clipBar) }
+                else if modifiers == [.command, .option] { model.makeClip() }
+                else if modifiers == .command {
+                    let shell = (window?.windowController as? ShellWindowController)?.shell ?? model.app.shell
+                    shell.showCommandPalette = true
+                }
+                else { super.keyDown(with: event) }
                 return
             }
             if shift, event.charactersIgnoringModifiers?.lowercased() == "r" { model.beginRewrite(entry: .shortcut); return }

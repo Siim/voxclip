@@ -67,7 +67,6 @@ import VoxClipCore
             .sheet(isPresented: editorFlag(\.showVoiceLabOptIn)) {
                 if let editor = shell.editor { VoiceLabOptInView(editor: editor) }
             }
-            .sheet(isPresented: $shell.showShortcuts) { ShortcutsView(rewriteEnabled: shell.app.voiceLabRewriteEnabled) }
             .sheet(isPresented: Binding(get: { shell.app.showTour }, set: { shell.app.showTour = $0 })) { OnboardingView() }
     }
     /// A changed pause breath setting applies to the open project as one undo step.

@@ -10,15 +10,17 @@ import VoxClipCore
 @MainActor struct TimelinePanel: View {
     let model: EditorModel
     let shell: WorkspaceShell
+    @State private var exportsSelected = false
     var body: some View {
         VStack(spacing: 0) {
-            TimelineToolbar(model: model, shell: shell)
-            TimelineCanvas(model: model)
+            TimelineToolbar(model: model, shell: shell, exportsSelected: $exportsSelected)
+            if exportsSelected { TimelineExportsList(model: model) } else { TimelineCanvas(model: model) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.window"))
         .modifier(EditorPaneFocus(model: model, pane: .timeline))
         .onKeyPress(keys: [.leftArrow, .rightArrow, .home, .end], phases: .down) { press in
+            guard !exportsSelected else { return .ignored }
             let code: UInt16 = switch press.key {
             case .leftArrow: 123
             case .rightArrow: 124
@@ -32,20 +34,31 @@ import VoxClipCore
 
 /// The toolbar (notes.md §6, f1): the TIMELINE tab, Edited / Source, the transport ⏮ ▶ ⏭,
 /// the timecode readout, the src TC and the selection's length; Hide (⌘J) at the end.
-/// Zoom, track height, snapping and Maximize arrive with V9, EXPORTS with V11b. When the
+/// Zoom, track height, snapping and Maximize arrive with V9. EXPORTS reuses the Explorer ledger list. When the
 /// panel is too narrow the src TC goes first, then the selection's length (impl-plan §3.5).
 @MainActor struct TimelineToolbar: View {
     let model: EditorModel
     let shell: WorkspaceShell
+    @Binding var exportsSelected: Bool
+    init(model: EditorModel, shell: WorkspaceShell, exportsSelected: Binding<Bool> = .constant(false)) {
+        self.model = model; self.shell = shell; _exportsSelected = exportsSelected
+    }
     var body: some View {
         HStack(spacing: 6) {
-            Text("Timeline".uppercased())
-                .font(VCType.small.font(.semibold)).tracking(0.55)
-                .foregroundStyle(DesignValues.color("text.primary"))
-                .padding(.horizontal, 6)
-                .frame(maxHeight: .infinity)
-                .overlay(alignment: .bottom) { Rectangle().fill(DesignValues.color("text.primary")).frame(height: 1).padding(.horizontal, 6) }
-                .accessibilityLabel("Timeline").accessibilityAddTraits(.isHeader)
+            panelTab("Timeline", selected: !exportsSelected) { exportsSelected = false }
+            panelTab("Exports", selected: exportsSelected) { exportsSelected = true }
+            if !exportsSelected { transport }
+            Spacer(minLength: 0)
+            TimelineToolbarButton(symbol: "chevron.down.square", name: EditorIconAction.hideTimeline.name, help: "Hide Timeline (⌘J)") { shell.toggleTimeline() }
+                .disabled(!shell.layout.rightVisible)
+                .accessibilityIdentifier("voxclip.timeline.hide")
+        }
+        .padding(.leading, 10).padding(.trailing, 6)
+        .frame(height: TimelineMetrics.toolbar)
+        .overlay(alignment: .bottom) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
+    }
+    private var transport: some View {
+        HStack(spacing: 6) {
             Spacer().frame(width: 10)
             TimelineAxisPicker(model: model)
             Spacer().frame(width: 14)
@@ -72,15 +85,20 @@ import VoxClipCore
                 Color.clear.frame(width: 0, height: 0)
             }
             .layoutPriority(1)
-            Spacer(minLength: 0)
-            TimelineToolbarButton(symbol: "chevron.down.square", name: EditorIconAction.hideTimeline.name, help: "Hide Timeline (⌘J)") { shell.toggleTimeline() }
-                .disabled(!shell.layout.rightVisible)
-                .accessibilityIdentifier("voxclip.timeline.hide")
         }
-        .padding(.leading, 10).padding(.trailing, 6)
-        .frame(height: TimelineMetrics.toolbar)
-        .overlay(alignment: .bottom) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
     }
+    private func panelTab(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title.uppercased()).font(VCType.small.font(.semibold)).tracking(0.55)
+                .foregroundStyle(DesignValues.color(selected ? "text.primary" : "text.tertiary"))
+                .padding(.horizontal, 6).frame(maxHeight: .infinity)
+                .overlay(alignment: .bottom) { if selected { Rectangle().fill(DesignValues.color("text.primary")).frame(height: 1) } }
+        }
+        .buttonStyle(.plain).accessibilityLabel(title)
+        .accessibilityValue(selected ? "Selected" : "")
+        .accessibilityIdentifier("voxclip.timeline.tab." + title.lowercased())
+    }
+
 }
 
 /// Edited / Source (notes.md §6): one state with Show cuts, so it flips the transcript too.

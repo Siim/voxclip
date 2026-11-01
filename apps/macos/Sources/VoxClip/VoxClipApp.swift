@@ -249,8 +249,11 @@ import VoxClipCore
         case 50, 51: keyShell?.showAdjacentTab(item.tag == 50 ? -1 : 1); return
         // Show Cuts is a view setting, so it works in the key window, a Versions window too.
         case 60: if validateMenuItem(item) { keyEditor?.toggleShowsCuts() }; return
-        // Help works on Home and with no project open; both sheets belong to the main window.
-        case 35: MainWindowController.shared.show(); shell.showShortcuts = true; return
+        // Commands belong to the active window; Help also works with no project open.
+        case 35, 61:
+            if let keyShell { keyShell.showCommandPalette = true }
+            else { MainWindowController.shared.show(); shell.showCommandPalette = true }
+            return
         case 36: MainWindowController.shared.show(); model.showTour = true; return
         default: break
         }
@@ -390,7 +393,7 @@ import VoxClipCore
                 let shell = model.shell
                 item.title = shell.layout.timelineVisible ? "Hide Timeline" : "Show Timeline"
                 return mainWindowIsKey && shell.editor != nil && !shell.showsHome && (shell.layout.rightVisible || !shell.layout.timelineVisible)
-            case 35, 36: return true
+            case 35, 36, 61: return true
             case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
             case 60:
                 guard let editor = keyEditor else { return false }
@@ -441,7 +444,7 @@ import VoxClipCore
         if item.action == #selector(revealMedia(_:)) { return editor != nil }
         return true
     }
-    private func installMenus() {
+    func installMenus() {
         // The windows never tab (`tabbingMode = .disallowed`), so AppKit adds no tab items of
         // its own beside the editor's Show Next Tab and Show Previous Tab (⌃Tab, impl-plan V3a).
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -525,6 +528,7 @@ import VoxClipCore
         command(view, "Show Cuts", 60, "c", [.command, .option])
         command(view, "Show Pauses", 11)
         command(view, "Hide Viewer", 12, "i", [.command, .option])
+        command(view, "Search or Run a Command…", 61, "k")
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")
         command(view, "Hide Sidebar", 16, "s", [.command, .control])
@@ -550,7 +554,7 @@ import VoxClipCore
         command(playback, "Back 3 Seconds", 46, "j", [])
         command(playback, "Forward 3 Seconds", 47)
         let clip = menu("Clip")
-        command(clip, "Make Clip from Selection", 29, "k")
+        command(clip, "Make Clip from Selection", 29, "k", [.command, .option])
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
         command(clip, "Cancel Finding Clips", 49, ".")
         command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
@@ -575,8 +579,8 @@ import VoxClipCore
         // The editor's tabs (impl-plan §3.2): ⌃⇧Tab and ⌃Tab, with ⇧⌘[ and ⇧⌘] as hidden alternates.
         command(window, "Show Previous Tab", 50, "\t", [.control, .shift])
         command(window, "Show Next Tab", 51, "\t", [.control])
-        for (tag, key) in [(50, "{"), (51, "}")] {
-            command(window, tag == 50 ? "Show Previous Tab" : "Show Next Tab", tag, key, [.command])
+        for (tag, key) in [(50, "["), (51, "]")] {
+            command(window, tag == 50 ? "Show Previous Tab" : "Show Next Tab", tag, key, [.command, .shift])
             window.items.last?.isHidden = true
             window.items.last?.allowsKeyEquivalentWhenHidden = true
         }

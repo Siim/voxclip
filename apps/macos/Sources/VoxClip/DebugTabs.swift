@@ -249,8 +249,8 @@ import VoxClipCore
         }
         check("Show Next Tab is ⌃⇥ and Show Previous Tab ⌃⇧⇥, with ⇧⌘] and ⇧⌘[ as hidden alternates",
               next.keyEquivalent == "\t" && next.keyEquivalentModifierMask == .control && previous.keyEquivalent == "\t" && previous.keyEquivalentModifierMask == [.control, .shift]
-              && windowMenu?.items.contains { $0.isHidden && $0.keyEquivalent == "}" && $0.allowsKeyEquivalentWhenHidden && $0.tag == next.tag } == true
-              && windowMenu?.items.contains { $0.isHidden && $0.keyEquivalent == "{" && $0.allowsKeyEquivalentWhenHidden && $0.tag == previous.tag } == true)
+              && windowMenu?.items.contains { $0.isHidden && $0.keyEquivalent == "]" && $0.keyEquivalentModifierMask == [.command, .shift] && $0.allowsKeyEquivalentWhenHidden && $0.tag == next.tag } == true
+              && windowMenu?.items.contains { $0.isHidden && $0.keyEquivalent == "[" && $0.keyEquivalentModifierMask == [.command, .shift] && $0.allowsKeyEquivalentWhenHidden && $0.tag == previous.tag } == true)
         shell.selection = .clip(kept[0])
         shell.selection = .clip(kept[1])
         _ = delegate.validateMenuItem(close)

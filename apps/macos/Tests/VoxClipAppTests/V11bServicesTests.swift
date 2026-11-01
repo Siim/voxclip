@@ -99,5 +99,24 @@ private actor SignInConnector: LLMConnector {
         picker.refresh(menu)
         #expect(menu.items.filter { $0.title == "Sign In…" }.count == 1)
     }
+    @Test func timelineExportsUsesTheSameRowsAndActionsAsExplorer() async throws {
+        let app = AppModel(settingsStore: RegressionSettingsStore()), shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
+        let shared = try SharedResources.locate()
+        let fixture = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        let editor = EditorModel(document: VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), app: app)
+        defer { editor.close() }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        app.exportLedger = ExportLedger(file: folder.appendingPathComponent("exports.json"))
+        try app.exportLedger.record(ExportRecord(projectID: editor.project.id, targetID: "five-1", exportedAt: Date(), planFingerprint: "", styleId: "off", aspect: .portrait, outputPath: "", failed: true))
+        let host = NSHostingView(rootView: TimelineExportsList(model: editor))
+        host.frame = NSRect(x: 0, y: 0, width: 800, height: 200); host.layoutSubtreeIfNeeded()
+        let texts = DebugRightColumn.texts(in: host)
+        #expect(texts["timeline.exports"] == "Exports, 1 item")
+        #expect(texts["explorer.export"] == editor.exportsList.rows.first?.accessibilityLabel)
+        #expect(texts["explorer.exportWarning"] == "Export failed")
+        let toolbar = NSHostingView(rootView: TimelineToolbar(model: editor, shell: shell, exportsSelected: .constant(true)))
+        toolbar.frame = NSRect(x: 0, y: 0, width: 800, height: 28); toolbar.layoutSubtreeIfNeeded()
+    }
 }
 #endif

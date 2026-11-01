@@ -22,8 +22,34 @@ import VoxClipCore
             .init(name: "Command shortcuts remain available over focused controls", passed: !AppDelegate.focusedControlKeepsKey(findNext, responder: NSButton()))
         ]
     }
+    /// Headless coverage of impl-plan §3.2, including hidden tab/Keep alternates.
+    static func shortcutChecks(in menu: NSMenu) -> [DebugUISuite.Result] {
+        func walk(_ menu: NSMenu) -> [NSMenuItem] { menu.items.flatMap { [$0] + ($0.submenu.map(walk) ?? []) } }
+        let items = walk(menu)
+        let bindings: [(Int, String, NSEvent.ModifierFlags)] = [
+            (61, "k", .command), (29, "k", [.command, .option]), (34, "k", [.command, .shift]),
+            (60, "c", [.command, .option]), (56, "j", .command), (16, "s", [.command, .control]),
+            (12, "i", [.command, .option]), (50, "\t", [.control, .shift]), (51, "\t", .control),
+            (50, "[", [.command, .shift]), (51, "]", [.command, .shift]),
+            (40, "\r", [.command, .shift]), (38, "r", [.command, .shift]),
+            (24, "j", []), (25, "k", []), (26, "l", []), (30, "i", []), (31, "o", []),
+            (32, "[", []), (33, "]", []), (21, " ", []), (22, " ", .shift), (23, "p", []),
+            (13, "1", .command), (14, "2", .command), (7, "u", [.command, .option]),
+            (8, "p", [.command, .option]), (9, "r", [.command, .option])
+        ]
+        var checks = bindings.map { tag, key, flags in
+            DebugUISuite.Result(name: "keyboard §3.2 tag \(tag) \(flags.rawValue) \(key.debugDescription)", passed: items.contains { $0.tag == tag && $0.keyEquivalent == key && $0.keyEquivalentModifierMask == flags })
+        }
+        checks.append(.init(name: "keyboard §3.2 Close tab is Command-W", passed: items.contains { ["Close Project", "Close Tab", "Close"].contains($0.title) && $0.keyEquivalent == "w" && $0.keyEquivalentModifierMask == .command }))
+        let grouped = Dictionary(grouping: items.filter { !$0.keyEquivalent.isEmpty }) { "\($0.keyEquivalent.lowercased())|\($0.keyEquivalentModifierMask.rawValue)" }
+        let allowed: [Set<String>] = [["Keep Suggestion", "Rename Clip…"], ["Cut Selection", "Dismiss Suggestion", "Remove Clip"], ["Shuttle Back", "Back 3 Seconds"], ["Enter Full Screen", "Toggle Full Screen"]]
+        checks.append(.init(name: "no accidental duplicate menu shortcuts", passed: grouped.values.allSatisfy { $0.count == 1 || allowed.contains(Set($0.map(\.title))) }))
+        let reserved: [(String, NSEvent.ModifierFlags)] = [("\r", .command), (String(UnicodeScalar(NSDeleteCharacter)!), .command), (String(UnicodeScalar(NSUpArrowFunctionKey)!), .option), (String(UnicodeScalar(NSDownArrowFunctionKey)!), .option)]
+        checks.append(.init(name: "transcript hunk keys stay off the native menu", passed: reserved.allSatisfy { key, flags in !items.contains { $0.keyEquivalent == key && $0.keyEquivalentModifierMask == flags } }))
+        return checks
+    }
     static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
-        var results: [DebugUISuite.Result] = []
+        var results = NSApp.mainMenu.map(shortcutChecks) ?? []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         func item(_ menu: String, _ title: String) -> NSMenuItem? {
             let items = NSApp.mainMenu?.item(withTitle: menu)?.submenu
@@ -50,7 +76,7 @@ import VoxClipCore
             ("Edit", "Cut Fillers", "u", [.command, .option]), ("Edit", "Tighten Pauses", "p", [.command, .option]),
             ("Edit", "Restore All Cuts", "r", [.command, .option]), ("View", "Show Cuts", "c", [.command, .option]),
             ("Edit", "Find…", "f", .command), ("Edit", "Find Next", "g", .command), ("Edit", "Find Previous", "g", [.command, .shift]),
-            ("Clip", "Make Clip from Selection", "k", .command), ("Clip", "Cancel Finding Clips", ".", .command),
+            ("Clip", "Make Clip from Selection", "k", [.command, .option]), ("View", "Search or Run a Command…", "k", .command), ("Clip", "Cancel Finding Clips", ".", .command),
             ("Clip", "Keep Suggestion", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),
             ("Clip", "Dismiss Suggestion", String(UnicodeScalar(NSDeleteCharacter)!), []),
             ("Clip", "Rename Clip…", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),
@@ -189,7 +215,6 @@ import VoxClipCore
         check("Command-period cancels the running clip search", search.isCancelled)
         editor.finding = false; editor.findTask = nil
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            try await DebugUISuite.snapshot(ShortcutsView(), name: "keyboard-shortcuts-\(name)", size: NSSize(width: 628, height: 760), appearance: appearance, directory: directory)
             try await DebugUISuite.snapshot(VoiceLabOptInView(editor: editor), name: "voice-lab-opt-in-\(name)", size: NSSize(width: 460, height: 270), appearance: appearance, directory: directory)
         }
         let menus: [[String: Any]] = NSApp.mainMenu?.items.compactMap { parent in

@@ -33,7 +33,7 @@ import VoxClipCore
 /// actions, and on Home the recent projects. Selecting a row scopes the editor; Return
 /// keeps a suggestion, renames a kept clip or opens a Recent row, and Delete dismisses
 /// a suggestion or removes a kept clip. The selected row scrolls into view when the
-/// editor moves it, for example after ⌘K. After Find Clips the first new suggestion is
+/// editor moves it, for example after ⌥⌘K. After Find Clips the first new suggestion is
 /// focused, not selected: Return keeps it, ⌫ dismisses it, and an arrow key selects it.
 @MainActor private struct ExplorerList: View {
     @Bindable var shell: WorkspaceShell
@@ -140,7 +140,7 @@ import VoxClipCore
             Section {
                 if shell.explorerExpanded(.clips) {
                     if editor.keptClips.isEmpty && !editor.words.isEmpty {
-                        Text("No clips yet. Select words and press ⌘K.")
+                        Text("No clips yet. Select words and press ⌥⌘K.")
                             .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary")).selectionDisabled()
                     }
                     ForEach(editor.keptClips, id: \.id) { clip in
@@ -454,7 +454,7 @@ private struct ExplorerVoiceGlyph: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             let untranscribed = SidebarStyle.untranscribedReason(editor)
-            SidebarAction(title: "New Clip from Selection", symbol: "plus", hint: "⌘K", enabled: !editor.selectedIDs.isEmpty, reason: untranscribed) { editor.makeClip() }
+            SidebarAction(title: "New Clip from Selection", symbol: "plus", hint: "⌥⌘K", enabled: !editor.selectedIDs.isEmpty, reason: untranscribed) { editor.makeClip() }
             SidebarAction(title: "Find Clips with AI", symbol: "sparkles", hint: "⇧⌘K", enabled: !editor.words.isEmpty && !editor.finding, reason: untranscribed) { editor.requestFindClips(from: .sidebar) }
                 .popover(isPresented: Binding(get: { editor.showFindClips && editor.findClipsAnchor == .sidebar }, set: { if !$0 { editor.showFindClips = false } }), arrowEdge: .trailing) {
                     FindClipsPopover(model: editor)
@@ -463,7 +463,7 @@ private struct ExplorerVoiceGlyph: View {
                 SidebarCallout {
                     Text("Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.")
                     Button { openVoxClipSettings(pane: "ai") } label: { Text("Set Up AI…").modifier(SidebarActionTarget()) }.controlSize(.small)
-                    Text("You can also select words and press ⌘K to make a clip yourself.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
+                    Text("You can also select words and press ⌥⌘K to make a clip yourself.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
                 }
             } else if let error = editor.clipError, error != EditorModel.noClipsMatched, !editor.finding {
                 SidebarCallout {

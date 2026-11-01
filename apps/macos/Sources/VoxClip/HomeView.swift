@@ -270,28 +270,3 @@ import VoxClipCore
         for remaining in app.recent.reversed() { NSDocumentController.shared.noteNewRecentDocumentURL(remaining) }
     }
 }
-
-@MainActor struct ShortcutsView: View {
-    var rewriteEnabled = false
-    /// The current bindings: "keys|what they do".
-    static let lines = bindings(internalBuild: RewriteEntryPolicy.buildEnabled)
-    nonisolated static func bindings(internalBuild: Bool) -> [String] {
-        var lines: [String] = ["Space|Play / pause", "J / K / L|Back / stop / forward", "Delete / ⇧Delete|Cut / restore selection", "Return / C|Correct spelling", "⌘Z / ⇧⌘Z|Undo / redo", "← / →|Previous / next word", "⌥← / ⌥→|Previous / next sentence", "⇧← / ⇧→|Extend selection", "⌘K|Make clip from selection", "I / O|Set clip start / end", "[ / ]|Previous / next clip", "P|Preview this cut", "⌥⌘U / ⌥⌘P / ⌥⌘R|Cut fillers / tighten / restore", "⌘F / ⌘G / ⇧⌘G|Find / next / previous", "⌘1 / ⌘2|Home / Full Take", "⌃Tab / ⌃⇧Tab|Next / previous tab", "⌘W|Close tab (on Full Take, the project)", "⇧⌘K|Find clips", "Escape|Dismiss selection bar, then Full Take", "⌥⌘I|Show / hide viewer", "⌃⌘S|Show / hide sidebar", "⌘J|Show / hide timeline", "⌥⌘C|Show / hide cuts", "⌘+ / ⌘− / ⌘0|Text size", "⌘E / ⌘O / ⌘,|Export / open / settings"]
-        if internalBuild, let index = lines.firstIndex(of: "⇧⌘K|Find clips") { lines.insert("⇧⌘R|Rewrite", at: index + 1) }
-        return lines
-    }
-    @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Keyboard shortcuts").font(.title2)
-            Text("Select words in the transcript. Single-letter keys work in the editor, never while typing a correction or in a text field.").foregroundStyle(.secondary)
-            Grid(alignment: .leading, horizontalSpacing: 40, verticalSpacing: 8) {
-                ForEach(Self.lines.filter { rewriteEnabled || $0 != "⇧⌘R|Rewrite" }, id: \.self) { line in
-                    let parts = line.split(separator: "|")
-                    GridRow { Text(parts[0]).font(DesignValues.mono()); Text(parts[1]) }
-                }
-            }
-            HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
-        }.padding(24).frame(width: 580)
-    }
-}

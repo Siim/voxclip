@@ -125,8 +125,8 @@ enum SidebarItem: Hashable {
             if abs(newValue - old) > 0.5 { fitColumns() }
         }
     }
-    /// Help > Keyboard Shortcuts (⌘/), also on Home.
-    var showShortcuts = false
+    /// The in-window command field (⌘K), also on Home.
+    var showCommandPalette = false
     /// The right column was collapsed by the window's width, not by the user.
     @ObservationIgnored private var rightHiddenByWidth = false
     /// The Explorer was collapsed by the window's width, not by the user.
