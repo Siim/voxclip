@@ -6,7 +6,8 @@ import Testing
 @testable import VoxClip
 
 /// The tab row's Show cuts toggle (impl-plan V8b) without a window: its place before ⋯, that
-/// it follows View › Show Cuts, and its keyboard focus ring. Settings are never loaded.
+/// it follows View › Show Cuts, the menu item in a Versions window, and its keyboard focus
+/// ring. Settings are never loaded.
 @Suite("Show cuts toggle", .serialized)
 @MainActor struct ShowCutsToggleTests {
     private func editor(_ app: AppModel) throws -> EditorModel {
@@ -31,6 +32,34 @@ import Testing
         // A click on the toggle turns it off again, for the menu's checkmark too.
         work.showCuts.performClick(nil)
         #expect(!model.showsCuts && work.showCuts.state == .off)
+    }
+
+    /// The toggle's ⌥⌘C hint holds in a Versions window, whose tab row has the toggle too:
+    /// View › Show Cuts (tag 60) acts on the key window's editor, as the tab commands do. A
+    /// view setting, so it never writes the read-only version.
+    @Test func viewShowCutsActsOnTheKeyVersionsWindow() throws {
+        _ = NSApplication.shared
+        let shared = try SharedResources.locate()
+        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        let version = VoxClipDocument(project: project, demo: true)
+        version.versionForTesting = true
+        let controller = VersionWindowController(version: version, app: AppModel())
+        defer { version.close() }
+        let editor = try #require(controller.shell.editor)
+        let delegate = AppDelegate()
+        let item = NSMenuItem(title: "Show Cuts", action: NSSelectorFromString("performEditorCommand:"), keyEquivalent: "c")
+        item.keyEquivalentModifierMask = [.command, .option]
+        item.tag = 60
+        let action = try #require(item.action)
+        #expect(delegate.responds(to: action))
+        delegate.commandWindowForTesting = controller.window
+        defer { delegate.commandWindowForTesting = nil }
+        #expect(delegate.validateMenuItem(item) && item.state == .off && !editor.showsCuts)
+        _ = delegate.perform(action, with: item)
+        #expect(editor.showsCuts && delegate.validateMenuItem(item) && item.state == .on)
+        _ = delegate.perform(action, with: item)
+        #expect(!editor.showsCuts && delegate.validateMenuItem(item) && item.state == .off)
+        #expect(!editor.capabilities.writable && !version.isDocumentEdited && !version.hasUnautosavedChanges)
     }
 
     @Test func theToggleDrawsAFocusRingAroundItsRoundedBox() throws {

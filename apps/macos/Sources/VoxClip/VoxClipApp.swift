@@ -178,6 +178,12 @@ import VoxClipCore
         #endif
         return (NSApp.keyWindow?.windowController as? ShellWindowController)?.shell
     }
+    /// The editor showing in the key window, the main window's or a Versions window's.
+    /// View settings that never write the project (Show Cuts) act on it.
+    private var keyEditor: EditorModel? {
+        guard let shell = keyShell, !shell.showsHome else { return nil }
+        return shell.editor
+    }
     @objc private func newProject(_ sender: Any?) { chooseFile(app: model, moviesOnly: true) }
     @objc private func openProject(_ sender: Any?) { chooseFile(app: model) }
     /// ⌘W closes a clip or suggestion tab (impl-plan item 5). On Full Take it closes the
@@ -241,6 +247,8 @@ import VoxClipCore
         case 56: if validateMenuItem(item) { shell.toggleTimeline() }; return
         // Tabs work in the key window, a Versions window too (impl-plan V3a).
         case 50, 51: keyShell?.showAdjacentTab(item.tag == 50 ? -1 : 1); return
+        // Show Cuts is a view setting, so it works in the key window, a Versions window too.
+        case 60: if validateMenuItem(item) { keyEditor?.toggleShowsCuts() }; return
         // Help works on Home and with no project open; both sheets belong to the main window.
         case 35: MainWindowController.shared.show(); shell.showShortcuts = true; return
         case 36: MainWindowController.shared.show(); model.showTour = true; return
@@ -261,7 +269,6 @@ import VoxClipCore
         case 9: editor.apply(.restoreCuts, name: "Restore cuts")
         case 11: editor.showPauses.toggle()
         case 12: model.shell.toggleViewer()
-        case 60: editor.toggleShowsCuts()
         case 18: editor.zoom(1)
         case 19: editor.zoom(-1)
         case 20: editor.zoom(0)
@@ -370,6 +377,10 @@ import VoxClipCore
                 return mainWindowIsKey && shell.editor != nil && !shell.showsHome && (shell.layout.rightVisible || !shell.layout.timelineVisible)
             case 35, 36: return true
             case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
+            case 60:
+                guard let editor = keyEditor else { return false }
+                item.state = editor.showsCuts ? .on : .off
+                return true
             default: break
             }
             guard let editor else { return false }
@@ -405,7 +416,6 @@ import VoxClipCore
             case 9: return editor.capabilities.edit && editor.summary.hasEdits
             case 30, 31: return editor.capabilities.edit && editor.activeClip != nil
             case 34: return editor.capabilities.ai && !editor.words.isEmpty
-            case 60: item.state = editor.showsCuts ? .on : .off
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
             case 12: item.title = model.shell.viewerShown ? "Hide Viewer" : "Show Viewer"
             case 52, 53, 54, 55:
