@@ -18,7 +18,7 @@ extension HeavyMediaTests {
         let directory = try UIProcessHarness.run(mode: "-captionGalleryAudit", name: "caption-gallery")
         defer { UIProcessHarness.cleanTemporary(directory) }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
-        #expect(report.count == 64)
+        #expect(report.count == 68)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
         struct Measurement: Decodable {
             let name: String
@@ -60,6 +60,7 @@ extension HeavyMediaTests {
             let scrollFrames: [CGRect]
             let scrollClipping: [Bool]
             let viewOverflow: [String]
+            let markers: [String: CGRect]
         }
         let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
         #expect(heights.count == 55)
@@ -75,7 +76,9 @@ extension HeavyMediaTests {
             #expect(measurement.scrollClipping.allSatisfy { $0 })
             #expect(measurement.viewOverflow.isEmpty, Comment(rawValue: "\(measurement.variant) at \(measurement.width)x\(measurement.height)"))
             if !measurement.variant.hasPrefix("rewrite") {
-                #expect(viewport.maxY <= measurement.height - 15.5)
+                // Captions (impl-plan V5): the gallery ends where the property rows start, and they end at the body's bottom.
+                let properties = try #require(measurement.markers["captions.properties"], Comment(rawValue: measurement.variant))
+                #expect(viewport.maxY <= properties.minY + 0.5 && abs(properties.maxY - measurement.height) <= 0.5)
             }
             if measurement.width == 404 && measurement.height == 522 {
                 // notes.md §1 at 1280 × 800: the 404 × 227 viewer, the frame fitted in it (f5's 128-wide 9:16), and no Rewrite compaction.

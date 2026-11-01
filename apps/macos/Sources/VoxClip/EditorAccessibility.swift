@@ -10,7 +10,6 @@ struct EditorAccessibilityPolicy: Equatable {
     var transcriptScrollDuration: Double { reduceMotion ? 0 : 0.12 }
     var timelineZoomDuration: Double { reduceMotion ? 0 : 0.24 }
     var crossfadeDuration: Double { reduceMotion ? 0 : 0.12 }
-    static let staticCaptionTiles = true
     #if DEBUG
     static var reducedEffectsAudit: Bool {
         let arguments = ProcessInfo.processInfo.arguments

@@ -13,10 +13,14 @@ import VoxClipCore
 }
 
 @MainActor enum DebugCaptionsSection {
+    /// The least glyph height, in 1x pixels, a gallery tile `width` points wide keeps: the old
+    /// gallery's 8 from the 1280 column's 118.67 pt tile up, and 6 in the narrowest column's
+    /// 84 pt tile, where an uppercase style sets "AND ONE COOL" at the 8 pt floor
+    /// (`CardFit.galleryTile`). DebugRound4, `run` and the App tests share it.
+    static func minimumTileGlyph(width: CGFloat) -> Int { width >= 118 ? 8 : 6 }
     static func run(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
-        check("bundled caption styles have no Other group", app.styles.allSatisfy { CaptionStyleGroup.group(for: $0) != .other })
         var reveal = CaptionGalleryReveal()
         let size = CGSize(width: 294, height: 272)
         let firstRequest = CaptionGalleryRequest(selection: "full/vox-highlight", size: size, fineTune: false)
@@ -38,95 +42,81 @@ import VoxClipCore
         check("Box highlight Edited resolves Paper, As said and three words", model.captionsEdited && model.captionSummary == "Paper · As said · 3 words")
         model.setCaptionsEnabled(false); model.setCaptionsEnabled(true)
         check("Captions off then on restores Box highlight", model.project.captions.styleId == "box-highlight")
-        guard let boxed = app.styles.first(where: { $0.id == "box-highlight" }), let other = app.styles.first(where: { $0.id != boxed.id }), let resources = app.captionResources else { throw CocoaError(.fileReadCorruptFile) }
-        let input = model.captionTileInput(boxed)
-        check("only the selected gallery tile receives project overrides", input.overrides == project.captions.overrides && model.captionTileInput(other).overrides.isEmpty)
-        let expected = CaptionGalleryPages(project: model.project, scope: .fullTake, style: boxed, wordsVisible: true, resources: resources).sample(at: model.playhead)
-        check("gallery sample comes from the Core page at the edited playhead", input.sample == expected)
+        guard let boxed = app.styles.first(where: { $0.id == "box-highlight" }), let other = app.styles.first(where: { $0.id != boxed.id }) else { throw CocoaError(.fileReadCorruptFile) }
+        let width = CaptionsPanelMetrics.tileWidth(panelWidth: 404)
+        let input = model.captionTileInput(boxed, width: width)
+        check("only the selected gallery tile receives project overrides", input.overrides == project.captions.overrides && model.captionTileInput(other, width: width).overrides.isEmpty)
+        check("every gallery tile shows \"and one cool\", drawn in \"cool\", in a 40-point tile that draws plates", app.styles.allSatisfy { style in
+            let tile = model.captionTileInput(style, width: width)
+            return tile.text.words.map(\.text) == ["and", "one", "cool"] && tile.text.keyIndex == 2 && tile.language == "en"
+                && tile.fit.height == 80 && tile.fit.width == 236 && tile.fit.surface.drawsPlates && tile.fit.surface.lineLimit == 1
+        })
+        let resting = model.captionTileInput(other, width: width)
         let visible = app.bool("general.showPlaceholderWords", fallback: true)
-        app.set("general.showPlaceholderWords", .bool(false))
-        let preview = model.captionTileInput(boxed)
-        check("hidden placeholder words use the style's English preview sample", preview.sample == CaptionGallerySample.preview(boxed) && preview.language == "en")
+        model.playhead = 4.2
+        app.set("general.showPlaceholderWords", .bool(!visible))
+        check("a gallery tile follows neither the playhead nor Settings' placeholder words", model.captionTileInput(other, width: width) == resting)
         app.set("general.showPlaceholderWords", .bool(visible))
-        model.progress = "Transcribing"; model.progressStage = .transcribing
-        let loading = model.captionTileInput(boxed)
-        check("transcribing without a frame uses stage black and the style preview sample", loading.loading && loading.sample == CaptionGallerySample.preview(boxed))
-        model.progress = nil; model.progressStage = nil
+        model.playhead = 0
         let state = CaptionTileState()
         let gate = CaptionRaceGate()
         let older = Task { await state.load(input) { _ in await gate.wait(); return nil } }
         while !gate.waiting { await Task.yield() }
-        let newest = NSImage(size: CGSize(width: 2, height: 2))
+        let newest = CGContext(data: nil, width: 2, height: 2, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage()
         await state.load(input) { _ in newest }
         older.cancel(); gate.release(); await older.value
-        check("a cancelled older gallery request finishing last never overwrites the new image", state.image === newest)
-        let white = CGContext(data: nil, width: 320, height: 180, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-        white.setFillColor(NSColor.white.cgColor); white.fill(CGRect(x: 0, y: 0, width: 320, height: 180))
-        let fallback = app.captions.tileBackdrop(input, still: white.makeImage())
-        let pixel = fallback?.cgImage(forProposedRect: nil, context: nil, hints: nil).map { NSBitmapImageRep(cgImage: $0) }?.colorAt(x: 2, y: 2)?.usingColorSpace(.sRGB)
-        let fallbackMatches: Bool = pixel.map { (color: NSColor) -> Bool in abs(color.redComponent - 0.65) < 0.02 && abs(color.greenComponent - 0.65) < 0.02 } ?? false
-        check("gallery fallback draws the same 35-percent-dim frame band without text", fallbackMatches)
-        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            for captionStyle in app.styles {
-                var tileInput = model.captionTileInput(captionStyle)
-                tileInput.frameAvailable = false
-                tileInput.backdrop = name == "light" ? "#4B4B4B" : "#181818"
-                guard let image = await app.captions.tile(tileInput),
-                      let source = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-                      let bitmap = tileBitmap(source, width: 140, height: 63) else {
-                    check("\(name) \(captionStyle.id) gallery text raster exists", false)
-                    continue
-                }
-                let height = glyphPixelHeight(bitmap)
-                check("\(name) \(captionStyle.id) gallery text is at least 8 px at 1x (\(height))", height >= 8)
-                check("\(name) \(captionStyle.id) gallery has no clipped edge glyph", !edgeHasGlyph(bitmap))
-                if let data = bitmap.representation(using: .png, properties: [:]) {
-                    try data.write(to: directory.appendingPathComponent("tile-\(captionStyle.id)-\(name)-1x.png"))
-                }
-                tileInput.tileSize = PixelSize(width: 128, height: 72)
-                tileInput.overrides = [:]
-                if let chip = await app.captions.tile(tileInput),
-                   let source = chip.cgImage(forProposedRect: nil, context: nil, hints: nil),
-                   let bitmap = tileBitmap(source, width: 64, height: 36) {
-                    let height = glyphPixelHeight(bitmap)
-                    check("\(name) \(captionStyle.id) live chip text is at least 8 px at 1x (\(height))", height >= 8)
-                    check("\(name) \(captionStyle.id) live chip has no clipped edge glyph", !edgeHasGlyph(bitmap))
-                    if let data = bitmap.representation(using: .png, properties: [:]) {
-                        try data.write(to: directory.appendingPathComponent("chip-\(captionStyle.id)-\(name)-1x.png"))
-                    }
-                } else { check("\(name) \(captionStyle.id) live chip text raster exists", false) }
+        check("a cancelled older gallery request finishing last never overwrites the new image", newest != nil && state.image === newest)
+        for captionStyle in CaptionsSection.galleryOrder(app.styles) {
+            let tileInput = model.captionTileInput(captionStyle, width: width)
+            guard let image = await app.captions.card(tileInput),
+                  let bitmap = tileBitmap(image, width: tileInput.fit.width / 2, height: tileInput.fit.height / 2) else {
+                check("\(captionStyle.id) gallery tile raster exists", false)
+                continue
             }
-            for width in [360, 320] {
-                let view = NSHostingView(rootView: CaptionsSection(model: model).frame(width: CGFloat(width), height: 530).background(DesignValues.color("bg.surface")))
-                view.frame = CGRect(x: 0, y: 0, width: width, height: 530)
+            let height = glyphPixelHeight(bitmap), minimum = minimumTileGlyph(width: width)
+            check("\(captionStyle.id) gallery tile text is at least \(minimum) px at 1x (\(height))", height >= minimum)
+            check("\(captionStyle.id) gallery tile has no clipped edge glyph", !edgeHasGlyph(bitmap))
+            if let data = bitmap.representation(using: .png, properties: [:]) {
+                try data.write(to: directory.appendingPathComponent("tile-\(captionStyle.id)-1x.png"))
+            }
+        }
+        for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            // The panel body at 1280 × 800 (404 × 265) and in the narrowest column.
+            for panelWidth in [404, 300] {
+                let frame = CGRect(x: 0, y: 0, width: panelWidth, height: 265)
+                let view = NSHostingView(rootView: CaptionsSection(model: model, width: frame.width).frame(width: frame.width, height: frame.height).background(DesignValues.color("bg.window")))
+                view.frame = frame
                 let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
                 window.isReleasedWhenClosed = false; window.contentView = view; window.appearance = NSAppearance(named: appearance)
-                view.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(650))
+                view.layoutSubtreeIfNeeded(); try await Task.sleep(for: .milliseconds(650)); view.layoutSubtreeIfNeeded()
                 if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                     view.cacheDisplay(in: view.bounds, to: bitmap)
                     let rendered = try recognizedText(bitmap.cgImage)
-                    check("\(width) \(name) rendered summary includes Paper, As said and 3 words without truncation", rendered.contains("Paper") && rendered.contains("As said") && rendered.contains("3 words") && !rendered.contains("…"))
-                    if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("captions-\(width)-\(name).png")) }
+                    check("\(panelWidth) \(name) rendered panel shows STYLE, the property rows and Box highlight's values without truncation (\(rendered))",
+                          rendered.contains("STYLE") && rendered.contains("Words per caption") && rendered.contains("Up to 3") && rendered.contains("As said")
+                            && rendered.contains("Position") && rendered.contains("Box highlight") && !rendered.contains("Captions") && !rendered.contains("…"))
+                    if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("captions-\(panelWidth)-\(name).png")) }
                 }
                 window.close()
             }
             model.setCaptionsEnabled(false)
-            let offView = NSHostingView(rootView: CaptionsSection(model: model).frame(width: 360, height: 160).background(DesignValues.color("bg.surface")))
-            offView.frame = CGRect(x: 0, y: 0, width: 360, height: 160)
+            let offView = NSHostingView(rootView: CaptionsSection(model: model, width: 404).frame(width: 404, height: 265).background(DesignValues.color("bg.window")))
+            offView.frame = CGRect(x: 0, y: 0, width: 404, height: 265)
             let offWindow = NSWindow(contentRect: offView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
             offWindow.isReleasedWhenClosed = false; offWindow.contentView = offView; offWindow.appearance = NSAppearance(named: appearance)
             offView.layoutSubtreeIfNeeded()
             if let bitmap = offView.bitmapImageRepForCachingDisplay(in: offView.bounds) {
                 offView.cacheDisplay(in: offView.bounds, to: bitmap)
                 let rendered = try recognizedText(bitmap.cgImage)
-                let offLabels = rendered.components(separatedBy: "Off").count - 1
-                check("\(name) Off is rendered inside the live chip as well as its style label", offLabels >= 2)
+                let rings = DebugRightColumn.markers(in: offView).keys.filter { $0.hasPrefix("caption.ring.") }
+                check("\(name) with captions off the switch reads Off and no tile is selected", rendered.contains("Off") && rings.isEmpty
+                      && DebugRightColumn.texts(in: offView)["header.captions.switch"] == "Off")
                 if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("captions-off-\(name).png")) }
             }
             offWindow.close()
             model.setCaptionsEnabled(true)
-            let fineView = NSHostingView(rootView: CaptionsSection(model: model, fineTune: true).frame(width: 360, height: 530).background(DesignValues.color("bg.surface")))
-            fineView.frame = CGRect(x: 0, y: 0, width: 360, height: 530)
+            let fineView = NSHostingView(rootView: CaptionsSection(model: model, fineTune: true, width: 404).frame(width: 404, height: 530).background(DesignValues.color("bg.window")))
+            fineView.frame = CGRect(x: 0, y: 0, width: 404, height: 530)
             let fineWindow = NSWindow(contentRect: fineView.frame, styleMask: [.borderless], backing: .buffered, defer: false)
             fineWindow.isReleasedWhenClosed = false; fineWindow.contentView = fineView; fineWindow.appearance = NSAppearance(named: appearance)
             fineWindow.setAccessibilityIdentifier("caption-fine-tune-\(name)")
@@ -144,6 +134,7 @@ import VoxClipCore
                 }
                 let labels = nativeWindow.map { (element: AXUIElement) -> [String] in accessibilityLabels(element) } ?? []
                 check("\(name) Reset to Style is the accessible action label", labels.contains("Reset to Style"))
+                check("\(name) the property menus are named by their rows", ["Words per caption", "Case", "Position", "Size"].allSatisfy(labels.contains))
                 try JSONEncoder().encode(labels).write(to: directory.appendingPathComponent("captions-fine-tune-\(name)-ax.json"))
                 if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("captions-fine-tune-\(name).png")) }
             }

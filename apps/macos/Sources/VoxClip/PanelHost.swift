@@ -84,9 +84,9 @@ extension WorkspaceShell {
     /// notes.md §1: a 30 pt header (1 pt hairlines above and below its 28 pt row).
     static let headerHeight: CGFloat = 30
     /// The panel body keeps at least this much below the header, so its job stays usable in
-    /// the shortest column: at the 960 × 600 window minimum (324 × 322), Captions' fixed
-    /// header and padding leave its gallery a 54 pt scroll, and a resting Rewrite a 99 pt one
-    /// (with the full 16:9 box Captions had 4). It is no more than the 1280 × 700 body
+    /// the shortest column: at the 960 × 600 window minimum (324 × 322), Captions keeps its
+    /// STYLE row, a 77 pt gallery that shows its first row of tiles whole, and two property
+    /// rows (V5), and a resting Rewrite a 99 pt scroll. It is no more than the 1280 × 700 body
     /// (165), so the box stays 16:9 at 1280 × 700 and above.
     static let bodyMinimum: CGFloat = 160
     /// The viewer's height in a column `width` × `height`: 16:9 of the width (227 at 404),
@@ -104,7 +104,7 @@ extension WorkspaceShell {
             PanelHeader(model: model, shell: shell, job: job)
             Group {
                 if job == .rewrite, let session = model.panelRewrite { RewritePanel(session: session) }
-                else { CaptionsSection(model: model, fineTune: fineTune).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+                else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .controlSize(.small)

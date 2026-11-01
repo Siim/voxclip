@@ -30,37 +30,26 @@ import Darwin
         print("Mac redesign non-window checks: \(results.filter(\.passed).count)/\(results.count). Native UI and save-boundary gates are separate.")
         exit(results.allSatisfy(\.passed) ? 0 : 1)
     }
+    /// Every style's gallery tile (ux/v2 notes.md §7) at the narrowest, the 1280 and the widest
+    /// right column: "and one cool" drawn legibly, whole, inside the tile.
     private static func gallery(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         let editor = EditorModel(document: VoxClipDocument(project: fixture), app: app, preview: DemoPreviewEngine())
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()
-        for appearance in ["light", "dark"] {
-            for width in [320, 360] {
-                let paneWidth: Int = width - 40
-                let tileWidth: Int = paneWidth / 2
-                let targetWidth: Double = Double(tileWidth)
-                let rawHeight: Double = targetWidth * 0.45
-                let tileHeight: Int = Int(rawHeight.rounded())
-                for style in app.styles {
-                    for chip in [false, true] {
-                        let outputWidth: Int = chip ? 64 : tileWidth
-                        let outputHeight: Int = chip ? 36 : tileHeight
-                        var input = editor.captionTileInput(style)
-                        input.frameAvailable = false
-                        input.backdrop = appearance == "light" ? "#4B4B4B" : "#181818"
-                        input.tileSize = PixelSize(width: outputWidth * 2, height: outputHeight * 2)
-                        guard let image = await app.captions.tile(input), let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-                              let bitmap = DebugCaptionsSection.tileBitmap(cg, width: outputWidth, height: outputHeight) else {
-                            results.append(.init(name: "\(style.id) gallery raster exists", passed: false)); continue
-                        }
-                        let height = DebugCaptionsSection.glyphPixelHeight(bitmap)
-                        let label = "\(appearance)-\(width)-\(style.id)-\(chip ? "chip" : "tile")"
-                        results.append(.init(name: "\(label) glyph height ≥8px (\(height))", passed: height >= 8))
-                        results.append(.init(name: "\(label) no edge-clipped word", passed: !DebugCaptionsSection.edgeHasGlyph(bitmap)))
-                        if let bytes = bitmap.representation(using: .png, properties: [:]) { try bytes.write(to: directory.appendingPathComponent(label + ".png")) }
-                    }
+        for column: CGFloat in [300, 404, 560] {
+            let width = CaptionsPanelMetrics.tileWidth(panelWidth: column)
+            for style in app.styles {
+                let input = editor.captionTileInput(style, width: width)
+                let label = "\(Int(column))-\(style.id)-tile"
+                guard let image = await app.captions.card(input),
+                      let bitmap = DebugCaptionsSection.tileBitmap(image, width: input.fit.width / 2, height: input.fit.height / 2) else {
+                    results.append(.init(name: "\(label) raster exists", passed: false)); continue
                 }
+                let height = DebugCaptionsSection.glyphPixelHeight(bitmap), minimum = DebugCaptionsSection.minimumTileGlyph(width: width)
+                results.append(.init(name: "\(label) glyph height ≥\(minimum)px (\(height))", passed: height >= minimum))
+                results.append(.init(name: "\(label) no edge-clipped word", passed: !DebugCaptionsSection.edgeHasGlyph(bitmap)))
+                if let bytes = bitmap.representation(using: .png, properties: [:]) { try bytes.write(to: directory.appendingPathComponent(label + ".png")) }
             }
         }
         return results

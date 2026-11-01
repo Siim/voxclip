@@ -63,8 +63,6 @@ struct EditorRenderSnapshot {
     var paneFocusRequest = 0
     var scopeScrollRevision = 0
     var lastStyleId: String?
-    @ObservationIgnored private var galleryKey = ""
-    @ObservationIgnored private var galleryPages: [String: CaptionGalleryPages] = [:]
     var showVoiceLabOptIn = false
     var rewriteInsertionAfterID: String?
     @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
@@ -1084,28 +1082,6 @@ struct EditorRenderSnapshot {
             if !forPreview || voiceLab != nil { throw error }
             return nil
         }
-    }
-    func captionTileInput(_ style: CaptionStyle) -> CaptionTileInput {
-        let visible = app.bool("general.showPlaceholderWords", fallback: true)
-        let key = "\(projectRevision):\(activeClip?.id ?? "full"):\(visible)"
-        if galleryKey != key { galleryKey = key; galleryPages = [:] }
-        let scope: CaptionCardScope = activeClip.map { .clip($0.id) } ?? .fullTake
-        if galleryPages[style.id] == nil, let resources = app.captionResources {
-            galleryPages[style.id] = CaptionGalleryPages(project: project, scope: scope, style: style, wordsVisible: visible, resources: resources)
-        }
-        let sample = transcriptionStatus != nil ? CaptionGallerySample.preview(style) : galleryPages[style.id]?.sample(at: playhead) ?? CaptionGallerySample.preview(style)
-        let selected = style.id == project.captions.styleId
-        let overrides = selected ? project.captions.overrides : [:]
-        let placement = selected && style.position.userDraggable ? project.captions.positionByAspect[captionPreset.rawValue] ?? project.captions.position : nil
-        let resolved = (try? style.resolved(overrides: overrides, frame: outputSpec().size)) ?? style
-        let lower = activeClip.flatMap { clip in index(clip.startWordId).map { words[$0].start } } ?? 0
-        let upper = activeClip.flatMap { clip in index(clip.endWordId).map { words[$0].end } } ?? sourceDuration
-        let time = (floor(sourceTime * 4) / 4).clamped(to: lower...max(lower, upper))
-        let frameAvailable = !document.demo && mediaResolved && !mediaUnreadable && project.media.source.video != nil
-        let loading = mediaStatus == .loading || (transcriptionStatus != nil && !frameAvailable)
-        return CaptionTileInput(state: nil, plan: nil, style: style, sampleWords: sample.words.map(\.text), language: sample.source == .preview ? "en" : project.transcript?.language, frame: outputSpec().size, overrides: overrides, position: placement, sourceURL: sourceURL, sourceTime: time,
-                                sample: sample, backdrop: CaptionCardLook.backdrop(resolved, previewBackground: app.previewBackgrounds[style.id]), frameAvailable: frameAvailable, loading: loading,
-                                contentKey: project.media.source.contentKey)
     }
     func outputSpec() -> OutputSpec {
         ExportFingerprint.output(project)
