@@ -69,6 +69,10 @@ struct EditorRenderSnapshot {
     /// Voice Lab's one-time beta sheet (voice-lab.md §5); R2's Turn On Voice Lab… opens it (V15).
     var showVoiceLabOptIn = false
     @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
+    #if DEBUG
+    /// Tests answer "Discard these {c} changes?" with the count it asked about; true discards.
+    @ObservationIgnored var discardAnswerForTests: ((Int) -> Bool)?
+    #endif
     /// The Ask field's text (design.md §6.3.1): what the next Rewrite asks; empty asks Fix mistakes. The clip bar's field
     /// binds it once V3b adds it, and the passage panel's field until then. In memory only.
     var rewriteInstruction = ""
@@ -110,21 +114,11 @@ struct EditorRenderSnapshot {
     func runRewrite(scope requested: RewriteScope? = nil, instruction: String? = nil) {
         guard let scope = requested ?? rewriteScopeNow, RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: scope) else { return }
         let instruction = instruction ?? rewriteInstruction
-        rewriteOpenTask?.cancel()
         if let session = rewrite, session.isOpen, session.rewriteScope == scope {
-            guard !session.isProposing else { return }
-            // A proposal with takes asks first (design.md §6.3.1 "Proposal open"); edited changes join with V14.
-            let takes = session.generation?.rows.isEmpty == false
-            let count = if case .proposal(let set) = session.task.state { set.items.count } else { 0 }
-            rewriteOpenTask = Task { [weak self] in
-                guard let self else { return }
-                if takes && count > 0 { guard await confirmDiscard(count) else { return } }
-                guard !Task.isCancelled, session.isOpen else { return }
-                session.actionTask?.cancel()
-                session.actionTask = Task { _ = await session.run(instruction: instruction) }
-            }
+            sendRewriteAgain(session, instruction: instruction)
             return
         }
+        rewriteOpenTask?.cancel()
         closeRewrite(returnFocus: false)
         let snapshot = project
         let selection = selectedWordIDs
@@ -138,8 +132,27 @@ struct EditorRenderSnapshot {
             openRewriteSession(scope: scope, instruction: instruction)
         }
     }
+    /// Sends `session` again, asking `instruction` when given: ⇧⌘R and the menu on its scope, and R3's Rewrite Again. A
+    /// proposal with takes, R2's or the one R3 set aside, asks first (design.md §6.3.1 "Proposal open"); edited changes
+    /// join with V14.
+    func sendRewriteAgain(_ session: RewriteSession, instruction: String? = nil) {
+        guard session.isOpen, !session.isProposing else { return }
+        rewriteOpenTask?.cancel()
+        let takes = session.generation?.rows.isEmpty == false
+        let count = session.proposalCount
+        rewriteOpenTask = Task { [weak self] in
+            guard let self else { return }
+            if takes && count > 0 { guard await confirmDiscard(count) else { return } }
+            guard !Task.isCancelled, session.isOpen else { return }
+            session.actionTask?.cancel()
+            session.actionTask = Task { _ = await session.run(instruction: instruction) }
+        }
+    }
     /// "Discard these {c} changes?" with Keep Working, the default, and Discard Changes. True discards.
     private func confirmDiscard(_ count: Int) async -> Bool {
+        #if DEBUG
+        if let discardAnswerForTests { return discardAnswerForTests(count) }
+        #endif
         guard let window else { return false }
         let alert = NSAlert()
         alert.messageText = count == 1 ? "Discard this change?" : "Discard these \(count) changes?"

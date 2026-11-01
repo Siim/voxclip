@@ -288,6 +288,7 @@ private struct ScopeTakeKeys: KeyProvider {
         #expect(proposal(session) == set && session.current)
         step(undo) { editor.apply(.cutSelection(ids: ["w20"]), name: "Cut selection") }
         task.footer.primary?.perform()
+        await editor.rewriteOpenTask?.value
         await session.actionTask?.value
         #expect(proposal(session) != nil && session.task.turn == 2 && session.project == editor.project)
         #expect(await stub.requests.count == 2)
@@ -323,6 +324,36 @@ private struct ScopeTakeKeys: KeyProvider {
         step(undo) { editor.keep("c2") }
         #expect(!editor.isSuggestion("c2") && proposal(suggestion) == suggested && suggestion.current && suggestion.isOpen)
         #expect(!editor.announcements.contains("Clip 2 changed."))
+    }
+
+    /// In R3, Rewrite Again and ⇧⌘R would drop the takes R3 says are kept: they ask "Discard this change?" for the
+    /// proposal set aside first, and Keep Working sends nothing.
+    @Test func rewriteAgainInR3AsksBeforeDiscardingTakes() async throws {
+        let stub = ScopeStub()
+        let (app, _) = app("ollama", stub: stub)
+        enableVoiceLab(app)
+        let (editor, undo) = try editor(app)
+        defer { editor.close() }
+        let session = try await rewrite(editor)
+        let generation = try giveTake(session, editor: editor)
+        #expect(!generation.rows.isEmpty && session.proposalCount == 1)
+        step(undo) { editor.apply(.cutSelection(ids: ["w20"]), name: "Cut selection") }
+        #expect(session.task.state == .changed && session.proposalCount == 1)
+        #expect(texts(session.task).first?.hasSuffix("Your takes are kept until you close this.") == true)
+        var asked: [Int] = []
+        editor.discardAnswerForTests = { asked.append($0); return false }
+        session.task.footer.primary?.perform()
+        await editor.rewriteOpenTask?.value
+        editor.runRewrite()
+        await editor.rewriteOpenTask?.value
+        #expect(asked == [1, 1] && session.generation === generation && session.task.state == .changed)
+        #expect(await stub.requests.count == 1)
+        editor.discardAnswerForTests = { asked.append($0); return true }
+        session.task.footer.primary?.perform()
+        await editor.rewriteOpenTask?.value
+        await session.actionTask?.value
+        #expect(asked == [1, 1, 1] && session.generation == nil && proposal(session) != nil)
+        #expect(await stub.requests.count == 2)
     }
 
     /// While a take publishes for Use Takes, the user's edits are still followed: one outside the clip moves the session

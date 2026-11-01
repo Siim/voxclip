@@ -461,6 +461,14 @@ struct RewriteChange: Equatable, Sendable {
         let all = changes.count == free
         return free == 1 ? (all ? "Apply 1 Change" : "Apply 1 Free Change") : (all ? "Apply \(free) Changes" : "Apply \(free) Free Changes")
     }
+    /// The changes a new run discards: the proposal's, or in R3 those of the proposal set aside.
+    var proposalCount: Int {
+        switch task.state {
+        case .proposal(let set): return set.items.count
+        case .changed: return setAside?.changes.items.count ?? 0
+        default: return 0
+        }
+    }
     /// Applies the included cuts and fixes as one undo step named for the scope ("Rewrite clip 1", design.md R2), announces
     /// "Applied {c} changes", closes Rewrite and moves focus to the first changed word.
     @discardableResult func applyFreeChanges() -> Bool {
@@ -594,10 +602,10 @@ struct RewriteChange: Equatable, Sendable {
         let words = task.words
         var body = "You edited \(words.name), so these changes may no longer fit. Nothing was applied, and no takes were paid for."
         if generation?.rows.isEmpty == false { body += " Your takes are kept until you close this." }
+        // Rewrite Again discards the set-aside proposal and its takes, so it asks first as ⇧⌘R does.
         let again = PanelAction(id: "rewriteAgain", title: sendAsksFirst ? "Rewrite Again…" : "Rewrite Again") { [weak self] in
             guard let self else { return }
-            actionTask?.cancel()
-            actionTask = Task { await self.run() }
+            editor.sendRewriteAgain(self)
         }
         task.show(.changed, headline: PanelHeadline(text: words.changed), cards: [.text(body)],
                   footer: PanelFooter(note: sendLine, link: PanelAction(id: "closeChanged", title: "Close") { [weak editor] in editor?.closeRewrite() }, primary: again))
