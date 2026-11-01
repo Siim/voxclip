@@ -324,6 +324,34 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(abs(Double(canvas.overlay.playhead.transform.m41) - canvas.viewport.x(early)) < 1e-6)
     }
 
+    /// The default Edited view closes a cut to a seam: a double-click within reach of it
+    /// restores everything cut there as one step, as one on the cut does in Source view.
+    @Test func aDoubleClickOnAClosedCutsSeamRestoresIt() throws {
+        let app = try app()
+        let model = editor(app, project: try project())
+        defer { model.close() }
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        #expect(canvas.toolTip == "Drag to scrub. Shift-drag snaps to word starts. Double-click a cut to restore it.")
+        // Words 14 and 15 close to one seam, where the piece after them starts.
+        let pieces = model.timelinePieces.pieces
+        let after = try #require(pieces.indices.dropFirst().first { pieces[$0].source.lowerBound - pieces[$0 - 1].source.upperBound > 1 })
+        let seam = TimelineMetrics.header + CGFloat(canvas.viewport.x(pieces[after].edited.lowerBound))
+        let y = TimelineMetrics.tracks[1].y + 10
+        let steps = model.undoSteps
+        canvas.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: seam + TimelineMetrics.reach + 3, y: y), in: canvas, clicks: 2))
+        #expect(model.cutWordIDs == ["t14", "t15"] && model.undoSteps == steps)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: seam - 3, y: y), in: canvas, clicks: 2))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: seam - 3, y: y), in: canvas))
+        #expect(model.cutWordIDs.isEmpty && model.undoSteps == steps + 1)
+        // Source view restores the cut word under the pointer.
+        model.selectedWordIDs = ["t14", "t15"]
+        model.cutSelection()
+        model.restoreCut(at: 14.4, on: .source, tolerance: 0.1)
+        #expect(model.cutWordIDs == ["t15"])
+    }
+
     /// The panel lays out in a window that is never shown: the toolbar's readout resolves
     /// its token colours and the lanes are hosted under it.
     @Test func thePanelLaysOutWithItsToolbarAndLanes() throws {

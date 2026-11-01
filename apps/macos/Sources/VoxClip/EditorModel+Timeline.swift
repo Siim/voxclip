@@ -10,7 +10,7 @@ extension EditorModel {
     /// The playhead on `axis`: the scope's output time on Edited, take time on Source.
     func timelinePlayhead(on axis: TimelineAxis) -> Double { axis == .edited ? playhead : sourceTime }
 
-    /// The scope's kept pieces, from the plan the preview and export use.
+    /// The scope's pieces, from the plan the preview and export use.
     var timelinePieces: TimelinePieces { renderTimeline.map(TimelinePieces.init) ?? TimelinePieces([]) }
 
     /// How long the axis runs: the scope's output on Edited, the take on Source.
@@ -97,12 +97,56 @@ extension EditorModel {
         return start ? candidate.clamped(to: 0...upper) : candidate.clamped(to: lower...(words.count - 1))
     }
 
-    /// Restores the cut word or pause at `source`, as a double-click on a cut does.
-    func restoreCut(at source: Double) {
-        let wordIDs = word(at: source).map { cutWordIDs.contains($0.id) ? [$0.id] : [] } ?? []
-        let pauseIDs = pause(at: source).map { cutPauseIDs.contains($0.id) ? [$0.id] : [] } ?? []
-        guard !wordIDs.isEmpty || !pauseIDs.isEmpty else { return }
-        apply(.restoreSelection(ids: wordIDs + pauseIDs), name: "Restore cut")
+    /// Restores the cut at `time` on `axis`, as a double-click on a cut does, in one "Restore
+    /// cut" step. On Source it is the cut word or pause there. On Edited a cut is closed to a
+    /// seam, so it is everything cut at the seam nearest `time`, within `tolerance` seconds.
+    func restoreCut(at time: Double, on axis: TimelineAxis, tolerance: Double) {
+        var ids: [String] = []
+        if axis == .source {
+            if let word = word(at: time), cutWordIDs.contains(word.id) { ids.append(word.id) }
+            if let pause = pause(at: time), cutPauseIDs.contains(pause.id) { ids.append(pause.id) }
+        } else if let gap = timelineSeamGap(near: time, within: tolerance) {
+            ids = cutIDs(overlapping: gap)
+        }
+        guard !ids.isEmpty else { return }
+        apply(.restoreSelection(ids: ids), name: "Restore cut")
+    }
+
+    /// The take time a closed cut leaves out on Edited, between the pieces either side of
+    /// the seam nearest `time` within `tolerance` seconds, or nil when no seam is that near.
+    func timelineSeamGap(near time: Double, within tolerance: Double) -> Range<Double>? {
+        guard tolerance > 0 else { return nil }
+        let pieces = timelinePieces
+        var nearest: (distance: Double, gap: Range<Double>)?
+        // Pieces butt on Edited, so both pieces of a seam in reach overlap the reach.
+        for index in pieces.indices(overlapping: (time - tolerance)..<(time + tolerance), on: .edited).dropFirst() {
+            let before = pieces.pieces[index - 1], after = pieces.pieces[index]
+            let distance = abs(after.edited.lowerBound - time)
+            guard distance <= tolerance, after.source.lowerBound - before.source.upperBound > 1e-6,
+                  nearest.map({ distance < $0.distance }) ?? true else { continue }
+            nearest = (distance, before.source.upperBound..<after.source.lowerBound)
+        }
+        return nearest?.gap
+    }
+
+    /// The cut words and pauses that overlap `range` in take time, in take order.
+    func cutIDs(overlapping range: Range<Double>) -> [String] {
+        func first<T>(_ items: [T], end: (T) -> Double) -> Int {
+            var lower = 0, upper = items.count
+            while lower < upper { let middle = (lower + upper) / 2; if end(items[middle]) <= range.lowerBound { lower = middle + 1 } else { upper = middle } }
+            return lower
+        }
+        let words = words
+        var ids: [String] = []
+        for word in words[first(words, end: \.end)...] {
+            guard word.start < range.upperBound else { break }
+            if cutWordIDs.contains(word.id) { ids.append(word.id) }
+        }
+        for pause in pauses[first(pauses, end: \.end)...] {
+            guard pause.start < range.upperBound else { break }
+            if cutPauseIDs.contains(pause.id) { ids.append(pause.id) }
+        }
+        return ids
     }
 
     /// Every clip and suggestion in take time for the overview strip (notes.md §6), in

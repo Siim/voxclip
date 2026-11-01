@@ -20,6 +20,8 @@ enum TimelineMetrics {
     /// Lane after a fitted range, where the Out bracket and the last label sit (notes.md:
     /// 936 pt of time in a 944 pt lane).
     static let trailing: CGFloat = 8
+    /// How near the pointer In, Out or a closed cut's seam must be to take a drag or a double-click.
+    static let reach: CGFloat = 5
     static let overview = Row(y: 0, height: 24)
     static let ruler = Row(y: 24, height: 22)
     /// V1, A1 and CC at the default track height (M). V7b and V9 fill them.
@@ -129,6 +131,7 @@ struct TimelineContent: Equatable {
         for lane in [overview, ruler, bed] as [NSView] { addSubview(lane) }
         addSubview(overlay)
         configureAccessibility()
+        toolTip = "Drag to scrub. Shift-drag snaps to word starts. Double-click a cut to restore it."
         layoutLanes()
         observations = [
             ShellObservation { [weak self] in self?.renderContent() },
@@ -285,7 +288,7 @@ struct TimelineContent: Equatable {
             return
         }
         if event.clickCount == 2, point.y >= TimelineMetrics.ruler.maxY {
-            model.restoreCut(at: model.timelineSourceTime(viewport.time(atX: laneX), on: content.axis))
+            model.restoreCut(at: viewport.time(atX: laneX), on: content.axis, tolerance: Double(TimelineMetrics.reach) / viewport.ptPerSecond)
             return
         }
         drag = .scrub
@@ -319,12 +322,12 @@ struct TimelineContent: Equatable {
         followPlayhead()
     }
 
-    /// The open clip's In or Out under `x` in the ruler, within 5 pt, while it can be trimmed.
+    /// The open clip's In or Out under `x` in the ruler, within reach, while it can be trimmed.
     private func trimTarget(at x: CGFloat) -> (clip: ClipRange, start: Bool)? {
         guard model.capabilities.edit, let clip = model.activeClip, let inOut = content.inOut else { return nil }
         let inX = TimelineMetrics.header + viewport.x(inOut.lowerBound), outX = TimelineMetrics.header + viewport.x(inOut.upperBound)
         let toIn = abs(x - inX), toOut = abs(x - outX)
-        guard min(toIn, toOut) <= 5 else { return nil }
+        guard min(toIn, toOut) <= TimelineMetrics.reach else { return nil }
         return (clip, toIn <= toOut)
     }
 
