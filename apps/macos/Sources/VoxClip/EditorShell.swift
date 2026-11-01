@@ -834,6 +834,7 @@ struct EditorShellState: Equatable {
     private let rightTitle = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "rightTitle")
     private let scopeTab = ShellScopeTab()
     let overflow = ShellIconButton(symbol: "ellipsis", size: 14, identifier: "voxclip.shell.more")
+    let showCuts: ShowCutsToggle
     let export = ShellExportButton()
     let timelineToggle = ShellIconButton(symbol: "rectangle.bottomthird.inset.filled", identifier: "voxclip.shell.toggleTimeline")
     let rightToggle = ShellIconButton(symbol: "sidebar.right", identifier: "voxclip.shell.toggleRight")
@@ -865,6 +866,7 @@ struct EditorShellState: Equatable {
     init(model: EditorModel, shell: WorkspaceShell) {
         self.model = model
         self.shell = shell
+        showCuts = ShowCutsToggle(model: model)
         super.init(vertical: false, identifier: "voxclip.shell.work", dividerToken: "line.edge")
         build()
     }
@@ -944,7 +946,8 @@ struct EditorShellState: Equatable {
             ShellObservation { [weak self] in self?.renderScope() },
             ShellObservation { [weak self] in self?.renderExport() },
             ShellObservation { [weak self] in self?.renderFindClips() },
-            ShellObservation { [weak self] in self?.followSizes() }
+            ShellObservation { [weak self] in self?.followSizes() },
+            ShellObservation { [weak self] in self?.showCuts.render() }
         ]
     }
 
@@ -996,13 +999,13 @@ struct EditorShellState: Equatable {
         }
     }
 
-    /// The tab row: the Explorer toggle while the Explorer is hidden, the scope tab, then ⋯,
-    /// and the right column's controls while it is hidden.
+    /// The tab row: the Explorer toggle while the Explorer is hidden, the scope tab, then
+    /// Show cuts and ⋯, and the right column's controls while it is hidden.
     func placeTabRow(explorerToggle: NSView?) {
         self.explorerToggle = explorerToggle
         let cluster: [NSView] = [export, timelineToggle, rightToggle]
         let rightShows = rightItem.map { !$0.isCollapsed } ?? true
-        tabRow.set(leading: [explorerToggle, scopeTab].compactMap { $0 }, trailing: rightShows ? [overflow] : [overflow] + cluster)
+        tabRow.set(leading: [explorerToggle, scopeTab].compactMap { $0 }, trailing: rightShows ? [showCuts, overflow] : [showCuts, overflow] + cluster)
         rightTitle.set(leading: [], trailing: rightShows ? cluster : [])
     }
 
