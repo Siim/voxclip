@@ -137,7 +137,7 @@ struct RewriteConnector {
     @ObservationIgnored private let consent: @MainActor () async -> Bool
     @ObservationIgnored private var request: VoiceRewriteRequest?
     @ObservationIgnored private var preparing: Task<Void, Never>?
-    @ObservationIgnored private var sending: Task<Bool, Never>?
+    @ObservationIgnored private var sending: Task<Proposal, Never>?
 
     init(editor: EditorModel, range: ClosedRange<Int>, envelope: AudioEnvelope?, connector: RewriteConnector?,
          prices: VoiceLabPriceCatalog? = nil, synthesisModel: String? = nil,
@@ -265,49 +265,54 @@ struct RewriteConnector {
         quote = nil; estimate = nil; shownQuoteID = nil; request = nil
         await prepare()
     }
+    /// How a `propose` ended. `declined`: the route said no or could not run, and nothing in the session changed.
+    private enum Proposal { case declined, failed, proposed }
     /// Sends the shown quote. Every connector goes through `consent`, the editor's route to
     /// `AppModel.authorizeConnectorRequest`: the one-time privacy consent, then a confirmation when the send asks first.
+    /// The route runs first, holding only the project's LLM lease, so a declined send leaves the estimate, the problem
+    /// line and Voice Lab's takes as they were (no `isProposing`, no `inputsChanged`, no new quote). R1 shows over the
+    /// sheets with nothing sent and nothing announced until they pass.
     @discardableResult func propose(_ approvedQuote: VoiceRewriteQuote) async -> Bool {
         guard canPropose, quote == approvedQuote, let input = request, let connector, let service,
               let lease = editor.llmRuns.acquire() else { return false }
         let runs = editor.llmRuns
         let expected = revision
-        isProposing = true; shownQuoteID = nil; problem = ""
-        generation?.inputsChanged()
-        // R1 shows at once, with nothing sent and nothing announced until the consent and the cost sheet pass.
         beginRun()
         let started = ContinuousClock.now
-        let sendTask = Task { [self] () -> Bool in
+        let sendTask = Task { [self] () -> Proposal in
             defer { runs.release(lease); isProposing = false }
+            guard await ConnectorConsentWait().confirm(consent),
+                  !Task.isCancelled, current, revision == expected, quote == approvedQuote, request?.id == input.id else { return .declined }
+            isProposing = true; shownQuoteID = nil; problem = ""
+            generation?.inputsChanged()
+            sendRun()
             do {
-                guard await ConnectorConsentWait().confirm(consent) else { return false }
-                guard !Task.isCancelled, current, revision == expected, quote == approvedQuote, request?.id == input.id else { return false }
-                sendRun()
                 let result = try await service.propose(input, connector: connector.connector, model: connector.model,
                     authorization: VoiceRewriteAuthorization(quote: approvedQuote, approved: true))
-                guard !Task.isCancelled, current, revision == expected else { return false }
+                guard !Task.isCancelled, current, revision == expected else { return .failed }
                 advanceRun(to: 3)
                 newWords = result.proposedText
                 quote = nil; estimate = nil; request = nil
                 refreshReview()
                 let elapsed = started.duration(to: .now).components
                 finishRun(seconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
-                return true
-            } catch is CancellationError { return false } catch {
+                return .proposed
+            } catch is CancellationError { return .failed } catch {
                 if current && revision == expected { await fail(error) }
-                return false
+                return .failed
             }
         }
         sending = sendTask
         let result = await sendTask.value
         // A declined sheet or a send that went stale changes nothing: back to the passage panel, silently.
         if isOpen, task.state == .running { showReady() }
+        guard result != .declined else { return false }
         generation?.requestQuote()
         if current && revision == expected {
             quote = nil; estimate = nil; request = nil
             await prepare(revision: expected)
         }
-        return result
+        return result == .proposed
     }
     func edit(_ text: String) {
         guard isOpen else { return }

@@ -300,6 +300,7 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             let cutP95MS: Double
             let cutMaximumMS: Double
             let scrollP95MS: Double
+            let foldScrollP95MS: Double
             let storageRebuildsDuringCuts: Int
             let tabSwitchMaximumMS: Double
             let foldCutMaximumMS: Double
@@ -308,6 +309,8 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             let showCutsToggleMaximumMS: Double
             let bulkEditMaximumMS: Double
             let rulerSpanMedianMS: Double
+            let caretTickRestyles: Int
+            let caretMoves: Int
         }
         // One entry per 10,000-word fixture: speakers alternating, and one speaker throughout.
         let measured = try JSONDecoder().decode([Metrics].self, from: Data(contentsOf: directory.appendingPathComponent("transcript-performance.json")))
@@ -316,6 +319,8 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             XCTAssertEqual(metrics.wordCount, 10_000, metrics.fixture)
             XCTAssertLessThan(metrics.cutMaximumMS, 50, metrics.fixture)
             XCTAssertLessThan(metrics.scrollP95MS, 1000 / 60, metrics.fixture)
+            // The default view: folds, the caret and a selection over several paragraphs.
+            XCTAssertLessThan(metrics.foldScrollP95MS, 1000 / 60, metrics.fixture)
             XCTAssertEqual(metrics.storageRebuildsDuringCuts, 0, metrics.fixture)
             XCTAssertLessThanOrEqual(metrics.tabSwitchMaximumMS, 50, metrics.fixture)
             // Fold edits rebuild at most two paragraphs, never the document (impl-plan V8a).
@@ -326,6 +331,9 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             // A bulk fold edit (Cut Fillers) is at most one full rebuild, and the ruler's span is per frame.
             XCTAssertLessThanOrEqual(metrics.bulkEditMaximumMS, 150, metrics.fixture)
             XCTAssertLessThanOrEqual(metrics.rulerSpanMedianMS, 0.05, metrics.fixture)
+            // A playhead tick moves the caret and styles no span (impl-plan item 19).
+            XCTAssertEqual(metrics.caretTickRestyles, 0, metrics.fixture)
+            XCTAssertGreaterThan(metrics.caretMoves, 0, metrics.fixture)
         }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         for result in report {
@@ -333,7 +341,7 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             else { XCTAssertTrue(result.passed, result.name) }
         }
         for metrics in measured {
-            print("\(metrics.fixture): 10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; fold edit max=\(metrics.foldCutMaximumMS)ms; Show cuts toggle max=\(metrics.showCutsToggleMaximumMS)ms; bulk fold edit max=\(metrics.bulkEditMaximumMS)ms; ruler span median=\(metrics.rulerSpanMedianMS)ms; scroll p95=\(metrics.scrollP95MS)ms; tab switch max=\(metrics.tabSwitchMaximumMS)ms")
+            print("\(metrics.fixture): 10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; fold edit max=\(metrics.foldCutMaximumMS)ms; Show cuts toggle max=\(metrics.showCutsToggleMaximumMS)ms; bulk fold edit max=\(metrics.bulkEditMaximumMS)ms; ruler span median=\(metrics.rulerSpanMedianMS)ms; scroll p95=\(metrics.scrollP95MS)ms; fold scroll p95=\(metrics.foldScrollP95MS)ms; tab switch max=\(metrics.tabSwitchMaximumMS)ms")
         }
     }
 }

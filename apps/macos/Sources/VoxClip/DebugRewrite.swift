@@ -406,7 +406,7 @@ actor RewriteFixtureConnector: LLMConnector {
                     for _ in 0..<500 { if await fake.sends > 0 { break }; await Task.yield() }
                     check("Rewrite holds the same project lease as Find Clips", editor.llmRuns.isBusy && !editor.capabilities.ai)
                     editor.findClips()
-                    check("Find Clips cannot start while Rewrite holds lease", !editor.finding)
+                    check("Find Clips cannot start while Rewrite holds lease", !editor.finding && editor.findTask == nil)
                     session.edit("Typing wins")
                     await fake.release()
                     _ = await task.value
@@ -459,7 +459,8 @@ actor RewriteFixtureConnector: LLMConnector {
             if let quote = session.quote {
                 session.markEstimateShown(quote.id)
                 editor.findClips()
-                check("real Find Clips entry acquires shared project lease first", editor.finding && editor.llmRuns.isBusy)
+                // The lease is taken at once; `finding` (the sidebar row) follows only once the route says yes.
+                check("real Find Clips entry acquires shared project lease first", editor.llmRuns.isBusy)
                 let proposal = await session.propose(quote)
                 check("Find Clips first refuses approved Rewrite without a second send", !proposal && !session.isProposing)
                 for _ in 0..<5_000 { if await fake.sends > 0 { break }; await Task.yield() }

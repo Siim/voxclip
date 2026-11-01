@@ -2,6 +2,7 @@
 import Foundation
 import Testing
 @testable import VoxClipCore
+@testable import VoxClipMedia
 @testable import VoxClip
 
 /// The sheets one routed send showed, and the action each was for.
@@ -11,6 +12,11 @@ import Testing
     /// Answers a sheet; true approves it.
     var answer: (LLMSendSheet) -> Bool = { _ in true }
     func take() -> [LLMSendSheet.Reason] { defer { sheets = []; actions = [] }; return sheets.map(\.reason) }
+}
+
+/// Voice Lab's ElevenLabs client in these tests never reaches for a key: no take is generated or priced.
+private struct NoVoiceLabKeys: KeyProvider {
+    func key(for provider: String) async throws -> String? { Issue.record("Routing tests must not ask for credentials"); return nil }
 }
 
 /// Every LLM send (Find clips, Rewrite and Settings → Test) asks C8's `kind(forLLMSendTo:signIn:providerName:)` after
@@ -44,9 +50,10 @@ import Testing
         Row(name: "Apple on-device", connector: "apple-foundation", authMethod: nil, baseURL: nil, first: [], later: []),
     ]
 
-    private func setUp(_ connector: String, authMethod: String?, baseURL: String? = nil) throws -> (AppModel, ConsentFixtureConnector, SheetLog) {
+    private func setUp(_ connector: String, authMethod: String?, baseURL: String? = nil,
+                       readiness: ConnectorStatus = .ready) throws -> (AppModel, ConsentFixtureConnector, SheetLog) {
         let app = AppModel(settingsStore: RegressionSettingsStore())
-        let fake = ConsentFixtureConnector(id: try #require(ConnectorID(rawValue: connector)), authMethod: authMethod)
+        let fake = ConsentFixtureConnector(id: try #require(ConnectorID(rawValue: connector)), readiness: readiness, authMethod: authMethod)
         app.connectorOverride = { _ in fake }
         app.set("llm.connector", .string(connector))
         app.set("llm.model.\(connector)", .string("fixture-local"))
@@ -204,9 +211,14 @@ import Testing
         }
     }
 
-    @Test(arguments: [("claude.ai", "Rewrite", "Sends these 3 words to Fixture with your sign-in. Counts toward your Claude plan."),
-                      ("api_key", "Rewrite…", "Sends these 3 words to Fixture, billed to the API key it is signed in with.")])
-    func theRewriteButtonAndSendLineFollowTheDetectedSignIn(method: String, button: String, line: String) async throws {
+    /// Only a send that asks first reads "Rewrite…" with C8's sentence (design §6.3.1). A CLI with no known sign-in (not
+    /// detected yet, signed out, or a method VoxClip does not recognise) never asks: its send fails with the sign-in error.
+    @Test(arguments: [("claude.ai", "Rewrite", "Sends these 3 words to Fixture with your sign-in. Counts toward your Claude plan.", ""),
+                      ("api_key", "Rewrite…", "Sends these 3 words to Fixture, billed to the API key it is signed in with.",
+                       "VoxClip can't tell what this costs. Check Anthropic's pricing."),
+                      ("third_party", "Rewrite", "Sends these 3 words to Fixture with your sign-in.", ""),
+                      ("none", "Rewrite", "Sends these 3 words to Fixture with your sign-in.", "")])
+    func theRewriteButtonAndSendLineFollowTheDetectedSignIn(method: String, button: String, line: String, price: String) async throws {
         let (app, fake, _) = try setUp("claude-code", authMethod: method)
         let provider = try #require(app.providers.first { $0.id == "claude-code" })
         let editor = try editor(app)
@@ -217,11 +229,129 @@ import Testing
         defer { session.close() }
         await session.prepare()
         #expect(session.sendLine == "Sends these 3 words to Fixture with your sign-in.")
-        #expect(session.proposalButton == "Rewrite…")
+        #expect(session.proposalButton == "Rewrite")
+        #expect(session.estimateCopy == "")
         _ = await app.connectorStatus(provider, using: fake)
         await session.prepare()
         #expect(session.proposalButton == button)
         #expect(session.sendLine == line)
+        #expect(session.estimateCopy == price)
+    }
+
+    /// A take that passes review, so Voice Lab's Accept is ready.
+    private func readyTake() -> VoiceLabTakeRow {
+        let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
+            trimStartFrame: 0, trimEndFrame: 24_000, windowStart: 1, windowEnd: 2, windowStartSample: 24_000, windowEndSample: 48_000,
+            outputFrames: 24_000, words: [VoiceLabWord(text: "Hello", start: 0.1, end: 0.9, synthetic: true)])
+        let audio = VoiceLabTakeAudio(sampleRate: 24_000, trimmed: [0.1], mixed: [0.1], patchRange: 0..<1, seams: [], gainDb: 0, roomTone: nil, fit: .exact(plan))
+        let qa = VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -20, speakerScore: 0.8), failures: [])
+        return VoiceLabTakeRow(id: UUID(), index: 0, seed: 0, audio: audio, qa: qa, score: 1, failure: nil)
+    }
+
+    /// Declining the cost sheet changes nothing: the route runs before `propose` touches the session, so no spinner shows
+    /// behind the sheet, Voice Lab's reviewed take stays acceptable and unpriced again, and the same estimate can be sent.
+    @Test func decliningTheRewriteCostSheetLeavesVoiceLabAndTheEstimateAsTheyWere() async throws {
+        let (app, fake, log) = try setUp("codex", authMethod: "api_key")
+        app.set("llm.cloudConsent.codex", .bool(true))
+        app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
+        let editor = try editor(app)
+        defer { editor.close() }
+        editor.beginRewrite()
+        await editor.rewriteOpenTask?.value
+        let session = try #require(editor.rewrite)
+        await session.detectConnector(); await session.prepare()
+        session.configureGeneration(client: ElevenLabsVoiceLab(keys: NoVoiceLabKeys(), region: .default),
+            store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
+        let generation = try #require(session.generation)
+        var quoteRequests = 0
+        generation.prepareQuote = { quoteRequests += 1 }
+        let take = readyTake()
+        generation.review(.init(rows: [take], end: .completed))
+        #expect(generation.readyToAccept)
+        let quote = try #require(session.quote)
+        session.markEstimateShown(quote.id)
+        var proposingBehindSheet = false
+        log.answer = { _ in proposingBehindSheet = session.isProposing; return false }
+        let declined = await session.propose(quote)
+        await generation.finishQuotePreparationForTests()
+        #expect(!declined)
+        #expect(log.take() == [.cost])
+        #expect(await fake.sends == 0)
+        #expect(!proposingBehindSheet)
+        #expect(generation.readyToAccept && generation.selectedID == take.id && generation.rows == [take])
+        #expect(quoteRequests == 0)
+        #expect(session.quote == quote && session.canPropose && session.problem.isEmpty && !editor.llmRuns.isBusy)
+        log.answer = { _ in true }
+        let approved = await session.propose(quote)
+        await generation.finishQuotePreparationForTests()
+        #expect(approved)
+        #expect(log.take() == [.cost])
+        #expect(await fake.sends == 1)
+        #expect(!generation.readyToAccept && quoteRequests > 0)
+        session.close()
+    }
+
+    /// Find clips shows its progress only once the route says yes (design §6.2: the consent, then "while it runs").
+    @Test func decliningTheFindClipsCostSheetShowsNoProgressAndKeepsTheLastResultLines() async throws {
+        let (app, fake, log) = try setUp("codex", authMethod: "api_key")
+        app.set("llm.cloudConsent.codex", .bool(true))
+        let editor = try editor(app)
+        defer { editor.close() }
+        var sidebarReveals = 0
+        editor.onNeedsSidebar = { sidebarReveals += 1 }
+        editor.clipError = "Earlier error."
+        editor.fallbackNote = "Answered by fixture-fallback because fixture-local was busy."
+        var findingBehindSheet = false
+        log.answer = { _ in findingBehindSheet = editor.finding; return false }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(log.take() == [.cost])
+        #expect(await fake.sends == 0)
+        #expect(!findingBehindSheet && !editor.finding && !editor.llmRuns.isBusy)
+        #expect(sidebarReveals == 0 && !editor.announcements.contains("Finding clips"))
+        #expect(editor.clipError == "Earlier error." && editor.fallbackNote == "Answered by fixture-fallback because fixture-local was busy.")
+        log.answer = { _ in true }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(await fake.sends == 1)
+        #expect(sidebarReveals == 1 && editor.announcements.contains("Finding clips"))
+        #expect(editor.fallbackNote == nil && editor.clipError != "Earlier error.")
+    }
+
+    /// A connector that is not ready fails in the route, before any progress: the error still reaches the sidebar.
+    @Test func aFindClipsReadinessErrorRevealsTheSidebarWithTheConnectorsMessage() async throws {
+        let (app, fake, log) = try setUp("lmstudio", authMethod: nil, readiness: .noModels)
+        let editor = try editor(app)
+        defer { editor.close() }
+        var sidebarReveals = 0
+        editor.onNeedsSidebar = { sidebarReveals += 1 }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(log.sheets.isEmpty)
+        #expect(await fake.sends == 0)
+        #expect(sidebarReveals == 1 && !editor.finding)
+        #expect(editor.clipError == "Load or download a model in LM Studio, then refresh. Your edits are saved.")
+    }
+
+    /// The Rewrite panel's readiness error names the chosen connector, as Find clips does: the route now runs for local
+    /// connectors too, and LM Studio's server is off until the user starts it. The error is R1x on the session's task
+    /// (V12m), with nothing sent, no sheet and the passage panel's problem line untouched.
+    @Test(arguments: [
+        ("lmstudio", ConnectorStatus.notRunning(url: "http://localhost:1234"), PanelError.notRunning(server: "LM Studio")),
+        ("lmstudio", .noModels, .message("Load or download a model in LM Studio, then refresh. Your edits are saved.")),
+        ("claude-code", .cliSignedOut, .signedOut(cli: "Claude Code", command: "claude")),
+        ("openai", .needsKey, .noKey(provider: "openai", name: "OpenAI")),
+    ])
+    func aRewriteReadinessErrorNamesTheConnector(connector: String, readiness: ConnectorStatus, error: PanelError) async throws {
+        let (app, fake, log) = try setUp(connector, authMethod: nil, readiness: readiness)
+        let editor = try editor(app)
+        defer { editor.close() }
+        try await send(.rewrite, editor: editor, app: app)
+        let session = try #require(editor.rewrite)
+        #expect(log.sheets.isEmpty)
+        #expect(await fake.sends == 0)
+        #expect(session.task.state == .error(error), "\(session.task.state)")
+        #expect(session.problem.isEmpty && !editor.llmRuns.isBusy)
     }
 }
 #endif

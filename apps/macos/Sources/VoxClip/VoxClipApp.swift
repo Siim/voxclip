@@ -259,10 +259,9 @@ import VoxClipCore
         case 7: editor.apply(.cutFillers, name: "Cut fillers")
         case 8: editor.apply(.tightenPauses, name: "Tighten pauses")
         case 9: editor.apply(.restoreCuts, name: "Restore cuts")
-        case 10: editor.showCuts.toggle()
         case 11: editor.showPauses.toggle()
         case 12: model.shell.toggleViewer()
-        case 17: editor.showsCuts.toggle()
+        case 60: editor.toggleShowsCuts()
         case 18: editor.zoom(1)
         case 19: editor.zoom(-1)
         case 20: editor.zoom(0)
@@ -406,7 +405,7 @@ import VoxClipCore
             case 9: return editor.capabilities.edit && editor.summary.hasEdits
             case 30, 31: return editor.capabilities.edit && editor.activeClip != nil
             case 34: return editor.capabilities.ai && !editor.words.isEmpty
-            case 10: item.title = editor.showCuts ? "Hide Cut Words" : "Show Cut Words"
+            case 60: item.state = editor.showsCuts ? .on : .off
             case 11: item.title = editor.showPauses ? "Hide Pauses" : "Show Pauses"
             case 12: item.title = model.shell.viewerShown ? "Hide Viewer" : "Show Viewer"
             case 52, 53, 54, 55:
@@ -500,14 +499,13 @@ import VoxClipCore
         command(edit, "Restore All Cuts", 9, "r", [.command, .option])
         command(edit, "Transcribe Again…", 37)
         let view = menu("View")
-        command(view, "Show Cut Words", 10, "h", [.command, .shift])
+        command(view, "Show Cuts", 60, "c", [.command, .option])
         command(view, "Show Pauses", 11)
         command(view, "Hide Viewer", 12, "i", [.command, .option])
         command(view, "Home", 13, "1")
         command(view, "Full Take", 14, "2")
         command(view, "Hide Sidebar", 16, "s", [.command, .control])
         command(view, "Hide Timeline", 56, "j")
-        command(view, "Source / Edited Timeline", 17)
         let frame = NSMenuItem(title: "Frame", action: nil, keyEquivalent: "")
         let frameMenu = NSMenu(title: "Frame")
         for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect == .source ? "Original" : aspect.rawValue, 52 + offset, "", []) }

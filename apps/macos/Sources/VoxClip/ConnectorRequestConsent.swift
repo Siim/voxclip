@@ -46,11 +46,15 @@ extension AppModel {
         knownCLIAuthMethods[connector.rawValue + ":" + string("llm.cliPath.\(connector.rawValue)")].flatMap(CLISignIn.init(rawValue:))
     }
 
-    /// How an LLM send through `connector` presents its cost now (C8): inline for a send that costs nothing extra,
-    /// confirm for an API key or a CLI signed in with one, or a CLI whose sign-in is not known.
-    func llmSendKind(_ connector: ConnectorID) -> VoiceLabCostPresentation.Kind {
+    /// How an LLM send through `connector` presents its cost now (C8): inline for a send that costs nothing extra, confirm
+    /// for an API key or a CLI signed in with one. Nil for a CLI with no known sign-in (signed out, not detected yet, or a
+    /// method VoxClip does not recognise): that send neither starts nor asks (ai.md §4.8), so the Rewrite verb reads
+    /// "Rewrite" with no price sentence (design §6.3.1), although C8 would confirm such a send.
+    func llmSendKind(_ connector: ConnectorID) -> VoiceLabCostPresentation.Kind? {
+        let signIn = cliSignIn(connector)
+        if (connector == .claudeCode || connector == .codex) && signIn == nil { return nil }
         let name = providers.first { $0.id == connector.rawValue }?.pricingName ?? connector.rawValue
-        return VoiceLabCostPresentation.kind(forLLMSendTo: connector, signIn: cliSignIn(connector), providerName: name)
+        return VoiceLabCostPresentation.kind(forLLMSendTo: connector, signIn: signIn, providerName: name)
     }
 
     /// The one route every LLM send takes: Find clips, Rewrite and Settings → Test. It detects the connector (ai.md
@@ -84,8 +88,8 @@ extension AppModel {
         }
         // No send without a known sign-in (ai.md §4.8). Detection reports such a CLI as signed out, but another detection
         // can forget the method while the consent sheet is up.
-        if provider.group == "cli" && cliSignIn(connector.id) == nil { return false }
-        guard case .confirm(let price) = llmSendKind(connector.id) else { return true }
+        guard let kind = llmSendKind(connector.id) else { return false }
+        guard case .confirm(let price) = kind else { return true }
         let cost = provider.costSheet(action: action, wordCount: wordCount, price: price)
         return await present(cost, provider: provider, action: action, parent: parent) && stillCurrent()
     }

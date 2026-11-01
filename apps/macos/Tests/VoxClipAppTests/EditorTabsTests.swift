@@ -449,8 +449,11 @@ import Testing
         editor.focusedPane = .sidebar
         shell.movePaneFocus(backward: false)
         #expect(editor.focusedPane == .tabs && window.firstResponder === active)
-        // Show cuts' slot sits at the row's end and stays hidden until V8b.
-        #expect(work.showCutsSlot.superview === work.tabRow && work.showCutsSlot.isHidden)
+        // Show cuts sits at the row's end, before ⋯ (V8b), and the tabs keep their drag gap after them.
+        #expect(work.showCuts.superview === work.tabRow && !work.showCuts.isHidden)
+        #expect(work.tabRow.trailing.prefix(2).elementsEqual([work.showCuts, work.overflow], by: ===))
+        work.tabRow.layoutSubtreeIfNeeded()
+        #expect(work.showCuts.frame.minX >= bar.frame.maxX && bar.tabRoom <= bar.bounds.width - EditorTabMetrics.dragGap)
     }
 }
 
