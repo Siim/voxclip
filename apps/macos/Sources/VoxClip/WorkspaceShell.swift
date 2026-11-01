@@ -400,15 +400,15 @@ enum SidebarItem: Hashable {
         rightHiddenByWidth = false
         if layout.rightVisible { hideRightColumn() } else { layout.rightVisible = true }
     }
-    /// The timeline toggle in the title row. ⌘J and the hover transport arrive with V7a and V4;
-    /// until then the panel carries play and the timecode while the right column is hidden,
+    /// The timeline toggle in the title row, the panel's Hide and View › Hide Timeline (⌘J).
+    /// Until V4's hover transport the panel carries play and the timecode while the right column is hidden,
     /// so it does not hide then (notes.md §1: "play and timecode are never lost").
     func toggleTimeline() {
         guard layout.rightVisible || !layout.timelineVisible else { return }
         layout.timelineVisible.toggle()
     }
-    /// Hides the right column, and shows the timeline panel, which carries the compact
-    /// transport while it is hidden (until V4).
+    /// Hides the right column, and shows the timeline panel, whose toolbar carries play and
+    /// the timecode while it is hidden (until V4).
     private func hideRightColumn() {
         layout.rightVisible = false
         if !layout.timelineVisible { layout.timelineVisible = true }
