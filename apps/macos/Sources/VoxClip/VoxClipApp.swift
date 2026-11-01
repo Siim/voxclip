@@ -281,7 +281,7 @@ import VoxClipCore
         case 31: editor.setClipEdge(start: false)
         case 32: editor.moveClip(-1)
         case 33: editor.moveClip(1)
-        case 34: editor.requestFindClips(from: .overflow)
+        case 34: editor.requestFindClips(from: .clipBar)
         case 37: confirmRetranscription()
         case 38: editor.runRewrite()
         case 40: if let id = selectedClipID { editor.keep(id) }
@@ -302,8 +302,11 @@ import VoxClipCore
     /// 9:16 · 1:1 · 16:9 · Original, tags 52–55.
     static let frameAspects: [AspectRatio] = [.portrait, .square, .landscape, .source]
     private var selectedClipID: String? {
-        guard case .clip(let id) = model.shell.selection else { return nil }
-        return id
+        switch model.shell.selection {
+        case .clip(let id): return id
+        case .outline: return model.shell.editor?.activeClip?.id
+        default: return nil
+        }
     }
     @objc private func checkUpdates(_ sender: Any?) {
         if let url = model.update?.htmlURL, url.host == "github.com" { NSWorkspace.shared.open(url) }
@@ -350,6 +353,18 @@ import VoxClipCore
               event.charactersIgnoringModifiers?.lowercased() == item.keyEquivalent.lowercased() else { return true }
         return responder is TranscriptNSTextView
     }
+    /// Keep, Dismiss, Rename and Remove (tags 40, 41, 43, 44) by their bare Return and Delete act on the Explorer's
+    /// row, so those keys reach them only from the Explorer's list: never while text is typed (the clip bar's Ask field,
+    /// the transcript, another field), a clip is renamed or an input method composes. Keep Suggestion's hidden ⇧⌘↩, the
+    /// clip bar's Keep (impl-plan §3.2, V3b), works from anywhere in the window on a suggestion's tab.
+    static func clipRowKeyEnabled(_ item: NSMenuItem, event: NSEvent?, pane: EditorPane, renaming: Bool, responder: NSResponder?, row: SidebarItem? = nil) -> Bool {
+        guard event?.type == .keyDown, [40, 41, 43, 44].contains(item.tag) else { return true }
+        if renaming { return false }
+        if let input = responder as? any NSTextInputClient, input.hasMarkedText() { return false }
+        guard item.keyEquivalentModifierMask.isDisjoint(with: [.command, .control, .option]) else { return true }
+        if case .outline = row { return false }
+        return pane == .sidebar && !(responder is NSText)
+    }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(checkUpdates(_:)) {
             item.title = model.update.map { "VoxClip \($0.version) Available…" } ?? "Check for Updates…"
@@ -382,10 +397,8 @@ import VoxClipCore
             guard let editor else { return false }
             if editor.mutationEnabled(item.tag) == false { return false }
             if NSApp.currentEvent?.type == .keyDown, Self.focusedControlKeepsKey(item, responder: NSApp.keyWindow?.firstResponder) { return false }
-            if NSApp.currentEvent?.type == .keyDown, [40, 41, 43, 44].contains(item.tag) {
-                guard editor.focusedPane == .sidebar, model.shell.renaming == nil else { return false }
-                if let input = NSApp.keyWindow?.firstResponder as? any NSTextInputClient, input.hasMarkedText() { return false }
-            }
+            if !Self.clipRowKeyEnabled(item, event: NSApp.currentEvent, pane: editor.focusedPane, renaming: model.shell.renaming != nil,
+                                       responder: NSApp.keyWindow?.firstResponder, row: model.shell.selection) { return false }
             if [1, 2, 3, 21, 22, 23, 24, 25, 26, 29, 30, 31, 32, 33, 38, 46].contains(item.tag) {
                 guard editor.correctionID == nil else { return false }
                 let responder = NSApp.keyWindow?.firstResponder
@@ -511,7 +524,7 @@ import VoxClipCore
         command(view, "Hide Timeline", 56, "j")
         let frame = NSMenuItem(title: "Frame", action: nil, keyEquivalent: "")
         let frameMenu = NSMenu(title: "Frame")
-        for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect == .source ? "Original" : aspect.rawValue, 52 + offset, "", []) }
+        for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect.frameName, 52 + offset, "", []) }
         frame.submenu = frameMenu
         view.addItem(frame)
         command(view, "Bigger Text", 18, "+")
@@ -534,6 +547,10 @@ import VoxClipCore
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
         command(clip, "Cancel Finding Clips", 49, ".")
         command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
+        // The clip bar's Keep ⇧⌘↩ on a suggestion's tab (impl-plan §3.2, V3b), a hidden alternate.
+        command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [.command, .shift])
+        clip.items.last?.isHidden = true
+        clip.items.last?.allowsKeyEquivalentWhenHidden = true
         command(clip, "Dismiss Suggestion", 41, String(UnicodeScalar(NSDeleteCharacter)!), [])
         command(clip, "Keep All Suggestions", 42)
         command(clip, "Rename Clip…", 43, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])

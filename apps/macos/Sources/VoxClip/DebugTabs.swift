@@ -29,7 +29,7 @@ import VoxClipCore
         app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
 
         let shell = WorkspaceShell(app: app)
-        let document = VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true)
+        let document = VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true)
         await shell.attachForTesting(document, selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
@@ -419,7 +419,7 @@ import VoxClipCore
 
     /// A Versions window switches tabs and never writes them.
     private static func versionChecks(fixture: Project) async throws -> [DebugUISuite.Result] {
-        let version = VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true)
+        let version = VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true)
         version.versionForTesting = true
         version.makeWindowControllers()
         defer { version.close() }
@@ -439,7 +439,7 @@ import VoxClipCore
     static func sceneCaptures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         guard !DebugUISuite.sessionLocked else { throw CocoaError(.userCancelled) }
         let shell = WorkspaceShell(app: app)
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()

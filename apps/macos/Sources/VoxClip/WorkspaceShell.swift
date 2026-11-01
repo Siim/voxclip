@@ -5,11 +5,11 @@ import VoxClipCore
 /// The sidebar's one selection (design §2). A Recent row is selectable for the arrow
 /// keys and Return, and shows Home like the Home row.
 enum SidebarItem: Hashable {
-    case home, fullTake, clip(String), recent(URL)
+    case home, fullTake, clip(String), outline(Int), recent(URL)
     var showsHome: Bool {
         switch self {
         case .home, .recent: true
-        case .fullTake, .clip: false
+        case .fullTake, .clip, .outline: false
         }
     }
 }
@@ -109,6 +109,8 @@ enum SidebarItem: Hashable {
     /// the project and Quit keep it before edits freeze (design §6.2).
     var renaming: String?
     var renameDraft = ""
+    /// V14 supplies pending hunk membership in take paragraph ranges.
+    var outlineHasPendingHunk: ((Range<Int>) -> Bool)?
     var notice: String?
     /// A file is being dragged over the window.
     var dropTargeted = false
@@ -166,6 +168,10 @@ enum SidebarItem: Hashable {
     init(app: AppModel) {
         self.app = app
         layout = WorkspaceLayout(app: app)
+        tabs.hasWork = { [weak self] tab in
+            guard let self else { return false }
+            return dirtyTabs.contains(tab) || (editor?.openRewrite.map { $0.isOpen && $0.project.edits.activeClipId == tab.clipID } ?? false)
+        }
     }
 
     /// No project is open.
@@ -395,6 +401,10 @@ enum SidebarItem: Hashable {
     /// A row the user chose in the sidebar list. A click on a row also hides the overlay
     /// sidebar (design §3.7); the arrow keys leave it open.
     func choose(_ row: SidebarItem, byClick: Bool = NSApp.currentEvent.map { $0.type == .leftMouseDown || $0.type == .leftMouseUp } ?? false) {
+        if case .clip(let id) = row, let editor, editor.project.edits.clips.contains(where: { $0.id == id }) {
+            tabs.openPreview(editor.isSuggestion(id) ? .suggestion(id) : .clip(id))
+        }
+        if selection == row, case .outline(let index) = row { scrollToOutline(index) }
         selection = row
         if byClick { sidebarOverlay = false }
     }
@@ -518,13 +528,19 @@ enum SidebarItem: Hashable {
         model.window = windowController?.window
         model.onActiveClipChange = { [weak self] id in self?.followScope(id) }
         model.onClipsChange = { [weak self] in self?.syncTabs() }
+        model.onRewriteSessionOpen = { [weak self] id in
+            guard let self, let tab = tabs.open.first(where: { $0.clipID == id }) else { return }
+            tabs.keepOpen(tab)
+        }
         model.onNeedsSidebar = { [weak self] in self?.revealSidebar() }
+        model.onNeedsSuggestions = { [weak self] in self?.setExplorerExpanded(.suggested, true) }
         next.editorModel = model
         renaming = nil
         sidebarOverlay = false
         rightOverlay = false
         tabs.reset()
         panelChoice = nil
+        outlineHasPendingHunk = nil
         document = next
         editor = model
         selection = next.project.edits.activeClipId.map(SidebarItem.clip) ?? .fullTake
@@ -552,6 +568,7 @@ enum SidebarItem: Hashable {
         windowController?.window?.isDocumentEdited = false
         renaming = nil
         document = nil
+        outlineHasPendingHunk = nil
         editor = nil
         started = nil
         tabs.reset()
@@ -593,8 +610,12 @@ enum SidebarItem: Hashable {
         editor.focusedSuggestion = nil
         switch selection {
         case .home, .recent: editor.preview.pause(); editor.isPlaying = false
+        case .outline(let index): scrollToOutline(index); return
         case .fullTake: if editor.project.edits.activeClipId != nil { editor.activate(nil) }
         case .clip(let id):
+            if editor.project.edits.clips.contains(where: { $0.id == id }) {
+                setExplorerExpanded(editor.isSuggestion(id) ? .suggested : .clips, true)
+            }
             guard editor.project.edits.activeClipId != id, let clip = editor.project.edits.clips.first(where: { $0.id == id }) else { break }
             editor.activate(clip)
         }

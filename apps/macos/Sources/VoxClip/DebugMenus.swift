@@ -89,7 +89,7 @@ import VoxClipCore
         let previousContent = commandWindow?.contentViewController
         commandWindow?.contentViewController = NSViewController()
         defer { commandWindow?.contentViewController = previousContent }
-        let project = try DebugSidebar.fiveQuestions(from: fixture)
+        let project = try DebugExplorer.fiveQuestions(from: fixture)
         let document = VoxClipDocument(project: project, demo: true)
         await app.shell.attachForTesting(document, selection: .fullTake)
         guard let editor = app.shell.editor, let window = app.shell.windowController?.window else { throw CocoaError(.coderInvalidValue) }
@@ -145,7 +145,7 @@ import VoxClipCore
         guard let first = editor.words.first, let kept = editor.keptClips.first, let suggestion = editor.suggestedClips.first else { throw CocoaError(.coderInvalidValue) }
         editor.selectedWordIDs = [first.id]
         invoke("Clip", "Find Clips…")
-        check("Clip › Find Clips… (⇧⌘K, tag 34) opens Find Clips at ⋯", editor.showFindClips && editor.findClipsAnchor == .overflow)
+        check("Clip › Find Clips… (⇧⌘K, tag 34) opens Find Clips at the clip bar", editor.showFindClips && editor.findClipsAnchor == .clipBar)
         editor.showFindClips = false
         // Edit › Rewrite {scope} (impl-plan V13, design.md §8): no Voice Lab needed, titled for the scope, and it runs at
         // once. A stub on this Mac answers; the settings are put back.

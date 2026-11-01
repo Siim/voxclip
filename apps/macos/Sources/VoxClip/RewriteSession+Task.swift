@@ -261,7 +261,7 @@ extension RewriteSession {
         case .tooManyEntries, .tooMuchText:
             let findClips = task.scope == .fullTake ? PanelAction(id: "findClips", title: "Find Clips") { [weak editor] in
                 editor?.closeRewrite(returnFocus: false)
-                editor?.requestFindClips(from: .overflow)
+                editor?.requestFindClips(from: .clipBar)
             } : nil
             (headline, cards, footer) = Self.tooLarge(error, words: words, findClips: findClips)
         }

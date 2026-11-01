@@ -38,7 +38,11 @@ enum EditorTab: Hashable, Sendable {
     private(set) var preview: EditorTab?
     /// The tab the editor is scoped to.
     private(set) var active: EditorTab = .fullTake
-    var dirty: Set<EditorTab> = []
+    var dirty: Set<EditorTab> = [] {
+        didSet { if let preview, dirty.contains(preview) { keepOpen(preview) } }
+    }
+    /// The shell supplies work owned by a session as well as pending review hunks.
+    @ObservationIgnored var hasWork: ((EditorTab) -> Bool)?
 
     /// The row's tabs, leading to trailing.
     var open: [EditorTab] { clipTabs + [.fullTake] + (preview.map { [$0] } ?? []) }
@@ -62,7 +66,7 @@ enum EditorTab: Hashable, Sendable {
         var tabs: [EditorTab] = []
         for tab in clipTabs.compactMap(current) where !tabs.contains(tab) { tabs.append(tab) }
         var nextPreview = preview.flatMap(current)
-        if let tab = nextPreview, case .clip = tab {
+        if let tab = nextPreview, case .clip = tab, case .suggestion = preview {
             if !tabs.contains(tab) { tabs.append(tab) }
             nextPreview = nil
         }
@@ -97,6 +101,17 @@ enum EditorTab: Hashable, Sendable {
         if clipTabs.contains(tab) { clipTabs.removeAll { $0 == tab } }
         if dirty.contains(tab) { dirty.remove(tab) }
     }
+    /// Explorer selection previews kept clips as well as suggestions. An already pinned
+    /// tab stays pinned; the next preview replaces only the temporary tab.
+    func openPreview(_ tab: EditorTab) {
+        guard tab.closable, !clipTabs.contains(tab) else { return }
+        if let preview, dirty.contains(preview) || hasWork?(preview) == true {
+            keepOpen(preview)
+            if preview == tab { return }
+        }
+        preview = tab
+    }
+
     /// A double-click keeps the preview tab open: it stops being the preview and joins
     /// the clip tabs, so the next preview opens beside it.
     func keepOpen(_ tab: EditorTab) {
@@ -121,8 +136,7 @@ extension WorkspaceShell {
         closeRewriteWithoutTab()
     }
     /// An open Rewrite session closes with its tab, as Escape closes it: ×, a middle click,
-    /// ⌘W, Close Tab, or a preview tab that the next preview replaces. Left open, it would
-    /// wait unseen with no dot and come back with its words when its clip opened again.
+    /// ⌘W or Close Tab. Previews carrying work are pinned before replacement.
     private func closeRewriteWithoutTab() {
         guard let editor, let id = editor.openRewrite?.project.edits.activeClipId,
               !tabs.open.contains(where: { $0.clipID == id }) else { return }
@@ -244,6 +258,8 @@ enum EditorTabMetrics {
 
     /// The active tab's button.
     var activeItem: EditorTabItemView? { items[shell.tabs.active] }
+    /// Where Tab goes from a tab: the clip bar (impl-plan V3b).
+    weak var nextKeyViewAfterTabs: NSView? { didSet { for item in items.values { item.nextKeyView = nextKeyViewAfterTabs } } }
 
     /// F6's stop for the tab and clip-bar rows: the active tab.
     @discardableResult func focusActiveTab() -> Bool {
@@ -284,6 +300,7 @@ enum EditorTabMetrics {
         item.onClose = { [weak self] tab in self?.shell.closeTab(tab) }
         item.onKeepOpen = { [weak self] tab in self?.shell.tabs.keepOpen(tab) }
         item.onStep = { [weak self] tab, step in self?.step(step, from: tab) }
+        item.nextKeyView = nextKeyViewAfterTabs
         items[tab] = item
         strip.addSubview(item)
         return item

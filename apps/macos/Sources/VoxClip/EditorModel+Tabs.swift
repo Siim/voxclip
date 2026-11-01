@@ -32,6 +32,21 @@ extension EditorModel {
         return true
     }
 
+    /// Tighten (impl-plan item 1, the clip bar): Cut Fillers and Tighten Pauses inside the open tab's scope as one undo
+    /// step, "Tighten clip {n}" or "Tighten full take". Local and free. `clipID` is the scope the caller showed, so a bar
+    /// that is behind a tab switch tightens nothing. Returns the cuts it added (words and pauses); nil when nothing changed.
+    @discardableResult func tighten(scope clipID: String?) -> Int? {
+        guard clipID == project.edits.activeClipId, let before = editState() else { return nil }
+        guard apply([.cutFillers, .tightenPauses], name: tightenStepName(clipID)), let after = editState() else { return nil }
+        let cuts = after.cutWordIds.subtracting(before.cutWordIds).count + after.cutPauseIds.subtracting(before.cutPauseIds).count
+        announce("\(scopeName(clipID)) tightened: \(cuts == 1 ? "1 cut" : "\(cuts) cuts")")
+        return cuts
+    }
+    /// Tighten's undo step: "Tighten clip {n}" or "Tighten full take".
+    func tightenStepName(_ clipID: String?) -> String { clipID.flatMap(clipNumber).map { "Tighten clip \($0)" } ?? "Tighten full take" }
+    /// Tighten can act: the scope has an uncut filler or an uncut pause.
+    var canTighten: Bool { capabilities.edit && (summary.canCutFillers || summary.canTighten) }
+
     /// The scope's name, as its tab and the Explorer read it: "Full Take", "Clip {n}" or
     /// "Suggested clip {n}" (design §3.4 numbering).
     func scopeName(_ clipID: String?) -> String {

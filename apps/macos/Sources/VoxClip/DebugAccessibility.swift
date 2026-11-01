@@ -37,7 +37,7 @@ import VoxClipMedia
         target.scale = 1
         check("sidebar label target renders at least 24 points in both axes", target.cgImage.map { $0.width >= 24 && $0.height >= 24 } == true)
 
-        let project = try DebugSidebar.fiveQuestions(from: fixture)
+        let project = try DebugExplorer.fiveQuestions(from: fixture)
         let editor = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()

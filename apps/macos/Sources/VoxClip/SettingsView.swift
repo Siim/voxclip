@@ -137,6 +137,8 @@ extension AppModel {
         Form {
             Section("Providers & Keys") {
                 ConnectorPicker(app: app)
+                // The clip bar's AI menu writes the same setting (design.md §9, impl-plan V3b).
+                Text("The AI menu above the transcript changes this too.").font(.caption).foregroundStyle(.secondary)
                 if let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) {
                     ProviderModelPicker(provider: provider, refreshed: refreshed, app: app).id(provider.id)
                     Button(refreshing ? "Refreshing…" : "Refresh models") {

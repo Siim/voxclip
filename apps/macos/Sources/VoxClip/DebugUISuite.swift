@@ -489,8 +489,8 @@ import ApplicationServices
             check("imported video can preview and export without transcript", editor.mediaResolved && editor.canExport && editor.project.transcript == nil)
             try await waitUntil { statusSummary(in: window)?.accessibilityHelp() == editor.summaryDetail }
             let summary = statusSummary(in: window)
-            check("the status bar shows the edit summary and VoiceOver reads its detail (\(editor.summaryDetail); summary \(summary.map { "\"\($0.stringValue)\", help \($0.accessibilityHelp() ?? "none")" } ?? "not found"))",
-                  summary?.stringValue == editor.subtitle && summary?.accessibilityHelp() == editor.summaryDetail && window.subtitle.isEmpty && window.titleVisibility == .hidden)
+            check("the status bar shows the edit summary and VoiceOver reads its detail (\(editor.summaryDetail); summary \(summary.map { "\"\($0.item.text)\", help \($0.accessibilityHelp() ?? "none")" } ?? "not found"))",
+                  summary?.item == editor.statusSummary && summary?.accessibilityHelp() == editor.summaryDetail && window.subtitle.isEmpty && window.titleVisibility == .hidden)
 
             // The editor's flows in the new layout: Find Clips readiness in its popover,
             // Make Clip, Transcribe Again's warning, Export from the title row and 1024 wide.
@@ -634,6 +634,9 @@ import ApplicationServices
             let interview = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
             results += try await DebugShell.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTabs.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugClipBar.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugExplorer.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugStatusBar.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: interview, directory: destination, native: true)
             results += try await DebugRewrite.directorCaptures(app: app, fixture: interview, directory: destination)
         } catch {
@@ -645,8 +648,8 @@ import ApplicationServices
     }
     static var sessionLocked: Bool { (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool == true }
     /// The status bar's edit summary, which carries what the hidden window subtitle showed.
-    private static func statusSummary(in window: NSWindow) -> NSTextField? {
-        window.contentView.flatMap { DebugShell.view("voxclip.status.summary", in: $0) as? NSTextField }
+    private static func statusSummary(in window: NSWindow) -> StatusItemView? {
+        window.contentView.flatMap { DebugShell.view("voxclip.status.summary", in: $0) as? StatusItemView }
     }
     /// Find Clips readiness in the popover (design §6.2), as main's Clips inspector
     /// checked it: a missing key, saving and forgetting it, a stopped local service, a
@@ -685,7 +688,7 @@ import ApplicationServices
             app.providerKeyStoreOverride = nil
         }
         app.set("llm.connector", .string("openai"))
-        editor.requestFindClips(from: .overflow)
+        editor.requestFindClips(from: .clipBar)
         check("Find Clips shows a missing key in its popover", await hasInspectorStatus("Key missing", in: window))
         check("Find Clips stays actionable with a missing key", inspectorElement("findClipsAction", in: window)?.enabled == true)
         do {
@@ -976,7 +979,7 @@ import ApplicationServices
             let unavailable = await app.safeError(VoxClipError.notImplemented("mac-media"))
             check("unimplemented service is truthful", unavailable.contains("not available") && unavailable.contains("Your video and edits are still here."))
             results += try await DebugHome.run(app: app, fixture: project, directory: destination)
-            results += try await DebugSidebar.run(app: app, fixture: project, directory: destination)
+            results += try await DebugExplorer.run(app: app, fixture: project, directory: destination)
             let editorShell = WorkspaceShell(app: app)
             await editorShell.attachForTesting(VoxClipDocument(project: project, demo: true))
             check("an attached project shows its editor scoped to Full take", !editorShell.showsHome && editorShell.selection == .fullTake && editorShell.title == project.title)
@@ -1010,6 +1013,8 @@ import ApplicationServices
             try await snapshot(OnboardingView().environment(app), name: "onboarding-dark", size: NSSize(width: 616, height: 536), appearance: .darkAqua, directory: destination)
             results += try await DebugShell.run(app: app, fixture: project, directory: destination)
             results += try await DebugTabs.run(app: app, fixture: project, directory: destination)
+            results += try await DebugClipBar.run(app: app, fixture: project, directory: destination)
+            results += try await DebugStatusBar.run(app: app, fixture: project, directory: destination)
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: project, directory: destination)
             model.close()
         } catch { results.append(Result(name: "suite: \(error.localizedDescription)", passed: false)) }

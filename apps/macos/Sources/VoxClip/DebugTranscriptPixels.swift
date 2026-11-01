@@ -282,7 +282,7 @@ extension DebugTranscriptPixels {
     static func gutter(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
-        let model = EditorModel(document: VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), app: app, preview: DemoPreviewEngine())
+        let model = EditorModel(document: VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
         model.textSize = DesignValues.transcriptTextSize; model.mediaResolved = true; model.refresh()
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
@@ -459,7 +459,7 @@ extension DebugTranscriptPixels {
     /// same clip with three proposed changes, beside f3: `v2-transcript-hunks-1280(-dark)`.
     static func scenes(app: AppModel, fixture: Project, directory: URL, native: Bool = false) async throws -> [DebugUISuite.Result] {
         let shell = WorkspaceShell(app: app)
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: fixture), demo: true), selection: .clip("five-2"))
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: fixture), demo: true), selection: .clip("five-2"))
         guard let editor = shell.editor, let clip = editor.activeClip, let start = editor.index(clip.startWordId) else { throw CocoaError(.coderInvalidValue) }
         defer { editor.close() }
         editor.mediaResolved = true; editor.refresh()

@@ -47,6 +47,12 @@ extension Color {
             : NSColor(srgbRed: 227.0 / 255, green: 225.0 / 255, blue: 219.0 / 255, alpha: 255.0 / 255)
     })
 
+    static let vcBgStatusBar = Color(nsColor: NSColor(name: NSColor.Name("vcBgStatusBar")) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(srgbRed: 20.0 / 255, green: 21.0 / 255, blue: 23.0 / 255, alpha: 255.0 / 255)
+            : NSColor(srgbRed: 235.0 / 255, green: 233.0 / 255, blue: 227.0 / 255, alpha: 255.0 / 255)
+    })
+
     static let vcLineDefault = Color(nsColor: NSColor(name: NSColor.Name("vcLineDefault")) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             ? NSColor(srgbRed: 40.0 / 255, green: 41.0 / 255, blue: 45.0 / 255, alpha: 255.0 / 255)

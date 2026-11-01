@@ -554,7 +554,7 @@ private actor RefusingKeys: ProviderKeyStore {
         let shell = WorkspaceShell(app: AppModel())
         let shared = try SharedResources.locate()
         let base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
-        await shell.attachForTesting(VoxClipDocument(project: try DebugSidebar.fiveQuestions(from: base), demo: true), selection: .clip("five-1"))
+        await shell.attachForTesting(VoxClipDocument(project: try DebugExplorer.fiveQuestions(from: base), demo: true), selection: .clip("five-1"))
         let editor = try #require(shell.editor)
         defer { editor.close() }
         editor.mediaResolved = true

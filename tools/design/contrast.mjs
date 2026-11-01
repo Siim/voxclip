@@ -97,6 +97,9 @@ const tokenPairs = [
   ['ui', 'ai.wave', ['ai.tint@0.10', 'timeline.lane'], 'AI patch waveform on A1'],
   ...['bg.window', 'timeline.rulerOut'].map(background => ['text', 'timeline.rulerLabel', background, 'ruler timecode labels']),
   ['ui', 'timeline.wave', 'timeline.audioPiece', 'A1 waveform core; its peak columns are the same colour at 62%'],
+  // The status bar (notes.md section 1, the mockup's .sbar): items in t2, dim items and icons in t3, the AI's status dot.
+  ...['text.secondary', 'text.tertiary'].map(foreground => ['text', foreground, 'bg.statusBar', 'status bar items']),
+  ...['status.success', 'status.warning', 'text.tertiary'].map(foreground => ['ui', foreground, 'bg.statusBar', 'the AI status dot in the status bar']),
 ];
 
 // Colours kept below their minimum on purpose (impl-plan item 6), with the reason. Their

@@ -14,7 +14,7 @@ struct EditorRenderSnapshot {
     let document: VoxClipDocument
     let app: AppModel
     var showFindClips = false
-    var findClipsAnchor = FindClipsAnchor.overflow
+    var findClipsAnchor = FindClipsAnchor.clipBar
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
     var selectedWordIDs: Set<String> = [] {
@@ -66,12 +66,19 @@ struct EditorRenderSnapshot {
     var correctionText = ""
     /// The open Rewrite session, on whichever tab it belongs to. The right column reads
     /// `rewrite`, which holds it only while the session's tab is active (EditorModel+Tabs).
-    var openRewrite: RewriteSession?
+    /// Opening one tells the shell, which pins the session's preview tab (V2).
+    var openRewrite: RewriteSession? {
+        didSet {
+            if let session = openRewrite, session.isOpen { onRewriteSessionOpen?(session.project.edits.activeClipId) }
+        }
+    }
     /// A Rewrite proposal shown in the transcript as tracked changes (`TranscriptProposal`).
     var proposal: TranscriptProposal?
     var focusedPane = EditorPane.transcript
     var paneFocusRequest = 0
     var scopeScrollRevision = 0
+    /// The Outline target for the existing scope-scroll revision, cleared on a scope change.
+    var outlineScrollWordID: String?
     var lastStyleId: String?
     /// Voice Lab's one-time beta sheet (voice-lab.md §5); R2's Turn On Voice Lab… opens it.
     var showVoiceLabOptIn = false
@@ -83,7 +90,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var discardAnswerForTests: ((Int) -> Bool)?
     #endif
     /// The Ask field's text (design.md §6.3.1): what the next Rewrite asks; empty asks Fix mistakes. The clip bar's field
-    /// binds it once V3b adds it, and the Rewrite job's field after Ask for Something Else until then. In memory only.
+    /// (V3b) and the Rewrite job's Ask field bind it. In memory only.
     var rewriteInstruction = ""
     /// Rewrite's scope now (design.md §6.3): the word selection, else the tab's clip, kept or suggested, else Full take.
     /// Nil with no transcript.
@@ -230,14 +237,26 @@ struct EditorRenderSnapshot {
     }
     var preset = ClipPresetID.best
     var instruction = ""
+    /// The last Find Clips run's preset and instructions (Hook's or the popover's), which the Explorer's Retry sends again.
+    @ObservationIgnored private(set) var lastFindRequest: (preset: ClipPresetID, instruction: String)?
     var clipError: String?
     /// "Answered by {fallback} because {model} was busy." after a Find Clips run that
     /// used the fallback model (ai.md §4.3), shown under the Suggested header.
     var fallbackNote: String?
     /// The suggestion that has keyboard focus after Find Clips, without being selected
     /// (design §6.2): Return keeps it and ⌫ dismisses it.
-    var focusedSuggestion: String?
-    var finding = false
+    var focusedSuggestion: String? {
+        didSet { if focusedSuggestion != nil { onNeedsSuggestions?() } }
+    }
+    /// A Find Clips run (Hook's or the popover's) is under way; `findingSince` is when it started, for the status bar's
+    /// elapsed time (impl-plan V11a).
+    var finding = false {
+        didSet {
+            if finding != oldValue { findingSince = finding ? Date() : nil }
+            if finding { onNeedsSuggestions?() }
+        }
+    }
+    private(set) var findingSince: Date?
     var exportProgress: ExportProgress?
     var exports: [ExportResult] = []
     /// Each exported target's share disclosure line (voice-lab.md §11.3), keyed like `ExportLedger.targetID`.
@@ -362,10 +381,14 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
     /// Called when a refresh finds the clips changed: made, kept, dismissed, removed, or back after Undo. The tabs follow it.
     @ObservationIgnored var onClipsChange: (() -> Void)?
+    /// Work on a preview belongs to a pinned tab, regardless of the Rewrite entry point.
+    @ObservationIgnored var onRewriteSessionOpen: ((String?) -> Void)?
     /// A new editor puts keyboard focus in its transcript once it shows.
     @ObservationIgnored var wantsTranscriptFocus = true
     /// Shows the sidebar for the Find Clips setup callout and a run's progress (design §6.2).
     @ObservationIgnored var onNeedsSidebar: (() -> Void)?
+    /// Progress and keyboard focus must have visible rows even after a disclosure collapsed.
+    @ObservationIgnored var onNeedsSuggestions: (() -> Void)?
     #if DEBUG
     @ObservationIgnored var editTimestampForTests: Date?
     /// The last VoiceOver announcement, for harness checks.
@@ -406,21 +429,6 @@ struct EditorRenderSnapshot {
     var selectedIDs: [String] { words.filter { selectedWordIDs.contains($0.id) }.map(\.id) }
     var sourceDuration: Double { project.media.source.durationSeconds }
     var duration: Double { renderTimeline?.duration ?? sourceDuration }
-    var subtitle: String {
-        if exporting { return "Rendering \(exportIndex) of \(max(1, exportClipIDs.count))" }
-        if let progress { return progress }
-        if !editingAvailable && !words.isEmpty { return "Editing is not available in this build. Your video and edits are still here." }
-        if voiceLabPlan == nil && !summary.canExport && !words.isEmpty { return "Keep at least one word before exporting." }
-        return summaryLine
-    }
-    /// The edit summary for the selected row (design §3.5): "{edited} after cuts · {n}
-    /// cuts", "Clip {k} · " first for a clip or suggestion, and "{edited} · No cuts yet"
-    /// when nothing in the scope is cut.
-    var summaryLine: String {
-        let scope = activeClip.flatMap { clipNumber($0.id) }.map { "Clip \($0) · " } ?? ""
-        let edited = durationLabel(duration), cuts = cutCount
-        return cuts == 0 ? "\(scope)\(edited) · No cuts yet" : "\(scope)\(edited) after cuts · \(cuts == 1 ? "1 cut" : "\(cuts) cuts")"
-    }
     /// Cuts in the scope (design §3.5): the maximal runs of consecutive cut words, plus
     /// the cut pauses between the scope's words.
     var cutCount: Int { let cuts = scopeCuts; return cuts.runs + cuts.pauses }
@@ -438,7 +446,7 @@ struct EditorRenderSnapshot {
         let cutPauses = pauses.filter { cutPauseIDs.contains($0.id) && range.lowerBound <= $0.afterIndex && $0.afterIndex < range.upperBound }.count
         return (cut, runs, cutPauses)
     }
-    /// The edit summary's detail (design §3.5), which VoiceOver reads after the subtitle:
+    /// The edit summary's detail (design §3.5), which VoiceOver reads after the status bar's summary (`statusSummary`):
     /// "{source} source · {w} words cut in {r} places · {p} pauses cut".
     var summaryDetail: String {
         let cuts = scopeCuts
@@ -882,6 +890,7 @@ struct EditorRenderSnapshot {
         if let message { announce(message) }
         else if project.edits.activeClipId != previous { announce(scopeName(project.edits.activeClipId)) }
         if project.edits.activeClipId == clip?.id {
+            outlineScrollWordID = nil
             seekToActiveClip()
             if previous != clip?.id { scopeScrollRevision += 1 }
         }
@@ -1192,9 +1201,9 @@ struct EditorRenderSnapshot {
 @MainActor func copyText(_ text: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
 
 extension EditorModel {
-    /// Where the Find Clips popover opens: the tab row's ⋯ button (the menus, ⇧⌘K and ⋯;
-    /// impl-plan item 17) or the sidebar's action.
-    enum FindClipsAnchor { case overflow, sidebar }
+    /// Where the Find Clips popover opens: the clip bar, at Hook (the menus, ⇧⌘K, ⋯ and Hook
+    /// with no AI chosen; impl-plan item 17), or the sidebar's action.
+    enum FindClipsAnchor { case clipBar, sidebar }
     static let noClipsMatched = "No clips matched. Try another style or describe what you want."
     /// The chosen clip-finding connector, nil when none is set up.
     var findConnector: ProviderChoice? { app.providers.first { $0.id == app.string("llm.connector") } }
@@ -1204,15 +1213,34 @@ extension EditorModel {
         findClipsAnchor = anchor
         showFindClips = true
     }
-    /// Asks the chosen connector for clips. They arrive as suggestions in one undo step.
-    func findClips() {
+    /// Hook (impl-plan item 17): one click finds hook clips in the take with the Hooks preset, through the same route,
+    /// lease and Suggested results as Find Clips; the popover's own preset and instructions stay as they were. With no AI
+    /// chosen it opens the Find Clips popover at the clip bar on Hooks instead, which says how to choose one.
+    func runHook() {
+        guard capabilities.ai, !words.isEmpty else { return }
+        guard findConnector != nil else {
+            preset = .hooks
+            requestFindClips(from: .clipBar)
+            return
+        }
+        showFindClips = false
+        findClips(preset: .hooks, instruction: "")
+    }
+    /// Retry after a failed run: the same search again, a failed Hook with Hooks, not the popover's style.
+    func retryFindClips() {
+        findClips(preset: lastFindRequest?.preset, instruction: lastFindRequest?.instruction)
+    }
+    /// Asks the chosen connector for clips with `preset` and `instruction`, the popover's when nil. They arrive as
+    /// suggestions in one undo step.
+    func findClips(preset requestedPreset: ClipPresetID? = nil, instruction requestedInstruction: String? = nil) {
         guard capabilities.ai, let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
         let corrections = project.edits.corrections
         let cuts = Set(project.edits.cutWordIds)
         let selectedModel = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
         let selectedSignature = rewriteConnectorSignature
-        let selectedPreset = preset
-        let instructions = instruction
+        let selectedPreset = requestedPreset ?? preset
+        let instructions = requestedInstruction ?? instruction
+        lastFindRequest = (selectedPreset, instructions)
         let snapshot = project
         do {
             guard self.capabilities.ai, self.project == snapshot, self.app.string("llm.connector") == provider.id,
@@ -1258,7 +1286,7 @@ extension EditorModel {
                     next.edits = changed.projectEdits
                     replace(next, name: "Find clips")
                     // The first new suggestion in transcript order is focused, not selected
-                    // (design §6.2): the scope, playhead, Export and subtitle stay.
+                    // (design §6.2): the scope, playhead, Export and status summary stay.
                     focusedSuggestion = added.min { (index($0.startWordId) ?? .max) < (index($1.startWordId) ?? .max) }?.id
                     fallbackNote = usedFallback ? "Answered by \(result.model) because \(selectedModel) was busy." : nil
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
