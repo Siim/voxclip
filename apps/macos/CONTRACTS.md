@@ -1,6 +1,11 @@
 # macOS implementation contracts
 
 
+### 2026-11-01 — V2b review: bounded export projection cost
+
+- Collapsed Exports reads only the project's ledger count. Expanded rows share an editor-owned fingerprint cache keyed by project/revision, target, aspect and label position; only the current revision is retained. Output existence is checked once in the row's record-keyed task and reused by actions. `collapsedExportsOnlyCountAndExpandedRowsReuseFingerprints` covers collapsed cost, repeated reads and revision invalidation.
+
+
 ### 2026-11-01 — V2b review: export metadata type
 
 - Only the duration uses SF Mono 11. Resolution, size and wall-clock time use the system 11 pt font, per notes.md §2. Separate production layout probes exercise the duration/facts split in the library regression.

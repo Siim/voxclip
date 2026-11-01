@@ -236,6 +236,7 @@ struct EditorRenderSnapshot {
     private(set) var transcribed = false
     /// Bumped by every refresh that finds the project changed. Views that derive what they
     /// show from `project`, which they can't observe, read it (the toolbar's Export).
+    @ObservationIgnored let exportsFingerprintCache = ExportsFingerprintCache()
     private(set) var projectRevision = 0
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
     var mediaUnreadable = false { didSet { if mediaUnreadable { closeRewrite(returnFocus: false) }; followWaveformKey() } }

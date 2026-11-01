@@ -1,6 +1,33 @@
 import Foundation
 import VoxClipCore
 
+/// Fingerprints are expensive render-plan projections. Keep at most the current revision's targets/aspects.
+@MainActor final class ExportsFingerprintCache {
+    private struct Target: Hashable { let id: String; let aspect: AspectRatio }
+    private struct Value { let fingerprint: String? }
+    private var stamp = ""
+    private var captions: CaptionSettings?
+    private var export: ProjectExport?
+    private var values: [Target: Value] = [:]
+    #if DEBUG
+    private(set) var computations = 0
+    #endif
+    func value(project: Project, target: ExportTarget, revision: Int, labelPosition: VoiceLabLabelPosition) -> String? {
+        let next = "\(project.id)|\(revision)|\(labelPosition.rawValue)"
+        if stamp != next || captions != project.captions || export != project.export {
+            values = [:]; stamp = next; captions = project.captions; export = project.export
+        }
+        let key = Target(id: ExportLedger.targetID(target), aspect: project.export.aspect)
+        if let value = values[key] { return value.fingerprint }
+        #if DEBUG
+        computations += 1
+        #endif
+        let result = try? ExportFingerprint.value(project, target: target, labelPosition: labelPosition)
+        values[key] = Value(fingerprint: result)
+        return result
+    }
+}
+
 /// A projection of one project's latest export per target/aspect. No view, workspace,
 /// file-opening or selection state: the Explorer and timeline EXPORTS tab share it.
 @MainActor struct ExportsListModel {
@@ -30,7 +57,7 @@ import VoxClipCore
         var accessibilityLabel: String { "\(title), \(metadata), \(status.rawValue)" }
     }
     let rows: [Row]
-    init(project: Project, records: [ExportRecord], labelPosition: VoiceLabLabelPosition = .topRight) {
+    init(project: Project, records: [ExportRecord], labelPosition: VoiceLabLabelPosition = .topRight, cache: ExportsFingerprintCache? = nil, revision: Int = 0) {
         let words = project.transcript?.words ?? []
         let positions = Dictionary(uniqueKeysWithValues: words.enumerated().map { ($0.element.id, $0.offset) })
         let clips = project.edits.clips.enumerated().filter { $0.element.origin == .manual || $0.element.selected }.sorted {
@@ -46,7 +73,8 @@ import VoxClipCore
             let name = record.targetID == "full" ? "Full Take" : (index.map { "Clip \($0 + 1)" } ?? record.targetName ?? "Removed clip")
             var snapshot = project
             snapshot.export.aspect = record.aspect
-            let fingerprint = try? ExportFingerprint.value(snapshot, target: target, labelPosition: labelPosition)
+            let fingerprint = cache.map { $0.value(project: snapshot, target: target, revision: revision, labelPosition: labelPosition) }
+                ?? (try? ExportFingerprint.value(snapshot, target: target, labelPosition: labelPosition))
             let status: Status = record.failed == true ? .failed : (record.planFingerprint == fingerprint ? .exported : .edited)
             return Row(record: record, targetName: name, status: status, targetExists: record.targetID == "full" || index != nil)
         }
@@ -54,9 +82,10 @@ import VoxClipCore
 }
 
 extension EditorModel {
+    var exportsCount: Int { app.exportLedger.records.filter { $0.projectID == project.id }.count }
     var exportsList: ExportsListModel {
         _ = projectRevision
-        return ExportsListModel(project: project, records: app.exportLedger.records, labelPosition: app.voiceLabLabelPosition)
+        return ExportsListModel(project: project, records: app.exportLedger.records, labelPosition: app.voiceLabLabelPosition, cache: exportsFingerprintCache, revision: projectRevision)
     }
     /// Explicit row actions retain that row's aspect and target, even on another tab.
     /// A running job keeps its snapshot; no render starts until the Export button.

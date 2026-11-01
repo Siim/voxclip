@@ -13,7 +13,8 @@ import VoxClipCore
         return CGFloat(headers + voiceCount + exportCount) * ExplorerMetrics.rowHeight + CGFloat(headers)
     }
     var body: some View {
-        let exports = editor.exportsList.rows
+        let count = editor.exportsCount
+        let exports = shell.explorerExpanded(.exports) ? editor.exportsList.rows : []
         let voices = shell.explorerVoices
         ScrollView {
             VStack(spacing: 0) {
@@ -30,17 +31,17 @@ import VoxClipCore
                 }
                 VStack(spacing: 0) {
                     libraryDivider
-                    ExplorerHeader(shell: shell, section: .exports, count: exports.count)
+                    ExplorerHeader(shell: shell, section: .exports, count: count)
                     if shell.explorerExpanded(.exports) {
                         ForEach(exports) { ExplorerExportRow(editor: editor, row: $0) }
                     }
                 }
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel(ExplorerSection.exports.accessibilityLabel(count: exports.count))
+                .accessibilityLabel(ExplorerSection.exports.accessibilityLabel(count: count))
             }
             .padding(.horizontal, 12)
         }
-        .frame(height: min(contentHeight(exports: exports.count, voices: voices.count), 260))
+        .frame(height: min(contentHeight(exports: count, voices: voices.count), 260))
         .background(DesignValues.color("bg.window"))
         .columnLayoutEvidence("explorer.library")
     }
@@ -80,7 +81,7 @@ import VoxClipCore
 @MainActor struct ExplorerExportRow: View {
     let editor: EditorModel
     let row: ExportsListModel.Row
-    private var hasFile: Bool { row.outputURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false }
+    @State private var hasFile = false
     var body: some View {
         HStack(spacing: 8) {
             ExplorerExportThumbnail(editor: editor, row: row)
@@ -111,6 +112,7 @@ import VoxClipCore
         }
         .foregroundStyle(DesignValues.color("text.primary"))
         .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
+        .task(id: row.record) { hasFile = row.outputURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false }
         .help(row.accessibilityLabel).onTapGesture(count: 2, perform: open)
         .contextMenu { actions }
         .accessibilityElement(children: .combine).accessibilityLabel(row.accessibilityLabel)

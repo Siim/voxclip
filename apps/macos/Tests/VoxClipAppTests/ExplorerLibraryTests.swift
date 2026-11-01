@@ -203,6 +203,27 @@ import Testing
         #expect(texts["explorer.export"] == nil && texts["explorer.voice"] == nil)
         #expect(texts["explorer.header.voices"] == "Voices, 1 item" && texts["explorer.header.exports"] == "Exports, 1 item")
     }
+    @Test func collapsedExportsOnlyCountAndExpandedRowsReuseFingerprints() async throws {
+        let shell = try await shell(), editor = try #require(shell.editor)
+        defer { editor.close() }
+        try editor.app.exportLedger.record(record(editor.project))
+        shell.setExplorerExpanded(.exports, false)
+        let host = NSHostingView(rootView: ExplorerLibrarySections(shell: shell, editor: editor))
+        host.frame = NSRect(x: 0, y: 0, width: 224, height: 100); host.layoutSubtreeIfNeeded()
+        #expect(editor.exportsCount >= 1 && editor.exportsFingerprintCache.computations == 0)
+        _ = editor.exportsList
+        let computed = editor.exportsFingerprintCache.computations
+        _ = editor.exportsList
+        #expect(computed > 0 && editor.exportsFingerprintCache.computations == computed)
+        var changed = editor.project; changed.edits.corrections[editor.words[0].id] = "Changed"
+        editor.document.replaceProject(changed); editor.refresh()
+        _ = editor.exportsList
+        #expect(editor.exportsFingerprintCache.computations > computed)
+        let afterEdit = editor.exportsFingerprintCache.computations
+        editor.setStyle("off"); _ = editor.exportsList
+        #expect(editor.exportsFingerprintCache.computations > afterEdit)
+    }
+
     @Test func removedTargetsStayVisibleButCannotRetargetAJob() async throws {
         let shell = try await shell(), editor = try #require(shell.editor)
         defer { editor.close() }
