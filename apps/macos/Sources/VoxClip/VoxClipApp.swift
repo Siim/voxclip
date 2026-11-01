@@ -436,7 +436,8 @@ import VoxClipCore
         if item.action == #selector(revealMedia(_:)) { return editor != nil }
         return true
     }
-    private func installMenus() {
+    /// Builds the main menu. Internal so a headless test can check its key equivalents and tags.
+    func installMenus() {
         // The windows never tab (`tabbingMode = .disallowed`), so AppKit adds no tab items of
         // its own beside the editor's Show Next Tab and Show Previous Tab (⌃Tab, impl-plan V3a).
         NSWindow.allowsAutomaticWindowTabbing = false
