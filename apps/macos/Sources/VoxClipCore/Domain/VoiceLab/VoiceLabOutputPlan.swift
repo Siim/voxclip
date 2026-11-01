@@ -51,7 +51,20 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
 }
 
 public enum VoiceLabOutputPlanner {
+    private struct Replacement {
+        let id: String
+        let start: Double
+        let end: Double
+        let duration: Double
+        let audio: VoiceLabAudio?
+    }
     public static func build(_ project: Project, scope: VoiceLabOutputScope) throws -> VoiceLabOutputPlan {
+        try build(project, scope: scope, placing: nil, pendingID: nil)
+    }
+
+    /// Geometry-only projection for pre-payment placement checks. No synthetic recipe, asset or consent is invented.
+    static func build(_ project: Project, scope: VoiceLabOutputScope, placing window: VoiceLabWindow?,
+                      pendingID: String?) throws -> VoiceLabOutputPlan {
         try VoiceLabProject.validate(project)
         guard let transcript = project.transcript else { throw VoiceLabProjectError.invalidScope }
         let duration = project.media.source.durationSeconds
@@ -85,16 +98,31 @@ public enum VoiceLabOutputPlanner {
                 throw VoiceLabProjectError.invalidScope
             }
         }
+        var replacements = enabled.map { Replacement(id: $0.id, start: $0.replace.start, end: $0.replace.end,
+                                                     duration: $0.outDuration, audio: $0.audio) }
+        if let window, let pendingID {
+            guard window.start.isFinite, window.end.isFinite, window.start >= 0,
+                  window.end <= duration, window.end > window.start else { throw VoiceLabProjectError.invalidRange }
+            if let clipRange, window.start < clipRange.start || window.end > clipRange.end {
+                throw VoiceLabProjectError.invalidScope
+            }
+            guard replacements.allSatisfy({ window.end <= $0.start || window.start >= $0.end }) else {
+                throw VoiceLabProjectError.overlappingReplacement
+            }
+            replacements.append(Replacement(id: pendingID, start: window.start, end: window.end,
+                                            duration: window.end - window.start, audio: nil))
+            replacements.sort { $0.start < $1.start }
+        }
         func inside(_ start: Double, _ end: Double) -> Bool {
-            enabled.contains { start >= $0.replace.start && end <= $0.replace.end }
+            replacements.contains { start >= $0.start && end <= $0.end }
         }
         let segments = try buildSegments(state, activeClip: activeClip).filter { item in
             !(item.kind == .word || item.kind == .pause) || !inside(item.start, item.end)
         }
         let base = try buildEditPlan(segments, duration: duration, sampleRate: rate, pauseKeepSeconds: edits.pauseKeepSeconds)
-        let synthRanges = enabled.map { segment in
-            (segment, MediaInterval(startSample: Int64(EditingPrimitives.jsRound(segment.replace.start * rate)),
-                                    endSample: Int64(EditingPrimitives.jsRound(segment.replace.end * rate))))
+        let synthRanges = replacements.map { segment in
+            (segment, MediaInterval(startSample: Int64(EditingPrimitives.jsRound(segment.start * rate)),
+                                    endSample: Int64(EditingPrimitives.jsRound(segment.end * rate))))
         }
         guard synthRanges.allSatisfy({ $0.1.endSample > $0.1.startSample }) else { throw VoiceLabProjectError.invalidRange }
         // Neighbour reach may enter a replacement. Remove only that portion of the cut.
@@ -129,7 +157,7 @@ public enum VoiceLabOutputPlanner {
             for (segment, synth) in synthRanges where synth.endSample > position && synth.startSample < interval.endSample {
                 guard synth.startSample >= position, synth.endSample <= interval.endSample else { throw VoiceLabProjectError.invalidRange }
                 try append(.source, position, synth.startSample, synth.startSample - position)
-                let generated = Int64(EditingPrimitives.jsRound(segment.outDuration * rate))
+                let generated = Int64(EditingPrimitives.jsRound(segment.duration * rate))
                 guard generated > 0 else { throw VoiceLabProjectError.invalidRange }
                 try append(.synth, synth.startSample, synth.endSample, generated, segment.id, segment.audio)
                 position = synth.endSample
@@ -137,6 +165,7 @@ public enum VoiceLabOutputPlanner {
             try append(.source, position, interval.endSample, interval.endSample - position)
         }
         var plan = VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces, captions: [], scope: scope)
+        if window != nil { return plan }
         if enabled.isEmpty {
             return VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces,
                                       captions: captionCopy(segments, plan: base), scope: scope)
@@ -152,7 +181,7 @@ public enum VoiceLabOutputPlanner {
                 if end > start { captions.append(CaptionWord(id: word.id, text: state.textOf(word), start: start, end: end)) }
             }
         }
-        for (segment, _) in synthRanges where segment.kind == .tts {
+        for segment in enabled where segment.kind == .tts {
             guard let piece = pieces.first(where: { $0.segmentId == segment.id }) else { continue }
             for (index, word) in (segment.words ?? []).enumerated() {
                 let start = Double(piece.outputStartSample + Int64(EditingPrimitives.jsRound(word.start * rate))) / rate

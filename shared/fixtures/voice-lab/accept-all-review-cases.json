@@ -1,0 +1,13 @@
+{
+  "schema": "voxclip.accept-all-review.v1",
+  "cases": [
+    {
+      "case": "empty-set",
+      "input": "single",
+      "segments": [],
+      "expected": {
+        "error": "invalidSegment"
+      }
+    }
+  ]
+}
