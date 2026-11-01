@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-11-01 — v2-timeline — hosted CI fixes
+
+- **Transcript lane fixes.** track/v2-transcript 31294438 is merged unchanged: the transcript app tests build only with DEBUG, so the E2E step's `swift test -c release` compiles, and the strike checks count inked columns at 1x (see the v2-transcript hosted CI entry).
+- **Type-check time.** `TimelineCanvasTests.roomToneIsSilenceAndDoesNotSetTheScale` builds the room tone's level from a typed jitter and decibel value. Hosted Xcode could not type-check the one-expression form, which failed the debug test build and every `swift test` step after it. The levels are unchanged.
+- **Release safety test.** `test_release_build_never_reads_unset_voice_lab_settings_as_on` reads the DEBUG-only `AppModel.internalBuild` in `VoiceLabSession.swift` and expects `VoiceLabGate.developmentDefaults(internalBuild: Self.internalBuild)` in `AppModel`, where V15 moved the flag from `RewriteEntryPolicy.buildEnabled`. It still proves that Release reads unset Voice Lab settings as off.
+
 ### 2026-11-01 — v2-timeline V15 review — takes per phrase, reviewable changes, the list's keys
 
 - **Takes stay with their phrase (`RewriteSession.takesVoice`, `includedVoiceSeen`, `ChangeList.followIncludedVoice`).** `configureGeneration` records the phrase the list includes alone (`includedVoice.only`). Each R2 compares the included phrase with the last one seen: including another phrase alone moves the takes to it and calls `inputsChanged()` (the old takes no longer fit, the new phrase is quoted); coming back to the takes' phrase re-requests a lost quote; none or several included leaves the generation alone. The footer offers Make Takes and Use Take only when `takesVoice` is the included phrase, `makeTakes()` refuses a stale footer's tap for another phrase, and `acceptTakes()` requires the same.
