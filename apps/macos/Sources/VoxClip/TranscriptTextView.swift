@@ -300,7 +300,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         let aiVoice = text.map.intersecting(lineRange).contains { renderer.aiWordIDs.contains($0.id) && NSIntersectionRange($0.range, lineRange).length > 0 }
         TranscriptGutter.glyph(marks: marks, aiVoice: aiVoice)?.draw(in: TranscriptGutter.glyphBox(left: left, line: box), context: context)
         func pending(_ marks: [TranscriptChangeMark], _ ordinal: Int) -> Bool { marks.contains { $0.ordinal == ordinal && $0.pending && $0.role != .slot } }
-        let bars = Dictionary(grouping: shown.filter(\.pending), by: \.ordinal).map { ($0.key, $0.value.contains(where: \.focused)) }.sorted { !$0.1 && $1.1 || $0.1 == $1.1 && $0.0 < $1.0 }
+        let bars = Self.changeBars(shown)
         guard !bars.isEmpty else { return }
         context.saveGState()
         let add = DesignValues.nsColor("change.add")
@@ -314,6 +314,15 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             context.fillPath()
         }
         context.restoreGState()
+    }
+
+    /// One change bar per pending change on a line, the focused ones last so they draw on
+    /// top, each group in ordinal order. Split into typed steps: as one chain it took the
+    /// type checker about 3 s.
+    private static func changeBars(_ marks: [TranscriptChangeMark]) -> [(ordinal: Int, focused: Bool)] {
+        let byOrdinal: [Int: [TranscriptChangeMark]] = Dictionary(grouping: marks.filter(\.pending), by: \.ordinal)
+        let bars: [(ordinal: Int, focused: Bool)] = byOrdinal.map { entry in (ordinal: entry.key, focused: entry.value.contains(where: \.focused)) }
+        return bars.sorted { first, second in first.focused != second.focused ? second.focused : first.ordinal < second.ordinal }
     }
 
     /// The AI passage's marker before its words, until the AI tint replaces it (V19).
