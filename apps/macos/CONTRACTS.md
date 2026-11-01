@@ -3,7 +3,8 @@
 ### 2026-11-01 — v2-timeline — hosted CI fixes
 
 - **Transcript lane fixes.** track/v2-transcript 31294438 is merged unchanged: the transcript app tests build only with DEBUG, so the E2E step's `swift test -c release` compiles, and the strike checks count inked columns at 1x (see the v2-transcript hosted CI entry).
-- **Type-check time.** `TimelineCanvasTests.roomToneIsSilenceAndDoesNotSetTheScale` builds the room tone's level from a typed jitter and decibel value. Hosted Xcode could not type-check the one-expression form, which failed the debug test build and every `swift test` step after it. The levels are unchanged.
+- **Type-check time.** `TimelineCanvasTests.roomToneIsSilenceAndDoesNotSetTheScale` builds the room tone's level in typed steps, worded as in lead/v2-feel 1f2ca521. Hosted Xcode could not type-check the one-expression form, which failed the debug test build and every `swift test` step after it. The levels are unchanged.
+- **Playhead at 1x.** lead/v2-feel abc04cc6 is cherry-picked: `theLanesDrawNotesSixPixels` checks the playhead's 1 pt line in the lanes by coverage against the same lanes captured without it (`Pixels.showsLine`), since at 1x neither of the two columns it covers holds `tint.default`. The ruler check is unchanged.
 - **Release safety test.** `test_release_build_never_reads_unset_voice_lab_settings_as_on` reads the DEBUG-only `AppModel.internalBuild` in `VoiceLabSession.swift` and expects `VoiceLabGate.developmentDefaults(internalBuild: Self.internalBuild)` in `AppModel`, where V15 moved the flag from `RewriteEntryPolicy.buildEnabled`. It still proves that Release reads unset Voice Lab settings as off.
 
 ### 2026-11-01 — v2-timeline V15 review — takes per phrase, reviewable changes, the list's keys
