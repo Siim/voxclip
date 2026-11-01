@@ -35,6 +35,9 @@ enum ViewerTag: Equatable {
 /// are drawn on the stage. While the timeline panel is hidden, a hover transport along the
 /// box's bottom edge carries play, the timecode and Edited / Source (notes.md §1).
 @MainActor struct ViewerSection: View {
+    /// The viewer's own keyboard stops: the box, which takes the transport keys, and the
+    /// hover transport's controls.
+    enum Focus: Hashable { case box, play, axis }
     @Bindable var model: EditorModel
     let columnWidth: CGFloat
     /// The box's height: 16:9 of the width unless a short column gives less (`PanelHost`).
@@ -43,7 +46,15 @@ enum ViewerTag: Equatable {
     @State private var hovering: Bool
     /// A caption is being dragged on the stage; the transport steps aside meanwhile.
     @State private var captionDragging = false
+    /// The pane's own focus (`EditorPaneFocus`, the nearest focusable ancestor)…
     @Environment(\.isFocused) private var focused
+    /// …and focus inside the viewer, which that ancestor does not see.
+    @FocusState private var focus: Focus?
+    #if DEBUG
+    /// Harnesses put keyboard focus inside the viewer when it appears.
+    private var initialFocus: Focus?
+    func focusing(_ focus: Focus) -> ViewerSection { var copy = self; copy.initialFocus = focus; return copy }
+    #endif
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -84,11 +95,11 @@ enum ViewerTag: Equatable {
         return standIn ? ViewerStandIn.chip(model.mediaStatus).map(ViewerTag.media) : nil
     }
     /// The hover transport shows with the timeline hidden while the pointer is over the
-    /// viewer, the viewer holds keyboard focus, or VoiceOver runs, so it is never only a
-    /// hover target. It steps aside while a caption is dragged, so the caption and the
-    /// guides show.
-    static func showsTransport(timelineVisible: Bool, hovering: Bool, focused: Bool, voiceOver: Bool, captionDragging: Bool = false) -> Bool {
-        !timelineVisible && !captionDragging && (hovering || focused || voiceOver)
+    /// viewer, keyboard focus is on the viewer pane or inside it (the box, Play or Edited /
+    /// Source), or VoiceOver runs, so it is never only a hover target. It steps aside while
+    /// a caption is dragged, so the caption and the guides show.
+    static func showsTransport(timelineVisible: Bool, hovering: Bool, focused: Bool, focusInside: Bool = false, voiceOver: Bool, captionDragging: Bool = false) -> Bool {
+        !timelineVisible && !captionDragging && (hovering || focused || focusInside || voiceOver)
     }
 
     var body: some View {
@@ -97,7 +108,8 @@ enum ViewerTag: Equatable {
         let box = CGSize(width: max(1, columnWidth), height: max(1, boxHeight ?? Self.boxHeight(forWidth: columnWidth)))
         let stage = Self.stageSize(ratio: Self.ratio(model.project), in: box)
         let label = Self.stageLabel(for: model)
-        let transport = Self.showsTransport(timelineVisible: timelineVisible, hovering: hovering, focused: focused, voiceOver: voiceOver, captionDragging: captionDragging)
+        let transport = Self.showsTransport(timelineVisible: timelineVisible, hovering: hovering, focused: focused, focusInside: focus != nil,
+            voiceOver: voiceOver, captionDragging: captionDragging)
         ZStack(alignment: .bottom) {
             stageView
                 .frame(width: stage.width, height: stage.height)
@@ -107,7 +119,7 @@ enum ViewerTag: Equatable {
                 .accessibilityIdentifier("voxclip.viewer.stage")
                 .frame(width: box.width, height: box.height)
             if transport {
-                ViewerHoverTransport(model: model).transition(.opacity)
+                ViewerHoverTransport(model: model, focus: $focus).transition(.opacity)
             }
         }
         .frame(width: box.width, height: box.height)
@@ -118,7 +130,11 @@ enum ViewerTag: Equatable {
         .onHover { hovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: Double(VCTokens.motionDurationBase) / 1000), value: transport)
         .focusable()
+        .focused($focus, equals: .box)
         .onKeyPress(characters: CharacterSet(charactersIn: " jklpico[]")) { key in model.transport(key.characters, shift: key.modifiers.contains(.shift)); return .handled }
+        #if DEBUG
+        .onAppear { if let initialFocus { focus = initialFocus } }
+        #endif
     }
     private var standIn: Bool {
         model.document.demo || !model.mediaResolved || model.mediaUnreadable || model.project.media.source.video == nil || model.nativePreview == nil
@@ -158,6 +174,7 @@ enum ViewerTag: Equatable {
 /// the stage under it, so a caption placed low can still be dragged.
 @MainActor struct ViewerHoverTransport: View {
     @Bindable var model: EditorModel
+    let focus: FocusState<ViewerSection.Focus?>.Binding
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
     var body: some View {
@@ -194,6 +211,7 @@ enum ViewerTag: Equatable {
             .help("Play/Pause (Space)")
             .accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
             .accessibilityIdentifier("voxclip.viewer.play")
+            .focused(focus, equals: .play)
             .columnLayoutEvidence("viewer.play")
             playbackTime(total: total, rate: rate).allowsHitTesting(false)
             Spacer(minLength: 4)
@@ -203,6 +221,7 @@ enum ViewerTag: Equatable {
             .labelsHidden().pickerStyle(.segmented).controlSize(.small).fixedSize()
             .accessibilityLabel("Timeline time")
             .accessibilityIdentifier("voxclip.viewer.axis")
+            .focused(focus, equals: .axis)
             .columnLayoutEvidence("viewer.axis")
         }
     }

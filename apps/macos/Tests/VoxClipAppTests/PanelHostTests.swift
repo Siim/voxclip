@@ -36,7 +36,17 @@ import Testing
         host.layoutSubtreeIfNeeded()
         return DebugRightColumn.markers(in: host)
     }
-
+    /// `content` in a borderless window that is never shown, so SwiftUI can give it keyboard focus.
+    private func windowed(_ content: some View, size: CGSize) -> (NSWindow, NSView) {
+        let host = NSHostingView(rootView: content)
+        host.frame = CGRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        _ = window.makeFirstResponder(host)
+        host.layoutSubtreeIfNeeded()
+        return (window, host)
+    }
     /// Lays `host` out until `done` holds, giving SwiftUI up to 100 turns to apply a change.
     @discardableResult private func settle(_ host: NSView, until done: () -> Bool) async -> Bool {
         for _ in 0..<100 {
@@ -97,7 +107,6 @@ import Testing
         let scroll = try #require(rewrite.viewport)
         #expect(scroll.minY >= 162 && scroll.height >= 48, Comment(rawValue: "Rewrite scrolls in \(scroll)"))
     }
-
 
     /// No Rewrite compaction: a session leaves the viewer at its size (design.md's 146 pt stage is gone).
     @Test func theViewerKeepsItsSizeWhileRewriteIsOpen() async throws {
@@ -201,6 +210,29 @@ import Testing
         shell.toggleViewer()
         shell.toggleTimeline()
         #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
+    }
+
+    /// The transport is never only a hover target: keyboard focus inside the viewer (the box
+    /// that takes its keys, Play, Edited / Source) keeps it, though the pane's own focus
+    /// (`isFocused`, the nearest focusable ancestor) is off then.
+    @Test func theHoverTransportStaysWhileFocusIsInsideTheViewer() async throws {
+        #expect(ViewerSection.showsTransport(timelineVisible: false, hovering: false, focused: false, focusInside: true, voiceOver: false))
+        #expect(!ViewerSection.showsTransport(timelineVisible: true, hovering: false, focused: false, focusInside: true, voiceOver: false))
+        let (_, editor) = try await openShell()
+        defer { editor.close() }
+        let size = CGSize(width: 404, height: 227)
+        let (window, focused) = windowed(ViewerSection(model: editor, columnWidth: 404, timelineVisible: false).focusing(.box), size: size)
+        defer { window.close() }
+        let shows = await settle(focused) { DebugRightColumn.markers(in: focused)["viewer.transport"] != nil }
+        #expect(shows, "focus on the viewer's box shows the transport")
+        let (plainWindow, plain) = windowed(ViewerSection(model: editor, columnWidth: 404, timelineVisible: false), size: size)
+        defer { plainWindow.close() }
+        await settle(plain) { false }
+        #expect(DebugRightColumn.markers(in: plain)["viewer.transport"] == nil, "no focus and no pointer: no transport")
+        let (timelineWindow, timeline) = windowed(ViewerSection(model: editor, columnWidth: 404, timelineVisible: true).focusing(.box), size: size)
+        defer { timelineWindow.close() }
+        await settle(timeline) { false }
+        #expect(DebugRightColumn.markers(in: timeline)["viewer.transport"] == nil, "the timeline shows play and the time")
     }
 
     /// impl-plan V4's named risk, caption drag in the fixed box. A low caption (Clean Subtitle

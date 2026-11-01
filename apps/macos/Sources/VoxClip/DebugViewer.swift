@@ -24,8 +24,9 @@ import ApplicationServices
               && ViewerSection.showsTransport(timelineVisible: false, hovering: false, focused: true, voiceOver: false)
               && ViewerSection.showsTransport(timelineVisible: false, hovering: false, focused: false, voiceOver: true)
               && !ViewerSection.showsTransport(timelineVisible: false, hovering: false, focused: false, voiceOver: false))
-        check("a caption drag hides the transport",
-              !ViewerSection.showsTransport(timelineVisible: false, hovering: true, focused: true, voiceOver: true, captionDragging: true))
+        check("focus on the box, Play or Edited / Source keeps the transport; a caption drag hides it",
+              ViewerSection.showsTransport(timelineVisible: false, hovering: false, focused: false, focusInside: true, voiceOver: false)
+              && !ViewerSection.showsTransport(timelineVisible: false, hovering: true, focused: true, voiceOver: true, captionDragging: true))
 
         let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
