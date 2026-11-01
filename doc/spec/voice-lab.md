@@ -187,7 +187,7 @@ A CLI's sign-in method is one of three, each named by what the detection of ai.m
 - **API key**: Claude Code's `authMethod` is an API key, or Codex's status says "Logged in using an API key".
 - **Unknown**: anything else. That includes Claude Code's `third_party` (Bedrock or Vertex, billed to the user's cloud account), `none` or a missing method, and any other successful Codex output. An unknown method sends nothing (ai.md §4.8): no sheet, no confirmation and no inline send.
 
-A method is never a plan just because it is not an API key. The first-use consent sheet (ai.md §4.8) still comes before each connector's first send. `VoiceLabCostPresentation`, or a helper beside it, applies this rule on both platforms from the connector kind and the sign-in method that ai.md §6.8–§6.10 detection already reads; it adds no setting or field. The table below covers every other estimate.
+A method is never a plan just because it is not an API key. The first-use privacy confirmation (ai.md §4.8, inline on Mac) still comes before each connector's first send; a first API-key send combines privacy and billing in that one inline row. `VoiceLabCostPresentation`, or a helper beside it, applies this rule on both platforms from the connector kind and the sign-in method that ai.md §6.8–§6.10 detection already reads; it adds no setting or field. The table below covers every other estimate.
 
 | Estimate | Presentation |
 |---|---|
@@ -1054,6 +1054,12 @@ A field that is empty after this is omitted. The quote binds the seed and the tr
 - **Retries.** Synthesis, voice conversion, clone creation and deletion are never retried automatically: a timeout can mean ElevenLabs already billed or completed the request. A different endpoint or model needs a new estimate, review and affirmative authorization. The current Core paths do not invoke Text to Dialogue v4; its timing and model capability must be verified separately before it is offered.
 
 ### 8.6 Candidates
+
+Mac review authorization pins the editor project, pending local edit commands, complete review hunks and proposal change content/states, included voice ordinals, scope/session revision, selected voice/model and region. Changing only a pending correction or its inclusion invalidates both the old displayed quote and acceptance, including corrected bridge speech. Focus-only movement does not. An unpaid plan needs fresh preparation and an explicit new approval; a paid plan remains guarded by the existing discard question and is never silently replaced.
+
+An explicit selectable take UUID survives progress, failed or better retries, Stop and three-slot eviction. Automatic ranking applies only until the user chooses a take. Row audition pauses source preview; source Play, Space and playback shortcuts stop audition, including a pending scratch startup. Selection, Stop, leaving and invalidation still tear down audition. Accepted-charge updates refresh the local monthly spend cache even after Stop/cancellation or a late obsolete/unpriced response. This reads the local ledger only, never a provider refresh. Daily transcription and monthly Voice Lab amounts share one status slot with distinct labels, not one combined ledger.
+
+Paid plain Return uses the original AppKit event timestamp, not a delayed handler's time, for the 500 ms appearance guard. Key repeat and Space cannot spend; explicit Command-Return retains its existing policy, and inline questions choose the safe answer.
 
 - Generate up to `CANDIDATES` takes, one after another, with seeds `s`, `s+1` and `s+2` modulo 2^32, where `s` is a random UInt32 per hunk stored with the segment. Prepare all per-take quotes before the run. One affirmative approval covers exactly this bounded set and its summed TTS plus Scribe QA cap (S14, §2.6). Every new run requires a new approval. Provider auth, quota or consent failures stop the run; a non-fatal failed take remains a row and the next independently quoted seed may run.
 - Each candidate goes through §8.7 to §8.11, and the fit planner (§8.9.2) runs before the QA gate. A candidate is **rejected** when it fails QA (§8.11), when the clipping check fails, or when the speaker score is below τ.

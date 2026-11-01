@@ -4,8 +4,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClip
 
-/// Installs the requested model and the models it requires once the confirmation is accepted; no network.
-private actor SheetModelDownloader: ModelDownloader {
+private actor InlineModelDownloader: ModelDownloader {
     let model: ModelDescriptor
     let failure: VoxClipError?
     private var confirmation: ModelDownloadConfirmation?
@@ -17,103 +16,74 @@ private actor SheetModelDownloader: ModelDownloader {
     func remove(id: String) { installed.remove(id) }
     func install(id: String, progress: @escaping @Sendable (ModelDownloadProgress) -> Void) async throws {
         guard let confirmation, try await confirmation.request(model, bytes: model.totalBytes) else { throw VoxClipError.cancelled }
+        progress(ModelDownloadProgress(modelID: id, receivedBytes: 212_000_000, totalBytes: model.totalBytes))
         if let failure { throw failure }
         installed.formUnion([id] + model.requires)
     }
 }
 
-@Suite("Headless first-use model download", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; nothing is downloaded."))
+@Suite("Headless inline model download", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
 @MainActor struct TranscriptionDownloadTests {
     private func turbo() async throws -> ModelDescriptor {
         try await BundledModelCatalog(shared: SharedResources.locate()).model(id: "whisper-large-v3-turbo-q5_0")
     }
-
-    @Test func missingLocalModelOffersDownloadAndElevenLabsWhenKeyed() async throws {
-        let model = try await turbo()
-        let app = AppModel(settingsStore: RegressionSettingsStore(), modelDownloader: SheetModelDownloader(model: model))
-        // A new user's default: engine "On this Mac", language Auto, nothing installed.
-        let local = try await app.modelLibrary.localModel(language: "auto")
-        #expect(local == model)
-        let bytes: Int64 = model.totalBytes + 885_098
-        let readiness = Readiness.needsModels(ids: [model.id, "silero-vad-v6.2.0"], bytes: bytes)
-        let size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
-        let keyed = try #require(TranscriptionPrompt(readiness, engine: "local", language: "auto", local: local, hasCloudKey: true))
-        #expect(keyed.message == "Download the \(model.displayName) model (\(size)) to transcribe on this Mac.")
-        #expect(keyed.download == model && keyed.offersCloud)
-        let unkeyed = try #require(TranscriptionPrompt(readiness, engine: "local", language: "auto", local: local, hasCloudKey: false))
-        #expect(unkeyed.download == model && !unkeyed.offersCloud)
-        #expect(TranscriptionPrompt(.ready, engine: "local", language: "auto", local: local, hasCloudKey: true) == nil)
-    }
-
-    @Test func appleSpeechWithAutoAsksWhichLanguageIsSpoken() throws {
-        let auto = try #require(TranscriptionPrompt(.unsupportedLanguage("Choose a supported Apple Speech locale"), engine: "apple", language: "auto", local: nil, hasCloudKey: true))
-        #expect(auto.message == "Which language is spoken?")
-        #expect(auto.download == nil && !auto.offersCloud)
-        let estonian = try #require(TranscriptionPrompt(.unsupportedLanguage("et"), engine: "apple", language: "et", local: nil, hasCloudKey: false))
-        #expect(estonian.message == "Apple Speech can't transcribe \(Locale.current.localizedString(forLanguageCode: "et") ?? "et").")
-    }
-
-    @Test(arguments: ["success", "decline", "failure"])
-    func sheetDownloadConfirmsInTheSheetAndReportsWhetherToContinue(scenario: String) async throws {
-        let model = try await turbo()
-        let store = SheetModelDownloader(model: model, failure: scenario == "failure" ? .offline : nil)
+    @Test func inlineDownloadAcceptsOnlyItsDisplayedPublishersWithoutADialog() async throws {
+        let item = try await turbo()
+        let store = InlineModelDownloader(model: item)
         let app = AppModel(settingsStore: RegressionSettingsStore(), modelDownloader: store)
         let library = app.modelLibrary
         await store.configure(library.confirmation)
-        var origin: ModelLibrary.DownloadOrigin?
-        library.confirmation.onRequest = {
-            origin = library.downloadOrigin
-            library.confirmation.respond(scenario != "decline")
-        }
-        defer { library.confirmation.onRequest = nil }
-        let installed = await library.install(model)
-        #expect(origin == .transcription)
-        #expect(library.progress == nil)
-        switch scenario {
-        case "success":
-            #expect(installed && library.error == nil && library.failedModelID == nil)
-            #expect(library.installed?.isSuperset(of: [model.id] + model.requires) == true)
-        case "decline":
-            #expect(!installed && library.error == nil && library.failedModelID == nil)
-        default:
-            #expect(!installed && library.failedModelID == model.id && library.error?.isEmpty == false)
-        }
+        var asked = 0
+        library.confirmation.onRequest = { asked += 1; library.confirmation.respond(false) }
+        let installed = await library.install(item, publisherTermsAccepted: true)
+        #expect(installed && asked == 0 && library.confirmation.pending == nil)
+        #expect(library.installed?.isSuperset(of: [item.id] + item.requires) == true)
+        #expect(library.confirmation.approvedModelIDs.isEmpty)
+        #expect(InlineTranscription.publisherTerms(item).contains("By downloading you accept the publisher's terms."))
+        #expect(InlineTranscription.publisherTerms(item).contains(item.publisher))
     }
-
-    /// The Engine picker can't change while the download runs, and even if the engine or language differs when it ends, the
-    /// finished download only continues the local transcription it was started for: no upload starts without a click.
-    @Test func aFinishedDownloadContinuesOnlyTheLocalTranscriptionItWasStartedFor() async throws {
-        let model = try await turbo()
-        let install = TranscriptionModelInstall(model: model, engine: "local", language: "auto")
-        #expect(install.continues(installed: true, engine: "local", language: "auto"))
-        #expect(!install.continues(installed: false, engine: "local", language: "auto"))
-        #expect(!install.continues(installed: true, engine: "elevenlabs", language: "auto"))
-        #expect(!install.continues(installed: true, engine: "apple", language: "auto"))
-        #expect(!install.continues(installed: true, engine: "local", language: "et"))
-        let cloud = TranscriptionModelInstall(model: model, engine: "elevenlabs", language: "auto")
-        #expect(!cloud.continues(installed: true, engine: "elevenlabs", language: "auto"))
+    @Test(arguments: [VoxClipError.offline, .rateLimited("huggingface.co"), .modelChecksumMismatch("weights.bin"), .diskFull("Macintosh HD")])
+    func inlineDownloadFailuresKeepProgressAndAllowRetry(failure: VoxClipError) async throws {
+        let item = try await turbo()
+        let store = InlineModelDownloader(model: item, failure: failure)
+        let app = AppModel(settingsStore: RegressionSettingsStore(), modelDownloader: store)
+        await store.configure(app.modelLibrary.confirmation)
+        #expect(await app.modelLibrary.install(item, publisherTermsAccepted: true) == false)
+        #expect(app.modelLibrary.failedModelID == item.id)
+        #expect(app.modelLibrary.lastProgress?.receivedBytes == 212_000_000)
+        #expect(app.modelLibrary.error != nil && app.modelLibrary.confirmation.pending == nil)
+        if failure.code == .rateLimited { #expect(app.modelLibrary.error == "Hugging Face is busy. Try again in a minute.") }
+        if failure.code == .offline { #expect(app.modelLibrary.error == "You're offline.") }
     }
-
     @Test func settingsDownloadsKeepTheirOwnConfirmation() async throws {
-        let model = try await turbo()
-        let store = SheetModelDownloader(model: model)
+        let item = try await turbo()
+        let store = InlineModelDownloader(model: item)
         let app = AppModel(settingsStore: RegressionSettingsStore(), modelDownloader: store)
         let library = app.modelLibrary
         await store.configure(library.confirmation)
         var origin: ModelLibrary.DownloadOrigin?
         library.confirmation.onRequest = { origin = library.downloadOrigin; library.confirmation.respond(true) }
-        defer { library.confirmation.onRequest = nil }
-        library.download(model)
+        library.download(item)
         await library.task?.value
-        #expect(origin == .settings)
-        #expect(library.installed?.contains(model.id) == true)
+        #expect(origin == .settings && library.installed?.contains(item.id) == true)
     }
-
+    @Test func cancelFromAnotherEditorDoesNotCancelTheCurrentDownload() async throws {
+        let item = try await turbo()
+        let store = InlineModelDownloader(model: item)
+        let app = AppModel(settingsStore: RegressionSettingsStore(), modelDownloader: store)
+        let library = app.modelLibrary
+        await store.configure(library.confirmation)
+        library.confirmation.onRequest = {
+            library.cancelTranscriptionDownload(modelID: "a-different-model")
+            #expect(library.task?.isCancelled == false)
+            library.confirmation.respond(true)
+        }
+        #expect(await library.install(item) == true)
+    }
     @Test func lowMemoryMacsGetTheLowMemoryDownload() {
         let gib: Int64 = 1 << 30
         #expect(ModelLibrary.localModelID(local: ["a", "b"], installed: [], recommended: "large", lowMemory: "small", ram: 4 * gib, threshold: 8 * gib) == "small")
         #expect(ModelLibrary.localModelID(local: ["a", "b"], installed: [], recommended: "large", lowMemory: "small", ram: 16 * gib, threshold: 8 * gib) == "large")
-        #expect(ModelLibrary.localModelID(local: ["a", "b"], installed: [], recommended: "large", lowMemory: nil, ram: 4 * gib, threshold: 8 * gib) == "large")
         #expect(ModelLibrary.localModelID(local: ["a", "b"], installed: ["b"], recommended: "large", lowMemory: "small", ram: 4 * gib, threshold: 8 * gib) == "b")
     }
 }

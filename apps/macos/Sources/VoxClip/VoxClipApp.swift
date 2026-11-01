@@ -309,7 +309,7 @@ import VoxClipCore
         case 32: editor.moveClip(-1)
         case 33: editor.moveClip(1)
         case 34: editor.requestFindClips(from: .clipBar)
-        case 37: confirmRetranscription()
+        case 37: openRetranscription()
         case 38: editor.runRewrite()
         case 40: if let id = selectedClipID { editor.keep(id) }
         case 41: if let id = selectedClipID { editor.dismiss(id) }
@@ -344,24 +344,17 @@ import VoxClipCore
     }
     @objc private func revealLogs(_ sender: Any?) { model.revealLogs() }
     @objc private func copyDiagnostics(_ sender: Any?) { Task { copyText(await model.diagnostics()) } }
-    private func confirmRetranscription() {
+    private func openRetranscription() {
         guard let editor else { return }
-        let alert = NSAlert()
-        alert.messageText = "Transcribe again?"
-        alert.informativeText = Self.retranscriptionWarning(for: editor.project)
-        alert.addButton(withTitle: "Transcribe Again")
-        alert.addButton(withTitle: "Cancel")
-        if let window = editor.window {
-            alert.beginSheetModal(for: window) { response in
-                if response == .alertFirstButtonReturn { editor.showTranscribe = true }
-            }
-        } else if alert.runModal() == .alertFirstButtonReturn {
-            editor.showTranscribe = true
-        }
+        Task { await editor.transcription.open(again: true) }
     }
+
     static func retranscriptionWarning(for project: Project) -> String {
         let edits = project.edits
-        return "This replaces the transcript and removes \(edits.cutWordIds.count + edits.cutPauseIds.count) cuts, \(edits.corrections.count) corrections, \(edits.clips.count) clips and the AI suggestions."
+        let counts = [(edits.cutWordIds.count + edits.cutPauseIds.count, "cut"), (edits.corrections.count, "correction"), (edits.clips.count, "clip")]
+        let parts = counts.filter { $0.0 > 0 }.map { "\($0.0) \($0.1)\($0.0 == 1 ? "" : "s")" }
+        let removed = parts.isEmpty ? "the AI suggestions" : parts.joined(separator: ", ") + " and the AI suggestions"
+        return "This replaces the transcript and removes \(removed)."
     }
 
     static func focusedControlKeepsKey(_ item: NSMenuItem, responder: NSResponder?) -> Bool {

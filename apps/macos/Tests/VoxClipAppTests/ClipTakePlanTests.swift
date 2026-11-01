@@ -33,6 +33,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var malformedSynthesis = false
         var malformedQA = false
         var failOwner = false
+        var amplitudeVariance = 0.0
+        var echoQA = false
         var gets = 0
         var qa = 0
         var voicesVisible = true
@@ -55,9 +57,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 let text = try #require(body["text"] as? String)
                 let seed = try #require(body["seed"] as? UInt32)
                 let duration = Self.state.withLock { state in state.texts.append(text); state.seeds.append(seed); return state.duration }
+                let variance = Self.state.withLock { $0.amplitudeVariance }
                 var pcm = Data()
                 for index in 0..<Int(duration * 24_000) {
-                    var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200).rounded()).littleEndian
+                    let seconds = Double(index) / 24_000
+                    let amplitude = 1 + variance * sin(2 * Double.pi * 2 * seconds)
+                    var value = Int16((sin(2 * Double.pi * 100 * seconds) * 3_200 * amplitude).rounded()).littleEndian
                     withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
                 }
                 let characters = Array(text).map(String.init)
@@ -76,8 +81,13 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 let word = state.failQA ? "wrong" : "Hello"
                 if state.malformedQA { data = Data(#"{"language_code":"eng"}"#.utf8) }
                 else {
-                    data = try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": [["type": "word", "text": word,
-                        "start": 0.1, "end": state.duration - 0.1]]])
+                    let words = state.echoQA ? (state.texts.last ?? word).split(separator: " ").map(String.init) : [word]
+                    let stride = (state.duration - 0.2) / Double(words.count)
+                    let timed = words.enumerated().map { index, text in
+                        ["type": "word", "text": text, "start": 0.1 + Double(index) * stride,
+                         "end": 0.1 + Double(index + 1) * stride] as [String: Any]
+                    }
+                    data = try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": timed])
                 }
             default: throw URLError(.unsupportedURL)
             }
@@ -140,6 +150,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var beforePublish: ((Int) async -> Void)?
         var beforeDispatch: (() -> Void)?
         var beforeProgress: (@MainActor @Sendable () async -> Void)?
+        var beforeScratch: (() async -> Void)?
+        var publishedIDs: [UUID] = []
         var lastBatch: VoiceLabTakeBatch?
         var lostResponseStage: Bool?
         var simulatedRequests: [UUID] = []
@@ -272,8 +284,13 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             return result
         }
         backend.publish = { [weak made] phrase, row, input, date in
+            made?.publishedIDs.append(row.id)
             await made?.beforePublish?(phrase)
             return try await real.publish(phrase, row, input, date)
+        }
+        backend.scratch = { [weak made] phrase, take in
+            await made?.beforeScratch?()
+            return await real.scratch(phrase, take)
         }
         plan.connect(backend)
         return made
@@ -683,6 +700,194 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         editor.rewrite = session
         session.takePlan = fixture.plan
         return (editor, session)
+    }
+
+    private func productionSession(_ fixture: Fixture) async throws -> (EditorModel, RewriteSession) {
+        var source = fixture.source
+        let (_, pcm, _) = try project()
+        let audio = fixture.root.appendingPathComponent("source.wav")
+        try VoiceTrainingAudio.wav(Array(pcm.prefix(120 * 24_000)), rate: 24_000).write(to: audio)
+        source.media.source.absolutePath = audio.path
+        source.media.source.durationSeconds = 120
+        source.transcript?.durationSeconds = 120
+        let bridgeEnd = try #require(source.transcript?.words[10].start)
+        source.transcript?.words[9].end = bridgeEnd
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": fixture.root.path]))
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
+        let editor = EditorModel(document: VoxClipDocument(project: source, demo: true), app: app, preview: DemoPreviewEngine())
+        let session = RewriteSession(editor: editor, scope: .fullTake, envelope: fixture.envelope, connector: nil)
+        editor.rewrite = session
+        let fix = VoiceLabDiffHunk(kind: .textOnly, sourceWordIds: ["w9"], newTokens: ["Corrected"], correctedTexts: ["Corrected"],
+            absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 9, sourceEndIndex: 10, anchorSeconds: nil)
+        session.receive(([fix] + hunks([10])).map { RewriteChange(hunk: $0) })
+        session.finishRun(seconds: 1); session.showProposal()
+        session.configureGeneration(client: fixture.client, store: fixture.store,
+            speaker: VoiceSpeakerCheck(embedder: ClipTakeSpeaker(), calibratedThreshold: 0.45))
+        let factory = try #require(session.takeBackend)
+        session.takeBackend = { count, dispatch in
+            var backend = factory(count, dispatch)
+            let execute = backend.execute
+            backend.execute = { batch, index, phrase, progress in
+                try await execute(batch, index, phrase) { rows in
+                    await fixture.beforeProgress?()
+                    await progress(rows)
+                }
+            }
+            return backend
+        }
+        let generation = try #require(session.generation)
+        generation.prepareQuote = {}
+        await generation.discover(language: "en"); await generation.finishQuotePreparationForTests()
+        await session.prepareTakes()
+        let plan = try #require(session.takePlan)
+        #expect(plan.problem.isEmpty, "\(plan.problem), \(generation.problem)")
+        #expect(plan.phrases[0].text.contains("Corrected"))
+        #expect(plan.phrases[0].window.leftBridgeWordIds.contains("w9"))
+        #expect(plan.approvalID != nil && plan.stillCurrent)
+        ClipTakeHTTP.state.withLock { $0.duration = plan.phrases[0].originalLength; $0.echoQA = true }
+        return (editor, session)
+    }
+
+    @Test(arguments: [false, true]) func productionQuotePinsPendingBridgeCorrectionAndPaidDiscard(generated: Bool) async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let oldAction = try #require(session.pricedTakeAction())
+        let original = editor.project
+        let undo = UndoManager(); editor.undoManager = undo
+        if generated {
+            await plan.start(approved: true)
+            #expect(plan.phrases[0].selected?.fits == true, "\(plan.phrases[0].status), \(plan.problem)")
+        }
+        let sent = ClipTakeHTTP.state.withLock { ($0.texts.count, $0.qa) }
+        #expect(editor.excludeChange(1))
+        #expect(editor.project == original && editor.undoSteps == 0 && !plan.stillCurrent)
+        oldAction.perform(); await session.takesTask?.value
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == sent.0 && $0.qa == sent.1 })
+        let accepted = await session.acceptTakes()
+        #expect(!accepted)
+        #expect(editor.project == original && editor.undoSteps == 0 && !undo.canUndo)
+        session.showProposal()
+        await session.prepareTakes()
+        if generated {
+            #expect(session.takePlan === plan && session.hasPaidTakes)
+            #expect(session.generation?.problem.contains("Your paid takes are kept") == true)
+            editor.sendRewriteAgain(session)
+            #expect(session.task.confirm != nil && editor.openRewrite === session)
+        } else {
+            let fresh = try #require(session.takePlan)
+            #expect(fresh !== plan && fresh.approvalID != nil && fresh.approvalID != plan.approvalID)
+            #expect(!fresh.phrases[0].text.contains("Corrected"))
+            oldAction.perform(); await session.takesTask?.value
+            #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty && $0.qa == 0 })
+            #expect(!fresh.generating && fresh.spent.units == 0)
+        }
+    }
+
+    @Test func explicitLowerScoreSelectionSurvivesFailedBetterRetryStopAndEviction() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        ClipTakeHTTP.state.withLock { $0.amplitudeVariance = 0.8 }
+        await plan.prepare(); await plan.start(approved: true)
+        let selected = try #require(plan.phrases[0].selected)
+        ClipTakeHTTP.state.withLock { $0.amplitudeVariance = 0.4 }
+        await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
+        #expect(try #require(plan.phrases[0].selected?.row.score) > #require(selected.row.score))
+        #expect(plan.select(take: selected.id, phrase: 0))
+        ClipTakeHTTP.state.withLock { $0.failQA = true }
+        await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
+        #expect(plan.phrases[0].selectedID == selected.id && plan.phrases[0].takes.count == 3)
+        ClipTakeHTTP.state.withLock { $0.failQA = false; $0.amplitudeVariance = 0 }
+        fixture.beforeProgress = { #expect(plan.phrases[0].selectedID == selected.id) }
+        await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
+        #expect(plan.phrases[0].selectedID == selected.id && plan.phrases[0].takes.count == 3)
+        let barrier = ClipTakeBarrier()
+        fixture.beforeProgress = { #expect(plan.phrases[0].selectedID == selected.id); await barrier.pause() }
+        await plan.prepareAnother(phrase: 0)
+        let retry = Task { await plan.tryAnother(phrase: 0, approved: true); barrier.finished() }
+        await barrier.wait()
+        await plan.stop(); await retry.value
+        #expect(plan.phrases[0].selectedID == selected.id)
+        let accepted = try await plan.acceptance()
+        #expect(accepted.segments.count == 1 && fixture.publishedIDs == [selected.id])
+    }
+
+    @Test func sessionAuditionAndSourceTransportAreMutuallyExclusive() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        let plan = fixture.plan
+        await plan.prepare(); await plan.start(approved: true)
+        editor.transport(" ")
+        #expect(editor.isPlaying && !plan.audition.isPlaying)
+        await session.playTake(phrase: 0)
+        #expect(!editor.isPlaying && plan.audition.isPlaying)
+        editor.transport(" ")
+        #expect(editor.isPlaying && !plan.audition.isPlaying)
+        await session.playTake(phrase: 0); editor.transport("l")
+        #expect(editor.isPlaying && !plan.audition.isPlaying)
+        let barrier = ClipTakeBarrier()
+        fixture.beforeScratch = { await barrier.pause() }
+        let starting = Task { await session.playTake(phrase: 0) }
+        await barrier.wait()
+        editor.transport(" ")
+        barrier.resume(); await starting.value
+        #expect(editor.isPlaying && !plan.audition.isPlaying)
+        fixture.beforeScratch = nil
+        await session.playTake(phrase: 0); plan.invalidate()
+        #expect(!editor.isPlaying && !plan.audition.isPlaying)
+    }
+
+    @Test(arguments: [false, true]) func productionTakesRefreshMonthlyCacheWhileReviewRemainsOpen(unpriced: Bool) async throws {
+        let fixture = try await fixture(indices: [10], unknownPrice: unpriced); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        await editor.app.refreshMonthlySpend()
+        #expect(editor.app.monthlySpend.total?.usd == 0 && editor.app.monthlySpend.total?.unknownCount == 0)
+        if unpriced { ClipTakeHTTP.state.withLock { $0.malformedSynthesis = true } }
+        let gets = ClipTakeHTTP.state.withLock { $0.gets }
+        await plan.start(approved: true)
+        let total = try #require(await fixture.ledger.total(provider: "elevenlabs", at: Date()))
+        #expect(editor.openRewrite === session && plan.spent.units > 0)
+        #expect(editor.app.monthlySpend.total == total)
+        let status = StatusBarContent.make(app: editor.app, editor: editor, now: Date())
+        #expect(status[.spend]?.text == editor.app.monthlySpend.text)
+        #expect(ClipTakeHTTP.state.withLock { $0.gets == gets })
+        #expect(unpriced ? editor.app.monthlySpend.text.contains("unpriced") : total.usd > 0)
+        await plan.prepareAnother(phrase: 0); await plan.tryAnother(phrase: 0, approved: true)
+        await plan.stop()
+        #expect(editor.app.monthlySpend.total == (await fixture.ledger.total(provider: "elevenlabs", at: Date())))
+        #expect(editor.openRewrite === session)
+    }
+
+    @Test func queuedPaidReturnUsesEventTimeInsteadOfDelayedHandlerTime() {
+        let appeared = Date(timeIntervalSince1970: 100)
+        let now = appeared.addingTimeInterval(4)
+        let early = VoiceLabSession.paidEventDate(timestamp: 90.1, now: now, uptime: 94)
+        let fresh = VoiceLabSession.paidEventDate(timestamp: 91, now: now, uptime: 94)
+        #expect(!VoiceLabSession.permitsPaidActivation(keyboard: true, command: false, repeated: false, appeared: appeared, now: now, eventDate: early))
+        #expect(VoiceLabSession.permitsPaidActivation(keyboard: true, command: false, repeated: false, appeared: appeared, now: now, eventDate: fresh))
+        #expect(!VoiceLabSession.permitsPaidActivation(keyboard: true, command: true, repeated: true, appeared: appeared, now: now, eventDate: fresh))
+    }
+
+    @Test(arguments: [false, true]) func monthlyCacheAccountsAcceptedResponseAfterStopOrInvalidation(retired: Bool) async throws {
+        let fixture = try await fixture(indices: [10], unknownPrice: true); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        await editor.app.refreshMonthlySpend()
+        let barrier = ClipTakeBarrier()
+        fixture.beforeProgress = { await barrier.pause() }
+        ClipTakeHTTP.state.withLock { $0.malformedSynthesis = true }
+        let generating = Task { await plan.start(approved: true); barrier.finished() }
+        await barrier.wait()
+        if retired { plan.invalidate(); barrier.resume() }
+        else { await plan.stop() }
+        await generating.value
+        let total = try #require(await fixture.ledger.total(provider: "elevenlabs", at: Date()))
+        #expect(total.unknownCount > 0 && plan.spent.units > 0)
+        #expect(editor.app.monthlySpend.total == total && editor.app.monthlySpend.text.contains("unpriced"))
+        #expect(editor.openRewrite === session)
     }
 
     @Test func inlinePriceCapturesItsQuoteBeforeDeferredExecution() async throws {

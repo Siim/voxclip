@@ -6,11 +6,11 @@ import Testing
 
 /// The sheets one routed send showed, and the action each was for.
 @MainActor private final class SheetLog {
-    var sheets: [LLMSendSheet] = []
+    var sheets: [ConnectorSendPrompt] = []
     var actions: [ConnectorConsentAction] = []
     /// Answers a sheet; true approves it.
-    var answer: (LLMSendSheet) -> Bool = { _ in true }
-    func take() -> [LLMSendSheet.Reason] { defer { sheets = []; actions = [] }; return sheets.map(\.reason) }
+    var answer: (ConnectorSendPrompt) -> Bool = { _ in true }
+    func take() -> [ConnectorSendPrompt.Reason] { defer { sheets = []; actions = [] }; return sheets.map(\.reason) }
 }
 
 /// Every LLM send (Find clips, Rewrite and Settings → Test) asks C8's `kind(forLLMSendTo:signIn:providerName:)` after
@@ -25,8 +25,8 @@ import Testing
         let authMethod: String?
         let baseURL: String?
         /// The sheets of the first send, and of every later one.
-        let first: [LLMSendSheet.Reason]
-        let later: [LLMSendSheet.Reason]
+        let first: [ConnectorSendPrompt.Reason]
+        let later: [ConnectorSendPrompt.Reason]
         var testDescription: String { name }
     }
 
@@ -36,8 +36,8 @@ import Testing
     nonisolated static let rows: [Row] = [
         Row(name: "Claude Code on a plan", connector: "claude-code", authMethod: "claude.ai", baseURL: nil, first: [.privacy], later: []),
         Row(name: "Codex on a plan", connector: "codex", authMethod: "chatgpt", baseURL: nil, first: [.privacy], later: []),
-        Row(name: "Claude Code on an API key", connector: "claude-code", authMethod: "api_key", baseURL: nil, first: [.privacy, .cost], later: [.cost]),
-        Row(name: "Codex on an API key", connector: "codex", authMethod: "api_key", baseURL: nil, first: [.privacy, .cost], later: [.cost]),
+        Row(name: "Claude Code on an API key", connector: "claude-code", authMethod: "api_key", baseURL: nil, first: [.cost], later: [.cost]),
+        Row(name: "Codex on an API key", connector: "codex", authMethod: "api_key", baseURL: nil, first: [.cost], later: [.cost]),
         Row(name: "Ollama on this Mac", connector: "ollama", authMethod: nil, baseURL: "http://127.0.0.1:11434", first: [], later: []),
         Row(name: "LM Studio on this Mac", connector: "lmstudio", authMethod: nil, baseURL: nil, first: [], later: []),
         Row(name: "Ollama on another computer", connector: "ollama", authMethod: nil, baseURL: "http://192.168.1.20:11434", first: [.privacy], later: []),
@@ -111,7 +111,7 @@ import Testing
         let editor = try editor(app)
         defer { editor.close() }
         try await send(.rewrite, editor: editor, app: app)
-        #expect(log.take() == [.privacy, .cost])
+        #expect(log.take() == [.cost])
         #expect(await fake.sends == 1)
         try await send(.rewrite, editor: editor, app: app)
         #expect(log.take() == [.cost])
@@ -146,15 +146,15 @@ import Testing
     }
 
     @Test(arguments: [ConnectorConsentAction.findClips, .rewrite, .test])
-    func decliningTheCostSendsNothingKeepsTheConsentAndAsksAgain(action: ConnectorConsentAction) async throws {
+    func decliningTheCombinedRowSendsNothingAndStoresNoConsent(action: ConnectorConsentAction) async throws {
         let (app, fake, log) = try setUp("codex", authMethod: "api_key")
         let editor = try editor(app)
         defer { editor.close() }
         log.answer = { $0.reason == .privacy }
         try await send(action, editor: editor, app: app)
-        #expect(log.take() == [.privacy, .cost])
+        #expect(log.take() == [.cost])
         #expect(await fake.sends == 0)
-        #expect(app.bool("llm.cloudConsent.codex"))
+        #expect(!app.bool("llm.cloudConsent.codex"))
         log.answer = { _ in true }
         try await send(action, editor: editor, app: app)
         #expect(log.take() == [.cost])
@@ -175,24 +175,20 @@ import Testing
     }
 
     @Test func costSheetsSayWhereTheWordsGoAndThatThePriceIsUnknown() async throws {
-        let cases: [(String, String?, ConnectorConsentAction, Int, LLMSendSheet)] = [
-            ("anthropic", nil, .findClips, 80, LLMSendSheet(reason: .cost, title: "Find clips?",
-                message: "Sends this project's transcript (80 words, no audio or video) to Anthropic with your key.\n\nVoxClip can't tell what this costs. Check Anthropic's pricing.", confirm: "Find Clips")),
-            ("gemini", nil, .rewrite, 3, LLMSendSheet(reason: .cost, title: "Rewrite 3 words?",
-                message: "Sends these 3 words to Google Gemini with your key.\n\nVoxClip can't tell what this costs. Check Google Gemini's pricing.", confirm: "Rewrite")),
-            ("openai", nil, .rewrite, 1, LLMSendSheet(reason: .cost, title: "Rewrite 1 word?",
-                message: "Sends this word to OpenAI with your key.\n\nVoxClip can't tell what this costs. Check OpenAI's pricing.", confirm: "Rewrite")),
-            ("claude-code", "api_key", .test, 0, LLMSendSheet(reason: .cost, title: "Send a test request?",
-                message: "Sends a short test request to Claude Code, billed to the API key it is signed in with. Nothing from your projects is sent.\n\nVoxClip can't tell what this costs. Check Anthropic's pricing.", confirm: "Test")),
-            ("codex", "api_key", .rewrite, 7, LLMSendSheet(reason: .cost, title: "Rewrite 7 words?",
-                message: "Sends these 7 words to Codex, billed to the API key it is signed in with.\n\nVoxClip can't tell what this costs. Check OpenAI's pricing.", confirm: "Rewrite")),
-        ]
-        for (connector, method, action, words, expected) in cases {
+        for (connector, method, action, words) in [
+            ("anthropic", nil as String?, ConnectorConsentAction.findClips, 80),
+            ("gemini", nil, .rewrite, 3), ("openai", nil, .rewrite, 1),
+            ("claude-code", "api_key", .test, 0), ("codex", "api_key", .rewrite, 7)] {
             let (app, fake, log) = try setUp(connector, authMethod: method)
             app.set("llm.cloudConsent.\(connector)", .bool(true))
             let provider = try #require(app.providers.first { $0.id == connector })
             #expect(try await app.authorizeConnectorRequest(provider, connector: fake, action: action, wordCount: words))
-            #expect(log.sheets == [expected])
+            let prompt = try #require(log.sheets.first)
+            #expect(log.sheets.count == 1 && prompt.reason == .cost && prompt.confirm == "Send")
+            #expect(prompt.message.contains(provider.cliName ?? provider.label))
+            #expect(prompt.note == "VoxClip can't tell what this costs. Check \(provider.pricingName)'s pricing.")
+            #expect(prompt.details.first?.contains("No audio or video.") == true)
+            #expect(!prompt.message.contains("$") && prompt.pricingURL != nil)
         }
     }
 
@@ -329,7 +325,7 @@ import Testing
         defer { editor.close() }
         try await send(.rewrite, editor: editor, app: app)
         let session = try #require(editor.rewrite)
-        #expect(log.sheets.isEmpty)
+        #expect(readiness == .needsKey ? log.sheets.first?.needsKey == true : log.sheets.isEmpty)
         #expect(await fake.sends == 0)
         #expect(session.task.state == .error(error), "\(session.task.state)")
         #expect(session.problem.isEmpty && !editor.llmRuns.isBusy)

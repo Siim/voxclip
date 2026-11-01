@@ -22,6 +22,7 @@ import VoxClipMedia
         var status: Status = .waiting
         var takes: [Take] = []
         var selectedID: UUID?
+        var explicitlySelected = false
         var selected: Take? { takes.first { $0.id == selectedID } }
         var originalLength: Double { window.end - window.start }
         var lengthDifference: Double? { selected?.length.map { $0 - originalLength } }
@@ -80,6 +81,7 @@ import VoxClipMedia
     @ObservationIgnored private let makeInput: @MainActor (Phrase) async throws -> VoiceLabTakeInput
     @ObservationIgnored private let readCap: @MainActor () async throws -> VoiceLabMonthlyCap?
     @ObservationIgnored private let isCurrent: @MainActor () -> Bool
+    @ObservationIgnored private let acceptedChargesChanged: @MainActor () async -> Void
     @ObservationIgnored private var backend: Backend?
     @ObservationIgnored private var inputs: [VoiceLabTakeInput] = []
     @ObservationIgnored private var nextSeeds: [UInt32] = []
@@ -100,11 +102,13 @@ import VoxClipMedia
     init(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope, hunks: [VoiceLabDiffHunk],
          makeInput: @escaping @MainActor (Phrase) async throws -> VoiceLabTakeInput,
          readCap: @escaping @MainActor () async throws -> VoiceLabMonthlyCap? = { nil },
-         isCurrent: @escaping @MainActor () -> Bool = { true }, audition: VoiceLabAudition = VoiceLabAudition()) throws {
+         isCurrent: @escaping @MainActor () -> Bool = { true }, audition: VoiceLabAudition = VoiceLabAudition(),
+         acceptedChargesChanged: @escaping @MainActor () async -> Void = {}) throws {
         var final = project
         final.edits.cutWordIds += hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds)
         self.project = final; self.scope = scope; self.makeInput = makeInput; self.readCap = readCap; self.isCurrent = isCurrent
         self.audition = audition
+        self.acceptedChargesChanged = acceptedChargesChanged
         phrases = try Self.preparePlan(project: project, scope: scope, envelope: envelope, hunks: hunks)
     }
 
@@ -307,6 +311,7 @@ import VoxClipMedia
               phrases[phrase].takes.contains(where: { $0.id == take && $0.row.selectable }) else { return false }
         stopAudition()
         phrases[phrase].selectedID = take
+        phrases[phrase].explicitlySelected = true
         return true
     }
 
@@ -355,6 +360,7 @@ import VoxClipMedia
                     madeRequests.insert(take.synthesis.requestID)
                 }
                 spent = VoiceLabTakeRunQuote.total(of: charges, takes: madeRequests.count)
+                await acceptedChargesChanged()
             }
             guard (revision == version || stopping), !retired, isCurrent() else {
                 await backend?.retire(phrase, row.id)
@@ -378,6 +384,7 @@ import VoxClipMedia
             }
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
+        if phrases[phrase].explicitlySelected, phrases[phrase].selected?.row.selectable == true { return }
         let best = phrases[phrase].takes.filter { $0.row.selectable }.max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
         if let best { phrases[phrase].selectedID = best.id }
     }

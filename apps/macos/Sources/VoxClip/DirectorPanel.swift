@@ -60,7 +60,9 @@ import VoxClipCore
             let command = press.modifiers.contains(.command)
             guard command || !keyFieldFocused && !askFocused else { return .ignored }
             guard press.phase == .down else { return .handled }
-            return task.pressReturn(command: command) ? .handled : .ignored
+            let now = Date()
+            let eventDate = VoiceLabSession.paidEventDate(timestamp: NSApp.currentEvent?.timestamp, now: now)
+            return task.pressReturn(command: command, now: now, eventDate: eventDate) ? .handled : .ignored
         }
         .onKeyPress(keys: [.space], phases: [.down, .repeat]) { press in
             guard press.modifiers.isEmpty, !keyFieldFocused, !askFocused else { return .ignored }
@@ -361,6 +363,7 @@ import VoxClipCore
     @ViewBuilder private func glyph(_ status: ActivityStep.Status) -> some View {
         switch status {
         case .done: Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.secondary"))
+        case .failed: Image(systemName: "xmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("status.warning"))
         case .running: ProgressView().controlSize(.mini)
         case .waiting: Circle().strokeBorder(DesignValues.color("text.disabled"), lineWidth: 1).frame(width: 8, height: 8)
         }
@@ -495,10 +498,12 @@ import VoxClipCore
     var body: some View {
         Button(action.title) {
             let event = NSApp.currentEvent
+            let now = Date()
             if action.priced, event?.type == .keyDown {
                 guard event?.keyCode != 49,
                       VoiceLabSession.permitsPaidActivation(keyboard: true, command: event?.modifierFlags.contains(.command) == true,
-                        repeated: event?.isARepeat == true, appeared: appeared, now: Date()) else { return }
+                        repeated: event?.isARepeat == true, appeared: appeared, now: now,
+                        eventDate: VoiceLabSession.paidEventDate(timestamp: event?.timestamp, now: now)) else { return }
             }
             action.perform()
         }

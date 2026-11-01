@@ -42,6 +42,8 @@ import Testing
         #expect(shell.panelJob(for: editor) == .rewrite && PanelJob.available(in: editor).contains(.export))
         shell.choosePanelJob(.export, for: editor)
         session.task.show(.running, headline: PanelHeadline(text: "Rewriting"))
+        #expect(editor.panelTask == nil && shell.panelJob(for: editor) == .export)
+        session.sendApproved = true
         #expect(shell.panelJob(for: editor) == .rewrite)
         shell.choosePanelJob(.export, for: editor)
         editor.finishExportJob()

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// User language choice; transcription §3.3.
 public enum LanguageChoice: Codable, Sendable, Hashable { case auto; case forced(String) }
@@ -186,6 +187,17 @@ public struct TranscriptionResult: Sendable {
         self.fromCache = fromCache
     }
 }
+public final class TranscriptionEvidence: Sendable {
+    public struct Snapshot: Sendable {
+        public var uploadStarted = false
+        public var fromCache = false
+    }
+    private let state = Mutex(Snapshot())
+    public init() {}
+    public var snapshot: Snapshot { state.withLock { $0 } }
+    public func recordUploadStarted() { state.withLock { $0.uploadStarted = true } }
+    public func recordCacheHit() { state.withLock { $0.fromCache = true } }
+}
 /// One import pipeline with immutable output; transcription §5, §7 and §13.4.
 public actor TranscriptionService {
     private let locations: DataLocations
@@ -226,7 +238,9 @@ public actor TranscriptionService {
     public func transcribe(_ request: TranscriptionRequest, using engine: any Transcriber, envelope: AudioEnvelope?) async throws -> Transcript {
         try await transcribeResult(request, using: engine, envelope: envelope).transcript
     }
-    public func transcribeResult(_ request: TranscriptionRequest, using engine: any Transcriber, envelope: AudioEnvelope?) async throws -> TranscriptionResult {
+    public func transcribeResult(_ request: TranscriptionRequest, using engine: any Transcriber, envelope: AudioEnvelope?,
+                                 evidence: TranscriptionEvidence? = nil,
+                                 validate: @escaping @Sendable () async throws -> Void = {}) async throws -> TranscriptionResult {
         guard !active else { throw VoxClipError.transcriptionFailed("This project already has a transcription job") }
         guard request.plan.engine == engine.engine, request.audio.durationSeconds.isFinite, request.audio.durationSeconds > 0,
               request.contentKey.range(of: "^[a-zA-Z0-9_-]{1,128}$", options: .regularExpression) != nil else { throw VoxClipError.transcriptionFailed("Invalid transcription request") }
@@ -276,16 +290,21 @@ public actor TranscriptionService {
             if let cached = try? SpeechRawCacheEntry.read(url), let matched = cached.matchingRaw(for: key) {
                 raw = matched
                 fromCache = engine.engine == .elevenlabs
+                if fromCache { evidence?.recordCacheHit() }
             } else {
                 guard await engine.supports(request.plan.language, model: request.plan.model) else { throw SpeechErrorCopy.unsupported(engine.engine, language: request.plan.language) }
                 reporter.report(TranscriptionProgress(stage: .preparing, fraction: 0))
                 try await engine.prepare(for: request.plan) { fraction in reporter.report(TranscriptionProgress(stage: .preparing, fraction: fraction)) }
                 if let elevenLabs = engine as? ElevenLabsTranscriber {
-                    let result = try await elevenLabs.transcribeWithCache(request, cacheURL: url) { reporter.report($0) }
+                    let result = try await elevenLabs.transcribeWithCache(request, cacheURL: url, evidence: evidence, validate: validate) { reporter.report($0) }
                     raw = result.raw
                     fromCache = result.fromCache
                 } else {
-                    raw = try await engine.transcribe(request) { reporter.report($0) }
+                    try await validate()
+                    raw = try await engine.transcribe(request) { value in
+                        if engine.engine == .elevenlabs, value.stage == .uploading { evidence?.recordUploadStarted() }
+                        reporter.report(value)
+                    }
                     fromCache = false
                     try Task.checkCancellation()
                     if (try? SpeechRawCacheEntry.read(url))?.key != key {

@@ -13,12 +13,10 @@ struct PopUpInventoryTests {
         "EditorModel.swift": (1, "Locate…'s NSOpenPanel: a system file picker"),
         "ExportJob.swift": (1, "the Export job's folder NSOpenPanel: a system file picker"),
         "SettingsView.swift": (4, "Settings pages: two NSOpenPanels, the licences and privacy text sheets"),
-        "LocalModelsView.swift": (1, "the model download confirmation; Settings › Models (origin .settings) and VT's transcription sheet"),
-        "VoiceLabSettings.swift": (2, "Settings-only account and deletion confirmations; enrollment is inline"),
-        "EditorView.swift": (2, "TranscriptionSheet (VT) and the tour (Home frame 7); shortcuts and Voice Lab opt-in are inline"),
-        "TranscriptionSheet.swift": (1, "the transcription consent sheet (VT)"),
-        "VoxClipApp.swift": (6, "Open's NSOpenPanel; Help › What Leaves This Mac, an NSAlert and its runModal (no owner yet); Transcribe again? (VT, v5 f25)"),
-        "RewriteSession.swift": (2, "RewriteApprovalSheet remains for ConnectorRequestConsent's API-key sends and connector privacy consent (V12); takes and ElevenLabs privacy are inline"),
+        "LocalModelsView.swift": (1, "Settings model download confirmation; editor downloads are inline"),
+        "VoiceLabSettings.swift": (1, "Settings-only saved-voice deletion; enrollment is inline"),
+        "EditorView.swift": (1, "the onboarding tour; editor jobs are inline"),
+        "VoxClipApp.swift": (3, "Open's system picker and ownerless Help privacy alert"),
     ]
     static let patterns = [".sheet(", ".alert(", ".confirmationDialog(", "NSAlert(", "beginSheetModal", "runModal("]
 

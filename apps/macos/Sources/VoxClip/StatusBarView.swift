@@ -51,7 +51,11 @@ struct StatusBarContent: Equatable {
             content.items[.spend] = StatusItem(kind: .spend, lead: .symbol("waveform"), parts: [StatusText(string: spend)], spoken: spend, help: "Estimated spend, from the local ledger; not a provider invoice.")
         }
         guard let editor else { return content }
-        for item in app.statusHarness { content.items[item.kind] = item }
+        for item in app.statusHarness where item.kind != .billing || editor.transcription.pendingCost == nil { content.items[item.kind] = item }
+        if let text = editor.transcription.billingText {
+            let combined = [text, app.monthlySpendLine].compactMap { $0 }.joined(separator: " · ")
+            content.items[.spend] = StatusItem(kind: .spend, lead: .symbol("waveform"), parts: [StatusText(string: combined)], spoken: combined, help: "Estimated daily transcription and monthly Voice Lab spend, from separate local ledgers; not a provider invoice.")
+        }
         let task = editor.statusTask(now: now)
         content.items[.task] = task?.item ?? editor.statusReadOnly
         content.taskSince = task?.since
@@ -105,6 +109,9 @@ extension EditorModel {
         } else {
             running = nil
         }
+        if running == nil, let at = transcription.completedAt, now.timeIntervalSince(at) < 6, let text = transcription.completion {
+            return (StatusItem(kind: .task, lead: .symbol("checkmark"), parts: [StatusText(string: text)], spoken: text), nil)
+        }
         guard let running else { return nil }
         let words = running.text.hasSuffix("…") ? String(running.text.dropLast()) : running.text
         guard let since = running.since else {
@@ -126,7 +133,9 @@ extension EditorModel {
     /// transcript's proposal on this tab that wait for a review (V14: kept and undone ones never count). A state of
     /// design §3.5's busy list shows instead. VoiceOver reads the detail as its help.
     var statusSummary: StatusItem {
-        let notice: String? = if !editingAvailable && !words.isEmpty {
+        let notice: String? = if transcription.isRunning {
+            nil
+        } else if !editingAvailable && !words.isEmpty {
             "Editing is not available in this build. Your video and edits are still here."
         } else if voiceLabPlan == nil && !summary.canExport && !words.isEmpty {
             "Keep at least one word before exporting."
@@ -134,7 +143,8 @@ extension EditorModel {
         if let notice { return StatusItem(kind: .summary, parts: [StatusText(string: notice)], spoken: notice, help: summaryDetail) }
         let scope = scopeName(project.edits.activeClipId)
         var details: [String] = []
-        if !transcribed { details.append("Not transcribed") } else {
+        if transcription.isRunning { details.append("Transcribing") }
+        else if !transcribed { details.append("Not transcribed") } else {
             let cuts = cutCount
             details.append(cuts == 0 ? "No cuts yet" : cuts == 1 ? "1 cut" : "\(cuts) cuts")
         }

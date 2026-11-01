@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Inline transcription, API-key approval and Voice review now share the integrated workspace without extra sheets; quotes track pending corrections, chosen takes survive retries, audition pauses source playback, and monthly spend updates during review.
+
 - Inline review questions keep their panel alive and return the keyboard to the transcript or field after Keep Working.
 
 - Returning from voice creation refreshes the same Rewrite review automatically; unverified voices and stale take results cannot become usable silently.
@@ -36,6 +38,9 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Relinking a moved video asks in a banner instead of a dialog.
 - The Mac Explorer has compact Take, Clips, Outline and Suggested sections, preview tabs on single click, pinned tabs on double-click, and paragraph navigation with AI voice indicators.
 - The Mac editor's status bar shows your AI and its billing after detection, running work, the open clip's duration and cuts, available Rewrite changes, the export frame and export state. Choose an aspect directly from the status bar's Frame menu.
+- Mac: inline approvals reject delayed early Return events; transcription preserves post-approval edits and keeps cancelled-upload estimates isolated from later runs.
+- Mac: Transcribe now runs inline in the transcript, with editable model downloads, Apple Speech first for English, priced ElevenLabs approval on every run, and inline Transcribe Again.
+- Mac confirms API-key AI sends and first-use privacy inline below the clip bar. Saving a key makes no request, and every billed retry asks again.
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
 - On Mac, the timeline adds an FX Motion lane with “Director results land here,” matching the saved S/M/L track heights and overlay scrolling.
 - On Mac, drag in the timeline or transcript to select the same words, trim In/Out with one undo step, navigate and select by word or sentence with the keyboard, and adjust the playhead, edges and zoom with VoiceOver. A click near a trim handle leaves the clip unchanged.

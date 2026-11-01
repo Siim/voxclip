@@ -24,9 +24,10 @@ struct EditorRenderSnapshot {
             // Selecting other words ends an open inline correction, as a click elsewhere ends an inline rename.
             if let id = correctionID, !selectedWordIDs.contains(id) { endCorrection() }
             updateSelectionEnds()
+            refreshPendingSendScope()
         }
     }
-    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); updateSelectionEnds() } } }
+    var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope() } } }
     var previewStop: Double?
     var playhead: Double = 0
     var sourceTime: Double = 0
@@ -68,7 +69,9 @@ struct EditorRenderSnapshot {
         guard progress != nil, let progressStage else { return nil }
         return .transcribing(fraction: progressStage == .transcribing ? progressFraction : nil, stage: progressStage)
     }
-    var showTranscribe = false
+    let sendConfirmation = ConnectorConfirmation()
+    var connectorSendVerb = "Rewrite"
+    @ObservationIgnored lazy var transcription = InlineTranscription(model: self)
     var correctionID: String?
     var correctionText = ""
     /// The open Rewrite session, on whichever tab it belongs to. The right column reads
@@ -132,8 +135,13 @@ struct EditorRenderSnapshot {
     /// ⇧⌘R, the selection bar, the transcript's context menu and the clip bar (design.md §6.3.6 "Start"). The panel opens
     /// in R1, or in R0 when no AI is chosen. The open session on this tab sends again when it has the same scope;
     /// another scope replaces it. Text Rewrite needs no Voice Lab.
-    func runRewrite(scope requested: RewriteScope? = nil, instruction: String? = nil) {
-        guard let scope = requested ?? rewriteScopeNow, RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: scope) else { return }
+    func runRewrite(scope requested: RewriteScope? = nil, instruction: String? = nil, verb: String = "Rewrite") {
+        let replacingPendingSend = sendConfirmation.isPresented
+        guard let scope = requested ?? rewriteScopeNow, RewriteEntryPolicy.canRun(editable: capabilities.edit && (capabilities.ai || replacingPendingSend), scope: scope) else { return }
+        let previous = sendConfirmation.isPresented ? openRewrite : nil
+        let previousFind = sendConfirmation.isPresented ? findTask : nil
+        if sendConfirmation.isPresented { sendConfirmation.cancel(); findTask?.cancel(); closeRewrite(returnFocus: false) }
+        connectorSendVerb = verb
         let instruction = instruction ?? rewriteInstruction
         if let session = rewrite, session.isOpen, session.rewriteScope == scope {
             sendRewriteAgain(session, instruction: instruction)
@@ -147,11 +155,19 @@ struct EditorRenderSnapshot {
         let signature = rewriteConnectorSignature
         rewriteOpenTask = Task { [weak self] in
             guard let self else { return }
+            await previousFind?.value
+            await previous?.waitForSend()
             if waveform == nil { await loadWaveform() }
             guard !Task.isCancelled, capabilities.ai, project == snapshot, selectedWordIDs == selection, selectedPauseIDs == pauses,
                   rewriteConnectorSignature == signature else { return }
             openRewriteSession(scope: scope, instruction: instruction)
         }
+    }
+    /// Scope changes reword the single row and bind its approval to the newly displayed words, also headlessly.
+    func refreshPendingSendScope() {
+        guard sendConfirmation.isPresented, openRewrite != nil else { return }
+        guard rewriteScopeNow != nil else { sendConfirmation.cancel(); closeRewrite(returnFocus: false); return }
+        runRewrite(verb: connectorSendVerb)
     }
     /// Sends `session` again, asking `instruction` when given: ⇧⌘R and the menu on its scope, the clip bar, R2's Ask
     /// again and R3's Rewrite Again. A proposal with takes or a change edited in its popover, R2's or the one R3 set aside,
@@ -230,7 +246,7 @@ struct EditorRenderSnapshot {
         guard let session = openRewrite, session.current, let connector = session.connector?.connector else { return false }
         do {
             return try await app.authorizeConnectorRequest(provider, connector: connector, action: .rewrite,
-                wordCount: session.task.words.wordCount, rewrite: session.task.words, parent: window) { [self] in
+                wordCount: session.task.words.wordCount, rewrite: session.task.words, confirmation: sendConfirmation, verb: connectorSendVerb) { [self] in
                     openRewrite === session && session.current
                 }
         } catch is CancellationError { return false } catch {
@@ -306,7 +322,7 @@ struct EditorRenderSnapshot {
     var exportIndex = 0
     var exportStartedAt: Date?
     var sourceURL: URL { URL(fileURLWithPath: project.media.source.absolutePath) }
-    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { closeRewrite(returnFocus: false) }; followWaveformKey() } }
+    var mediaResolved = false { didSet { document.setMediaResolved(mediaResolved); if !mediaResolved { transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) }; followWaveformKey() } }
     /// The video's check (as the project opens or reverts, or after its video changes) has answered, found or not. A
     /// video not resolved before then is only not checked yet, so Locate… and the read-only note wait for the answer
     /// rather than flash while a slow or external volume reads.
@@ -323,7 +339,7 @@ struct EditorRenderSnapshot {
     @ObservationIgnored let exportsFingerprintCache = ExportsFingerprintCache()
     private(set) var projectRevision = 0
     /// The video is there but can't be read (design §5.4.4 f, corrupt file).
-    var mediaUnreadable = false { didSet { if mediaUnreadable { closeRewrite(returnFocus: false) }; followWaveformKey() } }
+    var mediaUnreadable = false { didSet { if mediaUnreadable { transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) }; followWaveformKey() } }
     var canMoveCaptions: Bool {
         !document.demo && capabilities.captionPosition && !mediaUnreadable && (previewError == nil || !mediaResolved)
     }
@@ -420,7 +436,7 @@ struct EditorRenderSnapshot {
     }
     /// Set by the shell's leave boundary: edits freeze, and late results cannot
     /// change a project that is leaving.
-    var isLeaving = false { didSet { if isLeaving { closeRewrite(returnFocus: false) } } }
+    var isLeaving = false { didSet { if isLeaving { app.voiceLabSession.leaveVoiceControls(owner: self); transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) } } }
     /// Called when a refresh finds a different active clip, for example after Undo.
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
     /// Called when a refresh finds the clips changed: made, kept, dismissed, removed, or back after Undo. The tabs follow it.
@@ -575,12 +591,14 @@ struct EditorRenderSnapshot {
         // The check has answered (a project without a video path has none to make).
         mediaChecked = true
         refresh()
-        if mediaResolved { await updatePreview(load: true) }
+        if mediaUsable { await updatePreview(load: true); await transcription.openOnImport() }
     }
     func close() {
         app.voiceLabSession.leaveVoiceControls(owner: self)
         voiceRewriteToastTask?.cancel()
         cancelMediaRelink()
+        transcription.close()
+        sendConfirmation.cancel()
         closeRewrite(returnFocus: false)
         previewRevision &+= 1
         workTask?.cancel(); exportTask?.cancel(); findTask?.cancel(); eventTask?.cancel(); updateTask?.cancel(); waveformTask?.cancel(); preview.close()
@@ -589,6 +607,10 @@ struct EditorRenderSnapshot {
         cacheLease?.release(); cacheLease = nil
     }
     func reloadFromDocument(previousProjectID: String) {
+        app.voiceLabSession.leaveVoiceControls(owner: self)
+        cancelMediaRelink()
+        sendConfirmation.cancel()
+        transcription.close()
         closeRewrite(returnFocus: false)
         app.openProjectKeys[previousProjectID] = nil
         // The project stays open while its video is checked again, even if it is missing (architecture §8.2).
@@ -775,6 +797,7 @@ struct EditorRenderSnapshot {
     }
     #if DEBUG
     func waitForPendingPreviewForAudit() async { await updateTask?.value }
+    func markMediaCheckedForAudit() { mediaChecked = true }
     #endif
     private func recordDocumentChange() {
         document.updateChangeCount(undoManager?.isUndoing == true ? .changeUndone : undoManager?.isRedoing == true ? .changeRedone : .changeDone)
@@ -819,7 +842,13 @@ struct EditorRenderSnapshot {
     }
     /// A different-looking file waiting for the banner's Use It. The editor only reads meanwhile (`mediaUsable`), so an
     /// open Rewrite closes as it does when the video goes missing.
-    var mediaRelinkCandidate: MediaRelinkCandidate? { didSet { if mediaRelinkCandidate != nil { closeRewrite(returnFocus: false) } } }
+    var mediaRelinkCandidate: MediaRelinkCandidate? {
+        didSet {
+            if mediaRelinkCandidate != nil {
+                transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false)
+            }
+        }
+    }
     private var mediaRelinkRevision = 0
     func cancelMediaRelink() { mediaRelinkRevision += 1; mediaRelinkCandidate = nil }
     func locateMedia() {
@@ -1174,6 +1203,7 @@ struct EditorRenderSnapshot {
         }
     }
     func transport(_ key: String, shift: Bool = false) {
+        if [" ", "l", "p"].contains(key.lowercased()) { rewrite?.takePlan?.stopAudition() }
         // Saving an open correction pauses (`apply`), so Space and L toggle from the state before the save.
         let wasPlaying = isPlaying
         endCorrection()
@@ -1354,6 +1384,16 @@ extension EditorModel {
     /// Asks the chosen connector for clips with `preset` and `instruction`, the popover's when nil. They arrive as
     /// suggestions in one undo step.
     func findClips(preset requestedPreset: ClipPresetID? = nil, instruction requestedInstruction: String? = nil) {
+        if sendConfirmation.isPresented {
+            let pending = findTask, session = openRewrite
+            sendConfirmation.cancel(); pending?.cancel(); closeRewrite(returnFocus: false)
+            findTask = Task { [weak self] in
+                await pending?.value; await session?.waitForSend()
+                guard !Task.isCancelled else { return }
+                self?.findClips(preset: requestedPreset, instruction: requestedInstruction)
+            }
+            return
+        }
         guard capabilities.ai, let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
         let corrections = project.edits.corrections
         let cuts = Set(project.edits.cutWordIds)
@@ -1378,7 +1418,7 @@ extension EditorModel {
                     // declined send leaves the sidebar, the last error and the fallback note as they were and announces
                     // nothing, and no "Finding clips…" row shows behind a sheet.
                     guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
-                        wordCount: transcript.words.filter { $0.kind == .word }.count, parent: window, isCurrent: { [self] in
+                        wordCount: transcript.words.filter { $0.kind == .word }.count, rewrite: selectedPreset == .hooks ? DirectorScope(kind: .fullTake, wordCount: transcript.words.filter { $0.kind == .word }.count) : nil, confirmation: sendConfirmation, verb: selectedPreset == .hooks ? "Hook" : nil, isCurrent: { [self] in
                             !isLeaving && project == snapshot && rewriteConnectorSignature == selectedSignature
                         }) else { return }
                     finding = true; clipError = nil; fallbackNote = nil

@@ -73,6 +73,8 @@ extension ProviderChoice {
     public var startupError: VoxClipError?
     let monthlySpend = MonthlySpend()
     @ObservationIgnored lazy var harnessSignIn = HarnessSignIn(app: self)
+    let settingsSendConfirmation = ConnectorConfirmation()
+    @ObservationIgnored lazy var transcriptionSpend = TranscriptionSpend(locations: locations)
     var notice: String?
     var settingErrors: [String: String] = [:]
     var settings = SettingsDocument()
@@ -222,8 +224,8 @@ extension ProviderChoice {
     @ObservationIgnored private var library: ModelLibrary?
     @ObservationIgnored private let modelDownloader: (any ModelDownloader)?
     @ObservationIgnored var connectorOverride: ((String) -> any LLMConnector)?
-    /// Answers the send sheets (`LLMSendSheet`: the privacy consent and the cost confirmation) in harness sessions and tests.
-    @ObservationIgnored var connectorConsentOverride: (@MainActor (ProviderChoice, ConnectorConsentAction, LLMSendSheet) async -> Bool)?
+    /// Answers the send sheets (`ConnectorSendPrompt`: the privacy consent and the cost confirmation) in harness sessions and tests.
+    @ObservationIgnored var connectorConsentOverride: (@MainActor (ProviderChoice, ConnectorConsentAction, ConnectorSendPrompt) async -> Bool)?
     var testingProviders: Set<String> = []
     @ObservationIgnored var providerKeyStoreOverride: (any ProviderKeyStore)?
     var providerKeyStore: any ProviderKeyStore { providerKeyStoreOverride ?? secrets }

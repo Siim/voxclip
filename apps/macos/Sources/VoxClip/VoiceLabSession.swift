@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import AVFoundation
 import Observation
 import VoxClipCore
@@ -483,9 +484,9 @@ import VoxClipMedia
         catch { flow.state = .statement; await creationFailed(error) }
     }
     /// One explicit paid click, bound to the plan prepared locally. Recovery never repeats the statement check.
-    func createVoice(now: Date = Date(), keyboard: Bool = false, command: Bool = false, repeated: Bool = false) async {
+    func createVoice(now: Date = Date(), keyboard: Bool = false, command: Bool = false, repeated: Bool = false, eventDate: Date? = nil) async {
         guard canCreate, let plan = flow.plan,
-              Self.permitsPaidActivation(keyboard: keyboard, command: command, repeated: repeated, appeared: flow.priceAppearedAt, now: now) else { return }
+              Self.permitsPaidActivation(keyboard: keyboard, command: command, repeated: repeated, appeared: flow.priceAppearedAt, now: now, eventDate: eventDate) else { return }
         busy = true; flow.state = .creating; message = nil; statementPlayer?.stop()
         defer { busy = false }
         app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
@@ -519,9 +520,10 @@ import VoxClipMedia
     func startVoiceCreation(keyboard: Bool = false, command: Bool = false, repeated: Bool = false) {
         guard paidAction == nil else { return }
         let activatedAt = Date()
+        let eventDate = keyboard ? Self.paidEventDate(timestamp: NSApp.currentEvent?.timestamp, now: activatedAt) : nil
         paidAction = Task { [weak self] in
             guard let self else { return }
-            await createVoice(now: activatedAt, keyboard: keyboard, command: command, repeated: repeated)
+            await createVoice(now: activatedAt, keyboard: keyboard, command: command, repeated: repeated, eventDate: eventDate)
             paidAction = nil
         }
     }
@@ -540,9 +542,16 @@ import VoxClipMedia
             flow.capWarning = VoiceLabCostPresentation.capWarning(cap: limit, providerName: "ElevenLabs")
         }
     }
-    static func permitsPaidActivation(keyboard: Bool, command: Bool, repeated: Bool, appeared: Date?, now: Date) -> Bool {
+    static func paidEventDate(timestamp: TimeInterval?, now: Date = Date(), uptime: TimeInterval = ProcessInfo.processInfo.systemUptime) -> Date {
+        guard let timestamp, timestamp.isFinite, timestamp <= uptime else { return .distantPast }
+        return now.addingTimeInterval(timestamp - uptime)
+    }
+    static func permitsPaidActivation(keyboard: Bool, command: Bool, repeated: Bool, appeared: Date?, now: Date, eventDate: Date? = nil) -> Bool {
         guard !repeated else { return false }
-        if keyboard && !command { guard let appeared, now.timeIntervalSince(appeared) >= 0.5 else { return false } }
+        if keyboard && !command {
+            let eventDate = eventDate ?? now
+            guard let appeared, eventDate <= now, eventDate.timeIntervalSince(appeared) >= 0.5 else { return false }
+        }
         return true
     }
     func recoverVoice(_ id: String) async {

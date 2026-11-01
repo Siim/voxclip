@@ -2,6 +2,11 @@ import SwiftUI
 import VoxClipCore
 
 extension RewriteSession {
+    func playTake(phrase: Int) async {
+        guard current, let takePlan, takePlan.stillCurrent else { return }
+        editor.transport("k")
+        await takePlan.play(phrase: phrase)
+    }
     var takesBusy: Bool { takePlan.map { $0.preparing || $0.generating || $0.publishing } ?? false }
     var usableTakeCount: Int { takePlan?.phrases.filter { $0.selected?.fits == true }.count ?? 0 }
     var takeSendLine: String {
@@ -24,7 +29,7 @@ extension RewriteSession {
         case .confirm: verb + "…"
         }
         return PanelAction(id: "takeQuote-\(quoteID)", title: title, priced: true) { [weak self, weak plan] in
-            guard let self, let plan, current, takePlan === plan, plan.approvalID == quoteID, !takesBusy else { return }
+            guard let self, let plan, current, takePlan === plan, plan.stillCurrent, plan.approvalID == quoteID, !takesBusy else { return }
             if case .confirm(let copy) = cost {
                 let confirmID = "approveTakeQuote-\(quoteID)"
                 task.ask(PanelConfirm(question: takeSendLine + "\n" + copy,
@@ -38,7 +43,7 @@ extension RewriteSession {
         }
     }
     private func startTakes(_ plan: ClipTakePlan, phrase: Int?, quoteID: UUID) {
-        guard current, takePlan === plan, !takesBusy, plan.approvalID == quoteID else { return }
+        guard current, takePlan === plan, plan.stillCurrent, !takesBusy, plan.approvalID == quoteID else { return }
         takesTask = Task { [weak self, weak plan] in
             guard let self, let plan, current, takePlan === plan else { return }
             if let phrase { await plan.tryAnother(phrase: phrase, approved: true, quoteID: quoteID) }
@@ -132,7 +137,7 @@ extension ClipTakePlan.Phrase {
                 if phrase.selected != nil, !session.takesBusy {
                     Button {
                         session.focusedTakePhrase = phrase.id
-                        Task { await plan.play(phrase: phrase.id) }
+                        Task { await session.playTake(phrase: phrase.id) }
                     } label: {
                         Image(systemName: plan.audition.isPlaying && plan.audition.takeId == phrase.selectedID ? "pause.fill" : "play.fill")
                             .frame(width: 28, height: 28)

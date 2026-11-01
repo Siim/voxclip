@@ -66,8 +66,8 @@ private final class WorkThreads: Sendable {
 
 /// The sheets a run's route showed, answered yes.
 @MainActor private final class Sheets {
-    var shown: [LLMSendSheet] = []
-    func take() -> [LLMSendSheet.Reason] { defer { shown = [] }; return shown.map(\.reason) }
+    var shown: [ConnectorSendPrompt] = []
+    func take() -> [ConnectorSendPrompt.Reason] { defer { shown = [] }; return shown.map(\.reason) }
 }
 
 /// `RewriteSession` takes a scope (impl-plan V13, plan M7): a clip and Full take through C1's plan, `PatchRewriteService`
@@ -502,14 +502,14 @@ private final class WorkThreads: Sendable {
     struct Route: Sendable, CustomTestStringConvertible {
         let connector: String
         let authMethod: String?
-        let first: [LLMSendSheet.Reason]
-        let later: [LLMSendSheet.Reason]
+        let first: [ConnectorSendPrompt.Reason]
+        let later: [ConnectorSendPrompt.Reason]
         let title: String
         let note: String
         var testDescription: String { connector }
     }
     nonisolated static let routes: [Route] = [
-        Route(connector: "anthropic", authMethod: nil, first: [.privacy, .cost], later: [.cost], title: "Rewrite Clip 1…",
+        Route(connector: "anthropic", authMethod: nil, first: [.cost], later: [.cost], title: "Rewrite Clip 1…",
               note: "Sends the 36 words of clip 1 to Anthropic with your key."),
         Route(connector: "claude-code", authMethod: "claude.ai", first: [.privacy], later: [], title: "Rewrite Clip 1",
               note: "Sends the 36 words of clip 1 to Claude Code with your sign-in. Counts toward your Claude plan."),
@@ -529,8 +529,9 @@ private final class WorkThreads: Sendable {
         let cost = sheets.shown.first { $0.reason == .cost }
         #expect(sheets.take() == route.first)
         if route.first.contains(.cost) {
-            #expect(cost == LLMSendSheet(reason: .cost, title: "Rewrite clip 1?",
-                message: "Sends the 36 words of clip 1 to Anthropic with your key.\n\nVoxClip can't tell what this costs. Check Anthropic's pricing.", confirm: "Rewrite"))
+            #expect(cost?.message == "Rewrite sends the 36 words of clip 1 to Anthropic with your key.")
+            #expect(cost?.confirm == "Allow and Send" && cost?.firstUse == true)
+            #expect(cost?.note == "VoxClip can't tell what this costs. Check Anthropic's pricing.")
         }
         #expect(session.sendLine == route.note && editor.rewriteMenuTitle == route.title)
         #expect(session.proposalButton == (route.first.contains(.cost) ? "Rewrite…" : "Rewrite"))
@@ -598,7 +599,7 @@ private final class WorkThreads: Sendable {
         let session = try await rewrite(editor)
         session.review(1, .undo)
         let shown = try #require(proposal(session))
-        #expect(sheets.take() == [.privacy, .cost] && session.task.contextAction?.title == "Ask again…")
+        #expect(sheets.take() == [.cost] && session.task.contextAction?.title == "Ask again…")
         app.connectorConsentOverride = { _, _, sheet in sheets.shown.append(sheet); return false }
         session.task.contextAction?.perform()
         await editor.rewriteOpenTask?.value

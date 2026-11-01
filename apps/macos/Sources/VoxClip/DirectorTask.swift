@@ -140,7 +140,7 @@ struct PanelConfirm: Equatable {
 
 /// One step of a task's work log: Rewrite's own steps (R1), or one tool call in Phase 1.
 struct ActivityStep: Identifiable, Equatable, Sendable {
-    enum Status: Equatable, Sendable { case waiting, running, done }
+    enum Status: Equatable, Sendable { case waiting, running, done, failed }
     let id: String
     var title: String
     var detail: String
@@ -156,6 +156,7 @@ struct ActivityStep: Identifiable, Equatable, Sendable {
         case .done: "Done: \(spoken)"
         case .running: "In progress: \(spoken)"
         case .waiting: "Next: \(spoken)"
+        case .failed: "Failed: \(spoken)"
         }
     }
 }
@@ -430,7 +431,7 @@ enum PanelError: Equatable, Sendable {
     /// edits the focused change and ⌘Return runs the primary, so walking the list never applies, makes takes or pays;
     /// elsewhere either runs the primary. While the panel asks a question, either answers it with its safe choice. False
     /// when nothing acts.
-    func pressReturn(command: Bool) -> Bool {
+    func pressReturn(command: Bool, now: Date = Date(), eventDate: Date? = nil) -> Bool {
         // A question waits for its answer first; Return chooses the safe one, as an alert's default button would.
         if let confirm {
             confirm.cancel.perform()
@@ -444,7 +445,7 @@ enum PanelError: Equatable, Sendable {
         if cards.contains(.takes), !command { return false }
         guard let primary = footer.primary else { return false }
         if primary.priced, !VoiceLabSession.permitsPaidActivation(keyboard: true, command: command, repeated: false,
-            appeared: primaryAppearedAt, now: Date()) { return true }
+            appeared: primaryAppearedAt, now: now, eventDate: eventDate) { return true }
         primary.perform()
         return true
     }

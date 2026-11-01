@@ -46,28 +46,6 @@ struct RewriteConnector {
     }
 }
 
-@MainActor final class RewriteApprovalSheet {
-    private let alert = NSAlert()
-    private let parent: NSWindow
-    /// `confirm` is the default button's title; Cancel is the other button.
-    init(title: String, copy: String, confirm: String = "Continue", parent: NSWindow) {
-        self.parent = parent
-        alert.messageText = title; alert.informativeText = copy
-        alert.addButton(withTitle: confirm); alert.addButton(withTitle: "Cancel")
-    }
-    func confirm() async -> Bool {
-        await withTaskCancellationHandler {
-            guard !Task.isCancelled else { return false }
-            let response = await alert.beginSheetModal(for: parent)
-            return !Task.isCancelled && response == .alertFirstButtonReturn
-        } onCancel: {
-            Task { @MainActor [self] in
-                if alert.window.sheetParent === parent { parent.endSheet(alert.window, returnCode: .abort) }
-            }
-        }
-    }
-}
-
 /// One change of a proposal, in transcript order: C2's hunk for a clip or Full take (`ScopeRewriteDiff.Hunk`), or the
 /// passage diff's for a selection, as the AI's reply made it. The reply becomes the transcript's proposal
 /// (`EditorModel.proposal`), which the hunks (V14) and the change list (V15) review.
@@ -88,6 +66,9 @@ struct RewriteChange: Equatable, Sendable {
 /// and `PatchRewriteService`, and its reply through C2's `ScopeRewriteDiff`; a selection through `VoiceRewriteService`
 /// and the passage diff. Both end in `changes` and the task's `ChangeSet`. The session belongs to the tab it opened on.
 @MainActor @Observable final class RewriteSession {
+    var sendApproved = false
+    var sendFailure: LLMError?
+    func waitForSend() async { _ = await sending?.value }
     let editor: EditorModel
     /// What the session rewrites (C1's `RewriteScope`).
     let rewriteScope: RewriteScope

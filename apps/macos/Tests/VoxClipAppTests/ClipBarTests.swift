@@ -8,7 +8,7 @@ import Testing
 @testable import VoxClip
 
 /// The sheets a routed send showed.
-@MainActor private final class SheetReasons { var reasons: [LLMSendSheet.Reason] = [] }
+@MainActor private final class SheetReasons { var reasons: [ConnectorSendPrompt.Reason] = [] }
 /// Whether an observation heard a change.
 private final class Heard: @unchecked Sendable { var value = false }
 

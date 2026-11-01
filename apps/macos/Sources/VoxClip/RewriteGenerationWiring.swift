@@ -56,8 +56,9 @@ extension RewriteSession {
               let audio = project.media.source.audio else { return }
         let revision = self.revision, ordinals = includedVoice
         let snapshot = editor.project, region = takeRegion
+        let commands = localCommands, reviewedChanges = changes, proposalChanges = ownProposal?.changes
         do {
-            let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+            let final = try editor.voiceLabReviewProject(localCommands: commands)
             let selected = changes.enumerated().filter { offset, change in
                 change.hunk.kind == .voice ? ordinals.contains(offset + 1) : ownProposal?[offset + 1]?.state != .excluded
             }
@@ -83,8 +84,11 @@ extension RewriteSession {
                 }, isCurrent: { [weak self, weak generation] in
                     guard let self, let generation else { return false }
                     return current && editor.project == snapshot && self.revision == revision && includedVoice == ordinals &&
+                        localCommands == commands && changes == reviewedChanges && ownProposal?.changes == proposalChanges &&
                         generation.selectedVoiceID == recordID && generation.selectedModelID == modelID &&
                         region.map { generationIsCurrent(region: $0) } == true
+                }, acceptedChargesChanged: { [weak app = editor.app] in
+                    await app?.refreshMonthlySpend()
                 })
             plan.connect(takeBackend(plan.phrases.count) { [weak plan] request, start in
                 guard let plan else { throw CancellationError() }

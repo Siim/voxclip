@@ -289,13 +289,13 @@ import Testing
         #expect(asks.count == 1 && !declined.isOpen && editor.openRewrite == nil && !app.bool(consent))
         #expect(await fake.sends == 0)
 
-        // Approved, the privacy consent and the cost sheet ask, and the words go.
+        // Approved, the combined privacy and billing row asks once, and the words go.
         app.connectorConsentOverride = { _, action, _ in asks.count += 1; return action == .rewrite }
         editor.runRewrite()
         await editor.rewriteOpenTask?.value
         let session = try #require(editor.openRewrite)
         await session.actionTask?.value
-        #expect(asks.count == 3 && app.bool(consent) && !session.changes.isEmpty)
+        #expect(asks.count == 2 && app.bool(consent) && !session.changes.isEmpty)
         #expect(await fake.sends == 1)
 
         shell.selection = .clip("five-2")
@@ -309,7 +309,7 @@ import Testing
             return true
         }
         #expect(await session.run() == false)
-        #expect(asks.count == 4 && !app.bool(consent))
+        #expect(asks.count == 3 && !app.bool(consent))
         #expect(await fake.sends == 1)
 
         app.settings.values["llm.model.anthropic"] = .string("fixture-local")
@@ -321,7 +321,7 @@ import Testing
             return true
         }
         #expect(await session.run() == false)
-        #expect(asks.count == 5 && !app.bool(consent) && session.isOpen && session.task.state == .changed)
+        #expect(asks.count == 4 && !app.bool(consent) && session.isOpen && session.task.state == .changed)
         #expect(await fake.sends == 1)
     }
 

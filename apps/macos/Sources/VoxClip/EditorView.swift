@@ -33,10 +33,8 @@ import VoxClipCore
             .ignoresSafeArea()
             .preferredColorScheme(shell.app.appearance)
     }
-    /// Transcribe Again and the tour.
     private func sheets(on content: some View) -> some View {
         content
-            .sheet(isPresented: editorFlag(\.showTranscribe)) { if let editor = shell.editor { TranscriptionSheet(model: editor) } }
             .sheet(isPresented: Binding(get: { shell.app.showTour }, set: { shell.app.showTour = $0 })) { OnboardingView() }
     }
     /// A changed pause breath setting applies to the open project as one undo step.
@@ -50,10 +48,6 @@ import VoxClipCore
         }
         editor.apply(.setPauseKeep(seconds: seconds), name: "Change pause breath")
     }
-    /// A sheet or panel flag on the open editor; false while no project is open.
-    private func editorFlag(_ flag: ReferenceWritableKeyPath<EditorModel, Bool>) -> Binding<Bool> {
-        Binding(get: { shell.editor?[keyPath: flag] ?? false }, set: { shell.editor?[keyPath: flag] = $0 })
-    }
 }
 
 /// Keep service observations outside the workspace's layout expression for Xcode 26.
@@ -63,9 +57,6 @@ import VoxClipCore
         content
             .onChange(of: shell.app.voiceLabSession.busy) { _, busy in
                 if !busy { Task { await shell.app.refreshMonthlySpend() } }
-            }
-            .onChange(of: shell.editor?.rewrite?.generation?.phase) { _, _ in
-                Task { await shell.app.refreshMonthlySpend() }
             }
             .task(id: shell.app.bool("voiceLab.enabled")) { await shell.app.refreshMonthlySpend() }
             .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
@@ -146,6 +137,7 @@ import VoxClipCore
     @FocusState private var findFocused: Bool
     var body: some View {
         VStack(spacing: 0) {
+            ConnectorConfirmationView(confirmation: model.sendConfirmation, model: model)
             if model.document.demo {
                 Label { Text("Demo project with no video. ").fontWeight(.semibold) + Text("Changes aren't saved to the fixture.") } icon: { Image(systemName: "info.circle") }
                     .font(.system(size: 13)).foregroundStyle(DesignValues.color("text.primary"))
@@ -172,7 +164,11 @@ import VoxClipCore
             if !model.document.demo, model.mediaMissing {
                 Button("Locate…") { model.locateMedia() }
             }
-            if let progress = model.progress {
+            if model.transcription.isVisible {
+                if model.transcribed { InlineTranscriptionView(transcription: model.transcription) }
+                else { ScrollView { InlineTranscriptionView(transcription: model.transcription) } }
+            }
+            if let progress = model.progress, !model.transcription.isRunning {
                 VStack(alignment: .leading, spacing: 14) {
                     ForEach(0..<6) { line in RoundedRectangle(cornerRadius: 4).fill(DesignValues.color("bg.muted")).frame(width: line.isMultiple(of: 2) ? 300 : 240, height: 12) }
                     Text(progress)
@@ -180,14 +176,16 @@ import VoxClipCore
                 }.padding(40)
                 Spacer()
             } else if !model.transcribed {
-                ContentUnavailableView { Label("This video isn't transcribed yet.", systemImage: "text.alignleft") }
-                    description: { Text("Your video is still here. Transcribe it to cut by words.") }
-                    actions: { Button("Transcribe…") { model.showTranscribe = true }; Button("Models and keys…") { openVoxClipSettings() } }
+                if !model.transcription.isVisible {
+                    HStack { Text("This video isn't transcribed yet."); Button("Transcribe…") { Task { await model.transcription.open() } } }.padding(.leading, 80).padding(.top, 24)
+                }
+                Spacer(minLength: 0)
             } else { TranscriptTextView(model: model).accessibilityLabel("Transcript, edit by words").focusSection() }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.surface"))
         .scrollEdgeEffectStyle(.automatic, for: .vertical)
+
     }
 }
 

@@ -123,7 +123,7 @@ enum ClipBarMetrics {
     /// Rewrite can run on the scope now (V13): AI editing is available and there are words. Text Rewrite needs no
     /// selection and no Voice Lab.
     var rewriteAvailable: Bool { RewriteEntryPolicy.canRun(editable: model.capabilities.ai, scope: model.rewriteScopeNow) }
-    var rewriteRunning: Bool { model.rewrite?.task.state == .running }
+    var rewriteRunning: Bool { model.rewrite?.task.state == .running && !model.sendConfirmation.isPresented }
     /// The Tighten toast shows until the project changes again or the tab moves.
     var toastShown: Bool {
         guard let tightened, case .scope = variant else { return false }
@@ -277,6 +277,10 @@ enum ClipBarMetrics {
     /// Rewrite and ⇧⌘R run it (V13's `runRewrite`); on the open session's own scope it sends again.
     func runRewrite() {
         commitAsk()
+        model.sendConfirmation.onFinish = { [weak self] approved in
+            guard !approved, let self else { return }
+            _ = window?.makeFirstResponder(rewrite)
+        }
         model.runRewrite()
     }
     /// Tighten on the bar's scope, one undo step, then "8 cuts · Undo" in its place.
@@ -338,7 +342,17 @@ enum ClipBarMetrics {
         case #selector(NSResponder.insertNewline(_:)):
             if control === ask || askPopover?.isShown == true {
                 askPopover?.close()
-                if rewriteAvailable { runRewrite() }
+                if model.sendConfirmation.isPresented, let event = NSApp.currentEvent {
+                    _ = model.sendConfirmation.pressReturn(timestamp: event.timestamp, now: ProcessInfo.processInfo.systemUptime,
+                        isRepeat: event.isARepeat, command: event.modifierFlags.contains(.command))
+                } else if rewriteAvailable {
+                    commitAsk()
+                    model.sendConfirmation.onFinish = { [weak self] approved in
+                        guard !approved, let self else { return }
+                        _ = window?.makeFirstResponder(ask)
+                    }
+                    model.runRewrite(verb: "Ask")
+                }
                 return true
             }
             return false

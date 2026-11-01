@@ -30,6 +30,7 @@ extension EditorModel {
         document.replaceProject(project.scoped(to: clipID))
         refresh()
         schedulePreviewUpdate(mediaChanged: false)
+        refreshPendingSendScope()
         return true
     }
 

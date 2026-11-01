@@ -55,7 +55,10 @@ struct PanelJobChoice {
 
 extension EditorModel {
     /// The task the panel shows: the active tab's Rewrite session's. Text Rewrite needs no Voice Lab (impl-plan V13).
-    var panelTask: DirectorTask? { rewrite?.task }
+    var panelTask: DirectorTask? {
+        guard let rewrite, rewrite.task.state != .running || rewrite.sendApproved else { return nil }
+        return rewrite.task
+    }
     var hasVoiceJob: Bool { app.voiceLabSession.showEnrollment && app.voiceLabSession.flow.owner === self }
     func openVoiceJob() {
         guard capabilities.ai else { return }
@@ -87,7 +90,8 @@ extension WorkspaceShell {
         let task = model.openRewrite?.task
         if let asking = model.panelTask, asking.confirm != nil { return asking.job }
         let flow = model.app.voiceLabSession.flow
-        if let choice = panelChoice, task == nil || choice.task === task && choice.turn == (task?.turn ?? 0),
+        let awaitingSend = model.openRewrite.map { $0.task.state == .running && !$0.sendApproved } == true
+        if let choice = panelChoice, task == nil || choice.task === task && (choice.turn == (task?.turn ?? 0) || awaitingSend),
            choice.voiceTurn == flow.turn, jobs.contains(choice.job) { return choice.job }
         if model.hasVoiceJob, flow.originTask === task, flow.originTurn == (task?.turn ?? 0) { return .voice }
         if task == nil, model.currentVoiceFeedback != nil { return .voice }
