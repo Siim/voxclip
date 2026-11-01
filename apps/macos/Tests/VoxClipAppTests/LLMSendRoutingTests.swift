@@ -50,9 +50,10 @@ private struct NoVoiceLabKeys: KeyProvider {
         Row(name: "Apple on-device", connector: "apple-foundation", authMethod: nil, baseURL: nil, first: [], later: []),
     ]
 
-    private func setUp(_ connector: String, authMethod: String?, baseURL: String? = nil) throws -> (AppModel, ConsentFixtureConnector, SheetLog) {
+    private func setUp(_ connector: String, authMethod: String?, baseURL: String? = nil,
+                       readiness: ConnectorStatus = .ready) throws -> (AppModel, ConsentFixtureConnector, SheetLog) {
         let app = AppModel(settingsStore: RegressionSettingsStore())
-        let fake = ConsentFixtureConnector(id: try #require(ConnectorID(rawValue: connector)), authMethod: authMethod)
+        let fake = ConsentFixtureConnector(id: try #require(ConnectorID(rawValue: connector)), readiness: readiness, authMethod: authMethod)
         app.connectorOverride = { _ in fake }
         app.set("llm.connector", .string(connector))
         app.set("llm.model.\(connector)", .string("fixture-local"))
@@ -281,6 +282,48 @@ private struct NoVoiceLabKeys: KeyProvider {
         #expect(await fake.sends == 1)
         #expect(!generation.readyToAccept && quoteRequests > 0)
         session.close()
+    }
+
+    /// Find clips shows its progress only once the route says yes (design §6.2: the consent, then "while it runs").
+    @Test func decliningTheFindClipsCostSheetShowsNoProgressAndKeepsTheLastResultLines() async throws {
+        let (app, fake, log) = try setUp("codex", authMethod: "api_key")
+        app.set("llm.cloudConsent.codex", .bool(true))
+        let editor = try editor(app)
+        defer { editor.close() }
+        var sidebarReveals = 0
+        editor.onNeedsSidebar = { sidebarReveals += 1 }
+        editor.clipError = "Earlier error."
+        editor.fallbackNote = "Answered by fixture-fallback because fixture-local was busy."
+        var findingBehindSheet = false
+        log.answer = { _ in findingBehindSheet = editor.finding; return false }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(log.take() == [.cost])
+        #expect(await fake.sends == 0)
+        #expect(!findingBehindSheet && !editor.finding && !editor.llmRuns.isBusy)
+        #expect(sidebarReveals == 0 && !editor.announcements.contains("Finding clips"))
+        #expect(editor.clipError == "Earlier error." && editor.fallbackNote == "Answered by fixture-fallback because fixture-local was busy.")
+        log.answer = { _ in true }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(await fake.sends == 1)
+        #expect(sidebarReveals == 1 && editor.announcements.contains("Finding clips"))
+        #expect(editor.fallbackNote == nil && editor.clipError != "Earlier error.")
+    }
+
+    /// A connector that is not ready fails in the route, before any progress: the error still reaches the sidebar.
+    @Test func aFindClipsReadinessErrorRevealsTheSidebarWithTheConnectorsMessage() async throws {
+        let (app, fake, log) = try setUp("lmstudio", authMethod: nil, readiness: .noModels)
+        let editor = try editor(app)
+        defer { editor.close() }
+        var sidebarReveals = 0
+        editor.onNeedsSidebar = { sidebarReveals += 1 }
+        editor.findClips()
+        await editor.findTask?.value
+        #expect(log.sheets.isEmpty)
+        #expect(await fake.sends == 0)
+        #expect(sidebarReveals == 1 && !editor.finding)
+        #expect(editor.clipError == "Load or download a model in LM Studio, then refresh. Your edits are saved.")
     }
 }
 #endif

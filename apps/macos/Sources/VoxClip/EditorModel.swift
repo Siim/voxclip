@@ -1129,16 +1129,20 @@ extension EditorModel {
                   let lease = self.llmRuns.acquire() else { return }
             let runs = self.llmRuns
             let connector = self.app.connector(provider.id)
-            self.findTask?.cancel(); self.finding = true; self.clipError = nil; self.fallbackNote = nil; self.showAISetup = false
-            self.onNeedsSidebar?()
-            self.announce("Finding clips")
+            self.findTask?.cancel(); self.showAISetup = false
             self.findTask = Task { [self] in
                 defer { self.finding = false; runs.release(lease) }
                 do {
+                    // The route comes first (design §6.2: the consent, then "while it runs"); only the lease is held. A
+                    // declined send leaves the sidebar, the last error and the fallback note as they were and announces
+                    // nothing, and no "Finding clips…" row shows behind a sheet.
                     guard try await app.authorizeConnectorRequest(provider, connector: connector, action: .findClips,
                         wordCount: transcript.words.filter { $0.kind == .word }.count, parent: window, isCurrent: { [self] in
                             !isLeaving && project == snapshot && rewriteConnectorSignature == selectedSignature
                         }) else { return }
+                    finding = true; clipError = nil; fallbackNote = nil
+                    onNeedsSidebar?()
+                    announce("Finding clips")
                     let catalog = LLMCatalog(document: try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: shared.root.appendingPathComponent("catalog/llm-providers.json"))))
                     let finder = ClipFinder(runner: LLMRunner(keys: app.secrets, catalog: catalog, log: app.log), shared: shared)
                     let presets = try await finder.presets()
@@ -1168,7 +1172,8 @@ extension EditorModel {
                     announce([added.count == 1 ? "Found 1 clip." : "Found \(added.count) clips.", fallbackNote].compactMap { $0 }.joined(separator: " "))
                 } catch is CancellationError {} catch LLMError.cancelled {} catch VoxClipError.cancelled {} catch {
                     let message = await app.safeError(error, context: "ai:\(provider.label)")
-                    if !message.isEmpty { clipError = message }
+                    // A connector that is not ready fails in the route, before the run revealed the sidebar.
+                    if !message.isEmpty { clipError = message; fallbackNote = nil; onNeedsSidebar?() }
                 }
             }
         }

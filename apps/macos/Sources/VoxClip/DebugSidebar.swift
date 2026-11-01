@@ -871,9 +871,10 @@ import VoxClipCore
         shell.layout.explorerVisible = false
         let steps = model.undoSteps
         let playhead = model.playhead, exportTitle = model.exportTitle, subtitle = model.subtitle
+        // The sidebar opens once the send is authorized, inside the run (VS), so read it when the run ends.
         model.findClips()
-        let revealed = shell.layout.explorerVisible
         await model.findTask?.value
+        let revealed = shell.layout.explorerVisible
         check("Find Clips adds three suggestions and keeps none", model.suggestedClips.count == 3 && model.keptClips.isEmpty && model.project.ai.results.count == 1 && model.clipError == nil)
         check("a run shows the hidden sidebar for its progress", revealed)
         let first = model.suggestedClips.first?.id

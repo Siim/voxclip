@@ -69,8 +69,9 @@ actor ConsentFixtureConnector: LLMConnector {
                     defer { editor.close(); app.connectorConsentOverride = nil; app.connectorOverride = nil }
                     switch action {
                     case .findClips:
+                        // `finding` turns on only after the route says yes, so wait for the run itself.
                         editor.findClips()
-                        await wait { !editor.finding }
+                        await editor.findTask?.value
                     case .rewrite:
                         editor.beginRewrite()
                         await wait { editor.rewrite != nil }
@@ -137,7 +138,7 @@ actor ConsentFixtureConnector: LLMConnector {
                     }
                     let editor = makeEditor(fixture: fixture, app: app)
                     defer { editor.close(); app.connectorConsentOverride = nil; app.connectorOverride = nil }
-                    if action == .findClips { editor.findClips(); await wait { !editor.finding } } else { _ = await testProvider(provider, app: app) }
+                    if action == .findClips { editor.findClips(); await editor.findTask?.value } else { _ = await testProvider(provider, app: app) }
                     let sends = await fake.sends
                     let asked = host != nil && choice != "granted"
                     let prefix = "ollama at \(host ?? "loopback") \(action) \(choice)"
