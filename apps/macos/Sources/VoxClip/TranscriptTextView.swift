@@ -6,32 +6,39 @@ import VoxClipCore
 @MainActor struct TranscriptTextView: NSViewRepresentable {
     let model: EditorModel
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
-    func makeNSView(context: Context) -> NSScrollView {
-        let scroll = NSScrollView()
+    func makeNSView(context: Context) -> TranscriptScrollView { Self.makeScrollView(model: model, coordinator: context.coordinator) }
+    /// The transcript's scroll view, text view, backdrop and overview ruler, as the editor
+    /// shows them; the DEBUG pixel and performance checks build theirs here too.
+    static func makeScrollView(model: EditorModel, coordinator: Coordinator, width: CGFloat = 640, height: CGFloat = 480) -> TranscriptScrollView {
+        let scroll = TranscriptScrollView(frame: NSRect(x: 0, y: 0, width: width, height: height))
         let text = TranscriptNSTextView(usingTextLayoutManager: true)
-        text.frame = NSRect(x: 0, y: 0, width: 640, height: 480)
+        text.frame = NSRect(x: 0, y: 0, width: width, height: height)
         text.minSize = .zero; text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        text.model = model; text.delegate = context.coordinator; text.textLayoutManager?.delegate = context.coordinator
+        text.model = model; text.delegate = coordinator; text.textLayoutManager?.delegate = coordinator
         text.isEditable = false; text.isSelectable = true; text.isRichText = true; text.drawsBackground = false
         text.isVerticallyResizable = true; text.isHorizontallyResizable = false; text.autoresizingMask = [.width]
         text.textContainer?.widthTracksTextView = false
-        text.textContainer?.containerSize = NSSize(width: TranscriptNSTextView.measure(forPane: 640), height: CGFloat.greatestFiniteMagnitude)
-        text.textContainerInset = NSSize(width: VCTokens.spacingTranscriptGutter, height: 8)
+        // Text starts at the gutter's edge, x 80 (notes.md §5).
+        text.textContainer?.lineFragmentPadding = 0
+        text.textContainer?.containerSize = NSSize(width: TranscriptNSTextView.measure(forPane: width), height: CGFloat.greatestFiniteMagnitude)
+        text.textContainerInset = NSSize(width: TranscriptGutter.width, height: 8)
         text.selectedTextAttributes = TranscriptNSTextView.selectionAttributes
         text.setAccessibilityLabel("Transcript. Select words, then Delete to cut. Return corrects spelling.")
         text.setAccessibilityCustomRotors(["Cuts", "Pauses", "Suggested fillers", "Clips", "AI words"].map { NSAccessibilityCustomRotor(label: $0, itemSearchDelegate: text) })
         text.configureAccessibilityActions()
+        text.installBackdrop()
         scroll.documentView = text; scroll.hasVerticalScroller = true; scroll.drawsBackground = false
         text.observeSelectionScrolling(scroll)
-        context.coordinator.text = text
-        let renderer = context.coordinator.renderer
+        coordinator.text = text
+        let renderer = coordinator.renderer
         renderer.text = text
+        text.renderer = renderer
         text.textLayoutManager?.renderingAttributesValidator = { [weak renderer] _, fragment in
             MainActor.assumeIsolated { renderer?.validate(fragment) }
         }
         return scroll
     }
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
+    func updateNSView(_ scroll: TranscriptScrollView, context: Context) {
         guard let text = scroll.documentView as? TranscriptNSTextView else { return }
         let coordinator = context.coordinator
         let signature = "\(model.transcriptLayoutRevision):\(model.showCuts):\(model.showPauses):\(model.textSize):\(model.project.edits.pauseThresholdSeconds)"
@@ -41,7 +48,8 @@ import VoxClipCore
             coordinator.hiddenCuts = model.cutWordIDs
             coordinator.renderer.rebuild(model: model)
         }
-        coordinator.renderer.update(TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, playing: model.playingWordID, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence"), activeClipID: model.activeClip?.id, rewrite: model.rewriteRange))
+        coordinator.renderer.update(TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, fillers: model.fillerIDs, playing: model.playingWordID, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence"), activeClipID: model.activeClip?.id, playhead: model.sourceTime))
+        scroll.overviewRuler.marks = TranscriptOverviewRuler.marks(model: model)
         let selected = (model.selectedWordIDs.union(model.selectedPauseIDs)).compactMap { text.map.span(id: $0) }.sorted { $0.range.location < $1.range.location }
         if let first = selected.first, let last = selected.last {
             let range = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
@@ -94,7 +102,11 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
 
 @MainActor final class TranscriptLayoutFragment: NSTextLayoutFragment, @unchecked Sendable {
     weak var renderer: TranscriptRenderer?
-    override var renderingSurfaceBounds: CGRect { super.renderingSurfaceBounds.union(CGRect(x: -84, y: 0, width: 84, height: layoutFragmentFrame.height)) }
+    /// Reaches left over the gutter, where the fragment draws its timecode and line glyphs.
+    override var renderingSurfaceBounds: CGRect {
+        let reach = layoutFragmentFrame.minX + TranscriptGutter.width
+        return super.renderingSurfaceBounds.union(CGRect(x: -reach, y: 0, width: reach, height: layoutFragmentFrame.height))
+    }
     override func draw(at point: CGPoint, in context: CGContext) {
         let drawingContext = TranscriptDrawingContext(value: context)
         let fragment = TranscriptDrawingFragment(value: self)
@@ -109,35 +121,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
             let offset = content.offset(from: content.documentRange.location, to: elementRange.location)
             for line in textLineFragments {
                 let lineRange = NSRange(location: offset + line.characterRange.location, length: line.characterRange.length)
-                func rect(for range: NSRange) -> CGRect {
-                    let intersection = NSIntersectionRange(range, lineRange)
-                    let start = line.locationForCharacter(at: intersection.location - offset)
-                    let end = line.locationForCharacter(at: NSMaxRange(intersection) - offset)
-                    return CGRect(x: point.x + line.typographicBounds.minX + min(start.x, end.x) - 2,
-                                  y: point.y + line.typographicBounds.minY, width: max(4, abs(end.x - start.x) + 4), height: line.typographicBounds.height)
-                }
-                if !foreground {
-                    for clip in renderer.clipMarks where NSIntersectionRange(clip.range, lineRange).length > 0 {
-                        let selected = renderer.appearance?.activeClipID == clip.id
-                        context.setStrokeColor((selected ? NSColor(DesignValues.accentText) : DesignValues.nsColor("line.strong")).cgColor)
-                        context.setLineWidth(2)
-                        context.setLineDash(phase: 0, lengths: clip.suggested ? [3, 3] : [])
-                        let lower = point.y + line.typographicBounds.minY
-                        let upper = lower + line.typographicBounds.height
-                        context.move(to: CGPoint(x: point.x - 14, y: lower))
-                        context.addLine(to: CGPoint(x: point.x - 14, y: upper))
-                        context.strokePath()
-                    }
-                }
-                let rewriting = text.map.intersecting(lineRange).filter { renderer.isRewriting($0.id) }
-                if let first = rewriting.first, let last = rewriting.last {
-                    let range = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
-                    let shape = CGPath(roundedRect: rect(for: range), cornerWidth: 4, cornerHeight: 4, transform: nil)
-                    context.setLineDash(phase: 0, lengths: [])
-                    context.addPath(shape)
-                    if foreground { context.setStrokeColor(NSColor(DesignValues.accentText).cgColor); context.setLineWidth(1); context.strokePath() }
-                    else { context.setFillColor(NSColor(DesignValues.accentSoft).cgColor); context.fillPath() }
-                }
+                if foreground { drawGutter(line: line, lineRange: lineRange, offset: offset, at: point, renderer: renderer, text: text, context: context) }
                 for span in text.map.intersecting(lineRange) {
                     let intersection = NSIntersectionRange(span.range, lineRange)
                     guard intersection.length > 0 else { continue }
@@ -179,60 +163,39 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
                 }
             }
         }
-        if foreground, let paragraph = textElement as? NSTextParagraph, paragraph.attributedString.length > 0, let time = paragraph.attributedString.attribute(.vcTimecode, at: 0, effectiveRange: nil) as? NSAttributedString {
-            NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
-            time.draw(at: CGPoint(x: point.x - 30 - time.size().width, y: point.y + 5))
-            NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// The gutter of one line (notes.md §5): the paragraph's timecode on its first line,
+    /// right-aligned at 42 in SF Mono 11 (gutter.text in the open clip, gutter.textOut
+    /// outside, text.secondary for the playhead's paragraph), and the line's glyph at 49–63.
+    /// The change bar at 66 stays empty until proposals draw hunks.
+    private func drawGutter(line: NSTextLineFragment, lineRange: NSRange, offset: Int, at point: CGPoint, renderer: TranscriptRenderer, text: TranscriptNSTextView, context: CGContext) {
+        let left = point.x - layoutFragmentFrame.minX - text.textContainerOrigin.x
+        let box = TranscriptGutter.visualBox(of: line, font: renderer.font).offsetBy(dx: 0, dy: point.y)
+        if line.characterRange.location == 0, let index = renderer.paragraph(atCharacter: offset), renderer.paragraphs[index].offset == offset {
+            let color = renderer.currentParagraph == index ? DesignValues.nsColor("text.secondary")
+                : DesignValues.nsColor(renderer.isInScope(paragraph: index) ? "gutter.text" : "gutter.textOut")
+            TranscriptGutter.drawTimecode(TranscriptGutter.timecode(renderer.paragraphs[index].start), color: color, right: left + TranscriptGutter.timecodeRight, box: box, in: context)
+        }
+        if text.map.intersecting(lineRange).contains(where: { renderer.aiWordIDs.contains($0.id) && NSIntersectionRange($0.range, lineRange).length > 0 }) {
+            GutterGlyph.aiVoice.draw(in: CGRect(x: left + TranscriptGutter.glyphX, y: box.minY + TranscriptGutter.glyphTop, width: TranscriptGutter.glyphSize, height: TranscriptGutter.glyphSize), context: context)
         }
     }
 
+    /// The AI passage's marker before its words, until the AI tint replaces it (V19).
     private func drawMarker(_ span: TranscriptSpan, rect: CGRect, renderer: TranscriptRenderer, context: CGContext) {
+        guard span.kind == .ai else { return }
         let accent = NSColor(DesignValues.accentText)
-        var box = CGRect(x: rect.minX + 2, y: rect.midY - 8, width: 16, height: 16)
-        var label = ""
-        var foreground = DesignValues.nsColor("text.secondary")
-        var fill = DesignValues.nsColor("clip.badgeBackground")
-        var outline: NSColor?
-        var dashed = false
-        switch span.kind {
-        case .text: return
-        case .badge(let number, let clipID, let suggested):
-            label = String(number)
-            dashed = suggested
-            if renderer.appearance?.activeClipID == clipID {
-                fill = DesignValues.accentFill
-                foreground = DesignValues.nsColor("accent.on")
-            }
-            if suggested { outline = DesignValues.nsColor("line.strong") }
-        case .bracket(let clipID, let suggested):
-            context.setStrokeColor((renderer.appearance?.activeClipID == clipID ? accent : DesignValues.nsColor("line.strong")).cgColor)
-            context.setLineWidth(1.5)
-            context.setLineDash(phase: 0, lengths: suggested ? [3, 3] : [])
-            let edge = rect.minX + 6
-            context.move(to: CGPoint(x: edge - 4, y: box.minY))
-            context.addLine(to: CGPoint(x: edge, y: box.minY))
-            context.addLine(to: CGPoint(x: edge, y: box.maxY))
-            context.addLine(to: CGPoint(x: edge - 4, y: box.maxY))
-            context.strokePath()
-            return
-        case .ai:
-            box.size.width = 23
-            label = "AI"
-            foreground = accent
-            fill = NSColor(DesignValues.accentSoft)
-            outline = accent
-        }
-        context.setFillColor(fill.cgColor)
+        let box = CGRect(x: rect.minX + 2, y: rect.midY - 8, width: 23, height: 16)
+        context.setFillColor(NSColor(DesignValues.accentSoft).cgColor)
         let path = CGPath(roundedRect: box, cornerWidth: 4, cornerHeight: 4, transform: nil)
         context.addPath(path); context.fillPath()
-        if let outline {
-            context.setStrokeColor(outline.cgColor); context.setLineWidth(1)
-            context.setLineDash(phase: 0, lengths: dashed ? [3, 3] : [])
-            context.addPath(path); context.strokePath()
-        }
-        let font = NSFont.monospacedSystemFont(ofSize: span.kind == .ai ? 10 : 11, weight: .semibold)
+        context.setStrokeColor(accent.cgColor); context.setLineWidth(1)
+        context.setLineDash(phase: 0, lengths: [])
+        context.addPath(path); context.strokePath()
+        let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
         let colorKey = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
-        let title = NSAttributedString(string: label, attributes: [.font: font, colorKey: foreground.cgColor])
+        let title = NSAttributedString(string: "AI", attributes: [.font: font, colorKey: accent.cgColor])
         let line = CTLineCreateWithAttributedString(title)
         let width = CTLineGetTypographicBounds(line, nil, nil, nil)
         let baseline = box.midY + (font.ascender + font.descender) / 2
@@ -258,12 +221,12 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         return [.backgroundColor: NSColor.selectedTextBackgroundColor, .foregroundColor: text]
     }()
 
-    /// The transcript measure (design §3.7): the pane less the 84 gutter and 32 of
-    /// trailing padding, kept between 480 and 680, and never wider than the pane after
-    /// the gutter, so a narrow pane wraps rather than clips. Text starts after the gutter.
+    /// The transcript measure (notes.md §1 and §4): the pane less the 80 gutter and 44 of
+    /// right padding, kept between 480 and 680, and never wider than the pane after the
+    /// gutter, so a narrow pane wraps rather than clips. Text starts after the gutter.
     static func measure(forPane width: Double) -> Double {
-        let gutter = Double(VCTokens.spacingTranscriptGutter)
-        return max(120, min((width - gutter - 32).clamped(to: 480...Double(VCTokens.sizeTranscriptMeasureMax)), width - gutter))
+        let gutter = Double(TranscriptGutter.width)
+        return max(120, min((width - gutter - Double(TranscriptGutter.trailing)).clamped(to: 480...Double(VCTokens.sizeTranscriptMeasureMax)), width - gutter))
     }
     /// A transcript that arrives after the editor showed, for example when transcription
     /// finishes, takes the keyboard focus the editor still wants.
@@ -283,6 +246,89 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         }
     }
     var map = TranscriptRangeMap(spans: [])
+    weak var renderer: TranscriptRenderer?
+    private(set) var backdrop: TranscriptBackdropView?
+    /// Adds the backdrop behind the text, selection and every other subview.
+    func installBackdrop() {
+        guard backdrop == nil else { return }
+        let view = TranscriptBackdropView(frame: .zero)
+        addSubview(view, positioned: .below, relativeTo: nil)
+        backdrop = view
+    }
+    /// Every viewport layout (scrolling, resizing, new text) moves the backdrop and the
+    /// overview ruler's visible window with the lines TextKit just placed.
+    override func textViewportLayoutControllerDidLayout(_ controller: NSTextViewportLayoutController) {
+        super.textViewportLayoutControllerDidLayout(controller)
+        updateBackdrop()
+        (enclosingScrollView as? TranscriptScrollView)?.overviewRuler.visibleSpan = visibleTakeSpan()
+    }
+    /// Places the open clip's band and range bar (notes.md §5) from its first and last lines.
+    /// An end beyond the viewport is never laid out for this, so the band runs past the
+    /// visible rect there; the visible part is always measured from laid-out lines.
+    func updateBackdrop() {
+        guard let backdrop else { return }
+        guard let renderer, let id = renderer.appearance?.activeClipID, let clip = renderer.clipMarks[id], clip.range.length > 0,
+              let manager = textLayoutManager, let content = manager.textContentManager, let viewport = manager.textViewportLayoutController.viewportRange else {
+            backdrop.show(nil, visible: visibleRect, width: bounds.width); return
+        }
+        let start = content.offset(from: content.documentRange.location, to: viewport.location)
+        let end = content.offset(from: content.documentRange.location, to: viewport.endLocation)
+        let first = clip.range.location, last = NSMaxRange(clip.range) - 1
+        guard last >= start, first <= end else { backdrop.show(nil, visible: visibleRect, width: bounds.width); return }
+        let visible = visibleRect, beyond = TranscriptBackdropView.margin * 2
+        let top = first >= start ? lineBox(atCharacter: first) : nil
+        let bottom = last <= end ? lineBox(atCharacter: last) : nil
+        let band = TranscriptBackdropView.Band(
+            top: top.map { $0.minY - TranscriptGutter.bandOverhang } ?? visible.minY - beyond,
+            bottom: bottom.map { $0.maxY + TranscriptGutter.bandOverhang } ?? visible.maxY + beyond,
+            barTop: top.map { $0.minY + TranscriptGutter.rangeBarInset }, barBottom: bottom.map { $0.maxY - TranscriptGutter.rangeBarInset },
+            suggested: clip.suggested)
+        backdrop.show(band, visible: visible, width: bounds.width)
+    }
+    /// The centred box of the line holding the character at `offset`, in view coordinates.
+    func lineBox(atCharacter offset: Int) -> CGRect? {
+        guard let manager = textLayoutManager, let content = manager.textContentManager,
+              let location = content.location(content.documentRange.location, offsetBy: offset) else { return nil }
+        var box: CGRect?
+        let origin = textContainerOrigin
+        let font = renderer?.font ?? DesignValues.transcriptFont(size: DesignValues.transcriptTextSize)
+        manager.enumerateTextLayoutFragments(from: location, options: [.ensuresLayout]) { fragment in
+            guard let element = fragment.textElement?.elementRange else { return false }
+            let local = offset - content.offset(from: content.documentRange.location, to: element.location)
+            let line = fragment.textLineFragments.first { NSLocationInRange(local, $0.characterRange) } ?? fragment.textLineFragments.last
+            box = line.map { TranscriptGutter.visualBox(of: $0, font: font).offsetBy(dx: origin.x + fragment.layoutFragmentFrame.minX, dy: origin.y + fragment.layoutFragmentFrame.minY) }
+            return false
+        }
+        return box
+    }
+    /// The take time the visible lines span, as fractions of the take for the overview ruler.
+    func visibleTakeSpan() -> ClosedRange<Double>? {
+        guard let model, let manager = textLayoutManager, let content = manager.textContentManager, !map.spans.isEmpty else { return nil }
+        let duration = TranscriptOverviewRuler.duration(model)
+        guard duration > 0 else { return nil }
+        let origin = textContainerOrigin, visible = visibleRect
+        func character(atY y: CGFloat, last: Bool) -> Int? {
+            guard let fragment = manager.textLayoutFragment(for: CGPoint(x: 0, y: y - origin.y)), let element = fragment.textElement?.elementRange else { return nil }
+            let base = content.offset(from: content.documentRange.location, to: element.location)
+            let local = y - origin.y - fragment.layoutFragmentFrame.minY
+            let line = fragment.textLineFragments.first { $0.typographicBounds.maxY > local } ?? fragment.textLineFragments.last
+            guard let line else { return base }
+            return base + (last ? max(line.characterRange.location, NSMaxRange(line.characterRange) - 1) : line.characterRange.location)
+        }
+        // The text's own extent, without the container inset above and below it.
+        let usage = manager.usageBoundsForTextContainer.offsetBy(dx: origin.x, dy: origin.y)
+        guard let first = character(atY: max(visible.minY, usage.minY), last: false), let last = character(atY: min(visible.maxY, usage.maxY) - 1, last: true),
+              let lower = takeTime(atCharacter: first, end: false), let upper = takeTime(atCharacter: last, end: true) else { return nil }
+        return min(1, max(0, lower / duration))...min(1, max(lower, upper) / duration)
+    }
+    /// The take time of the word or pause at a character: its start, or its end with `end`.
+    func takeTime(atCharacter offset: Int, end: Bool) -> Double? {
+        guard let model, let span = map.span(at: offset) else { return nil }
+        if span.pause, let pause = model.pauseIndex[span.id] { return end ? pause.end : pause.start }
+        let ids = span.ids.isEmpty ? [span.id] : span.ids
+        guard let id = end ? ids.last : ids.first, let position = model.index(id) else { return nil }
+        return end ? model.words[position].end : model.words[position].start
+    }
     private var correction: NSTextField?
     private var correctionWordID: String?
     private var selectionBar: NSHostingView<SelectionBar>?
@@ -401,12 +447,13 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     @objc func accessiblePlay() -> Bool { guard let model else { return false }; model.transport(" ", shift: true); return true }
     func rotor(_ rotor: NSAccessibilityCustomRotor, resultFor parameters: NSAccessibilityCustomRotor.SearchParameters) -> NSAccessibilityCustomRotor.ItemResult? {
         guard let model else { return nil }
+        let clipStarts = Set(model.sortedClips.compactMap { map.span(id: $0.startWordId)?.id })
         let candidates = map.spans.filter { span in
             switch rotor.label {
             case "Cuts": model.project.edits.cutWordIds.contains(span.id) || model.project.edits.cutPauseIds.contains(span.id)
             case "Pauses": span.pause
             case "Suggested fillers": model.fillerIDs.contains(span.id)
-            case "Clips": model.sortedClips.contains { $0.startWordId == span.id }
+            case "Clips": clipStarts.contains(span.id)
             case "AI words": model.voiceLabPlan?.pieces.contains { piece in
                 guard piece.kind == .synth, let position = model.index(span.id), let rate = model.voiceLabPlan?.sampleRate else { return false }
                 let word = model.words[position]
@@ -421,8 +468,16 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
         guard let span else { return nil }
         let result = NSAccessibilityCustomRotor.ItemResult(targetElement: self)
         result.targetRange = span.range
-        result.customLabel = "\(spoken(span)), \(rotor.label)"
+        result.customLabel = rotor.label == "Clips" ? clipNames(startingAt: span, model: model) : "\(spoken(span)), \(rotor.label)"
         return result
+    }
+    /// The Clips rotor names the clips that start at a word as the Explorer does ("Clip 1,
+    /// Title" or "Suggested clip 3, Title"), since the transcript no longer marks them.
+    private func clipNames(startingAt span: TranscriptSpan, model: EditorModel) -> String {
+        model.sortedClips.filter { map.span(id: $0.startWordId) == span }.map { clip in
+            let number = model.clipNumber(clip.id) ?? 1
+            return "\(model.isSuggestion(clip.id) ? "Suggested clip" : "Clip") \(number), \(clip.title ?? "Untitled clip")"
+        }.joined(separator: "; ")
     }
     override func accessibilityString(for range: NSRange) -> String? {
         map.intersecting(range).filter(\.selectable).map(spoken).joined(separator: " ")
