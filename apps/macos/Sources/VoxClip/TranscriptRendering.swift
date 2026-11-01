@@ -321,11 +321,6 @@ struct TranscriptAppearance: Equatable {
         while lower < upper { let middle = (lower + upper) / 2; if paragraphs[middle].start <= seconds { lower = middle + 1 } else { upper = middle } }
         return max(0, lower - 1)
     }
-    /// The paragraph's characters, up to the next paragraph's first.
-    func characters(ofParagraph index: Int) -> NSRange {
-        let end = index + 1 < paragraphs.count ? paragraphs[index + 1].offset : (text?.textStorage?.length ?? paragraphs[index].offset)
-        return NSRange(location: paragraphs[index].offset, length: max(0, end - paragraphs[index].offset))
-    }
     /// True when the paragraph holds a word of the open clip, or no clip is open (Full Take).
     func isInScope(paragraph index: Int) -> Bool {
         guard let scope = appearance?.scope else { return true }
