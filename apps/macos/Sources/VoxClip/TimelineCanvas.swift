@@ -267,8 +267,10 @@ struct TimelineContent: Equatable {
                                                     takeLabel: durationLabel(content.takeLength))
         ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection)
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
+        // On Source A1 dims outside the In/Out the ruler shows, the dragged edge included.
         audio.state = TimelineAudioLane.State(viewport: viewport, pieces: content.pieces, waveform: content.waveform, removed: content.removed,
-                                              words: content.words, inOut: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength)
+                                              words: content.words, inOut: content.axis == .source ? shownInOut : nil,
+                                              clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength)
         let top = TimelineMetrics.tracks.first?.y ?? TimelineMetrics.ruler.maxY
         overlay.showWash(content.selection.map { range in
             let lower = viewport.x(range.lowerBound), upper = viewport.x(range.upperBound)
@@ -673,9 +675,10 @@ struct TimelineOverviewLabel: Equatable {
 /// (`timeline.wave`), nothing in silence. AI patches are an `ai.tint` 10% fill with no outline.
 /// Edited is a ripple: pieces butt and each cut is one 1 pt `timeline.seam`. Source is take
 /// time: each removed range is empty lane with a dashed `timeline.cutOutline` and its audio
-/// ghosted (`timeline.ghostWave`), and media outside In/Out shows at 32%. With no waveform
-/// (media missing, or on another computer) each kept word is one 8 pt capsule in
-/// `timeline.wave`, 2 pt in from its ends (design §5.4.10). Each lane point is one waveform column, the tallest of the ranges that
+/// ghosted (`timeline.ghostWave`), and media outside In/Out shows at 32%, from the edge the
+/// ruler shows while In or Out is dragged. With no waveform (media missing, or on another
+/// computer) each kept word is one 8 pt capsule in `timeline.wave`, 2 pt in from its ends
+/// (design §5.4.10). Each lane point is one waveform column, the tallest of the ranges that
 /// share it, and pieces under 3 pt join their neighbour's box.
 @MainActor final class TimelineAudioLane: TimelineLane {
     struct State: Equatable {
@@ -686,8 +689,12 @@ struct TimelineOverviewLabel: Equatable {
         var removed: [Range<Double>] = []
         /// The kept words in take time, drawn as capsules while there is no waveform.
         var words: [Range<Double>] = []
-        /// The open clip in take time on Source, outside which media dims; nil on Edited and on Full Take.
+        /// In and Out in take time on Source, outside which media dims, with the edge being
+        /// dragged where the ruler shows it; nil on Edited and on Full Take.
         var inOut: ClosedRange<Double>?
+        /// The open clip in take time on Source, which the pieces and removed ranges fill. A
+        /// drag of In or Out past it shows the take it adds as kept media.
+        var clip: ClosedRange<Double>?
         var takeLength = 0.0
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
@@ -764,7 +771,8 @@ struct TimelineOverviewLabel: Equatable {
     }
 
     /// Take time: kept pieces where they are, removed ranges as empty lane with a dashed
-    /// outline and ghosted audio, media outside In/Out dimmed.
+    /// outline and ghosted audio, media outside In/Out dimmed. While In or Out is dragged,
+    /// the take it adds shows as kept media and what it drops dims, as the ruler shows it.
     private func drawSource(in context: CGContext) {
         let pieces = state.pieces
         let visible = state.viewport.visible
@@ -772,6 +780,8 @@ struct TimelineOverviewLabel: Equatable {
         func inView(_ lower: Double, _ upper: Double) -> Range<Double>? {
             lower < upper && lower < window.upperBound && upper > window.lowerBound ? lower..<upper : nil
         }
+        // Ranges a drag adds before and after the clip.
+        var before: Range<Double>?, after: Range<Double>?
         if let inOut = state.inOut {
             var outside = paint()
             for range in [inView(0, inOut.lowerBound), inView(inOut.upperBound, state.takeLength)].compactMap({ $0 }) {
@@ -784,6 +794,13 @@ struct TimelineOverviewLabel: Equatable {
             draw(&outside, in: context, wave: "timeline.wave")
             context.endTransparencyLayer()
             context.restoreGState()
+            if let clip = state.clip {
+                before = inView(inOut.lowerBound, min(inOut.upperBound, clip.lowerBound))
+                after = inView(max(inOut.lowerBound, clip.upperBound), inOut.upperBound)
+            }
+            // What a drag drops from the clip shows only dimmed.
+            context.saveGState()
+            context.clip(to: CGRect(x: x(inOut.lowerBound), y: 0, width: max(0, x(inOut.upperBound) - x(inOut.lowerBound)), height: bounds.height))
         }
         var ghost = paint()
         let outline = CGMutablePath()
@@ -801,14 +818,20 @@ struct TimelineOverviewLabel: Equatable {
         context.setLineDash(phase: 0, lengths: [])
         draw(&ghost, in: context, wave: "timeline.ghostWave")
         var kept = paint(), ai: [CGRect] = []
+        func keep(_ range: Range<Double>) {
+            kept.piece(x(range.lowerBound), x(range.upperBound))
+            columns(range, offset: 0, into: &kept)
+        }
+        if let before { keep(before) }
         for index in pieces.indices(overlapping: window, on: .source) {
             let piece = pieces.pieces[index]
             if piece.kind == .ai { ai.append(pieceRect(piece.source)); continue }
-            kept.piece(x(piece.source.lowerBound), x(piece.source.upperBound))
-            columns(piece.source, offset: 0, into: &kept)
+            keep(piece.source)
         }
+        if let after { keep(after) }
         fillAI(ai, in: context)
         draw(&kept, in: context, wave: "timeline.wave")
+        if state.inOut != nil { context.restoreGState() }
     }
 
     /// A piece's box for `range` on the axis: 1 pt in from the row's top and bottom, ending

@@ -564,6 +564,43 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(!model.playheadInAIVoice)
     }
 
+    /// notes.md §6 on Source while In is dragged: A1 dims from the edge the ruler shows, so
+    /// the bracket and the dimming agree. Words the drag drops show at 32%; words it adds
+    /// show as kept media.
+    @Test(arguments: [12.1, 9.1]) func sourceA1DimsFromTheDraggedIn(_ target: Double) throws {
+        let app = try app()
+        let model = try audioModel(app)
+        defer { model.close() }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        canvas.layoutSubtreeIfNeeded()
+        // In is 0.1 s before word 10, a second after the view's start; the drag shows it at
+        // the start of word 12 (or 9).
+        let scope = try #require(model.scopeSourceRange)
+        let viewport = canvas.viewport, top = TimelineMetrics.audio.y, y = TimelineMetrics.ruler.y + 11
+        func x(_ time: Double) -> CGFloat { TimelineMetrics.header + CGFloat(viewport.x(time)) }
+        canvas.mouseDown(with: try mouse(.leftMouseDown, NSPoint(x: x(scope.lowerBound), y: y), in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, NSPoint(x: x(target), y: y), in: canvas))
+        let dragged = target.rounded(.down)
+        #expect(canvas.audio.state.inOut == dragged...scope.upperBound)
+        #expect(canvas.audio.state.clip == scope)
+        canvas.audio.layer?.displayIfNeeded()
+        let pixels = try Pixels(canvas)
+        // Word 11 (or word 9) lies between the old In and the dragged one.
+        let between = x(dragged > 10 ? 11.4 : 9.4)
+        if dragged > 10 {
+            #expect(try pixels.shows(between, top + 2.25, "timeline.audioPiece", alpha: TimelineAudioLane.outsideOpacity, over: "timeline.lane"))
+        } else {
+            #expect(try pixels.shows(between, top + 2.25, "timeline.audioPiece"))
+        }
+        #expect(try pixels.shows(x(dragged) - 4, top + 2.25, "timeline.audioPiece", alpha: TimelineAudioLane.outsideOpacity, over: "timeline.lane"))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: x(target), y: y), in: canvas))
+        #expect(model.activeClip?.startWordId == "t\(Int(dragged))")
+        #expect(canvas.audio.state.inOut == model.scopeSourceRange && canvas.audio.state.clip == model.scopeSourceRange)
+    }
+
     /// A lane of `pieces` on Edited at 20 pt/s from a second before 0, over a steady voice.
     private func lane(_ pieces: [TimelinePiece]) -> (lane: TimelineAudioLane, window: NSWindow) {
         let lane = TimelineAudioLane()
