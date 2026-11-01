@@ -725,6 +725,76 @@ struct VoiceLabCompositionTests {
         }
     }
 
+    @Test(.timeLimit(.minutes(4))) func threeUnityPhrasesExportWithAllAudioAndDisclosure() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-three-phrase-export-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let media = try await source(in: root)
+        var (project, _) = try fixture(source: media, root: root)
+        let template = try #require(project.voiceLab.segments.first)
+        project.edits.clips = []; project.edits.activeClipId = nil
+        project.transcript!.words = []
+        project.voiceLab.segments = []
+        for (index, start) in [1.0, 2.5, 4.0].enumerated() {
+            let first = "phrase-\(index)-first", last = "phrase-\(index)-last"
+            project.transcript!.words.append(TimedWord(id: first, text: "we", start: start + 0.1, end: start + 0.25))
+            project.transcript!.words.append(TimedWord(id: last, text: "ship", start: start + 0.3, end: start + 0.6))
+            var segment = template
+            segment.id = "phrase-\(index)"
+            segment.replace = VoiceLabReplacement(start: start, end: start + 0.7, firstWordId: first, lastWordId: last)
+            for candidate in segment.candidates.indices {
+                var recipe = try #require(segment.candidates[candidate].recipe)
+                recipe.video.sourceStartSample = Int64(start * 48_000)
+                recipe.video.sourceEndSample = recipe.video.sourceStartSample + 33_600
+                for chunk in recipe.chunks.indices {
+                    recipe.chunks[chunk].sourceStartSample = recipe.video.sourceStartSample
+                    recipe.chunks[chunk].sourceEndSample = recipe.video.sourceEndSample
+                }
+                recipe.roomTone?.sourceStartSample = 264_000
+                recipe.roomTone?.sourceEndSample = 288_000
+                segment.candidates[candidate].recipe = recipe
+            }
+            project.voiceLab.segments.append(segment)
+        }
+        let prepared = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
+        #expect(prepared.selectedSegmentRecipes.count == 3 && prepared.outputPlan.pieces.filter { $0.kind == .synth }.count == 3)
+        #expect(prepared.disclosure.required && abs(prepared.disclosure.outputAISeconds - 2.1) < 0.0001)
+        let input = try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight, paidRoot: root, prepared: prepared)
+        let request = RenderRequest(sourceURL: media, plan: try legacyPlan(project),
+            output: OutputSpec(size: PixelSize(width: 640, height: 360), fps: 30, videoBitrate: 2_000_000), voiceLab: input)
+        let destination = root.appendingPathComponent("three-phrases.mp4")
+        let result = try await AVExporter(appVersion: "0.1.0").export(ExportJob(render: request, outputURL: destination)) { _ in }
+        #expect(result.frames == 210 && result.audioSamples == 336_000)
+        let sidecar = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: root.appendingPathComponent("three-phrases.mp4.provenance.json"))) as? [String: Any])
+        #expect((sidecar["aiSegments"] as? [[String: Any]])?.count == 3)
+        let wav = root.appendingPathComponent("three-phrases.wav")
+        try await AVExporter().writeEditedAudio(request, to: wav)
+        let decoded = try await compareDecodedMP4(destination, wav: wav,
+            windows: [(12_000, 440), (57_600, 880), (129_600, 880), (201_600, 880), (288_000, 440)], markerCenters: [])
+        #expect(abs(decoded.count - 336_000) <= 1024 && abs(decoded.end - 7) <= 1024.0 / 48_000)
+        let exportedFrames = AVAssetImageGenerator(asset: AVURLAsset(url: destination))
+        let sourceFrames = AVAssetImageGenerator(asset: AVURLAsset(url: media))
+        let context = CIContext()
+        let colorSpace = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        func labelPixels(_ image: CGImage) -> [UInt8] {
+            var pixels = [UInt8](repeating: 0, count: 110 * 40 * 4)
+            pixels.withUnsafeMutableBytes { bytes in
+                context.render(CIImage(cgImage: image), toBitmap: bytes.baseAddress!, rowBytes: 110 * 4,
+                    bounds: CGRect(x: 510, y: 310, width: 110, height: 40), format: .RGBA8, colorSpace: colorSpace)
+            }
+            return pixels
+        }
+        for seconds in [1.3, 2.8, 4.3] {
+            let time = CMTime(seconds: seconds, preferredTimescale: 48_000)
+            let marked = labelPixels(try await exportedFrames.image(at: time).image)
+            let original = labelPixels(try await sourceFrames.image(at: time).image)
+            let visiblyChanged = stride(from: 0, to: marked.count, by: 4).filter { index in
+                abs(Int(marked[index]) - Int(original[index])) > 32
+            }.count
+            #expect(visiblyChanged > 100, "Each exported phrase carries the burned-in disclosure chip")
+        }
+    }
+
     @MainActor @Test(.timeLimit(.minutes(3))) func playerItemRetainsAndReleasesScratchAfterReplacement() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-player-lease-test-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: false)

@@ -196,7 +196,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         } catch { try? FileManager.default.removeItem(at: root); throw error }
         let made = Fixture(root: root, plan: plan, ledger: ledger, playback: playback, source: project, envelope: envelope); fixture = made
         ClipTakeHTTP.state.withLock { $0.duration = plan.phrases[0].originalLength }
-        let storage = VoiceLabTakeStorage(projectId: project.id, paidRoot: root.appendingPathComponent("paid"), scratchRoot: root.appendingPathComponent("scratch"))
+        let storage = VoiceLabTakeStorage(projectId: project.id, paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch"))
         let check = VoiceSpeakerCheck(embedder: ClipTakeSpeaker(), calibratedThreshold: 0.45)
         let runs = plan.phrases.map { _ in
             VoiceLabTakeRun(client: client, store: store, speaker: check, storage: storage, dispatchIfCurrent: { [weak plan, weak made] request, start in
@@ -583,6 +583,125 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(task.pressReturn(command: false) && ran == 1)
         task.primaryAppearedAt = Date().addingTimeInterval(-1)
         #expect(task.pressReturn(command: false) && ran == 2)
+    }
+
+    private func installReview(_ session: RewriteSession, fixture: Fixture, withFreeChanges: Bool) {
+        session.takePlan = nil
+        var changes = hunks([3, 10, 17]).map { RewriteChange(hunk: $0) }
+        if withFreeChanges {
+            changes.insert(RewriteChange(hunk: VoiceLabDiffHunk(kind: .cut, sourceWordIds: ["w0"], newTokens: [], correctedTexts: [],
+                absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 0, sourceEndIndex: 1, anchorSeconds: nil)), at: 0)
+            changes.insert(RewriteChange(hunk: VoiceLabDiffHunk(kind: .textOnly, sourceWordIds: ["w1"], newTokens: ["Old"], correctedTexts: ["Old"],
+                absorbedItemIds: [], bridgeWordIds: [], sourceStartIndex: 1, sourceEndIndex: 2, anchorSeconds: nil)), at: 1)
+        }
+        session.receive(changes); session.finishRun(seconds: 1); session.showProposal()
+        session.takePlan = fixture.plan
+    }
+
+    @Test func useTakesCommitsThreePhrasesAndReviewChangesAsOneUndoWithFeedback() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: true)
+        let original = editor.project
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        await fixture.plan.play(phrase: 0)
+        #expect(fixture.plan.audition.isPlaying)
+        session.showProposal()
+        #expect(session.task.footer.primary?.id == "useTakes")
+        undo.beginUndoGrouping()
+        #expect(session.task.pressReturn(command: true))
+        await session.takesTask?.value
+        undo.endUndoGrouping()
+        #expect(editor.openRewrite == nil && editor.project.voiceLab.segments.count == 3)
+        #expect(editor.project.edits.cutWordIds.contains("w0") && editor.project.edits.corrections["w1"] == "Old")
+        #expect(editor.undoSteps == 1 && undo.undoActionName == "Rewrite full take")
+        #expect(!fixture.plan.audition.isPlaying)
+        let feedback = try #require(editor.currentVoiceFeedback)
+        #expect(feedback.phrases.count == 3 && feedback.spent == fixture.plan.spent && editor.voiceRewriteToastVisible)
+        #expect(feedback.message.contains("3 phrases in your voice, 1 cut, 1 fix") && editor.lastAnnouncement == feedback.message)
+        #expect(feedback.spendLine.hasPrefix("Spent ") && editor.canUndoVoiceRewrite)
+        #expect(PanelJob.available(in: editor).contains(.voice))
+        editor.app.settings.values["voiceLab.enabled"] = .bool(false)
+        #expect(editor.currentVoiceFeedback == nil && !editor.canUndoVoiceRewrite)
+        #expect(!PanelJob.available(in: editor).contains(.voice))
+        editor.app.settings.values["voiceLab.enabled"] = .bool(true)
+        #expect(editor.selectedWordIDs == ["w0"])
+        let render = try await editor.renderRequest(target: .fullEdit)
+        let voice = try #require(render.voiceLab)
+        #expect(voice.prepared.selectedSegmentRecipes.count == 3 && voice.prepared.outputPlan.pieces.filter { $0.kind == .synth }.count == 3)
+        #expect(editor.containsAISpeech(clipID: nil))
+        editor.sourceTime = try #require(editor.project.voiceLab.segments.first).replace.start + 0.2
+        #expect(ViewerSection.tag(for: editor, standIn: false) == .aiVoice)
+        #expect(editor.undoVoiceRewrite())
+        #expect(editor.project == original && editor.currentVoiceFeedback == nil && !undo.canUndo)
+        #expect(!editor.containsAISpeech(clipID: nil) && !editor.voiceRewriteToastVisible)
+        undo.redo()
+        #expect(editor.project.voiceLab.segments.count == 3 && editor.currentVoiceFeedback == nil)
+    }
+
+    @Test func stalePublicationNeverShowsSuccessOrRegistersUndo() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        let barrier = ClipTakeBarrier()
+        fixture.beforePublish = { await barrier.pause() }
+        let accepting = Task { await session.acceptTakes() }
+        await barrier.wait()
+        fixture.current = false
+        barrier.resume()
+        #expect(await accepting.value == false)
+        #expect(editor.project.voiceLab.segments.isEmpty && editor.currentVoiceFeedback == nil && !editor.voiceRewriteToastVisible)
+        #expect(editor.undoSteps == 0 && !undo.canUndo && editor.openRewrite === session)
+    }
+
+    @Test func voiceUndoNeverUndoesAnInterveningEdit() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        undo.beginUndoGrouping(); let accepted = await session.acceptTakes(); undo.endUndoGrouping()
+        #expect(accepted && editor.canUndoVoiceRewrite)
+        undo.beginUndoGrouping(); editor.apply(.correct(id: "w0", text: "Later"), name: "Later correction"); undo.endUndoGrouping()
+        let later = editor.project
+        #expect(!editor.undoVoiceRewrite() && editor.project == later && undo.undoActionName == "Later correction")
+    }
+
+    @Test func stoppedReviewAcceptsOnlyTheFinishedPhraseWithTruthfulFeedback() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        installReview(session, fixture: fixture, withFreeChanges: false)
+        let barrier = ClipTakeBarrier()
+        fixture.beforePhrase = { phrase in if phrase == 1 { await barrier.pause() } }
+        await fixture.plan.prepare()
+        let operation = Task { await fixture.plan.start(approved: true); barrier.finished() }
+        await barrier.wait()
+        session.stopTakes(); await session.takesTask?.value; await operation.value
+        #expect(fixture.plan.phrases[1].takeDetail == "Take 1 stopped.")
+        #expect(await session.acceptTakes())
+        let feedback = try #require(editor.currentVoiceFeedback)
+        #expect(editor.project.voiceLab.segments.count == 1 && feedback.phrases.count == 1)
+        #expect(feedback.spent.units == 1 && feedback.message.contains("1 phrase in your voice"))
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    @Test func nonfittingReviewRefusesUseWithoutSuccessFeedbackOrUndo() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        session.takePlan = nil
+        session.receive(hunks([10]).map { RewriteChange(hunk: $0) }); session.finishRun(seconds: 1); session.showProposal()
+        session.takePlan = fixture.plan
+        let original = editor.project
+        let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
+        ClipTakeHTTP.state.withLock { $0.duration += 2.5; $0.speechMargin = 0.15 }
+        await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        #expect(fixture.plan.phrases[0].selected?.fits == false)
+        #expect(await session.acceptTakes() == false)
+        #expect(editor.project == original && editor.currentVoiceFeedback == nil && !editor.voiceRewriteToastVisible)
+        #expect(!undo.canUndo && editor.undoSteps == 0 && editor.openRewrite === session)
     }
 }
 #endif

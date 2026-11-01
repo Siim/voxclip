@@ -38,7 +38,7 @@ enum PanelJob: String, CaseIterable, Sendable {
     @MainActor static func available(in model: EditorModel) -> [PanelJob] {
         var jobs: [PanelJob] = [.captions]
         if let task = model.panelTask { jobs.append(task.job) }
-        if model.hasVoiceJob, !jobs.contains(.voice) { jobs.append(.voice) }
+        if (model.hasVoiceJob || model.currentVoiceFeedback != nil), !jobs.contains(.voice) { jobs.append(.voice) }
         if model.exportJob.isOpen { jobs.append(.export) }
         return jobs
     }
@@ -90,6 +90,7 @@ extension WorkspaceShell {
         if let choice = panelChoice, task == nil || choice.task === task && choice.turn == (task?.turn ?? 0),
            choice.voiceTurn == flow.turn, jobs.contains(choice.job) { return choice.job }
         if model.hasVoiceJob, flow.originTask === task, flow.originTurn == (task?.turn ?? 0) { return .voice }
+        if task == nil, model.currentVoiceFeedback != nil { return .voice }
         return model.panelTask?.job ?? .captions
     }
     /// The switcher's pick. Picking Export records the job it was opened from for its Done.
@@ -143,6 +144,7 @@ extension WorkspaceShell {
             Group {
                 if let task = model.panelTask, task.confirm != nil { DirectorPanel(task: task, model: model) }
                 else if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
+                else if job == .voice, let feedback = model.currentVoiceFeedback { VoiceRewriteDone(model: model, feedback: feedback) }
                 else if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
                 else if (job == .rewrite || job == .voice), let session = model.rewrite {
                     DirectorPanel(task: session.task, model: model)

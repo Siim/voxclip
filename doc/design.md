@@ -1458,8 +1458,9 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 
 **T4. Use and done.**
 
-- **Use Takes** applies every included change as one undo step, "Rewrite clip {n}": the voice segments (`acceptAll`, voice-lab.md §8.12), the cuts and the fixes. The panel closes, Captions return, and focus moves to the first changed word.
+- **Use Takes** applies the selected fitting phrases and every included pending cut/fix as one scoped undo step, "Rewrite clip {n}" (or the selection/full-take name). It uses `RewriteSession.acceptTakes` → C4 `acceptAll` once; stopped, failed and changed-duration phrases are never described as accepted. The review closes and transcript focus moves to the first changed source word. In the same panel host, Voice shows the in-use phrase rows (v3's done frame), with **Play phrase in clip**, the chosen take and fitting duration. Captions remain available in the switcher.
 - A toast for 6 s: "Clip {n} rewritten: {z} phrases in your voice, {x} cuts, {y} fix." with **Undo** (⌘Z / Ctrl+Z). The same sentence is announced.
+- The in-use footer says **Spent {actual amount} on ElevenLabs for {t} takes. Exports carry an AI MODIFIED label.** with **Undo Voice**. Unknown spend says "Spend unavailable", never a guessed price. Both Undo buttons reverse the entire review, not one phrase; provider spend is not refunded. The feedback is session-only and disappears after a project/revision change. Its Undo never reverses an intervening edit. A stale publication or refused nonfitting set shows no success toast or undo entry.
 - The accepted words show as AI words (§4.1). The sidebar meta reads "AI modified", the viewer bar shows the AI modified tag, and the stage shows the preview label at the configured position. Export's accessible name adds ", contains AI-modified speech". The share disclosure is unchanged (voice-lab.md §11.3).
 
 #### 6.3.9 Edge states

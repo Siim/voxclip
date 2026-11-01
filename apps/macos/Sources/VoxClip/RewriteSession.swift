@@ -663,9 +663,17 @@ struct RewriteChange: Equatable, Sendable {
                 guard current else { return false }
                 let output = try await takePlan.acceptance()
                 guard current, takePlan.stillCurrent, self.takePlan === takePlan else { return false }
+                let cuts = pendingFree.filter { $0.kind == .cut }.count
+                let fixes = pendingFree.filter { $0.kind == .fix }.count
+                let used = takePlan.phrases.filter { $0.selected?.fits == true }
+                let first = (pendingFree.compactMap(\.span.first) + output.segments.compactMap(\.replace.firstWordId))
+                    .min { (editor.index($0) ?? 0) < (editor.index($1) ?? 0) }
                 try ownEdit { try editor.applyVoiceLab(output.segments, assets: output.assets, voice: output.voice,
                     scope: rewriteScope, localCommands: localCommands) }
+                editor.finishVoiceRewrite(phrases: used, segments: output.segments, voice: output.voice,
+                    spent: takePlan.spent, scope: task.words, cuts: cuts, fixes: fixes)
                 editor.closeRewrite()
+                if let first { editor.select(first) }
                 return true
             } catch { problem = ClipTakePlan.copy(error); return false }
         }

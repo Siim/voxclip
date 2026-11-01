@@ -337,6 +337,9 @@ struct EditorRenderSnapshot {
     }
     var plan: EditPlan?
     var voiceLabPlan: VoiceLabOutputPlan?
+    var voiceRewriteFeedback: VoiceRewriteFeedback?
+    var voiceRewriteToastVisible = false
+    @ObservationIgnored var voiceRewriteToastTask: Task<Void, Never>?
     var renderTimeline: RenderTimeline? {
         if let voiceLabPlan { return .voiceLab(voiceLabPlan) }
         return plan.map(RenderTimeline.legacy)
@@ -575,6 +578,7 @@ struct EditorRenderSnapshot {
         if mediaResolved { await updatePreview(load: true) }
     }
     func close() {
+        voiceRewriteToastTask?.cancel()
         cancelMediaRelink()
         closeRewrite(returnFocus: false)
         previewRevision &+= 1

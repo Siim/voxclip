@@ -167,6 +167,7 @@ import VoxClipCore
             if let notice = shell.notice { InlineNotice(text: notice) }
             if let error = model.error, !error.isEmpty { InlineNotice(text: error) }
             if let error = model.previewError, !error.isEmpty { InlineNotice(text: error) }
+            VoiceRewriteToast(model: model)
             MediaRelinkBanner(model: model)
             if !model.document.demo, model.mediaMissing {
                 Button("Locate…") { model.locateMedia() }
