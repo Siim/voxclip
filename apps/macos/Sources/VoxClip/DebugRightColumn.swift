@@ -359,6 +359,17 @@ import VoxClipMedia
         visit(host, depth: 0)
         return elements
     }
+    /// The text the layout markers given one carry (`columnLayoutEvidence(_:text:)`): what a
+    /// view drew, for checks that cannot read SwiftUI's accessibility offscreen.
+    static func texts(in host: NSView) -> [String: String] {
+        var texts: [String: String] = [:]
+        func visit(_ view: NSView) {
+            if let marker = view as? ColumnLayoutMarker, let text = marker.text { texts[marker.name] = text }
+            view.subviews.forEach(visit)
+        }
+        visit(host)
+        return texts
+    }
     static func markers(in host: NSView) -> [String: CGRect] {
         var frames: [String: CGRect] = [:]
         func visit(_ view: NSView) {
@@ -376,6 +387,7 @@ import VoxClipMedia
 
 @MainActor final class ColumnLayoutMarker: NSView {
     var name = ""
+    var text: String?
     var logicalSize: CGSize?
     var scrollTarget: CaptionGalleryTarget?
     override func isAccessibilityElement() -> Bool { false }
@@ -383,9 +395,10 @@ import VoxClipMedia
 }
 @MainActor struct ColumnLayoutProbe: NSViewRepresentable {
     let name: String
+    var text: String? = nil
     var scrollTarget: CaptionGalleryTarget? = nil
-    func makeNSView(context: Context) -> ColumnLayoutMarker { let view = ColumnLayoutMarker(); view.name = name; view.scrollTarget = scrollTarget; return view }
-    func updateNSView(_ view: ColumnLayoutMarker, context: Context) { view.name = name; view.scrollTarget = scrollTarget }
+    func makeNSView(context: Context) -> ColumnLayoutMarker { let view = ColumnLayoutMarker(); updateNSView(view, context: context); return view }
+    func updateNSView(_ view: ColumnLayoutMarker, context: Context) { view.name = name; view.text = text; view.scrollTarget = scrollTarget }
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ColumnLayoutMarker, context: Context) -> CGSize? {
         let size = CGSize(width: proposal.width ?? 0, height: proposal.height ?? 0)
         if size.width > 0, size.height > 0, size.width.isFinite, size.height.isFinite { nsView.logicalSize = size }
@@ -395,9 +408,10 @@ import VoxClipMedia
 #endif
 
 extension View {
-    @ViewBuilder func columnLayoutEvidence(_ name: String) -> some View {
+    /// A DEBUG marker of this view's frame, and of the text it shows when given one.
+    @ViewBuilder func columnLayoutEvidence(_ name: String, text: String? = nil) -> some View {
         #if DEBUG
-        background(ColumnLayoutProbe(name: name))
+        background(ColumnLayoutProbe(name: name, text: text))
         #else
         self
         #endif

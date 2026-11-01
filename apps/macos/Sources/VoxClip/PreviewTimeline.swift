@@ -93,13 +93,14 @@ enum ViewerTag: Equatable {
         let _ = model.projectRevision
         let box = CGSize(width: max(1, columnWidth), height: max(1, boxHeight ?? Self.boxHeight(forWidth: columnWidth)))
         let stage = Self.stageSize(ratio: Self.ratio(model.project), in: box)
+        let label = Self.stageLabel(for: model)
         let transport = Self.showsTransport(timelineVisible: timelineVisible, hovering: hovering, focused: focused, voiceOver: voiceOver)
         ZStack(alignment: .bottom) {
             stageView
                 .frame(width: stage.width, height: stage.height)
-                .columnLayoutEvidence("viewer.stage")
+                .columnLayoutEvidence("viewer.stage", text: label)
                 .accessibilityElement(children: .contain)
-                .accessibilityLabel(stageLabel)
+                .accessibilityLabel(label)
                 .accessibilityIdentifier("voxclip.viewer.stage")
                 .frame(width: box.width, height: box.height)
             if transport {
@@ -139,7 +140,8 @@ enum ViewerTag: Equatable {
             }
         }
     }
-    private var stageLabel: String {
+    /// The stage's accessible label, as before V4: the scope, AI speech, then the media state.
+    static func stageLabel(for model: EditorModel) -> String {
         let scope = model.activeClip.flatMap { model.clipNumber($0.id) }.map { "clip \($0)" } ?? "full take"
         let ai = model.containsAISpeech(clipID: model.activeClip?.id) ? ", contains AI-modified speech" : ""
         return "Video preview, \(scope)\(ai)\(model.mediaStatus.spokenState.map { ", " + $0 } ?? "")"

@@ -37,6 +37,16 @@ import Testing
         return DebugRightColumn.markers(in: host)
     }
 
+    /// Lays `host` out until `done` holds, giving SwiftUI up to 100 turns to apply a change.
+    @discardableResult private func settle(_ host: NSView, until done: () -> Bool) async -> Bool {
+        for _ in 0..<100 {
+            host.layoutSubtreeIfNeeded()
+            if done() { return true }
+            await Task.yield()
+        }
+        return done()
+    }
+
     // MARK: Geometry
 
     @Test func theViewerIsA169BoxOfTheColumnWidthWithTheFrameFittedInIt() {
@@ -204,18 +214,61 @@ import Testing
         #expect(!undo.canUndo && !editor.document.isDocumentEdited)
     }
 
+    /// The header shows the job and the open tab's name, and follows a tab switch and a
+    /// Rewrite session in the one panel it heads.
     @Test func theHeaderNamesTheJobAndTheOpenTab() async throws {
         let (shell, editor) = try await openShell()
         defer { editor.close() }
         #expect(PanelJob.allCases.map(\.title) == ["Captions", "Rewrite", "Voice", "Takes", "Director"])
-        let size = CGSize(width: 404, height: 522)
-        let found = markers(PanelHeader(model: editor, shell: shell, job: .captions).frame(width: size.width), size: CGSize(width: 404, height: 30))
+        let found = markers(PanelHeader(model: editor, shell: shell, job: .captions).frame(width: 404), size: CGSize(width: 404, height: 30))
         #expect(found["panel.header"]?.size == CGSize(width: 404, height: 30))
         #expect(found["panel.job.captions"]?.size == CGSize(width: 26, height: 22))
         #expect(found["panel.job.captions"].map { abs($0.maxX - 398) <= 0.5 } == true)
-        #expect(editor.scopeName(editor.renderedActiveClipID) == "Full Take")
+
+        let size = CGSize(width: 404, height: 522)
+        let host = NSHostingView(rootView: PanelHost(model: editor, shell: shell, width: size.width, height: size.height))
+        host.frame = CGRect(origin: .zero, size: size)
+        func shown() -> [String?] { let texts = DebugRightColumn.texts(in: host); return [texts["panel.title"], texts["panel.context"]] }
+        await settle(host) { shown() == ["Captions", "Full Take"] }
+        #expect(shown() == ["Captions", "Full Take"])
         shell.selection = .clip("five-1")
-        #expect(editor.scopeName(editor.renderedActiveClipID) == "Clip 1")
+        await settle(host) { shown() == ["Captions", "Clip 1"] }
+        #expect(shown() == ["Captions", "Clip 1"])
+        editor.app.settings.values["voiceLab.enabled"] = .bool(true)
+        editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
+        editor.rewrite = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        await settle(host) { shown() == ["Rewrite", "Clip 1"] }
+        #expect(shown() == ["Rewrite", "Clip 1"])
+        shell.selection = .clip("five-2")
+        await settle(host) { shown() == ["Captions", "Clip 2"] }
+        #expect(shown() == ["Captions", "Clip 2"])
+    }
+
+    /// impl-plan V4: "the stage label is unchanged". The stage reads as before V4: the scope,
+    /// AI speech, then the media state, for Full Take, a clip and a take with AI speech.
+    @Test func theStageLabelIsUnchanged() async throws {
+        let (shell, editor) = try await openShell()
+        defer { editor.close() }
+        let host = NSHostingView(rootView: ViewerSection(model: editor, columnWidth: 404))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 227)
+        func label() -> String? { DebugRightColumn.texts(in: host)["viewer.stage"] }
+        await settle(host) { label() != nil }
+        #expect(label() == "Video preview, full take, demo project, no video")
+        shell.selection = .clip("five-1")
+        await settle(host) { label() == "Video preview, clip 1, demo project, no video" }
+        #expect(label() == "Video preview, clip 1, demo project, no video")
+
+        let shared = try SharedResources.locate()
+        let voiced = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
+        let model = EditorModel(document: VoxClipDocument(project: voiced, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let ai = NSHostingView(rootView: ViewerSection(model: model, columnWidth: 404))
+        ai.frame = CGRect(x: 0, y: 0, width: 404, height: 227)
+        await settle(ai) { DebugRightColumn.texts(in: ai)["viewer.stage"] != nil }
+        // The fixture's clip 1 holds the AI speech.
+        #expect(DebugRightColumn.texts(in: ai)["viewer.stage"] == "Video preview, clip 1, contains AI-modified speech, demo project, no video")
+        #expect(ViewerSection.stageLabel(for: model) == DebugRightColumn.texts(in: ai)["viewer.stage"])
     }
 }
 #endif

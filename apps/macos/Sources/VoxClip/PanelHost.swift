@@ -129,13 +129,16 @@ extension WorkspaceShell {
     var body: some View {
         // The tab's name follows the scope and the clips' numbering, which only these make observable.
         let scope = model.renderedActiveClipID, _ = model.projectRevision
+        let context = model.scopeName(scope)
         HStack(spacing: 7) {
             Text(job.title).font(VCType.body.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
                 .fixedSize().accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("voxclip.panel.title")
-            Text(model.scopeName(scope)).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+                .columnLayoutEvidence("panel.title", text: job.title)
+            Text(context).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                 .lineLimit(1).truncationMode(.tail)
                 .accessibilityIdentifier("voxclip.panel.context")
+                .columnLayoutEvidence("panel.context", text: context)
             Spacer(minLength: 4)
             HStack(spacing: 1) {
                 ForEach(PanelJob.available(in: model), id: \.self) { candidate in
