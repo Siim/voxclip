@@ -130,6 +130,17 @@ import VoxClipCore
                   editor.project.export.aspect == .square && editor.undoSteps == steps + 1 && states == [.off, .on, .off, .off])
             editor.setAspect(aspect)
         } else { check("View › Frame exists", false) }
+        // The viewer's Back 3 s button is gone (impl-plan V4): chosen from the menu, Back 3 Seconds
+        // works outside the transcript, as Forward 3 Seconds does; the J key keeps its routing.
+        if let back = item("Playback", "Back 3 Seconds"), let forward = item("Playback", "Forward 3 Seconds") {
+            let resolved = editor.mediaResolved, responder = window.firstResponder
+            editor.mediaResolved = true
+            _ = window.makeFirstResponder(nil)
+            check("Back 3 Seconds is on from the menu outside the transcript, as Forward 3 Seconds is",
+                  delegate.validateMenuItem(back) && delegate.validateMenuItem(forward))
+            editor.mediaResolved = resolved
+            _ = window.makeFirstResponder(responder)
+        } else { check("Playback has Back 3 Seconds and Forward 3 Seconds", false) }
         guard let first = editor.words.first, let kept = editor.keptClips.first, let suggestion = editor.suggestedClips.first else { throw CocoaError(.coderInvalidValue) }
         editor.selectedWordIDs = [first.id]
         invoke("Clip", "Find Clips…")

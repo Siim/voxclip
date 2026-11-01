@@ -340,6 +340,14 @@ import VoxClipCore
               let role = (NSApp.accessibilityFocusedUIElement as? any NSAccessibilityProtocol)?.accessibilityRole() else { return false }
         return [.button, .checkBox, .radioButton, .radioGroup, .popUpButton, .menuButton, .disclosureTriangle].contains(role)
     }
+    /// Back 3 Seconds shares J with Shuttle Back. The J key reaches it only from the
+    /// transcript; chosen from the menu it works wherever focus is, like Forward 3 Seconds,
+    /// since the viewer has no Back 3 s button (impl-plan V4).
+    static func backStepEnabled(_ item: NSMenuItem, event: NSEvent?, responder: NSResponder?) -> Bool {
+        guard let event, event.type == .keyDown, !item.keyEquivalent.isEmpty,
+              event.charactersIgnoringModifiers?.lowercased() == item.keyEquivalent.lowercased() else { return true }
+        return responder is TranscriptNSTextView
+    }
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         if item.action == #selector(checkUpdates(_:)) {
             item.title = model.update.map { "VoxClip \($0.version) Available…" } ?? "Check for Updates…"
@@ -385,7 +393,7 @@ import VoxClipCore
             case 49: return editor.finding
             case 43, 44: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.capabilities.edit
             case 45: return selectedClipID.map { !editor.isSuggestion($0) } == true && editor.canExport && editor.mediaExportable
-            case 46: return editor.mediaResolved && NSApp.keyWindow?.firstResponder is TranscriptNSTextView
+            case 46: return editor.mediaResolved && Self.backStepEnabled(item, event: NSApp.currentEvent, responder: NSApp.keyWindow?.firstResponder)
             case 47: return editor.mediaResolved
             case 7: return editor.capabilities.edit && editor.summary.canCutFillers
             case 8: return editor.capabilities.edit && editor.summary.canTighten

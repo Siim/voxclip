@@ -303,5 +303,29 @@ import Testing
         #expect(DebugRightColumn.texts(in: ai)["viewer.stage"] == "Video preview, clip 1, contains AI-modified speech, demo project, no video")
         #expect(ViewerSection.stageLabel(for: model) == DebugRightColumn.texts(in: ai)["viewer.stage"])
     }
+
+    // MARK: Playback
+
+    /// The viewer's Back 3 s button is gone (V4), so Playback › Back 3 Seconds works from the
+    /// menu wherever focus is, as Forward 3 Seconds does. The J key it shares with Shuttle
+    /// Back reaches it only from the transcript, as before.
+    @Test func backThreeSecondsWorksFromTheMenuAndJOnlyFromTheTranscript() throws {
+        let item = NSMenuItem(title: "Back 3 Seconds", action: nil, keyEquivalent: "j")
+        item.keyEquivalentModifierMask = []
+        func key(_ characters: String) throws -> NSEvent {
+            try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil,
+                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: 0))
+        }
+        let click = try #require(NSEvent.mouseEvent(with: .leftMouseUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+        let elsewhere: [NSResponder?] = [nil, NSView(), NSButton()]
+        for responder in elsewhere {
+            #expect(AppDelegate.backStepEnabled(item, event: nil, responder: responder))
+            #expect(AppDelegate.backStepEnabled(item, event: click, responder: responder))
+            // Arrow keys in an open menu are not its key equivalent.
+            #expect(AppDelegate.backStepEnabled(item, event: try key(String(UnicodeScalar(NSDownArrowFunctionKey)!)), responder: responder))
+            #expect(!AppDelegate.backStepEnabled(item, event: try key("j"), responder: responder))
+        }
+        #expect(AppDelegate.backStepEnabled(item, event: try key("j"), responder: TranscriptNSTextView()))
+    }
 }
 #endif
