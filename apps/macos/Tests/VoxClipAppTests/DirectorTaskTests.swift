@@ -628,6 +628,41 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(await sending.value == false)
     }
 
+    /// F6 and a task handover must target the same focus binding, including its
+    /// ownership notification when the user returns to the transcript.
+    @Test func paneFocusAndTaskHandoverShareKeyboardOwnership() async throws {
+        let ollama = StubConnector(id: .ollama, hold: true)
+        let (app, _) = app("ollama", connectors: ["ollama": ollama])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        let panel = PanelWindow(editor: editor)
+        defer { panel.close() }
+        await panel.settle { panel.ready(session) }
+        try #require(panel.ready(session))
+        let sending = try await send(session)
+        #expect(await waitUntilSending(ollama))
+        await panel.settle { panel.showsTaskPanel && panel.paneHasKeyboard }
+        #expect(panel.paneHasKeyboard && session.task.keyboardInPanel)
+
+        #expect(panel.window.makeFirstResponder(panel.elsewhere))
+        await panel.settle { !session.task.keyboardInPanel }
+        #expect(!session.task.keyboardInPanel)
+        editor.focusedPane = .panel
+        editor.paneFocusRequest += 1
+        await panel.settle { panel.paneHasKeyboard && session.task.keyboardInPanel }
+        #expect(panel.paneHasKeyboard && session.task.keyboardInPanel, "F6 updates the handover's ownership binding")
+
+        #expect(panel.window.makeFirstResponder(panel.elsewhere))
+        await panel.settle { !session.task.keyboardInPanel }
+        #expect(!session.task.keyboardInPanel)
+        await ollama.release()
+        #expect(await sending.value)
+        await panel.settle { !panel.showsTaskPanel }
+        await panel.settle(turns: 500)
+        #expect(panel.window.firstResponder === panel.elsewhere, "a reply after F6 and a move out keeps the keyboard outside")
+    }
+
     /// The passage panel takes the keyboard back with the reply only when the keyboard stayed in the panel: a reply that
     /// arrives while the user works elsewhere leaves focus there.
     @Test(arguments: [true, false])

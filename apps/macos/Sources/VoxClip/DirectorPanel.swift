@@ -35,9 +35,7 @@ import VoxClipCore
         .accessibilityElement(children: .contain)
         .accessibilityLabel(task.words.title)
         .accessibilityIdentifier("voxclip.director")
-        .modifier(EditorPaneFocus(model: model, pane: .panel))
-        // Whether the keyboard is anywhere in the panel, for the handover between the panel's views.
-        .focused($keyboardWithin)
+        .modifier(EditorPaneFocus(model: model, pane: .panel, focus: $keyboardWithin))
         // Esc and ⌘. (design.md §8): Stop while the task runs, which closes it too, else Close.
         .onExitCommand { (task.headline.stop ?? task.close).perform() }
         // ⌘Return from anywhere in the panel, Return outside a text field: the primary.
@@ -54,7 +52,7 @@ import VoxClipCore
             return .handled
         }
         .onChange(of: task.focusRequest) { _, _ in keyFieldFocused = true }
-        .onChange(of: keyboardWithin) { _, within in task.keyboardInPanel = within }
+        .onChange(of: keyboardWithin || keyFieldFocused) { _, within in task.keyboardInPanel = within }
         // Replacing the passage panel that had the keyboard, it takes it, so Esc, ⌘. and Return still act (design.md R1).
         .task {
             guard task.takeKeyboardHandover() else { return }

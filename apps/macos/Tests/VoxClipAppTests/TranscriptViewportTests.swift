@@ -27,7 +27,7 @@ import Testing
         project.media.source.durationSeconds = 402
         project.edits = ProjectEdits(cutWordIds: [])
         project.edits.clips = [ClipRange(id: "middle", startWordId: "v\((paragraph - 2) * 20)", endWordId: "v\((paragraph + 3) * 20 - 1)", title: "Middle")]
-        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
         model.activate(model.project.edits.clips[0])
         model.sourceTime = Double(paragraph * 20 + 15) * 0.5 + 0.1
         model.selectedWordIDs = Set((paragraph * 20 + 10...paragraph * 20 + 16).map { "v\($0)" })
@@ -119,21 +119,27 @@ import Testing
     }
 
     /// At the take's top, where TextKit keeps the scroll position as lines rewrap.
-    @Test func aResizeRewrapsWhatFollowsTheLines() throws {
+    @Test(arguments: [NSScroller.Style.overlay, .legacy])
+    func aResizeRewrapsWhatFollowsTheLines(_ scrollerStyle: NSScroller.Style) throws {
         let model = try editor(paragraph: 2); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488)); defer { pane.close() }
+        pane.scroll.scrollerStyle = scrollerStyle
+        layoutPass(pane)
         let before = try overlays(pane)
         #expect(!before.bandHidden && !before.caretHidden && before.selection.count == 2, "\(before)")
         pane.window.setContentSize(NSSize(width: 820, height: 488))
         // Deliver the host's frame as SwiftUI does; macOS 26 need not resize hidden window content synchronously.
         pane.scroll.setFrameSize(NSSize(width: 820, height: 488))
         layoutPass(pane)
-        #expect(pane.text.bounds.width == 820 && pane.text.textContainer?.containerSize.width == 680, "the 680 measure at 820")
+        let contentWidth = pane.scroll.contentSize.width
+        let measure = min(680, contentWidth - TranscriptGutter.width - TranscriptGutter.trailing)
+        #expect(pane.scroll.bounds.width == 820 && pane.text.bounds.width == contentWidth && pane.text.textContainer?.containerSize.width == measure,
+                "the capped measure at 820 with \(scrollerStyle): text \(pane.text.bounds.width), content \(contentWidth), measure \(measure)")
         #expect(!pane.text.needsLayout)
         let (shown, measured) = try current(pane)
         #expect(shown == measured, "after the layout pass: \(shown), measured again: \(measured)")
         #expect(pane.text.visibleRect.minY == 0, "still at the top")
-        #expect(shown.bandFrame.width == 820 && !shown.bandHidden, "the band spans the wider pane: \(before) → \(shown)")
+        #expect(shown.bandFrame.width == contentWidth && !shown.bandHidden, "the band spans the wider pane: \(before) → \(shown)")
         // Word 15 moves from the second line to the first at 680, where eighteen fit.
         let caretBox = try #require(pane.text.textBox(of: NSRange(location: try caretOffset(pane), length: 0)))
         #expect(!shown.caretHidden && abs(shown.caret.midX - caretBox.minX) < 0.5 && shown.caret.minY < before.caret.minY && shown.caret.midX > before.caret.midX,
