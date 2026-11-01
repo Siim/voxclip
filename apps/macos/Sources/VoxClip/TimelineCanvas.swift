@@ -440,9 +440,13 @@ final class TimelineSliderElement: NSAccessibilityElement {
     override func draw(_ dirtyRect: NSRect) {
         draws += 1
         guard let context = NSGraphicsContext.current?.cgContext else { return }
+        // Only within the lane: a cached display can ask for more than its bounds.
         DesignValues.nsColor("bg.window").setFill()
-        dirtyRect.fill()
+        dirtyRect.intersection(bounds).fill()
+        context.saveGState()
+        context.clip(to: bounds)
         drawLane(in: context)
+        context.restoreGState()
         // The headers' hairline (notes.md §6: 1 pt line.default beside the 112 pt headers).
         DesignValues.nsColor("line.default").setFill()
         NSRect(x: TimelineMetrics.header - 1, y: 0, width: 1, height: bounds.height).fill()
