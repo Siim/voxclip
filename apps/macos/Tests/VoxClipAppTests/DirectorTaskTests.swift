@@ -94,6 +94,10 @@ private actor RefusingKeys: ProviderKeyStore {
     /// Esc, and ⌘., which AppKit sends as the same action.
     func escape() { window.firstResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil) }
     func close() { window.close() }
+    /// Where the keyboard is, for a failure's message.
+    func state(_ task: DirectorTask) -> String {
+        "task panel \(showsTaskPanel), first responder \(window.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"), field \(fieldHasKeyboard), pane \(paneHasKeyboard), keyboardInPanel \(task.keyboardInPanel)"
+    }
 }
 
 /// The Rewrite job on the Director task (impl-plan V12m): R0 chooses the AI, R1 runs with
@@ -604,7 +608,7 @@ private actor RefusingKeys: ProviderKeyStore {
         let sending = try await send(session)
         #expect(await waitUntilSending(ollama))
         await panel.settle { panel.showsTaskPanel && panel.paneHasKeyboard }
-        #expect(panel.showsTaskPanel && panel.paneHasKeyboard && session.task.keyboardInPanel)
+        #expect(panel.showsTaskPanel && panel.paneHasKeyboard && session.task.keyboardInPanel, "\(panel.state(session.task))")
         panel.escape()
         #expect(!session.isOpen && editor.openRewrite == nil)
         await ollama.release()
@@ -629,7 +633,7 @@ private actor RefusingKeys: ProviderKeyStore {
         if !stayed {
             panel.window.makeFirstResponder(panel.elsewhere)
             await panel.settle { !session.task.keyboardInPanel }
-            #expect(!session.task.keyboardInPanel)
+            #expect(!session.task.keyboardInPanel, "\(panel.state(session.task))")
         }
         await ollama.release()
         #expect(await sending.value)
