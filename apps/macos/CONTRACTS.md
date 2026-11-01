@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+## V18/V19 final combined validation and parent handoff (1 Nov 2026)
+
+- Completed inline phrase-take review over the pinned engine and scoped atomic Use Takes with one review undo, truthful in-use/spend feedback, F1–F4 corrections and consent-respecting created-voice handoff. Deleted the replaced takes view/sheet/privacy routes. Keep the remaining API-key `RewriteApprovalSheet` construction in `ConnectorRequestConsent.swift:101` until parent integrates inline `f9b273eb`; retain the shared task-host identity, palette focus/tags and strict renderer/paragraph bounds.
+- Final isolated local runs: full App **523 tests / 39 suites pass** (263.359 s); serial full Core **836 / 70 pass** (306.939 s, eight expected live/informative skips); serial relevant Voice Lab/Training/Microphone/Speaker/Disk Media **141 / 14 pass** (123.519 s, two verified-model-dependent skips). Actual three-segment audio/disclosure export is included. Python Voice Lab checks **45 pass**; design generated-source check, **24 tests** and contrast pass.
+- Release `VoxClip` builds (129.11 s). Production beta gate passes all eight combinations; initializer source positive control and six same-package/four same-module bypass probes pass. Existing demo-label `Text + Text` deprecation warning remains unrelated. No unity, changed-duration, short-speech, QA, speaker or runtime boundary weakened. No paid/live/model-download/Keychain tests or CI dispatch.
+- Actual failure and negative-control logs are retained under `/tmp/voxclip-v18-v19-sol-high/`; report `/tmp/clipper-planning/reports/mvp-voice-v18-v19-sol-high.md` records failures, restored mutations, scope, commits and overlap. Only one `.build`, serial `nice -n 10 --jobs 2`, at least 26 GiB free throughout final validation. Native console idle was 0 s: no real-window gate launched. Native f12/in-use/VoiceOver/listening/mic, verified real speaker/model, source-video/runtime and native release acceptance remain owed, not headless passes. Parent owns joint CI and next inline build slot after explicit release.
+
 ## V18/V19 plan-boundary failure accounting coverage (1 Nov 2026)
 
 - Added malformed TTS/QA responses through the stub HTTP service and explicitly missing TTS/QA results at the existing engine Backend boundary. Exact approved request IDs, once-only ledger amounts, distinct seeds, retained failed rows, zero acceptance and no resend beyond the approved candidates are asserted. The missing-result cases are deterministic engine-boundary fixtures, not live transport evidence.
