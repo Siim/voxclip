@@ -325,5 +325,25 @@ private struct NoVoiceLabKeys: KeyProvider {
         #expect(sidebarReveals == 1 && !editor.finding)
         #expect(editor.clipError == "Load or download a model in LM Studio, then refresh. Your edits are saved.")
     }
+
+    /// The Rewrite panel's readiness error names the chosen connector, as Find clips does: the route now runs for local
+    /// connectors too, and LM Studio's server is off until the user starts it.
+    @Test(arguments: [
+        ("lmstudio", ConnectorStatus.notRunning(url: "http://localhost:1234"), "LM Studio's server isn't running at "),
+        ("lmstudio", .noModels, "Load or download a model in LM Studio, then refresh."),
+        ("claude-code", .cliSignedOut, "Claude Code isn't signed in."),
+        ("openai", .needsKey, "Add your OpenAI API key in Settings › AI."),
+    ])
+    func aRewriteReadinessErrorNamesTheConnector(connector: String, readiness: ConnectorStatus, message: String) async throws {
+        let (app, fake, log) = try setUp(connector, authMethod: nil, readiness: readiness)
+        let editor = try editor(app)
+        defer { editor.close() }
+        try await send(.rewrite, editor: editor, app: app)
+        let session = try #require(editor.rewrite)
+        #expect(log.sheets.isEmpty)
+        #expect(await fake.sends == 0)
+        #expect(session.problem.hasPrefix(message), "\(session.problem)")
+        #expect(session.problem.hasSuffix(" Your edits are saved."))
+    }
 }
 #endif

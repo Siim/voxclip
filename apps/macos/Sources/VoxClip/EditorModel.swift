@@ -118,7 +118,8 @@ struct EditorRenderSnapshot {
                     capabilities.edit && project == snapshot && rewriteConnectorSignature == signature && rewrite?.isOpen == true
                 }
         } catch is CancellationError { return false } catch {
-            rewrite?.setReadinessProblem(await app.safeError(error, context: "ai:Rewrite"))
+            // The provider's label, as Find clips passes it, so the message names this connector (LM Studio, a CLI).
+            rewrite?.setReadinessProblem(await app.safeError(error, context: "ai:\(provider.label)"))
             return false
         }
     }
