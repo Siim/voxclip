@@ -7,8 +7,9 @@ import Testing
 
 /// The Rewrite job's change list and Keep flow (impl-plan V15), headless: R2's footer cases (design.md R2 with item 25),
 /// rows named "Change {i} of {c}" as the transcript names them, Keep and Undo per change from the list and from the
-/// transcript, Keep All as one step, Apply, the task ending once every change is kept, and Voice Lab's Turn on. Each
-/// scene is a real reply to Rewrite clip 1 (`DebugRewrite.proposalScenes`); nothing is sent.
+/// transcript, Keep All as one step, Apply, ⌘Z of the last Keep, Voice Lab's Turn on, takes that stay with their phrase,
+/// phrases that can't be made, the list's keys and Make Takes' problem. Each scene is a real reply to Rewrite
+/// clip 1 (`DebugRewrite.proposalScenes`); nothing is sent.
 @Suite("Rewrite change list", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
 @MainActor struct ChangeListTests {
     private func scenes() throws -> (AppModel, [DirectorScene]) {
@@ -85,6 +86,7 @@ import Testing
 
     /// Undo leaves a change out (no project change, no undo step) and Keep applies it as one step, "Keep change 1": the
     /// round trip from the list or the transcript, which never shows R3. ⌘Z takes the Keep back to left out, ⌘⇧Z keeps it.
+    /// With every change kept the task stays open, so ⌘Z of the last Keep brings that change back for review (§6.3.5).
     @Test func undoAndKeepRoundTripOneChange() async throws {
         let (editor, session, undo, scenes) = try scene("r2-free")
         defer { scenes.forEach { $0.editor?.close() } }
@@ -102,10 +104,18 @@ import Testing
         undo.redo()
         await settle { changes(session)?.items.first?.state == .kept }
         #expect(changes(session)?.items.map(\.state) == [.kept, .pending] && editor.cutWordIDs.contains("r2-12"))
-        // The transcript's ⌘↩ on change 2 is the same Keep; the list follows, and with every change kept the task ends.
+        // The transcript's ⌘↩ on change 2 is the same Keep; the list follows, and with every change kept it stays.
         step(undo) { editor.keepChange(2) }
-        await settle { !session.isOpen }
-        #expect(!session.isOpen && editor.openRewrite == nil && editor.proposal == nil && editor.project.edits.corrections["r2-20"] == "Word20")
+        await settle { changes(session)?.items.last?.state == .kept }
+        #expect(changes(session)?.items.map(\.state) == [.kept, .kept] && editor.project.edits.corrections["r2-20"] == "Word20")
+        #expect(session.isOpen && editor.openRewrite === session && editor.proposal != nil && !session.hasUnreviewedChanges)
+        #expect(session.task.footer == PanelFooter(note: RewriteSession.everyChangeKept))
+        undo.undo()
+        await settle { changes(session)?.items.last?.state == .pending }
+        #expect(changes(session)?.items.map(\.state) == [.kept, .pending] && editor.project.edits.corrections["r2-20"] == nil)
+        #expect(editor.proposal?[2]?.state == .pending && session.task.footer.primary?.title == "Apply 1 Change" && session.hasUnreviewedChanges)
+        session.task.close.perform()
+        #expect(!session.isOpen && editor.openRewrite == nil && editor.proposal == nil)
     }
 
     /// Keep All (impl-plan item 7): the free changes apply as one undo step named for the scope and the phrase is included
@@ -243,20 +253,6 @@ import Testing
         #expect(editor.proposalDisplay?.focused == 2 && editor.proposalDisplay?.actions == [.keep, .undo])
     }
 
-    /// Why Make Takes couldn't go on before takes exist (finding the voices failed) shows as R2's callout, and goes as
-    /// Make Takes tries again.
-    @Test func makeTakesProblemShowsInR2() async throws {
-        let (_, session, _, scenes) = try scene("r2-make-takes")
-        defer { scenes.forEach { $0.editor?.close() } }
-        session.reportGenerationProblem(VoiceLabError.unauthorized)
-        await settle { session.task.cards.count > 1 }
-        #expect(session.task.cards.last == .callout("ElevenLabs rejected the key (401). Your edits are saved."))
-        #expect(session.task.footer.primary?.title == "Make Takes")
-        session.reportGenerationProblem(nil)
-        await settle { session.task.cards.count == 1 }
-        #expect(session.task.cards.count == 1)
-    }
-
     /// The change list's keys (design.md §10, "Rewrite without a pointer"): Return edits the focused change and never runs
     /// the footer's primary, Space leaves the focused change out or keeps it, and ⌘Return runs the primary.
     @Test func returnEditsSpaceReviewsAndCommandReturnApplies() throws {
@@ -277,6 +273,20 @@ import Testing
         #expect(!session.task.pressSpace() && changes(session)?.items.last?.state == .kept)
         step(undo) { #expect(session.task.pressReturn(command: true)) }
         #expect(!session.isOpen && editor.cutWordIDs.contains("r2-12") && undo.undoActionName == "Rewrite clip 1")
+    }
+
+    /// Why Make Takes couldn't go on before takes exist (finding the voices failed) shows as R2's callout, and goes as
+    /// Make Takes tries again.
+    @Test func makeTakesProblemShowsInR2() async throws {
+        let (_, session, _, scenes) = try scene("r2-make-takes")
+        defer { scenes.forEach { $0.editor?.close() } }
+        session.reportGenerationProblem(VoiceLabError.unauthorized)
+        await settle { session.task.cards.count > 1 }
+        #expect(session.task.cards.last == .callout("ElevenLabs rejected the key (401). Your edits are saved."))
+        #expect(session.task.footer.primary?.title == "Make Takes")
+        session.reportGenerationProblem(nil)
+        await settle { session.task.cards.count == 1 }
+        #expect(session.task.cards.count == 1)
     }
 }
 #endif

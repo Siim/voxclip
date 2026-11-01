@@ -14,8 +14,6 @@ struct ProposalContent {
     let cards: [PanelCard]
     let footer: PanelFooter
     let askAgain: PanelAction?
-    /// Every change is kept and none waits for takes: nothing is left for the task.
-    let reviewed: Bool
 }
 
 /// Why a voice change can't be made now: its row's line, and whether it is a warning.
@@ -59,9 +57,9 @@ extension RewriteSession {
         }
     }
 
-    /// Shows R2 from the transcript's proposal, and shows it again as the proposal, Voice Lab or the takes change: every
-    /// value `proposalContent` reads is observed. A proposal whose every change is kept, with no takes to make, closes
-    /// the task.
+    /// Shows R2 from the transcript's proposal, and shows it again as the proposal, Voice Lab, the takes or the project's
+    /// AI lease change: every value `proposalContent` reads is observed. With every change kept the task stays open, so ⌘Z
+    /// of the last Keep brings that change back for review (design.md §6.3.5); Close ends it.
     func showProposal() {
         guard isOpen else { return }
         leaveOutUnavailableVoices()
@@ -76,7 +74,6 @@ extension RewriteSession {
         }
         task.review = { [weak self] ordinal, review in self?.review(ordinal, review) }
         task.show(.proposal(content.set), headline: content.headline, cards: content.cards, footer: content.footer, contextAction: content.askAgain)
-        if content.reviewed { editor.closeRewrite(returnFocus: false) }
     }
 
     /// Leaves out the voice changes that can't be made now, with no review in the transcript either (`reviewable`), and
@@ -134,7 +131,7 @@ extension RewriteSession {
         guard !items.isEmpty else {
             return ProposalContent(set: set, headline: headline,
                                    cards: [.text("\(aiName) found nothing to change in \(task.words.name)."), .ask(placeholder: AskField.placeholder(task.words))],
-                                   footer: PanelFooter(primary: askForSomethingElse), askAgain: askAgain, reviewed: false)
+                                   footer: PanelFooter(primary: askForSomethingElse), askAgain: askAgain)
         }
         let footer = proposalFooter(set)
         var cards: [PanelCard] = [.changes(set)]
@@ -142,9 +139,7 @@ extension RewriteSession {
         // Why Make Takes could not go on (finding the voices failed); a refused review is on the voice rows instead.
         if review != nil, !problem.isEmpty { cards.append(.callout(problem)) }
         if footer.takes { cards.append(.takes) }
-        let reviewed = items.allSatisfy { $0.state == .kept } && !items.contains { $0.kind == .voice && $0.reviewable }
-            && ownProposal?.changes.contains { $0.state == .kept } == true
-        return ProposalContent(set: set, headline: headline, cards: cards, footer: footer.footer, askAgain: askAgain, reviewed: reviewed)
+        return ProposalContent(set: set, headline: headline, cards: cards, footer: footer.footer, askAgain: askAgain)
     }
 
     /// A change's row: its words (a cut's removed words; otherwise the words it would leave), its state, and the line
@@ -181,7 +176,8 @@ extension RewriteSession {
     ///   and Apply {k} Free Changes.
     /// - One voice change included: Make Your Voice with no voice yet, Make Takes, or Use Take {n} once a take passed,
     ///   with Keep All while changes wait.
-    /// - Only cuts and fixes: Apply {c} Changes. Nothing included: the note alone.
+    /// - Only cuts and fixes: Apply {c} Changes. Nothing included: the note alone. Every change kept: its note alone, and
+    ///   Close ends the task.
     private func proposalFooter(_ set: ChangeSet) -> (footer: PanelFooter, callout: String?, takes: Bool) {
         let pending = set.items.filter { $0.state == .pending && $0.reviewable }
         let free = pending.filter { $0.kind != .voice }.count
@@ -208,6 +204,7 @@ extension RewriteSession {
             return (takesFooter(voice, keepAll: keepAll), nil, generation != nil)
         }
         if free > 0 { return (PanelFooter(note: "No AI voice needed. Nothing is sent.", primary: apply(beside: false)), nil, false) }
+        if set.items.allSatisfy({ $0.state == .kept }) { return (PanelFooter(note: Self.everyChangeKept), nil, false) }
         return (PanelFooter(note: "Keep a change to apply it."), nil, false)
     }
     /// The voice budget (voice-lab.md §8.2) over the voice changes the list includes, as design.md R2's callout reads it;
@@ -221,6 +218,8 @@ extension RewriteSession {
     }
     /// Takes are made for one voice change at a time until C3 and C5 place several (impl-plan item 25).
     static let onePassage = "Rewrite one passage at a time. Keep one changed passage, then generate takes."
+    /// R2's note once every change is kept: nothing is left to apply; ⌘Z of a Keep brings its change back for review.
+    static let everyChangeKept = "Every change is kept."
 
     /// The footer while one voice change is included: Make Your Voice, Make Takes or Use Take {n}. Takes and their quote
     /// act only for the phrase they are made for (`takesVoice`); for another, the footer waits for its quote.
