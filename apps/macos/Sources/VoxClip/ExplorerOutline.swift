@@ -6,7 +6,7 @@ enum ExplorerSection: String, CaseIterable {
     case take, clips, outline, suggested, recent
     var key: String { "ui.explorer.\(rawValue)" }
     var title: String { rawValue.capitalized }
-    func accessibilityLabel(count: Int) -> String { "\(title), \(count) \(count == 1 ? "item" : "items")" }
+    func accessibilityLabel(count: Int, title: String? = nil) -> String { "\(title ?? self.title), \(count) \(count == 1 ? "item" : "items")" }
 }
 
 enum ExplorerMetrics {

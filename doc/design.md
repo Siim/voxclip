@@ -295,7 +295,7 @@ How it is built:
 
 ### 3.4 Sidebar rows
 
-**macOS v2 Explorer.** The flat pane keeps a native plain `List` and its system selection highlight (the accepted deviation from the mockup's `selrow`). In the editor its sections are Take, Clips, Outline and Suggested. Each disclosure has an uppercase 11 pt semibold heading, a count and a spoken name such as "Clips, 2 items". Expanded state persists under `ui.explorer.take`, `.clips`, `.outline`, `.suggested` and `.recent`; this never edits the project. Home shows Home and Recent.
+**macOS v2 Explorer.** The flat pane keeps a native plain `List` and its system selection highlight (the accepted deviation from the mockup's `selrow`). In the editor its sections are Take, Clips, Outline and Suggested. Each disclosure has an uppercase 11 pt semibold heading and a spoken name such as "Clips, 2 items". The take heading is the project title with no visible count; VoiceOver reads "{title}, 1 item". Clips and Suggested show counts, while Outline shows the open tab’s `scopeName` as trailing context when it fits. Expanded state persists under `ui.explorer.take`, `.clips`, `.outline`, `.suggested` and `.recent`; this never edits the project. Starting Find Clips or Hook, or focusing a suggestion, expands Suggested. Moving selection to a hidden clip row expands its owning Clips or Suggested section. Home shows Home and Recent.
 
 A single click previews a clip or suggestion in the one temporary tab. Double-click keeps that tab open; selecting an already pinned tab leaves it pinned. Opening a Rewrite session from any entry point or marking a tab dirty also pins its preview immediately. Preview replacement preserves any remaining session or pending review work before opening the next clip. Return still keeps a suggestion or renames a kept clip, and Delete dismisses or removes it. The Outline uses the take's `TranscriptParagraphs`, filtered by overlap with the open tab, with take time in mono `m:ss` and the first six words. A click scrolls through the transcript's scope-scroll path without moving scope, playhead or word selection. A green dot means pending changes (wired when V14 and V2 are both merged); a blue dot means enabled AI speech in that paragraph. Both states are spoken. Outline Return/Delete do not rename or remove the open clip; ⇧⌘↩ still keeps its suggestion.
 
@@ -321,7 +321,7 @@ A single click previews a clip or suggestion in the one temporary tab. Double-cl
 | Suggestion row | 28 high, with a dashed range bar; Keep and Dismiss in the clip bar, context menu and accessibility actions; Return/⌫ retained | as a clip row; two trailing 32×32 subtle icon buttons ✓ and ✕ (tooltips "Keep (Ctrl+Enter)" and "Dismiss (Delete)"). Their `Tapped` handler sets `e.Handled = true` |
 | Actions | borderless `Button`s in the section footer (not rows, never selectable, never arrow-key stops): 28 high, label 13, glyph `text.secondary`, key hint SF Mono 11 `text.secondary`. Disabled: label and glyph `text.tertiary` at 55% | `NavigationViewItem`s with `SelectsOnInvoked="False"`, the shortcut as trailing 12 `text.secondary` text, `IsEnabled` bound |
 
-**Windows meta line grammar.** On macOS v2 the row shows duration, with AI speech as a blue waveform glyph. Export status is spoken and available in row help/context actions and the status bar; failed exports retain Retry export in the context menu. Rows keep their 28 pt height.
+**Windows meta line grammar.** On macOS v2 the row shows duration, with AI speech as a blue waveform glyph. Until V2b’s Exports section, a clip whose export state is "Edited since export" or "Export failed" shows a trailing 11 pt `exclamationmark.triangle` in `status.warning`. Exported and Not exported show no glyph. Export status remains in row help and VoiceOver, with Retry export in the failed clip’s context menu. Rows keep their 28 pt height; V2b moves this warning indication to the Exports section.
 
 The duration, a separator, then one status:
 
@@ -1513,6 +1513,8 @@ The Director will run an AI session that proposes cuts, clips, rewrites and capt
 ---
 
 ## 7. Home
+
+**Interim macOS v2 export state.** Until V2b, clip rows show a trailing 11 pt `exclamationmark.triangle` in `status.warning` only for "Edited since export" or "Export failed". Exported and Not exported have no glyph. The state remains in help and VoiceOver, and failed exports retain Retry export in the context menu. V2b moves the warning to its Exports section.
 
 Home is the sidebar's first row, in the main window. It is never a separate window. While Home is selected the window title is "VoxClip" (macOS) and the open project, if any, keeps its sidebar section (rows only, no action footer).
 

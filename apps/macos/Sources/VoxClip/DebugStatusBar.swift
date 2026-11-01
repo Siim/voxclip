@@ -29,7 +29,7 @@ import VoxClipCore
         app.detectedConnectorStatus["claude-code"] = nil
 
         let shell = WorkspaceShell(app: app)
-        var project = try DebugSidebar.fiveQuestions(from: fixture)
+        var project = try DebugExplorer.fiveQuestions(from: fixture)
         project.export.aspect = .landscape
         await shell.attachForTesting(VoxClipDocument(project: project, demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }
@@ -199,7 +199,7 @@ import VoxClipCore
         app.connectorOverride = { id in ConsentFixtureConnector(id: ConnectorID(rawValue: id) ?? .ollama, readiness: .ready, authMethod: "claude.ai") }
         if let provider = app.providers.first(where: { $0.id == "claude-code" }) { _ = await app.connectorStatus(provider) }
         let shell = WorkspaceShell(app: app)
-        var project = try DebugSidebar.fiveQuestions(from: fixture)
+        var project = try DebugExplorer.fiveQuestions(from: fixture)
         project.export.aspect = .landscape
         await shell.attachForTesting(VoxClipDocument(project: project, demo: true), selection: .fullTake)
         guard let editor = shell.editor else { throw CocoaError(.coderInvalidValue) }

@@ -533,6 +533,7 @@ enum SidebarItem: Hashable {
             tabs.keepOpen(tab)
         }
         model.onNeedsSidebar = { [weak self] in self?.revealSidebar() }
+        model.onNeedsSuggestions = { [weak self] in self?.setExplorerExpanded(.suggested, true) }
         next.editorModel = model
         renaming = nil
         sidebarOverlay = false
@@ -612,6 +613,9 @@ enum SidebarItem: Hashable {
         case .outline(let index): scrollToOutline(index); return
         case .fullTake: if editor.project.edits.activeClipId != nil { editor.activate(nil) }
         case .clip(let id):
+            if editor.project.edits.clips.contains(where: { $0.id == id }) {
+                setExplorerExpanded(editor.isSuggestion(id) ? .suggested : .clips, true)
+            }
             guard editor.project.edits.activeClipId != id, let clip = editor.project.edits.clips.first(where: { $0.id == id }) else { break }
             editor.activate(clip)
         }

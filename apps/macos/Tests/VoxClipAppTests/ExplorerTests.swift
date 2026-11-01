@@ -140,6 +140,8 @@ import Testing
         let session = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
         editor.openRewrite = session
         #expect(shell.tabs.preview == .clip("five-1"))
+        shell.choose(.clip("five-1"))
+        #expect(shell.tabs.open == [.clip("five-1"), .fullTake] && shell.tabs.preview == nil)
         shell.choose(.clip("five-2"))
         #expect(shell.tabs.clipTabs.contains(.clip("five-1")) && session.isOpen && editor.openRewrite === session)
         #expect(shell.tabs.preview == .clip("five-2"))
@@ -258,6 +260,113 @@ import Testing
         #expect(editor.undoSteps == 0 && !editor.document.isDocumentEdited)
     }
 
+    @Test func projectHeadingKeepsItsNameAndOutlineShowsTheOpenScope() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        func header(_ section: ExplorerSection, count: Int) -> [String: String] {
+            let host = NSHostingView(rootView: ExplorerHeader(shell: shell, section: section, count: count).frame(width: 224))
+            host.frame = NSRect(x: 0, y: 0, width: 224, height: 28)
+            host.layoutSubtreeIfNeeded()
+            return DebugRightColumn.texts(in: host)
+        }
+        let take = header(.take, count: 1)
+        #expect(take["explorer.header.take"] == "\(shell.projectTitle), 1 item")
+        #expect(take["explorer.header.title.take"] == shell.projectTitle.uppercased())
+        #expect(take["explorer.header.trailing.take"] == nil)
+        #expect(header(.outline, count: shell.outlineEntries.count)["explorer.header.trailing.outline"] == "Full Take")
+        shell.choose(.clip("five-2"))
+        #expect(header(.outline, count: shell.outlineEntries.count)["explorer.header.trailing.outline"] == "Clip 2")
+    }
+
+    @Test func findingAndFocusExpandTheSectionThatOwnsTheRow() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        shell.setExplorerExpanded(.suggested, false)
+        editor.finding = true
+        #expect(shell.explorerExpanded(.suggested))
+        editor.finding = false
+        shell.setExplorerExpanded(.suggested, false)
+        editor.focusedSuggestion = "five-5"
+        #expect(shell.explorerExpanded(.suggested))
+        shell.setExplorerExpanded(.clips, false)
+        shell.choose(.clip("five-2"))
+        #expect(shell.selection == .clip("five-2") && shell.explorerExpanded(.clips))
+        shell.selectTab(.fullTake)
+        shell.setExplorerExpanded(.clips, false)
+        shell.selectTab(.clip("five-2"))
+        #expect(shell.selection == .clip("five-2") && shell.explorerExpanded(.clips))
+        shell.setExplorerExpanded(.suggested, false)
+        shell.choose(.clip("five-5"))
+        #expect(shell.explorerExpanded(.suggested))
+        #expect(!editor.document.isDocumentEdited)
+    }
+
+    @Test(arguments: [false, true])
+    func findClipsAndHookExpandSuggestedEvenWhenNoClipsArrive(hook: Bool) async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        let fake = ConsentFixtureConnector(id: try #require(ConnectorID(rawValue: "claude-code")), authMethod: "claude.ai")
+        editor.app.connectorOverride = { _ in fake }
+        editor.app.set("llm.connector", .string("claude-code"))
+        editor.app.set("llm.cloudConsent.claude-code", .bool(true))
+        shell.setExplorerExpanded(.suggested, false)
+        let bar = ClipBarView(model: editor, shell: shell)
+        defer { bar.tearDown() }
+        if hook { bar.hook.performClick(nil) } else { editor.findClips() }
+        await editor.findTask?.value
+        #expect(await fake.sends == 1)
+        #expect(editor.focusedSuggestion == nil && shell.explorerExpanded(.suggested))
+        #expect(editor.lastFindRequest?.preset == (hook ? .hooks : editor.preset))
+    }
+
+    @Test func exportWarningsAppearOnlyForChangedAndFailedClips() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-explorer-exports-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        editor.app.exportLedger = ExportLedger(file: folder.appendingPathComponent("exports.json"))
+        let clip = try #require(editor.keptClips.first)
+        func warning() -> String? {
+            let host = NSHostingView(rootView: ClipRow(shell: shell, editor: editor, clip: clip, suggested: false).frame(width: 224))
+            host.frame = NSRect(x: 0, y: 0, width: 224, height: 28)
+            host.layoutSubtreeIfNeeded()
+            return DebugRightColumn.texts(in: host)["explorer.exportWarning"]
+        }
+        #expect(editor.exportRowStatus(clip.id) == .none && warning() == nil)
+        let fingerprint = try ExportFingerprint.value(editor.project, target: .clip(clip.id), labelPosition: editor.app.voiceLabLabelPosition)
+        func record(_ fingerprint: String) throws {
+            try editor.app.exportLedger.record(ExportRecord(projectID: editor.project.id, targetID: clip.id, exportedAt: Date(),
+                planFingerprint: fingerprint, styleId: editor.project.captions.styleId, aspect: editor.project.export.aspect, outputPath: folder.appendingPathComponent("clip.mp4").path))
+        }
+        try record(fingerprint)
+        #expect(editor.exportRowStatus(clip.id) == .exported && warning() == nil)
+        try record("older-export")
+        #expect(editor.exportRowStatus(clip.id) == .changed && warning() == ClipExportStatus.changed.label)
+        editor.failedExports[ExportLedger.key(.clip(clip.id), aspect: editor.project.export.aspect)] = folder
+        #expect(editor.exportRowStatus(clip.id) == .failed && warning() == ClipExportStatus.failed.label)
+    }
+
+    @Test func clipTwelveKeepsItsNumberOnOneLine() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        var project = editor.project
+        let template = try #require(editor.keptClips.last)
+        for index in 5...12 {
+            var clip = template
+            clip.id = "two-digit-\(index)"
+            project.edits.clips.append(clip)
+        }
+        editor.document.replaceProject(project); editor.refresh()
+        let clip = try #require(editor.keptClips.first { editor.clipNumber($0.id) == 12 })
+        let row = NSHostingView(rootView: ClipRow(shell: shell, editor: editor, clip: clip, suggested: false).frame(width: 224))
+        row.frame = NSRect(x: 0, y: 0, width: 224, height: 28); row.layoutSubtreeIfNeeded()
+        let number = try #require(DebugRightColumn.markers(in: row)["explorer.clipNumber"])
+        let natural = NSHostingView(rootView: Text("12").font(DesignValues.mono(10)).fixedSize()).fittingSize
+        #expect(DebugRightColumn.texts(in: row)["explorer.clipNumber"] == "12")
+        #expect(number.width >= natural.width && number.height <= natural.height)
+        #expect(row.fittingSize.height == 28)
+    }
+
     @Test func rowsUseV2GeometryAndHeadersSpeakCounts() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
@@ -277,7 +386,7 @@ import Testing
             #expect(header.fittingSize.height >= EditorAccessibilityPolicy.minimumTarget)
             header.frame = NSRect(x: 0, y: 0, width: 200, height: 28)
             header.layoutSubtreeIfNeeded()
-            #expect(DebugRightColumn.texts(in: header)["explorer.header.\(section.rawValue)"] == section.accessibilityLabel(count: 4))
+            #expect(DebugRightColumn.texts(in: header)["explorer.header.\(section.rawValue)"] == section.accessibilityLabel(count: 4, title: section == .take ? shell.projectTitle : nil))
         }
     }
 }

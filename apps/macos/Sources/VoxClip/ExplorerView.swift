@@ -128,7 +128,7 @@ import VoxClipCore
                         .tag(SidebarItem.fullTake).id(SidebarItem.fullTake)
                 }
             } header: { ExplorerHeader(shell: shell, section: .take, count: 1) }
-            .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.take.accessibilityLabel(count: 1))
+            .accessibilityElement(children: .contain).accessibilityLabel(ExplorerSection.take.accessibilityLabel(count: 1, title: shell.projectTitle))
             Section {
                 if shell.explorerExpanded(.clips) {
                     if editor.keptClips.isEmpty && !editor.words.isEmpty {
@@ -178,23 +178,36 @@ import VoxClipCore
     @Bindable var shell: WorkspaceShell
     let section: ExplorerSection
     let count: Int
+    private var title: String { section == .take ? shell.projectTitle : section.title }
+    var accessibilityName: String { section.accessibilityLabel(count: count, title: title) }
     var body: some View {
         Button { shell.setExplorerExpanded(section, !shell.explorerExpanded(section)) } label: {
             HStack(spacing: 6) {
                 Image(systemName: shell.explorerExpanded(section) ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .semibold)).frame(width: 10)
-                Text(section.title.uppercased()).font(.system(size: 11, weight: .semibold)).tracking(0.55)
+                Text(title.uppercased()).font(.system(size: 11, weight: .semibold)).tracking(0.55)
+                    .lineLimit(1).truncationMode(.tail).layoutPriority(1)
+                    .columnLayoutEvidence("explorer.header.title.\(section.rawValue)", text: title.uppercased())
                 Spacer(minLength: 0)
-                Text("\(count)").font(.system(size: 11))
+                if section == .outline, let editor = shell.editor {
+                    ViewThatFits(in: .horizontal) {
+                        Text(editor.scopeName(shell.tabs.active.clipID)).font(.system(size: 11)).fixedSize()
+                            .columnLayoutEvidence("explorer.header.trailing.outline", text: editor.scopeName(shell.tabs.active.clipID))
+                        Color.clear.frame(width: 0, height: 0)
+                    }
+                } else if section != .take {
+                    Text("\(count)").font(.system(size: 11))
+                        .columnLayoutEvidence("explorer.header.trailing.\(section.rawValue)", text: "\(count)")
+                }
             }
             .foregroundStyle(DesignValues.color("text.tertiary"))
             .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
         }
         .buttonStyle(.plain).selectionDisabled()
         .help(section == .take ? shell.projectTitle : "")
-        .accessibilityLabel(section.accessibilityLabel(count: count))
+        .accessibilityLabel(accessibilityName)
         .accessibilityValue(shell.explorerExpanded(section) ? "Expanded" : "Collapsed")
         .accessibilityIdentifier("voxclip.explorer.\(section.rawValue)")
-        .columnLayoutEvidence("explorer.header.\(section.rawValue)", text: section.accessibilityLabel(count: count))
+        .columnLayoutEvidence("explorer.header.\(section.rawValue)", text: accessibilityName)
     }
 }
 
@@ -273,7 +286,8 @@ import VoxClipCore
         let duration = editor.editedDuration(clip)
         let exportStatus: ClipExportStatus = suggested ? .none : editor.exportRowStatus(clip.id)
         HStack(spacing: 8) {
-            Text("\(number)").font(DesignValues.mono(10)).foregroundStyle(SidebarStyle.meta(emphasized)).frame(width: 9).accessibilityHidden(true)
+            Text("\(number)").font(DesignValues.mono(10)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize().frame(minWidth: 13).accessibilityHidden(true)
+                .columnLayoutEvidence("explorer.clipNumber", text: "\(number)")
             ExplorerThumbnail(editor: editor, clip: clip, emphasized: emphasized)
             if shell.renaming == clip.id {
                 TextField("Clip title", text: $shell.renameDraft)
@@ -285,6 +299,11 @@ import VoxClipCore
             Spacer(minLength: 0)
             if editor.containsAISpeech(clipID: clip.id) { ExplorerVoiceGlyph() }
             Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
+            if exportStatus == .changed || exportStatus == .failed {
+                Image(systemName: "exclamationmark.triangle").font(.system(size: 11))
+                    .foregroundStyle(DesignValues.color("status.warning")).accessibilityHidden(true)
+                    .columnLayoutEvidence("explorer.exportWarning", text: exportStatus.label)
+            }
         }
         .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
         .overlay(alignment: .leading) {

@@ -105,7 +105,10 @@ enum EditorTab: Hashable, Sendable {
     /// tab stays pinned; the next preview replaces only the temporary tab.
     func openPreview(_ tab: EditorTab) {
         guard tab.closable, !clipTabs.contains(tab) else { return }
-        if let preview, dirty.contains(preview) || hasWork?(preview) == true { keepOpen(preview) }
+        if let preview, dirty.contains(preview) || hasWork?(preview) == true {
+            keepOpen(preview)
+            if preview == tab { return }
+        }
         preview = tab
     }
 

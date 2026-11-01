@@ -3,9 +3,6 @@ import AppKit
 import SwiftUI
 import VoxClipCore
 
-/// V11a still consumes this shared fixture name; the implementation and checks live here.
-typealias DebugSidebar = DebugExplorer
-
 /// The sidebar (step 5) on the "Five questions" fixture from the design mockups: four
 /// kept clips and one AI suggestion, with clip numbering, Keep, Keep All, Dismiss,
 /// Remove, Rename and row scoping, and light and dark captures.
@@ -19,7 +16,7 @@ typealias DebugSidebar = DebugExplorer
         let entries = shell.outlineEntries
         check("Explorer Outline entries equal TranscriptParagraphs", entries.map(\.words) == paragraphs)
         check("Explorer headers name their groups and counts", ExplorerSection.clips.accessibilityLabel(count: editor.keptClips.count) == "Clips, \(editor.keptClips.count) items"
-              && ExplorerSection.take.accessibilityLabel(count: 1) == "Take, 1 item")
+              && ExplorerHeader(shell: shell, section: .take, count: 1).accessibilityName == "\(shell.projectTitle), 1 item")
         check("Explorer rows are 28, Outline rows 24 and thumbnails 36 by 20", ExplorerMetrics.rowHeight == 28 && ExplorerMetrics.outlineHeight == 24
               && ExplorerMetrics.thumbnailSize == CGSize(width: 36, height: 20))
         check("Explorer disclosures and row actions have at least 24 point targets", ExplorerMetrics.rowHeight >= EditorAccessibilityPolicy.minimumTarget
@@ -750,7 +747,7 @@ typealias DebugSidebar = DebugExplorer
         // check while the missing-media editor is leaving, which still refuses them.
         located.isLeaving = true
         real.selection = .clip(suggestion.id)
-        check("a row change the editor refuses (missing video) returns the selection to Full Take", real.selection == .fullTake && located.project.edits.activeClipId == nil)
+        check("a row change the editor refuses (leaving) returns the selection to Full Take", real.selection == .fullTake && located.project.edits.activeClipId == nil)
         located.isLeaving = false
         located.mediaResolved = true
         check("with the video found, Export Video… is available", located.exportUnavailable == nil && located.canExport)

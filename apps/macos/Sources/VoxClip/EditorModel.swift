@@ -179,10 +179,17 @@ struct EditorRenderSnapshot {
     var fallbackNote: String?
     /// The suggestion that has keyboard focus after Find Clips, without being selected
     /// (design §6.2): Return keeps it and ⌫ dismisses it.
-    var focusedSuggestion: String?
+    var focusedSuggestion: String? {
+        didSet { if focusedSuggestion != nil { onNeedsSuggestions?() } }
+    }
     /// A Find Clips run (Hook's or the popover's) is under way; `findingSince` is when it started, for the status bar's
     /// elapsed time (impl-plan V11a).
-    var finding = false { didSet { if finding != oldValue { findingSince = finding ? Date() : nil } } }
+    var finding = false {
+        didSet {
+            if finding != oldValue { findingSince = finding ? Date() : nil }
+            if finding { onNeedsSuggestions?() }
+        }
+    }
     private(set) var findingSince: Date?
     var exportProgress: ExportProgress?
     var exports: [ExportResult] = []
@@ -314,6 +321,8 @@ struct EditorRenderSnapshot {
     @ObservationIgnored var wantsTranscriptFocus = true
     /// Shows the sidebar for the Find Clips setup callout and a run's progress (design §6.2).
     @ObservationIgnored var onNeedsSidebar: (() -> Void)?
+    /// Progress and keyboard focus must have visible rows even after a disclosure collapsed.
+    @ObservationIgnored var onNeedsSuggestions: (() -> Void)?
     #if DEBUG
     @ObservationIgnored var editTimestampForTests: Date?
     /// The last VoiceOver announcement, for harness checks.
