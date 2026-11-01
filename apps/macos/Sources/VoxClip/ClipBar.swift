@@ -6,9 +6,10 @@ import VoxClipCore
 // Rewrite, Tighten and Hook, the Ask field and the harness picker; for a suggested clip it holds
 // "Suggested clip", Keep ⇧⌘↩ and Dismiss. A control that cannot act is not shown (design.md
 // §1.6), and with no editable scope (no transcript, missing media, a Versions window) the bar is
-// empty. Phase 0 meanings (impl-plan item 1): Rewrite and Ask open today's selection Rewrite with
-// the field's text as the instruction; Tighten cuts the scope's fillers and pauses as one undo
-// step; Hook finds hook clips in the take with one click.
+// empty. Phase 0 meanings (impl-plan item 1): Rewrite and Ask run Rewrite on the scope now (V13:
+// the selection, else the tab's clip, else Full Take) with the field's text as the instruction;
+// Tighten cuts the scope's fillers and pauses as one undo step; Hook finds hook clips in the take
+// with one click.
 
 /// What the bar holds: nothing, a scope's verbs (the tab's clip, nil for Full Take), or a suggestion's Keep and Dismiss.
 enum ClipBarVariant: Equatable {
@@ -78,16 +79,11 @@ enum ClipBarMetrics {
         keep.onPress = { [weak self] in self?.keepSuggestion() }
         dismiss.onPress = { [weak self] in self?.dismissSuggestion() }
         toast.undo.onPress = { [weak self] in self?.undoTighten() }
-        rewrite.toolTip = "Rewrite the selected words (⇧⌘R)"
         hook.setAccessibilityLabel("Hook: find hook clips in this take")
         hook.toolTip = "Find hook clips in this take. They land in Suggested."
-        askButton.setAccessibilityLabel("Ask about these words")
-        askButton.toolTip = "Ask about these words"
         keep.toolTip = "Keep this clip (⇧⌘↩)"
         ask.delegate = self
         ask.onFocus = { [weak self] in self?.askTookFocus() }
-        ask.placeholder = Self.askPlaceholder
-        ask.setAccessibilityLabel(Self.askPlaceholder.replacingOccurrences(of: "…", with: ""))
         ask.setAccessibilityHelp("Return opens Rewrite with what you type. Empty asks to fix mistakes.")
         render()
     }
@@ -95,8 +91,16 @@ enum ClipBarMetrics {
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 
-    /// The field's placeholder while it acts on the selection (V3b; V13 names the tab's clip).
-    static let askPlaceholder = "Ask about these words…"
+    /// What Rewrite and Ask act on now, named for the verb's VoiceOver name and tooltip and the field's placeholder:
+    /// "Rewrite selection" and "Ask about these words…", "Rewrite clip 1" and "Ask about Clip 1…", or "Rewrite full
+    /// take" and "Ask about Full Take…" (V13's `rewriteScopeNow`; design.md §1 item 1).
+    var rewriteNames: (verb: String, ask: String) {
+        switch model.rewriteScopeNow {
+        case .selection: ("Rewrite selection", "Ask about these words…")
+        case .clip(let id): ("Rewrite clip \(model.clipNumber(id) ?? 1)", "Ask about \(model.scopeName(id))…")
+        case .fullTake, nil: ("Rewrite full take", "Ask about Full Take…")
+        }
+    }
 
     func tearDown() {
         toastEnd?.cancel()
@@ -112,17 +116,9 @@ enum ClipBarMetrics {
         if case .suggestion(let id) = tab, model.isSuggestion(id) { return .suggestion(id) }
         return .scope(tab.clipID)
     }
-    /// Today's selection Rewrite can open (impl-plan V3b): a selection, and the entry policy allows it.
-    var rewriteAvailable: Bool {
-        RewriteEntryPolicy.resolve(.selection, enabled: model.app.bool("voiceLab.enabled"), noticeAccepted: model.app.bool("voiceLab.betaNoticeAccepted"),
-                                   editable: model.capabilities.ai, selection: !model.selectedIDs.isEmpty) == .openPassage
-    }
-    /// The chosen AI asks before each send (C8), so the verb reads "Rewrite…" (design.md §3.1).
-    var rewriteAsksFirst: Bool {
-        guard let id = ConnectorID(rawValue: model.app.string("llm.connector")) else { return false }
-        if case .confirm = model.app.llmSendKind(id) { return true }
-        return false
-    }
+    /// Rewrite can run on the scope now (V13): AI editing is available and there are words. Text Rewrite needs no
+    /// selection and no Voice Lab.
+    var rewriteAvailable: Bool { RewriteEntryPolicy.canRun(editable: model.capabilities.ai, scope: model.rewriteScopeNow) }
     var rewriteRunning: Bool { model.rewrite?.task.state == .running }
     /// The Tighten toast shows until the project changes again or the tab moves.
     var toastShown: Bool {
@@ -155,8 +151,16 @@ enum ClipBarMetrics {
         let canRewrite = scoped && rewriteAvailable
         rewrite.isHidden = !canRewrite || running
         rewrite.isOn = model.rewrite != nil
-        rewrite.label = rewriteAsksFirst ? "Rewrite…" : "Rewrite"
-        rewrite.setAccessibilityLabel("Rewrite selection")
+        // The chosen AI asks before each send (C8): "Rewrite…", as Edit › Rewrite's title (design.md §3.1).
+        rewrite.label = model.rewriteAsksFirst ? "Rewrite…" : "Rewrite"
+        let names = rewriteNames
+        rewrite.setAccessibilityLabel(names.verb)
+        rewrite.toolTip = "\(names.verb) (⇧⌘R)"
+        let askName = names.ask.replacingOccurrences(of: "…", with: "")
+        if ask.placeholder != names.ask { ask.placeholder = names.ask }
+        ask.setAccessibilityLabel(askName)
+        askButton.setAccessibilityLabel(askName)
+        askButton.toolTip = askName
         rewriting.isHidden = !running
         let toasting = scoped && toastShown
         toast.isHidden = !toasting
@@ -250,11 +254,11 @@ enum ClipBarMetrics {
 
     // MARK: Actions
 
-    /// Rewrite and Return in the Ask field: today's selection Rewrite with the field's text as its instruction
-    /// (impl-plan V3b). V13 swaps this one call for the scope's Rewrite.
+    /// Rewrite and Return in the Ask field: Rewrite on the scope now with the field's text as its instruction, as Edit ›
+    /// Rewrite and ⇧⌘R run it (V13's `runRewrite`); on the open session's own scope it sends again.
     func runRewrite() {
         commitAsk()
-        model.beginRewrite(entry: .selection)
+        model.runRewrite()
     }
     /// Tighten on the bar's scope, one undo step, then "8 cuts · Undo" in its place.
     func runTighten() {
@@ -331,7 +335,7 @@ enum ClipBarMetrics {
     func showAskPopover() {
         guard askPopover?.isShown != true else { return }
         let field = ClipBarAskField()
-        field.placeholder = Self.askPlaceholder
+        field.placeholder = rewriteNames.ask
         field.setAccessibilityLabel(ask.accessibilityLabel())
         field.stringValue = model.rewriteInstruction
         field.delegate = self

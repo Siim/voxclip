@@ -310,7 +310,7 @@ private actor HookFixtureConnector: LLMConnector {
         #expect(bar.picker.accessibilityRole() == .menuButton && bar.hook.accessibilityLabel() == "Hook: find hook clips in this take")
         // No editable scope: the bar is empty and no group (design.md §3.1).
         editor.mediaResolved = false
-        bar.render()
+        lay(bar, width: 652)
         #expect(bar.variant == .hidden && !bar.isAccessibilityElement())
         let all: [NSView] = [bar.rewrite, bar.tighten, bar.hook, bar.ask, bar.picker, bar.keep]
         #expect(all.allSatisfy { $0.isHidden })
@@ -428,41 +428,64 @@ private actor HookFixtureConnector: LLMConnector {
 
     // MARK: Rewrite and Ask
 
-    @Test func rewriteOpensTheSelectionRewriteWithTheFieldAsItsInstruction() async throws {
+    /// Rewrite and Return in the Ask field run V13's Rewrite on the scope now with the field's text: the tab's clip with
+    /// no selection, the selection when there is one, Full Take on its tab. Text Rewrite needs no Voice Lab.
+    @Test func rewriteRunsTheScopeNowWithTheFieldAsItsInstruction() async throws {
         let app = AppModel(settingsStore: RegressionSettingsStore())
         let fake = ConsentFixtureConnector(id: .ollama, readiness: .ready, authMethod: nil)
         app.connectorOverride = { _ in fake }
         app.set("llm.connector", .string("ollama"))
-        app.set("voiceLab.enabled", .bool(true))
-        app.set("voiceLab.betaNoticeAccepted", .bool(true))
-        let shared = try SharedResources.locate()
-        let editor = DebugConnectorRequests.makeEditor(fixture: try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")), app: app)
-        defer { editor.close() }
-        let bar = ClipBarView(model: editor, shell: WorkspaceShell(app: app))
-        defer { bar.tearDown() }
+        app.set("voiceLab.enabled", .bool(false))
+        let (shell, editor, _, bar) = try await open(try fiveQuestions(), app: app)
+        defer { bar.tearDown(); editor.closeRewrite(returnFocus: false); editor.close() }
+        // Clip 1, nothing selected: Rewrite and the Ask field act on the clip, with the picker inside the field.
+        shell.selection = .clip("five-1")
+        editor.selectedWordIDs = []
         lay(bar, width: 652)
-        // A selection: Rewrite and the Ask field show, with the picker inside the field.
         #expect(shows(bar.rewrite) && shows(bar.ask) && !shows(bar.askButton) && bar.rewrite.label == "Rewrite")
-        #expect(bar.ask.placeholder == ClipBarView.askPlaceholder && abs(bar.picker.frame.maxX - (bar.ask.frame.maxX - ClipBarMetrics.askTrailing)) <= 0.5)
+        #expect(bar.rewrite.accessibilityLabel() == "Rewrite clip 1" && bar.ask.placeholder == "Ask about Clip 1…" && bar.ask.accessibilityLabel() == "Ask about Clip 1")
+        #expect(abs(bar.picker.frame.maxX - (bar.ask.frame.maxX - ClipBarMetrics.askTrailing)) <= 0.5)
         bar.ask.stringValue = "Make it punchier"
         bar.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: bar.ask))
         #expect(editor.rewriteInstruction == "Make it punchier")
         bar.rewrite.performClick(nil)
         await editor.rewriteOpenTask?.value
-        let session = try #require(editor.rewrite)
-        #expect(session.instruction == "Make it punchier")
+        let clipSession = try #require(editor.rewrite)
+        #expect(clipSession.rewriteScope == .clip("five-1") && clipSession.instruction == "Make it punchier")
         bar.render()
-        #expect(bar.rewrite.isOn)
-        // No selection: Rewrite and Ask are not shown, the picker stands alone at the end.
+        #expect(bar.rewrite.isOn || shows(bar.rewriting))
+        // The run holds the project's AI lease; once the stub answers, Rewrite can run again.
+        await clipSession.actionTask?.value
+        bar.render()
+        #expect(bar.rewrite.isOn && shows(bar.rewrite))
+        // A selection: the verb and the field name it, and Return in the field replaces the clip's session with one on it.
+        let words = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
+        editor.selectedWordIDs = Set(editor.words[(words + 2)...(words + 4)].map(\.id))
+        bar.render()
+        #expect(bar.rewrite.accessibilityLabel() == "Rewrite selection" && bar.ask.placeholder == "Ask about these words…")
+        bar.ask.stringValue = "Shorter"
+        bar.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: bar.ask))
+        let editorView = NSTextView()
+        #expect(bar.control(bar.ask, textView: editorView, doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        await editor.rewriteOpenTask?.value
+        let selectionSession = try #require(editor.rewrite)
+        #expect(selectionSession !== clipSession && !clipSession.isOpen)
+        #expect(selectionSession.rewriteScope == .selection((words + 2)...(words + 4)) && selectionSession.instruction == "Shorter")
+        await selectionSession.actionTask?.value
+        // Full Take on its tab, nothing selected.
         editor.closeRewrite(returnFocus: false)
         editor.selectedWordIDs = []
+        shell.selection = .fullTake
         lay(bar, width: 652)
-        #expect(!shows(bar.rewrite) && !shows(bar.ask) && shows(bar.picker) && abs(bar.picker.frame.maxX - (652 - ClipBarMetrics.trailing - ClipBarMetrics.askTrailing)) <= 0.5)
-        // An API-key AI asks before each send: "Rewrite…".
-        editor.selectedWordIDs = Set(editor.words[3...5].map(\.id))
+        #expect(shows(bar.rewrite) && bar.rewrite.accessibilityLabel() == "Rewrite full take" && bar.ask.placeholder == "Ask about Full Take…")
+        // An API-key AI asks before each send: "Rewrite…", as Edit › Rewrite's title.
         app.set("llm.connector", .string("anthropic"))
         bar.render()
-        #expect(bar.rewrite.label == "Rewrite…")
+        #expect(bar.rewrite.label == "Rewrite…" && editor.rewriteMenuTitle == "Rewrite Full Take…")
+        // Without AI editing (missing media) the bar holds nothing.
+        editor.mediaResolved = false
+        lay(bar, width: 652)
+        #expect(!shows(bar.rewrite) && !shows(bar.ask))
         // The instruction's limit is 1,000 bytes of UTF-8, cut at a character.
         #expect(ClipBarView.limited(String(repeating: "é", count: 600)).utf8.count == 1_000)
     }
