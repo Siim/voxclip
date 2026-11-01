@@ -1152,6 +1152,8 @@ The transcript shows a proposal as tracked changes. The panel's change list and 
 
 The treatments of these states, and of the selected clip and a selection, come with the visual redesign. Their contrast pairs join `tools/design/contrast.mjs` then, and every text pair keeps at least 4.5:1 (§15).
 
+macOS (v2) draws them as a code diff. New words read in `text.primary` on `change.add` at 19 %, at the text's height with radius 2; removed words keep their place in `word.gone` with a 1 pt strike, as under Show cuts; words a change keeps (bridges) stay plain, and words already cut inside it fold like any cut. A 3 pt `change.add` bar at x 66 runs beside every line a pending change touches, at 100 % for the focused change and 50 % for the others; the line's glyph column shows the change's kind (waveform for voice, pencil for a fix, scissors for a cut, in `text.tertiary`), above the AI voice waveform. The focused change shows **Keep ⌘↩** and **Undo ⌘⌫**, 20 pt buttons over a blank the text keeps after its last word, or after the next word or two when they end its clause. An excluded change shows its original words with a dotted `text.tertiary` underline. A fix that only moves punctuation is not drawn; Keep All still applies it. While changes wait for review, AI words outside them lose their marker and underline and keep the gutter glyph. Pending changes are also marks on the overview ruler. **Keep** on a cut or fix applies it as one undo step, "Keep change {i}"; on a voice change it includes it for takes, with no project change. **Undo** leaves the change out (unchecked in the list) with no project change and no undo step. **Keep All** keeps every change not left out: the cuts and fixes as one undo step named for the scope ("Rewrite clip {n}"), whose undo also takes the voice changes back to waiting. After Keep or Undo the focus moves to the next waiting change. The proposal belongs to its tab and shows only while that tab is open. VoiceOver reaches Keep, Undo and Edit through the transcript's custom actions and the **Proposed changes** rotor; the buttons themselves are not elements.
+
 **Inserted words** are display-only runs that map to no word ID.
 
 - macOS: an inserted-range table beside the word-to-character map, rebuilt per affected paragraph.
@@ -1774,7 +1776,9 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Stop a running Rewrite | ⌘. or Esc | Esc | Also the panel's **Stop** |
 | Close the Rewrite panel | Esc, when nothing runs | Esc | Focus returns to the scope's first word |
 | Rewrite panel's primary action | ⌘Return anywhere in the panel; plain Return only when focus is on a footer button or plain panel text, never on a change or phrase row, a checkbox or a text field | Ctrl+Enter in the panel | Return on a focused change row edits it (next row) |
-| Edit a proposed change | Return on a focused change or change row | Enter or F2 | Click also opens it (§6.3.5) |
+| Edit a proposed change | Return on a focused change or change row | Enter or F2 | Click also opens it (§6.3.5). macOS (v2): F2 too, and Return on a selection inside a change; Return elsewhere still corrects spelling |
+| Keep / undo the focused change | ⌘Return / ⌘⌫ in the transcript (macOS v2) | Ctrl+Enter / Ctrl+Backspace (proposed) | Undo leaves it out; it never changes the project (§6.3.5) |
+| Next / previous change | ⌥↓ / ⌥↑ in the transcript (macOS v2) | Alt+Down / Alt+Up (proposed) | Reads "Proposed change {i} of {c}: …" |
 | Include or exclude a change | Space on its row | Space | |
 | Compare takes | Space plays the focused phrase; ← → switch its take | Space; ← → | |
 | Write a Rewrite instruction | Click the field, or ⌃F6 to the scope bar, then Tab | Click, or F6, then Tab | |
