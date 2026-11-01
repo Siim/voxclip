@@ -447,21 +447,26 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     func relayViewportLayout() {
         guard let controller = textLayoutManager?.textViewportLayoutController else { return }
         if let viewportRelay, controller.delegate === viewportRelay { return }
-        let relay = TranscriptViewportRelay(base: controller.delegate) { [weak self] in self?.viewportDidLayout() }
+        let relay = TranscriptViewportRelay(base: controller.delegate) { [weak self] in self?.placeLayers() }
         viewportRelay = relay
         controller.delegate = relay
     }
-    /// Every viewport layout (scrolling, resizing, new text) moves the backdrop, the
-    /// selection, the caret and the overview ruler's visible window with the lines TextKit
-    /// just placed. Measured directly while the viewport is short of the visible rect (a scroll
-    /// with no layout pass yet), it lays the viewport out first, so these never follow lines
-    /// from before the scroll.
+    /// Measures what follows the laid-out lines now. While the viewport is short of the
+    /// visible rect (a scroll with no layout pass yet), it lays the viewport out first, so
+    /// these never follow lines from before the scroll; that layout's relay call places them.
     func viewportDidLayout() {
         if let controller = textLayoutManager?.textViewportLayoutController, case let visible = visibleRect, !visible.isEmpty {
             // The viewport is in text container coordinates.
             let needed = visible.offsetBy(dx: -textContainerOrigin.x, dy: -textContainerOrigin.y)
             if !controller.viewportBounds.insetBy(dx: -1, dy: -1).contains(needed) { controller.layoutViewport() }
         }
+        placeLayers()
+    }
+    /// After every viewport layout (scrolling, resizing, new text; the relay calls it), moves
+    /// the backdrop, the selection, the caret and the overview ruler's visible window with the
+    /// lines TextKit just placed. It never lays the viewport out itself: called from inside a
+    /// layout, that would start another layout, and TextKit 2 does not stop the recursion.
+    func placeLayers() {
         updateBackdrop()
         updateSelectionLayer()
         updateCaret()

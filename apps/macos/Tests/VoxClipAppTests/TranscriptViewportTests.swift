@@ -161,5 +161,20 @@ import Testing
         let (shown, _) = try current(pane)
         #expect(caught == shown && !caught.caretHidden && !caught.selectionHidden, "the same overlays as after the layout pass: \(caught) vs \(shown)")
     }
+
+    /// The relay's call after a layout only places the overlays. Laying the viewport out again
+    /// from there would start a layout inside a layout, and TextKit 2 does not stop that
+    /// recursion where the viewport stays short of the visible rect.
+    @Test func theRelaysCallAfterALayoutNeverLaysTheViewportOutAgain() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488)); defer { pane.close() }
+        let controller = try #require(pane.text.textLayoutManager).textViewportLayoutController
+        let relay = try #require(controller.delegate as? TranscriptViewportRelay)
+        try scrollToThirteen(pane)
+        let top = controller.viewportBounds
+        #expect(top.minY + pane.text.textContainerOrigin.y < pane.text.visibleRect.minY - 100, "the viewport is still the top's")
+        relay.textViewportLayoutControllerDidLayout(controller)
+        #expect(controller.viewportBounds == top, "the relay laid nothing out: \(top) → \(controller.viewportBounds)")
+    }
 }
 #endif
