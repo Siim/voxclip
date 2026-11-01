@@ -143,7 +143,7 @@ import VoxClipCore
             // are the timeline's, and the hover transport's only while the timeline is hidden.
             for required in ["voxclip.viewer.stage", "voxclip.panel.title", "voxclip.panel.job.captions"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
             if !identifiers.contains("voxclip.rewrite") {
-                for required in ["voxclip.captions.switch", "voxclip.captions.summary", "voxclip.captions.gallery"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
+                for required in ["voxclip.captions.switch", "voxclip.captions.properties", "voxclip.captions.gallery"] where !identifiers.contains(required) { failures.append("Missing \(required)") }
                 if !elements.contains(where: { $0.role == kAXRadioButtonRole && $0.label.contains(": ") }) { failures.append("Missing caption gallery choices") }
                 for (identifier, roles) in [
                     ("voxclip.captions.heading", [kAXStaticTextRole]),

@@ -19,9 +19,7 @@ import VoxClipCore
     static func run(app: AppModel, directory: URL) async throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root else { throw VoxClipError.sharedResourcesMissing }
         let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
-        let ordered = CaptionStyleGroup.allCases.flatMap { group in
-            app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
-        }
+        let ordered = CaptionsSection.galleryOrder(app.styles)
         guard let first = ordered.first, let last = ordered.last, ordered.count > 2 else { throw CocoaError(.coderInvalidValue) }
         let middle = ordered[ordered.count / 2]
         var results: [DebugUISuite.Result] = []
@@ -43,13 +41,14 @@ import VoxClipCore
                 let receipt = await settle(host: host, identifier: identifier, style: style.id,
                     name: "\(row)-\(Int(width))", width: width, height: height)
                 measurements.append(receipt)
-                results.append(selectionResult(name: "gallery \(row) selection at \(width): full ring, checkmark and name fit", receipt: receipt, actualStyle: model.project.captions.styleId))
+                results.append(selectionResult(name: "gallery \(row) selection at \(width): full ring and name fit", receipt: receipt, actualStyle: model.project.captions.styleId))
                 results.append(.init(name: "gallery \(row) selection at \(width): selection uses the editor's real style action", passed: model.project.captions.styleId == style.id))
                 let markers = DebugRightColumn.markers(in: host)
-                // The ring marker is the stroke's path, outset 2 points; a 2-point stroke paints 1 more.
-                let ring = markers["caption.ring.\(style.id)"]?.insetBy(dx: -1, dy: -1)
+                // The ring marker is the outer ring's whole frame, 1 point outside the tile.
+                let ring = markers["caption.ring.\(style.id)"]
                 let target = markers["caption.target.\(style.id)"]
-                let includesRing = ring.flatMap { ring in target.map { ring.minY >= $0.minY - 0.5 && ring.maxY <= $0.maxY + 0.5 && ring.minX >= $0.minX - 3.5 && ring.maxX <= $0.maxX + 3.5 } } ?? false
+                let reserve = CaptionsPanelMetrics.ringReserve + 0.5
+                let includesRing = ring.flatMap { ring in target.map { ring.minY >= $0.minY - 0.5 && ring.maxY <= $0.maxY + 0.5 && ring.minX >= $0.minX - reserve && ring.maxX <= $0.maxX + reserve } } ?? false
                 results.append(.init(name: "gallery \(row) selection at \(width): the scroll target includes the ring's real top", passed: includesRing))
             }
             let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
@@ -75,7 +74,9 @@ import VoxClipCore
         }
         results += DebugCaptionsSection.revealPolicyChecks()
         results += try await regressionChecks(app: app, fixture: fixture, ordered: ordered, directory: directory)
+        results += try await captures(app: app, fixture: fixture, directory: directory)
         results.append(.init(name: "gallery interaction audit opens no windows", passed: NSApp.windows.count == windowsBefore))
+        results += try await scrollerFit(app: app, fixture: fixture)
         try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("caption-gallery-interactions.json"), options: .atomic)
         return results
     }
@@ -94,9 +95,10 @@ import VoxClipCore
         _ = await settle(host: host, identifier: identifier, style: first.id, name: "regression-materialize", width: 360, height: 4096)
         let firstReceipt = await settle(host: host, identifier: identifier, style: first.id, name: "regression-first", width: 360, height: 4096)
         let markers = DebugRightColumn.markers(in: host)
-        let rowGap = markers["caption.name.\(first.id)"].flatMap { name in markers["caption.image.\(ordered[2].id)"].map { $0.minY - name.maxY } }
+        // Three columns: the next row starts at the fourth style.
+        let rowGap = markers["caption.name.\(first.id)"].flatMap { name in markers["caption.image.\(ordered[CaptionsPanelMetrics.columns].id)"].map { $0.minY - name.maxY } }
         var results: [DebugUISuite.Result] = [
-            .init(name: "gallery visible row gap excludes the 3-point ring reserve (\(rowGap ?? -1))", passed: firstReceipt.settled && rowGap.map { abs($0 - 10) <= 0.5 } == true)
+            .init(name: "gallery visible row gap is 6 with the ring reserve inside it (\(rowGap ?? -1))", passed: firstReceipt.settled && rowGap.map { abs($0 - CaptionsPanelMetrics.rowGap) <= 0.5 } == true)
         ]
         model.setStyle(last.id)
         let lastReceipt = await settle(host: host, identifier: identifier, style: last.id, name: "regression-last", width: 360, height: 4096)
@@ -133,7 +135,8 @@ import VoxClipCore
         func errorVisible() -> Bool {
             guard let error = DebugRightColumn.markers(in: host)["caption.error"], let scroll = DebugRightColumn.scrollViews(in: host).first else { return false }
             let viewport = scroll.convert(scroll.bounds, to: host)
-            return host.bounds.insetBy(dx: -0.5, dy: -0.5).contains(error) && error.maxY <= viewport.minY - 11.5
+            // The notice sits on the gallery's top edge; its own 12 pt padding is the gap.
+            return host.bounds.insetBy(dx: -0.5, dy: -0.5).contains(error) && error.maxY <= viewport.minY + 0.5
         }
         results.append(.init(name: "automatic reveal cannot hide a caption error above the gallery", passed: errorReceipt.settled && errorVisible()))
         command(identifier, ["end": true])
@@ -142,15 +145,104 @@ import VoxClipCore
         try JSONEncoder().encode(snapshots).write(to: directory.appendingPathComponent("caption-gallery-regressions.json"), options: .atomic)
         return results
     }
+    /// The Captions job at 1280 × 800 (404 × 522) in a borderless window that is never shown,
+    /// where its scroll views are laid out as on screen: the gallery's scroll view stays inside
+    /// the column's padding less the ring reserve, the tiles fill the width it gives them, and
+    /// the last style is revealed in it. `MacUIIntegrationTests` runs this audit again with
+    /// `-AppleShowScrollBars Always`, where a legacy scroller takes its width from the tiles.
+    private static func scrollerFit(app: AppModel, fixture: Project) async throws -> [DebugUISuite.Result] {
+        guard let last = CaptionsSection.galleryOrder(app.styles).last else { throw CocoaError(.coderInvalidValue) }
+        let row = CaptionsSection.galleryOrder(app.styles).prefix(CaptionsPanelMetrics.columns).map(\.id)
+        let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.setAspect(.landscape)
+        let (width, height): (CGFloat, CGFloat) = (404, 522)
+        let controller = NSHostingController(rootView: PanelHost(model: model, shell: WorkspaceShell(app: app), width: width, height: height))
+        controller.sizingOptions = []
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: width, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = controller
+        defer { window.close() }
+        let host = controller.view
+        host.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        let identifier = try await galleryID(in: host)
+        defer { CaptionGalleryAudit.snapshots.removeValue(forKey: identifier) }
+        command(identifier, ["selectStyle": last.id])
+        let receipt = await settle(host: host, identifier: identifier, style: last.id, name: "scroller-fit", width: width, height: height)
+        let markers = DebugRightColumn.markers(in: host)
+        let gallery = markers["caption.gallery.\(identifier)"]
+        let scroll = DebugRightColumn.scrollViews(in: host).first { scroll in gallery.map { abs(scroll.convert(scroll.bounds, to: host).minY - $0.minY) <= 0.5 } == true }
+        let frame = scroll.map { $0.convert($0.bounds, to: host) } ?? .zero
+        let clip = scroll.map { $0.contentView.convert($0.contentView.bounds, to: host) } ?? .zero
+        let style = scroll.map { $0.scrollerStyle == .legacy ? "legacy" : "overlay" } ?? "no"
+        let reserve = CaptionsPanelMetrics.ringReserve, edge = CaptionsPanelMetrics.inset - reserve
+        let inside = scroll != nil && frame.minX >= edge - 0.5 && frame.maxX <= width - edge + 0.5
+        // An offscreen host lays views on whole points, so a column of tiles may be 1 off.
+        let filled = markers["caption.image.\(row[0])"].map { abs($0.minX - reserve - clip.minX) <= 1 } == true
+            && markers["caption.image.\(row[2])"].map { abs($0.maxX + reserve - clip.maxX) <= 1 } == true
+        return [
+            .init(name: "gallery at 404 with \(style) scrollers stays inside the column (\(frame)) and its tiles fill what it gives them (\(clip))", passed: inside && filled),
+            .init(name: "gallery at 404 with \(style) scrollers reveals the last style", passed: receipt.settled && model.project.captions.styleId == last.id)
+        ]
+    }
+    /// The right column on the Captions job, offscreen, at 1280 × 800 (404 × 522) to set beside
+    /// f1's and at the 960 × 600 minimum (324 × 322): `v2-captions-{1280,960}-{dark,light}.png`,
+    /// once every tile in view has drawn or after 3 seconds.
+    private static func captures(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
+        var results: [DebugUISuite.Result] = []
+        for (window, width, height, rows) in [(1280, CGFloat(404), CGFloat(522), 2), (960, 324, 322, 1)] {
+        for (name, appearance) in [("dark", NSAppearance.Name.darkAqua), ("light", .aqua)] {
+            let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
+            defer { model.close() }
+            model.setAspect(.landscape)
+            model.setStyle("box-highlight")
+            let controller = NSHostingController(rootView: PanelHost(model: model, shell: WorkspaceShell(app: app), width: width, height: height))
+            controller.sizingOptions = []
+            let host = controller.view
+            host.frame = CGRect(x: 0, y: 0, width: width, height: height)
+            host.appearance = NSAppearance(named: appearance)
+            // The rows in view; each tile has drawn when its stage is no longer plain black.
+            let shown = CaptionsSection.galleryOrder(app.styles).prefix(rows * CaptionsPanelMetrics.columns).map(\.id)
+            let started = ProcessInfo.processInfo.systemUptime
+            var drawn = 0
+            repeat {
+                await layoutTurns(host)
+                guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { break }
+                host.cacheDisplay(in: host.bounds, to: bitmap)
+                let markers = DebugRightColumn.markers(in: host)
+                drawn = shown.filter { id in
+                    guard let image = markers["caption.image.\(id)"] else { return false }
+                    return inked(bitmap, in: image.insetBy(dx: 8, dy: 6), host: host)
+                }.count
+                if drawn == shown.count {
+                    if let data = bitmap.representation(using: .png, properties: [:]) { try data.write(to: directory.appendingPathComponent("v2-captions-\(window)-\(name).png")) }
+                    break
+                }
+            } while ProcessInfo.processInfo.systemUptime - started < 3
+            results.append(.init(name: "v2-captions-\(window)-\(name): the tiles in view drew their phrase (\(drawn) of \(shown.count))", passed: drawn == shown.count))
+        }
+        }
+        return results
+    }
+    /// Whether `rect` (host points) holds a pixel brighter than the stage in `bitmap`.
+    private static func inked(_ bitmap: NSBitmapImageRep, in rect: CGRect, host: NSView) -> Bool {
+        let scale = CGFloat(bitmap.pixelsWide) / max(1, host.bounds.width)
+        let flipped = host.isFlipped ? rect : CGRect(x: rect.minX, y: host.bounds.height - rect.maxY, width: rect.width, height: rect.height)
+        for y in stride(from: Int(flipped.minY * scale), to: Int(flipped.maxY * scale), by: 2) {
+            for x in stride(from: Int(flipped.minX * scale), to: Int(flipped.maxX * scale), by: 2) {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if max(color.redComponent, color.greenComponent, color.blueComponent) > 0.5 { return true }
+            }
+        }
+        return false
+    }
     private static func layoutTurns(_ host: NSView) async {
         for _ in 0..<24 { host.layoutSubtreeIfNeeded(); await Task.yield() }
     }
     static func runNative(in host: NSView, model: EditorModel, window: NSWindow, name: String, directory: URL,
                           assertSelection: @MainActor (String, String) async throws -> Void) async throws {
         let original = model.project.captions.styleId
-        let ordered = CaptionStyleGroup.allCases.flatMap { group in
-            model.app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
-        }
+        let ordered = CaptionsSection.galleryOrder(model.app.styles)
         guard let first = ordered.first, let last = ordered.last, ordered.count > 2 else { throw CocoaError(.coderInvalidValue) }
         let middle = ordered[ordered.count / 2]
         let identifier = try await galleryID(in: host)
@@ -199,9 +291,7 @@ import VoxClipCore
     private static func shortViewport(app: AppModel, window: NSWindow, directory: URL) async throws -> [DebugUISuite.Result] {
         guard let root = app.shared?.root, let content = window.contentView else { throw CocoaError(.coderInvalidValue) }
         let fixture = try DemoEditing.loadFixture(root.appendingPathComponent("fixtures/projects/five-questions.voxclip"))
-        let ordered = CaptionStyleGroup.allCases.flatMap { group in
-            app.styles.filter { CaptionStyleGroup.group(for: $0) == group }.sorted { $0.order < $1.order }
-        }
+        let ordered = CaptionsSection.galleryOrder(app.styles)
         guard let first = ordered.first, let last = ordered.last else { throw CocoaError(.coderInvalidValue) }
         let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
@@ -219,17 +309,16 @@ import VoxClipCore
         var results: [DebugUISuite.Result] = []
         for style in [first, last] {
             model.setStyle(style.id)
-            // The chrome above the gallery depends on the style: a longer summary takes the
-            // two-row header. Measure it in a tall host, then leave a 40-point viewport, shorter
-            // than any tile, so every style gets a gallery to reveal into.
+            // Leave the gallery a 40-point viewport, shorter than any tile, so every style gets a
+            // gallery to reveal into: the body is then too short for the property rows.
             host.frame.size.height = tall
             let started = ProcessInfo.processInfo.systemUptime
-            var viewport: CGFloat = 0
+            var galleryTop: CGFloat?
             repeat {
                 host.layoutSubtreeIfNeeded(); await Task.yield()
-                viewport = snapshot(identifier)?.size.height ?? 0
-            } while viewport <= 0 && ProcessInfo.processInfo.systemUptime - started < 2
-            let height = tall - viewport + 40
+                galleryTop = DebugRightColumn.markers(in: host)["caption.gallery.\(identifier)"].map { host.isFlipped ? $0.minY : tall - $0.maxY }
+            } while galleryTop == nil && ProcessInfo.processInfo.systemUptime - started < 2
+            let height = (galleryTop ?? CaptionsPanelMetrics.top) + 40
             host.frame.size.height = height
             let receipt = await settle(host: host, identifier: identifier, style: style.id,
                 name: "short-\(style.id)", width: width, height: height, short: true)
@@ -327,7 +416,7 @@ import VoxClipCore
             passes += 1
             var ready = false
             let markers = DebugRightColumn.markers(in: host)
-            let actualPaint = markers["caption.target.\(style)"]?.insetBy(dx: -3, dy: 0)
+            let actualPaint = markers["caption.target.\(style)"]?.insetBy(dx: -CaptionsPanelMetrics.ringReserve, dy: 0)
             // Cached frames and the model's style are right the moment a change is made, before SwiftUI
             // has delivered it; only a consumed request shows the gallery has acted on the change.
             if let current, let paint = current.paint, current.consumed, current.selectedStyle == style, current.paintStyle == style, !current.pending,
@@ -335,17 +424,13 @@ import VoxClipCore
                 if short {
                     ready = paint.height > current.visible.height && abs(paint.minY - current.visible.minY) <= 0.5
                 } else {
-                    let visible = current.visible.insetBy(dx: -0.5, dy: -0.5)
-                    ready = visible.contains(paint)
-                    if let header = current.header, header.union(paint).height + 24 <= current.visible.height {
-                        ready = ready && visible.contains(header)
-                    }
+                    ready = current.visible.insetBy(dx: -0.5, dy: -0.5).contains(paint)
                 }
                 // An unattached host has no display cycle: its measured viewport must match the gallery's real frame.
                 if ready, host.window == nil {
                     ready = markers["caption.gallery.\(identifier)"].map { abs($0.height - current.size.height) <= 0.5 } ?? false
                 }
-                if ready, let viewport = markers["caption.gallery.\(identifier)"]?.insetBy(dx: -3, dy: 0), let actualPaint {
+                if ready, let viewport = markers["caption.gallery.\(identifier)"]?.insetBy(dx: -CaptionsPanelMetrics.ringReserve, dy: 0), let actualPaint {
                     if short {
                         ready = abs(actualPaint.minY - viewport.minY) <= 0.5
                     } else {

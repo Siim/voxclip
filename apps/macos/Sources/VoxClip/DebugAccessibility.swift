@@ -33,7 +33,6 @@ import VoxClipMedia
                 }
             }
         }
-        check("caption gallery always uses resting raster frames", EditorAccessibilityPolicy.staticCaptionTiles)
         let target = ImageRenderer(content: Text("Retry").font(.system(size: 11)).modifier(SidebarActionTarget()))
         target.scale = 1
         check("sidebar label target renders at least 24 points in both axes", target.cgImage.map { $0.width >= 24 && $0.height >= 24 } == true)
