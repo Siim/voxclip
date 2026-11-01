@@ -223,6 +223,8 @@ struct RewriteChange: Equatable, Sendable {
                             close: PanelAction(id: "close", title: "Close Rewrite") { [weak editor] in editor?.closeRewrite() })
         if connector == nil { task.show(.choosingAI, headline: PanelHeadline(text: "Who should rewrite \(words.name)?"), cards: [.text("Checking which AIs are set up…")]) }
         refreshContext()
+        // As the panel appears, the AI's status for the context line's dot (design.md §6.3.4).
+        task.appeared = { [weak self] in await self?.detectConnector() }
     }
 
     // MARK: The scope's words
@@ -333,6 +335,7 @@ struct RewriteChange: Equatable, Sendable {
         }
         return "Sends \(words) to \(host)."
     }
+    /// The AI's status now, for the context line's dot, which keeps an answer's "answered in {t} s".
     func detectConnector() async {
         guard current, let connector else { return }
         let result: ConnectorStatus?
@@ -341,7 +344,7 @@ struct RewriteChange: Equatable, Sendable {
         } else { result = await connector.connector.status() }
         guard !Task.isCancelled, current else { return }
         readiness = result
-        refreshContext()
+        if case .answered(let seconds) = task.context?.state { refreshContext(answered: seconds) } else { refreshContext() }
     }
 
     /// Starts the run as the session opens: R1 at once, or R0's detection when no AI is chosen.
@@ -614,10 +617,8 @@ struct RewriteChange: Equatable, Sendable {
         let proposal = task.state == .changed ? setAside?.proposal : ownProposal
         return proposal?.changes.contains { change in replyParts[change.ordinal].map { $0 != change.parts } ?? false } ?? false
     }
-    /// The proposal has phrases in your voice and Voice Lab is on: the Beta badge, the takes and the AI MODIFIED line show.
+    /// The proposal has phrases in your voice and Voice Lab is on: R2's Beta tag shows (design.md §6.3.4).
     var showsVoiceLab: Bool { review?.voiceHunks.isEmpty == false && editor.app.voiceLabRewriteEnabled }
-    /// The proposal has phrases in your voice and Voice Lab is off: R2's Turn On Voice Lab… (design.md §6.3.6).
-    var offersVoiceLab: Bool { review?.voiceHunks.isEmpty == false && !editor.app.voiceLabRewriteEnabled }
     /// Applies every change still pending (Keep All) as one undo step named for the scope ("Rewrite clip 1", design.md
     /// R2), announces "Applied {c} changes", closes Rewrite and moves focus to the first changed word. Voice changes that
     /// wait are left out first: nothing voices them once Rewrite closes.

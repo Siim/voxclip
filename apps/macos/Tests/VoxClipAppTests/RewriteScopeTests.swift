@@ -645,8 +645,8 @@ private final class WorkThreads: Sendable {
         #expect(session.review?.voiceHunks.first?.window == nil && session.review?.voiceHunks.first?.refusal == "This change can't be placed in this take. Your edits are saved.")
     }
 
-    /// A phrase in your voice with Voice Lab off shows no Beta badge, takes or AI MODIFIED line, and offers Turn On Voice
-    /// Lab…, which opens the one-time sheet; its Turn on shows them (design.md R2 "Voice changes, Voice Lab off").
+    /// A phrase in your voice with Voice Lab off shows no Beta tag, and R2 offers Turn On Voice Lab…, which opens the
+    /// one-time sheet; its Turn on shows the tag on R2's headline (design.md R2 "Voice changes, Voice Lab off", §6.3.4).
     @Test func voiceLabPartsFollowTheSetting() async throws {
         let stub = ScopeStub()
         let (app, _) = app("ollama", stub: stub)
@@ -655,14 +655,16 @@ private final class WorkThreads: Sendable {
         editor.selectedWordIDs = ["w12", "w13", "w14"]
         let session = try await rewrite(editor)
         #expect(session.review?.voiceHunks.isEmpty == false && !app.voiceLabRewriteEnabled)
-        #expect(!session.showsVoiceLab && session.offersVoiceLab)
+        #expect(!session.showsVoiceLab && session.task.headline.tag == nil && session.task.footer.link?.title == "Turn On Voice Lab…")
         editor.showVoiceLabOptIn = true
         editor.enableVoiceLab()
-        #expect(app.voiceLabRewriteEnabled && !editor.showVoiceLabOptIn && session.showsVoiceLab && !session.offersVoiceLab && session.isOpen)
+        for _ in 0..<500 where session.task.headline.tag == nil { await Task.yield() }
+        #expect(app.voiceLabRewriteEnabled && !editor.showVoiceLabOptIn && session.showsVoiceLab && session.isOpen)
+        #expect(session.task.headline.tag == "Beta" && session.task.footer.link?.title != "Turn On Voice Lab…")
 
         editor.selectedWordIDs = []
         let clip = try await rewrite(editor)
-        #expect(clip.review?.voiceHunks.isEmpty == true && !clip.showsVoiceLab && !clip.offersVoiceLab)
+        #expect(clip.review?.voiceHunks.isEmpty == true && !clip.showsVoiceLab && clip.task.headline.tag == nil)
     }
 
     // MARK: Ask

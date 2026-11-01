@@ -8,7 +8,7 @@ import Testing
 /// The Rewrite job's change list and Keep flow (impl-plan V15), headless: R2's footer cases (design.md R2 with item 25),
 /// rows named "Change {i} of {c}" as the transcript names them, Keep and Undo per change from the list and from the
 /// transcript, Keep All as one step, Apply, ⌘Z of the last Keep, Voice Lab's Turn on, takes that stay with their phrase,
-/// phrases that can't be made, the list's keys and Make Takes' problem. Each scene is a real reply to Rewrite
+/// phrases that can't be made, the list's keys, Ask again and Make Takes' problem. Each scene is a real reply to Rewrite
 /// clip 1 (`DebugRewrite.proposalScenes`); nothing is sent.
 @Suite("Rewrite change list", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
 @MainActor struct ChangeListTests {
@@ -60,6 +60,10 @@ import Testing
                 #expect(task.footer.primary?.title == case_.primary, "\(scene.name): \(task.footer.primary?.title ?? "no primary")")
             }
         }
+        // The Beta tag shows with phrases in your voice while Voice Lab is on (design.md §6.3.4).
+        let tags = Dictionary(scenes.map { ($0.name, $0.task.headline.tag) }, uniquingKeysWith: { first, _ in first })
+        #expect(tags["r2-make-takes"] == "Beta" && tags["r2-several-voices"] == "Beta" && tags["r2-use-take"] == "Beta")
+        #expect(tags["r2-free"] == .some(nil) && tags["r2-voice-lab-off"] == .some(nil) && tags["r2-no-changes"] == .some(nil))
         let budget = try #require(scenes.first { $0.name == "r2-over-budget" })
         #expect(budget.task.cards.contains(.callout("These changes re-voice 15 words; a rewrite can re-voice 12. Undo a phrase or two, or re-record these sentences.")))
         let none = try #require(scenes.first { $0.name == "r2-no-changes" })
@@ -78,7 +82,7 @@ import Testing
         let rotor = try #require(editor.proposalDisplay).shown.map(\.description)
         #expect(set.items.map(\.spoken) == rotor.map { $0.replacingOccurrences(of: "Proposed change", with: "Change") })
         #expect(set.items.first?.spoken == "Change 1 of 3: removed word12 word13")
-        #expect(session.task.headline == PanelHeadline(text: "3 changes", sub: "2 cuts · 1 phrase in your voice"))
+        #expect(session.task.headline == PanelHeadline(text: "3 changes", sub: "2 cuts · 1 phrase in your voice", tag: "Beta"))
         // ↓ in the list focuses the next change in the transcript too.
         session.review(2, .focus)
         #expect(changes(session)?.focused == 2 && editor.proposal?.focused == 2)
@@ -273,6 +277,19 @@ import Testing
         #expect(!session.task.pressSpace() && changes(session)?.items.last?.state == .kept)
         step(undo) { #expect(session.task.pressReturn(command: true)) }
         #expect(!session.isOpen && editor.cutWordIDs.contains("r2-12") && undo.undoActionName == "Rewrite clip 1")
+    }
+
+    /// Ask again can't run while another AI request holds the project, so it isn't offered; it comes back as that ends.
+    @Test func askAgainWaitsForTheProjectsAIRequest() async throws {
+        let (editor, session, _, scenes) = try scene("r2-free")
+        defer { scenes.forEach { $0.editor?.close() } }
+        #expect(session.task.contextAction?.id == "askAgain")
+        let lease = try #require(editor.llmRuns.acquire())
+        await settle { session.task.contextAction == nil }
+        #expect(session.task.contextAction == nil && changes(session)?.items.count == 2)
+        editor.llmRuns.release(lease)
+        await settle { session.task.contextAction != nil }
+        #expect(session.task.contextAction?.title == "Ask again")
     }
 
     /// Why Make Takes couldn't go on before takes exist (finding the voices failed) shows as R2's callout, and goes as

@@ -73,9 +73,12 @@ import VoxClipCore
         }
         .onChange(of: keyboardWithin) { _, within in task.keyboardInPanel = within }
         // Replacing the passage panel that had the keyboard, it takes it, so Esc, ⌘. and Return still act (design.md R1).
+        // Then the producer's own work as the panel appears (Rewrite detects its AI).
         .task {
-            guard task.takeKeyboardHandover() else { return }
-            if task.cards.contains(where: { if case .keyField = $0 { true } else { false } }) { keyFieldFocused = true } else { keyboardWithin = true }
+            if task.takeKeyboardHandover() {
+                if task.cards.contains(where: { if case .keyField = $0 { true } else { false } }) { keyFieldFocused = true } else { keyboardWithin = true }
+            }
+            await task.appeared?()
         }
         .columnLayoutEvidence("director.panel")
     }
@@ -182,6 +185,14 @@ import VoxClipCore
             if let sub = headline.sub {
                 Text(sub).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if let tag = headline.tag {
+                // "Beta" in a hairline capsule (design.md §6.3.4), read after the headline.
+                Text(tag).font(VCType.small.font(.medium)).foregroundStyle(DesignValues.color("text.secondary"))
+                    .padding(.horizontal, 5).frame(height: 16)
+                    .overlay { RoundedRectangle(cornerRadius: 4).strokeBorder(DesignValues.color("line.strong"), lineWidth: 1) }
+                    .fixedSize()
+                    .columnLayoutEvidence("director.tag", text: tag)
             }
             if let since = headline.runningSince {
                 TimelineView(.periodic(from: since, by: 1)) { context in

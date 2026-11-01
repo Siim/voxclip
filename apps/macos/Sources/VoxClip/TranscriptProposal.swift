@@ -280,7 +280,7 @@ extension TranscriptChange {
 }
 
 /// A change as the Rewrite job's change list reads it (impl-plan V15): the words it removes and inserts, the words it
-/// would leave, and whether the project already holds it or it only moves punctuation.
+/// would leave, and whether the project already holds it.
 struct TranscriptChangeReading: Equatable {
     let change: TranscriptChange
     let removed: [String]
@@ -289,7 +289,6 @@ struct TranscriptChangeReading: Equatable {
     let text: String
     /// A cut or fix whose words the project already holds.
     let applied: Bool
-    let punctuationOnly: Bool
 }
 
 extension EditorModel {
@@ -373,7 +372,7 @@ extension EditorModel {
         return proposal.changes.map { change in
             let (removed, inserted) = reader.words(change)
             return TranscriptChangeReading(change: change, removed: removed, inserted: inserted, text: changeText(change.ordinal),
-                                           applied: reader.isApplied(change), punctuationOnly: reader.isPunctuationOnly(change))
+                                           applied: reader.isApplied(change))
         }
     }
 

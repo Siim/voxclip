@@ -110,11 +110,13 @@ extension PanelAction: Equatable {
     static func == (lhs: PanelAction, rhs: PanelAction) -> Bool { lhs.id == rhs.id && lhs.title == rhs.title }
 }
 
-/// The headline, with its optional sub-line. While the task runs it carries the spinner, the
+/// The headline, with its optional sub-line and tag. While the task runs it carries the spinner, the
 /// elapsed time since `runningSince` and Stop.
 struct PanelHeadline: Equatable {
     var text: String
     var sub: String? = nil
+    /// A tag after the headline: "Beta" while R2 shows phrases in your voice with Voice Lab on (design.md §6.3.4).
+    var tag: String? = nil
     var runningSince: Date? = nil
     var stop: PanelAction? = nil
 }
@@ -154,7 +156,7 @@ struct ActivityStep: Identifiable, Equatable, Sendable {
 struct ProposalItem: Identifiable, Equatable, Sendable {
     enum Kind: String, Sendable { case cut, fix, voice }
     /// Reviewed per change (impl-plan item 7): pending until kept or left out. A kept cut or fix is in the project; a kept
-    /// voice change is included for takes. A change left out is the change list's unchecked row (`included = false`).
+    /// voice change is included for takes. A change left out is the change list's unchecked row.
     enum State: Sendable { case pending, kept, excluded }
     let ordinal: Int
     let kind: Kind
@@ -179,7 +181,6 @@ struct ProposalItem: Identifiable, Equatable, Sendable {
     /// "Change 1 of 6: removed to, to the; inserted your, in the", with ", left out" or ", kept" after a review.
     var spoken = ""
     var id: Int { ordinal }
-    var included: Bool { state != .excluded }
 }
 
 /// A proposal: what a task would change, before anything changes the project (design.md §6.5).
@@ -323,6 +324,8 @@ enum PanelError: Equatable, Sendable {
     private(set) var contextAction: PanelAction?
     /// Keeps, undoes, focuses or edits a change of a `.changes` card, by ordinal (impl-plan item 7).
     @ObservationIgnored var review: (@MainActor (Int, ChangeReview) -> Void)?
+    /// The producer's work as the task's panel appears: Rewrite detects its AI for the context line's dot.
+    @ObservationIgnored var appeared: (@MainActor () async -> Void)?
     /// The row picked in a chooser card.
     private(set) var choice: String?
     /// Told when the user picks another row, so the producer can retitle the primary.
@@ -333,10 +336,9 @@ enum PanelError: Equatable, Sendable {
     private(set) var focusRequest = 0
     /// The keyboard is in the task's panel; its views report it as their focus changes. Moving it out drops a handover.
     @ObservationIgnored var keyboardInPanel = false { didSet { if !keyboardInPanel { keyboardHandover = false } } }
-    /// The view the panel draws next takes the keyboard: after a change of state while the keyboard was in the panel, or
-    /// once asked (`handOverKeyboard`), so a panel drawn again (another job or tab and back) gets back the keyboard it had;
-    /// otherwise focus stays where the user moved it while the AI worked. A task starts with focus where it was (design.md
-    /// §10).
+    /// The view the panel draws next takes the keyboard after a change of state while the keyboard was in the panel, so a
+    /// panel drawn again (another job or tab and back) gets back the keyboard it had; otherwise focus stays where the user
+    /// moved it while the AI worked. A task starts with focus where it was (design.md §10).
     @ObservationIgnored private var keyboardHandover = false
 
     /// A task that starts in `.running` is on its first turn; one that chooses its AI first gets turn 1 as it runs.
@@ -378,8 +380,6 @@ enum PanelError: Equatable, Sendable {
         show(shown.state, headline: shown.headline, cards: shown.cards, footer: shown.footer, contextAction: shown.contextAction)
         context = shown.context
     }
-    /// Asks the view the panel draws next to take the keyboard.
-    func handOverKeyboard() { keyboardHandover = true }
     /// True once for the view that should take the keyboard as it appears.
     func takeKeyboardHandover() -> Bool {
         defer { keyboardHandover = false }

@@ -123,8 +123,10 @@ extension RewriteSession {
         let unavailable = voiceUnavailable
         let items = readings.map { item($0, of: readings.count, unavailable: $0.change.kind == .voice ? unavailable($0.change.ordinal) : nil) }
         let set = ChangeSet(items: items, focused: ownProposal?.focused)
-        let headline = PanelHeadline(text: set.headline, sub: set.subline)
-        let askAgain = PanelAction(id: "askAgain", title: sendAsksFirst ? "Ask again…" : "Ask again") { [weak self] in
+        // The Beta tag shows with phrases in your voice while Voice Lab is on (design.md §6.3.4).
+        let headline = PanelHeadline(text: set.headline, sub: set.subline, tag: showsVoiceLab && set.voiceCount > 0 ? "Beta" : nil)
+        // Ask again can't run while another AI request holds the project (Find Clips); it comes back as that ends.
+        let askAgain = editor.llmRuns.isBusy ? nil : PanelAction(id: "askAgain", title: sendAsksFirst ? "Ask again…" : "Ask again") { [weak self] in
             guard let self else { return }
             editor.runRewrite(scope: rewriteScope)
         }
