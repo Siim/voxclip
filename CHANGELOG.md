@@ -4,7 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- Inline transcription, API-key approval and Voice review now share the integrated workspace without extra sheets; quotes track pending corrections, chosen takes survive retries, audition pauses source playback, and monthly spend updates during review.
+- Inline transcription, API-key approval and Voice review now share the integrated workspace without extra sheets; quotes track pending corrections, in-flight paid work retains its discard protection, chosen takes survive retries, playback and audition stop each other, and monthly spend updates during review.
 
 - Inline review questions keep their panel alive and return the keyboard to the transcript or field after Keep Working.
 
