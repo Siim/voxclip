@@ -7,7 +7,8 @@ import Testing
 /// new one fails until someone decides where it belongs. A replaced one may simply go.
 @Suite("Pop-up inventory")
 struct PopUpInventoryTests {
-    /// Call sites per source file, with the reason each may stay for now.
+    /// Pop-up calls per source file under Sources/VoxClip (each `NSAlert(`, `runModal(` and so on counts, even on one line),
+    /// with the reason each may stay for now.
     static let allowed: [String: (count: Int, why: String)] = [
         "EditorModel.swift": (1, "Locate…'s NSOpenPanel: a system file picker"),
         "ExportJob.swift": (1, "the Export job's folder NSOpenPanel: a system file picker"),
@@ -18,7 +19,7 @@ struct PopUpInventoryTests {
         "EditorView.swift": (4, "TranscriptionSheet (VT), the Voice Lab opt-in sheet (V16), the shortcuts sheet (V11b's ⌘K) and the tour (Home frame 7)"),
         "TranscriptionSheet.swift": (1, "the transcription consent sheet (VT)"),
         "HomeView.swift": (2, "the Sign in to {provider} NSAlert (V11b: an inline row in the harness picker)"),
-        "VoxClipApp.swift": (5, "Open's NSOpenPanel; Help › What Leaves This Mac (no owner yet); Transcribe again? (VT, v5 f25)"),
+        "VoxClipApp.swift": (6, "Open's NSOpenPanel; Help › What Leaves This Mac, an NSAlert and its runModal (no owner yet); Transcribe again? (VT, v5 f25)"),
         "RewriteSession.swift": (2, "RewriteApprovalSheet: API-key sends and the privacy consent (V12), takes and ElevenLabs (V18)"),
     ]
     static let patterns = [".sheet(", ".alert(", ".confirmationDialog(", "NSAlert(", "beginSheetModal", "runModal("]
@@ -26,14 +27,18 @@ struct PopUpInventoryTests {
     @Test func everyPopUpLeftIsListedWithItsReasonOrOwner() throws {
         let sources = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/VoxClip")
-        let files = try FileManager.default.contentsOfDirectory(at: sources, includingPropertiesForKeys: nil).filter { $0.pathExtension == "swift" }
-        #expect(files.count > 100)
+        // Every folder under the sources (Services, Design), not just the top level.
+        let walk = try #require(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+        let files = walk.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
+        #expect(files.count > 100 && files.contains { $0.deletingLastPathComponent().lastPathComponent == "Services" })
         for file in files where !file.lastPathComponent.hasPrefix("Debug") {
             let lines = try String(contentsOf: file, encoding: .utf8).split(separator: "\n", omittingEmptySubsequences: false)
-            let count = lines.filter { line in
+            let count = lines.reduce(0) { (total: Int, line: Substring) -> Int in
                 let code = line.trimmingCharacters(in: .whitespaces)
-                return !code.hasPrefix("//") && Self.patterns.contains { code.contains($0) }
-            }.count
+                guard !code.hasPrefix("//") else { return total }
+                let calls: Int = Self.patterns.reduce(0) { (sum: Int, pattern: String) -> Int in sum + code.components(separatedBy: pattern).count - 1 }
+                return total + calls
+            }
             let name = file.lastPathComponent
             #expect(count <= (Self.allowed[name]?.count ?? 0), "\(name) has \(count) pop-up call sites; allowed \(Self.allowed[name].map { "\($0.count): \($0.why)" } ?? "none") (impl-plan §13.1)")
         }
