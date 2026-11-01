@@ -184,7 +184,7 @@ struct VoiceLabRequestCaseTests {
     private func prepare(_ call: Call, on lab: ElevenLabsVoiceLab, requestID: UUID) async throws -> VoiceLabQuote {
         switch call {
         case .clone(let request):
-            return try await lab.prepareClone(request, policy: createPolicy, requestID: requestID)
+            return try await lab.prepareEnrollmentClone(request, policy: createPolicy, requestID: requestID)
         case .speech(let text, let model, let voice, let language, let options):
             return try await lab.prepareSynthesis(text: text, modelID: model, voice: .stock(voiceID: voice), language: language,
                                                   options: options, requestID: requestID)
@@ -286,7 +286,7 @@ struct VoiceLabRequestCaseTests {
         for row in rows {
             let name = try #require(row["case"] as? String), valid = try #require(row["valid"] as? Bool)
             let request = try VoiceLabRequestFixtures.cloneRequest(row, defaults: defaults)
-            do { _ = try await lab.prepareClone(request, policy: createPolicy, requestID: UUID()); #expect(valid, "\(name)") }
+            do { _ = try await lab.prepareEnrollmentClone(request, policy: createPolicy, requestID: UUID()); #expect(valid, "\(name)") }
             catch VoiceLabError.invalidInput { #expect(!valid, "\(name)") }
         }
         #expect(recorder.paid.withLock { $0.count } == 0)

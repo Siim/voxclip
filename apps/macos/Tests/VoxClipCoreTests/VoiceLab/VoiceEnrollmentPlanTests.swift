@@ -8,6 +8,9 @@ import Testing
 private struct EnrollmentVectors: Decodable {
     struct Flow: Decodable { let id: String; let events: [String]; let outcome: String }
     struct Recovery: Decodable { let id: String; let elapsedSeconds: Int; let sameQuote: Bool; let action: String; let events: [String] }
+    struct Retry: Decodable { let id: String; let localPrepares: Int; let expiredReprepares: Int; let expectedSends: [String] }
+    struct Journal: Decodable { let id: String; let ageSeconds: Int; let corruption: String; let retained: Bool }
+    let retries: [Retry]; let journals: [Journal]
     struct Attempts: Decodable { let limit: Int; let blockedAtSeconds: Int; let allowedAtSeconds: Int }
     let flows: [Flow]; let mutations: [String]; let attempts: Attempts; let recoveries: [Recovery]
     static func load() throws -> Self {
@@ -18,7 +21,7 @@ private final class EnrollmentProbe: Sendable {
     let events = Mutex<[String]>([])
     let embeddings = Mutex(0)
     let key = Mutex("synthetic-enrollment-key")
-    let time = Mutex(Date(timeIntervalSince1970: 1_793_275_200))
+    let time = Mutex(Date())
 }
 private struct EnrollmentKeys: KeyProvider {
     let probe: EnrollmentProbe
@@ -97,7 +100,7 @@ struct VoiceEnrollmentPlanTests {
             do {
                 let plan = try await prepare(service, probe, id: id, mismatch: vector.id == "speaker-mismatch")
                 #expect(probe.events.withLock { $0.isEmpty })
-                #expect(plan.quote.estimate.usd == plan.quote.verify.estimate.usd! + plan.quote.create.estimate.usd!)
+                #expect(plan.quote.estimate.usd == plan.quote.verify!.estimate.usd! + plan.quote.create.estimate.usd!)
                 let record = try await service.execute(plan, approved: vector.id != "declined", enabled: vector.id != "disabled", appVersion: "0.1.0")
                 #expect(record.statement.text == (try statement()).text)
                 #expect(record.statement.audioSha256 == VoiceLabFingerprint.bytes(wav))
@@ -157,9 +160,13 @@ struct VoiceEnrollmentPlanTests {
         let probe = EnrollmentProbe(); let client = await client(probe)
         let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root)); let service = service(store, client, probe)
         let id = UUID().uuidString; let start = probe.time.withLock { $0 }
-        for _ in 0..<vector.limit {
+        for index in 0..<vector.limit {
             let before = probe.embeddings.withLock { $0 }
-            _ = try await prepare(service, probe, id: id)
+            let original = try statement()
+            let unique = VoiceConsentStatement(language: original.language, text: original.text, nonce: original.nonce + [String(index)])
+            _ = try await service.preparePlan(recordID: id, statement: unique, wav: wav,
+                attestations: .init(ownVoice: true, adult: true, ownVideosOnly: true, acceptedAt: start),
+                displayName: "Example", samples: samples(), enabled: true, now: probe.time.withLock { $0 })
             #expect(probe.embeddings.withLock { $0 } > before)
         }
         probe.time.withLock { $0 = start.addingTimeInterval(Double(vector.blockedAtSeconds)) }
@@ -178,6 +185,64 @@ struct VoiceEnrollmentPlanTests {
         }
         #expect(probe.embeddings.withLock { $0 } > before)
         await #expect(throws: VoiceLabError.consentRequired) { try await service.execute(first, approved: true, enabled: true, appVersion: "0.1.0") }
+    }
+
+    @Test func replayLocalRetriesDoNotConsumeStatementAttempts() async throws {
+        for vector in try EnrollmentVectors.load().retries {
+            let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+            let probe = EnrollmentProbe(); let client = await client(probe)
+            let store = VoiceConsentStore(locations: SpeechTestFiles.locations(root)); let service = service(store, client, probe)
+            let id = UUID().uuidString
+            for _ in 0..<vector.localPrepares {
+                let project = samples(mismatch: true).map { VoiceTrainingSample(wav: $0.wav, speech16k: [], seconds: $0.seconds, source: "project", snrDb: $0.snrDb) }
+                await #expect(throws: VoiceConsentError.speakerMismatch) {
+                    try await service.preparePlan(recordID: id, statement: statement(), wav: wav,
+                        attestations: .init(ownVoice: true, adult: true, ownVideosOnly: true, acceptedAt: probe.time.withLock { $0 }),
+                        displayName: "Example", samples: project, enabled: true, now: probe.time.withLock { $0 })
+                }
+            }
+            for _ in 0..<vector.expiredReprepares {
+                _ = try await prepare(service, probe, id: id)
+                probe.time.withLock { $0.addTimeInterval(300) }
+            }
+            let plan = try await prepare(service, probe, id: id)
+            _ = try await service.execute(plan, approved: true, enabled: true, appVersion: "0.1.0")
+            #expect(probe.events.withLock { $0 } == vector.expectedSends)
+        }
+    }
+
+    @Test func replayJournalLifetimeAndInvalidJournalsDoNotBlockValidRecovery() async throws {
+        for vector in try EnrollmentVectors.load().journals {
+            let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
+            let locations = SpeechTestFiles.locations(root); let probe = EnrollmentProbe()
+            probe.time.withLock { $0 = Date().addingTimeInterval(-Double(vector.ageSeconds)) }
+            let client = await client(probe)
+            let store = VoiceConsentStore(locations: locations, fault: { if $0 == .enrollmentVerified { throw EnrollmentCrash.afterVerify } })
+            let service = service(store, client, probe); let plan = try await prepare(service, probe)
+            await #expect(throws: EnrollmentCrash.afterVerify) { try await service.execute(plan, approved: true, enabled: true, appVersion: "0.1.0") }
+            let dir = store.root.appendingPathComponent(plan.recordID)
+            let journal = dir.appendingPathComponent("enrollment.json")
+            if vector.corruption == "json" { try Data("broken".utf8).write(to: journal) }
+            if vector.corruption == "binding" {
+                var value = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: journal)) as? [String: Any])
+                value["trainingSeconds"] = -1
+                try JSONSerialization.data(withJSONObject: value).write(to: journal)
+            }
+            if vector.corruption == "statement" { try FileManager.default.removeItem(at: dir.appendingPathComponent("statement.wav")) }
+            // A second valid journal must remain available even if the first cannot be decoded.
+            probe.time.withLock { $0 = Date() }
+            let valid = try await prepare(service, probe)
+            await #expect(throws: EnrollmentCrash.afterVerify) { try await service.execute(valid, approved: true, enabled: true, appVersion: "0.1.0") }
+            let restarted = VoiceConsentStore(locations: locations)
+            let expected = vector.retained ? [plan.recordID, valid.recordID].sorted() : [valid.recordID]
+            if vector.corruption == "none" { try await restarted.reconcileAbandonedEnrollments() }
+            #expect(try await restarted.recoverableEnrollments() == expected, "\(vector.id)")
+            try await restarted.reconcileAbandonedEnrollments()
+            #expect(await restarted.takeAbandonedEnrollmentCount() == (vector.retained ? 0 : 1))
+            #expect(FileManager.default.fileExists(atPath: journal.path) == vector.retained)
+            #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("statement.wav").path) == vector.retained)
+            if !vector.retained { #expect(!FileManager.default.fileExists(atPath: dir.path)) }
+        }
     }
 
     @Test func replayEveryRecoveryJournalCase() async throws {
@@ -210,7 +275,9 @@ struct VoiceEnrollmentPlanTests {
                 #expect(try await restarted.recoverableEnrollments() == [plan.recordID])
                 let recovered = try await recoveryService.recoverPlan(recordID: plan.recordID, enabled: true)
                 #expect(recovered.verificationPassed)
-                #expect((recovered.quote == plan.quote) == vector.sameQuote)
+                #expect(recovered.quote.verify == nil)
+                #expect(recovered.quote.estimate.usd == recovered.quote.create.estimate.usd)
+                #expect((recovered.quote.create == plan.quote.create) == vector.sameQuote)
                 #expect(probe.events.withLock { $0.isEmpty })
                 if vector.action == "decline" {
                     await #expect(throws: VoiceLabError.consentRequired) { try await recoveryService.execute(recovered, approved: false, enabled: true, appVersion: "0.1.0") }

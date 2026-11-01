@@ -216,10 +216,13 @@ struct VoiceConsentTests {
         let calls = ConsentRequestLog(); let transcriptions = ConsentTranscriptionCount()
         let service = enroll(store: storage(root), client: client(calls), check: .init(embedder: Embedder(output: [1, 0]), calibratedThreshold: 0.8), raw: try await raw(), calls: transcriptions)
         let id = UUID().uuidString; let statement = try statement()
-        for _ in 0..<3 { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now) }
+        for fill in [4_001, 4_002, 4_003] {
+            let recording = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: fill)
+            try await service.verify(recordID: id, statement: statement, wav: recording, attestations: attestations, approved: true, enabled: true, now: now)
+        }
         await #expect(throws: VoiceConsentError.tooManyAttempts) { try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now.addingTimeInterval(599)) }
         try await service.verify(recordID: id, statement: statement, wav: wav, attestations: attestations, approved: true, enabled: true, now: now.addingTimeInterval(600))
-        #expect(transcriptions.value.withLock { $0 } == 0) // Compatibility staging is now local; Create verifies once.
+        #expect(transcriptions.value.withLock { $0 } == 4) // Each new recording verifies under its own approval.
     }
     @Test func unavailableSpeakerNeverCreates() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
@@ -257,7 +260,7 @@ struct VoiceConsentTests {
         let samples = (0..<4).map { _ in VoiceTrainingSample(wav: silent, speech16k: [], seconds: 15, source: "readAloud", snrDb: 25) }
         await #expect(throws: VoiceConsentError.speakerMismatch) { try await service.prepare(recordID: id, displayName: "Example", samples: samples, enabled: true) }
         #expect(calls.value.withLock { $0 } == ["GET /v1/user/subscription"])
-        #expect(transcriptions.value.withLock { $0 } == 0)
+        #expect(transcriptions.value.withLock { $0 } == 1)
     }
     struct LengthEmbedding: SpeakerEmbedder {
         let modelID = "fixture-calibrated"
@@ -594,7 +597,7 @@ struct VoiceConsentTests {
         _ = try await client.plan()
         let policy = OwnVoicePolicy(recordID: UUID().uuidString, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
         let request = VoiceLabCloneRequest(displayName: "Example", language: "en", samples: [.init(role: .consentStatement, wav: wav), .init(role: .training, wav: wav)], createdAt: now, removeBackgroundNoise: false)
-        let quote = try await client.prepareClone(request, policy: policy, requestID: UUID())
+        let quote = try await client.prepareEnrollmentClone(request, policy: policy, requestID: UUID())
         await #expect(throws: VoiceLabError.consentRequired) {
             try await client.createOwnClone(request, policy: policy, requestID: quote.requestID, authorization: .init(quote: quote, approved: true))
         }

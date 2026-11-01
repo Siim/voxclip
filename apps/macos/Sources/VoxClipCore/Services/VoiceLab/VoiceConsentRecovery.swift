@@ -44,23 +44,37 @@ extension VoiceConsentStore {
             guard sample.role == .training, VoiceLabFingerprint.bytes(sample.wav) == audit.sha256 else { throw VoiceConsentError.invalidRecord }
         }
     }
-    package func enrollmentRecovery(recordID: String) throws -> VoiceEnrollmentRecovery? {
-        let url = try file("enrollment.json", in: directory(recordID))
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-        guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 600 * 1_024 * 1_024 else { throw VoiceConsentError.invalidRecord }
-        let value = try JSONDecoder().decode(VoiceEnrollmentRecovery.self, from: Data(contentsOf: url))
-        guard value.record.id == recordID else { throw VoiceConsentError.invalidRecord }
-        try validateEnrollmentRecovery(value)
-        return value
+    package func enrollmentRecovery(recordID: String, now: Date = Date()) throws -> VoiceEnrollmentRecovery? {
+        // Resolve the directory first: never follow a journal or statement through a symlink.
+        let dir = try directory(recordID)
+        let journal = dir.appendingPathComponent("enrollment.json")
+        guard FileManager.default.fileExists(atPath: journal.path) else { return nil }
+        do {
+            let url = try file("enrollment.json", in: dir)
+            guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 600 * 1_024 * 1_024 else { throw VoiceConsentError.invalidRecord }
+            let value = try JSONDecoder().decode(VoiceEnrollmentRecovery.self, from: Data(contentsOf: url))
+            guard value.record.id == recordID,
+                  now < value.request.createdAt.addingTimeInterval(24 * 60 * 60) else { throw VoiceConsentError.invalidRecord }
+            try validateEnrollmentRecovery(value)
+            return value
+        } catch {
+            // A corrupt or expired local journal is abandoned, never allowed to block other voices.
+            // Remove the directory entry itself if it is a symlink, without opening its target.
+            try FileManager.default.removeItem(at: journal)
+            try discardStatement(recordID: recordID)
+            try synchronizeDirectory(dir)
+            abandonedEnrollments.insert(recordID)
+            return nil
+        }
     }
-    public func recoverableEnrollments() throws -> [String] {
+    public func recoverableEnrollments(now: Date = Date()) throws -> [String] {
         guard FileManager.default.fileExists(atPath: root.path) else { return [] }
         let operations = try operations()
         return try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).compactMap { entry in
             let id = entry.lastPathComponent
             guard UUID(uuidString: id) != nil,
                   !operations.contains(where: { $0.recordID == id && ($0.wasDispatched || $0.state != .intent) }),
-                  try enrollmentRecovery(recordID: id) != nil else { return nil }
+                  try enrollmentRecovery(recordID: id, now: now) != nil else { return nil }
             return id
         }.sorted()
     }

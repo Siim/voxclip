@@ -244,24 +244,27 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
 /// One affirmative in-app action covers these two exact requests, in order (§6.4).
 /// Only enrollment prepares it, after the local speaker check has fixed the file set.
 public struct EnrollmentQuote: Codable, Sendable, Equatable {
-    public let verify: VoiceLabQuote
+    public let verify: VoiceLabQuote?
     public let create: VoiceLabQuote
     public var id: UUID { create.id }
     public var estimate: CostEstimate {
-        CostEstimate(provider: "elevenlabs", operation: "enrollment", units: 1, unit: "enrollment",
+        guard let verify else { return create.estimate }
+        return CostEstimate(provider: "elevenlabs", operation: "enrollment", units: 1, unit: "enrollment",
                      usd: verify.estimate.usd.flatMap { a in create.estimate.usd.map { a + $0 } },
                      basis: "Consent statement check and own-voice creation")
     }
     private let binding: String
-    package init(verify: VoiceLabQuote, create: VoiceLabQuote, request: VoiceLabCloneRequest, statement: VoiceConsentStatement) throws {
+    package init(verify: VoiceLabQuote?, create: VoiceLabQuote, request: VoiceLabCloneRequest, statement: VoiceConsentStatement) throws {
         self.verify = verify; self.create = create
         binding = try Self.fingerprint(request, statement)
         try validate(request: request, statement: statement)
     }
     public func validate(request: VoiceLabCloneRequest, statement: VoiceConsentStatement) throws {
-        guard verify.operation == .speechToText, create.operation == .createClone,
-              verify.region == create.region, verify.languageMode == .explicit(statement.language),
-              binding == (try Self.fingerprint(request, statement)) else { throw VoiceLabError.consentRequired }
+        if let verify {
+            guard verify.operation == .speechToText, verify.region == create.region,
+                  verify.languageMode == .explicit(statement.language) else { throw VoiceLabError.consentRequired }
+        }
+        guard create.operation == .createClone, binding == (try Self.fingerprint(request, statement)) else { throw VoiceLabError.consentRequired }
     }
     private static func fingerprint(_ request: VoiceLabCloneRequest, _ statement: VoiceConsentStatement) throws -> String {
         guard request.samples.first?.role == .consentStatement,

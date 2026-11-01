@@ -213,15 +213,6 @@ public actor ElevenLabsVoiceLab {
         return value
     }
 
-    /// Preparation is local. Discovery and subscription reads must be initiated separately.
-    public func prepareClone(_ request: VoiceLabCloneRequest, policy: OwnVoicePolicy, requestID: UUID) throws -> VoiceLabQuote {
-        try policy.validate()
-        guard let subscription, subscription.canClone else { throw VoiceLabError.planUnavailable }
-        guard subscription.voiceSlotsUsed < subscription.voiceLimit else { throw VoiceLabError.noVoiceSlots }
-        return try quote(.createClone, requestID: requestID, endpoint: "v1/voices/add",
-                         fields: cloneUpload(request, policy).fields, units: 1)
-    }
-
     /// C7 fixes the files locally before approval. The plan is checked by execute, before Scribe.
     func prepareEnrollmentClone(_ request: VoiceLabCloneRequest, policy: OwnVoicePolicy, requestID: UUID) throws -> VoiceLabQuote {
         try policy.validate()
