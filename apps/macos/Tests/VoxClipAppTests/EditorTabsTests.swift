@@ -247,6 +247,75 @@ import Testing
         #expect(shell.tabs.preview == .suggestion("tabs-suggestion") && !preview.isOpen && editor.openRewrite == nil)
     }
 
+    /// The consent before words go to a connector follows the session, not the tab or the
+    /// project as it was when the session opened. After an edit in another clip, on another
+    /// tab, it still asks and the words go. A connector change, or an edit inside the
+    /// session's clip, while it asks refuses: nothing is sent and no consent is kept.
+    @Test func rewriteConsentFollowsTheSessionAcrossTabs() async throws {
+        let (shell, editor, undo) = try await openShell()
+        defer { editor.close() }
+        let app = editor.app
+        let fake = ConsentFixtureConnector(id: .anthropic)
+        app.connectorOverride = { _ in fake }
+        defer { app.connectorOverride = nil; app.connectorConsentOverride = nil }
+        for (key, value) in [("voiceLab.enabled", JSONValue.bool(true)), ("voiceLab.betaNoticeAccepted", .bool(true)),
+                             ("llm.connector", .string("anthropic")), ("llm.model.anthropic", .string("fixture-local"))] {
+            app.settings.values[key] = value
+        }
+        let consent = "llm.cloudConsent.anthropic"
+        shell.selection = .clip("five-1")
+        let clips = editor.project.edits.clips
+        let lower = try #require(clips.first { $0.id == "five-1" }.flatMap { editor.index($0.startWordId) })
+        let other = try #require(clips.first { $0.id == "five-2" }.flatMap { editor.index($0.startWordId) })
+        editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
+        editor.selectedWordIDs = Set(editor.words[lower...(lower + 2)].map(\.id))
+        // Rewrite stays shut when the caret moves while it opens, as the clip's seek and the
+        // preview's time event still may; it opens once they have landed.
+        for _ in 0..<20 where editor.openRewrite == nil {
+            editor.beginRewrite()
+            await editor.rewriteOpenTask?.value
+        }
+        let session = try #require(editor.openRewrite)
+        #expect(session.connector != nil && session.scope == .clip("five-1"))
+
+        shell.selection = .clip("five-2")
+        step(undo) { editor.apply(.cutSelection(ids: [editor.words[other].id]), name: "Cut selection") }
+        #expect(session.isOpen && editor.rewrite == nil && session.current)
+        let asks = ConsentAsks()
+        app.connectorConsentOverride = { _, action, _ in asks.count += 1; return action == .rewrite }
+        await session.prepare()
+        let quote = try #require(session.quote)
+        session.markEstimateShown(quote.id)
+        #expect(await session.propose(quote, affirmative: true))
+        #expect(asks.count == 1 && app.bool(consent) && session.newWords == "A clearer passage")
+        #expect(await fake.sends == 1)
+
+        app.settings.values[consent] = .bool(false)
+        let again = try #require(session.quote)
+        session.markEstimateShown(again.id)
+        app.connectorConsentOverride = { _, _, _ in
+            asks.count += 1
+            app.settings.values["llm.model.anthropic"] = .string("fixture-other")
+            return true
+        }
+        #expect(await session.propose(again, affirmative: true) == false)
+        #expect(asks.count == 2 && !app.bool(consent))
+        #expect(await fake.sends == 1)
+
+        app.settings.values["llm.model.anthropic"] = .string("fixture-local")
+        session.markEstimateShown(again.id)
+        #expect(session.canPropose)
+        app.connectorConsentOverride = { _, _, _ in
+            asks.count += 1
+            shell.selection = .clip("five-1")
+            self.step(undo) { editor.apply(.cutSelection(ids: [editor.words[lower + 1].id]), name: "Cut selection") }
+            return true
+        }
+        #expect(await session.propose(again, affirmative: true) == false)
+        #expect(asks.count == 3 && !app.bool(consent) && !session.isOpen && editor.openRewrite == nil)
+        #expect(await fake.sends == 1)
+    }
+
     /// A session opened on Full Take has every word in scope: any edit closes it, as before.
     @Test func aFullTakeRewriteSessionClosesOnAnyEdit() async throws {
         let (_, editor, undo) = try await openShell()
@@ -383,4 +452,7 @@ import Testing
         #expect(work.showCutsSlot.superview === work.tabRow && work.showCutsSlot.isHidden)
     }
 }
+
+/// How often the connector consent was asked for.
+@MainActor private final class ConsentAsks { var count = 0 }
 #endif
