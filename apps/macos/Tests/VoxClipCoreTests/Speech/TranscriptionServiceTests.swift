@@ -144,13 +144,16 @@ struct TranscriptionServiceTests {
     @Test func sameProjectRejectsOverlappingJobAndProgressIsThrottled() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }
         let activity = SpeechJobActivity()
-        let engine = CountingSpeechEngine(engine: .whispercpp, activity: activity, delay: .milliseconds(150))
+        // The engine returns once the throttled transcribing report has arrived, not after a fixed delay, which a busy
+        // runner could outlast before the throttle's timer ran.
+        let log = ProgressLog()
+        let engine = CountingSpeechEngine(engine: .whispercpp, activity: activity, afterProgress: { await log.until(.transcribing) })
         let service = TranscriptionService(locations: SpeechTestFiles.locations(root))
         var request = try SpeechTestFiles.request(root)
         request.plan = TranscriptionPlan(engine: .whispercpp, language: .forced("en"))
         let value = request
         let stream = await service.progress()
-        let events = Task { var values: [TranscriptionProgress] = []; for await event in stream { values.append(event) }; return values }
+        let events = Task { for await event in stream { await log.append(event) } }
         let job = Task { try await service.transcribe(value, using: engine, envelope: nil) }
         while await activity.local == 0 { try await Task.sleep(for: .milliseconds(5)) }
         do { _ = try await service.transcribe(value, using: engine, envelope: nil); Issue.record("Expected overlapping-job rejection") }
@@ -158,7 +161,8 @@ struct TranscriptionServiceTests {
         let result = try await job.value
         #expect(!result.refined)
         #expect(result.words.map(\.id) == ["w1"])
-        let values = await events.value
+        await events.value
+        let values = await log.values
         #expect((3...4).contains(values.count))
         #expect(values.first?.stage == .preparing)
         #expect(values.contains { $0.stage == .transcribing })
@@ -249,6 +253,22 @@ private actor SpeechJobActivity {
     }
 }
 
+/// The progress a job's stream delivered, in order; `until(_:)` returns once a report of that stage has arrived.
+private actor ProgressLog {
+    private(set) var values: [TranscriptionProgress] = []
+    private var waiters: [(stage: TranscriptionStage, continuation: CheckedContinuation<Void, Never>)] = []
+    func append(_ value: TranscriptionProgress) {
+        values.append(value)
+        let arrived = waiters.filter { $0.stage == value.stage }
+        waiters.removeAll { $0.stage == value.stage }
+        arrived.forEach { $0.continuation.resume() }
+    }
+    func until(_ stage: TranscriptionStage) async {
+        if values.contains(where: { $0.stage == stage }) { return }
+        await withCheckedContinuation { waiters.append((stage, $0)) }
+    }
+}
+
 private struct CountingSpeechEngine: Transcriber {
     let engine: TranscriptEngine
     let activity: SpeechJobActivity
@@ -258,6 +278,8 @@ private struct CountingSpeechEngine: Transcriber {
     var fails = false
     var kind: WordKind = .word
     var verbatim = true
+    /// Awaited in place of `delay` after the progress reports, when set.
+    var afterProgress: (@Sendable () async -> Void)?
     func capabilities(model: String?) -> TranscriberCapabilities { TranscriberCapabilities(timing: .native, verbatim: true, autoLanguage: false, onDevice: engine != .elevenlabs) }
     func supports(_ language: LanguageChoice, model: String?) async -> Bool { true }
     func readiness(for plan: TranscriptionPlan) async -> Readiness { .ready }
@@ -267,7 +289,7 @@ private struct CountingSpeechEngine: Transcriber {
         do {
             if fails { throw VoxClipError.transcriptionFailed("Synthetic engine failure") }
             for index in 0..<1000 { progress(TranscriptionProgress(stage: .transcribing, fraction: Double(index) / 1000)) }
-            try await Task.sleep(for: delay)
+            if let afterProgress { await afterProgress() } else { try await Task.sleep(for: delay) }
             await activity.end(engine, job: job)
             return RawTranscript(engine: EngineRef(id: engine, modelId: engine == .elevenlabs ? "scribe_v2" : nil, engineVersion: "test"), grouping: GroupingRule(end: .lastToken, conf: .single, bracketEvents: false), tokens: [RawToken(text: "hello", start: 0.1, end: 0.4, kind: kind)], language: "en", verbatim: verbatim, timing: .native)
         } catch { await activity.end(engine, job: job); throw error }

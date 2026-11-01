@@ -9,7 +9,7 @@ import Testing
 
 /// A stub connector for Rewrite: a selection's passage request gets "A clearer passage"; a clip's or Full take's
 /// `patch_edits` request gets the edits `reply` builds from the request's own lines. It records each request and, with
-/// `hold`, waits for `release()` before answering. Nothing leaves the Mac.
+/// `hold`, waits for `release()` before answering; `untilWaiting()` returns once it waits. Nothing leaves the Mac.
 private actor ScopeStub: LLMConnector {
     typealias Edit = (line: String, text: String, reason: String)
     nonisolated let id: ConnectorID
@@ -17,6 +17,7 @@ private actor ScopeStub: LLMConnector {
     private let hold: Bool
     private let reply: @Sendable ([RewriteFixtureReply.Line]) -> [Edit]
     private var waiting: CheckedContinuation<Void, Never>?
+    private var arrivals: [CheckedContinuation<Void, Never>] = []
     private(set) var requests: [LLMRequest] = []
     init(id: ConnectorID = .ollama, authMethod: String? = nil, hold: Bool = false,
          reply: @escaping @Sendable ([RewriteFixtureReply.Line]) -> [Edit] = ScopeStub.cutFirstWord) {
@@ -32,11 +33,12 @@ private actor ScopeStub: LLMConnector {
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         requests.append(request)
-        if hold { await withCheckedContinuation { waiting = $0 } }
+        if hold { await withCheckedContinuation { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
         let text = request.tag == "patch-rewrite" ? RewriteFixtureReply.patch(reply(RewriteFixtureReply.lines(of: request))) : "{\"rewrite\":\"A clearer passage\"}"
         return RawCompletion(text: text, model: model, stop: .complete)
     }
-    var isWaiting: Bool { waiting != nil }
+    /// Returns once a send waits for `release()`; a release before that would leave the send waiting for good.
+    func untilWaiting() async { if waiting == nil { await withCheckedContinuation { arrivals.append($0) } } }
     func release() { waiting?.resume(); waiting = nil }
 }
 
@@ -481,7 +483,7 @@ private final class WorkThreads: Sendable {
         editor.runRewrite()
         await editor.rewriteOpenTask?.value
         let session = try #require(editor.openRewrite)
-        for _ in 0..<2_000 where !(await stub.isWaiting) { await Task.yield() }
+        await stub.untilWaiting()
         #expect(session.task.state == .running)
         step(undo) { editor.apply(.cutSelection(ids: ["w30"]), name: "Cut selection") }
         #expect(session.task.state == .changed && session.task.headline.text == "Clip 1 changed")
@@ -707,7 +709,7 @@ private final class WorkThreads: Sendable {
         editor.runRewrite()
         await editor.rewriteOpenTask?.value
         let session = try #require(editor.openRewrite)
-        for _ in 0..<2_000 where !(await stub.isWaiting) { await Task.yield() }
+        await stub.untilWaiting()
         #expect(session.task.cards.first == .asked(preset: "Make it clearer", text: "keep my words where they work, change as little as possible."))
         let request = try #require(await stub.requests.first)
         #expect(request.instruction.hasSuffix("Instruction: Make it clearer. Keep my words where they work; change as little as possible."))
@@ -717,7 +719,7 @@ private final class WorkThreads: Sendable {
         #expect(app.rewriteSuggestions(for: editor.project.id).count == 4)
         editor.rewriteInstruction = "Shorter intro"
         let again = Task { _ = try? await rewrite(editor) }
-        for _ in 0..<2_000 where !(await stub.isWaiting) { await Task.yield() }
+        await stub.untilWaiting()
         await stub.release()
         await again.value
         #expect(app.rewriteSuggestions(for: editor.project.id).map(\.menuTitle).last == "Recent: “Shorter intro”")
