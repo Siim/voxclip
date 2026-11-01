@@ -17,6 +17,9 @@ import VoxClipCore
     @FocusState private var keyboardWithin: Bool
     /// The handover's focus took, once; after that the user may move it away.
     @State private var handoverTook = false
+    /// The question's safe answer, Keep Working, has the keyboard: a question takes it as it appears (lead decision,
+    /// MVP integration), so Return, Space and Esc all keep the work.
+    @FocusState private var answerFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,7 +37,7 @@ import VoxClipCore
             }
             // A question (`PanelConfirm`) stands in the footer's place until it is answered: inline, not an alert (§13.1).
             if let confirm = task.confirm {
-                PanelFooterView(footer: PanelFooter(note: confirm.question, link: confirm.confirm, primary: confirm.cancel), asks: true)
+                PanelFooterView(footer: PanelFooter(note: confirm.question, link: confirm.confirm, primary: confirm.cancel), asks: true, answerFocus: $answerFocused)
             } else if task.footer != PanelFooter() { PanelFooterView(footer: task.footer) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -80,18 +83,17 @@ import VoxClipCore
         .onChange(of: keyboardWithin) { _, _ in reportKeyboard() }
         .onChange(of: keyFieldFocused) { _, _ in reportKeyboard() }
         .onChange(of: askFocused) { _, _ in reportKeyboard() }
+        .onChange(of: answerFocused) { _, _ in reportKeyboard() }
         // Replacing the passage panel that had the keyboard, it takes it, so Esc, ⌘. and Return still act (design.md R1).
-        // macOS 26 drops the request made as the passage panel's field lets go of the keyboard (hosted CI's 26.6 left
-        // the window first responder) and takes one a moment later, so it asks again until the focus takes, for half
-        // a second at most, and never once it took: the user may have moved it since.
         .task {
             guard task.takeKeyboardHandover() else { return }
             let keyField = task.cards.contains(where: { if case .keyField = $0 { true } else { false } })
-            for _ in 0..<25 {
-                if handoverTook || Task.isCancelled { return }
-                if keyField { keyFieldFocused = true } else { keyboardWithin = true }
-                try? await Task.sleep(for: .milliseconds(20))
-            }
+            await Self.askForFocus(until: { handoverTook }) { if keyField { keyFieldFocused = true } else { keyboardWithin = true } }
+        }
+        // A question moves the keyboard to its safe answer, wherever it was; VoiceOver hears the question as it appears.
+        .task(id: task.confirm?.question) {
+            guard task.confirm != nil else { return }
+            await Self.askForFocus(until: { answerFocused }) { answerFocused = true }
         }
         // The producer's own work as the panel appears (Rewrite detects its AI), beside the handover's.
         .task { await task.appeared?() }
@@ -100,9 +102,19 @@ import VoxClipCore
 
     /// Tells the task whether the keyboard is anywhere in the panel; once it is, the handover took.
     private func reportKeyboard() {
-        let within = keyboardWithin || keyFieldFocused || askFocused
+        let within = keyboardWithin || keyFieldFocused || askFocused || answerFocused
         task.keyboardInPanel = within
         if within { handoverTook = true }
+    }
+    /// Makes `request` until `took` holds, every 20 ms for half a second at most, and never once it took: the user may
+    /// have moved the keyboard since. macOS 26 drops a focus request made as the view that had the keyboard lets go of it
+    /// or as the focused view appears (hosted CI's 26.6 left the window first responder); one a moment later takes.
+    private static func askForFocus(until took: () -> Bool, _ request: () -> Void) async {
+        for _ in 0..<25 {
+            if took() || Task.isCancelled { return }
+            request()
+            try? await Task.sleep(for: .milliseconds(20))
+        }
     }
 
     private var chooserRows: [ConnectorChoice]? {
@@ -374,6 +386,8 @@ import VoxClipCore
 @MainActor private struct PanelFooterView: View {
     let footer: PanelFooter
     var asks = false
+    /// A question's focus on its safe answer, the primary.
+    var answerFocus: FocusState<Bool>.Binding?
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 8) {
@@ -402,7 +416,15 @@ import VoxClipCore
     }
     @ViewBuilder private var buttons: some View {
         if let link = footer.link { PanelButton(action: link, kind: .ghost) }
-        if let primary = footer.primary { PanelButton(action: primary, kind: .primary) }
+        if let primary = footer.primary {
+            if let answerFocus {
+                // The question's safe answer takes the keyboard, with its ring; VoiceOver reads the question with it.
+                PanelButton(action: primary, kind: .primary)
+                    .focusable().focused(answerFocus)
+                    .accessibilityHint(footer.note ?? "")
+                    .columnLayoutEvidence("director.answer", text: answerFocus.wrappedValue ? "focused:" + primary.id : primary.id)
+            } else { PanelButton(action: primary, kind: .primary) }
+        }
     }
 }
 

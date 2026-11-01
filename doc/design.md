@@ -1090,7 +1090,7 @@ The instruction is bound into the quote like any instruction (`PatchRewriteReque
 
 - *Idle*: as above.
 - *Running*: the field is read-only and shows what was asked. The verb is replaced by a spinner and "Rewriting…", which is status, not a button. An indeterminate progress line runs along the bar, static under Reduce Motion. Stop lives in the panel.
-- *Proposal open*: the field keeps the asked text and stays editable. **Rewrite** sends again and replaces the proposal. When any change was edited, or takes exist, it first asks "Discard these {c} changes?" with **Keep Working** (the default) and **Discard Changes**, inline in the Rewrite job's footer rather than in an alert (Mac; the job comes to the panel to ask, and Return or Esc keeps working).
+- *Proposal open*: the field keeps the asked text and stays editable. **Rewrite** sends again and replaces the proposal. When any change was edited, or takes exist, it first asks "Discard these {c} changes?" with **Keep Working** (the default) and **Discard Changes**, inline in the Rewrite job's footer rather than in an alert (Mac; the job comes to the panel to ask and the keyboard moves to Keep Working, wherever it was, with its focus ring and the question as its VoiceOver hint; Return, Space and Esc keep working, and Discard Changes takes a click or VoiceOver).
 - *Another AI run holds the lease* (Find Clips, AI tighten; ai.md §4.7): the verb is replaced by the status "Finding clips…" or "Tightening…".
 - *Untranscribed project, or no editable scope*: the bar is hidden.
 

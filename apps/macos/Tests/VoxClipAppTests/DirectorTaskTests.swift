@@ -98,6 +98,14 @@ private actor RefusingKeys: ProviderKeyStore {
     /// Esc, and ⌘., which AppKit sends as the same action.
     func escape() { window.firstResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil) }
     func close() { window.close() }
+    /// A question's safe answer, Keep Working, has the keyboard.
+    var answerHasKeyboard: Bool { DebugRightColumn.texts(in: host)["director.answer"] == "focused:keepWorking" }
+    /// Return or Space as the keyboard sends it to the window.
+    func press(_ characters: String, keyCode: UInt16) {
+        guard let key = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                                         context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode) else { return }
+        window.sendEvent(key)
+    }
     /// Where the keyboard is, for a failure's message.
     func state(_ task: DirectorTask) -> String {
         "task panel \(showsTaskPanel), first responder \(window.firstResponder.map { String(describing: type(of: $0)) } ?? "nil"), field \(fieldHasKeyboard), pane \(paneHasKeyboard), keyboardInPanel \(task.keyboardInPanel)"
@@ -659,6 +667,33 @@ private actor RefusingKeys: ProviderKeyStore {
         }
     }
 
+    /// Lead decision (MVP integration): the inline "Discard this change?" moves the keyboard to its safe answer, Keep
+    /// Working, from wherever it was (here the transcript), with the question as the answer's VoiceOver hint. Return and
+    /// Space as typed choose it; Space leaves the change list alone while the question waits.
+    @Test(arguments: ["\r", " "])
+    func theDiscardQuestionMovesTheKeyboardToKeepWorking(key: String) async throws {
+        let ollama = StubConnector(id: .ollama)
+        let (app, _) = app("ollama", connectors: ["ollama": ollama])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let panel = PanelWindow(editor: editor)
+        defer { panel.close() }
+        panel.window.makeFirstResponder(panel.elsewhere)
+        let session = try await open(editor)
+        await panel.settle { panel.showsTaskPanel }
+        #expect(panel.window.firstResponder === panel.elsewhere && !panel.answerHasKeyboard, "\(panel.state(session.task))")
+        var answered: [String] = []
+        session.task.ask(PanelConfirm(question: "Discard this change?",
+                                      cancel: PanelAction(id: "keepWorking", title: "Keep Working") { answered.append("keep"); session.task.dismissConfirm() },
+                                      confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { answered.append("discard") }))
+        await panel.settle { panel.answerHasKeyboard }
+        #expect(panel.answerHasKeyboard && session.task.keyboardInPanel && panel.window.firstResponder !== panel.elsewhere, "\(panel.state(session.task))")
+        #expect(DebugRightColumn.texts(in: panel.host)["director.question"] == "Discard this change?")
+        let reviews = session.task.changes?.items.map(\.state)
+        panel.press(key, keyCode: key == "\r" ? 36 : 49)
+        #expect(answered == ["keep"] && session.task.confirm == nil && session.task.changes?.items.map(\.state) == reviews && session.isOpen)
+    }
+
     /// Ask for Something Else focuses the field (design.md R1x), wherever the keyboard was.
     @Test func askForSomethingElseFocusesTheField() async throws {
         let ollama = StubConnector(id: .ollama, failure: .refused(category: nil))
@@ -688,7 +723,7 @@ private actor RefusingKeys: ProviderKeyStore {
         defer { scenes.forEach { $0.editor?.close() } }
         #expect(scenes.map(\.name) == ["r0", "r0-none", "r1", "r1-clip", "r1x-message", "r1x-signed-out", "r1x-no-key", "r1x-not-running", "r1x-refused", "r1x-too-many-words", "r1x-too-much-text", "r3",
                                        "r2-free", "r2-voice-lab-off", "r2-make-takes", "r2-make-voice", "r2-use-take", "r2-several-voices", "r2-over-budget",
-                                       "r2-nothing-included", "r2-no-changes"])
+                                       "r2-nothing-included", "r2-no-changes", "r2-discard"])
         let output = ProcessInfo.processInfo.environment["VOXCLIP_DIRECTOR_SCENES"].map { URL(fileURLWithPath: $0, isDirectory: true) }
         for scene in scenes {
             for width in [404, 300] {
@@ -707,6 +742,9 @@ private actor RefusingKeys: ProviderKeyStore {
                 window.close()
             }
         }
+        // The discard scene draws the question row (84384e1d) over an edited change, its two answers in the footer's place.
+        let discard = try #require(scenes.first { $0.name == "r2-discard" })
+        #expect(discard.task.confirm?.question == "Discard these 2 changes?" && discard.task.confirm?.cancel.title == "Keep Working")
         let r0 = try #require(scenes.first { $0.name == "r0" })
         guard case .chooser(let rows, _) = r0.task.cards.first else { Issue.record("R0 has no chooser"); return }
         #expect(rows.map(\.id) == ["claude-code", "codex", "ollama", "anthropic"])
