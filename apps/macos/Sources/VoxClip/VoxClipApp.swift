@@ -57,9 +57,19 @@ import VoxClipCore
             Task {
                 await model.start()
                 do {
-                    let results = CommandLine.arguments[index] == "-captionGalleryAudit"
-                        ? try await DebugCaptionGallery.run(app: model, directory: directory)
-                        : try await DebugRightColumn.run(app: model, directory: directory)
+                    let results: [DebugUISuite.Result]
+                    if CommandLine.arguments.contains("-timelinePerformanceAudit") {
+                        // Headless counterpart of the timeline portion of -uiPerformanceTest.
+                        // Keep -layoutAudit so AppModel uses the test-session launch path.
+                        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                        guard let shared = model.shared else { throw VoxClipError.sharedResourcesMissing }
+                        let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
+                        results = try DebugTimeline.performance(app: model, fixture: fixture, directory: directory)
+                    } else {
+                        results = CommandLine.arguments[index] == "-captionGalleryAudit"
+                            ? try await DebugCaptionGallery.run(app: model, directory: directory)
+                            : try await DebugRightColumn.run(app: model, directory: directory)
+                    }
                     try JSONEncoder().encode(results).write(to: directory.appendingPathComponent("results.json"), options: .atomic)
                     exit(results.allSatisfy(\.passed) ? 0 : 1)
                 } catch { fputs("Layout audit failed: \(error)\n", stderr); exit(1) }
@@ -249,6 +259,13 @@ import VoxClipCore
         case 50, 51: keyShell?.showAdjacentTab(item.tag == 50 ? -1 : 1); return
         // Show Cuts is a view setting, so it works in the key window, a Versions window too.
         case 60: if validateMenuItem(item) { keyEditor?.toggleShowsCuts() }; return
+        case 61: if validateMenuItem(item) { keyEditor?.timelineZoomStep += 1 }; return
+        case 18, 19:
+            guard validateMenuItem(item), let editor = keyEditor else { return }
+            let direction = item.tag == 18 ? 1 : -1
+            if editor.focusedPane == .timeline { editor.timelineZoomStep += direction }
+            else { editor.zoom(Double(direction)) }
+            return
         // Help works on Home and with no project open; both sheets belong to the main window.
         case 35: MainWindowController.shared.show(); shell.showShortcuts = true; return
         case 36: MainWindowController.shared.show(); model.showTour = true; return
@@ -269,8 +286,6 @@ import VoxClipCore
         case 9: editor.apply(.restoreCuts, name: "Restore cuts")
         case 11: editor.showPauses.toggle()
         case 12: model.shell.toggleViewer()
-        case 18: editor.zoom(1)
-        case 19: editor.zoom(-1)
         case 20: editor.zoom(0)
         case 21: editor.transport(" ")
         case 22: editor.transport(" ", shift: true)
@@ -377,6 +392,11 @@ import VoxClipCore
                 return mainWindowIsKey && shell.editor != nil && !shell.showsHome && (shell.layout.rightVisible || !shell.layout.timelineVisible)
             case 35, 36: return true
             case 50, 51: return keyShell.map { $0.tabsShown && $0.tabs.open.count > 1 } ?? false
+            case 61: return keyEditor != nil
+            case 18, 19:
+                let timeline = keyEditor?.focusedPane == .timeline
+                item.title = item.tag == 18 ? (timeline ? "Zoom Timeline In" : "Bigger Text") : (timeline ? "Zoom Timeline Out" : "Smaller Text")
+                return keyEditor != nil
             case 60:
                 guard let editor = keyEditor else { return false }
                 item.state = editor.showsCuts ? .on : .off
@@ -521,6 +541,7 @@ import VoxClipCore
         for (offset, aspect) in Self.frameAspects.enumerated() { command(frameMenu, aspect == .source ? "Original" : aspect.rawValue, 52 + offset, "", []) }
         frame.submenu = frameMenu
         view.addItem(frame)
+        command(view, "Zoom Timeline In", 61, "=")
         command(view, "Bigger Text", 18, "+")
         command(view, "Smaller Text", 19, "-")
         command(view, "Actual Size", 20, "0")

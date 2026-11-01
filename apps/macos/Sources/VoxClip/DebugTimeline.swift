@@ -6,6 +6,36 @@ import SwiftUI
 import VoxClipCore
 
 @MainActor enum DebugTimeline {
+    /// Five actual caption words per page, in the scope's output time; the lane maps their
+    /// IDs back to Source. No caption service or media load delays a DEBUG fixture.
+    static func captionPages(_ model: EditorModel) -> [CaptionPage] {
+        let scope: ClosedRange<Double>? = model.scopeSourceRange
+        let cuts: Set<String> = model.cutWordIDs
+        var words: [TimedWord] = []
+        for word in model.words {
+            if cuts.contains(word.id) { continue }
+            if let scope, !scope.contains(word.start) { continue }
+            words.append(word)
+        }
+        return pages(words: words, model: model)
+    }
+    private static func pages(words: [TimedWord], model: EditorModel) -> [CaptionPage] {
+        let rect = CaptionRect(x: 0, y: 0, width: 100, height: 20)
+        return stride(from: 0, to: words.count, by: 5).map { first in
+            let group = words[first..<min(words.count, first + 5)].map { CaptionWord(id: $0.id, text: $0.text, start: model.timelineTime(source: $0.start, on: .edited), end: model.timelineTime(source: $0.end, on: .edited)) }
+            return CaptionPage(index: first / 5, words: group, start: group.first!.start, end: group.last!.end, fontPx: 24, block: rect, visual: rect)
+        }
+    }
+    /// Neutral, deterministic cached frames also exercise compositing at every zoom.
+    static func filmstripFrame() -> CGImage? {
+        guard let context = CGContext(data: nil, width: 136, height: 76, bitsPerComponent: 8, bytesPerRow: 136 * 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        for index in 0..<8 {
+            let grey = CGFloat(index + 1) / 10
+            context.setFillColor(CGColor(red: grey, green: grey, blue: grey, alpha: 1))
+            context.fill(CGRect(x: index * 17, y: 0, width: 17, height: 76))
+        }
+        return context.makeImage()
+    }
     private static var endpointDocument: VoxClipDocument?
     static func audit(app: AppModel, directory: URL) async {
         do {
@@ -129,10 +159,12 @@ import VoxClipCore
                 check("\(name) hosts the AppKit lanes", false)
                 continue
             }
+            model.captionPages = captionPages(model)
+            canvas.video.everyFrame = filmstripFrame()
             canvas.renderContent()
             canvas.followPlayhead()
             canvas.layoutSubtreeIfNeeded(); canvas.displayIfNeeded()
-            let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.audio]
+            let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.video, canvas.audio, canvas.captions]
             lanes.forEach { $0.layer?.displayIfNeeded() }
             // cacheDisplay draws the lanes and composites the overlay's layers, the right way up.
             let bitmap = try capture(canvas, name: "\(name)-lanes", directory: directory)
@@ -153,12 +185,15 @@ import VoxClipCore
             if inX - 8 > TimelineMetrics.header {
                 check("\(name) darkens the ruler outside In/Out", matches(color(inX - 6, TimelineMetrics.ruler.y + 13), "timeline.rulerOut"))
             }
-            check("\(name) draws the track lanes on timeline.lane", matches(color(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18), "timeline.lane"))
+            check("\(name) draws the track lanes on timeline.lane", matches(color(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18), axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
             let open = canvas.overview.x((model.timelineOverviewClips.first { $0.open }?.source.lowerBound ?? 0) + 0.3)
             // One 10 pt band (y 7–17), or two 8 pt rows (3.5–11.5 and 12.5–20.5) once clips overlap.
             check("\(name) draws the open clip's overview block at 42% clip.label",
                   [8, 12, 16].contains { matches(color(open, TimelineMetrics.overview.y + $0), "clip.label", alpha: 0.42, over: "timeline.lane") })
             check("\(name) has no red pixels", !hasRed(bitmap))
+            check("\(name) draws filmstrip tiles and names only on wide V1 pieces", canvas.video.tiles > 0 && canvas.video.names > 0)
+            check("\(name) fits CC words with a dim ellipsis and nothing below 24 pt", !canvas.captions.blocks.isEmpty && canvas.captions.ellipses > 0 && canvas.captions.textBlocks.allSatisfy { $0 >= 24 })
+            check("\(name) names the CC eye's current state", canvas.headers[2].button.accessibilityLabel() == "CC Captions, shown")
             results += audioChecks(name: name, canvas: canvas, model: model, matches: { matches(color($0, $1), $2, alpha: $3, over: $4) })
             // A playhead tick moves only the playhead layers: no lane draws again.
             let draws = lanes.map(\.draws)
@@ -365,7 +400,7 @@ import VoxClipCore
         project.media.source.durationSeconds = duration
         let clip = ClipRange(id: "timeline-performance", startWordId: words[count / 4].id, endWordId: words[count * 3 / 4].id)
         project.edits = ProjectEdits(cutWordIds: stride(from: 3, to: count, by: 6).map { words[$0].id }, clips: [clip])
-        let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
         defer { model.close() }
         model.mediaResolved = true; model.refresh()
         // The pyramid is built off the main thread, as the cache's load task builds it; the
@@ -381,6 +416,7 @@ import VoxClipCore
         done.wait()
         let pyramid = milliseconds(pyramidStart.duration(to: .now)), offMain = built.offMain
         model.waveform = built.waveform
+        model.captionPages = captionPages(model)
         let canvas = TimelineCanvasView(model: model)
         defer { canvas.tearDown() }
         let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1056, height: TimelineMetrics.height), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -389,9 +425,10 @@ import VoxClipCore
         window.contentView = canvas
         defer { window.close() }
         canvas.layoutSubtreeIfNeeded()
+        canvas.video.everyFrame = filmstripFrame()
         canvas.renderContent()
         canvas.displayIfNeeded()
-        let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.audio]
+        let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed, canvas.video, canvas.audio, canvas.captions]
         // Each lane draws through its layer at once, in or out of a shown window.
         func redraws() -> [Double] {
             (0..<30).map { _ in
@@ -415,8 +452,8 @@ import VoxClipCore
         }
         let tickP95 = percentile(ticks, 0.95), tickMaximum = ticks.max() ?? 0
         let tickDraws = zip(lanes.map(\.draws), drawn).map { $0 - $1 }.reduce(0, +)
-        // Zoom: from the fitted hour to 100 pt/s and back, on both axes, with the ruler and A1
-        // drawing each frame (V9 adds the controls; the lanes' cost is this).
+        // Zoom from the fitted hour to 100 pt/s and back, on both axes. The real viewport
+        // update gives every lane its state and schedules the visible filmstrip frames.
         var zooms: [Double] = []
         let fitted = canvas.viewport
         func zoomFrames(_ axis: TimelineAxis, center: Double, each: () -> Void = {}) {
@@ -425,10 +462,8 @@ import VoxClipCore
                 let zoom = fitted.ptPerSecond * pow(100 / fitted.ptPerSecond, step)
                 let viewport = TimelineViewport(axis: axis, ptPerSecond: zoom, origin: center - fitted.width / zoom / 2, width: fitted.width)
                 let start = ContinuousClock.now
-                canvas.ruler.state.viewport = viewport
-                canvas.audio.state.viewport = viewport
-                canvas.ruler.layer?.displayIfNeeded()
-                canvas.audio.layer?.displayIfNeeded()
+                canvas.auditViewport(viewport)
+                lanes.forEach { $0.layer?.displayIfNeeded() }
                 zooms.append(milliseconds(start.duration(to: .now)))
                 each()
             }
@@ -442,6 +477,8 @@ import VoxClipCore
         model.document.updateChangeCount(.changeCleared)
         model.showsCuts = true
         canvas.renderContent()
+        model.captionPages = captionPages(model)
+        canvas.renderContent()
         let source = canvas.audio.state
         redrawTimes += redraws()
         var gaps = 0, dimmed = 0
@@ -449,18 +486,28 @@ import VoxClipCore
             gaps = max(gaps, canvas.audio.drawn.gaps.count)
             dimmed = max(dimmed, canvas.audio.drawn.dimmed)
         }
+        var scrolls: [Double] = []
+        for frame in 0..<120 {
+            let start = ContinuousClock.now
+            canvas.pan(by: frame < 60 ? 20 : -20)
+            lanes.forEach { $0.layer?.displayIfNeeded() }
+            scrolls.append(milliseconds(start.duration(to: .now)))
+        }
+        let scrollP95 = percentile(scrolls, 0.95)
         let redrawMaximum = redrawTimes.max() ?? 0, zoomP95 = percentile(zooms, 0.95)
         let optimized = !_isDebugAssertConfiguration()
         let metrics: [String: Double] = ["words": Double(count), "cuts": Double(project.edits.cutWordIds.count), "fullRedrawMaximumMS": redrawMaximum,
                                          "fullRedrawMedianMS": percentile(redrawTimes, 0.5), "tickP95MS": tickP95, "tickMaximumMS": tickMaximum,
                                          "laneDrawsDuringTicks": Double(tickDraws), "pyramidMS": pyramid, "zoomFrameP95MS": zoomP95,
+                                         "scrollFrameP95MS": scrollP95, "videoTiles": Double(canvas.video.tiles), "captionBlocks": Double(canvas.captions.blocks.count),
                                          "zoomFrameMaximumMS": zooms.max() ?? 0, "audioColumns": Double(editedColumns),
                                          "sourceRemovedRanges": Double(source.removed.count), "sourceGapsDrawn": Double(gaps),
                                          "sourceDimmedColumns": Double(dimmed), "optimized": optimized ? 1 : 0]
         try JSONEncoder().encode(metrics).write(to: directory.appendingPathComponent("timeline-performance.json"), options: .atomic)
         return [
+            .init(name: "60-minute scroll frames draw V1, A1 and CC within 16.7 ms at p95 (\(String(format: "%.2f", scrollP95)) ms)", passed: canvas.video.tiles > 0 && !canvas.captions.blocks.isEmpty && (!optimized || scrollP95 <= 1000.0 / 60)),
             .init(name: "60-minute waveform pyramid builds off the main thread within 150 ms (\(String(format: "%.1f", pyramid)) ms)", passed: offMain && (!optimized || pyramid <= 150)),
-            .init(name: "60-minute zoom frames draw the ruler and A1 on Edited and Source within 16.7 ms at p95 (\(String(format: "%.2f", zoomP95)) ms)", passed: editedColumns > 100 && (!optimized || zoomP95 <= 1000.0 / 60)),
+            .init(name: "60-minute zoom frames draw V1, A1 and CC on Edited and Source within 16.7 ms at p95 (\(String(format: "%.2f", zoomP95)) ms)", passed: editedColumns > 100 && (!optimized || zoomP95 <= 1000.0 / 60)),
             .init(name: "60-minute Source frames draw the removed ranges and the take outside In/Out (\(gaps) ranges, \(dimmed) dimmed columns)",
                   passed: !source.removed.isEmpty && gaps > 0 && dimmed > 0),
             .init(name: "60-minute timeline full redraw on Edited and Source stays within 8 ms (\(String(format: "%.2f", redrawMaximum)) ms)", passed: drawn.allSatisfy { $0 > 1 } && (!optimized || redrawMaximum <= 8)),

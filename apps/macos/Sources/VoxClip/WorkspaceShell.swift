@@ -23,7 +23,8 @@ enum SidebarItem: Hashable {
     var explorerVisible = true
     var rightVisible = true
     var timelineVisible = true
-    /// The timeline fills the work area (V7a's maximize button); no V1a control sets it.
+    /// The timeline panel's Maximize (impl-plan V9): it takes the work area down to the
+    /// columns' minimum, until Maximize again or a drag of its edge. Per window, not kept.
     var timelineMaximized = false
     /// The window's content width, which the right column's starting width follows.
     var windowWidth = 1280.0
@@ -34,6 +35,7 @@ enum SidebarItem: Hashable {
     static let explorerWidthKey = "ui.layout.explorerWidth"
     static let rightWidthKey = "ui.layout.rightWidth"
     static let timelineHeightKey = "ui.layout.timelineHeight"
+    static let trackHeightKey = "ui.layout.trackHeight"
     /// The pre-v2 right-column width, which a saved settings file may still hold.
     static let retiredRightWidthKey = "ui.rightColumnWidth"
     /// Removes the pre-v2 right-column width from loaded settings (impl-plan item 18).
@@ -73,12 +75,24 @@ enum SidebarItem: Hashable {
     /// The timeline panel's height below its top edge: where the user last dragged that
     /// edge, else 216 within 40% of the work area (impl-plan §3.5).
     var timelineHeight: Double {
+        // Maximized: everything but the columns' minimum and the 1 pt edge.
+        if timelineMaximized { return (workHeight - Double(ShellMetrics.topMinimum) - 1).clamped(to: Self.timelineRange) }
         let start = min(Self.timelineDefault, (workHeight * Self.timelineShare).rounded(.down))
         return app.number(Self.timelineHeightKey, fallback: start).clamped(to: Self.timelineRange)
     }
     func rememberExplorerWidth(_ width: Double) { app.set(Self.explorerWidthKey, .number(width.rounded().clamped(to: Self.explorerRange))) }
     func rememberRightWidth(_ width: Double) { app.set(Self.rightWidthKey, .number(width.rounded().clamped(to: Self.rightRange))) }
-    func rememberTimelineHeight(_ height: Double) { app.set(Self.timelineHeightKey, .number(height.rounded().clamped(to: Self.timelineRange))) }
+    /// A drag of the timeline's edge also ends Maximize.
+    func rememberTimelineHeight(_ height: Double) {
+        timelineMaximized = false
+        app.set(Self.timelineHeightKey, .number(height.rounded().clamped(to: Self.timelineRange)))
+    }
+    /// V1, A1 and CC's height in the timeline (notes.md §6, impl-plan V9): the one the user
+    /// last picked, kept for every project, else M.
+    var trackHeight: TrackHeight {
+        get { TrackHeight(rawValue: app.string(Self.trackHeightKey)) ?? .medium }
+        set { app.set(Self.trackHeightKey, .string(newValue.rawValue)) }
+    }
 }
 
 /// State of the one main window (ADR-R29): the open project, its editor, the sidebar

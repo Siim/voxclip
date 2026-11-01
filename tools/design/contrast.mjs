@@ -97,6 +97,8 @@ const tokenPairs = [
   ['ui', 'ai.wave', ['ai.tint@0.10', 'timeline.lane'], 'AI patch waveform on A1'],
   ...['bg.window', 'timeline.rulerOut'].map(background => ['text', 'timeline.rulerLabel', background, 'ruler timecode labels']),
   ['ui', 'timeline.wave', 'timeline.audioPiece', 'A1 waveform core; its peak columns are the same colour at 62%'],
+  ['text', 'timeline.cueText', 'timeline.cue', 'caption cue words on the CC lane'],
+  ['text', 'text.tertiary', 'timeline.videoPiece', 'V1 filename strip'],
 ];
 
 // Colours kept below their minimum on purpose (impl-plan item 6), with the reason. Their
@@ -120,7 +122,7 @@ const increaseContrastPairs = [
   ...['editor.band', 'bg.surface'].map(background => ['text', 'gutter.text', background]),
   ['text', 'gutter.textOut', 'bg.surface'],
   ['ui', 'fold.dot', 'editor.band'],
-  ...['timeline.lane', 'timeline.audioPiece'].map(background => ['ui', 'timeline.piece', background, 'A1 and V1 piece outlines']),
+  ...['timeline.lane', 'timeline.audioPiece', 'timeline.videoPiece'].map(background => ['ui', 'timeline.piece', background, 'A1 and V1 piece outlines']),
   ['ui', 'timeline.cutOutline', 'timeline.lane', 'removed range outline on A1 in Source view'],
 ];
 
@@ -139,6 +141,7 @@ export const exempt = {
   'timeline.ghostWave': 'removed audio ghosted at 20% in Source view; the dashed outline, the transcript and the Cuts rotor carry the cut',
   'timeline.seam': 'decorative 1 pt cut seam; cuts are also folds in the transcript, the Cuts rotor and the status summary',
   'timeline.tick': 'decorative 6 pt minor ruler tick; the labelled major ticks carry the time',
+  'timeline.scroller': 'decorative overlay scroller thumb, like the system overlay scrollers; trackpad scrolling, the zoom controls and the overview carry the position',
 };
 
 // Windows draws accent text and on-accent text from the App.xaml ramp, not from tokens. The

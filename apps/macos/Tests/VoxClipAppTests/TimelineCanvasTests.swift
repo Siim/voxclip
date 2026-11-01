@@ -1,6 +1,7 @@
 #if DEBUG
 import AppKit
 import Foundation
+import SwiftUI
 import Testing
 @testable import VoxClipCore
 @testable import VoxClip
@@ -29,7 +30,10 @@ private actor TimelineTestSettings: SettingsStore {
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
         project.media.source.durationSeconds = 60
         project.transcript?.durationSeconds = 60
-        project.transcript?.words = (0..<60).map { TimedWord(id: "t\($0)", text: $0 % 10 == 9 ? "word." : "word", start: Double($0), end: Double($0) + 0.8) }
+        project.transcript?.words = (0..<60).map { index in
+            let start = Double(index)
+            return TimedWord(id: "t\(index)", text: index % 10 == 9 ? "word." : "word", start: start, end: start + 0.8)
+        }
         let clip = ClipRange(id: "clip-1", startWordId: "t10", endWordId: "t29")
         project.edits = ProjectEdits(cutWordIds: ["t14", "t15"], clips: [clip], activeClipId: clip.id)
         return project
@@ -186,7 +190,7 @@ private actor TimelineTestSettings: SettingsStore {
         model.activate(nil)
         canvas.renderContent()
         #expect(canvas.content.inOut == nil && canvas.content.scope == nil)
-        #expect(canvas.accessibilityChildren()?.count == 1)
+        #expect(canvas.accessibilityChildren()?.compactMap { $0 as? TimelineSliderElement }.count == 1)
     }
 
     @Test func showCutsIsAViewSettingOffByDefault() throws {
@@ -321,7 +325,7 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(try pixels.shows(40, y, "bg.window"))
         #expect(try pixels.shows(80, y, "bg.window"))
         // V1's bare lane under the wash (A1 draws the take's audio there).
-        #expect(try pixels.shows(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18, "tint.wash", over: "timeline.lane"))
+        #expect(try pixels.shows(TimelineMetrics.header + canvas.viewport.x(11), TimelineMetrics.tracks[0].y + 18, "tint.wash", over: "timeline.videoPiece"))
         let zoom = canvas.viewport.ptPerSecond
         canvas.mouseUp(with: try mouse(.leftMouseUp, NSPoint(x: 40, y: y), in: canvas))
         #expect(canvas.viewport.visible.contains(early) && canvas.viewport.ptPerSecond == zoom)
@@ -407,7 +411,7 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(try pixels.shows(inX + 0.75, TimelineMetrics.ruler.y + 12, "clip.label"))
         #expect(try pixels.shows(inX + 3, TimelineMetrics.ruler.y + 13, "bg.window"))
         #expect(try pixels.shows(inX - 6, TimelineMetrics.ruler.y + 13, "timeline.rulerOut"))
-        #expect(try pixels.shows(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18, "timeline.lane"))
+        #expect(try pixels.shows(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18, axis == .source ? "timeline.videoPiece" : "timeline.lane", alpha: axis == .source ? 0.32 : 1, over: axis == .source ? "timeline.lane" : nil))
         let block = canvas.overview.x(try #require(model.timelineOverviewClips.first).source.lowerBound + 0.3)
         #expect(try pixels.shows(block, TimelineMetrics.overview.y + 12, "clip.label", alpha: 0.42, over: "timeline.lane"))
         // The header column and its hairline stay beside every lane.
@@ -844,5 +848,227 @@ private actor TimelineTestSettings: SettingsStore {
         model.mediaResolved = false
         #expect(model.waveformKey == nil)
     }
+    // MARK: Timeline II (V9)
+    @Test func trackHeightsAndHeadersFollowTheWindowWithoutEditing() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        let shell = WorkspaceShell(app: app)
+        let canvas = TimelineCanvasView(model: model, shell: shell)
+        defer { canvas.tearDown() }
+        let steps = model.undoSteps
+        #expect(TrackHeight.small.heights == [28, 32, 20])
+        #expect(TrackHeight.medium.heights == [36, 44, 24])
+        #expect(TrackHeight.large.heights == [52, 64, 28])
+        for height in TrackHeight.allCases {
+            shell.layout.trackHeight = height
+            canvas.layoutSubtreeIfNeeded(); canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
+            #expect([canvas.video, canvas.audio, canvas.captions].map { $0.frame.height } == height.heights)
+        }
+        #expect(canvas.headers[0].button.isHidden)
+        #expect(canvas.headers[2].button.accessibilityLabel() == "CC Captions, shown")
+        canvas.headers[1].action?()
+        #expect(model.previewMuted)
+        #expect(model.undoSteps == steps)
+        shell.layout.windowWidth = 960
+        canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
+        #expect(canvas.headerWidth == 64 && canvas.audio.headerWidth == 64)
+        #expect(canvas.verticalMaximum > 0)
+        #expect(!canvas.verticalScroller.isHidden)
+        #expect(!model.document.isDocumentEdited)
+        shell.layout.workHeight = 700
+        let normalHeight = shell.layout.timelineHeight
+        shell.layout.timelineMaximized = true
+        #expect(shell.layout.timelineHeight == 700 - Double(ShellMetrics.topMinimum) - 1)
+        shell.layout.timelineMaximized = false
+        #expect(shell.layout.timelineHeight == normalHeight)
+        shell.layout.timelineMaximized = true
+        shell.layout.rememberTimelineHeight(220)
+        #expect(!shell.layout.timelineMaximized && shell.layout.timelineHeight == 220)
+        shell.layout.trackHeight = .medium
+        canvas.setFrameSize(NSSize(width: 960, height: 155)) // 183 pt panel, including toolbar
+        canvas.needsLayout = true; canvas.layoutSubtreeIfNeeded()
+        #expect(canvas.captions.frame.minY >= canvas.trackClip.bounds.height)
+        canvas.verticalScroller.changed?(1)
+        #expect(canvas.captions.frame.maxY <= canvas.trackClip.bounds.height)
+    }
+
+    @Test func captionLaneFitsWholeWordsAndLeavesAOnePointSeam() throws {
+        let lane = CaptionLane(frame: NSRect(x: 0, y: 0, width: 500, height: 24))
+        lane.state = .init(viewport: .init(axis: .edited, ptPerSecond: 30, origin: 0, width: 388), cues: [
+            TimelineCue(range: 0..<2, text: "And one cool feature"),
+            TimelineCue(range: 2..<4, text: "we added today"),
+            TimelineCue(range: 4..<4.7, text: "So")
+        ])
+        let pixels = try Pixels(lane)
+        #expect(lane.blocks.count == 3)
+        #expect(lane.blocks[1].minX - lane.blocks[0].maxX == 1)
+        #expect(lane.textBlocks.allSatisfy { $0 >= 24 })
+        #expect(lane.textBlocks.count == 2 && lane.ellipses == 2)
+        #expect(try pixels.shows(171.5, 12, "timeline.lane"))
+        #expect(try pixels.shows(169, 3, "timeline.cue"))
+        for height in [20.0, 28] {
+            lane.setFrameSize(NSSize(width: 500, height: height))
+            _ = try Pixels(lane)
+            #expect(lane.blocks.allSatisfy { $0.height == 20 })
+        }
+        let empty = CaptionLane(frame: lane.frame)
+        _ = try Pixels(empty)
+        #expect(empty.blocks.isEmpty)
+    }
+
+    @Test func sourceCaptionSpansDarkenOnlyTheCutInsideThem() throws {
+        let lane = CaptionLane(frame: NSRect(x: 0, y: 0, width: 500, height: 24))
+        lane.state = .init(viewport: .init(axis: .source, ptPerSecond: 30, origin: 10, width: 388), cues: [TimelineCue(range: 10..<15, text: "And one cool", cuts: [12..<13])])
+        let pixels = try Pixels(lane)
+        #expect(lane.blocks.count == 1)
+        #expect(try pixels.shows(160, 4, "timeline.cue"))
+        #expect(try pixels.shows(185, 4, "timeline.lane", alpha: 0.42, over: "timeline.cue"))
+        lane.state.inOut = 11...14
+        let dimmed = try Pixels(lane)
+        #expect(try dimmed.shows(127, 4, "timeline.cue", alpha: 0.32, over: "timeline.lane"))
+    }
+
+    @Test func videoNameThresholdSeamsAndSourceDimming() throws {
+        let lane = VideoLane(frame: NSRect(x: 0, y: 0, width: 500, height: 36))
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 500, height: 36), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = lane
+        defer { window.close() }
+        lane.mediaName = "…0075_D"
+        lane.state = .init(viewport: .init(axis: .edited, ptPerSecond: 30, origin: 0, width: 388), pieces: TimelinePieces([
+            TimelinePiece(source: 10..<13, edited: 0..<3), TimelinePiece(source: 14..<15, edited: 3..<4)
+        ]), takeLength: 30)
+        _ = try Pixels(lane)
+        #expect(lane.names == 1)
+        #expect(lane.seams == [202])
+        lane.state.viewport = .init(axis: .source, ptPerSecond: 20, origin: 8, width: 388)
+        lane.state.inOut = 10...15; lane.state.clip = 10...15
+        let pixels = try Pixels(lane)
+        #expect(lane.dimmed == 2 && lane.seams.isEmpty)
+        let expected = try DebugTimeline.swatch("timeline.videoPiece", alpha: 0.32, over: "timeline.lane")
+        #expect(try pixels.shows(122, 20, "timeline.videoPiece", alpha: 0.32, over: "timeline.lane"), "actual \(pixels.at(122, 20)), expected \(expected)")
+        #expect(try pixels.shows(222, 20, "timeline.lane")) // cut 13–14
+    }
+
+    @Test func zoomAndScrollStayBoundedAndNeverDirtyTheDocument() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let width = canvas.bounds.width, original = canvas.viewport
+        let steps = model.undoSteps
+        canvas.zoom(by: 4, anchor: 200)
+        #expect(abs(original.time(atX: 200) - canvas.viewport.time(atX: 200)) < 1e-9)
+        #expect(!canvas.horizontalScroller.isHidden)
+        canvas.scroll(to: 1)
+        #expect(canvas.viewport.origin > original.origin)
+        #expect(canvas.bounds.width == width && canvas.audio.bounds.width == width)
+        canvas.setZoom(0)
+        #expect(abs(canvas.viewport.ptPerSecond - canvas.zoomMinimum) < 1e-9)
+        #expect(model.undoSteps == steps && !model.document.isDocumentEdited)
+    }
+
+    @Test func zoomKeysActOnTheKeyVersionsTimelineWithoutAChange() throws {
+        _ = NSApplication.shared
+        let app = try app(), version = VoxClipDocument(project: try project(), demo: true)
+        version.versionForTesting = true
+        let controller = VersionWindowController(version: version, app: app)
+        defer { version.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        let editor = try #require(controller.shell.editor)
+        editor.focusedPane = .timeline
+        let delegate = AppDelegate()
+        delegate.commandWindowForTesting = controller.window
+        defer { delegate.commandWindowForTesting = nil }
+        let action = NSSelectorFromString("performEditorCommand:")
+        for (tag, key, expected) in [(61, "=", 1), (19, "-", 0), (18, "+", 1)] {
+            let item = NSMenuItem(title: "Zoom", action: action, keyEquivalent: key)
+            item.tag = tag; item.keyEquivalentModifierMask = .command
+            #expect(delegate.validateMenuItem(item))
+            if tag == 19 { #expect(item.title == "Zoom Timeline Out") }
+            _ = delegate.perform(action, with: item)
+            #expect(editor.timelineZoomStep == expected)
+        }
+        editor.focusedPane = .transcript
+        let textSize = editor.textSize
+        let biggerText = NSMenuItem(title: "Zoom", action: action, keyEquivalent: "+")
+        biggerText.tag = 18
+        #expect(delegate.validateMenuItem(biggerText) && biggerText.title == "Bigger Text")
+        _ = delegate.perform(action, with: biggerText)
+        #expect(editor.textSize == textSize + 1 && editor.timelineZoomStep == 1)
+        #expect(!version.isDocumentEdited && !version.hasUnautosavedChanges)
+    }
+
+    @Test func captionPagesStayEmptyUntilLoadedAndFollowCutsBeforeTheNextLayout() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        #expect(model.timelineCaptionCues(on: .edited).isEmpty)
+        model.captionPages = DebugTimeline.captionPages(model)
+        let before = model.timelineCaptionCues(on: .edited)
+        #expect(!before.isEmpty)
+        let count = before.reduce(0) { $0 + $1.text.split(separator: " ").count }
+        model.selectedWordIDs = ["t11"]
+        model.cutSelection()
+        let after = model.timelineCaptionCues(on: .edited)
+        #expect(after.reduce(0) { $0 + $1.text.split(separator: " ").count } == count - 1)
+        let source = model.timelineCaptionCues(on: .source, removed: model.timelineRemovedRanges(model.timelinePieces))
+        #expect(source.map(\.text) == after.map(\.text))
+        #expect(source.contains { !$0.cuts.isEmpty })
+        model.activate(nil)
+        #expect(model.captionPages.isEmpty && model.timelineCaptionCues(on: .edited).isEmpty)
+        model.captionPages = DebugTimeline.captionPages(model)
+        model.setCaptionsEnabled(false)
+        #expect(model.timelineCaptionCues(on: .edited).isEmpty)
+    }
+
+    @Test func toolbarControlsFitAndDropInTheSpecifiedOrder() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        let shell = WorkspaceShell(app: app)
+        model.selectedWordIDs = ["t20", "t21", "t22", "t23"]
+        for width in [1056.0, 960, 840, 800, 700] {
+            let size = NSSize(width: width, height: 28)
+            let host = ShellHost.controller(TimelineToolbar(model: model, shell: shell), app: app)
+            host.view.frame = NSRect(origin: .zero, size: size)
+            let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -10_000, y: -10_000), size: size), styleMask: [.borderless], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.contentViewController = host
+            defer { window.close() }
+            host.view.layoutSubtreeIfNeeded()
+            let rects = DebugRightColumn.markers(in: host.view)
+            for (name, rect) in rects {
+                #expect(rect.minX >= -0.5 && rect.maxX <= width + 0.5, "\(name) at \(width): \(rect)")
+            }
+            for name in ["timeline.zoom.out", "timeline.zoom.in", "timeline.maximize", "timeline.hide"] { #expect(rects[name] != nil) }
+            #expect((rects["timeline.trackHeight"] != nil) == (width >= 840))
+            #expect((rects["timeline.zoom.slider"] != nil) == (width >= 800))
+            #expect((rects["timeline.snapping"] != nil) == (width >= 720))
+            if width == 1056 { #expect(rects["timeline.sourceReadout"] != nil && rects["timeline.selectionLength"] != nil) }
+            if width == 1056 || width == 700 {
+                let bitmap = try DebugTimeline.sRGBBitmap(of: host.view)
+                let file = app.locations.root.appendingPathComponent("toolbar-\(Int(width)).png")
+                try FileManager.default.createDirectory(at: app.locations.root, withIntermediateDirectories: true)
+                try bitmap.representation(using: .png, properties: [:])?.write(to: file)
+                print("V9 toolbar capture: \(file.path)")
+            }
+        }
+    }
+
+    @Test func fittedHourKeepsV1VisibleAcrossSubpointPieces() throws {
+        let lane = VideoLane(frame: NSRect(x: 0, y: 0, width: 1056, height: 36))
+        let pieces = (0..<1500).map { index in
+            let source = Double(index) * 2.4
+            let edited = Double(index) * 1.6
+            return TimelinePiece(source: source..<(source + 1.6), edited: edited..<(edited + 1.6))
+        }
+        lane.everyFrame = DebugTimeline.filmstripFrame()
+        lane.state = .init(viewport: .fitting(0...2400, width: 944, axis: .edited), pieces: TimelinePieces(pieces), takeLength: 3600)
+        _ = try Pixels(lane)
+        #expect(lane.tiles > 10)
+        #expect(lane.names == 0, "Coalescing subpoint pieces must not invent a wide piece's name strip")
+    }
+
 }
 #endif

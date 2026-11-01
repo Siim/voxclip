@@ -179,6 +179,51 @@ extension EditorModel {
         return ids
     }
 
+    /// The CC lane's cues on `axis` (notes.md §6, impl-plan V9) from the preview's caption
+    /// pages, with `removed` (Source's cut ranges) inside them. A page's words map through the
+    /// scope's current plan by their ids, so a cut shows before the preview has
+    /// laid the captions out again; a page of AI-voice words keeps the layout's own times.
+    /// Pages outside the open clip (a layout from before a tab switch) are left out.
+    func timelineCaptionCues(on axis: TimelineAxis, removed: [Range<Double>] = []) -> [TimelineCue] {
+        guard project.captions.styleId != "off" else { return [] }
+        let scope = scopeSourceRange
+        var pages: [TimelineCaptions.Page] = []
+        pages.reserveCapacity(captionPages.count)
+        for page in captionPages {
+            let visibleWords = page.words.filter { word in
+                guard let index = wordIndex[word.id] else { return true }
+                if cutWordIDs.contains(word.id) { return false }
+                guard let scope else { return true }
+                return words[index].end > scope.lowerBound && words[index].start < scope.upperBound
+            }
+            guard let first = visibleWords.first, let last = visibleWords.last else { continue }
+            let text = visibleWords.map(\.text).joined(separator: " ")
+            if let lower = wordIndex[first.id], let upper = wordIndex[last.id] {
+                let start = words[lower].start, end = max(start, words[upper].end)
+                if let scope, end <= scope.lowerBound || start >= scope.upperBound { continue }
+                let editedStart = timelineTime(source: start, on: .edited), editedEnd = timelineTime(source: end, on: .edited)
+                pages.append(.init(edited: editedStart..<max(editedStart, editedEnd), source: start..<end, text: text))
+            } else {
+                let start = timelineSourceTime(page.start, on: .edited), end = timelineSourceTime(max(page.start, page.end), on: .edited)
+                pages.append(.init(edited: page.start..<max(page.start, page.end), source: start..<max(start, end), text: text))
+            }
+        }
+        return TimelineCaptions.cues(pages, on: axis, removed: removed)
+    }
+
+    /// Where V1's filmstrip reads its frames (impl-plan V9), or nil when it has none: a demo,
+    /// media that is missing or unreadable, or a take without video.
+    var timelineFilmstripSource: FilmstripSource? {
+        guard !document.demo, mediaResolved, !mediaUnreadable, project.media.source.video != nil else { return nil }
+        return FilmstripSource(url: sourceURL, contentKey: project.media.source.contentKey, cache: app.locations.cache)
+    }
+
+    /// V1's name strip (notes.md §6): the end of the take's file name, as "…0075_D".
+    var timelineMediaName: String {
+        let stem = (URL(fileURLWithPath: project.media.source.absolutePath).lastPathComponent as NSString).deletingPathExtension
+        return stem.count > 7 ? "\u{2026}" + String(stem.suffix(6)) : stem
+    }
+
     /// Every clip and suggestion in take time for the overview strip (notes.md §6), in
     /// Explorer order.
     var timelineOverviewClips: [TimelineOverviewClip] {
