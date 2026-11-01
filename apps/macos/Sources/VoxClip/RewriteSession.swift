@@ -143,7 +143,8 @@ struct RewriteChange: Equatable, Sendable {
             return try await self.currentGenerationCap()
         }
     }
-    func reportGenerationProblem(_ error: any Error) { problem = Self.refusal(error) }
+    /// Why finding the voices failed before a generation exists, R2's callout; nil clears it as Make Takes tries again.
+    func reportGenerationProblem(_ error: (any Error)?) { problem = error.map(Self.refusal) ?? "" }
     /// Takes need Voice Lab's Rewrite on, its ElevenLabs consent and region, and a session that is current.
     func generationIsCurrent(region: ElevenLabsRegion) -> Bool {
         current && !isProposing && editor.app.voiceLabRewriteEnabled && editor.app.bool("voiceLab.providerConsent.elevenlabs") &&
@@ -706,11 +707,13 @@ struct RewriteChange: Equatable, Sendable {
     /// Moves the session on to `next`, past an edit outside the scope, which never waits for Core (impl-plan §3.1). A
     /// voice change's window can read the kept words and pauses beside the scope, so the review is built again off the
     /// main actor (`reviewing`); when a window or patch text moved, takes made for the old ones no longer fit
-    /// (`inputsChanged`). Cuts and fixes read nothing outside the scope.
+    /// (`inputsChanged`). A review that failed so leaves the proposal's phrases out with its problem (`voiceUnavailable`),
+    /// and the next such edit tries again. Cuts and fixes read nothing outside the scope.
     private func move(to next: Project) {
         guard next != project else { return }
         project = next; derive()
-        guard let previous = review, !previous.voiceHunks.isEmpty else { return }
+        let previous = review
+        guard previous.map({ !$0.voiceHunks.isEmpty }) ?? changes.contains(where: { $0.hunk.kind == .voice }) else { return }
         reviewing?.cancel()
         let hunks = changes.map(\.hunk), inputs = reviewInputs, version = revision
         reviewing = Task { [self] in
@@ -719,8 +722,8 @@ struct RewriteChange: Equatable, Sendable {
             reviewing = nil
             switch built {
             case .success(let fresh):
-                review = fresh
-                if !fresh.makesTheSameTakes(as: previous) { generation?.inputsChanged() }
+                review = fresh; problem = ""
+                if previous.map({ !fresh.makesTheSameTakes(as: $0) }) ?? true { generation?.inputsChanged() }
             case .failure(let error):
                 review = nil; problem = Self.refusal(error)
                 generation?.inputsChanged()

@@ -222,5 +222,39 @@ import Testing
         #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary == nil)
         await generation.finishGenerationForTests()
     }
+
+    /// A phrase left out because it can't be made (Voice Lab off) has no review in the transcript either: no Keep or Undo
+    /// buttons or custom actions and no edit, and ⌘↩ on it keeps and announces nothing (design.md R2). A reply that opens
+    /// on such a phrase focuses the first change that waits.
+    @Test func aPhraseThatCantBeMadeHasNoReviewInTheTranscript() throws {
+        let (editor, session, _, scenes) = try scene("r2-voice-lab-off", voiceLab: false)
+        defer { scenes.forEach { $0.editor?.close() } }
+        #expect(editor.proposal?[3]?.reviewable == false && editor.proposal?[1]?.reviewable == true && editor.proposal?.focused == 1)
+        editor.focusChange(3, announcing: false)
+        editor.announcements = []
+        #expect(editor.proposalDisplay?.focused == 3 && editor.proposalDisplay?.actions == [] && editor.changeForReturn == nil)
+        #expect(!editor.keepFocusedChange() && !editor.excludeFocusedChange() && !editor.editChange(3, text: "other"))
+        #expect(editor.proposal?[3]?.state == .excluded && editor.announcements.isEmpty && changes(session)?.items.last?.state == .excluded)
+        // A reply that opens on a phrase in your voice.
+        let words = session.source.map(\.text).compactMap { $0 == "word12" ? nil : $0 == "word10" ? "fresh" : $0 }
+        try session.receivePassage(words.joined(separator: " "))
+        session.finishRun(seconds: 1)
+        #expect(editor.proposal?[1]?.kind == .voice && editor.proposal?[1]?.reviewable == false && editor.proposal?.focused == 2)
+        #expect(editor.proposalDisplay?.focused == 2 && editor.proposalDisplay?.actions == [.keep, .undo])
+    }
+
+    /// Why Make Takes couldn't go on before takes exist (finding the voices failed) shows as R2's callout, and goes as
+    /// Make Takes tries again.
+    @Test func makeTakesProblemShowsInR2() async throws {
+        let (_, session, _, scenes) = try scene("r2-make-takes")
+        defer { scenes.forEach { $0.editor?.close() } }
+        session.reportGenerationProblem(VoiceLabError.unauthorized)
+        await settle { session.task.cards.count > 1 }
+        #expect(session.task.cards.last == .callout("ElevenLabs rejected the key (401). Your edits are saved."))
+        #expect(session.task.footer.primary?.title == "Make Takes")
+        session.reportGenerationProblem(nil)
+        await settle { session.task.cards.count == 1 }
+        #expect(session.task.cards.count == 1)
+    }
 }
 #endif

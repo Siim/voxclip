@@ -42,16 +42,18 @@ extension RewriteSession {
         }.map(\.ordinal)
     }
     /// Why the voice change `ordinal` can't be made, nil when it can (design.md R2's voice rows): Voice Lab is off, the
-    /// project's language has no calibrated voice check, or the take refused its placement. Such a change has no review
-    /// and stays left out.
+    /// project's language has no calibrated voice check, the take refused its placement, or the review built again after
+    /// an edit outside the scope failed (`move`, its `problem`). Such a change has no review and stays left out.
     var voiceUnavailable: (Int) -> VoiceUnavailable? {
         let app = editor.app
         let reviews = voiceReviews
         let enabled = app.voiceLabRewriteEnabled
         let language = enabled && app.voiceLabSession.voicesUnavailable(projectLanguage: project.transcript?.language)
+        let refused = review == nil && !problem.isEmpty ? problem : nil
         return { ordinal in
             if !enabled { return VoiceUnavailable(text: "Needs Voice Lab (beta)", warns: true) }
             if language { return VoiceUnavailable(text: "Your voice works in English projects only for now.", warns: true) }
+            if let refused { return VoiceUnavailable(text: refused, warns: true) }
             if let refusal = reviews[ordinal]?.refusal { return VoiceUnavailable(text: refusal, warns: false) }
             return nil
         }
@@ -77,8 +79,9 @@ extension RewriteSession {
         if content.reviewed { editor.closeRewrite(returnFocus: false) }
     }
 
-    /// Leaves out the voice changes that can't be made now, and includes again those it left out that now can: Voice
-    /// Lab's Turn on gives them back their review (design.md R2). No project change and no undo step.
+    /// Leaves out the voice changes that can't be made now, with no review in the transcript either (`reviewable`), and
+    /// includes again those it left out that now can: Voice Lab's Turn on gives them back their review (design.md R2). The
+    /// focus moves off a change it leaves out to the first change that waits. No project change and no undo step.
     private func leaveOutUnavailableVoices() {
         guard var proposal = ownProposal else { return }
         let unavailable = voiceUnavailable
@@ -86,11 +89,15 @@ extension RewriteSession {
         for index in proposal.changes.indices where proposal.changes[index].kind == .voice {
             let ordinal = proposal.changes[index].ordinal
             if unavailable(ordinal) != nil {
-                guard proposal.changes[index].state != .excluded else { continue }
-                proposal.changes[index].state = .excluded
-                leftOutUnavailable.insert(ordinal); changed = true
-            } else if leftOutUnavailable.remove(ordinal) != nil, proposal.changes[index].state == .excluded {
-                proposal.changes[index].state = .pending; changed = true
+                guard proposal.changes[index].reviewable else { continue }
+                proposal.changes[index].reviewable = false
+                if proposal.changes[index].state != .excluded { proposal.changes[index].state = .excluded; leftOutUnavailable.insert(ordinal) }
+                if proposal.focused == ordinal { proposal.focused = proposal.changes.first { $0.reviewable && $0.state == .pending }?.ordinal ?? ordinal }
+                changed = true
+            } else if !proposal.changes[index].reviewable {
+                proposal.changes[index].reviewable = true
+                if leftOutUnavailable.remove(ordinal) != nil, proposal.changes[index].state == .excluded { proposal.changes[index].state = .pending }
+                changed = true
             }
         }
         if changed { editor.proposal = proposal }
@@ -132,6 +139,8 @@ extension RewriteSession {
         let footer = proposalFooter(set)
         var cards: [PanelCard] = [.changes(set)]
         if let callout = footer.callout { cards.append(.callout(callout)) }
+        // Why Make Takes could not go on (finding the voices failed); a refused review is on the voice rows instead.
+        if review != nil, !problem.isEmpty { cards.append(.callout(problem)) }
         if footer.takes { cards.append(.takes) }
         let reviewed = items.allSatisfy { $0.state == .kept } && !items.contains { $0.kind == .voice && $0.reviewable }
             && ownProposal?.changes.contains { $0.state == .kept } == true

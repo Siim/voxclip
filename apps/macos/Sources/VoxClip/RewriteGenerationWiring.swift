@@ -5,6 +5,7 @@ import VoxClipMedia
 extension RewriteSession {
     func discoverVoices() async {
         guard current, editor.app.voiceLabRewriteEnabled, generation == nil else { return }
+        reportGenerationProblem(nil)
         let app = editor.app
         if !app.bool("voiceLab.providerConsent.elevenlabs") {
             guard let window = editor.window,

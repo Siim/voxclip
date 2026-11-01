@@ -47,6 +47,10 @@ struct TranscriptChange: Equatable, Identifiable {
     /// An insertion has no source word; its words stand here.
     var anchor: Anchor?
     var state: State
+    /// It can be kept, left out or edited. The Rewrite job clears it on a phrase in your voice it can't make now (Voice
+    /// Lab off, a language with no voice check, a refused placement; design.md R2), which stays left out with no Keep,
+    /// Undo or edit here or in the change list until the job includes it again.
+    var reviewable = true
     var id: Int { ordinal }
 
     init(ordinal: Int, parts: [Part], anchor: Anchor? = nil, state: State = .pending) {
@@ -336,7 +340,7 @@ extension EditorModel {
             display.shown.append(.init(ordinal: change.ordinal, kind: change.kind, state: change.state, count: count,
                                        description: change.description(count: count, removed: removed, inserted: inserted), words: lower...upper))
         }
-        if let focused = display.focused, capabilities.edit, let change = proposal[focused] {
+        if let focused = display.focused, capabilities.edit, let change = proposal[focused], change.reviewable {
             switch change.state {
             case .pending: display.actions = [.keep, .undo]
             case .kept: display.actions = [.undo]
@@ -442,8 +446,10 @@ extension EditorModel {
     /// Keep (⌘↩, impl-plan item 7): a cut or fix applies as one undo step, "Keep change {i}",
     /// whose undo also puts the change back as it was, pending or left out; a voice change is
     /// included for takes, with no project change and no undo step. Either is `.kept` from then on.
+    /// A change that can't be reviewed (`reviewable`) is not kept, and nothing is announced.
     @discardableResult func keepChange(_ ordinal: Int) -> Bool {
-        guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }) else { return false }
+        guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }),
+              proposal.changes[index].reviewable else { return false }
         let change = proposal.changes[index], order = proposalDisplay?.shown.map(\.ordinal) ?? []
         guard change.state != .kept else { return false }
         let previous = proposal
@@ -459,10 +465,11 @@ extension EditorModel {
         announce("Kept change \(ordinal)")
         return true
     }
-    /// Undo (⌘⌫, impl-plan item 7): the change is excluded, `included = false` in the change
-    /// list. The project does not change and no undo step is added.
+    /// Undo (⌘⌫, impl-plan item 7): the change is excluded, its row left out in the change list.
+    /// The project does not change and no undo step is added.
     @discardableResult func excludeChange(_ ordinal: Int) -> Bool {
-        guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }), proposal.changes[index].state != .excluded else { return false }
+        guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }),
+              proposal.changes[index].reviewable, proposal.changes[index].state != .excluded else { return false }
         let order = proposalDisplay?.shown.map(\.ordinal) ?? []
         proposal.changes[index].state = .excluded
         self.proposal = proposal
@@ -516,7 +523,7 @@ extension EditorModel {
     /// new text replaces its parts. Nothing is sent. An empty text turns it into a cut of its
     /// words; a text equal to them leaves nothing to change, so the change is left out.
     @discardableResult func editChange(_ ordinal: Int, text: String) -> Bool {
-        guard var proposal, let slot = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }) else { return false }
+        guard var proposal, let slot = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }), proposal.changes[slot].reviewable else { return false }
         var change = proposal.changes[slot]
         let trimmed = EditingPrimitives.jsTrim(text)
         let reader = TranscriptChangeReader(self)
