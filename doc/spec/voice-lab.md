@@ -1067,6 +1067,28 @@ A field that is empty after this is omitted. The quote binds the seed and the tr
 
 With several hunks, all per-take quotes for all hunks are prepared before the run. One affirmative approval covers the union of the bounded sets and their summed TTS plus Scribe QA cap. The run takes one hunk at a time, in source order, with early stop per hunk. Try Another on one phrase is a new approval for that phrase's set.
 
+The Mac clip takes engine (V18a, UI integration in V18) places the entire included review with
+`placeAll` before decoding source audio or preparing any take quote. It preflights all pending
+windows together against the final review cuts, using the same output-piece and seam checks as
+`acceptAll`; one invalid member refuses the set without payment. The engine exposes one summed
+estimate and approval, then runs phrases in source order. Stop drains the active operation and
+keeps completed takes and selections; later phrases remain waiting. Its configured spending cap
+is checked against the ledger and the unsent remainder before execution, between phrases and
+immediately before every paid request. An unreadable ledger, unknown price with a cap, or a
+cap overrun stops the next request and preserves completed work. This engine does not override
+the cap under an earlier approval; the single-passage compatibility workflow retains §3.1's
+soft-cap confirmation until its UI is replaced.
+
+The phrase rows retain three selectable slots. V18a's Try Another prepares and prices one new
+candidate for that phrase only (one TTS plus its Scribe QA), under its own affirmative action.
+It uses a fresh seed beyond that phrase's previously quoted candidates and preserves the old
+playable takes. A deferred approval is bound to the displayed quote ID, never a newer quote.
+It fills an unused slot, or replaces the lowest-ranked unselected slot when all three are full;
+the selected take and other phrases stay intact. A length-changed take can be selected for
+audition and length comparison but is left out of Phase 0 acceptance. The engine publishes
+selected exact-fit, QA-passing takes as a segment/asset list and voice reference; V19 passes
+that list, the final cuts/fixes and the actual scope to C4 `acceptAll` once (§8.12).
+
 ### 8.7 Trim, level, room tone
 
 1. **Trim** the TTS audio to `[firstCharStart − TTS_TRIM_LEAD, lastCharEnd + TTS_TRIM_TAIL]` using `alignment`, clamped to the asset. When alignment is null, the trim runs from the start of the first to the end of the last 10 ms frame above `VOICED_FRAME`, widened by `TTS_TRIM_LEAD` before and `TTS_TRIM_TAIL` after, and clamped to the asset.

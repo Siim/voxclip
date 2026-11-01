@@ -23,41 +23,50 @@ extension RewriteSession {
         } catch { generationProblem(error) }
     }
     func prepareTakes() async {
-        // A review being built again after an edit outside the scope may move the window the takes are made for.
         if let reviewing { await reviewing.value }
-        guard current, let generation, review != nil, overBudget == nil else { return }
-        // The voice changes the change list includes (impl-plan item 25): takes are made for one at a time, from the
-        // words the AI proposed.
-        guard let ordinal = includedVoice.only, let hunk = voiceReview(ordinal), let window = hunk.window, let text = hunk.patchText else {
-            generation.fail(Self.onePassage)
-            return
-        }
+        guard current, let generation, review != nil, overBudget == nil, !includedVoice.isEmpty, let takeBackend else { return }
+        takePlan?.invalidate(); takePlan = nil
         guard let recordID = generation.selectedVoiceID, let modelID = generation.selectedModelID,
               let audio = project.media.source.audio else { return }
-        guard let reservation = generation.reservePreparation() else { return }
-        let revision = self.revision
+        let revision = self.revision, ordinals = includedVoice
+        let snapshot = editor.project, region = takeRegion
         do {
-            try generation.validatePlacement(window)
+            let final = try editor.voiceLabReviewProject(localCommands: localCommands)
+            let selected = changes.enumerated().filter { offset, change in
+                change.hunk.kind == .voice ? ordinals.contains(offset + 1) : ownProposal?[offset + 1]?.state != .excluded
+            }
+            takePlanOrdinals = selected.map { $0.offset + 1 }
+            guard let envelope else { throw RewriteSessionError.noSourceAudio }
             let sampleRate: Double = Double(audio.sampleRate)
             let sampleCount: Double = project.media.source.durationSeconds * sampleRate
             let frames: Int64 = Int64(EditingPrimitives.jsRound(sampleCount))
-            // The fit can borrow this silence, so the decoded source must reach past it.
-            let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window)
-            let source = try await VoiceLabSourceAudio.rewriteSource(source: editor.sourceURL, frames: frames, sampleRate: audio.sampleRate,
-                                                                     window: window, incomingSilence: silence.incoming,
-                                                                     outgoingSilence: silence.outgoing, items: transcript)
-            guard current, self.revision == revision, generation.preparationIsCurrent(reservation), generation.selectedVoiceID == recordID,
-                  generation.selectedModelID == modelID, !Task.isCancelled else { return }
-            let input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: recordID,
-                language: project.transcript?.language ?? "en", seed: UInt32.random(in: 0...UInt32.max),
-                contentKey: project.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope, sourceSampleRate: audio.sampleRate,
-                items: transcript, cutWordIDs: editor.cutWordIDs, window: window,
-                incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                providerConsent: editor.app.bool("voiceLab.providerConsent.elevenlabs"))
-            let cap = try await currentGenerationCap()
-            guard generation.preparationIsCurrent(reservation) else { return }
-            await generation.prepare(input, cap: cap, reservation: reservation)
-        } catch { if generation.preparationIsCurrent(reservation) { generationProblem(error) } }
+            let outputScope = scope, sourceURL = editor.sourceURL
+            let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: selected.map { $0.element.hunk },
+                makeInput: { phrase in
+                    let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
+                    let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
+                        window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: Self.corrected(final))
+                    return VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,
+                        language: final.transcript?.language ?? "en", seed: UInt32.random(in: 0...UInt32.max),
+                        contentKey: final.media.source.contentKey, source: source.excerpt, sourceEnvelope: source.envelope,
+                        sourceSampleRate: audio.sampleRate, items: Self.corrected(final), cutWordIDs: Set(final.edits.cutWordIds),
+                        window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, providerConsent: true)
+                }, readCap: { [weak self] in
+                    guard let self else { throw CancellationError() }
+                    return try await self.currentGenerationCap()
+                }, isCurrent: { [weak self, weak generation] in
+                    guard let self, let generation else { return false }
+                    return current && editor.project == snapshot && self.revision == revision && includedVoice == ordinals &&
+                        generation.selectedVoiceID == recordID && generation.selectedModelID == modelID &&
+                        region.map { generationIsCurrent(region: $0) } == true
+                })
+            plan.connect(takeBackend(plan.phrases.count) { [weak plan] request, start in
+                guard let plan else { throw CancellationError() }
+                try await plan.dispatch(request, start: start)
+            })
+            takePlan = plan
+            await plan.prepare()
+        } catch { generation.fail(ClipTakePlan.copy(error)) }
     }
     func currentGenerationCap() async throws -> VoiceLabMonthlyCap? {
         let total = await VoiceLabSpendLedger(locations: editor.app.locations).total(provider: "elevenlabs", at: Date())
