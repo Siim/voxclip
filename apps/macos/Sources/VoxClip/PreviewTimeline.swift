@@ -41,6 +41,8 @@ enum ViewerTag: Equatable {
     let boxHeight: CGFloat?
     let timelineVisible: Bool
     @State private var hovering: Bool
+    /// A caption is being dragged on the stage; the transport steps aside meanwhile.
+    @State private var captionDragging = false
     @Environment(\.isFocused) private var focused
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -83,9 +85,10 @@ enum ViewerTag: Equatable {
     }
     /// The hover transport shows with the timeline hidden while the pointer is over the
     /// viewer, the viewer holds keyboard focus, or VoiceOver runs, so it is never only a
-    /// hover target.
-    static func showsTransport(timelineVisible: Bool, hovering: Bool, focused: Bool, voiceOver: Bool) -> Bool {
-        !timelineVisible && (hovering || focused || voiceOver)
+    /// hover target. It steps aside while a caption is dragged, so the caption and the
+    /// guides show.
+    static func showsTransport(timelineVisible: Bool, hovering: Bool, focused: Bool, voiceOver: Bool, captionDragging: Bool = false) -> Bool {
+        !timelineVisible && !captionDragging && (hovering || focused || voiceOver)
     }
 
     var body: some View {
@@ -94,7 +97,7 @@ enum ViewerTag: Equatable {
         let box = CGSize(width: max(1, columnWidth), height: max(1, boxHeight ?? Self.boxHeight(forWidth: columnWidth)))
         let stage = Self.stageSize(ratio: Self.ratio(model.project), in: box)
         let label = Self.stageLabel(for: model)
-        let transport = Self.showsTransport(timelineVisible: timelineVisible, hovering: hovering, focused: focused, voiceOver: voiceOver)
+        let transport = Self.showsTransport(timelineVisible: timelineVisible, hovering: hovering, focused: focused, voiceOver: voiceOver, captionDragging: captionDragging)
         ZStack(alignment: .bottom) {
             stageView
                 .frame(width: stage.width, height: stage.height)
@@ -125,7 +128,7 @@ enum ViewerTag: Equatable {
             Rectangle().fill(DesignValues.color("stage"))
             if !standIn, let native = model.nativePreview { PlayerSurface(player: native.player) } else { ViewerStandIn(model: model) }
             if model.canMoveCaptions, let style = model.app.styles.first(where: { $0.id == model.project.captions.styleId }), style.position.userDraggable {
-                CaptionPositionOverlay(model: model, style: style)
+                CaptionPositionOverlay(model: model, style: style, dragging: $captionDragging)
             }
         }
         .overlay(alignment: .topLeading) {
@@ -151,6 +154,8 @@ enum ViewerTag: Equatable {
 /// The viewer's transport while the timeline panel is hidden (notes.md §1: "play and
 /// timecode are never lost"): play, the playhead's time on the timeline's axis and Edited /
 /// Source, in a bar along the box's bottom edge, over the video like the stage's chips.
+/// Only Play and Edited / Source take the pointer: a press anywhere else on the bar reaches
+/// the stage under it, so a caption placed low can still be dragged.
 @MainActor struct ViewerHoverTransport: View {
     @Bindable var model: EditorModel
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -166,9 +171,11 @@ enum ViewerTag: Equatable {
         .padding(.leading, 4).padding(.trailing, 6)
         .frame(height: 32)
         .foregroundStyle(DesignValues.color("overlay.foreground"))
-        .background(DesignValues.color(opaque ? "overlay.transportOpaque" : "overlay.scrim"), in: .rect(cornerRadius: 6))
+        .background {
+            RoundedRectangle(cornerRadius: 6).fill(DesignValues.color(opaque ? "overlay.transportOpaque" : "overlay.scrim")).allowsHitTesting(false)
+        }
         .overlay {
-            if opaque { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("line.strong"), lineWidth: 1) }
+            if opaque { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("line.strong"), lineWidth: 1).allowsHitTesting(false) }
         }
         .environment(\.colorScheme, .dark)
         .padding(8)
@@ -187,7 +194,8 @@ enum ViewerTag: Equatable {
             .help("Play/Pause (Space)")
             .accessibilityLabel((model.isPlaying ? EditorIconAction.pause : .play).name)
             .accessibilityIdentifier("voxclip.viewer.play")
-            playbackTime(total: total, rate: rate)
+            .columnLayoutEvidence("viewer.play")
+            playbackTime(total: total, rate: rate).allowsHitTesting(false)
             Spacer(minLength: 4)
             Picker("Timeline time", selection: $model.editedTimeline) {
                 Text("Edited").tag(true); Text("Source").tag(false)
@@ -195,6 +203,7 @@ enum ViewerTag: Equatable {
             .labelsHidden().pickerStyle(.segmented).controlSize(.small).fixedSize()
             .accessibilityLabel("Timeline time")
             .accessibilityIdentifier("voxclip.viewer.axis")
+            .columnLayoutEvidence("viewer.axis")
         }
     }
     /// Edited time over the edited length, or source time over the take's, as the timeline reads.
@@ -341,6 +350,8 @@ enum ViewerTag: Equatable {
 @MainActor private struct CaptionPositionOverlay: View {
     let model: EditorModel
     let style: CaptionStyle
+    /// Whether a drag is under way, for the viewer's hover transport.
+    @Binding var dragging: Bool
     @GestureState private var dragged: CGPoint?
     @State private var hovering = false
     private var aspectClass: String {
@@ -375,11 +386,12 @@ enum ViewerTag: Equatable {
                         line.move(to: CGPoint(x: 0, y: size.height * fraction)); line.addLine(to: CGPoint(x: size.width, y: size.height * fraction))
                         context.stroke(line, with: .color(guide), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     }
-                }.allowsHitTesting(false).accessibilityHidden(true)
+                }.allowsHitTesting(false).accessibilityHidden(true).columnLayoutEvidence("caption.guides")
             }
             RoundedRectangle(cornerRadius: 4).stroke(DesignValues.color("overlay.foreground").opacity(hovering || dragged != nil ? 0.8 : 0), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
                 .frame(width: max(80, geometry.size.width * 0.75), height: max(32, geometry.size.height * 0.12))
                 .contentShape(Rectangle())
+                .columnLayoutEvidence("caption.handle")
                 .position(x: (dragged?.x ?? CGFloat(position.x)) * geometry.size.width, y: (dragged?.y ?? CGFloat(position.y)) * geometry.size.height)
                 .onHover { hovering = $0 }
                 .gesture(DragGesture(coordinateSpace: .named("caption-stage")).updating($dragged) { value, state, _ in
@@ -389,6 +401,8 @@ enum ViewerTag: Equatable {
                 .accessibilityIdentifier("voxclip.caption.position")
                 .accessibilityAdjustableAction { direction in move(CGPoint(x: position.x, y: min(1, max(0, position.y + (direction == .increment ? 0.05 : -0.05))))) }
         }.coordinateSpace(name: "caption-stage")
+            .onChange(of: dragged != nil) { _, active in dragging = active }
+            .onDisappear { dragging = false }
     }
     private func normalized(_ point: CGPoint, size: CGSize) -> CGPoint {
         func snap(_ value: Double) -> Double {

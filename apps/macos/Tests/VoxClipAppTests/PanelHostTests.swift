@@ -203,6 +203,35 @@ import Testing
         #expect(!shell.layout.rightVisible && shell.layout.timelineVisible)
     }
 
+    /// impl-plan V4's named risk, caption drag in the fixed box. A low caption (Clean Subtitle
+    /// and Lower Third at y 0.9, Vox Highlight at 0.8) sits under the transport; the bar takes
+    /// the pointer only on Play and Edited / Source, so the handle keeps a wide strip on the
+    /// bar to press, and the bar steps aside while a caption is dragged. The press itself
+    /// needs a real window (DebugViewer's caption drag in -uiSelfTest).
+    @Test func aLowCaptionKeepsAPressableStripUnderTheTransport() async throws {
+        #expect(!ViewerSection.showsTransport(timelineVisible: false, hovering: true, focused: true, voiceOver: true, captionDragging: true))
+        for style in ["clean-subtitle", "lower-third", "vox-highlight"] {
+            for aspect in [AspectRatio.landscape, .portrait, .square] {
+                var project = try project()
+                project.captions.styleId = style
+                project.export.aspect = aspect
+                // Not a demo, so the caption can move; nothing is edited here.
+                let model = EditorModel(document: VoxClipDocument(project: project, demo: false), app: AppModel(), preview: DemoPreviewEngine())
+                defer { model.close() }
+                model.mediaResolved = true
+                #expect(model.canMoveCaptions)
+                let found = markers(ViewerSection(model: model, columnWidth: 404, timelineVisible: false, hovering: true), size: CGSize(width: 404, height: 227))
+                let name = Comment(rawValue: "\(style) \(aspect.rawValue): \(found.filter { $0.key.hasPrefix("caption.") || $0.key.hasPrefix("viewer.") })")
+                let handle = try #require(found["caption.handle"], name), bar = try #require(found["viewer.transport"], name)
+                let play = try #require(found["viewer.play"], name), axis = try #require(found["viewer.axis"], name)
+                let inner = bar.insetBy(dx: 8, dy: 8)
+                let strip = CGRect(x: max(handle.minX, play.maxX), y: max(handle.minY, inner.minY), width: min(handle.maxX, axis.minX) - max(handle.minX, play.maxX), height: min(handle.maxY, inner.maxY) - max(handle.minY, inner.minY))
+                #expect(handle.intersects(inner), name)
+                #expect(strip.width >= 44 && strip.height >= 8, name)
+            }
+        }
+    }
+
     // MARK: The panel's job
 
     @Test func theSwitcherShowsOnlyJobsThatCanActAndAJobSwitchIsNoEdit() async throws {
