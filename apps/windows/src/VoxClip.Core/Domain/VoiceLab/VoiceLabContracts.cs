@@ -45,10 +45,14 @@ public sealed record VoiceLabReview(VoiceLabOperation Operation, Guid RequestId,
 /// <summary>Claimed once by the service before dispatch. Construction is reserved to Core.</summary>
 public sealed record VoiceLabPreparedAction
 {
+    [System.Text.Json.Serialization.JsonConstructor]
     internal VoiceLabPreparedAction(Guid token, string fingerprint, DateTimeOffset expiresAt, VoiceLabEstimate estimate, VoiceLabReview review)
     { Token = token; Fingerprint = fingerprint; ExpiresAt = expiresAt; Estimate = estimate; Review = review; }
+    [System.Text.Json.Serialization.JsonInclude]
     internal Guid Token { get; }
+    [System.Text.Json.Serialization.JsonInclude]
     internal string Fingerprint { get; }
+    public Guid Id => Token;
     public DateTimeOffset ExpiresAt { get; }
     public VoiceLabEstimate Estimate { get; }
     public VoiceLabReview Review { get; }

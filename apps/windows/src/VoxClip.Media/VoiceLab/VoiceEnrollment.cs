@@ -17,15 +17,16 @@ public sealed class VoiceEnrollment
     private readonly ElevenLabsVoiceLab client;
     private VoiceSpeakerCheck speaker;
     private readonly VoiceOperationReconciler reconciler;
-    private readonly Func<byte[], string, CancellationToken, Task<RawTranscript>> scribe;
+    private readonly Func<byte[], string, CancellationToken, Task<RawTranscript>>? scribe;
     private readonly TimeProvider clock;
-    private readonly List<long> attempts = [];
+    private readonly Dictionary<string, long> attempts = [];
+    private readonly Dictionary<Guid, VoiceEnrollmentPlan> plans = [];
     private readonly Dictionary<string, Verified> verified = [];
     private readonly Dictionary<VoiceLabPreparedAction, Pending> pending = [];
     private int busy;
-    private sealed record Verified(VoiceConsentStatement Statement, VoiceStatementMatch Match, string Hash, VoiceConsentAttestations Attestations);
+    private sealed record Verified(VoiceConsentStatement Statement, VoiceStatementMatch? Match, string Hash, VoiceConsentAttestations Attestations, VoiceConsentCreator? Creator = null);
     private sealed record Pending(VoiceLabCloneRequest Request, OwnVoicePolicy Policy, Verified Verified, VoiceConsentSample[] Samples, float[] Embedding, long TrainingMs);
-    public VoiceEnrollment(VoiceConsentStore store, ElevenLabsVoiceLab client, Func<byte[], string, CancellationToken, Task<RawTranscript>> scribe,
+    public VoiceEnrollment(VoiceConsentStore store, ElevenLabsVoiceLab client, Func<byte[], string, CancellationToken, Task<RawTranscript>>? scribe = null,
         VoiceSpeakerCheck? speaker = null, VoiceOperationReconciler? reconciler = null, TimeProvider? clock = null)
     {
         this.store = store;
@@ -35,34 +36,94 @@ public sealed class VoiceEnrollment
         this.clock = clock ?? TimeProvider.System;
         this.reconciler = reconciler ?? new(store, region => region == client.Region ? client : throw new VoiceConsentException(VoiceConsentError.InvalidRecord), this.clock);
     }
-    public bool SpeakerAvailable => speaker.Available;
+    // Test-only embeddings exercise the dormant algorithm without opening the native Windows parity gate.
+    internal sealed record TestSpeaker(Func<float[], CancellationToken, Task<float[]>> Embed,
+        Func<float[], CancellationToken, Task<(float[] Whole, float[][] Parts)>> Parts, double Threshold = 0.8, string Model = "fixture-calibrated");
+    internal TestSpeaker? SpeakerForTests { get; init; }
+    public bool SpeakerAvailable => SpeakerForTests is not null || speaker.Available;
+    private bool Supports(string language) => SpeakerForTests is not null ? language == "en" : speaker.Supports(language);
+    private double Threshold => SpeakerForTests?.Threshold ?? speaker.Threshold ?? throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+    private string Model => SpeakerForTests?.Model ?? speaker.ModelId ?? throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+    private void ValidateSpeaker() { if (SpeakerForTests is null) speaker.ValidateAvailability(); }
+    private Task<float[]> Embed(float[] pcm, CancellationToken ct) => SpeakerForTests is { } test ? test.Embed(pcm, ct) : speaker.EmbeddingAsync(pcm, ct);
+    private Task<(float[] Whole, float[][] Parts)> Parts(float[] pcm, CancellationToken ct) => SpeakerForTests is { } test ? test.Parts(pcm, ct) : speaker.PartEmbeddingsAsync(pcm, ct);
     public void SetSpeakerCheck(VoiceSpeakerCheck check)
     {
         Reserve();
-        try { pending.Clear(); speaker = check; }
+        try { pending.Clear(); plans.Clear(); speaker = check; }
         finally { Release(); }
     }
+    private string StatementAttempt(VoiceConsentStatement statement, byte[] wav)
+    {
+        foreach (var key in attempts.Where(pair => clock.GetElapsedTime(pair.Value) >= TimeSpan.FromMinutes(10)).Select(pair => pair.Key).ToArray()) attempts.Remove(key);
+        var identity = VoiceConsentStore.Hash(System.Text.Encoding.UTF8.GetBytes(string.Join("\0", new[] { VoiceConsentStore.Hash(wav) }.Concat(statement.Nonce))));
+        if (!attempts.ContainsKey(identity) && attempts.Count >= 3) throw new VoiceConsentException(VoiceConsentError.TooManyAttempts);
+        return identity;
+    }
+    private Verified SaveStatement(string recordId, VoiceConsentStatement statement, byte[] wav, VoiceConsentAttestations attestations)
+    {
+        if (!attestations.Complete) throw new VoiceConsentException(VoiceConsentError.AttestationsRequired);
+        if (!Supports(statement.Language)) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+        var identity = StatementAttempt(statement, wav);
+        verified.Remove(recordId); pending.Clear(); plans.Clear();
+        store.ValidateEnrollmentStart(recordId);
+        store.ClearEnrollmentRecovery(recordId);
+        store.SaveStatement(wav, recordId);
+        attempts.TryAdd(identity, clock.GetTimestamp());
+        return new(statement with { Nonce = Array.AsReadOnly(statement.Nonce.ToArray()) }, null, VoiceConsentStore.Hash(wav), attestations);
+    }
+    /// <summary>Shared Scribe boundary for legacy Verify and the single enrollment approval. Speaker embedding precedes Scribe.</summary>
+    private async Task<Verified> VerifyStatementAsync(Verified draft, byte[] wav, VoiceLabPreparedAction quote, VoiceLabAuthorization? authorization, CancellationToken ct)
+    {
+        await Embed(VoiceConsentAudio.Pcm16k(wav), ct).ConfigureAwait(false);
+        var creator = await client.GetCreatorIdentityAsync(ct).ConfigureAwait(false);
+        var approval = authorization ?? client.Approve(quote, true);
+        var transcript = scribe is { } test ? await test(wav.ToArray(), draft.Statement.Language, ct).ConfigureAwait(false)
+            : await client.TranscribeConsentStatementAsync(wav, draft.Statement.Language, approval, ct).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        var match = VoiceStatementMatch.Verify(transcript, draft.Statement);
+        await client.ValidateCreatorAsync(creator, ct).ConfigureAwait(false);
+        return draft with { Match = match, Creator = creator };
+    }
     public async Task VerifyAsync(string recordId, VoiceConsentStatement statement, byte[] wav, VoiceConsentAttestations attestations,
-        bool approved, bool enabled, CancellationToken ct = default)
+        bool approved, bool enabled, CancellationToken ct = default, VoiceLabPreparedAction? verificationQuote = null)
     {
         RequireApproval(approved, enabled);
-        if (!attestations.Complete) throw new VoiceConsentException(VoiceConsentError.AttestationsRequired);
         Reserve();
         try
         {
             ct.ThrowIfCancellationRequested();
-            attempts.RemoveAll(start => clock.GetElapsedTime(start) >= TimeSpan.FromMinutes(10));
-            if (attempts.Count >= 3) throw new VoiceConsentException(VoiceConsentError.TooManyAttempts);
-            verified.Remove(recordId);
-            pending.Clear();
-            var snapshot = wav.ToArray();
-            var immutableStatement = statement with { Nonce = Array.AsReadOnly(statement.Nonce.ToArray()) };
-            store.SaveStatement(snapshot, recordId);
-            attempts.Add(clock.GetTimestamp());
-            var transcript = await scribe(snapshot.ToArray(), statement.Language, ct).ConfigureAwait(false);
+            var draft = SaveStatement(recordId, statement, wav, attestations);
+            var quote = verificationQuote ?? client.PrepareConsentVerification(wav, statement.Language, Guid.NewGuid());
+            verified[recordId] = await VerifyStatementAsync(draft, wav, quote, null, ct).ConfigureAwait(false);
+        }
+        finally { Release(); }
+    }
+    private async Task<VoiceLabPreparedAction> PrepareDraftAsync(string recordId, string displayName, IReadOnlyList<VoiceTrainingSample> samples, Verified verification, CancellationToken ct)
+    {
+        if (!Supports(verification.Statement.Language)) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+        var statementWav = store.Statement(recordId);
+        if (VoiceConsentStore.Hash(statementWav) != verification.Hash) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+        var training = await PrepareTrainingAsync(client, recordId, displayName, verification.Statement, statementWav, samples.ToArray(), Threshold, Embed, Parts, clock.GetUtcNow(), ct).ConfigureAwait(false);
+        pending.Clear();
+        pending.Add(training.Quote, new(training.Request, training.Policy, verification, training.Samples, training.Owner, training.TrainingMs));
+        return training.Quote;
+    }
+    public async Task<VoiceEnrollmentPlan> PreparePlanAsync(string recordId, VoiceConsentStatement statement, byte[] wav, VoiceConsentAttestations attestations,
+        string displayName, IReadOnlyList<VoiceTrainingSample> samples, bool enabled, CancellationToken ct = default)
+    {
+        if (!enabled) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        Reserve();
+        try
+        {
             ct.ThrowIfCancellationRequested();
-            var match = VoiceStatementMatch.Verify(transcript, immutableStatement);
-            verified[recordId] = new(immutableStatement, match, VoiceConsentStore.Hash(snapshot), attestations);
+            var verification = SaveStatement(recordId, statement, wav, attestations);
+            var create = await PrepareDraftAsync(recordId, displayName, samples, verification, ct).ConfigureAwait(false);
+            var verify = client.PrepareConsentVerification(wav, statement.Language, Guid.NewGuid());
+            var draft = pending[create];
+            var quote = EnrollmentQuote.Prepare(verify, create, draft.Request, statement);
+            var plan = new VoiceEnrollmentPlan(recordId, quote, draft.TrainingMs, false);
+            plans[quote.Id] = plan; return plan;
         }
         finally { Release(); }
     }
@@ -73,19 +134,38 @@ public sealed class VoiceEnrollment
         Reserve();
         try
         {
-            ct.ThrowIfCancellationRequested();
-            var inputs = samples.ToArray();
-            if (!speaker.Available || speaker.Threshold is not { } threshold || speaker.ModelId is null) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-            if (!verified.TryGetValue(recordId, out var verification)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            if (!speaker.Supports(verification.Statement.Language)) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-            TrainingSource(inputs);
-            var statementWav = store.Statement(recordId);
-            if (VoiceConsentStore.Hash(statementWav) != verification.Hash) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
-            var training = await PrepareTrainingAsync(client, recordId, displayName, verification.Statement, statementWav, inputs, threshold,
-                speaker.EmbeddingAsync, speaker.PartEmbeddingsAsync, clock.GetUtcNow(), ct).ConfigureAwait(false);
-            pending.Clear();
-            pending.Add(training.Quote, new(training.Request, training.Policy, verification, training.Samples, training.Owner, training.TrainingMs));
-            return training.Quote;
+            if (!verified.TryGetValue(recordId, out var verification) || verification.Match is null) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            var create = await PrepareDraftAsync(recordId, displayName, samples, verification, ct).ConfigureAwait(false);
+            var draft = pending[create];
+            var quote = EnrollmentQuote.Prepare(null, create, draft.Request, verification.Statement);
+            plans[quote.Id] = new(recordId, quote, draft.TrainingMs, true);
+            return create;
+        }
+        finally { Release(); }
+    }
+    public async Task<VoiceEnrollmentPlan> RecoverPlanAsync(string recordId, bool enabled, CancellationToken ct = default)
+    {
+        if (!enabled) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        Reserve();
+        try
+        {
+            var recovery = store.EnrollmentRecovery(recordId) ?? throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+            var record = recovery.Record;
+            await client.ValidateCreatorAsync(record.CreatorIdentity, ct).ConfigureAwait(false);
+            if (!Supports(record.Statement.Language) || Model != record.Speaker.Model || Threshold != record.Speaker.Threshold ||
+                VoiceConsentRecord.DecodeEmbedding(record.Speaker.Embedding) is not { } embedding) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+            store.DiscardUnsentEnrollmentOperations(recordId);
+            var statement = new VoiceConsentStatement(record.Statement.Language, record.Statement.Text, record.Statement.Nonce);
+            var policy = new OwnVoicePolicy(recordId, null, true, true, true, true, true);
+            var create = client.RestoreEnrollmentCreation(recovery.Quote.Create, recovery.Request, policy) ? recovery.Quote.Create
+                : client.PrepareEnrollmentClone(recovery.Request, policy, Guid.NewGuid());
+            var quote = EnrollmentQuote.Prepare(null, create, recovery.Request, statement);
+            store.SaveEnrollmentRecovery(recovery with { Quote = quote });
+            var verification = new Verified(statement, record.Statement.Stt, record.Statement.AudioSha256, record.Attestations, record.CreatorIdentity);
+            pending.Clear(); plans.Clear();
+            pending[create] = new(recovery.Request, policy, verification, record.Samples, embedding, recovery.TrainingMilliseconds);
+            var plan = new VoiceEnrollmentPlan(recordId, quote, recovery.TrainingMilliseconds, true);
+            plans[quote.Id] = plan; return plan;
         }
         finally { Release(); }
     }
@@ -153,11 +233,16 @@ public sealed class VoiceEnrollment
                 .Concat(accepted.Select(sample => new VoiceLabCloneSample(VoiceLabCloneSampleRole.Training, sample.Wav.ToArray()))).ToArray(),
             created, source == "readAloud" && accepted.Any(sample => sample.SnrDb < 20 && !sample.CleanAudioApplied), recordId);
         var policy = new OwnVoicePolicy(recordId, null, true, true, true, true, true);
-        return new(client.PrepareClone(request, policy, Guid.NewGuid()), request, policy, hashes.ToArray(), owner, Milliseconds(accepted));
+        return new(client.PrepareEnrollmentClone(request, policy, Guid.NewGuid()), request, policy, hashes.ToArray(), owner, Milliseconds(accepted));
     }
     private static long Milliseconds(IEnumerable<VoiceTrainingSample> samples) =>
         samples.Sum(sample => (long)Math.Round(sample.Seconds * 1000, MidpointRounding.AwayFromZero));
-    public async Task<VoiceConsentRecord> CreateAsync(VoiceLabPreparedAction quote, bool approved, bool enabled, string appVersion, CancellationToken ct = default)
+    public Task<VoiceConsentRecord> CreateAsync(VoiceLabPreparedAction quote, bool approved, bool enabled, string appVersion, CancellationToken ct = default)
+    {
+        if (!plans.TryGetValue(quote.Id, out var plan) || !ReferenceEquals(plan.Quote.Create, quote)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        return ExecuteAsync(plan, approved, enabled, appVersion, ct);
+    }
+    public async Task<VoiceConsentRecord> ExecuteAsync(VoiceEnrollmentPlan plan, bool approved, bool enabled, string appVersion, CancellationToken ct = default)
     {
         RequireApproval(approved, enabled);
         Reserve();
@@ -165,22 +250,32 @@ public sealed class VoiceEnrollment
         try
         {
             ct.ThrowIfCancellationRequested();
-            if (!pending.Remove(quote, out var draft)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-            if (!speaker.Supports(draft.Verified.Statement.Language) || speaker.Threshold is not { } threshold || speaker.ModelId is not { } model)
-                throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
-            speaker.ValidateAvailability();
-            if (VoiceConsentStore.Hash(store.Statement(draft.Policy.RecordId)) != draft.Verified.Hash) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
-            var authorization = client.Approve(quote, true);
-            var creator = await client.GetCreatorIdentityAsync(ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
+            if (!plans.TryGetValue(plan.Quote.Id, out var issued) || !ReferenceEquals(issued, plan) || !pending.TryGetValue(plan.Quote.Create, out var draft))
+                throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            plan.Quote.Validate(draft.Request, draft.Verified.Statement);
+            if (!Supports(draft.Verified.Statement.Language)) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+            ValidateSpeaker();
+            if (VoiceConsentStore.Hash(store.Statement(plan.RecordId)) != draft.Verified.Hash) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+            if (!client.QuotesAreFresh(plan.Quote.Actions)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            var creator = await client.ValidateCreationQuoteAsync(plan.Quote.Create, ct).ConfigureAwait(false);
+            if (plan.VerificationPassed && (draft.Verified.Match is null || draft.Verified.Creator != creator)) throw new VoiceCreatorMismatchException();
+            var authorizations = client.ApproveEnrollment(plan.Quote, true);
+            plans.Remove(plan.Quote.Id); pending.Remove(plan.Quote.Create); verified.Remove(plan.RecordId);
+            if (!plan.VerificationPassed)
+                draft = draft with { Verified = await VerifyStatementAsync(draft.Verified, draft.Request.Samples[0].Wav, plan.Quote.Verify!, authorizations[0], ct).ConfigureAwait(false) };
+            var authorization = authorizations[^1];
             var statement = draft.Verified.Statement;
             var record = new VoiceConsentRecord("voxclip-consent/1", draft.Policy.RecordId, "elevenlabs", "ivc", "pending", draft.Request.DisplayName + " (VoxClip)",
                 VoiceConsentStatus.VerificationRequired, draft.Request.CreatedAt, null,
-                new(statement.Language, statement.Text, statement.Nonce.ToArray(), "statement.wav", draft.Verified.Hash, draft.Verified.Match),
-                draft.Verified.Attestations, draft.Samples, new(model, threshold, VoiceConsentRecord.EncodeEmbedding(draft.Embedding)), new(appVersion, "windows"), creator);
-            claim = store.ClaimCreation(record, quote.Review.RequestId, client.Region, clock.GetUtcNow());
+                new(statement.Language, statement.Text, statement.Nonce.ToArray(), "statement.wav", draft.Verified.Hash, draft.Verified.Match!),
+                draft.Verified.Attestations, draft.Samples, new(Model, Threshold, VoiceConsentRecord.EncodeEmbedding(draft.Embedding)), new(appVersion, "windows"), creator);
+            var recoveryQuote = EnrollmentQuote.Prepare(null, plan.Quote.Create, draft.Request, statement);
+            store.SaveEnrollmentRecovery(new(recoveryQuote, draft.Request, record, draft.TrainingMs));
+            ct.ThrowIfCancellationRequested();
+            await client.ValidateCreatorAsync(creator, ct).ConfigureAwait(false);
+            claim = store.ClaimCreation(record, plan.Quote.Create.Review.RequestId, client.Region, clock.GetUtcNow());
             var operation = claim.Operation;
-            var policy = claim.DispatchPolicy(token => { token.ThrowIfCancellationRequested(); speaker.ValidateAvailability(); return Task.CompletedTask; });
+            var policy = claim.DispatchPolicy(token => { token.ThrowIfCancellationRequested(); ValidateSpeaker(); return Task.CompletedTask; });
             VoiceLabCloneResult result;
             try { result = await client.CreateOwnCloneAsync(draft.Request, policy, authorization, ct, operation.Id).ConfigureAwait(false); }
             catch
@@ -205,8 +300,11 @@ public sealed class VoiceEnrollment
             try { await reconciler.ReconcileAsync(operation.Id, true, CancellationToken.None).ConfigureAwait(false); }
             catch { throw new VoiceConsentSaveException(record); }
             if (latest.State == VoiceOperationState.Withdrawing) throw new VoiceConsentException(VoiceConsentError.Inactive);
+            store.ClearEnrollmentRecovery(record.RecordId);
+            client.DiscardEnrollment(plan.Quote);
             return record;
         }
+        catch { client.ReleaseEnrollment(plan.Quote); throw; }
         finally
         {
             claim?.Dispose();
@@ -242,7 +340,7 @@ public sealed class VoiceEnrollment
     public void Cancel(string recordId)
     {
         Reserve();
-        try { verified.Remove(recordId); pending.Clear(); store.WithdrawCreation(recordId, clock.GetUtcNow()); }
+        try { verified.Remove(recordId); pending.Clear(); plans.Clear(); store.ClearEnrollmentRecovery(recordId); store.WithdrawCreation(recordId, clock.GetUtcNow()); }
         finally { Release(); }
     }
     private void Reserve()

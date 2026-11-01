@@ -242,6 +242,7 @@ public sealed class VoiceConsentStore
         if (operation.Kind != VoiceOperationKind.Create || operation.State != VoiceOperationState.Intent || operation.RecordId != recordId ||
             Operations().Any(other => other.Id != requestId && other.BlocksCreation(clock.GetUtcNow())) || Hash(Statement(recordId)) != statementHash) throw Invalid();
         Transition(requestId, VoiceOperationState.Dispatched, clock.GetUtcNow());
+        ClearEnrollmentRecovery(recordId);
     });
     private string OperationFile(Guid id, bool create = false)
     {
@@ -567,6 +568,85 @@ public sealed class VoiceConsentStore
             DeleteFile(OperationFile(value.Id), "clearOperation");
         }
     }
+    public IReadOnlySet<string> AbandonedEnrollmentIds => abandonedEnrollmentIds;
+    private readonly HashSet<string> abandonedEnrollmentIds = new(StringComparer.Ordinal);
+    public void ValidateEnrollmentStart(string recordId)
+    {
+        lock (State.Sync) if (HasOperation(recordId) || File.Exists(Path.Combine(DirectoryFor(recordId), "record.json")))
+            throw new VoiceConsentException(VoiceConsentError.CreationPending);
+    }
+    public void SaveEnrollmentRecovery(VoiceEnrollmentRecovery value)
+    {
+        lock (State.Sync)
+        {
+            ValidateEnrollmentRecovery(value);
+            Write(JsonSerializer.SerializeToUtf8Bytes(value, VoiceConsentJson.Default.VoiceEnrollmentRecovery),
+                FileIn(DirectoryFor(value.Record.RecordId, true), "enrollment.json"), "saveEnrollment");
+            fault?.Invoke("enrollmentVerified");
+        }
+    }
+    private void ValidateEnrollmentRecovery(VoiceEnrollmentRecovery value)
+    {
+        var record = value.Record;
+        record.Validate();
+        value.Quote.Validate(value.Request, new(record.Statement.Language, record.Statement.Text, record.Statement.Nonce));
+        if (record.VoiceId != "pending" || value.Request.RecoveryNonce != record.RecordId || value.Request.Samples.Count != record.Samples.Length + 1 ||
+            !value.Request.Samples[0].Wav.SequenceEqual(Statement(record.RecordId)) || Hash(value.Request.Samples[0].Wav) != record.Statement.AudioSha256 ||
+            value.TrainingMilliseconds is < 10000 or > 120000) throw Invalid();
+        foreach (var (sample, audit) in value.Request.Samples.Skip(1).Zip(record.Samples))
+            if (sample.Role != VoiceLabCloneSampleRole.Training || Hash(sample.Wav) != audit.Sha256) throw Invalid();
+    }
+    public VoiceEnrollmentRecovery? EnrollmentRecovery(string recordId)
+    {
+        lock (State.Sync)
+        {
+            var directory = DirectoryFor(recordId);
+            var journal = Path.Combine(directory, "enrollment.json");
+            if (!Path.Exists(journal)) return null;
+            try
+            {
+                var value = JsonSerializer.Deserialize(Read(FileIn(directory, "enrollment.json"), 600 * 1024 * 1024), VoiceConsentJson.Default.VoiceEnrollmentRecovery) ?? throw Invalid();
+                if (value.Record.RecordId != recordId || clock.GetUtcNow() >= value.Request.CreatedAt.AddHours(24)) throw Invalid();
+                ValidateEnrollmentRecovery(value); return value;
+            }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                // Delete the entry, never open a symlink's target. One bad journal must not hide the remaining voices.
+                File.Delete(journal);
+                File.Delete(Path.Combine(directory, "statement.wav"));
+                SyncDirectory(directory);
+                abandonedEnrollmentIds.Add(recordId);
+                return null;
+            }
+        }
+    }
+    public IReadOnlyList<string> RecoverableEnrollments()
+    {
+        lock (State.Sync)
+        {
+            CheckDirectory(Root, false);
+            if (!Directory.Exists(Root)) return [];
+            var operations = Operations();
+            return Directory.EnumerateDirectories(Root).Select(Path.GetFileName).Where(id => id is not null && Guid.TryParseExact(id, "D", out _) &&
+                !operations.Any(item => item.RecordId == id && (item.WasDispatched || item.State != VoiceOperationState.Intent)) && EnrollmentRecovery(id) is not null)
+                .Select(id => id!).Order(StringComparer.Ordinal).ToArray();
+        }
+    }
+    public void DiscardUnsentEnrollmentOperations(string recordId)
+    {
+        lock (State.Sync)
+            foreach (var operation in Operations().Where(item => item.RecordId == recordId))
+            {
+                if (operation.Kind != VoiceOperationKind.Create || operation.State != VoiceOperationState.Intent || operation.WasDispatched || !Claim(operation.Id))
+                    throw new VoiceConsentException(VoiceConsentError.CreationPending);
+                try { RollbackUndispatched(operation.Id); }
+                finally { Release(operation.Id); }
+            }
+    }
+    public void ClearEnrollmentRecovery(string recordId)
+    {
+        lock (State.Sync) DeleteFile(FileIn(DirectoryFor(recordId), "enrollment.json"), "clearEnrollment");
+    }
     public void ReconcileAbandonedEnrollments()
     {
         lock (State.Sync)
@@ -582,7 +662,9 @@ public sealed class VoiceConsentStore
             foreach (var path in Directory.EnumerateDirectories(Root))
             {
                 var id = Path.GetFileName(path);
-                if (!Guid.TryParseExact(id, "D", out _) || State.Live.Contains(id) || HasOperation(id) || AuditTombstone(id) is not null) continue;
+                if (!Guid.TryParseExact(id, "D", out _)) continue;
+                if (EnrollmentRecovery(id) is not null) continue;
+                if (State.Live.Contains(id) || HasOperation(id) || AuditTombstone(id) is not null) continue;
                 DirectoryFor(id);
                 if (File.Exists(FileIn(path, "record.json")))
                 {
@@ -708,6 +790,7 @@ public sealed class VoiceCreationClaim : IDisposable
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, WriteIndented = true)]
 [JsonSerializable(typeof(VoiceConsentRecord))]
+[JsonSerializable(typeof(VoiceEnrollmentRecovery))]
 [JsonSerializable(typeof(VoiceOperation))]
 [JsonSerializable(typeof(VoiceConsentAudit))]
 [JsonSerializable(typeof(VoiceConsentText))]

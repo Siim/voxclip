@@ -492,6 +492,17 @@ public sealed class CreateVoiceTests
     }
 #endif
 
+    internal static void SupplySyntheticSpeaker(VoiceStatementBackend backend)
+    {
+    // Exercise the legacy session with local synthetic speaker evidence; production's native gate stays closed.
+    var enrollment = typeof(VoiceStatementBackend).GetField("enrollment", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(backend)!;
+    var speakerType = enrollment.GetType().GetNestedType("TestSpeaker", System.Reflection.BindingFlags.NonPublic)!;
+    Func<float[], CancellationToken, Task<float[]>> embed = (_, _) => Task.FromResult(new float[] { 1, 0 });
+    Func<float[], CancellationToken, Task<(float[] Whole, float[][] Parts)>> parts = (_, _) => Task.FromResult((new float[] { 1, 0 }, new float[][] { [1, 0] }));
+    var speaker = Activator.CreateInstance(speakerType, embed, parts, 0.8, "fixture-calibrated");
+    enrollment.GetType().GetProperty("SpeakerForTests", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(enrollment, speaker);
+
+    }
     private sealed class ConsentSetup : IAsyncDisposable
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "voxclip-consent-ui-" + Guid.NewGuid().ToString("N"));
@@ -506,8 +517,9 @@ public sealed class CreateVoiceTests
         internal ConsentSetup()
         {
             var locations = new DataLocations(root, Path.Combine(root, "settings.json"), Path.Combine(root, "Models"), Path.Combine(root, "cache"), Path.Combine(root, "autosave"), Path.Combine(root, "secrets"), Path.Combine(root, "logs"));
-            var backend = new VoiceStatementBackend(locations, new NoKeys(), new QuietLog(), ElevenLabsRegion.Default,
+            var backend = new VoiceStatementBackend(locations, new SyntheticKeys(), new QuietLog(), ElevenLabsRegion.Default,
                 () => Enabled, () => Plan, _ => { Consents++; return Task.CompletedTask; }, Clock, () => Speaker, ScribeAsync);
+            SupplySyntheticSpeaker(backend);
             Session = new(new DeletionFailureBackend(backend, () => FailDeletion, () => ForceTooMany), Capture, Dispatch, Clock);
         }
         internal void Inputs() => Session.SetInputs("Example", "en", true, true, true);
@@ -592,7 +604,7 @@ public sealed class CreateVoiceTests
         public void Discard() { Discards++; recording = false; if (take is not null) Array.Clear(take.Mono); done.TrySetResult(); }
         public ValueTask DisposeAsync() { Disposals++; Discard(); return ValueTask.CompletedTask; }
     }
-    private sealed class NoKeys : IKeyProvider { public Task<string?> GetKeyAsync(string account, CancellationToken ct) => throw new InvalidOperationException("No provider keys may be read by consent tests."); }
+    private sealed class SyntheticKeys : IKeyProvider { public Task<string?> GetKeyAsync(string account, CancellationToken ct) => Task.FromResult<string?>("synthetic-consent-test-key"); }
     private sealed class QuietLog : ILog
     {
         public void RegisterSecret(string secret) { }

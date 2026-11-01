@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Logging;
 using VoxClip.Core.Services.Project;
@@ -280,13 +281,56 @@ public sealed class ElevenLabsVoiceLab : IDisposable
                 VoiceLabActionGate.ContentHash(Encoding.UTF8.GetBytes(text)), voice.Policy));
     }
 
-    public VoiceLabPreparedAction PrepareClone(VoiceLabCloneRequest request, OwnVoicePolicy policy, Guid requestId)
+    public VoiceLabPreparedAction PrepareEnrollmentClone(VoiceLabCloneRequest request, OwnVoicePolicy policy, Guid requestId)
     {
         policy.Validate();
         var upload = ValidatedClone(request);
         return actions.Prepare(CloneFingerprint(upload, policy), Quoted(VoiceLabOperation.CreateClone, null, 1),
             Review(VoiceLabOperation.CreateClone, requestId, "/v1/voices/add", null, null, null,
                 upload.ConsentSha256, policy) with { DisplayName = upload.DisplayName, MimeType = "audio/wav" });
+    }
+
+    public IReadOnlyList<VoiceLabAuthorization> ApproveEnrollment(EnrollmentQuote quote, bool affirmative) => actions.ApproveEnrollment(quote, affirmative);
+    public void ReleaseEnrollment(EnrollmentQuote quote) => actions.ReleaseRun(quote.Id, quote.Actions);
+    public void DiscardEnrollment(EnrollmentQuote quote) => actions.DiscardRun(quote.Id, quote.Actions);
+    public bool RestoreEnrollmentCreation(VoiceLabPreparedAction quote, VoiceLabCloneRequest request, OwnVoicePolicy policy)
+    {
+        if (quote.Review.Region != Region || quote.Review.Operation != VoiceLabOperation.CreateClone) throw Invalid();
+        var upload = ValidatedClone(request);
+        if (quote.Fingerprint != VoiceLabActionGate.BoundFingerprint(CloneFingerprint(upload, policy), quote.Estimate, quote.Review)) throw Invalid();
+        return actions.Restore(quote);
+    }
+    public async Task<VoiceConsentCreator> ValidateCreationQuoteAsync(VoiceLabPreparedAction quote, CancellationToken ct)
+    {
+        if (quote.Review.Operation != VoiceLabOperation.CreateClone || !QuotesAreFresh([quote])) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        var creator = await GetCreatorIdentityAsync(ct).ConfigureAwait(false);
+        var plan = await DiscoverSubscriptionAsync(ct).ConfigureAwait(false);
+        if (!plan.CanClone) throw new VoiceLabException(VoiceLabErrorKind.PlanUnavailable);
+        if (plan.VoiceSlotsUsed >= plan.VoiceLimit) throw new VoiceLabException(VoiceLabErrorKind.NoVoiceSlots);
+        if (!QuotesAreFresh([quote])) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+        await ValidateCreatorAsync(creator, ct).ConfigureAwait(false);
+        return creator;
+    }
+    public VoiceLabPreparedAction PrepareConsentVerification(byte[] wav, string language, Guid requestId)
+    {
+        VoiceConsentAudio.Pcm16k(wav);
+        if (language is not ("en" or "et")) throw Invalid();
+        var format = VoiceConsentAudio.ValidateWav(wav);
+        return actions.Prepare(ConsentFingerprint(wav, language), Quoted(VoiceLabOperation.SpeechToText, "scribe_v2", format.Frames / (double)format.Rate),
+            new(VoiceLabOperation.SpeechToText, requestId, "elevenlabs", Region, "/v1/speech-to-text", "scribe_v2", null,
+                new(VoiceLabLanguageModeKind.Explicit, language), VoiceConsentStore.Hash(wav), null));
+    }
+    private string ConsentFingerprint(byte[] wav, string language) => VoiceLabActionGate.Fingerprint(Region.ToString(), "scribe_v2", language, VoiceConsentStore.Hash(wav));
+    public async Task<VoxClip.Core.Domain.Transcript.RawTranscript> TranscribeConsentStatementAsync(byte[] wav, string language, VoiceLabAuthorization authorization, CancellationToken ct)
+    {
+        VoiceConsentAudio.Pcm16k(wav);
+        actions.Claim(authorization, ConsentFingerprint(wav, language), VoiceLabOperation.SpeechToText, authorization.Review.RequestId);
+        using var body = Multipart(NewBoundary(), [new("model_id", "scribe_v2"), new("language_code", language), new("tag_audio_events", "false"),
+            new("diarize", "false"), new("timestamps_granularity", "word"), new("file", null, "statement.wav", wav)]);
+        using var reply = await SendAsync(HttpMethod.Post, "/v1/speech-to-text", body, 4 * 1024 * 1024, ct, billing: authorization).ConfigureAwait(false);
+        using var json = Parse(reply.Bytes);
+        using var mapper = new ElevenLabsTranscriber(keys, Region);
+        return await mapper.MapResponseAsync(json.RootElement, false, new LanguageChoice.Forced(language), ct).ConfigureAwait(false);
     }
 
     public VoiceLabPreparedAction PrepareDeletion(string voiceId, OwnVoicePolicy policy, Guid requestId)

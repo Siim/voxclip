@@ -24,7 +24,6 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
     private readonly Dictionary<string, string[]> words;
     private readonly VoiceLabPriceCatalog prices;
     private readonly ElevenLabsVoiceLab client;
-    private readonly ElevenLabsTranscriber transcriber;
     private readonly VoiceEnrollment enrollment;
     private readonly TimeProvider clock;
     private readonly Func<VoiceConsentStatement, TranscriptionRequest, CancellationToken, Task<RawTranscript>>? transcribe;
@@ -48,9 +47,8 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
             language => File.ReadAllText(Path.Combine(shared, "voice-lab", "nonce-words-" + language + ".txt")).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         prices = VoiceLabPriceCatalog.Parse(File.ReadAllBytes(Path.Combine(shared, "catalog", "voice-lab.json")));
         store = new(data, clock);
-        client = new(keys, region, log);
-        transcriber = new(keys, region, logger: log);
-        enrollment = new(store, client, ScribeAsync, clock: clock);
+        client = new(keys, region, log, prices);
+        enrollment = new(store, client, transcribe is null ? null : ScribeAsync, clock: clock);
     }
 
     public bool Enabled => enabled();
@@ -120,8 +118,7 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
             var request = new TranscriptionRequest(new(TranscriptEngine.Elevenlabs, "scribe_v2", new LanguageChoice.Forced(language), new(Diarize: false)),
                 new(path, frames, seconds, 0, 0), "voice-consent-" + Guid.NewGuid().ToString("N"));
             Require(ct);
-            return transcribe is { } selected ? await selected(verifying!, request, ct).ConfigureAwait(false)
-                : await transcriber.TranscribeAsync(request, new Progress<TranscriptionProgress>(), ct).ConfigureAwait(false);
+            return await (transcribe ?? throw new InvalidOperationException("No fixture Scribe was supplied."))(verifying!, request, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -182,7 +179,7 @@ internal sealed class VoiceStatementBackend : IVoiceCreationBackend
         foreach (var operation in store.Operations().Where(operation => operation.RecordId == record.RecordId && !operation.Finished))
             await reconciler.ReconcileAsync(operation.Id, true, ct).ConfigureAwait(false);
     }
-    public void Dispose() { training = []; client.Dispose(); transcriber.Dispose(); }
+    public void Dispose() { training = []; client.Dispose(); }
 }
 
 internal sealed class VoiceStatementCapture(VoiceMicrophoneRecorder recorder) : IVoiceStatementCapture
