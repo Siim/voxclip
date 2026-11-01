@@ -25,8 +25,10 @@ Python and Swift result. The `all-cut-word-refuses-seam-before-merge` and
 refusal; they do not claim to test the merge guard. `all-real-review-like-id-overlap` pins
 an existing segment's original ID in the geometry error, not the reservation alias guard.
 
-The Swift `VoiceLabWindowTests.placeAllVectors` replays every result and validates/prepares
-accepted unions against the temporary review cuts. W2 must add a separate C# replay of
-this file: exact outcome/group/index identity, bridge token surfaces, seconds, samples,
-seam kinds and fades. Use binary64 operations, inclusive comparisons and jsRound; no
-epsilon or take-edge seconds reconstructed from samples. No provider assets or live calls.
+This file is replayed by both Cores: Swift `VoiceLabWindowTests.placeAllVectors` and C#
+`VoiceLabWindowAllTests.SharedPlaceAllVector`. Both validate/prepare accepted unions against
+the temporary review cuts. The separate C# class pins this file's exact keys, schema and
+32-case count without changing the legacy replay. Outcomes, group/index identity, bridge
+token surfaces, seconds, samples, seam kinds and odd fade halves compare exactly; C# checks
+double bits, not a tolerance. Use binary64 operations, inclusive comparisons and jsRound;
+no epsilon or take-edge seconds reconstructed from samples. No provider assets or live calls.

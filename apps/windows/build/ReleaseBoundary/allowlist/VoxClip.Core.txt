@@ -1,8 +1,8 @@
-# Release allowlist for VoxClip.Core. Every hand-written type, member, tagged member, friend
-# assembly and switch-like literal in the shipping Release assembly must appear here; nothing else may.
-# Toolchain output (WinUI XAML compiler, CsWinRT, source generators, Windows App SDK sources) is
-# classified from the PDB and recorded only as evidence. Regenerate after a reviewed product change:
 #   dotnet run --project apps/windows/build/ReleaseBoundary -c Release -- update <Release assembly> <this file>
+# Release allowlist for VoxClip.Core. Every hand-written type, member, tagged member, friend
+# Toolchain output (WinUI XAML compiler, CsWinRT, source generators, Windows App SDK sources) is
+# assembly and switch-like literal in the shipping Release assembly must appear here; nothing else may.
+# classified from the PDB and recorded only as evidence. Regenerate after a reviewed product change:
 # then review the diff. Fakes, harnesses, probes, seams and DEBUG-only helpers belong under #if DEBUG.
 attribute VoxClip.Core.Domain.Captions.CaptionAnimation :: method public .ctor(VoxClip.Core.Domain.Captions.CaptionAnimationSpec,VoxClip.Core.Domain.Captions.CaptionAnimationSpec,VoxClip.Core.Domain.Captions.CaptionAnimationSpec,VoxClip.Core.Domain.Captions.CaptionAnimationSpec) @ System.Text.Json.Serialization.JsonConstructorAttribute()
 attribute VoxClip.Core.Domain.Captions.CaptionAnimation :: property ActiveIn @ System.Text.Json.Serialization.JsonIgnoreAttribute(Condition=3)
@@ -4945,6 +4945,52 @@ member VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator+Sources :: field priva
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator+Sources :: method internal .ctor(System.Collections.Generic.IEnumerable`1<string>)
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator+Sources :: method internal FlaggedTokens(string)
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator+Sources :: method internal Flags(string)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method protected .ctor()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method protected .ctor(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method public Equals(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused,VoxClip.Core.Domain.VoiceLab.PlacedOrRefused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused,VoxClip.Core.Domain.VoiceLab.PlacedOrRefused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method private .ctor(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<int>,VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<int>&,VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk&,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow&)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public Equals(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public Equals(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public get_Hunk()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public get_Indices()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public get_Window()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed,VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed,VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public set_Hunk(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public set_Indices(System.Collections.Generic.IReadOnlyList`1<int>)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed :: method public set_Window(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method private .ctor(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public .ctor(int,VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public Deconstruct(int&,VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk&,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal&)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public Equals(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public Equals(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public get_Hunk()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public get_Index()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public get_Reason()
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused,VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused,VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public set_Hunk(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public set_Index(int)
+member VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused :: method public set_Reason(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method protected .ctor()
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method protected .ctor(VoxClip.Core.Domain.VoiceLab.RenderTimeline)
 member VoxClip.Core.Domain.VoiceLab.RenderTimeline :: method protected PrintMembers(System.Text.StringBuilder)
@@ -8023,12 +8069,34 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabWindow :: method public set_Start(do
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindow :: method public set_StartSample(long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: field private HardSeamReach
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method internal ReplacedItems(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.Transcript.AudioEnvelope)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private BudgetHunk(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,VoxClip.Core.Domain.Shared.Project)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private Editing`1(System.Func`1<!!0>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private IndexOf(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private Merge(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk>,System.Collections.Generic.IReadOnlyDictionary`2<string,int>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private Reservation(string,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private ScopeReplacements(VoxClip.Core.Domain.Shared.Project,System.Nullable`1<VoxClip.Core.Domain.Shared.TimeRange>,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method private Touches(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method public LendableSilence(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method public Place(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.Transcript.AudioEnvelope,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method public Place(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.Transcript.AudioEnvelope,string,string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner :: method public PlaceAll(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.Transcript.AudioEnvelope,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public .ctor(System.Collections.Generic.IReadOnlyList`1<int>,VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public Deconstruct(System.Collections.Generic.IReadOnlyList`1<int>&,VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk&,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public get_Hunk()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public get_Indices()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public get_Window()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public set_Hunk(VoxClip.Core.Domain.VoiceLab.VoiceLabDiffHunk)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public set_Indices(System.Collections.Generic.IReadOnlyList`1<int>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow :: method public set_Window(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ScopeSource :: field private segments
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ScopeSource :: field private take
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ScopeSource :: method public .ctor(VoxClip.Core.Domain.Shared.Project,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+Take)
@@ -8097,6 +8165,45 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+Take :: method public 
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+Take :: method public set_Rate(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+Take :: method public set_Total(long)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+Take :: method public set_Words(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method protected .ctor()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method protected .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method public get_Copy()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public .ctor(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public Deconstruct(int&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public get_Index()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange :: method public set_Index(int)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method protected PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method protected get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public Deconstruct(VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public get_Error()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry,VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry :: method public set_Error(VoxClip.Core.Domain.VoiceLab.VoiceLabGeometryException)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWord :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabWord)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWord :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabWord :: method private get_EqualityContract()
@@ -11298,6 +11405,9 @@ type VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest
 type VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator
 type VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator+Result
 type VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator+Sources
+type VoxClip.Core.Domain.VoiceLab.PlacedOrRefused
+type VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Placed
+type VoxClip.Core.Domain.VoiceLab.PlacedOrRefused+Refused
 type VoxClip.Core.Domain.VoiceLab.RenderTimeline
 type VoxClip.Core.Domain.VoiceLab.RenderTimeline+Legacy
 type VoxClip.Core.Domain.VoiceLab.RenderTimeline+VoiceLab
@@ -11504,10 +11614,14 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceSource
 type VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceStatus
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWindow
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner
+type VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ReviewWindow
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+ScopeSource
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+SeamLayout
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+SynthPiece
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWindowPlanner+Take
+type VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal
+type VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+CollidesWithChange
+type VoxClip.Core.Domain.VoiceLab.VoiceLabWindowRefusal+Geometry
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWord
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWordDiff
 type VoxClip.Core.Domain.VoiceLab.VoiceLabWordDiff+Region
