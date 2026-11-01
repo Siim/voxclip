@@ -484,11 +484,23 @@ struct EditorRenderSnapshot {
     /// "Export Video…" for the full take, "Export Clip…" for a clip (design §3.5).
     var exportTitle: String { activeClip == nil ? "Export Video…" : "Export Clip…" }
     /// The video is there to export: not a demo, found and readable (design §5.4.4).
-    var mediaExportable: Bool { !document.demo && mediaResolved && !mediaUnreadable }
+    var mediaExportable: Bool { !document.demo && mediaUsable }
+    /// The project's video is there, readable and confirmed: no relink waits for Use It. Until then the editor only
+    /// reads (editing.md §10.3, v5 f24c and f24, lead decision 7): the edit verbs, Rewrite and Export can't act, while
+    /// the transcript, selection, Explorer, timeline and caption position work.
+    var mediaUsable: Bool { mediaResolved && !mediaUnreadable && mediaRelinkCandidate == nil }
+    /// Why the editor only reads while its video is missing or a relink waits for Use It: the status bar's alert (v5
+    /// f24c, f24). Nil otherwise, and in demo projects and Versions windows, where Locate… does not apply.
+    var mediaReadOnlyNote: String? {
+        guard !document.demo, !document.isVersion else { return nil }
+        if mediaRelinkCandidate != nil { return "Read-only until you confirm the video" }
+        return mediaResolved ? nil : "Read-only until you locate the video"
+    }
     /// Why Export can't run for the scope, as its tooltip and accessible description
     /// (design §3.5 and §5.4.4); nil when it can or while an export runs.
     var exportUnavailable: String? {
         if document.demo { return "Demo projects have no video to export." }
+        if mediaRelinkCandidate != nil { return "Confirm the video to export." }
         if !mediaExportable { return "Locate the video to export." }
         if let clip = activeClip, isSuggestion(clip.id) { return "Keep this clip to export it." }
         return canExport || exporting ? nil : "Keep at least one word before exporting."
@@ -775,7 +787,9 @@ struct EditorRenderSnapshot {
         let url: URL
         let probe: MediaProbeResult
     }
-    var mediaRelinkCandidate: MediaRelinkCandidate?
+    /// A different-looking file waiting for the banner's Use It. The editor only reads meanwhile (`mediaUsable`), so an
+    /// open Rewrite closes as it does when the video goes missing.
+    var mediaRelinkCandidate: MediaRelinkCandidate? { didSet { if mediaRelinkCandidate != nil { closeRewrite(returnFocus: false) } } }
     private var mediaRelinkRevision = 0
     func cancelMediaRelink() { mediaRelinkRevision += 1; mediaRelinkCandidate = nil }
     func locateMedia() {

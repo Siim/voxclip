@@ -56,10 +56,59 @@ import Testing
         #expect(editor.mediaRelinkCandidate != nil)
         #expect(editor.announcements.contains("This file looks different. Use it anyway? \(url.lastPathComponent)"))
         shell.choose(.clip("five-2"))
+        // The editor only reads while the banner waits (v5 f24): an export setting is refused, a caption move is not.
         var current = editor.project; current.export.quality = .high; editor.replace(current, name: "Change export quality")
+        #expect(editor.project.export.quality != .high)
+        var moved = editor.project; moved.captions.position = CaptionPosition(x: 0.5, y: 0.2); editor.replace(moved, name: "Move captions")
         await editor.confirmMediaRelink()
         #expect(editor.project.media.source.absolutePath == url.path && editor.mediaRelinkCandidate == nil)
-        #expect(editor.project.export.quality == .high && editor.activeClip?.id == "five-2")
+        #expect(editor.project.captions.position == CaptionPosition(x: 0.5, y: 0.2) && editor.activeClip?.id == "five-2")
+    }
+    /// While the video is missing (f24c) and while a different-looking file waits for Use It (f24), the editor only reads
+    /// (lead decision 7): the clip bar shows Rewrite, Tighten, Hook and the Ask field dimmed, a Rewrite open on the tab
+    /// closes and none can start, Export and its entries are refused, and the status bar says why in the task's place.
+    /// Use It gives the editor back.
+    @Test func theEditorOnlyReadsUntilTheVideoIsConfirmed() async throws {
+        let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
+        defer { editor.close() }
+        shell.choose(.clip("five-1"))
+        let bar = ClipBarView(model: editor, shell: shell)
+        defer { bar.tearDown() }
+        bar.frame = NSRect(x: 0, y: 0, width: 652, height: ShellMetrics.clipBar)
+        func lay() { bar.render(); bar.layoutSubtreeIfNeeded() }
+        func dimmed() -> Bool {
+            let verbs: [NSControl] = [bar.rewrite, bar.tighten, bar.hook, bar.ask]
+            return bar.variant == .readOnly("five-1") && verbs.allSatisfy { !$0.isHidden && !$0.isEnabled } && !bar.picker.isHidden
+                && bar.isAccessibilityElement() && bar.accessibilityLabel() == "Clip 1 tools"
+        }
+        func refused() -> Bool {
+            !editor.capabilities.edit && !editor.capabilities.ai && !editor.capabilities.export && !editor.mediaExportable
+                && editor.mutationEnabled(38) == false && editor.mutationEnabled(45) == false && editor.mutationEnabled(1) == false
+        }
+        lay()
+        #expect(bar.variant == .scope("five-1") && bar.rewrite.isEnabled && editor.statusReadOnly == nil)
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(0...2), envelope: nil, connector: nil)
+        // f24c: the video is missing.
+        editor.mediaResolved = false; lay()
+        #expect(dimmed() && refused() && editor.rewrite == nil)
+        #expect(editor.statusReadOnly?.text == "Read-only until you locate the video" && editor.statusReadOnly?.lead == .symbol("exclamationmark.triangle"))
+        #expect(StatusBarContent.make(app: editor.app, editor: editor, now: Date())[.task]?.text == "Read-only until you locate the video")
+        #expect(bar.rewrite.toolTip == "Read-only until you locate the video" && editor.exportUnavailable == "Locate the video to export.")
+        // f24: a different-looking file waits for Use It.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        try Data("different media".utf8).write(to: url); defer { try? FileManager.default.removeItem(at: url) }
+        editor.mediaResolved = true
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(0...2), envelope: nil, connector: nil)
+        await editor.prepareMediaRelink(url: url, probe: MediaProbeResult(durationSeconds: editor.project.media.source.durationSeconds, isPlayable: true))
+        lay()
+        #expect(editor.mediaRelinkCandidate != nil && dimmed() && refused() && editor.rewrite == nil)
+        #expect(editor.statusReadOnly?.text == "Read-only until you confirm the video" && editor.exportUnavailable == "Confirm the video to export.")
+        editor.runRewrite(); editor.presentExport()
+        #expect(editor.rewrite == nil && !editor.exportJob.isOpen && shell.panelJob(for: editor) == .captions)
+        // Use It: the editor edits again.
+        await editor.confirmMediaRelink(); lay()
+        #expect(editor.mediaRelinkCandidate == nil && editor.capabilities.edit && editor.mediaExportable && editor.statusReadOnly == nil)
+        #expect(bar.variant == .scope("five-1") && bar.rewrite.isEnabled && bar.tighten.isEnabled && bar.ask.isEnabled)
     }
     @Test func aRefusedRelinkKeepsTheBannerAndExplainsWhy() async throws {
         let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)

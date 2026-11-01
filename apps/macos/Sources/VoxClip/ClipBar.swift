@@ -5,17 +5,20 @@ import VoxClipCore
 // row, on the editor surface with a hairline below. For a clip or Full Take it holds the verbs
 // Rewrite, Tighten and Hook, the Ask field and the harness picker; for a suggested clip it holds
 // "Suggested clip", Keep ⇧⌘↩ and Dismiss. A control that cannot act is not shown (design.md
-// §1.6), and with no editable scope (no transcript, missing media, a Versions window) the bar is
-// empty. Phase 0 meanings (impl-plan item 1): Rewrite and Ask run Rewrite on the scope now (V13:
+// §1.6), and with no editable scope (no transcript, a Versions window) the bar is empty; while the
+// video is missing or a relink waits for Use It, the verbs and the Ask field show dimmed, as v5 f24
+// draws the read-only editor (lead decision 7), and the status bar says why. Phase 0 meanings (impl-plan item 1): Rewrite and Ask run Rewrite on the scope now (V13:
 // the selection, else the tab's clip, else Full Take) with the field's text as the instruction;
 // Tighten cuts the scope's fillers and pauses as one undo step; Hook finds hook clips in the take
 // with one click.
 
-/// What the bar holds: nothing, a scope's verbs (the tab's clip, nil for Full Take), or a suggestion's Keep and Dismiss.
+/// What the bar holds: nothing, a scope's verbs (the tab's clip, nil for Full Take), a suggestion's Keep and Dismiss, or
+/// the scope's verbs dimmed while the editor only reads until its video is found or confirmed.
 enum ClipBarVariant: Equatable {
     case hidden
     case scope(String?)
     case suggestion(String)
+    case readOnly(String?)
 }
 
 /// The mockup's `.cbar`, `.verb`, `.ask` and `.btn` measurements, in points.
@@ -80,7 +83,6 @@ enum ClipBarMetrics {
         dismiss.onPress = { [weak self] in self?.dismissSuggestion() }
         toast.undo.onPress = { [weak self] in self?.undoTighten() }
         hook.setAccessibilityLabel("Hook: find hook clips in this take")
-        hook.toolTip = "Find hook clips in this take. They land in Suggested."
         keep.toolTip = "Keep this clip (⇧⌘↩)"
         ask.delegate = self
         ask.onFocus = { [weak self] in self?.askTookFocus() }
@@ -109,10 +111,12 @@ enum ClipBarMetrics {
 
     // MARK: State
 
-    /// What the bar holds now: nothing without an editable scope; Keep and Dismiss on a suggestion's tab; else the verbs.
+    /// What the bar holds now: the verbs dimmed while the video is missing or a relink waits; nothing without an editable
+    /// scope; Keep and Dismiss on a suggestion's tab; else the verbs.
     var currentVariant: ClipBarVariant {
-        guard model.transcribed, model.capabilities.edit else { return .hidden }
         let tab = shell.tabs.active
+        if model.transcribed, model.capabilities.writable, model.mediaReadOnlyNote != nil { return .readOnly(tab.clipID) }
+        guard model.transcribed, model.capabilities.edit else { return .hidden }
         if case .suggestion(let id) = tab, model.isSuggestion(id) { return .suggestion(id) }
         return .scope(tab.clipID)
     }
@@ -130,17 +134,21 @@ enum ClipBarMetrics {
     func render() {
         _ = model.projectRevision
         variant = currentVariant
-        let scoped: Bool, suggested: Bool
+        let scoped: Bool, suggested: Bool, readOnly: Bool
         switch variant {
         case .hidden:
-            scoped = false; suggested = false
+            scoped = false; suggested = false; readOnly = false
             setAccessibilityElement(false)
         case .scope(let clipID):
-            scoped = true; suggested = false
+            scoped = true; suggested = false; readOnly = false
+            setAccessibilityElement(true)
+            setAccessibilityLabel("\(model.scopeName(clipID)) tools")
+        case .readOnly(let clipID):
+            scoped = false; suggested = false; readOnly = true
             setAccessibilityElement(true)
             setAccessibilityLabel("\(model.scopeName(clipID)) tools")
         case .suggestion(let id):
-            scoped = false; suggested = true
+            scoped = false; suggested = true; readOnly = false
             setAccessibilityElement(true)
             setAccessibilityLabel("\(model.scopeName(id)) tools")
             keep.setAccessibilityLabel(EditorIconAction.suggestion(keep: true, number: model.clipNumber(id) ?? 0))
@@ -149,34 +157,42 @@ enum ClipBarMetrics {
         if !toastShown, tightened != nil { tightened = nil; toastEnd?.cancel() }
         let running = scoped && rewriteRunning
         let canRewrite = scoped && rewriteAvailable
-        rewrite.isHidden = !canRewrite || running
+        // Read-only: the verbs and the Ask field stay in place, dimmed, and say why (v5 f24).
+        let note = readOnly ? model.mediaReadOnlyNote : nil
+        for control in [rewrite, tighten, hook, askButton] as [NSControl] where control.isEnabled == readOnly { control.isEnabled = !readOnly }
+        if ask.isEnabled == readOnly { ask.isEnabled = !readOnly }
+        rewrite.isHidden = !readOnly && (!canRewrite || running)
         rewrite.isOn = model.rewrite != nil
         // The chosen AI asks before each send (C8): "Rewrite…", as Edit › Rewrite's title (design.md §3.1).
         rewrite.label = model.rewriteAsksFirst ? "Rewrite…" : "Rewrite"
         let names = rewriteNames
         rewrite.setAccessibilityLabel(names.verb)
-        rewrite.toolTip = "\(names.verb) (⇧⌘R)"
+        rewrite.toolTip = note ?? "\(names.verb) (⇧⌘R)"
         let askName = names.ask.replacingOccurrences(of: "…", with: "")
         if ask.placeholder != names.ask { ask.placeholder = names.ask }
         ask.setAccessibilityLabel(askName)
         askButton.setAccessibilityLabel(askName)
-        askButton.toolTip = askName
         rewriting.isHidden = !running
         let toasting = scoped && toastShown
         toast.isHidden = !toasting
         if let tightened, toasting { toast.show(cuts: tightened.cuts, undoName: tightened.undoName) }
-        tighten.isHidden = !scoped || toasting || !model.canTighten
-        if case .scope(let clipID) = variant {
+        tighten.isHidden = !readOnly && (!scoped || toasting || !model.canTighten)
+        switch variant {
+        case .scope(let clipID), .readOnly(let clipID):
             let name = model.scopeName(clipID)
             tighten.setAccessibilityLabel("Tighten \(name)")
-            tighten.toolTip = "Cut fillers and tighten pauses in \(name)"
+            tighten.toolTip = note ?? "Cut fillers and tighten pauses in \(name)"
+        case .hidden, .suggestion: break
         }
+        hook.toolTip = note ?? "Find hook clips in this take. They land in Suggested."
+        askButton.toolTip = note ?? askName
+        ask.toolTip = note
         finding.isHidden = !(scoped && model.finding)
-        hook.isHidden = !scoped || model.finding || !model.capabilities.ai
-        asks = canRewrite || running
+        hook.isHidden = !readOnly && (!scoped || model.finding || !model.capabilities.ai)
+        asks = readOnly || canRewrite || running
         ask.isEditable = !running
         if ask.currentEditor() == nil, ask.stringValue != model.rewriteInstruction { ask.stringValue = model.rewriteInstruction }
-        picker.isHidden = !scoped
+        picker.isHidden = !scoped && !readOnly
         picker.render()
         for view in [suggestionLabel, keep, dismiss] as [NSView] { view.isHidden = !suggested }
         linkKeyViews()
@@ -196,7 +212,7 @@ enum ClipBarMetrics {
     private var leadingViews: [NSView] {
         switch variant {
         case .hidden: []
-        case .scope: [rewrite, rewriting, tighten, toast, hook, finding, askButton]
+        case .scope, .readOnly: [rewrite, rewriting, tighten, toast, hook, finding, askButton]
         case .suggestion: [suggestionLabel, keep, dismiss]
         }
     }
@@ -223,7 +239,10 @@ enum ClipBarMetrics {
             place(view, x: x, width: size.width, height: size.height)
             x += size.width + ClipBarMetrics.gap
         }
-        guard case .scope = variant else { return }
+        switch variant {
+        case .scope, .readOnly: break
+        case .hidden, .suggestion: return
+        }
         let end = width - ClipBarMetrics.trailing
         let fieldStart = x + ClipBarMetrics.askMargin
         picker.compact = false
@@ -376,6 +395,7 @@ enum ClipBarMetrics {
     var label: String { didSet { if label != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true; updateTip() } } }
     var iconOnly = false { didSet { if iconOnly != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true; updateTip() } } }
     var isOn = false { didSet { if isOn != oldValue { needsDisplay = true } } }
+    override var isEnabled: Bool { didSet { if isEnabled != oldValue { needsDisplay = true } } }
     var onPress: () -> Void = {}
     private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
     private var baseTip: String?
@@ -408,14 +428,17 @@ enum ClipBarMetrics {
     private var padding: CGFloat { style == .verb ? 8 : 10 }
     private var iconSize: CGFloat { style == .verb ? 14 : 12 }
     private var labelFont: NSFont { style == .verb ? VCType.body.nsFont() : VCType.body.nsFont(.medium) }
+    /// The pointer or a press lights the button only while it can act.
+    private var lit: Bool { isEnabled && (isOn || hovering || isHighlighted) }
     private var labelColor: NSColor {
-        switch style {
-        case .verb: DesignValues.nsColor(isOn || hovering || isHighlighted ? "text.primary" : "text.secondary")
+        guard isEnabled else { return DesignValues.nsColor("text.disabled") }
+        return switch style {
+        case .verb: DesignValues.nsColor(lit ? "text.primary" : "text.secondary")
         case .bordered: DesignValues.nsColor("text.primary")
         case .ghost: DesignValues.nsColor(hovering || isHighlighted ? "text.primary" : "text.secondary")
         }
     }
-    private var iconColor: NSColor { style == .verb ? DesignValues.nsColor(isOn || hovering || isHighlighted ? "text.secondary" : "text.tertiary") : labelColor }
+    private var iconColor: NSColor { style == .verb && isEnabled ? DesignValues.nsColor(lit ? "text.secondary" : "text.tertiary") : labelColor }
     private var hintAttributes: [NSAttributedString.Key: Any] { [.font: VCType.label.nsMono(), .foregroundColor: DesignValues.nsColor("text.tertiary")] }
     override var intrinsicContentSize: NSSize {
         if iconOnly { return NSSize(width: ClipBarMetrics.control, height: ClipBarMetrics.control) }
@@ -432,7 +455,7 @@ enum ClipBarMetrics {
     override func draw(_ dirtyRect: NSRect) {
         switch style {
         case .verb, .ghost:
-            if isOn || hovering || isHighlighted {
+            if lit {
                 DesignValues.nsColor("bg.selectedRow").setFill()
                 shape.fill()
             }
