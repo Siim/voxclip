@@ -71,6 +71,7 @@ import VoxClipCore
             measured.append(metrics); results += checks
         }
         try JSONEncoder().encode(measured).write(to: directory.appendingPathComponent("transcript-performance.json"), options: .atomic)
+        results += try proposal(app: app, fixture: fixture, directory: directory)
         results += try DebugTranscriptPixels.run(app: app, fixture: fixture, directory: directory)
         return results
     }
@@ -310,7 +311,131 @@ import VoxClipCore
         results.append(.init(name: "\(name): indexed timeline times match the Core sample-grid mapper", passed: matches))
         return (metrics, results)
     }
-    private static func milliseconds(_ duration: Duration) -> Double { Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15 }
-    private static func percentile(_ values: [Double], _ fraction: Double) -> Double { let sorted = values.sorted(); return sorted[min(sorted.count - 1, Int(Double(sorted.count - 1) * fraction))] }
+    static func milliseconds(_ duration: Duration) -> Double { Double(duration.components.seconds) * 1000 + Double(duration.components.attoseconds) / 1e15 }
+    static func percentile(_ values: [Double], _ fraction: Double) -> Double { let sorted = values.sorted(); return sorted[min(sorted.count - 1, Int(Double(sorted.count - 1) * fraction))] }
+}
+/// The 30-change proposal on the 10,000-word single-speaker take (impl-plan V14): showing the
+/// proposal, walking its changes with ⌥↓, keeping and undoing one, playhead ticks and scrolling
+/// with the tints, bars and buttons. A focus move writes the two paragraphs of the old and the
+/// new focused change, never the document.
+extension DebugTranscriptPerformance {
+    struct ProposalMetrics: Codable {
+        let changes: Int
+        let showMS: Double
+        let showParagraphs: Int
+        let focusMedianMS: Double
+        let focusMaximumMS: Double
+        /// The paragraphs each focus move wrote.
+        let focusParagraphs: [Int]
+        let keepMS: Double
+        let keepParagraphs: Int
+        let excludeMS: Double
+        let excludeParagraphs: Int
+        let documentRebuilds: Int
+        let tickMaximumMS: Double
+        let tickRestyles: Int
+        let scrollP95MS: Double
+        let scope: String
+    }
+    static func proposal(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
+        guard let words = fixtures().first(where: { $0.name == "single-speaker" })?.words else { return [] }
+        var project = fixture
+        project.transcript?.words = words
+        project.transcript?.durationSeconds = 4000
+        project.media.source.durationSeconds = 4000
+        project.edits = ProjectEdits(cutWordIds: words.enumerated().filter { $0.offset.isMultiple(of: 5) }.map { $0.element.id })
+        let model = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.mediaResolved = true; model.refresh()
+        let coordinator = TranscriptTextView.Coordinator(model: model)
+        let scroll = TranscriptTextView.makeScrollView(model: model, coordinator: coordinator, width: 700, height: 600)
+        guard let text = scroll.documentView as? TranscriptNSTextView, let manager = text.textLayoutManager else { throw CocoaError(.coderInvalidValue) }
+        let renderer = coordinator.renderer
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 700, height: 600), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.contentView = scroll
+        defer { window.close() }
+        /// As `updateNSView` renders: the edit, then the proposal's buttons and the scroll to a
+        /// focused change. The window server's display cycle lays the viewport out after that
+        /// scroll; offscreen, `scrolled` does.
+        func render(scrolled: Bool = false) {
+            coordinator.updating = true
+            TranscriptTextView.render(model, coordinator: coordinator)
+            TranscriptTextView.showProposal(model, coordinator: coordinator, in: text)
+            coordinator.updating = false
+            if scrolled { manager.textViewportLayoutController.layoutViewport() }
+            text.displayIfNeeded()
+        }
+        render()
+        manager.ensureLayout(for: manager.documentRange)
+        manager.textViewportLayoutController.layoutViewport()
+        // 30 changes, one every 300 words, so each sits in its own paragraph: cuts, voice
+        // changes and fixes in turn, on words no cut holds.
+        let changes = (0..<30).map { index -> TranscriptChange in
+            let start = 300 * index + 51
+            let ids = [words[start].id, words[start + 1].id]
+            switch index % 3 {
+            case 0: return TranscriptChange(ordinal: index + 1, parts: [.init(kind: .cut, sourceWordIDs: ids)])
+            case 1: return TranscriptChange(ordinal: index + 1, parts: [.init(kind: .voice, sourceWordIDs: ids, newTokens: ["new", "words", "here"])])
+            default: return TranscriptChange(ordinal: index + 1, parts: [.init(kind: .textOnly, sourceWordIDs: ids, newTokens: ["Word", "Word"], correctedTexts: ["Word", "Word"])])
+            }
+        }
+        func measure(_ action: () -> Void) -> (ms: Double, paragraphs: Int, documents: Int) {
+            let before = (paragraphs: renderer.paragraphReplacements, documents: renderer.documentRebuilds)
+            let start = ContinuousClock.now
+            action()
+            render(scrolled: true)
+            return (milliseconds(start.duration(to: .now)), renderer.paragraphReplacements - before.paragraphs, renderer.documentRebuilds - before.documents)
+        }
+        let show = measure { model.proposal = TranscriptProposal(clipID: nil, title: "Rewrite full take", changes: changes) }
+        var focusTimes: [Double] = [], focusParagraphs: [Int] = [], documents = show.documents
+        for _ in 1..<changes.count {
+            let move = measure { model.focusNextChange(1) }
+            focusTimes.append(move.ms); focusParagraphs.append(move.paragraphs); documents += move.documents
+        }
+        let buttons = text.proposalLayer?.isHidden == false && renderer.spacerID == "spacer:30"
+        model.focusChange(1, announcing: false); render(scrolled: true)
+        let keep = measure { model.keepFocusedChange() }
+        let exclude = measure { model.excludeFocusedChange() }
+        documents += keep.documents + exclude.documents
+        // Playhead ticks with the proposal open: the caret moves and no span is styled again.
+        let tickBefore = (applied: renderer.attributeUpdates, styled: renderer.rebuildStyles, scoped: renderer.scopeRestyles)
+        var tickTimes: [Double] = []
+        for tick in 0..<120 {
+            let start = ContinuousClock.now
+            model.sourceTime = words[600 + tick].start + 0.05
+            render()
+            tickTimes.append(milliseconds(start.duration(to: .now)))
+        }
+        let tickRestyles = (renderer.attributeUpdates - tickBefore.applied) + (renderer.rebuildStyles - tickBefore.styled) + (renderer.scopeRestyles - tickBefore.scoped)
+        // Scrolling down the take past the changes' tints, bars and buttons.
+        let scrollTimes = (0..<120).map { frame -> Double in
+            let start = ContinuousClock.now
+            let maximum = max(0, text.bounds.height - scroll.contentView.bounds.height)
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: min(maximum, Double(frame) * 120)))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            manager.textViewportLayoutController.layoutViewport()
+            text.displayIfNeeded()
+            return milliseconds(start.duration(to: .now))
+        }
+        let configuration = "DEBUG assertions=\(_isDebugAssertConfiguration())"
+        let metrics = ProposalMetrics(changes: changes.count, showMS: show.ms, showParagraphs: show.paragraphs, focusMedianMS: percentile(focusTimes, 0.5), focusMaximumMS: focusTimes.max() ?? 0,
+                                      focusParagraphs: focusParagraphs, keepMS: keep.ms, keepParagraphs: keep.paragraphs, excludeMS: exclude.ms, excludeParagraphs: exclude.paragraphs,
+                                      documentRebuilds: documents, tickMaximumMS: tickTimes.max() ?? 0, tickRestyles: tickRestyles, scrollP95MS: percentile(scrollTimes, 0.95),
+                                      scope: "\(configuration). 10,000 single-speaker words with 2,000 cuts and 30 changes, one per paragraph, through EditorModel.proposal, the renderer's paragraph writes and TextKit display. Offscreen CPU frame times.")
+        try JSONEncoder().encode(metrics).write(to: directory.appendingPathComponent("transcript-proposal-performance.json"), options: .atomic)
+        let budget = _isDebugAssertConfiguration()
+        return [
+            .init(name: "proposal: showing 30 changes writes their paragraphs only (\(show.paragraphs) paragraphs, \(String(format: "%.1f", show.ms)) ms)",
+                  passed: show.paragraphs == changes.count && show.documents == 0 && (budget || show.ms <= 150)),
+            .init(name: "proposal: a focus move writes the old and the new focused change's paragraphs and never the document, and the buttons follow (\(Set(focusParagraphs).sorted()) paragraphs, \(documents) document writes, buttons \(buttons ? "shown" : "hidden"))",
+                  passed: focusParagraphs.count == changes.count - 1 && focusParagraphs.allSatisfy { $0 == 2 } && documents == 0 && buttons),
+            .init(name: "proposal: a focus move stays below 50 ms (max \(String(format: "%.1f", metrics.focusMaximumMS)) ms)", passed: budget || metrics.focusMaximumMS < 50),
+            .init(name: "proposal: Keep and Undo write at most 2 paragraphs and stay below 50 ms (\(keep.paragraphs) and \(exclude.paragraphs) paragraphs, \(String(format: "%.1f", keep.ms)) and \(String(format: "%.1f", exclude.ms)) ms)",
+                  passed: keep.paragraphs <= 2 && exclude.paragraphs <= 2 && (budget || max(keep.ms, exclude.ms) < 50)),
+            .init(name: "proposal: a playhead tick with 30 changes open restyles no span (\(tickRestyles) restyles, max \(String(format: "%.2f", metrics.tickMaximumMS)) ms)",
+                  passed: tickRestyles == 0 && (budget || metrics.tickMaximumMS < 16.7)),
+            .init(name: "proposal: scrolling past the changes fits the 60 fps CPU budget (p95 \(String(format: "%.2f", metrics.scrollP95MS)) ms)", passed: metrics.scrollP95MS < 1000 / 60)
+        ]
+    }
 }
 #endif
