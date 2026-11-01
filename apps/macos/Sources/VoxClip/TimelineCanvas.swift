@@ -675,7 +675,8 @@ struct TimelineOverviewLabel: Equatable {
 /// time: each removed range is empty lane with a dashed `timeline.cutOutline` and its audio
 /// ghosted (`timeline.ghostWave`), and media outside In/Out shows at 32%. With no waveform
 /// (media missing, or on another computer) each kept word is one 8 pt capsule in
-/// `timeline.wave`, 2 pt in from its ends (design §5.4.10).
+/// `timeline.wave`, 2 pt in from its ends (design §5.4.10). Each lane point is one waveform column, the tallest of the ranges that
+/// share it, and pieces under 3 pt join their neighbour's box.
 @MainActor final class TimelineAudioLane: TimelineLane {
     struct State: Equatable {
         var viewport = TimelineViewport(axis: .edited, ptPerSecond: 20, origin: -1, width: 944)
@@ -697,8 +698,10 @@ struct TimelineOverviewLabel: Equatable {
         var seams: [CGFloat] = []
         /// Source view's removed ranges in view, in take time.
         var gaps: [Range<Double>] = []
-        /// The waveform's columns that drew a peak.
+        /// The lane points whose waveform column drew a peak, each once.
         var columns = 0
+        /// Piece boxes drawn (pieces under 3 pt share their neighbour's).
+        var boxes = 0
         /// Word capsules drawn in place of a waveform.
         var capsules = 0
     }
@@ -709,11 +712,15 @@ struct TimelineOverviewLabel: Equatable {
     /// The peak columns' opacity over the core's colour.
     static let peakOpacity: CGFloat = 0.62
     /// A piece fills the row less 1 pt above and below; the waveform keeps 1.5 pt more each side.
-    static let pieceInset: CGFloat = 1
+    nonisolated static let pieceInset: CGFloat = 1
     static let waveInset: CGFloat = 1.5
     /// Seams closer than this to the last one drawn are left out, so a zoomed-out take with
     /// cuts every few points stays a waveform rather than a row of seams.
     static let seamSpacing: CGFloat = 2
+    /// Pieces narrower than this join the box before them (or the box after a narrower one)
+    /// when less than a point of lane separates them, so a fitted hour of short pieces stays
+    /// one box rather than none.
+    nonisolated static let narrowPiece: CGFloat = 3
 
     private var laneRight: CGFloat { bounds.width }
     private func x(_ time: Double) -> CGFloat { TimelineMetrics.header + CGFloat(state.viewport.x(time)) }
@@ -734,16 +741,15 @@ struct TimelineOverviewLabel: Equatable {
         let pieces = state.pieces
         let visible = state.viewport.visible
         let shown = pieces.indices(overlapping: visible.lowerBound..<max(visible.lowerBound, visible.upperBound), on: .edited)
-        var kept = Paint(), ai: [CGRect] = []
+        var kept = paint(), ai: [CGRect] = []
         for index in shown {
             let piece = pieces.pieces[index]
-            let rect = pieceRect(piece.edited)
-            if piece.kind == .ai { ai.append(rect); continue }
-            kept.piece(rect)
+            if piece.kind == .ai { ai.append(pieceRect(piece.edited)); continue }
+            kept.piece(x(piece.edited.lowerBound), x(piece.edited.upperBound))
             columns(piece.edited, offset: piece.source.lowerBound - piece.edited.lowerBound, into: &kept)
         }
         fillAI(ai, in: context)
-        kept.draw(in: context, wave: "timeline.wave")
+        draw(&kept, in: context, wave: "timeline.wave")
         var seams: [CGRect] = []
         var last = -CGFloat.infinity
         for index in shown where pieces.isSeam(at: index) {
@@ -763,20 +769,23 @@ struct TimelineOverviewLabel: Equatable {
         let pieces = state.pieces
         let visible = state.viewport.visible
         let window = visible.lowerBound..<max(visible.lowerBound, visible.upperBound)
+        func inView(_ lower: Double, _ upper: Double) -> Range<Double>? {
+            lower < upper && lower < window.upperBound && upper > window.lowerBound ? lower..<upper : nil
+        }
         if let inOut = state.inOut {
-            var outside = Paint()
-            for range in [0..<inOut.lowerBound, inOut.upperBound..<max(inOut.upperBound, state.takeLength)] where !range.isEmpty && range.overlaps(window) {
-                outside.piece(pieceRect(range))
+            var outside = paint()
+            for range in [inView(0, inOut.lowerBound), inView(inOut.upperBound, state.takeLength)].compactMap({ $0 }) {
+                outside.piece(x(range.lowerBound), x(range.upperBound))
                 columns(range, offset: 0, into: &outside)
             }
             context.saveGState()
             context.setAlpha(Self.outsideOpacity)
             context.beginTransparencyLayer(auxiliaryInfo: nil)
-            outside.draw(in: context, wave: "timeline.wave")
+            draw(&outside, in: context, wave: "timeline.wave")
             context.endTransparencyLayer()
             context.restoreGState()
         }
-        var ghost = Paint()
+        var ghost = paint()
         let outline = CGMutablePath()
         for gap in state.removed where gap.overlaps(window) {
             drawn.gaps.append(gap)
@@ -790,17 +799,16 @@ struct TimelineOverviewLabel: Equatable {
         context.setLineDash(phase: 0, lengths: [3, 3])
         context.strokePath()
         context.setLineDash(phase: 0, lengths: [])
-        ghost.draw(in: context, wave: "timeline.ghostWave")
-        var kept = Paint(), ai: [CGRect] = []
+        draw(&ghost, in: context, wave: "timeline.ghostWave")
+        var kept = paint(), ai: [CGRect] = []
         for index in pieces.indices(overlapping: window, on: .source) {
             let piece = pieces.pieces[index]
-            let rect = pieceRect(piece.source)
-            if piece.kind == .ai { ai.append(rect); continue }
-            kept.piece(rect)
+            if piece.kind == .ai { ai.append(pieceRect(piece.source)); continue }
+            kept.piece(x(piece.source.lowerBound), x(piece.source.upperBound))
             columns(piece.source, offset: 0, into: &kept)
         }
         fillAI(ai, in: context)
-        kept.draw(in: context, wave: "timeline.wave")
+        draw(&kept, in: context, wave: "timeline.wave")
     }
 
     /// A piece's box for `range` on the axis: 1 pt in from the row's top and bottom, ending
@@ -817,26 +825,22 @@ struct TimelineOverviewLabel: Equatable {
     }
 
     /// The waveform columns of `range` on the axis, whose take time is the axis time plus
-    /// `offset`: one per lane point, each from the pyramid level that fits it. With no
+    /// `offset`: one per lane point, each from the pyramid level that fits it. A point two
+    /// ranges share (a piece ends inside it) keeps the taller of their columns. With no
     /// waveform, the kept words' capsules instead.
     private func columns(_ range: Range<Double>, offset: Double, into paint: inout Paint) {
         guard let waveform = state.waveform else { capsules(range, offset: offset, into: &paint); return }
         guard state.viewport.ptPerSecond > 0 else { return }
         let lower = max(TimelineMetrics.header, x(range.lowerBound).rounded(.down)), upper = min(laneRight, x(range.upperBound).rounded(.up))
         guard lower < upper else { return }
-        let mid = bounds.height / 2, half = bounds.height / 2 - Self.pieceInset - Self.waveInset
+        let half = bounds.height / 2 - Self.pieceInset - Self.waveInset
         var column = lower
         while column < upper {
             let start = max(range.lowerBound, state.viewport.time(atX: Double(column - TimelineMetrics.header)))
             let end = min(range.upperBound, state.viewport.time(atX: Double(column + 1 - TimelineMetrics.header)))
             if end > start {
                 let value = waveform.column(from: start + offset, to: end + offset, span: 1 / state.viewport.ptPerSecond)
-                let peak = CGFloat(value.peak) * half, core = CGFloat(value.core) * half
-                if peak >= 0.5 {
-                    paint.peaks.append(CGRect(x: column, y: mid - peak, width: 1, height: 2 * peak))
-                    drawn.columns += 1
-                }
-                if core >= 0.5 { paint.cores.append(CGRect(x: column, y: mid - core, width: 1, height: 2 * core)) }
+                paint.column(Int(column - TimelineMetrics.header), peak: CGFloat(value.peak) * half, core: CGFloat(value.core) * half)
             }
             column += 1
         }
@@ -863,17 +867,56 @@ struct TimelineOverviewLabel: Equatable {
         }
     }
 
-    /// Pieces and their waveform, gathered and filled in one pass each.
+    /// A paint for this lane's width and height.
+    private func paint() -> Paint {
+        Paint(origin: TimelineMetrics.header, points: Int(max(0, bounds.width - TimelineMetrics.header).rounded(.up)), height: bounds.height)
+    }
+
+    /// Fills `paint` and records what it drew.
+    private func draw(_ paint: inout Paint, in context: CGContext, wave: String) {
+        let drew = paint.draw(in: context, wave: wave)
+        drawn.columns += drew.columns
+        drawn.boxes += drew.boxes
+    }
+
+    /// Pieces and their waveform, gathered and filled in one pass each: one box per run of
+    /// pieces that butt where any is under `narrowPiece`, and one column per lane point.
     private struct Paint {
+        let origin: CGFloat
+        let height: CGFloat
         var boxes = CGMutablePath()
         var outlines = CGMutablePath()
-        var peaks: [CGRect] = []
-        var cores: [CGRect] = []
+        var boxCount = 0
+        /// Per lane point from `origin`, the tallest peak and core (in points from the middle).
+        var peaks: [CGFloat]
+        var cores: [CGFloat]
         var words = CGMutablePath()
-        var hasBoxes = false
-        mutating func piece(_ rect: CGRect) {
+        /// The box being gathered, in lane x: from its first piece's start to its last's end.
+        private var pending: (lower: CGFloat, upper: CGFloat)?
+        init(origin: CGFloat, points: Int, height: CGFloat) {
+            self.origin = origin
+            self.height = height
+            peaks = [CGFloat](repeating: 0, count: points)
+            cores = [CGFloat](repeating: 0, count: points)
+        }
+        /// A piece from `lower` to `upper` in lane x, in order. Its box ends 1 pt short of
+        /// the next piece's.
+        mutating func piece(_ lower: CGFloat, _ upper: CGFloat) {
+            if let current = pending, lower - current.upper < 1,
+               upper - lower < TimelineAudioLane.narrowPiece || current.upper - current.lower < TimelineAudioLane.narrowPiece {
+                pending = (current.lower, max(current.upper, upper))
+                return
+            }
+            flush()
+            pending = (lower, upper)
+        }
+        private mutating func flush() {
+            guard let current = pending else { return }
+            pending = nil
+            let inset = TimelineAudioLane.pieceInset
+            let rect = CGRect(x: current.lower, y: inset, width: max(0, current.upper - current.lower - 1), height: height - 2 * inset)
             guard rect.width > 0 else { return }
-            hasBoxes = true
+            boxCount += 1
             let radius = min(2, rect.width / 2)
             boxes.addRoundedRect(in: rect, cornerWidth: radius, cornerHeight: radius)
             if rect.width >= 3 {
@@ -881,8 +924,14 @@ struct TimelineOverviewLabel: Equatable {
                 outlines.addRoundedRect(in: inner, cornerWidth: corner, cornerHeight: corner)
             }
         }
-        @MainActor func draw(in context: CGContext, wave: String) {
-            if hasBoxes {
+        mutating func column(_ index: Int, peak: CGFloat, core: CGFloat) {
+            guard peaks.indices.contains(index) else { return }
+            peaks[index] = max(peaks[index], peak)
+            cores[index] = max(cores[index], core)
+        }
+        @MainActor mutating func draw(in context: CGContext, wave: String) -> (columns: Int, boxes: Int) {
+            flush()
+            if boxCount > 0 {
                 context.addPath(boxes)
                 context.setFillColor(DesignValues.nsColor("timeline.audioPiece").cgColor)
                 context.fillPath()
@@ -891,13 +940,23 @@ struct TimelineOverviewLabel: Equatable {
                 context.setLineWidth(1)
                 context.strokePath()
             }
+            // Nothing under half a point: silence draws no centre line.
+            let mid = height / 2
+            var peakRects: [CGRect] = [], coreRects: [CGRect] = []
+            for (index, peak) in peaks.enumerated() where peak >= 0.5 {
+                peakRects.append(CGRect(x: origin + CGFloat(index), y: mid - peak, width: 1, height: 2 * peak))
+            }
+            for (index, core) in cores.enumerated() where core >= 0.5 {
+                coreRects.append(CGRect(x: origin + CGFloat(index), y: mid - core, width: 1, height: 2 * core))
+            }
             let color = DesignValues.nsColor(wave)
             context.setFillColor(color.withAlphaComponent(color.alphaComponent * TimelineAudioLane.peakOpacity).cgColor)
-            context.fill(peaks)
+            context.fill(peakRects)
             context.setFillColor(color.cgColor)
-            context.fill(cores)
+            context.fill(coreRects)
             context.addPath(words)
             context.fillPath()
+            return (peakRects.count, boxCount)
         }
     }
 }

@@ -564,6 +564,53 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(!model.playheadInAIVoice)
     }
 
+    /// A lane of `pieces` on Edited at 20 pt/s from a second before 0, over a steady voice.
+    private func lane(_ pieces: [TimelinePiece]) -> (lane: TimelineAudioLane, window: NSWindow) {
+        let lane = TimelineAudioLane()
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: 44), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = lane
+        lane.frame = NSRect(x: 0, y: 0, width: 1056, height: 44)
+        lane.state = TimelineAudioLane.State(viewport: TimelineViewport(axis: .edited, ptPerSecond: 20, origin: -1, width: 944),
+                                             pieces: TimelinePieces(pieces), waveform: WaveformData(fine: [Float](repeating: 0.05, count: 1_000)), takeLength: 10)
+        lane.layer?.displayIfNeeded()
+        return (lane, window)
+    }
+
+    /// The lane point a cut falls inside is one column, drawn once: the pieces either side
+    /// of it do not each paint it.
+    @Test func aPointTwoPiecesShareIsOneColumn() throws {
+        // The cut is at x 60.4 in the lane: columns 20–60 are the first piece's, 60–100 the second's.
+        let (lane, window) = lane([TimelinePiece(source: 0..<2.02, edited: 0..<2.02), TimelinePiece(source: 3..<5, edited: 2.02..<4.02)])
+        defer { window.close() }
+        #expect(lane.drawn.seams.count == 1)
+        #expect(lane.drawn.columns == 81)
+        #expect(lane.drawn.boxes == 2)
+    }
+
+    /// A fitted hour with 1,500 cuts has pieces under a point: they share one box rather
+    /// than each having none, so A1 keeps its `timeline.audioPiece` ground.
+    @Test func piecesUnderAPointShareOneBox() throws {
+        // A hundred 0.6 pt pieces, each after a 10 ms cut.
+        let pieces: [TimelinePiece] = (0..<100).map { (index: Int) -> TimelinePiece in
+            let source: Double = Double(index) * 0.04, edited: Double = Double(index) * 0.03
+            return TimelinePiece(source: source..<(source + 0.03), edited: edited..<(edited + 0.03))
+        }
+        let (lane, window) = lane(pieces)
+        defer { window.close() }
+        #expect(lane.drawn.boxes == 1)
+        #expect(lane.drawn.columns == 60)
+        // Between the seams (each the point left of a cut), above the waveform.
+        let pixels = try Pixels(lane)
+        let seams = lane.drawn.seams.map { $0 - 1..<$0 }
+        let clear = stride(from: TimelineMetrics.header + 22, to: TimelineMetrics.header + 78, by: 1).filter { point in
+            !seams.contains { $0.overlaps(point..<point + 1) }
+        }
+        #expect(clear.count > 5)
+        for point in clear { #expect(try pixels.shows(point + 0.5, 5.5, "timeline.audioPiece")) }
+    }
+
     /// Until the waveform arrives (or with no media to read) A1 draws one capsule per kept
     /// word (design §5.4.10); when it arrives A1 draws it, and only A1 redraws.
     @Test func a1RedrawsWhenTheWaveformArrives() throws {
