@@ -41,7 +41,7 @@ import VoxClipCore
                 let receipt = await settle(host: host, identifier: identifier, style: style.id,
                     name: "\(row)-\(Int(width))", width: width, height: height)
                 measurements.append(receipt)
-                results.append(selectionResult(name: "gallery \(row) selection at \(width): full ring, checkmark and name fit", receipt: receipt, actualStyle: model.project.captions.styleId))
+                results.append(selectionResult(name: "gallery \(row) selection at \(width): full ring and name fit", receipt: receipt, actualStyle: model.project.captions.styleId))
                 results.append(.init(name: "gallery \(row) selection at \(width): selection uses the editor's real style action", passed: model.project.captions.styleId == style.id))
                 let markers = DebugRightColumn.markers(in: host)
                 // The ring marker is the outer ring's whole frame, 1 point outside the tile.

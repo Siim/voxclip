@@ -126,7 +126,6 @@ import VoxClipMedia
                 model.setAspect(AspectRatio(rawValue: variant) ?? .source)
                 model.setStyle("vox-highlight")
                 if variant == "captions-off" { model.setCaptionsEnabled(false) }
-
                 if variant.hasPrefix("rewrite") { try openRewrite(variant, in: model) }
                 let controller = NSHostingController(rootView: PanelHost(model: model, shell: shell, width: width, height: height, fineTune: variant == "fine-tune"))
                 controller.sizingOptions = []
@@ -238,7 +237,6 @@ import VoxClipMedia
             model.setAspect(AspectRatio(rawValue: variant) ?? .source)
             model.setStyle(variant == "fine-tune" ? "box-highlight" : "vox-highlight")
             if variant == "captions-off" { model.setCaptionsEnabled(false) }
-
             if variant == "ai-rate-hours" {
                 // An hour-long take at 1.5× in the hover transport, with the timeline hidden.
                 var voice = try JSONProjectStore.decode(Data(contentsOf: root.appendingPathComponent("fixtures/voice-lab/passage-project.voxclip")))
