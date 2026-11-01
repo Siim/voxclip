@@ -42,6 +42,7 @@ import VoxClipMedia
     /// The Rewrite panel's voice row in a project whose language has no calibrated speaker check (§6.5.2).
     static let languageUnavailableCopy = "Your voice can't be used in this project's language yet. It works in English projects."
     static let noticeCopy = "Your voice clone is created in your ElevenLabs account and stays there. ElevenLabs' terms let it use uploaded content, including your voice, to improve its services; you can opt out of training in your ElevenLabs account, but the opt-out is not retroactive. You can delete the voice at any time from VoxClip or ElevenLabs. ElevenLabs' Prohibited Use Policy applies, including its rules on political content."
+    static let recoveryCreationCopy = "Sends your saved statement and training audio to ElevenLabs to finish creation. The statement check is not repeated. No video is sent."
     var confirmation: Request?
     var records: [VoiceConsentRecord] = []
     var deleting: Set<String> = []

@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Voice creation recovery now clearly discloses that saved statement and training audio are uploaded again, without repeating the statement check.
+
 - Leaving the Voice controls stops and discards an ongoing recording; automatic completion is handled by the session, not a hidden view.
 
 - Use fitting voice takes, cuts and corrections together with one Undo, truthful spend feedback and in-use phrase playback. Three-phrase exports retain generated audio and AI disclosure.

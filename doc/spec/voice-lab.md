@@ -655,6 +655,8 @@ The boundary is `voxclip-` plus 32 lowercase hex, quoted in the request's Conten
 
 ### 6.8 Consent record
 
+Creation-only recovery reuses the saved clone request: it uploads the saved consent statement **and** training audio to ElevenLabs. Only the Scribe statement check is skipped. The recovery list, ready rows and priced-action send line all disclose both uploads and no video; quote/payload pricing is unchanged.
+
 Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never uploaded, and never inside a project file:
 
 ```json

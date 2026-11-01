@@ -256,11 +256,16 @@ import Synchronization
             let before = probe.events.withLock { $0 }
             await fresh.recoverVoice(session.recordID)
             #expect(fresh.flow.plan?.verificationPassed == true && fresh.flow.plan?.quote.verify == nil && fresh.canCreate)
+            #expect(VoiceLabSession.recoveryCreationCopy == "Sends your saved statement and training audio to ElevenLabs to finish creation. The statement check is not repeated. No video is sent.")
             #expect(probe.events.withLock { $0 } == before)
             await fresh.createVoice()
             #expect(fresh.flow.state == .finished && fresh.records.count == 1)
             #expect(probe.events.withLock { $0.filter { $0 == "verify" }.count } == 1)
             #expect(probe.events.withLock { $0.filter { $0 == "create" }.count } == 1)
+            let body = try #require(probe.creationBodies.withLock { $0.first })
+            #expect(body.range(of: Data("filename=\"consent-statement.wav\"".utf8)) != nil)
+            #expect(body.range(of: Data("filename=\"sample-02.wav\"".utf8)) != nil)
+            #expect(body.range(of: wav) != nil && body.range(of: trainingWAV) != nil)
             #expect(!FileManager.default.fileExists(atPath: journal.path))
             fresh.stopRecovery()
         } else { #expect(session.flow.state == .finished && session.records.count == 1) }
@@ -713,6 +718,7 @@ import Synchronization
 
 private final class JobEnrollmentProbe: Sendable {
     let events = Mutex<[String]>([])
+    let creationBodies = Mutex<[Data]>([])
     let embeddings = Mutex(0)
     let mismatch: Bool; let localMismatch: Bool; let response: Data
     init(mismatch: Bool, localMismatch: Bool = false, response: Data) { self.mismatch = mismatch; self.localMismatch = localMismatch; self.response = response }
@@ -741,6 +747,8 @@ private final class JobEnrollmentHTTP: URLProtocol, @unchecked Sendable {
             data = Data(#"{"tier":"starter","status":"active","character_count":0,"character_limit":1000,"can_use_instant_voice_cloning":true,"voice_slots_used":0,"voice_limit":3}"#.utf8)
         case "/v1/voices/add":
             probe.events.withLock { $0.append("create") }
+            do { let body = try Self.body(request); probe.creationBodies.withLock { $0.append(body) } }
+            catch { Issue.record("Missing clone multipart body: \(error)") }
             data = Data(#"{"voice_id":"fixtureOwnVoice","requires_verification":false}"#.utf8)
         default: Issue.record("Unexpected enrollment request \(request.url!.path)"); data = Data()
         }
@@ -748,6 +756,19 @@ private final class JobEnrollmentHTTP: URLProtocol, @unchecked Sendable {
         client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+    private static func body(_ request: URLRequest) throws -> Data {
+        if let data = request.httpBody { return data }
+        let stream = try #require(request.httpBodyStream)
+        stream.open(); defer { stream.close() }
+        var data = Data(), buffer = [UInt8](repeating: 0, count: 8_192)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count >= 0 else { throw URLError(.cannotDecodeRawData) }
+            if count == 0 { break }
+            data.append(contentsOf: buffer.prefix(count))
+        }
+        return data
+    }
 }
 private struct VoiceLabAppKeys: KeyProvider {
     func key(for provider: String) async throws -> String? { "synthetic-journal-ui-key" }

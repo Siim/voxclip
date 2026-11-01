@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## F2 — recovery upload disclosure matches immutable clone payload (1 Nov 2026)
+
+- All three inline recovery surfaces use one copy: saved statement **and** training audio go to ElevenLabs; only the statement check is not repeated, and no video is sent. Creation-only quote, immutable recovery payload and request pricing are unchanged.
+- The crash-recovery regression checks one Scribe and one create request across sessions, the creation-only quote, multipart statement/training filenames and both exact synthetic WAV payloads. Preserve this disclosure when integrating inline enrollment.
+
 ## F1 — session-owned capture completion and stop-before-hide (1 Nov 2026)
 
 - Back, job switch, tab/scope change, Home, right-column hiding and editor close discard ongoing local capture before removing its controls. The view's disappearance is a fallback, not the completion owner. Temporary navigation retains already completed statement/training drafts; it discards only an ongoing take and never approves cloud work.

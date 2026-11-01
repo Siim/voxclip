@@ -26,7 +26,7 @@ import VoxClipCore
                     else { enrollmentBody }
                     VoiceRecoveryRows(session: session, shared: session.app.shared, inline: true)
                     if !flow.recoveryIDs.isEmpty {
-                        Text("A checked statement is ready to resume. Creation only; the statement won't be sent again.")
+                        Text("A checked statement is ready to resume. " + VoiceLabSession.recoveryCreationCopy)
                         ForEach(flow.recoveryIDs, id: \.self) { id in
                             Button("Resume Creation") { Task { await session.recoverVoice(id) } }.disabled(session.busy)
                         }
@@ -155,7 +155,7 @@ import VoxClipCore
                 Text("\(Int(flow.statementSeconds)) s").font(DesignValues.mono(11))
             }
             Button("Play Statement", systemImage: "play.fill") { session.playStatement() }
-            Text(flow.plan?.verificationPassed == true ? "Only the saved training audio is sent to ElevenLabs to finish creation. No statement check is repeated. No video is sent." : session.creationCopy)
+            Text(flow.plan?.verificationPassed == true ? VoiceLabSession.recoveryCreationCopy : session.creationCopy)
                 .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
             Text(VoiceLabSession.providerCopy).font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary"))
         }
@@ -169,7 +169,7 @@ import VoxClipCore
             }
         } else if flow.state == .ready {
             VStack(alignment: .leading, spacing: 8) {
-                Text(flow.plan?.verificationPassed == true ? "Sends saved training audio to ElevenLabs. No video." : "Sends your statement and training audio to ElevenLabs. No video.")
+                Text(flow.plan?.verificationPassed == true ? VoiceLabSession.recoveryCreationCopy : "Sends your statement and training audio to ElevenLabs. No video.")
                     .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
                 if let warning = flow.capWarning { Text(warning).font(.system(size: 11)).foregroundStyle(DesignValues.color("status.warning")) }
                 Button(session.creationTitle) {
