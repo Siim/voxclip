@@ -69,7 +69,10 @@ import Testing
         #expect(abs(Metrics.tileWidth(panelWidth: 404) - 118.667) < 0.001)
         #expect(Metrics.tileWidth(panelWidth: 300) == 84)
         #expect(abs(Metrics.tileWidth(panelWidth: 560) - 170.667) < 0.001)
-        #expect(abs(Metrics.tileWidth(galleryWidth: 404 - 26) - 118.667) < 0.001)
+        #expect(Metrics.galleryWidth(panelWidth: 404) == 378)
+        #expect(abs(Metrics.tileWidth(galleryWidth: Metrics.galleryWidth(panelWidth: 404)) - 118.667) < 0.001)
+        // A 17 pt legacy scroller takes its width from the tiles (the scroll view gives them 361).
+        #expect(Metrics.tileWidth(galleryWidth: 361) == 113)
         func split(_ body: CGFloat, _ properties: CGFloat = Metrics.properties, fineTune: Bool = false) -> [CGFloat] {
             let split = Metrics.split(available: body - Metrics.top, properties: properties, fineTune: fineTune)
             return [split.gallery, split.properties]

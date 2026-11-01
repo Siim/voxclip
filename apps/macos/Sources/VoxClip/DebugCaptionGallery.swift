@@ -76,6 +76,7 @@ import VoxClipCore
         results += try await regressionChecks(app: app, fixture: fixture, ordered: ordered, directory: directory)
         results += try await captures(app: app, fixture: fixture, directory: directory)
         results.append(.init(name: "gallery interaction audit opens no windows", passed: NSApp.windows.count == windowsBefore))
+        results += try await scrollerFit(app: app, fixture: fixture)
         try JSONEncoder().encode(measurements).write(to: directory.appendingPathComponent("caption-gallery-interactions.json"), options: .atomic)
         return results
     }
@@ -143,6 +144,46 @@ import VoxClipCore
         results.append(.init(name: "manual gallery scrolling also keeps the caption error visible", passed: errorVisible()))
         try JSONEncoder().encode(snapshots).write(to: directory.appendingPathComponent("caption-gallery-regressions.json"), options: .atomic)
         return results
+    }
+    /// The Captions job at 1280 × 800 (404 × 522) in a borderless window that is never shown,
+    /// where its scroll views are laid out as on screen: the gallery's scroll view stays inside
+    /// the column's padding less the ring reserve, the tiles fill the width it gives them, and
+    /// the last style is revealed in it. `MacUIIntegrationTests` runs this audit again with
+    /// `-AppleShowScrollBars Always`, where a legacy scroller takes its width from the tiles.
+    private static func scrollerFit(app: AppModel, fixture: Project) async throws -> [DebugUISuite.Result] {
+        guard let last = CaptionsSection.galleryOrder(app.styles).last else { throw CocoaError(.coderInvalidValue) }
+        let row = CaptionsSection.galleryOrder(app.styles).prefix(CaptionsPanelMetrics.columns).map(\.id)
+        let model = EditorModel(document: VoxClipDocument(project: fixture, demo: true), app: app, preview: DemoPreviewEngine())
+        defer { model.close() }
+        model.setAspect(.landscape)
+        let (width, height): (CGFloat, CGFloat) = (404, 522)
+        let controller = NSHostingController(rootView: PanelHost(model: model, shell: WorkspaceShell(app: app), width: width, height: height))
+        controller.sizingOptions = []
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: width, height: height), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = controller
+        defer { window.close() }
+        let host = controller.view
+        host.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        let identifier = try await galleryID(in: host)
+        defer { CaptionGalleryAudit.snapshots.removeValue(forKey: identifier) }
+        command(identifier, ["selectStyle": last.id])
+        let receipt = await settle(host: host, identifier: identifier, style: last.id, name: "scroller-fit", width: width, height: height)
+        let markers = DebugRightColumn.markers(in: host)
+        let gallery = markers["caption.gallery.\(identifier)"]
+        let scroll = DebugRightColumn.scrollViews(in: host).first { scroll in gallery.map { abs(scroll.convert(scroll.bounds, to: host).minY - $0.minY) <= 0.5 } == true }
+        let frame = scroll.map { $0.convert($0.bounds, to: host) } ?? .zero
+        let clip = scroll.map { $0.contentView.convert($0.contentView.bounds, to: host) } ?? .zero
+        let style = scroll.map { $0.scrollerStyle == .legacy ? "legacy" : "overlay" } ?? "no"
+        let reserve = CaptionsPanelMetrics.ringReserve, edge = CaptionsPanelMetrics.inset - reserve
+        let inside = scroll != nil && frame.minX >= edge - 0.5 && frame.maxX <= width - edge + 0.5
+        // An offscreen host lays views on whole points, so a column of tiles may be 1 off.
+        let filled = markers["caption.image.\(row[0])"].map { abs($0.minX - reserve - clip.minX) <= 1 } == true
+            && markers["caption.image.\(row[2])"].map { abs($0.maxX + reserve - clip.maxX) <= 1 } == true
+        return [
+            .init(name: "gallery at 404 with \(style) scrollers stays inside the column (\(frame)) and its tiles fill what it gives them (\(clip))", passed: inside && filled),
+            .init(name: "gallery at 404 with \(style) scrollers reveals the last style", passed: receipt.settled && model.project.captions.styleId == last.id)
+        ]
     }
     /// The right column on the Captions job, offscreen, at 1280 × 800 (404 × 522) to set beside
     /// f1's and at the 960 × 600 minimum (324 × 322): `v2-captions-{1280,960}-{dark,light}.png`,

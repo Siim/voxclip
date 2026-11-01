@@ -61,9 +61,16 @@ enum CaptionsPanelMetrics {
     static func tileWidth(panelWidth width: CGFloat) -> CGFloat {
         max(0, (width - inset * 2 - columnGap * CGFloat(columns - 1)) / CGFloat(columns))
     }
-    /// The same width from the gallery's scroll view, which reaches `ringReserve` past the padding.
+    /// A tile's width from the width the gallery's scroll view gives its tiles: the scroll view
+    /// reaches `ringReserve` past the padding on each side, and a legacy scroller, when one
+    /// shows, takes its width from the tiles (`(width − 22) / 3`).
     static func tileWidth(galleryWidth width: CGFloat) -> CGFloat {
         tileWidth(panelWidth: width + (inset - ringReserve) * 2)
+    }
+    /// The width the gallery's scroll view gives its tiles in a panel `width` wide, without a
+    /// legacy scroller.
+    static func galleryWidth(panelWidth width: CGFloat) -> CGFloat {
+        max(0, width - (inset - ringReserve) * 2)
     }
     /// The gallery's and the property rows' heights in `available`, what the body leaves under
     /// the STYLE row and any caption error; `properties` is the property rows' full height. The
@@ -159,7 +166,10 @@ extension EditorModel {
     @Bindable var model: EditorModel
     @ObservedObject private var document: VoxClipDocument
     @State private var fineTune = false
-    @State private var width: CGFloat
+    /// The width the gallery's scroll view gives its content, measured; the tiles take theirs
+    /// from it, so a legacy scroller narrows the tiles rather than widening the scroll view
+    /// past the column.
+    @State private var galleryWidth: CGFloat
     /// The property rows' full height, read from their scroll view.
     @State private var propertiesHeight = CaptionsPanelMetrics.properties
     @State private var galleryReveal = CaptionGalleryReveal()
@@ -172,11 +182,12 @@ extension EditorModel {
     #if DEBUG
     @State private var galleryID = UUID().uuidString
     #endif
+    /// `width` is the panel's, for the tiles' first layout before the gallery measures its own.
     init(model: EditorModel, fineTune: Bool = false, width: CGFloat = 360) {
         self.model = model
         self.document = model.document
         _fineTune = State(initialValue: fineTune)
-        _width = State(initialValue: width)
+        _galleryWidth = State(initialValue: CaptionsPanelMetrics.galleryWidth(panelWidth: width))
     }
     /// The gallery's order: the library's `order`, ties by id (captions §15.1), with no groups.
     static func galleryOrder(_ styles: [CaptionStyle]) -> [CaptionStyle] {
@@ -189,7 +200,6 @@ extension EditorModel {
             gallery.padding(.horizontal, Metrics.inset)
             properties
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .tint(Color(nsColor: DesignValues.accentFill))
     }
 
@@ -298,12 +308,18 @@ extension EditorModel {
             Color.clear.frame(height: Metrics.galleryBottomInset).id(CaptionGalleryTarget.end).allowsHitTesting(false).accessibilityHidden(true)
         }
         .coordinateSpace(name: CaptionGallerySpace.content)
+        // Flexible to nothing, so the scroll view never widens to fit the tiles: it gives this
+        // its own width (less a legacy scroller), which the tiles then take.
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            if abs(width - galleryWidth) > 0.25 { galleryWidth = width }
+        }
     }
     /// Rows of three tiles. Each tile's button reaches `ringReserve` above it, so a tile
     /// scrolled to the top keeps its ring; the rows are 6 apart between a name and the next tile.
     private var galleryGrid: some View {
         let styles = Self.galleryOrder(model.app.styles)
-        let tileWidth = Metrics.tileWidth(panelWidth: width)
+        let tileWidth = Metrics.tileWidth(galleryWidth: galleryWidth)
         return VStack(alignment: .leading, spacing: Metrics.rowGap - Metrics.ringReserve) {
             ForEach(Array(stride(from: 0, to: styles.count, by: Metrics.columns)), id: \.self) { index in
                 HStack(alignment: .top, spacing: Metrics.columnGap) {
@@ -426,7 +442,7 @@ extension EditorModel {
         if let tile = galleryTile, tile.styleID == model.project.captions.styleId {
             // The measured frame reaches the ring reserve on both sides; its width shows the
             // tile has been laid out at the gallery's current width.
-            let expectedWidth = Metrics.tileWidth(galleryWidth: galleryViewport.size.width) + Metrics.ringReserve * 2
+            let expectedWidth = Metrics.tileWidth(galleryWidth: galleryWidth) + Metrics.ringReserve * 2
             let visible = galleryViewport.visible
             let shortViewport = tile.frame.height > visible.height
             let verticallyVisible = shortViewport ? abs(tile.frame.minY - visible.minY) <= 0.5 : visible.insetBy(dx: -0.5, dy: -0.5).contains(tile.frame)
