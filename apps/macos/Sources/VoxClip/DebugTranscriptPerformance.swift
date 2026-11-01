@@ -26,6 +26,14 @@ import VoxClipCore
         let documentRebuildsDuringCuts: Int
         let stylesPerFoldCut: Int
         let showCutsToggleMaximumMS: Double
+        /// Bulk fold edits (Cut Fillers, its undo, Show Pauses): a cut and a restore of one word
+        /// in each of `bulkEditParagraphs` paragraphs spread over the take.
+        let bulkEditMaximumMS: Double
+        let bulkEditParagraphs: [Int]
+        /// The storage edits each bulk size wrote, the most of its cut and its restore.
+        let bulkEditStorageEdits: [Int]
+        /// `visibleTakeSpan()`, which every viewport layout runs for the overview ruler.
+        let rulerSpanMedianMS: Double
         let scope: String
     }
     /// 10,000 words: speakers alternate every 20 words, or one speaker talks throughout with a
@@ -153,6 +161,30 @@ import VoxClipCore
             styles.append(renderer.rebuildStyles - before.styles)
         }
         let documentRebuildsDuringFolds = renderer.documentRebuilds - foldRebuilds
+        // Bulk fold edits: one uncut word in each of N paragraphs spread over the take, cut and
+        // then restored. N is `separateEdits`, one more, a quarter and half of the paragraphs,
+        // the most that is not a whole-document write.
+        let paragraphCount = renderer.paragraphs.count
+        let bulkSizes = Set([TranscriptRenderer.separateEdits, TranscriptRenderer.separateEdits + 1, paragraphCount / 4, paragraphCount / 2]).filter { $0 > 0 }.sorted()
+        var bulkTimes: [Double] = [], bulkEdits: [Int] = [], bulkRebuilds = 0
+        for size in bulkSizes {
+            let ids = (0..<size).compactMap { index -> String? in
+                let paragraph = index * paragraphCount / size
+                let end = paragraph + 1 < paragraphCount ? renderer.paragraphs[paragraph + 1].firstWord : words.count
+                return words[renderer.paragraphs[paragraph].firstWord..<end].first { !model.cutWordIDs.contains($0.id) }?.id
+            }
+            var edits = 0
+            for restore in [false, true] {
+                let before = (edits: renderer.storageEdits, rebuilds: renderer.documentRebuilds)
+                let start = ContinuousClock.now
+                model.apply(restore ? .restoreSelection(ids: ids) : .cutSelection(ids: ids), name: "Performance bulk fold")
+                render()
+                bulkTimes.append(milliseconds(start.duration(to: .now)))
+                edits = max(edits, renderer.storageEdits - before.edits)
+                bulkRebuilds += renderer.documentRebuilds - before.rebuilds
+            }
+            bulkEdits.append(edits)
+        }
         // The edited text, its spans and their styles equal a fresh build of the same take.
         let fresh = TranscriptTextView.Coordinator(model: model)
         let freshScroll = TranscriptTextView.makeScrollView(model: model, coordinator: fresh, width: 700, height: 600)
@@ -167,6 +199,14 @@ import VoxClipCore
             }
             && Set(renderer.attributes.keys) == Set(edited.map(\.id)) && renderer.paragraphs == fresh.renderer.paragraphs
         toggle(true)
+        // The overview ruler's visible span, at the scrolled position, as each viewport layout reads it.
+        var rulerTimes: [Double] = []
+        var rulerSpan: ClosedRange<Double>?
+        for _ in 0..<200 {
+            let start = ContinuousClock.now
+            rulerSpan = text.visibleTakeSpan()
+            rulerTimes.append(milliseconds(start.duration(to: .now)))
+        }
         let lengths = zip(renderer.paragraphs, renderer.paragraphs.dropFirst().map(\.firstWord) + [words.count]).map { $1 - $0.firstWord }
         let configuration = "DEBUG assertions=\(_isDebugAssertConfiguration())"
         let metrics = Metrics(fixture: name, wordCount: words.count, paragraphs: lengths.count, longestParagraph: lengths.max() ?? 0, cutMedianMS: percentile(cutTimes, 0.5), cutP95MS: percentile(cutTimes, 0.95),
@@ -174,8 +214,9 @@ import VoxClipCore
                               changedSpansPerCut: changedCounts.max() ?? 0, tabSwitchMaximumMS: switchTimes.max() ?? 0, tabSwitchRestyles: restyles,
                               foldCutMedianMS: percentile(foldTimes, 0.5), foldCutP95MS: percentile(foldTimes, 0.95), foldCutMaximumMS: foldTimes.max() ?? 0,
                               paragraphsReplacedPerCut: replaced.max() ?? 0, documentRebuildsDuringCuts: documentRebuildsDuringFolds, stylesPerFoldCut: styles.max() ?? 0,
-                              showCutsToggleMaximumMS: toggleTimes.max() ?? 0,
-                              scope: "\(configuration). Production EditHistory.apply through EditorModel.refresh, timeline projection and TextKit display; 10,000 words with 2,000 initial cuts. Tab switches go through setActiveClip and the renderer's scope restyle. Fold edits rebuild the text with Show Cut Words off, as the editor does: 24 single toggles and 6 two-word edits across paragraph breaks. Offscreen CPU frame times, not physical display refresh measurements.")
+                              showCutsToggleMaximumMS: toggleTimes.max() ?? 0, bulkEditMaximumMS: bulkTimes.max() ?? 0, bulkEditParagraphs: bulkSizes, bulkEditStorageEdits: bulkEdits,
+                              rulerSpanMedianMS: percentile(rulerTimes, 0.5),
+                              scope: "\(configuration). Production EditHistory.apply through EditorModel.refresh, timeline projection and TextKit display; 10,000 words with 2,000 initial cuts. Tab switches go through setActiveClip and the renderer's scope restyle. Fold edits rebuild the text with Show Cut Words off, as the editor does: 24 single toggles and 6 two-word edits across paragraph breaks, then bulk cuts and restores of one word in each of \(bulkSizes) paragraphs. Offscreen CPU frame times, not physical display refresh measurements.")
         let map = text.map
         // Full Take to A restyles the words outside A; A to B only the 300 words of both; B to Full Take the words outside B.
         let outside = words.count - 150
@@ -189,7 +230,13 @@ import VoxClipCore
             DebugUISuite.Result(name: "\(name): after fold edits the range map round-trips and the text, spans and styles equal a fresh build", passed: roundTrip),
             DebugUISuite.Result(name: "\(name): a Show cuts toggle rebuilds the document in at most 150 ms (\(String(format: "%.1f", metrics.showCutsToggleMaximumMS)) ms)",
                                 passed: toggleRebuilds == 2 && (_isDebugAssertConfiguration() || metrics.showCutsToggleMaximumMS <= 150)),
+            DebugUISuite.Result(name: "\(name): a bulk fold edit over more than \(TranscriptRenderer.separateEdits) paragraphs writes the storage once, and only more than half the paragraphs rewrite the document (\(bulkSizes) paragraphs: \(bulkEdits) edits)",
+                                passed: zip(bulkSizes, bulkEdits).allSatisfy { size, edits in edits == (size > TranscriptRenderer.separateEdits ? 1 : size) } && bulkRebuilds == 0),
+            DebugUISuite.Result(name: "\(name): a bulk fold edit stays within the 150 ms full-rebuild budget (\(String(format: "%.1f", metrics.bulkEditMaximumMS)) ms)",
+                                passed: _isDebugAssertConfiguration() || metrics.bulkEditMaximumMS <= 150),
             DebugUISuite.Result(name: "\(name): offscreen scrolling fits the 60 fps CPU budget", passed: metrics.scrollP95MS < 1000 / 60),
+            DebugUISuite.Result(name: "\(name): the overview ruler's visible span costs at most 0.05 ms per viewport layout (\(String(format: "%.3f", metrics.rulerSpanMedianMS)) ms)",
+                                passed: rulerSpan != nil && (_isDebugAssertConfiguration() || metrics.rulerSpanMedianMS <= 0.05)),
             DebugUISuite.Result(name: "\(name): range map indexes last words and character intersections", passed: map.span(id: words.last!.id) == map.spans.last && map.intersecting(map.spans[5000].range).count == 1),
             DebugUISuite.Result(name: "\(name): end-to-end reducer to attributes performance", passed: _isDebugAssertConfiguration() || metrics.cutMaximumMS < 50),
             DebugUISuite.Result(name: "\(name): paragraphs hold at most 150 words (\(metrics.paragraphs) paragraphs, longest \(metrics.longestParagraph))", passed: metrics.longestParagraph <= 150 && metrics.paragraphs >= words.count / 150),

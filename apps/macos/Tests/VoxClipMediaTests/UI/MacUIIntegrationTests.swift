@@ -299,6 +299,8 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             let paragraphsReplacedPerCut: Int
             let documentRebuildsDuringCuts: Int
             let showCutsToggleMaximumMS: Double
+            let bulkEditMaximumMS: Double
+            let rulerSpanMedianMS: Double
         }
         // One entry per 10,000-word fixture: speakers alternating, and one speaker throughout.
         let measured = try JSONDecoder().decode([Metrics].self, from: Data(contentsOf: directory.appendingPathComponent("transcript-performance.json")))
@@ -314,6 +316,9 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             XCTAssertLessThanOrEqual(metrics.paragraphsReplacedPerCut, 2, metrics.fixture)
             XCTAssertEqual(metrics.documentRebuildsDuringCuts, 0, metrics.fixture)
             XCTAssertLessThanOrEqual(metrics.showCutsToggleMaximumMS, 150, metrics.fixture)
+            // A bulk fold edit (Cut Fillers) is at most one full rebuild, and the ruler's span is per frame.
+            XCTAssertLessThanOrEqual(metrics.bulkEditMaximumMS, 150, metrics.fixture)
+            XCTAssertLessThanOrEqual(metrics.rulerSpanMedianMS, 0.05, metrics.fixture)
         }
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         for result in report {
@@ -321,7 +326,7 @@ final class MacUIRenderPerformanceTests: XCTestCase {
             else { XCTAssertTrue(result.passed, result.name) }
         }
         for metrics in measured {
-            print("\(metrics.fixture): 10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; fold edit max=\(metrics.foldCutMaximumMS)ms; Show cuts toggle max=\(metrics.showCutsToggleMaximumMS)ms; scroll p95=\(metrics.scrollP95MS)ms; tab switch max=\(metrics.tabSwitchMaximumMS)ms")
+            print("\(metrics.fixture): 10000-word cut median=\(metrics.cutMedianMS)ms p95=\(metrics.cutP95MS)ms max=\(metrics.cutMaximumMS)ms; fold edit max=\(metrics.foldCutMaximumMS)ms; Show cuts toggle max=\(metrics.showCutsToggleMaximumMS)ms; bulk fold edit max=\(metrics.bulkEditMaximumMS)ms; ruler span median=\(metrics.rulerSpanMedianMS)ms; scroll p95=\(metrics.scrollP95MS)ms; tab switch max=\(metrics.tabSwitchMaximumMS)ms")
         }
     }
 }
