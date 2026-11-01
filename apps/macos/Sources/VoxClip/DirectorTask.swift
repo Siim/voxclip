@@ -314,14 +314,12 @@ enum PanelError: Equatable, Sendable {
     /// The view the panel draws next takes the keyboard: after a change of state while the keyboard was in the panel, or
     /// once asked (`handOverKeyboard`). Until V15 the passage panel and the task's panel take turns, and the one that goes
     /// takes the focused view with it; otherwise focus stays where the user moved it while the AI worked. A task starts
-    /// with focus where it was (design.md §10), unless `takesKeyboard`.
-    @ObservationIgnored private var keyboardHandover: Bool
+    /// with focus where it was (design.md §10).
+    @ObservationIgnored private var keyboardHandover = false
 
-    /// A task that starts `.running` starts its first turn.
-    init(scope: RewriteScope, words: DirectorScope, state: State, takesKeyboard: Bool = false, close: PanelAction) {
+    /// A task starts before its first run, so its first `.running` is turn 1.
+    init(scope: RewriteScope, words: DirectorScope, state: State, close: PanelAction) {
         self.scope = scope; self.words = words; self.state = state; self.close = close
-        keyboardHandover = takesKeyboard
-        turn = state == .running ? 1 : 0
         headline = PanelHeadline(text: words.title)
     }
     /// The scope's words as a new run reads them.
