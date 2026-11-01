@@ -417,7 +417,7 @@ public sealed class VoiceLabSettingsTests
     [Fact]
     public void CopyMatchesTheBindingSpecAndMacKeyGuidance()
     {
-        Assert.Equal("Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key.", VoiceLabCopy.BetaNotice);
+        Assert.Equal("Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key. Creating your voice isn't available on Windows yet.", VoiceLabCopy.BetaNotice);
         var root = Path.GetDirectoryName(Shared)!;
         Assert.Contains(VoiceLabCopy.BetaNotice, File.ReadAllText(Path.Combine(root, "doc", "spec", "voice-lab.md")));
         var mac = File.ReadAllText(Path.Combine(root, "apps", "macos", "Sources", "VoxClip", "VoiceLabSettings.swift"));
@@ -427,10 +427,23 @@ public sealed class VoiceLabSettingsTests
     }
 
     [Fact]
+    public void UnshippedLipSyncProvidersHaveNoKeyOrMonthlyCapRows()
+    {
+        Assert.False(LipSyncAvailability.Shipped);
+        Assert.Equal(("elevenlabs", "ElevenLabs"), Assert.Single(LipSyncAvailability.SettingsProviders));
+        var pane = AppSource("Controls/VoiceLabSettingsPane.cs");
+        Assert.Contains("keyInventory.Rows.Where(entry => LipSyncAvailability.SettingsProviders.Any(provider => entry.Provider == provider.Label))", pane);
+        Assert.Contains("foreach (var provider in LipSyncAvailability.SettingsProviders)", pane);
+        Assert.DoesNotContain("foreach (var provider in new[]", pane);
+        foreach (var path in new[] { "Controls/VoiceLabSettingsPane.cs", "Controls/RewritePanel.cs" })
+            Assert.Contains("Creating your voice isn't available on Windows yet.", AppSource(path));
+    }
+
+    [Fact]
     public void PaneHasAccessibleNamesHeadingsAndThemeOnlyWarnings()
     {
         var pane = AppSource(Path.Combine("Controls", "VoiceLabSettingsPane.cs"));
-        foreach (var name in new[] { "Show Voice Lab (beta)", "Your API keys", "ElevenLabs", "fal.ai", "sync.so", " API key", "Save ", " key", "Forget ",
+        foreach (var name in new[] { "Show Voice Lab (beta)", "Your API keys", " API key", "Save ", " key", "Forget ",
             "Warn me above this amount a month · ", "Label position", "Add Content Credentials (C2PA) to exports", "Storage", "Show in File Explorer" }) Assert.Contains(name, pane);
         Assert.Contains("AutomationHeadingLevel.Level1", pane); Assert.Contains("AutomationHeadingLevel.Level2", pane);
         Assert.Contains("SetAutomationId(message, \"voice-lab-message\")", pane);

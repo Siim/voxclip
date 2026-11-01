@@ -1012,9 +1012,11 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 
 ### 6.3 Rewrite (clip-first) and your voice
 
-In 0.1.0, the shipped entry points are **Rewrite…** on selections and in the Edit menu (the Windows editor's ⋯ menu), and **Create Your Voice…** in Settings → Voice Lab and Rewrite. **Change Voice…**, **Insert Words…** and **Lip sync** are later (M3+). Unsupported video choices stay disabled and cannot be accepted or exported. The Phase 0 design below describes subsequent interface packages.
+0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice and re-voice rewritten words; Windows re-voice is not available until voice creation is. Change Voice and lip sync are later (M3+).
 
-Status: specified 2026-10-31 for Phase 0. It replaces the passage Rewrite panel and the separate Create Your Voice sheet. The apps still ship those until the Phase 0 packages land; each package records its step in `apps/macos/CONTRACTS.md` or `apps/windows/CONTRACTS.md`. This section sets behaviour, copy, keys and accessibility. The sizes, type, colours and drawing of the scope bar, the panel, the transcript marks and the timeline marks come with the visual redesign, which is merged separately. Until then §3, §4.1 and §5.2 keep today's metrics and marks.
+The 0.1.0 entry points are **Rewrite…** on selections and in the Edit menu (the Windows editor's ⋯ menu), and **Create Your Voice…** in Settings → Voice Lab and Rewrite. Windows marks voice creation unavailable at both entry points. **Insert Words…** is also later (M3+). Unsupported video choices stay disabled and cannot be accepted or exported. Settings shows only ElevenLabs keys and monthly caps; the stored fal.ai/sync.so keys and caps remain intact for M3+.
+
+The clip-first interface below is planned work specified on 2026-10-31. It does not expand the 0.1.0 release scope above. It replaces the passage Rewrite panel and the separate Create Your Voice sheet as its packages land; each package records its step in `apps/macos/CONTRACTS.md` or `apps/windows/CONTRACTS.md`. This section sets behaviour, copy, keys and accessibility for that interface. The sizes, type, colours and drawing of the scope bar, the panel, the transcript marks and the timeline marks come with the visual redesign, which is merged separately. Until then §3, §4.1 and §5.2 keep today's metrics and marks.
 
 **The clip is the unit of work.** Rewrite acts on a *scope*: a kept clip, a suggested clip, Full take, or a word selection. The selected sidebar row sets the scope (§2), and a word selection inside it narrows it. No text selection is needed.
 
@@ -1231,7 +1233,7 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 - **Stop**, ⌘. or Esc (Windows: Stop or Esc) cancels without changing anything and closes the panel. Cancelling is silent.
 - Announce "Rewriting clip {n}" at the start.
 
-Phase 0 connectors return one answer, so nothing streams: R1 waits until the reply arrives.
+The current connectors return one answer, so nothing streams: R1 waits until the reply arrives.
 
 **R1x. Errors.** Headline "Couldn't rewrite clip {n}".
 
@@ -1421,7 +1423,7 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 
 - **A phrase with no passing take.** The row's sub-line reads "These takes didn't sound right. Edit the words or try again.", with **Try Again · {amount}** (or **Try Again…**), priced like Try Another, and **Edit Words**.
   - The phrase is left out of Use: the primary reads "Use {z−1} Takes", and the row says "Left out until a take fits."
-- **Length changed.** Retime and lip sync are not rendered in Phase 0. The row says "Take {k} runs {s} s longer than the words it replaces. Shorten the words or try another take." For a shorter take: "Take {k} runs {s} s shorter than the words it replaces. Edit the words or try another take."
+- **Length changed.** Retime and lip sync are not rendered in the planned interface. The row says "Take {k} runs {s} s longer than the words it replaces. Shorten the words or try another take." For a shorter take: "Take {k} runs {s} s shorter than the words it replaces. Edit the words or try another take."
   - When rendering lands, the length choice (ADR-R28, voice-lab.md §8.9) returns as an info callout with two radio rows, neither preselected and never remembered: **Lip sync**, "Sends {s} s of video around the change to {provider} with your key. About ${x}, confirmed before it runs."; and **Retimed source video**, "Slows these {s} s of video to {r}× and crops in slightly around your face. Nothing is sent." (a shorter take: "Speeds these {s} s of video up to {r}× and crops in slightly around your face. Nothing is sent.").
   - The Lip sync sheet: "Lip sync this change?" / "This will cost about ${x} on your {provider} account." / "Sends {s} s of video around the change to {provider} with your key." with **Cancel** and **Continue**.
 - **Provider error.** A callout: "ElevenLabs rejected the key (401). Your edits are saved." It comes with an inline key field, **Save Key** and **Retry**. There is no Settings detour.
@@ -1475,7 +1477,7 @@ Each item goes in the same change that replaces it, on both platforms:
 | Tighten with AI (M2) | Edit > Tighten with AI… and the toolbar capsule's menu, macOS overflow or Windows ⋯. Suggestions show as filler-style dotted underlines. The edit summary area offers **Cut All Suggestions** |
 | Clean audio (M2) | Edit > Clean Audio… and ⋯. It opens a right-column panel shaped like Rewrite (§6.3.4): what it sends, the cost button "Clean Audio · ≈ $0.36", progress and Use |
 | Voice changer (later, M3+) | Edit > Change Voice… (scope: the selected clip or the full take). It opens a right-column panel: Voice, Takes, disclosure, Use |
-| My voice (consent and clone) | 0.1.0: Settings → Voice Lab and Rewrite (**Create Your Voice…**). Phase 0: inside Rewrite (**Make Your Voice**, §6.3.7). Settings → Voice Lab manages voices |
+| My voice (consent and clone) | 0.1.0: Mac creates voices from Settings → Voice Lab and Rewrite (**Create Your Voice…**); Windows marks creation unavailable. The planned interface moves creation inside Rewrite (**Make Your Voice**, §6.3.7) |
 | Lip sync (later, M3+) | only as the length-changed choice in Rewrite, once rendering lands (§6.3.8) |
 
 When rewritten speech requires a different video duration, show Lip sync and Retimed source video together and let the user choose for that rewrite (ADR-R28, Voice Lab §8.9), as specified in §6.3.8. The current capability guards for unsupported video remain until those paths are implemented and verified.

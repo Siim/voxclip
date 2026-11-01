@@ -48,7 +48,7 @@ internal static class VoiceLabCopy
         VoxClip.Media.Audio.MicrophoneError.DeviceLost => MicrophoneDeviceLost,
         _ => MicrophoneUnavailable
     };
-    internal const string BetaNotice = "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key.";
+    internal const string BetaNotice = "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key. Creating your voice isn't available on Windows yet.";
     internal const string ToggleCaption = "Voice Lab is optional. Import, cut, captions, clips and export work without it.";
     internal const string KeyFootnote = "The key is encrypted for your Windows account. No request is made when you save it.";
     internal const string KeyGuidance = "Create a key just for VoxClip on elevenlabs.io → Developers → API keys. Allow only the permissions listed for the features you use, and set a monthly credit limit. Never enable voice-library publishing, sharing or workspace permissions for this key.";
@@ -59,4 +59,13 @@ internal static class VoiceLabCopy
     internal const string CapError = "Enter an amount in dollars with up to two decimals, such as 20 or 12.50.";
     internal const string SharedKeyFootnote = "The key is encrypted for your Windows account and is shared with Voice Lab when you turn it on.";
     internal const string EmptyStorage = "Nothing is stored yet.";
+}
+
+/// <summary>Restore the lip-sync provider rows together when lip sync ships (M3+). Stored keys and caps remain intact.</summary>
+internal static class LipSyncAvailability
+{
+    internal static readonly bool Shipped = false;
+    internal static IReadOnlyList<(string Id, string Label)> SettingsProviders => Shipped
+        ? [("elevenlabs", "ElevenLabs"), ("fal", "fal.ai"), ("syncso", "sync.so")]
+        : [("elevenlabs", "ElevenLabs")];
 }

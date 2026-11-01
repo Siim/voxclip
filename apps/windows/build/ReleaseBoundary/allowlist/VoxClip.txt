@@ -2547,6 +2547,8 @@ member VoxClip.App.ViewModels.LeaveResult :: field public Proceed
 member VoxClip.App.ViewModels.LeaveResult :: field public ShowEditor
 member VoxClip.App.ViewModels.LeaveResult :: field public Stay
 member VoxClip.App.ViewModels.LeaveResult :: field public value__
+member VoxClip.App.ViewModels.LipSyncAvailability :: field internal Shipped
+member VoxClip.App.ViewModels.LipSyncAvailability :: method internal get_SettingsProviders()
 member VoxClip.App.ViewModels.LocalModelRowState :: method internal Finish(bool)
 member VoxClip.App.ViewModels.LocalModelRowState :: method internal Follow(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Services.Models.InstalledModel>,string)
 member VoxClip.App.ViewModels.LocalModelRowState :: method internal ProgressName(string)
@@ -4232,6 +4234,7 @@ type VoxClip.App.ViewModels.IVoiceStatementCapture
 type VoxClip.App.ViewModels.KeyboardHelp
 type VoxClip.App.ViewModels.LatestTileRender
 type VoxClip.App.ViewModels.LeaveResult
+type VoxClip.App.ViewModels.LipSyncAvailability
 type VoxClip.App.ViewModels.LocalModelRowState
 type VoxClip.App.ViewModels.LocalRuntimeGuard
 type VoxClip.App.ViewModels.LocalTranscriptionRoute

@@ -129,7 +129,7 @@ internal sealed class VoiceLabSettingsPane : UserControl
         var section = Section("Your API keys");
         keySection = section;
         enabledContent.Children.Insert(0, section);
-        foreach (var entry in keyInventory.Rows)
+        foreach (var entry in keyInventory.Rows.Where(entry => LipSyncAvailability.SettingsProviders.Any(provider => entry.Provider == provider.Label)))
         {
             var provider = (entry.Provider, entry.Account);
             var panel = Ui.Stack();
@@ -306,14 +306,15 @@ internal sealed class VoiceLabSettingsPane : UserControl
         AutomationProperties.SetName(create, "Create Your Voice…");
         AutomationProperties.SetHelpText(create, session.CreateBlockedReason);
         AutomationProperties.SetAutomationId(create, "voice-create-open");
-        AddCard(voices, create); AddCard(voices, Ui.Text(session.SpeakerMessage, "HelperText"));
+        AddCard(voices, create); AddCard(voices, Ui.Text("Creating your voice isn't available on Windows yet.", "HelperText"));
+        AddCard(voices, Ui.Text(session.SpeakerMessage, "HelperText"));
         if (session.Message is { } text) Ui.Show(message, text,
             text == VoiceLabCopy.RecoveryFailed || text == VoiceLabCopy.ReadFailed || text == "Couldn't finish — Retry" ? InfoBarSeverity.Warning : InfoBarSeverity.Informational);
     }
     private void AddExports()
     {
         var section = Section("Exports and spending"); enabledContent.Children.Add(section);
-        foreach (var provider in new[] { ("elevenlabs", "ElevenLabs"), ("fal", "fal.ai"), ("syncso", "sync.so") })
+        foreach (var provider in LipSyncAvailability.SettingsProviders)
         {
             var header = "Warn me above this amount a month · " + provider.Item2;
             var field = new TextBox { Header = header, PlaceholderText = "No limit",

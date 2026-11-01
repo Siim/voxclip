@@ -3,6 +3,8 @@
 ### 2026-11-01 — parity-copy-2 review follow-up
 
 - Return/Tab keep unsavable inline correction drafts open with their text. A valid Tab saves and opens the next word's correction field; the last word closes. Focus loss still drops invalid drafts; Esc cancels. Line-break regression drafts differ from the original word (`Today\n`, `\rToday`).
+- 0.1.0 ships text Rewrite. Voice Lab stays behind its beta setting: Mac creates voices and re-voices rewritten words; Windows cannot create a voice, so re-voice is unavailable. Change Voice and lip sync are M3+. Windows adds its availability sentence to the beta notice and both creation entry points.
+- Settings uses one lip-sync availability constant per platform to hide fal.ai/sync.so keys and monthly caps together; existing keys and setting values are preserved.
 - Windows validates correction emptiness/length with Core JsTrim and passes raw text to EditOperation.Correct for Core normalization. NEL, NFC and noncharacter tests use BeginCorrection/EndCorrection. The obsolete Correct(string) API and allowlist entry are removed.
 - Owed native: correction focus and keyboard behavior, Settings layout, and platform screen-reader checks. No windows or live provider calls were used.
 

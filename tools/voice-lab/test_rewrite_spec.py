@@ -64,10 +64,20 @@ class RewriteSpecTests(unittest.TestCase):
         cls.design = read('doc/design.md')
         cls.ai = read('doc/spec/ai.md')
 
+    def test_release_scope_is_identical_in_all_three_documents(self):
+        scope = '0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice and re-voice rewritten words; Windows re-voice is not available until voice creation is. Change Voice and lip sync are later (M3+).'
+        for text in [read('CHANGELOG.md'), section(self.design, '### 6.3'), section(self.voice_lab, '## 5.')]:
+            self.assertIn(scope, text)
+            self.assertNotIn('Phase 0', text)
+
     def test_correction_keyboard_rule_is_explicit_for_both_platforms(self):
         interaction = section(self.design, '### 4.2')
         self.assertIn('Return and Tab with an unsavable draft keep the field open with its text, on both platforms.', interaction)
         self.assertIn("Tab with valid text saves and opens the next word's correction field", interaction)
+
+    def test_changelog_release_list_has_no_blank_line_gap(self):
+        entries = read('CHANGELOG.md').split('## 0.1.0 - Unreleased', 1)[1].strip()
+        self.assertNotIn('\n\n- ', entries)
 
     def test_llm_send_plan_sign_in_is_a_closed_list(self):
         rule = between(section(self.voice_lab, '### 3.1'), 'An LLM send (', '| Estimate |')

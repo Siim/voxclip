@@ -3,7 +3,7 @@
 Status:
 
 - **§4 Clean audio**: normative for M2.
-- **§5 to §12 Voice Lab beta**: target design for rewriting a passage or full take in the user's own voice, voice changing and lip sync. The Mac and Windows Core service foundation is described in §2.6. The clip-first Rewrite of 2026-10-31 (§3.1, §5, §6.4 to §6.7, §8.1, §8.4, §8.6, §8.12 and `doc/design.md` §6.3) is specified ahead of the apps. Until the Phase 0 packages land, both apps carry passage Rewrite with re-voiced takes and Create Your Voice behind the beta switch (§5); on Windows, voice creation waits for the speaker check (§6.6). Full-take rewriting, the voice changer and lip sync have no UI yet, and the release gates remain open.
+- **§5 to §12 Voice Lab beta**: target design for rewriting a passage or full take in the user's own voice, voice changing and lip sync. The Mac and Windows Core service foundation is described in §2.6. The clip-first Rewrite of 2026-10-31 (§3.1, §5, §6.4 to §6.7, §8.1, §8.4, §8.6, §8.12 and `doc/design.md` §6.3) is specified ahead of the apps. In 0.1.0, text Rewrite ships; Mac has re-voiced takes and Create Your Voice behind the beta switch (§5). Windows voice creation waits for the speaker check (§6.6), so re-voice is unavailable too. Full-take rewriting, the voice changer and lip sync have no UI yet, and the release gates remain open.
 - **§13**: later capabilities and integration limits.
 
 Voice Lab is every VoxClip feature that sends the user's voice to an AI service and gets new audio or video back. It is separate from transcription (`doc/spec/transcription.md`) and from AI tighten (`doc/spec/ai.md` §12). AI tighten only proposes cuts, never makes synthetic media, and never reuses anything defined here.
@@ -404,18 +404,21 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 
 ---
 
-## 5. M3 beta: gate and settings
+## 5. Voice Lab beta: 0.1.0 gate and settings
+
+0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice and re-voice rewritten words; Windows re-voice is not available until voice creation is. Change Voice and lip sync are later (M3+).
 
 - Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default in release builds; development builds turn it on (below). Turning it on shows a one-time sheet:
   - "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key."
+  - Windows appends: "Creating your voice isn't available on Windows yet." Its full notice is "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key. Creating your voice isn't available on Windows yet."
   - Buttons [Turn on] and [Cancel].
-- In 0.1.0, **Rewrite…** appears on transcript selections and in the Edit menu (the Windows editor's ⋯ menu). **Create Your Voice…** appears in Settings → Voice Lab and in Rewrite. Each panel shows its cost, what it sends, and the label that export will add. **Change Voice…** and **Lip sync** are later (M3+); they are not 0.1.0 entry points (`doc/design.md` §6.3–§6.4).
-- **Phase 0 (the next interface):** **Rewrite** (the scope bar, the sidebar row's Rewrite, the selection bar and the menus; `doc/design.md` §6.3) does not need Voice Lab. It proposes cuts, text fixes and phrases in your voice. Cuts and fixes apply with Voice Lab off. Phrases in your voice, making your voice, takes, **Insert Words…**, **Change Voice…** and lip sync need `voiceLab.enabled` and `voiceLab.betaNoticeAccepted`. With Voice Lab off, voice changes stay visible but excluded, with "Needs Voice Lab (beta)", and the panel offers **Turn On Voice Lab…**, which shows this one-time sheet.
-- In Phase 0, your voice is made inside Rewrite (§6.5.2). Settings → Voice Lab lists and deletes voices; it no longer creates them.
+- In 0.1.0, **Rewrite…** appears on transcript selections and in the Edit menu (the Windows editor's ⋯ menu). **Create Your Voice…** appears in Settings → Voice Lab and in Rewrite. Windows marks voice creation unavailable at both entry points. Each available paid step shows its cost, what it sends, and the label that export will add. **Change Voice…** and **Lip sync** are later (M3+); they are not 0.1.0 entry points (`doc/design.md` §6.3–§6.4).
+- **Planned clip-first interface (outside the 0.1.0 scope above):** **Rewrite** (the scope bar, the sidebar row's Rewrite, the selection bar and the menus; `doc/design.md` §6.3) does not need Voice Lab. It proposes cuts, text fixes and phrases in your voice. Cuts and fixes apply with Voice Lab off. Phrases in your voice, making your voice, takes, **Insert Words…**, **Change Voice…** and lip sync need `voiceLab.enabled` and `voiceLab.betaNoticeAccepted`. With Voice Lab off, voice changes stay visible but excluded, with "Needs Voice Lab (beta)", and the panel offers **Turn On Voice Lab…**, which shows this one-time sheet.
+- In the planned clip-first interface, your voice is made inside Rewrite (§6.5.2). Settings → Voice Lab lists and deletes voices; it no longer creates them.
 - Settings → Voice Lab also shows:
-  - the ElevenLabs, fal.ai and sync.so key rows (§2);
+  - the ElevenLabs key row (§2); fal.ai and sync.so key rows and monthly caps are hidden in 0.1.0 behind one lip-sync availability constant per platform. Stored keys and settings are preserved for M3+;
   - **My voices**: the consent records, with their voice name, creation date, ElevenLabs voice id, and [Delete voice];
-  - the spend cap (§3.1) and the label position (§11.2);
+  - the ElevenLabs spend cap (§3.1) and the label position (§11.2);
   - Content Credentials (C2PA) for Clean-audio-only exports, on or off (§11.7; exports that need disclosure always carry a machine-readable mark);
   - storage.
 - None of these features may block the core loop: import, cut, captions, clips, export.

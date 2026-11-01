@@ -2,6 +2,14 @@ import SwiftUI
 import VoxClipCore
 import VoxClipMedia
 
+/// Restore the lip-sync provider rows together when lip sync ships (M3+). Stored keys and caps remain intact.
+enum LipSyncAvailability {
+    static let shipped = false
+    static var settingsProviders: [(id: String, label: String)] {
+        shipped ? [("elevenlabs", "ElevenLabs"), ("fal", "fal.ai"), ("syncso", "sync.so")] : [("elevenlabs", "ElevenLabs")]
+    }
+}
+
 @MainActor struct VoiceLabSettings: View {
     @Bindable var app: AppModel
     @Bindable var session: VoiceLabSession
@@ -45,9 +53,9 @@ import VoxClipMedia
     }
     private var keySection: some View {
         Section("Your API keys") {
-            VoiceLabKeyRow(provider: "elevenlabs", label: "ElevenLabs", app: app)
-            VoiceLabKeyRow(provider: "fal", label: "fal.ai", app: app)
-            VoiceLabKeyRow(provider: "syncso", label: "sync.so", app: app)
+            ForEach(LipSyncAvailability.settingsProviders, id: \.id) { provider in
+                VoiceLabKeyRow(provider: provider.id, label: provider.label, app: app)
+            }
             Text("Create a key just for VoxClip on elevenlabs.io → Developers → API keys. Allow only the permissions listed for the features you use, and set a monthly credit limit. Never enable voice-library publishing, sharing or workspace permissions for this key.").font(.caption)
             Text("My voice: create_instant_voice_clone, voices_read, voices_write, speech_to_text. Account check: user_read. Never allow create_professional_voice_clone, share_voice_externally, publish_voice_to_voice_library, workspace_*, dubbing_*, convai_*, service_account_write or create_user_api_key.").font(.caption).textSelection(.enabled)
             Button(session.busy ? "Checking…" : "Check ElevenLabs account") { session.request(.subscription) }.disabled(session.busy)
@@ -106,9 +114,9 @@ import VoxClipMedia
     }
     private var exportSection: some View {
         Section("Exports and spending") {
-            VoiceLabCapField(provider: "elevenlabs", label: "ElevenLabs", app: app)
-            VoiceLabCapField(provider: "fal", label: "fal.ai", app: app)
-            VoiceLabCapField(provider: "syncso", label: "sync.so", app: app)
+            ForEach(LipSyncAvailability.settingsProviders, id: \.id) { provider in
+                VoiceLabCapField(provider: provider.id, label: provider.label, app: app)
+            }
             Picker("Label position", selection: app.stringBinding("voiceLab.labelPosition", fallback: "top-right")) {
                 Text("Top right").tag("top-right"); Text("Top left").tag("top-left")
                 Text("Bottom right").tag("bottom-right"); Text("Bottom left").tag("bottom-left")
