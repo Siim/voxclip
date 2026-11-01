@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+### 2026-11-01 — v2-transcript — hosted CI fixes
+
+- **Viewport relay.** `TranscriptViewportRelay` replaces the `textViewportLayoutControllerDidLayout` override, which the macOS 26 SDK on hosted CI does not declare (see the V6 backdrop entry). `TranscriptRendererTests.theViewportRelayPassesLayoutToTheTextViewAndThenPlacesTheBackdrop` checks that it is the delegate once, forwards what it does not name, and places the band after a layout.
+- **Strike checks at 1x.** The hosted runner captures at 1x, where a 1 pt strike off the pixel grid fills no pixel row, so no pixel holds `word.gone` exactly. The V8b and V14 strike checks now count columns with a pixel within a point of the strike row that is `word.gone` over the paper at 40 % or more (`TranscriptPane.inkedColumns`), and pass at all but the two end columns. Checked at 1x and 2x: with the strike every column counts; with it not drawn, 5 of 21, 13 of 43, 15 of 28 and 28 of 57 do.
+- **Release test builds.** `TranscriptGutterTests`, `TranscriptFoldTests`, `TranscriptProposalTests` and `TranscriptRendererTests` are wrapped in `#if DEBUG`, as the other app tests that use DEBUG harness types are; the E2E step's `swift test -c release` compiles every test target.
+- **Type-check time.** `TranscriptLayoutFragment.changeBars(_:)` and the long-monologue fixture build in typed steps (about 3 s and 340 ms as one expression on Xcode 27).
+- **Shell test expectations.** `WorkspaceLayoutTests` and `VoiceLabAcceptanceTests` take track/v2-shell a6b5a931 unchanged: lead/v2-base has V1b without it.
+
 ### 2026-11-01 — v2-transcript V14 — inline diff hunks
 
 - **Model (new `TranscriptProposal.swift`).** `EditorModel.proposal: TranscriptProposal?` is a Rewrite proposal shown in the transcript as tracked changes (design.md §6.3.5). It changes no project until a change is kept.
