@@ -492,7 +492,7 @@ extension DebugTranscriptPixels {
     let coordinator: TranscriptTextView.Coordinator
     let scroll: TranscriptScrollView
     let text: TranscriptNSTextView
-    private let window: NSWindow
+    let window: NSWindow
     var renderer: TranscriptRenderer { coordinator.renderer }
 
     init(model: EditorModel, size: NSSize) throws {
