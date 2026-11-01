@@ -119,6 +119,10 @@ struct RewriteConnector {
             await self?.generationIsCurrent(region: region) ?? false
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
+        generation?.validatePlacement = { [weak self] window in
+            guard let self else { throw CancellationError() }
+            try self.editor.validateVoiceLabPlacement(window, localCommands: self.localCommands)
+        }
         generation?.prepareQuote = { [weak self] in await self?.prepareTakes() }
         generation?.readMonthlyCap = { [weak self] in
             guard let self else { throw CancellationError() }
@@ -365,6 +369,10 @@ struct RewriteConnector {
             return "This change is too close to the \(isStart ? "start" : "end") of the take to blend in. Re-record this sentence instead."
         }
         switch error {
+        case VoiceLabProjectError.invalidFadeHandles, VoiceLabProjectError.overlappingFades:
+            return "This change can't blend beside the proposed cuts. Keep more of the surrounding speech or re-record this sentence. Your edits are saved."
+        case VoiceLabProjectError.invalidScope:
+            return "This change extends outside the selected scope. Choose a wider scope and try again. Your edits are saved."
         case VoiceLabGeometryError.insertionUnsupported: return "Inserting words isn't available yet. Your edits are saved."
         case VoiceLabGeometryError.roomToneUnavailable: return "This take has no half-second pause to copy the room sound from. Clean audio removes background sound from the whole take, so new words can blend in. Clean audio is not available in this build. Re-record this sentence instead."
         case is VoiceLabGeometryError: return "This change can't be placed in this take. Your edits are saved."

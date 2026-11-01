@@ -296,6 +296,7 @@ public enum VoiceLabProject {
     /// Appends the complete reviewed set before validation, including groups whose individual members cannot render alone.
     /// The caller retains its original project on every failure. Assets already present are reconciled by the edit command.
     public static func acceptAll(_ segments: [VoiceLabSegment], assets: [VoiceLabAsset], into project: Project) throws -> Project {
+        guard !segments.isEmpty else { throw VoiceLabProjectError.invalidSegment }
         var result = try project.schemaVersion == 3 ? project : upgradeToV3(project)
         guard Set(assets.map(\.id)).count == assets.count,
               assets.allSatisfy({ asset in result.voiceLab.assets?.contains(where: { $0.id == asset.id }) == false }) else { throw VoiceLabProjectError.invalidAsset }

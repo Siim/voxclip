@@ -3,6 +3,7 @@ import VoxClipCore
 extension EditorModel {
     /// Compatibility seam for the passage workflow. A review with several takes uses the scoped list overload below.
     func applyVoiceLab(_ command: VoiceLabEditCommand, localCommands: [EditCommand] = []) throws {
+        if case .acceptAll = command { throw VoiceLabProjectError.invalidSegment }
         let output = project.edits.activeClipId.map(VoiceLabOutputScope.clip) ?? .full
         try applyVoiceLab(command, localCommands: localCommands, outputScope: output, name: command.actionName)
     }
@@ -35,13 +36,24 @@ extension EditorModel {
     private func applyVoiceLab(_ command: VoiceLabEditCommand, localCommands: [EditCommand],
                                outputScope: VoiceLabOutputScope, name: String) throws {
         guard app.voiceLabRewriteEnabled, capabilities.edit, !capabilities.exporting, !capabilities.aiBusy else { throw VoiceLabProjectError.invalidSegment }
+        var changed = try voiceLabReviewProject(localCommands: localCommands)
+        changed = try command.applying(to: changed, outputScope: outputScope)
+        replace(changed, name: name)
+    }
+
+    /// The passage quote and single acceptance both use the review after its local edits, in the active output scope.
+    func validateVoiceLabPlacement(_ window: VoiceLabWindow, localCommands: [EditCommand] = []) throws {
+        let output = project.edits.activeClipId.map(VoiceLabOutputScope.clip) ?? .full
+        try VoiceLabRenderContract.validatePlacement(voiceLabReviewProject(localCommands: localCommands), scope: output, window: window)
+    }
+
+    private func voiceLabReviewProject(localCommands: [EditCommand]) throws -> Project {
         var changed = project
         if !localCommands.isEmpty {
             guard var state = editState() else { throw VoiceLabProjectError.invalidSegment }
             for local in localCommands { state = EditReducer.reduce(state, command: local, aiResults: changed.ai.results) }
             changed.edits = state.projectEdits
         }
-        changed = try command.applying(to: changed, outputScope: outputScope)
-        replace(changed, name: name)
+        return changed
     }
 }

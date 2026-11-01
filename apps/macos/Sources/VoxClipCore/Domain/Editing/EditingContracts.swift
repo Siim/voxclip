@@ -10,7 +10,7 @@ public enum VoiceLabEditCommand: Sendable {
     public var actionName: String {
         switch self {
         case .accept: "Accept Voice Lab take"
-        case .acceptAll: "Rewrite full take"
+        case .acceptAll: "Accept Voice Lab takes"
         case .setEnabled(_, true): "Turn on Voice Lab"
         case .setEnabled(_, false): "Turn off Voice Lab"
         case .delete: "Delete Voice Lab segment"
@@ -23,6 +23,7 @@ public enum VoiceLabEditCommand: Sendable {
             return try VoiceLabEditCommand.acceptAll(segments: [segment], assets: assets, voice: voice)
                 .applying(to: project, outputScope: outputScope)
         case .acceptAll(let segments, let assets, let voice):
+            guard !segments.isEmpty else { throw VoiceLabProjectError.invalidSegment }
             var result = try VoiceLabProject.upgradeToV3(project)
             if let existing = result.voiceLab.voices?.first(where: { $0.id == voice.id }) {
                 guard existing == voice else { throw VoiceLabProjectError.consentUnverified }

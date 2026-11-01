@@ -42,9 +42,37 @@ public enum VoiceLabRenderContract {
     public static func prepare(_ project: Project, scope: VoiceLabOutputScope, labelPosition: VoiceLabLabelPosition) throws -> VoiceLabPreparedRender {
         let plan = try VoiceLabOutputPlanner.build(project, scope: scope)
         if project.schemaVersion < 3 && plan.requiresSyntheticRendering { throw VoiceLabProjectError.needsVoiceLabUpgrade }
+        let selected = try selectedRecipes(project, plan: plan)
+        try validateSelectedSeams(plan: plan, selected: selected.map { SeamPiece(segmentId: $0.segmentId, piece: $0.piece, seams: $0.recipe.seams) })
+        let disclosure = deriveDisclosure(project: project, plan: plan, selected: selected, position: labelPosition)
+        return VoiceLabPreparedRender(outputPlan: plan, selectedSegmentRecipes: selected, disclosure: disclosure,
+                                      projectSnapshot: try ProjectJSON.encode(project))
+    }
+    /// Checks the known window against the final review cuts, using the same output-piece and seam rules as acceptance.
+    /// Audio-dependent fit/QA/asset policy is checked after generation; this projection assumes unchanged output length.
+    public static func validatePlacement(_ project: Project, scope: VoiceLabOutputScope, window: VoiceLabWindow) throws {
+        var pendingID = "pending-rewrite"
+        while project.voiceLab.segments.contains(where: { $0.id == pendingID }) { pendingID += "-" }
+        let plan = try VoiceLabOutputPlanner.build(project, scope: scope, placing: window, pendingID: pendingID)
+        // Acceptance upgrades to v3, where clean-audio rendering is currently unavailable.
+        if project.voiceLab.cleanAudio?.mode == .on { throw VoiceLabProjectError.cleanAudioUnsupported }
+        let known = try selectedRecipes(project, plan: plan, excluding: pendingID)
+        var selected = known.map { SeamPiece(segmentId: $0.segmentId, piece: $0.piece, seams: $0.recipe.seams) }
+        guard let piece = plan.pieces.first(where: { $0.segmentId == pendingID }) else { throw VoiceLabProjectError.invalidScope }
+        func seam(_ edge: VoiceLabSeamPlacement) throws -> VoiceLabSeam {
+            guard edge.fadeSamples >= 0 else { throw VoiceLabProjectError.invalidFadeHandles }
+            return VoiceLabSeam(kind: edge.kind, fadeSamples: edge.fadeSamples, sourceHandleSamples: 0, assetHandleFrames: 0)
+        }
+        selected.append(SeamPiece(segmentId: pendingID, piece: piece,
+            seams: try VoiceLabSeams(in: seam(window.leftSeam), out: seam(window.rightSeam))))
+        try validateSelectedSeams(plan: plan, selected: selected)
+    }
+
+    private static func selectedRecipes(_ project: Project, plan: VoiceLabOutputPlan,
+                                        excluding: String? = nil) throws -> [VoiceLabSelectedRecipe] {
         if project.schemaVersion == 3 && project.voiceLab.cleanAudio?.mode == .on { throw VoiceLabProjectError.cleanAudioUnsupported }
         var selected: [VoiceLabSelectedRecipe] = []
-        for piece in plan.pieces where piece.kind == .synth {
+        for piece in plan.pieces where piece.kind == .synth && piece.segmentId != excluding {
             guard let segment = project.voiceLab.segments.first(where: { $0.id == piece.segmentId }),
                   let recipe = segment.candidates[segment.selectedCandidateIndex].recipe else { throw VoiceLabProjectError.missingRenderPolicy }
             if segment.kind == .tts && (!recipe.provenance.endpoint.hasPrefix("v1/text-to-speech/") ||
@@ -63,36 +91,39 @@ public enum VoiceLabRenderContract {
             #endif
             selected.append(VoiceLabSelectedRecipe(segmentId: segment.id, piece: piece, recipe: recipe))
         }
-        try validateSelectedSeams(plan: plan, selected: selected)
-        let disclosure = deriveDisclosure(project: project, plan: plan, selected: selected, position: labelPosition)
-        return VoiceLabPreparedRender(outputPlan: plan, selectedSegmentRecipes: selected, disclosure: disclosure,
-                                      projectSnapshot: try ProjectJSON.encode(project))
+        return selected
     }
-    private static func validateSelectedSeams(plan: VoiceLabOutputPlan, selected: [VoiceLabSelectedRecipe]) throws {
+
+    private struct SeamPiece {
+        let segmentId: String
+        let piece: VoiceLabOutputPiece
+        let seams: VoiceLabSeams
+    }
+    private static func validateSelectedSeams(plan: VoiceLabOutputPlan, selected: [SeamPiece]) throws {
         var windows: [(Int64, Int64)] = []
         for item in selected {
             guard let index = plan.pieces.firstIndex(where: { $0.segmentId == item.segmentId }) else { throw VoiceLabProjectError.staleRenderContract }
             let piece = item.piece
             let before = index > 0 ? plan.pieces[index - 1] : nil
             let after = index + 1 < plan.pieces.count ? plan.pieces[index + 1] : nil
-            let incoming = item.recipe.seams.in, outgoing = item.recipe.seams.out
+            let incoming = item.seams.in, outgoing = item.seams.out
             if before == nil {
                 guard incoming.kind == .none else { throw VoiceLabProjectError.invalidFadeHandles }
             } else if before?.kind == .synth {
                 guard before?.sourceEndSample == piece.sourceStartSample,
                       incoming.kind == .synthToSynth,
-                      let prior = selected.first(where: { $0.segmentId == before?.segmentId })?.recipe,
-                      prior.seams.out.kind == .synthToSynth,
-                      prior.seams.out.fadeSamples == incoming.fadeSamples else { throw VoiceLabProjectError.invalidFadeHandles }
+                      let prior = selected.first(where: { $0.segmentId == before?.segmentId })?.seams,
+                      prior.out.kind == .synthToSynth,
+                      prior.out.fadeSamples == incoming.fadeSamples else { throw VoiceLabProjectError.invalidFadeHandles }
             } else if incoming.kind == .none || incoming.kind == .synthToSynth { throw VoiceLabProjectError.invalidFadeHandles }
             if after == nil {
                 guard outgoing.kind == .none else { throw VoiceLabProjectError.invalidFadeHandles }
             } else if after?.kind == .synth {
                 guard piece.sourceEndSample == after?.sourceStartSample,
                       outgoing.kind == .synthToSynth,
-                      let next = selected.first(where: { $0.segmentId == after?.segmentId })?.recipe,
-                      next.seams.in.kind == .synthToSynth,
-                      next.seams.in.fadeSamples == outgoing.fadeSamples else { throw VoiceLabProjectError.invalidFadeHandles }
+                      let next = selected.first(where: { $0.segmentId == after?.segmentId })?.seams,
+                      next.in.kind == .synthToSynth,
+                      next.in.fadeSamples == outgoing.fadeSamples else { throw VoiceLabProjectError.invalidFadeHandles }
             } else if outgoing.kind == .none || outgoing.kind == .synthToSynth { throw VoiceLabProjectError.invalidFadeHandles }
             func add(_ seam: VoiceLabSeam, at center: Int64) throws {
                 guard seam.kind != .none else { return }
@@ -112,7 +143,7 @@ public enum VoiceLabRenderContract {
             let piece = item.piece
             let before = index > 0 ? plan.pieces[index-1] : nil
             let after = index+1 < plan.pieces.count ? plan.pieces[index+1] : nil
-            let incoming = item.recipe.seams.in, outgoing = item.recipe.seams.out
+            let incoming = item.seams.in, outgoing = item.seams.out
             if incoming.kind != .none {
                 let left = incoming.fadeSamples/2, right = incoming.fadeSamples-left
                 guard before!.outputEndSample-before!.outputStartSample >= left,

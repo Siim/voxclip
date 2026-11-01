@@ -48,6 +48,88 @@ import Testing
         }
     }
 
+    @Test func everySharedAcceptanceReviewVector() throws {
+        struct ReviewVectors: Decodable {
+            struct Row: Decodable {
+                let `case`: String
+                let input: String
+                let segments: [VoiceLabSegment]
+                let expected: Expected
+            }
+            let schema: String
+            let cases: [Row]
+        }
+        let review = try ProjectJSON.decoder().decode(ReviewVectors.self,
+            from: FixtureLoader.data("fixtures/voice-lab/accept-all-review-cases.json"))
+        #expect(review.schema == "voxclip.accept-all-review.v1" && review.cases.count == 1)
+        let inputs = try vectors().inputs
+        for row in review.cases {
+            let input = try #require(inputs[row.input])
+            do {
+                _ = try VoiceLabEditCommand.acceptAll(segments: row.segments, assets: [], voice: input.voice)
+                    .applying(to: input.project)
+                Issue.record("\(row.case): expected \(row.expected.error ?? "success")")
+            } catch { #expect(String(describing: error) == row.expected.error, "\(row.case)") }
+            let voiced = try VoiceLabProject.addVoiceReference(input.voice, to: input.project)
+            #expect(throws: VoiceLabProjectError.invalidSegment, "\(row.case): direct transition") {
+                _ = try VoiceLabProject.acceptAll(row.segments, assets: [], into: voiced)
+            }
+        }
+    }
+
+    private func window(_ segment: VoiceLabSegment) throws -> VoiceLabWindow {
+        let recipe = try #require(segment.candidates[segment.selectedCandidateIndex].recipe)
+        let start = recipe.video.sourceStartSample, end = recipe.video.sourceEndSample
+        return VoiceLabWindow(firstWordId: segment.replace.firstWordId, lastWordId: segment.replace.lastWordId,
+            leftBridgeWordIds: [], rightBridgeWordIds: [], start: segment.replace.start, end: segment.replace.end,
+            startSample: start, endSample: end,
+            leftSeam: .init(kind: recipe.seams.in.kind, time: segment.replace.start, sample: start, fadeSamples: recipe.seams.in.fadeSamples),
+            rightSeam: .init(kind: recipe.seams.out.kind, time: segment.replace.end, sample: end, fadeSamples: recipe.seams.out.fadeSamples))
+    }
+
+    @Test func prePaymentProjectionUsesTheAcceptanceOutputRules() throws {
+        let vectors = try vectors()
+        // An accepted full-take group cannot lose one member and remain a structurally valid input.
+        for row in vectors.cases where row.expected.error == nil && row.input != "group" {
+            let input = try #require(vectors.inputs[row.input])
+            let scope: VoiceLabOutputScope = row.scope == "full" ? .full : .clip(row.scope)
+            let accepted = try VoiceLabEditCommand.acceptAll(segments: input.segments, assets: input.assets, voice: input.voice)
+                .applying(to: input.project, outputScope: scope)
+            for segment in input.segments {
+                var without = accepted
+                without.voiceLab.segments.removeAll { $0.id == segment.id }
+                // Includes disjoint source, touching synth neighbors and a clip.
+                do { try VoiceLabRenderContract.validatePlacement(without, scope: scope, window: window(segment)) }
+                catch { Issue.record("\(row.case)/\(segment.id): \(error)") }
+            }
+        }
+        let full = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/full-take-render-v3.voxclip"))
+        let fullSegment = try #require(full.voiceLab.segments.first)
+        var unvoiced = full; unvoiced.voiceLab.segments = []
+        try VoiceLabRenderContract.validatePlacement(unvoiced, scope: .full, window: window(fullSegment))
+        for name in ["outside-clip", "crosses-clip", "cut-invalidates-seam"] {
+            let input = try #require(vectors.inputs[name])
+            let row = try #require(vectors.cases.first(where: { $0.case == name }))
+            let scope: VoiceLabOutputScope = row.scope == "full" ? .full : .clip(row.scope)
+            do {
+                try VoiceLabRenderContract.validatePlacement(input.project, scope: scope, window: window(input.segments[0]))
+                Issue.record("\(name): expected \(row.expected.error ?? "success")")
+            } catch { #expect(String(describing: error) == row.expected.error, "\(name)") }
+        }
+    }
+
+    @Test func alternateScopeVectorPassesStructuralValidation() throws {
+        let input = try #require(vectors().inputs["bad-alternate-scope-seam"])
+        let voiced = try VoiceLabProject.addVoiceReference(input.voice, to: input.project)
+        let structural = try VoiceLabProject.acceptAll(input.segments, assets: input.assets, into: voiced)
+        try VoiceLabProject.validate(structural)
+        // The selected recipe renders; only checking the unused candidate catches this refusal.
+        _ = try VoiceLabRenderContract.prepare(structural, scope: .full, labelPosition: .topRight)
+        #expect(throws: VoiceLabProjectError.invalidFadeHandles) {
+            try VoiceLabProject.validate(structural, scope: .full, accepting: input.segments)
+        }
+    }
+
     @Test func mixedSetWithCutsAndCorrectionsSurvivesSaveAndLoad() async throws {
         var input = try #require(vectors().inputs["mixed"])
         input.project.edits.cutWordIds = ["w1"]

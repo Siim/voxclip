@@ -179,6 +179,42 @@ private struct AcceptanceTestKeys: KeyProvider {
         return try #require(ProjectJSON.decoder().decode(AcceptanceSetVectors.self, from: data).inputs[name])
     }
 
+    @Test(arguments: [false, true])
+    func commandOverloadCannotCommitSets(empty: Bool) throws {
+        let input = try acceptanceSet("single")
+        let document = VoxClipDocument(project: input.project, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        undo.groupsByEvent = true; model.undoManager = undo
+        document.updateChangeCount(.changeCleared)
+        let segments = empty ? [] : input.segments
+        #expect(throws: VoiceLabProjectError.invalidSegment) {
+            try model.applyVoiceLab(.acceptAll(segments: segments, assets: input.assets, voice: input.voice))
+        }
+        #expect(model.project == input.project && !document.isDocumentEdited && !undo.canUndo)
+    }
+
+    @Test func emptyScopedSetDoesNotUpgradeOrRegisterUndo() throws {
+        var input = try acceptanceSet("single")
+        input.project.schemaVersion = 1; input.project.voiceLab = ProjectVoiceLab()
+        let document = VoxClipDocument(project: input.project, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = try #require(document.undoManager)
+        undo.groupsByEvent = true; model.undoManager = undo
+        document.updateChangeCount(.changeCleared)
+        #expect(throws: VoiceLabProjectError.invalidSegment) {
+            try model.applyVoiceLab([], assets: [], voice: input.voice, scope: .fullTake)
+        }
+        #expect(model.project == input.project && !document.isDocumentEdited && !undo.canUndo)
+    }
+
+    @Test func setCommandHasNoImpliedScope() throws {
+        let input = try acceptanceSet()
+        #expect(VoiceLabEditCommand.acceptAll(segments: input.segments, assets: input.assets, voice: input.voice).actionName == "Accept Voice Lab takes")
+    }
+
     @Test(arguments: [RewriteScope.clip("clip-main"), .selection(3...5), .fullTake])
     func wholeReviewIsOneNamedUndoStep(scope: RewriteScope) throws {
         let input = try acceptanceSet()
@@ -238,6 +274,63 @@ private struct AcceptanceTestKeys: KeyProvider {
         #expect(model.undoSteps == 0)
     }
 
+    @Test func singleAcceptancePreflightRefusesAdjacentCutBeforePayment() async throws {
+        let set = try acceptanceSet("single")
+        let segment = try #require(set.segments.first)
+        let recipe = try #require(segment.candidates.first?.recipe)
+        let document = VoxClipDocument(project: set.project, demo: true)
+        let model = EditorModel(document: document, app: enabledApp(), preview: DemoPreviewEngine())
+        defer { model.close() }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let local: [EditCommand] = [.setPauseKeep(seconds: 0.105), .tightenPauses]
+        // The single passage Use overload keeps its stricter final-output rule.
+        #expect(throws: VoiceLabProjectError.invalidFadeHandles) {
+            try model.applyVoiceLab(.accept(segment, assets: set.assets, voice: set.voice), localCommands: local)
+        }
+        let window = VoiceLabWindow(firstWordId: segment.replace.firstWordId, lastWordId: segment.replace.lastWordId,
+            leftBridgeWordIds: [], rightBridgeWordIds: [], start: segment.replace.start, end: segment.replace.end,
+            startSample: recipe.video.sourceStartSample, endSample: recipe.video.sourceEndSample,
+            leftSeam: .init(kind: recipe.seams.in.kind, time: segment.replace.start,
+                sample: recipe.video.sourceStartSample, fadeSamples: recipe.seams.in.fadeSamples),
+            rightSeam: .init(kind: recipe.seams.out.kind, time: segment.replace.end,
+                sample: recipe.video.sourceEndSample, fadeSamples: recipe.seams.out.fadeSamples))
+        try model.validateVoiceLabPlacement(window) // Without the review's cut the very same window fits.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let run = VoiceLabTakeRun(client: ElevenLabsVoiceLab(keys: AcceptanceTestKeys(), region: .default),
+            store: VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])), speaker: .unavailable,
+            storage: .init(projectId: set.project.id, paidRoot: root, scratchRoot: root.appendingPathComponent("scratch")),
+            dispatchIfCurrent: { _, _ in Issue.record("Refused placement must never dispatch") }, inputsAreCurrent: { true })
+        let generation = RewriteGenerationSession(run: run)
+        let shared = try SharedResources.locate()
+        let record = try JSONDecoder().decode(VoiceConsentRecord.self,
+            from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))
+        generation.showFixture("ready", voice: record)
+        generation.review(.init(rows: [], end: .completed))
+        let input = VoiceLabTakeInput(text: "new words", modelID: "eleven_multilingual_v2", recordID: record.id,
+            language: "en", seed: 7, contentKey: set.project.media.source.contentKey, source: [], sourceSampleRate: 1000,
+            items: try #require(set.project.transcript?.words), window: window,
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+        generation.validatePlacement = { try model.validateVoiceLabPlacement($0, localCommands: local) }
+        var quotes = 0, sends = 0, publications = 0
+        generation.prepareForTests = { _ in
+            quotes += 1
+            return VoiceLabTakeRunQuote(id: UUID(), takes: [], preparedAt: Date())
+        }
+        generation.executeForTests = { _, _, _ in sends += 1; return .init(rows: [], end: .completed) }
+        generation.publishForTests = { _, _, _ in publications += 1; throw VoiceLabError.invalidInput }
+        await generation.prepare(input)
+        #expect(generation.quotePreparationFailed && generation.quote == nil && !generation.canExecute)
+        #expect(generation.problem == "This change can't blend beside the proposed cuts. Keep more of the surrounding speech or re-record this sentence. Your edits are saved.")
+        generation.approve(true)
+        await generation.finishGenerationForTests()
+        #expect(await generation.accept(into: model, localCommands: local) == false)
+        #expect(quotes == 0 && sends == 0 && publications == 0)
+        #expect(model.project == set.project && !document.isDocumentEdited && !undo.canUndo)
+        #expect(!FileManager.default.fileExists(atPath: root.path))
+        generation.invalidate()
+    }
+
     @Test func finalCutsAreValidatedBeforeTheReviewIsCommitted() throws {
         let input = try acceptanceSet("single")
         let document = VoxClipDocument(project: input.project, demo: true)
@@ -251,8 +344,9 @@ private struct AcceptanceTestKeys: KeyProvider {
         #expect(model.project == input.project && !undo.canUndo)
     }
 
-    @Test(arguments: [false, true])
-    func readyAcceptancePublishesOnceAndStalePublicationNeverMutates(cancel: Bool) async throws {
+    @Test(arguments: ["keep", "cancel", "adjacent-cut"])
+    func readyAcceptancePublishesOnceAndStalePublicationNeverMutates(outcome: String) async throws {
+        let cancel = outcome == "cancel"
         var original = try fixture()
         let stored = original.voiceLab.segments[0], recipe = try #require(original.voiceLab.segments[0].candidates[0].recipe)
         let shared = try SharedResources.locate()
@@ -300,6 +394,13 @@ private struct AcceptanceTestKeys: KeyProvider {
         #expect(publications == 0 && model.project == original)
         session.review(VoiceLabTakeRunResult(rows: [row], end: .completed), input: input)
         #expect(session.acceptTitle == "Use Take 1")
+        if outcome == "adjacent-cut" {
+            #expect(await session.accept(into: model, localCommands: [.setPauseKeep(seconds: 0.105), .tightenPauses]) == false)
+            #expect(publications == 0 && model.project == original && !undo.canUndo && !document.isDocumentEdited)
+            #expect(session.problem.contains("can't blend beside the proposed cuts"))
+            session.invalidate()
+            return
+        }
         undo.beginUndoGrouping()
         let acceptance = Task { await session.accept(into: model, at: Date(timeIntervalSince1970: 1_800_000_000)) }
         await barrier.wait()
