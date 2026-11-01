@@ -329,17 +329,18 @@ extension EditorModel {
             do {
                 if document.demo { throw VoxClipError.notImplemented("synthetic-preview-only") }
                 for (position, target) in targets.enumerated() {
+                    try Task.checkCancellation()
                     exportIndex = position + 1
                     let key = ExportLedger.key(target, aspect: snapshot.export.aspect)
                     activeExportKey = key
                     failedExports[key] = nil
                     exportProgress = nil
                     let targetName = targetNames[ExportLedger.targetID(target)] ?? "Full Take"
-                    attempt = ExportRecord(projectID: snapshot.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
-                        planFingerprint: (try? ExportFingerprint.value(snapshot, target: target, labelPosition: labelPosition)) ?? "",
-                        styleId: snapshot.captions.styleId, aspect: snapshot.export.aspect, outputPath: "",
-                        targetName: targetName, failed: true, retryFolder: folder.path)
-                    try Task.checkCancellation()
+                    attempt = app.exportLedger.entry(projectID: snapshot.id, targetID: ExportLedger.targetID(target), aspect: snapshot.export.aspect)
+                        ?? ExportRecord(projectID: snapshot.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
+                            planFingerprint: "", styleId: snapshot.captions.styleId, aspect: snapshot.export.aspect, outputPath: "", targetName: targetName)
+                    attempt?.failed = true
+                    attempt?.retryFolder = folder.path
                     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                     let render = try await renderRequest(target: target, snapshot: renderSnapshot, labelPosition: labelPosition)
                     let fingerprint = try ExportFingerprint.value(snapshot, target: target, labelPosition: labelPosition)

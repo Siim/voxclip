@@ -93,6 +93,37 @@ import Testing
             #expect(reloaded.records.contains(persisted))
         }
     }
+    @Test(arguments: [false, true])
+    func aLaterFailureOrCancelKeepsTheSuccessfulOutput(cancelled: Bool) async throws {
+        let exporter = LibraryAttemptExporter()
+        let shell = try await shell(exporter: exporter), editor = try #require(shell.editor)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { editor.close(); try? FileManager.default.removeItem(at: folder) }
+        editor.beginExport(targets: [.clip("five-1")], folder: folder)
+        await editor.exportTask?.value
+        let saved = try #require(editor.exportsList.rows.first?.record)
+        await exporter.set(cancelled ? .cancel : .fail)
+        editor.select(editor.words[0].id); editor.cutSelection() // Output facts must stay attached to the earlier successful snapshot.
+        editor.beginExport(targets: [.clip("five-1")], folder: folder)
+        await editor.exportTask?.value
+        let row = try #require(editor.exportsList.rows.first)
+        #expect(row.status == .failed && row.outputURL?.path == saved.outputPath)
+        #expect(row.record.outputPath == saved.outputPath && row.record.planFingerprint == saved.planFingerprint)
+        #expect(row.record.durationSeconds == saved.durationSeconds && row.record.width == saved.width && row.record.byteSize == saved.byteSize)
+        #expect(row.retryFolder?.path == folder.path)
+    }
+    @Test func cancellationBetweenTargetsLeavesTheNextTargetUnattempted() async throws {
+        let exporter = LibraryAttemptExporter(); await exporter.set(.cancelAfterSuccess)
+        let shell = try await shell(exporter: exporter), editor = try #require(shell.editor)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { editor.close(); try? FileManager.default.removeItem(at: folder) }
+        editor.beginExport(targets: [.clip("five-1"), .clip("five-2")], folder: folder)
+        await editor.exportTask?.value
+        #expect(editor.exportsList.rows.map(\.record.targetID) == ["five-1"])
+        #expect(editor.exportsList.rows.first?.status == .exported)
+        #expect(editor.failedExports.isEmpty)
+    }
+
     @Test func aDestinationFailureBeforeRenderingStillMakesAFailedLedgerRow() async throws {
         let exporter = RegressionExporter()
         let shell = try await shell(exporter: exporter), editor = try #require(shell.editor)
@@ -104,6 +135,7 @@ import Testing
         await editor.exportTask?.value
         #expect(await exporter.jobs.isEmpty)
         #expect(editor.exportsList.rows.count == 1 && editor.exportsList.rows.first?.status == .failed)
+        #expect(editor.exportsList.rows.first?.record.planFingerprint == "")
         #expect(editor.exportsList.rows.first?.retryFolder?.path == file.path)
     }
     @Test(arguments: ["five-1", "full"])
@@ -228,6 +260,20 @@ import Testing
         #expect(library.contains("explorer.exportWarning") && library.contains("row.status.warning"))
         #expect(library.contains("openVoxClipSettings(pane: \"voiceLab\")"))
         for forbidden in [".sheet(", ".alert(", ".confirmationDialog(", "NSAlert"] { #expect(!library.contains(forbidden)) }
+    }
+}
+
+private actor LibraryAttemptExporter: Exporter {
+    enum Outcome { case success, fail, cancel, cancelAfterSuccess }
+    private var outcome = Outcome.success
+    func set(_ value: Outcome) { outcome = value }
+    func export(_ job: ExportJob, progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
+        if outcome == .fail { throw VoxClipError.exportFailed("fixture") }
+        if outcome == .cancel { throw CancellationError() }
+        try Data(repeating: 0, count: 21_000).write(to: job.outputURL)
+        let result = try await RegressionExporter().export(job, progress: progress)
+        if outcome == .cancelAfterSuccess { withUnsafeCurrentTask { $0?.cancel() } }
+        return result
     }
 }
 

@@ -1,6 +1,12 @@
 # macOS implementation contracts
 
 
+### 2026-11-01 — V2b review: retain the last successful export
+
+- Failed/cancelled attempts retain the previous output path, fingerprint, output facts and timestamp, plus failure/retry state. A first failure has an empty fingerprint so older clients classify it as edited. Export rows retain thumbnail/reveal/open access to that previous file.
+- Cancellation is checked before starting the next target. Regressions cover success then failure/cancel and cancellation between targets; the pre-fix run has 12 issues. Full Explorer library verification is in `dist/v11b-evidence/ledger-green.log`.
+
+
 ### 2026-11-01 — V2b review: zero-height Captions properties
 
 - The properties wrapper now accepts the split's zero-height proposal before its layout marker. This preserves the legacy scrollbar reserve without adding a point below a caption error at 324×322.

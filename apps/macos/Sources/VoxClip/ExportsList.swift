@@ -16,7 +16,7 @@ import VoxClipCore
         var id: String { record.targetID + "|" + record.aspect.rawValue }
         var target: ExportTarget { record.targetID == "full" ? .fullEdit : .clip(record.targetID) }
         var aspect: AspectRatio { record.aspect }
-        var outputURL: URL? { record.failed == true || record.outputPath.isEmpty ? nil : URL(fileURLWithPath: record.outputPath) }
+        var outputURL: URL? { record.outputPath.isEmpty ? nil : URL(fileURLWithPath: record.outputPath) }
         var retryFolder: URL? { record.retryFolder.map { URL(fileURLWithPath: $0) } }
         var title: String { "\(targetName) · \(aspect.rawValue)" }
         var duration: String { record.durationSeconds.map { durationLabel($0) } ?? "—" }
