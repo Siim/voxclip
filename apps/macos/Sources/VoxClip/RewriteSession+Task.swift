@@ -149,12 +149,13 @@ extension RewriteSession {
 
     // MARK: R1
 
-    /// R1's steps; `reached` is the first step not done yet (1 = sending, 2 = waiting, 3 = checking).
+    /// R1's steps; `reached` is the first step not done yet: 1 while the send waits for the consent and the cost sheet,
+    /// so nothing shows as sent; 2 once it went, waiting for the answer; 3 while the reply is checked.
     func runSteps(reached: Int) -> [ActivityStep] {
         let words = task.words
         let count = words.wordCount == 1 ? "1 word" : "\(words.wordCount) words"
         let span: Double = (source.last?.end ?? 0) - (source.first?.start ?? 0)
-        func status(_ index: Int) -> ActivityStep.Status { index < reached ? .done : index == reached ? .running : .waiting }
+        func status(_ index: Int) -> ActivityStep.Status { index < reached ? .done : index == reached && index > 1 ? .running : .waiting }
         let read = "Read \(words.name)"
         let sent = runsOnThisMac ? "Running on this Mac" : "Sent to \(aiName)"
         return [
@@ -164,7 +165,8 @@ extension RewriteSession {
             ActivityStep(id: "check", title: "Check that each change fits", detail: "", status: status(3), spoken: "Check that each change fits"),
         ]
     }
-    /// R1 starts: the quote of what was asked, the steps, Stop, and the send line as the note. Announced.
+    /// R1 starts as the user sends: the quote of what was asked, the steps with nothing sent yet, Stop, and the send line
+    /// as the note. The consent and the cost sheet ask over it; `sendRun` announces it once they pass.
     func beginRun() {
         let asked: PanelCard = instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? .asked(preset: "Fix mistakes", text: "fix slips and repeats, keep my words, change as little as possible.")
@@ -172,6 +174,11 @@ extension RewriteSession {
         let stop = PanelAction(id: "stop", title: "Stop") { [weak editor] in editor?.closeRewrite() }
         task.show(.running, headline: PanelHeadline(text: "Rewriting \(task.words.name)…", runningSince: Date(), stop: stop),
                   cards: [asked, .activity(runSteps(reached: 1))], footer: PanelFooter(note: sendLine))
+    }
+    /// The consent passed and the words go: R1 waits for the AI. Announced now, not while a sheet still asks.
+    func sendRun() {
+        guard task.state == .running else { return }
+        task.update(runSteps(reached: 2))
         editor.announce("Rewriting \(task.words.name)")
     }
     func advanceRun(to reached: Int) {

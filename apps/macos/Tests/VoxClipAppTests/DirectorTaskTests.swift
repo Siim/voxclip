@@ -35,6 +35,18 @@ private actor StubConnector: LLMConnector {
     func set(failure: LLMError?) { self.failure = failure }
 }
 
+/// The consent and cost sheets of a send, held until the test answers each.
+@MainActor private final class HeldSheets {
+    private(set) var asked: [LLMSendSheet.Reason] = []
+    private var answer: CheckedContinuation<Bool, Never>?
+    var isAsking: Bool { answer != nil }
+    func ask(_ sheet: LLMSendSheet) async -> Bool {
+        asked.append(sheet.reason)
+        return await withCheckedContinuation { answer = $0 }
+    }
+    func answer(_ approved: Bool) { answer?.resume(returning: approved); answer = nil }
+}
+
 /// The Rewrite job on the Director task (impl-plan V12m): R0 chooses the AI, R1 runs with
 /// its steps and Stop, R1x shows each error with its fix, and the panel's job follows the
 /// task. Stub connectors and in-memory keys only; the app model never starts, so it saves
@@ -239,6 +251,40 @@ private actor StubConnector: LLMConnector {
         #expect(session.task.footer.note == "Sends these 3 words to Anthropic with your key.")
         await anthropic.release()
         _ = await sending.value
+    }
+
+    /// R1 shows as the user sends, but claims nothing sent and announces nothing while the privacy consent and the
+    /// cost sheet ask; a declined sheet goes back to the passage panel, silently.
+    @Test func whileTheSheetsAskNothingShowsAsSentOrIsAnnounced() async throws {
+        let anthropic = StubConnector(id: .anthropic)
+        let (app, _) = app("anthropic", connectors: ["anthropic": anthropic])
+        let sheets = HeldSheets()
+        app.connectorConsentOverride = { _, _, sheet in await sheets.ask(sheet) }
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        let task = session.task
+        func waitForSheet() async { for _ in 0..<2_000 where !sheets.isAsking { await Task.yield() } }
+        let sending = try await send(session)
+        await waitForSheet()
+        #expect(sheets.asked == [.privacy] && task.state == .running && task.turn == 1)
+        #expect(task.steps.map(\.status) == [.done, .waiting, .waiting, .waiting] && editor.announcements.isEmpty)
+        sheets.answer(true)
+        await waitForSheet()
+        #expect(sheets.asked == [.privacy, .cost] && task.steps.map(\.status) == [.done, .waiting, .waiting, .waiting] && editor.announcements.isEmpty)
+        sheets.answer(true)
+        #expect(await sending.value)
+        guard case .proposal(let changes) = task.state else { Issue.record("no proposal: \(task.state)"); return }
+        #expect(editor.announcements == ["Rewriting these words", changes.announcement])
+        #expect(await anthropic.sends == 1)
+
+        let declined = try await send(session)
+        await waitForSheet()
+        #expect(sheets.asked == [.privacy, .cost, .cost] && editor.announcements.count == 2)
+        sheets.answer(false)
+        #expect(await declined.value == false)
+        #expect(task.state == .ready && editor.announcements.count == 2)
+        #expect(await anthropic.sends == 1)
     }
 
     @Test func stopCancelsSilentlyAndChangesNothing() async throws {

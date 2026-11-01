@@ -544,7 +544,7 @@ extension DebugRewrite {
             _ = await app.connectorStatus(claude, using: ConsentFixtureConnector(id: .claudeCode, authMethod: "claude.ai"))
         }
         let (running, r1) = session(.claudeCode, name: "Claude Code", group: "cli", model: "sonnet")
-        r1.beginRun(); r1.advanceRun(to: 2)
+        r1.beginRun(); r1.sendRun()
         scenes.append(DirectorScene(name: "r1", task: r1.task, editor: running))
         // R1x: each error with its fix.
         let errors: [(String, ConnectorID, String, String, PanelError)] = [

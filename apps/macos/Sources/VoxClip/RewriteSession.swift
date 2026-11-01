@@ -267,6 +267,7 @@ struct RewriteConnector {
         let expected = revision
         isProposing = true; shownQuoteID = nil; problem = ""
         generation?.inputsChanged()
+        // R1 shows at once, with nothing sent and nothing announced until the consent and the cost sheet pass.
         beginRun()
         let started = ContinuousClock.now
         let sendTask = Task { [self] () -> Bool in
@@ -274,7 +275,7 @@ struct RewriteConnector {
             do {
                 guard await ConnectorConsentWait().confirm(consent) else { return false }
                 guard !Task.isCancelled, current, revision == expected, quote == approvedQuote, request?.id == input.id else { return false }
-                advanceRun(to: 2)
+                sendRun()
                 let result = try await service.propose(input, connector: connector.connector, model: connector.model,
                     authorization: VoiceRewriteAuthorization(quote: approvedQuote, approved: true))
                 guard !Task.isCancelled, current, revision == expected else { return false }
