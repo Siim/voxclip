@@ -37,11 +37,13 @@ import Testing
         defer { editor.close() }
         editor.app.set("voiceLab.enabled", .bool(true)); editor.app.set("voiceLab.betaNoticeAccepted", .bool(true))
         editor.presentExport()
-        let session = RewriteSession(editor: editor, range: 0...2, envelope: nil, connector: nil)
+        let session = RewriteSession(editor: editor, scope: .selection(0...2), envelope: nil, connector: nil)
         editor.rewrite = session
         #expect(shell.panelJob(for: editor) == .rewrite && PanelJob.available(in: editor).contains(.export))
         shell.choosePanelJob(.export, for: editor)
         session.task.show(.running, headline: PanelHeadline(text: "Rewriting"))
+        #expect(editor.panelTask == nil && shell.panelJob(for: editor) == .export)
+        session.sendApproved = true
         #expect(shell.panelJob(for: editor) == .rewrite)
         shell.choosePanelJob(.export, for: editor)
         editor.finishExportJob()
@@ -56,10 +58,80 @@ import Testing
         #expect(editor.mediaRelinkCandidate != nil)
         #expect(editor.announcements.contains("This file looks different. Use it anyway? \(url.lastPathComponent)"))
         shell.choose(.clip("five-2"))
+        // The editor only reads while the banner waits (v5 f24): an export setting is refused, a caption move is not.
         var current = editor.project; current.export.quality = .high; editor.replace(current, name: "Change export quality")
+        #expect(editor.project.export.quality != .high)
+        var moved = editor.project; moved.captions.position = CaptionPosition(x: 0.5, y: 0.2); editor.replace(moved, name: "Move captions")
         await editor.confirmMediaRelink()
         #expect(editor.project.media.source.absolutePath == url.path && editor.mediaRelinkCandidate == nil)
-        #expect(editor.project.export.quality == .high && editor.activeClip?.id == "five-2")
+        #expect(editor.project.captions.position == CaptionPosition(x: 0.5, y: 0.2) && editor.activeClip?.id == "five-2")
+    }
+    /// While the video is missing (f24c) and while a different-looking file waits for Use It (f24), the editor only reads
+    /// (lead decision 7): the clip bar shows Rewrite, Tighten, Hook and the Ask field dimmed, a Rewrite open on the tab
+    /// closes and none can start, Export and its entries are refused, and the status bar says why in the task's place.
+    /// Use It gives the editor back.
+    @Test func theEditorOnlyReadsUntilTheVideoIsConfirmed() async throws {
+        let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
+        defer { editor.close() }
+        shell.choose(.clip("five-1"))
+        let bar = ClipBarView(model: editor, shell: shell)
+        defer { bar.tearDown() }
+        bar.frame = NSRect(x: 0, y: 0, width: 652, height: ShellMetrics.clipBar)
+        func lay() { bar.render(); bar.layoutSubtreeIfNeeded() }
+        func dimmed() -> Bool {
+            let verbs: [NSControl] = [bar.rewrite, bar.tighten, bar.hook, bar.ask]
+            return bar.variant == .readOnly("five-1") && verbs.allSatisfy { !$0.isHidden && !$0.isEnabled } && !bar.picker.isHidden
+                && bar.isAccessibilityElement() && bar.accessibilityLabel() == "Clip 1 tools"
+        }
+        func refused() -> Bool {
+            !editor.capabilities.edit && !editor.capabilities.ai && !editor.capabilities.export && !editor.mediaExportable
+                && editor.mutationEnabled(38) == false && editor.mutationEnabled(45) == false && editor.mutationEnabled(1) == false
+        }
+        lay()
+        #expect(bar.variant == .scope("five-1") && bar.rewrite.isEnabled && editor.statusReadOnly == nil)
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(0...2), envelope: nil, connector: nil)
+        // f24c: the video is missing.
+        editor.mediaResolved = false; lay()
+        #expect(dimmed() && refused() && editor.rewrite == nil)
+        #expect(editor.statusReadOnly?.text == "Read-only until you locate the video" && editor.statusReadOnly?.lead == .symbol("exclamationmark.triangle"))
+        #expect(StatusBarContent.make(app: editor.app, editor: editor, now: Date())[.task]?.text == "Read-only until you locate the video")
+        #expect(bar.rewrite.toolTip == "Read-only until you locate the video" && editor.exportUnavailable == "Locate the video to export.")
+        // f24: a different-looking file waits for Use It.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        try Data("different media".utf8).write(to: url); defer { try? FileManager.default.removeItem(at: url) }
+        editor.mediaResolved = true
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(0...2), envelope: nil, connector: nil)
+        await editor.prepareMediaRelink(url: url, probe: MediaProbeResult(durationSeconds: editor.project.media.source.durationSeconds, isPlayable: true))
+        lay()
+        #expect(editor.mediaRelinkCandidate != nil && dimmed() && refused() && editor.rewrite == nil)
+        #expect(editor.statusReadOnly?.text == "Read-only until you confirm the video" && editor.exportUnavailable == "Confirm the video to export.")
+        editor.runRewrite(); editor.presentExport()
+        #expect(editor.rewrite == nil && !editor.exportJob.isOpen && shell.panelJob(for: editor) == .captions)
+        // Use It: the editor edits again.
+        await editor.confirmMediaRelink(); lay()
+        #expect(editor.mediaRelinkCandidate == nil && editor.capabilities.edit && editor.mediaExportable && editor.statusReadOnly == nil)
+        #expect(bar.variant == .scope("five-1") && bar.rewrite.isEnabled && bar.tighten.isEnabled && bar.ask.isEnabled)
+    }
+    /// A video that is not checked yet is not a missing one: as a project opens, and again as it reverts, Locate… and the
+    /// read-only note wait until the video's check answers (on a slow or external volume that takes a while), and the
+    /// clip bar and status bar stay as they were before the check.
+    @Test func theReadOnlyNoteWaitsForTheVideosCheck() async throws {
+        _ = NSApplication.shared
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        let editor = EditorModel(document: VoxClipDocument(project: try project()), app: app, preview: DemoPreviewEngine(), exporter: RegressionExporter())
+        defer { editor.close() }
+        func silent() -> Bool {
+            !editor.mediaMissing && editor.mediaReadOnlyNote == nil && editor.statusReadOnly == nil
+                && StatusBarContent.make(app: app, editor: editor, now: Date())[.task] == nil
+        }
+        #expect(!editor.mediaResolved && silent(), "opening: the check has not answered")
+        await editor.start()
+        // The fixture's video is not on this Mac: the check answers that it is missing.
+        #expect(editor.mediaMissing && editor.mediaReadOnlyNote == "Read-only until you locate the video")
+        editor.reloadFromDocument(previousProjectID: editor.project.id)
+        #expect(!editor.mediaResolved && silent(), "reverting: the check runs again")
+        await editor.waitForPendingPreviewForAudit()
+        #expect(editor.mediaMissing && editor.mediaReadOnlyNote == "Read-only until you locate the video")
     }
     @Test func aRefusedRelinkKeepsTheBannerAndExplainsWhy() async throws {
         let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
@@ -154,6 +226,79 @@ import Testing
         #expect(editor.exportJob.draft.draftTarget == nil && !editor.exportJob.draft.addDisclosure)
         editor.finishExportJob()
         #expect(shell.panelJob(for: editor) == .captions && !editor.exportJob.isOpen)
+    }
+    /// The right panel's one job model (MVP integration): an export renders on while the panel shows another job. A new
+    /// Rewrite brings its job forward and its discard question takes the panel while it waits, without touching the
+    /// render; answered, Export shows again, and a Rewrite closed under Export leaves Export showing. The status bar's
+    /// export item and the percent follow the render throughout, and Done goes back to Captions once Rewrite is gone.
+    @Test func anExportRendersOnBehindTheRewriteJobAndItsQuestion() async throws {
+        let exporter = RegressionExporter(); await exporter.pauseFirstTarget()
+        let shell = try await shell(exporter: exporter), editor = try #require(shell.editor)
+        defer { editor.close() }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        shell.choose(.clip("five-1")); editor.presentExport()
+        editor.beginExport(targets: [.clip("five-1")], folder: directory)
+        while await exporter.jobs.isEmpty { await Task.yield() }
+        for _ in 0..<2_000 where editor.exportPercent != 25 { await Task.yield() }
+        func rendering() -> Bool {
+            editor.exporting && editor.exportTask != nil && editor.exportPercent == 25 && editor.statusExport.text == "Exporting 25%"
+                && editor.exportJob.isOpen && editor.exportJob.requestedIDs == ["five-1"] && PanelJob.available(in: editor).contains(.export)
+        }
+        #expect(rendering() && shell.panelJob(for: editor) == .export)
+        let session = RewriteSession(editor: editor, scope: .selection(0...2), envelope: nil, connector: nil)
+        editor.rewrite = session
+        #expect(shell.panelJob(for: editor) == .rewrite && rendering())
+        shell.choosePanelJob(.export, for: editor)
+        #expect(shell.panelJob(for: editor) == .export && shell.exportReturnJob == .rewrite)
+        var answered: [String] = []
+        session.task.ask(PanelConfirm(question: "Discard this change?",
+                                      cancel: PanelAction(id: "keepWorking", title: "Keep Working") { answered.append("keep"); session.task.dismissConfirm() },
+                                      confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { answered.append("discard") }))
+        #expect(shell.panelJob(for: editor) == .rewrite && rendering())
+        // Done can't end a render, and the question keeps the panel.
+        editor.finishExportJob()
+        #expect(shell.panelJob(for: editor) == .rewrite && rendering())
+        session.task.confirm?.cancel.perform()
+        #expect(answered == ["keep"] && shell.panelJob(for: editor) == .export && rendering())
+        editor.closeRewrite(returnFocus: false)
+        #expect(editor.rewrite == nil && shell.panelJob(for: editor) == .export && rendering())
+        await exporter.releaseFirstTarget(); await editor.exportTask?.value
+        #expect(!editor.exporting && editor.exports.count == 1 && editor.statusExport.text == "Exported")
+        editor.finishExportJob()
+        #expect(shell.panelJob(for: editor) == .captions && !PanelJob.available(in: editor).contains(.export))
+    }
+    /// Every Export entry opens the right panel's Export job on its own target, over an open Rewrite, which stays in
+    /// the switcher: the title row's Export (File › Export… calls the same `presentExport`) on the active tab, and an
+    /// Explorer EXPORTS row's Export again and Retry on the row's clip, from another tab. Done goes back to Rewrite.
+    @Test func everyExportEntryOpensTheJobOnItsTargetOverAnOpenRewrite() async throws {
+        let shell = try await shell(exporter: RegressionExporter()), editor = try #require(shell.editor)
+        defer { editor.close() }
+        shell.choose(.clip("five-1"))
+        let session = RewriteSession(editor: editor, scope: .selection(0...2), envelope: nil, connector: nil)
+        editor.rewrite = session
+        #expect(shell.panelJob(for: editor) == .rewrite)
+        let controller = EditorWorkController(model: editor, shell: shell)
+        defer { controller.tearDown() }
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 1280, height: 800), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false; window.contentView = controller.view
+        defer { window.contentView = nil; window.close() }
+        controller.export.performClick(nil)
+        #expect(shell.panelJob(for: editor) == .export && editor.exportJob.requestedIDs == ["five-1"] && shell.viewerShown)
+        #expect(PanelJob.available(in: editor) == [.captions, .rewrite, .export] && window.attachedSheet == nil)
+        editor.finishExportJob()
+        #expect(shell.panelJob(for: editor) == .rewrite && !editor.exportJob.isOpen)
+        let failed = ExportRecord(projectID: editor.project.id, targetID: "five-2", exportedAt: Date(timeIntervalSince1970: 1),
+            planFingerprint: "", styleId: editor.project.captions.styleId, aspect: editor.project.export.aspect, outputPath: "",
+            failed: true, retryFolder: "/fixture")
+        let row = try #require(ExportsListModel(project: editor.project, records: [failed]).rows.first)
+        editor.presentExport(row)
+        #expect(shell.panelJob(for: editor) == .export && editor.exportJob.requestedIDs == ["five-2"] && editor.exportJobContext == "Clip 2")
+        editor.presentExport(row, retry: true)
+        #expect(shell.panelJob(for: editor) == .export && editor.exportJob.requestedIDs == ["five-2"] && editor.exportJob.folderOverride?.path == "/fixture")
+        #expect(!editor.exporting && editor.activeClip?.id == "five-1" && editor.rewrite === session)
+        editor.finishExportJob()
+        #expect(shell.panelJob(for: editor) == .rewrite)
     }
     @Test func failedExportOffersTryAgainAndExplorerRetryOpensSetupWithTargetAndFolder() async throws {
         let exporter = RegressionExporter(failure: .exportFailed("Fixture failure"))

@@ -20,10 +20,10 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
         guard await app.shell.replaceProject(with: document), let model = app.shell.editor else { return }
         model.mediaResolved = true
         let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
-        let session = RewriteSession(editor: model, range: 12...25,
+        let session = RewriteSession(editor: model, scope: .selection(12...25),
             envelope: AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000)), connector: connector)
-        model.rewrite = session; model.rewriteRange = 12...25
-        session.edit("A clearer way to explain what happened in this passage.")
+        model.rewrite = session
+        try session.receivePassage("A clearer way to explain what happened in this passage."); session.finishRun(seconds: 1)
         try install(state, in: session)
     }
     static func install(_ state: String, in session: RewriteSession) throws {
@@ -32,6 +32,13 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
         session.configureGeneration(client: ElevenLabsVoiceLab(keys: RewriteGenerationFixtureKeys(), region: .default),
             store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
         session.generation?.showFixture(state, voice: record)
+        if state != "no-voice", let envelope = session.envelope {
+            let plan = try ClipTakePlan(project: session.project, scope: session.scope, envelope: envelope,
+                hunks: session.changes.enumerated().filter { $0.element.hunk.kind != .voice || session.includedVoice.contains($0.offset + 1) }.map { $0.element.hunk },
+                makeInput: { _ in throw VoiceLabError.invalidInput })
+            plan.showFixture(state)
+            session.takePlan = plan
+        }
     }
     static func captures(app: AppModel, directory: URL) throws -> [String] {
         let previous = app.settings
@@ -46,14 +53,16 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
             defer { model.close() }
             model.mediaResolved = true
             let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
-            let session = RewriteSession(editor: model, range: 12...25,
+            let session = RewriteSession(editor: model, scope: .selection(12...25),
                 envelope: AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000)), connector: connector)
-            model.rewrite = session; model.rewriteRange = 12...25
-            session.edit("A clearer way to explain what happened in this passage.")
+            model.rewrite = session
+            try session.receivePassage("A clearer way to explain what happened in this passage."); session.finishRun(seconds: 1)
             try install(state, in: session)
             for width: CGFloat in [300, 360, 560] {
                 for scheme: ColorScheme in [.light, .dark] {
-                    let content = RewritePanel(session: session).snapshot.frame(width: width).sceneAccent().environment(\.colorScheme, scheme)
+                    guard let generation = session.generation else { throw CocoaError(.coderInvalidValue) }
+                    let content = DirectorTakeRows(session: session, generation: generation).padding(16)
+                        .frame(width: width).sceneAccent().environment(\.colorScheme, scheme)
                     let renderer = ImageRenderer(content: content)
                     renderer.scale = 2
                     guard let image = renderer.nsImage, let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),

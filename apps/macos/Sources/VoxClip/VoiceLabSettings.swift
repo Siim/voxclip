@@ -15,11 +15,15 @@ import VoxClipMedia
                         else { confirmBeta = true }
                     } else {
                         app.set("voiceLab.enabled", .bool(false))
-                        app.speakerModelLibrary.task?.cancel(); app.speakerModelLibrary.confirmation.respond(false)
+                        app.speakerModelLibrary.cancelDownload()
                         if !app.voiceLabSettingsVisible { app.settingsPane = "general" }
                     }
                 })).disabled(session.busy || session.recorder.recording)
                 Text("Voice Lab is optional. Import, cut, captions, clips and export work without it.").font(.caption)
+            }
+            if confirmBeta {
+                Section("Turn on Voice Lab") { VoiceFirstUseCard(session: session) }
+                    .task { await session.prepareVoiceJob() }
             }
             if session.enabled {
                 keySection
@@ -34,13 +38,8 @@ import VoxClipMedia
             }
             if let message = session.message { Section { Text(message).textSelection(.enabled).accessibilityIdentifier("voice-lab-message") } }
         }.formStyle(.grouped)
-            .alert("Turn on Voice Lab?", isPresented: $confirmBeta) {
-                Button("Turn on") { app.set("voiceLab.betaNoticeAccepted", .bool(true)); app.set("voiceLab.enabled", .bool(true)) }
-                Button("Cancel", role: .cancel) {}.keyboardShortcut(.defaultAction)
-            } message: { Text(VoiceLabSession.betaCopy) }
             .onExitCommand { confirmBeta = false }
-            .sheet(isPresented: $session.showEnrollment) { CreateVoiceSheet(session: session, shared: app.shared) }
-            .sheet(item: Binding(get: { session.showEnrollment ? nil : session.confirmation }, set: { session.confirmation = $0 })) { VoiceLabRequestSheet(session: session, action: $0, shared: app.shared) }
+            .sheet(item: Binding(get: { session.confirmation }, set: { session.confirmation = $0 })) { VoiceLabRequestSheet(session: session, action: $0, shared: app.shared) }
             .task(id: session.enabled) { await session.refreshEnabledState() }
     }
     private var keySection: some View {
@@ -81,26 +80,8 @@ import VoxClipMedia
                 Button("Remove This Voice", role: .destructive) { Task { await session.cancelEnrollment() } }.disabled(session.busy)
                     .accessibilityLabel(Self.actionAccessibilityLabel("Remove unfinished voice", context: context))
             }
-            ForEach(operations) { operation in
-                let context = contexts["operation-\(operation.id)", default: ""]
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(operation.kind == .create ? "Voice creation" : "Voice removal").fontWeight(.medium)
-                    Text(operation.displayState).font(.caption)
-                    if operation.needsCreatorRecoveryReview, operation.recoveryNeedsReview == true {
-                        Button(VoiceLabSession.Request.stopLooking(operation.id).title) { session.request(.stopLooking(operation.id)) }
-                            .accessibilityLabel(Self.actionAccessibilityLabel(VoiceLabSession.Request.stopLooking(operation.id).title, context: context)).disabled(session.busy)
-                    }
-                    Button("Retry") { Task { await session.load(force: true) } }.disabled(session.busy)
-                        .accessibilityLabel(Self.actionAccessibilityLabel("Retry", context: context))
-                    if operation.kind == .create {
-                        Button("Remove This Voice", role: .destructive) { Task { await session.withdrawOperation(operation) } }.disabled(session.busy)
-                            .accessibilityLabel(Self.actionAccessibilityLabel("Remove unfinished voice", context: context))
-                    }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel(context)
-            }
-            Button("Create Your Voice…") { session.openEnrollment() }.disabled(session.busy || session.planMessage != nil || session.unsavedRecord != nil || !session.pendingCreations.isEmpty)
+            VoiceRecoveryRows(session: session, shared: app.shared)
+            Text("Make your voice from Rewrite when a phrase needs it.").font(.caption)
             Text(session.speakerMessage).font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -214,6 +195,48 @@ import VoxClipMedia
     }
 }
 
+/// Shared management and inline-job recovery. A retry reconciles existing work; it never creates another voice.
+@MainActor struct VoiceRecoveryRows: View {
+    @Bindable var session: VoiceLabSession
+    let shared: SharedResources?
+    var inline = false
+    @State private var stopLooking: UUID?
+    var body: some View {
+        let operations = session.operations.filter { !$0.finished }
+        let contexts = VoiceLabSettings.accessibilityContexts(records: session.visibleRecords, operations: operations, shared: shared)
+        return Group {
+            ForEach(operations) { operation in
+                let context = contexts["operation-\(operation.id)", default: ""]
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(operation.kind == .create ? "Voice creation" : "Voice removal").fontWeight(.medium)
+                    Text(operation.displayState).font(.caption)
+                    if operation.needsCreatorRecoveryReview, operation.recoveryNeedsReview == true {
+                        Button(VoiceLabSession.Request.stopLooking(operation.id).title) {
+                            if inline { stopLooking = operation.id } else { session.request(.stopLooking(operation.id)) }
+                        }
+                            .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel(VoiceLabSession.Request.stopLooking(operation.id).title, context: context)).disabled(session.busy)
+                    }
+                    if inline, stopLooking == operation.id {
+                        Text("The remote state stays unknown. This stops recovery without deleting a voice from ElevenLabs.")
+                        HStack {
+                            Button("Cancel") { stopLooking = nil }
+                            Button("Stop Looking", role: .destructive) { Task { await session.approve(.stopLooking(operation.id)); stopLooking = nil } }
+                        }
+                    }
+                    Button("Retry") { Task { await session.load(force: true) } }.disabled(session.busy)
+                        .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Retry", context: context))
+                    if operation.kind == .create {
+                        Button("Remove This Voice", role: .destructive) { Task { await session.withdrawOperation(operation) } }.disabled(session.busy)
+                            .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Remove unfinished voice", context: context))
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(context)
+            }
+        }
+    }
+}
+
 @MainActor private struct VoiceLabRequestSheet: View {
     @Bindable var session: VoiceLabSession
     let action: VoiceLabSession.Request
@@ -226,8 +249,6 @@ import VoxClipMedia
             Text(VoiceLabSession.providerCopy)
             switch action {
             case .subscription: Text("Reads your subscription, plan, available voice slots and pending voice verification status. No audio, video or transcript is sent. This check is free.")
-            case .verify: Text("Sends only the statement recording to ElevenLabs Scribe v2. No video is sent. \(session.verificationCost)")
-            case .create: Text(session.creationCopy)
             case .delete: Text("Deletes this voice from ElevenLabs, removes the local statement recording, and marks the local consent record deleted. Existing rendered takes stay playable and labelled. This action is free.")
             case .removeLocal: Text("Removes the local consent statement and records that the remote state is unknown. The voice may stay in your ElevenLabs account. This action is free.")
             case .stopLooking: Text("Stops recovery without deleting any voice from ElevenLabs. Records that the remote state is unknown; the voice may stay in your ElevenLabs account. This action is free.")
@@ -244,101 +265,5 @@ import VoxClipMedia
                 }
             }
         }.padding(24).frame(width: 500).onExitCommand { session.confirmation = nil }
-    }
-}
-
-@MainActor private struct CreateVoiceSheet: View {
-    @Bindable var session: VoiceLabSession
-    let shared: SharedResources?
-    var body: some View {
-        let records = session.visibleRecords + (session.unsavedRecord.map { [$0] } ?? [])
-        let contexts = VoiceLabSettings.accessibilityContexts(records: records, operations: session.operations.filter { !$0.finished }, shared: shared)
-        let context = session.unsavedRecord.flatMap { contexts["record-\($0.id)"] } ?? ""
-        return VStack(alignment: .leading, spacing: 16) {
-            Text("Create Your Voice").font(.title2)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(VoiceLabSession.noticeCopy)
-                    HStack { Link("ElevenLabs terms", destination: URL(string: "https://elevenlabs.io/terms-of-use")!); Link("Prohibited Use Policy", destination: URL(string: "https://elevenlabs.io/use-policy")!) }
-                    Text(session.speakerMessage).font(.caption)
-                    attestations
-                    if let statement = session.statement {
-                        if session.verified { trainingChoice }
-                        if !session.verified || session.trainingSource == .readAloud {
-                            Text(session.verified ? "Training read-aloud · about 90 seconds" : "Read this aloud").font(.headline)
-                            Text(session.verified ? session.script : statement.text).textSelection(.enabled).accessibilityIdentifier("voice-consent-teleprompter")
-                        }
-                        if statement.language == "et" { Text("Estonian draft — pending the user's review.").font(.caption) }
-                    }
-                    Text("If you use a screen reader, wear headphones so it isn't recorded.").font(.caption).foregroundStyle(.secondary)
-                    recordingControls
-                    if session.recorder.failure == .silent {
-                        Text("Silent").font(.headline)
-                    }
-                    if let message = session.message { Text(message).textSelection(.enabled) }
-                    if session.recorder.failure == .silent {
-                        Button("Open Settings") { NSWorkspace.shared.open(MicrophoneError.privacySettingsURL) }
-                    }
-                    if session.projectMismatch && session.trainingSource == .project {
-                        Button("Record a Read-Aloud") { session.useReadAloud() }.disabled(session.busy)
-                    }
-                }.frame(maxWidth: .infinity, alignment: .leading)
-            }
-            HStack {
-                Spacer()
-                if session.unsavedRecord == nil {
-                    Button("Cancel", role: .cancel) { Task { await session.cancelEnrollment() } }.keyboardShortcut(.cancelAction).disabled(session.busy)
-                } else {
-                    Button("Remove This Voice", role: .destructive) { Task { await session.cancelEnrollment() } }.disabled(session.busy)
-                        .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Remove unfinished voice", context: context))
-                }
-                if session.unsavedRecord != nil {
-                    Button("Retry saving consent record") { Task { await session.retrySavingRecord() } }.disabled(session.busy)
-                        .accessibilityLabel(VoiceLabSettings.actionAccessibilityLabel("Retry saving consent record", context: context))
-                } else {
-                    Button("Create voice…") { Task { await session.prepareCreation() } }.disabled(!session.canCreate || session.recorder.recording)
-                }
-            }
-        }.padding(24).frame(width: 600, height: 680).interactiveDismissDisabled()
-            .sheet(item: $session.confirmation) { VoiceLabRequestSheet(session: session, action: $0, shared: shared) }
-            .onChange(of: session.recorder.recording) { wasRecording, recording in
-                if wasRecording && !recording { Task { await session.finishRecording() } }
-            }
-    }
-    private var attestations: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextField("Display name", text: $session.displayName)
-            Text("1–60 Unicode scalars; no control characters.").font(.caption)
-            Toggle("This is my own voice.", isOn: $session.ownVoice)
-            Toggle("I am 18 or older.", isOn: $session.adult)
-            Toggle("I will use it only on videos of myself.", isOn: $session.ownVideosOnly)
-        }.disabled(session.statement != nil || session.busy || session.recorder.recording)
-    }
-    /// §6.5.2: after verification, this project's audio or a read-aloud.
-    @ViewBuilder private var trainingChoice: some View {
-        if session.offersProjectAudio {
-            Picker("Training audio", selection: Binding(get: { session.trainingSource }, set: { session.chooseTrainingSource($0) })) {
-                Text(VoiceLabSession.projectChoice).tag(VoiceLabSession.TrainingSource.project).disabled(!session.projectChoiceEnabled)
-                Text(VoiceLabSession.readAloudChoice).tag(VoiceLabSession.TrainingSource.readAloud)
-            }.pickerStyle(.radioGroup).labelsHidden().accessibilityLabel("Training audio").disabled(session.busy || session.recorder.recording)
-        }
-        Text(session.projectAudioLine).font(.caption).foregroundStyle(.secondary)
-    }
-    @ViewBuilder private var recordingControls: some View {
-        if session.recorder.recording {
-            ProgressView(value: session.recorder.level).accessibilityLabel("Microphone level")
-            Text(String(format: "%.1f seconds", session.recorder.seconds)).monospacedDigit()
-            Button("Stop recording") { Task { await session.stopRecording() } }
-        } else if session.verified {
-            if session.trainingSource == .readAloud {
-                Button(session.trainingReady ? "Record training again" : "Record training read-aloud") { Task { await session.beginTraining() } }.disabled(session.busy)
-            }
-        } else {
-            HStack {
-                Button(session.statement == nil ? "Record statement" : "Record statement again") { Task { await session.beginStatement() } }.disabled(!session.canRecord)
-                Button("Verify statement · < $0.01") { session.request(.verify) }.disabled(!session.hasStatementRecording || session.busy)
-            }
-        }
-        if session.busy { ProgressView("Working…") }
     }
 }

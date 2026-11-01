@@ -101,7 +101,7 @@ import Testing
 
         editor.app.settings.values["voiceLab.enabled"] = .bool(true)
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
-        editor.rewrite = RewriteSession(editor: editor, range: 3...5, envelope: nil, connector: nil)
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(3...5), envelope: nil, connector: nil)
         let rewrite = await measure()
         #expect(rewrite.markers["viewer.box"] == CGRect(x: 0, y: 0, width: 324, height: 132), "no Rewrite compaction")
         let scroll = try #require(rewrite.viewport)
@@ -116,7 +116,7 @@ import Testing
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         let size = CGSize(width: 404, height: 422)
         let before = markers(PanelHost(model: editor, shell: shell, width: size.width, height: size.height), size: size)
-        editor.rewrite = RewriteSession(editor: editor, range: 3...5, envelope: nil, connector: nil)
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(3...5), envelope: nil, connector: nil)
         let after = markers(PanelHost(model: editor, shell: shell, width: size.width, height: size.height), size: size)
         for found in [before, after] {
             #expect(found["viewer.box"] == CGRect(x: 0, y: 0, width: 404, height: 227))
@@ -306,7 +306,7 @@ import Testing
 
         shell.selection = .clip("five-1")
         let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
-        let session = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.rewrite = session
         #expect(PanelJob.available(in: editor) == [.captions, .rewrite] && shell.panelJob(for: editor) == .rewrite)
         // The switcher shows Captions beside the open session, with no undo step and no document change.
@@ -324,12 +324,12 @@ import Testing
         // A new session shows Rewrite again, as opening one always has.
         editor.closeRewrite(returnFocus: false)
         #expect(shell.panelJob(for: editor) == .captions)
-        let next = RewriteSession(editor: editor, range: lower...(lower + 1), envelope: nil, connector: nil)
+        let next = RewriteSession(editor: editor, scope: .selection(lower...(lower + 1)), envelope: nil, connector: nil)
         editor.rewrite = next
         #expect(shell.panelJob(for: editor) == .rewrite)
-        // Voice Lab's Rewrite off hides the job.
+        // Text Rewrite needs no Voice Lab (impl-plan V13): with it off the job stays.
         editor.app.settings.values["voiceLab.enabled"] = .bool(false)
-        #expect(PanelJob.available(in: editor) == [.captions] && shell.panelJob(for: editor) == .captions)
+        #expect(PanelJob.available(in: editor) == [.captions, .rewrite] && shell.panelJob(for: editor) == .rewrite)
         #expect(!undo.canUndo && !editor.document.isDocumentEdited)
     }
 
@@ -356,7 +356,7 @@ import Testing
         editor.app.settings.values["voiceLab.enabled"] = .bool(true)
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
-        editor.rewrite = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        editor.rewrite = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         await settle(host) { shown() == ["Rewrite", "Clip 1"] }
         #expect(shown() == ["Rewrite", "Clip 1"])
         shell.selection = .clip("five-2")

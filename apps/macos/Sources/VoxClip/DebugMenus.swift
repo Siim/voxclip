@@ -27,10 +27,10 @@ import VoxClipCore
         func walk(_ menu: NSMenu) -> [NSMenuItem] { menu.items.flatMap { [$0] + ($0.submenu.map(walk) ?? []) } }
         let items = walk(menu)
         let bindings: [(Int, String, NSEvent.ModifierFlags)] = [
-            (61, "k", .command), (29, "k", [.command, .option]), (34, "k", [.command, .shift]),
+            (18, "=", .command), (18, "+", .command), (19, "-", .command), (61, "k", .command), (29, "k", [.command, .option]), (34, "k", [.command, .shift]),
             (60, "c", [.command, .option]), (56, "j", .command), (16, "s", [.command, .control]),
             (12, "i", [.command, .option]), (50, "\t", [.control, .shift]), (51, "\t", .control),
-            (50, "[", [.command, .shift]), (51, "]", [.command, .shift]),
+            (50, "{", .command), (51, "}", .command),
             (40, "\r", [.command, .shift]), (38, "r", [.command, .shift]),
             (24, "j", []), (25, "k", []), (26, "l", []), (30, "i", []), (31, "o", []),
             (32, "[", []), (33, "]", []), (21, " ", []), (22, " ", .shift), (23, "p", []),
@@ -53,15 +53,17 @@ import VoxClipCore
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         func item(_ menu: String, _ title: String) -> NSMenuItem? {
             let items = NSApp.mainMenu?.item(withTitle: menu)?.submenu
+            if menu == "View", let tag = ["Bigger Text": 18, "Smaller Text": 19][title] { return items?.item(withTag: tag) }
             return items?.item(withTitle: title)
                 ?? (title == "Close Project" ? items?.item(withTitle: "Close Tab") ?? items?.item(withTitle: "Close") : nil)
+                ?? (title.hasPrefix("Rewrite") ? items?.item(withTag: 38) : nil)
         }
         guard let delegate = NSApp.delegate as? AppDelegate else { throw CocoaError(.coderInvalidValue) }
         let bindings: [(String, String, String, NSEvent.ModifierFlags)] = [
             ("File", "New Project from Video…", "n", .command), ("File", "Close Project", "w", .command),
             ("File", "Open…", "o", .command), ("File", "Export…", "e", .command),
             ("View", "Home", "1", .command), ("View", "Full Take", "2", .command),
-            ("Clip", "Find Clips…", "k", [.command, .shift]), ("Edit", "Rewrite…", "r", [.command, .shift]),
+            ("Clip", "Find Clips…", "k", [.command, .shift]), ("Edit", "Rewrite Full Take", "r", [.command, .shift]),
             ("View", "Hide Viewer", "i", [.command, .option]), ("View", "Hide Sidebar", "s", [.command, .control]),
             ("Clip", "Set Start", "i", []), ("Clip", "Set End", "o", []),
             ("Clip", "Previous Clip", "[", []), ("Clip", "Next Clip", "]", []),
@@ -81,7 +83,7 @@ import VoxClipCore
             ("Clip", "Dismiss Suggestion", String(UnicodeScalar(NSDeleteCharacter)!), []),
             ("Clip", "Rename Clip…", String(UnicodeScalar(NSCarriageReturnCharacter)!), []),
             ("Clip", "Remove Clip", String(UnicodeScalar(NSDeleteCharacter)!), []),
-            ("View", "Hide Timeline", "j", .command), ("View", "Bigger Text", "+", .command), ("View", "Smaller Text", "-", .command), ("View", "Actual Size", "0", .command),
+            ("View", "Hide Timeline", "j", .command), ("View", "Bigger Text", "=", .command), ("View", "Smaller Text", "-", .command), ("View", "Actual Size", "0", .command),
             ("VoxClip", "Settings…", ",", .command)
         ]
         for (menu, title, key, modifiers) in bindings {
@@ -172,32 +174,42 @@ import VoxClipCore
         invoke("Clip", "Find Clips…")
         check("Clip › Find Clips… (⇧⌘K, tag 34) opens Find Clips at the clip bar", editor.showFindClips && editor.findClipsAnchor == .clipBar)
         editor.showFindClips = false
+        // Edit › Rewrite {scope} (impl-plan V13, design.md §8): no Voice Lab needed, titled for the scope, and it runs at
+        // once. A stub on this Mac answers; the settings are put back.
+        let rewriteKeys = ["llm.connector", "llm.model.ollama"]
+        let savedRewrite = rewriteKeys.map { app.settings.values[$0] }, savedOverride = app.connectorOverride
+        app.settings.values["llm.connector"] = .string("ollama")
+        app.settings.values["llm.model.ollama"] = .string("fixture-local")
+        let stub = ConsentFixtureConnector(id: .ollama)
+        app.connectorOverride = { _ in stub }
         app.set("voiceLab.enabled", .bool(false))
-        let editMenu = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu
-        if let editMenu { delegate.menuNeedsUpdate(editMenu) }
-        let rewriteItem = item("Edit", "Rewrite…")
-        invoke("Edit", "Rewrite…")
-        results.append(.equal("Rewrite menu uses the off-by-default Voice Lab opt-in", expected: [
-            "item exists": true, "hidden": true, "validated": false, "hidden shortcut allowed": false,
-            "opt-in opened": false, "Rewrite opened": false, "opening task": false
+        let rewriteItem = NSApp.mainMenu?.item(withTitle: "Edit")?.submenu?.item(withTag: 38)
+        let validated = rewriteItem.map(delegate.validateMenuItem) == true
+        results.append(.equal("Edit › Rewrite needs no Voice Lab and names the selection", expected: [
+            "item exists": "true", "hidden": "false", "validated": "true", "title": "Rewrite Selection"
         ], actual: [
-            "item exists": rewriteItem != nil, "hidden": rewriteItem?.isHidden == true,
-            "validated": rewriteItem.map(delegate.validateMenuItem) == true,
-            "hidden shortcut allowed": rewriteItem?.allowsKeyEquivalentWhenHidden == true,
-            "opt-in opened": editor.showVoiceLabOptIn, "Rewrite opened": editor.rewrite != nil,
-            "opening task": editor.rewriteOpenTask != nil
+            "item exists": "\(rewriteItem != nil)", "hidden": "\(rewriteItem?.isHidden == true)", "validated": "\(validated)", "title": rewriteItem?.title ?? ""
         ]))
-        editor.showVoiceLabOptIn = false
-        app.set("voiceLab.enabled", .bool(true))
-        if let editMenu { delegate.menuNeedsUpdate(editMenu) }
-        invoke("Edit", "Rewrite…")
+        if let rewriteItem, let action = rewriteItem.action { _ = delegate.perform(action, with: rewriteItem) }
         await editor.rewriteOpenTask?.value
-        results.append(.equal("Shift-Command-R opens the selected passage", expected: [
-            "visible": true, "selected passage": true, "Rewrite opened": true
+        await editor.openRewrite?.actionTask?.value
+        let proposed = if case .proposal = editor.openRewrite?.task.state { true } else { false }
+        results.append(.equal("Shift-Command-R runs Rewrite on the selected words at once", expected: [
+            "Rewrite opened": true, "selection scope": true, "proposed": true, "sends": true
         ], actual: [
-            "visible": rewriteItem?.isHidden == false, "selected passage": editor.rewriteRange == 0...0,
-            "Rewrite opened": editor.rewrite != nil
+            "Rewrite opened": editor.rewrite != nil, "selection scope": editor.rewriteScope == .selection(0...0), "proposed": proposed, "sends": await stub.sends == 1
         ]))
+        editor.closeRewrite(returnFocus: false)
+        editor.selectedWordIDs = []
+        app.shell.selection = .clip(kept.id)
+        let clipTitle = rewriteItem.map { _ = delegate.validateMenuItem($0); return $0.title }
+        app.shell.selection = .fullTake
+        let takeTitle = rewriteItem.map { _ = delegate.validateMenuItem($0); return $0.title }
+        check("Edit › Rewrite follows the scope (\(clipTitle ?? ""), \(takeTitle ?? ""))", clipTitle == "Rewrite Clip 1" && takeTitle == "Rewrite Full Take")
+        app.connectorOverride = savedOverride
+        for (key, value) in zip(rewriteKeys, savedRewrite) { app.settings.values[key] = value }
+        app.set("voiceLab.enabled", .bool(true))
+        editor.selectedWordIDs = [first.id]
         check("Insert Words stays hidden until Core can place insertions", item("Edit", "Insert Words…") == nil)
         editor.closeRewrite(returnFocus: false)
         app.shell.selection = .clip(suggestion.id)
@@ -215,7 +227,7 @@ import VoxClipCore
         check("Command-period cancels the running clip search", search.isCancelled)
         editor.finding = false; editor.findTask = nil
         for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
-            try await DebugUISuite.snapshot(VoiceLabOptInView(editor: editor), name: "voice-lab-opt-in-\(name)", size: NSSize(width: 460, height: 270), appearance: appearance, directory: directory)
+            try await DebugUISuite.snapshot(DirectorVoiceSteps(session: app.voiceLabSession, model: editor), name: "voice-job-first-use-\(name)", size: NSSize(width: 404, height: 600), appearance: appearance, directory: directory)
         }
         let menus: [[String: Any]] = NSApp.mainMenu?.items.compactMap { parent in
             guard let submenu = parent.submenu else { return nil }

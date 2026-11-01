@@ -15,3 +15,8 @@ All second-to-sample conversions use editing §4.1 jsRound on the source grid. A
 - `roomTone`: §8.7 item 3, the lowest summed power over 50 whole frames inside a gap of at least 0.5 s between items of any kind, with take edges and ties. With no qualifying gap the result is `roomToneUnavailable`: there is no fallback run, and the UI offers Clean audio instead. A run must hold both 50 whole frames and `jsRound(0.5 × rate)` samples; it returns the second. At 22.05 kHz the frames are longer (11050 against 11025 samples) and at 11.025 kHz the samples are (5513 against 5500). At each rate, one gap fits exactly and one is a single sample short, so the short case fails only through the term that wins at its rate.
 
 Regenerate with `python3 -I tools/fixtures/voice-lab/generate_window.py`.
+
+This isolated command needs no sibling imports and writes only this legacy 606-case file.
+The several-window review contract has its own schema and generator in
+[window-all-README.md](window-all-README.md); it does not add keys to this file.
+Both window files require byte-exact regeneration, including computed binary64 seconds.

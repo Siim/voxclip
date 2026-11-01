@@ -144,12 +144,12 @@ extension WorkspaceShell {
     }
     /// The tab row shows: an editor shows, not Home.
     var tabsShown: Bool { editor != nil && !showsHome }
-    /// The tabs that show the dirty dot: those whose hunks wait (`tabs.dirty`, set by V14),
-    /// and the tab of an open Rewrite session whose new words differ from its words, on
-    /// whichever tab is active (impl-plan §3.3).
+    /// The tabs that show the dirty dot: those whose hunks wait (`tabs.dirty`), and the tab
+    /// of an open Rewrite session whose proposal has changes not reviewed yet (V14's Keep and
+    /// Undo, V15's change list), on whichever tab is active (impl-plan §3.3).
     var dirtyTabs: Set<EditorTab> {
         var dirty = tabs.dirty
-        if let session = editor?.openRewrite, session.isOpen, session.review?.diff.hunks.isEmpty == false,
+        if let session = editor?.openRewrite, session.hasUnreviewedChanges,
            let tab = tabs.open.first(where: { $0.clipID == session.project.edits.activeClipId }) {
             dirty.insert(tab)
         }

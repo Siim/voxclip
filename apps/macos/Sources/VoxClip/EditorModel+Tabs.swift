@@ -25,10 +25,12 @@ extension EditorModel {
         guard !isLeaving else { return false }
         if let clipID, !project.edits.clips.contains(where: { $0.id == clipID }) { return false }
         guard project.edits.activeClipId != clipID else { return true }
+        app.voiceLabSession.leaveVoiceControls(owner: self)
         preview.pause(); isPlaying = false
         document.replaceProject(project.scoped(to: clipID))
         refresh()
         schedulePreviewUpdate(mediaChanged: false)
+        refreshPendingSendScope()
         return true
     }
 
@@ -77,48 +79,6 @@ extension EditorModel {
         get { openRewrite.flatMap { $0.project.edits.activeClipId == renderedActiveClipID ? $0 : nil } }
         set { openRewrite = newValue }
     }
-    /// The words the transcript and the timeline mark for Rewrite: the open session's on
-    /// its own tab, none on another tab, and with no session whatever was set. Setting it
-    /// sets `openRewriteRange`.
-    var rewriteRange: ClosedRange<Int>? {
-        get { openRewrite != nil && rewrite == nil ? nil : openRewriteRange }
-        set { openRewriteRange = newValue }
-    }
-
-    /// The open Rewrite session outlives an edit from `old` to `new` when the edit is
-    /// outside the session's clip and words (impl-plan §3.3, design.md R3): the clip's
-    /// bounds, the cuts, corrections and pauses of its words and the session's words, the
-    /// transcript, media, pause settings and Voice Lab state are unchanged. Other clips,
-    /// Find Clips results, captions, export and share settings are outside it. A session
-    /// opened on Full Take has every word in scope, so any edit closes it, as before.
-    func rewriteOutlives(_ old: Project, _ new: Project) -> Bool {
-        guard let session = openRewrite, session.isOpen, case .clip(let id) = session.scope,
-              let clip = old.edits.clips.first(where: { $0.id == id }),
-              let moved = new.edits.clips.first(where: { $0.id == id }),
-              moved.startWordId == clip.startWordId, moved.endWordId == clip.endWordId,
-              var lower = index(clip.startWordId), var upper = index(clip.endWordId), lower <= upper else { return false }
-        if let first = session.source.first.flatMap({ index($0.id) }), let last = session.source.last.flatMap({ index($0.id) }) {
-            lower = min(lower, first)
-            upper = max(upper, last)
-        }
-        let words = lower...upper
-        func inside(_ project: Project) -> Project {
-            var project = project
-            project.modifiedAt = .distantPast
-            project.title = nil
-            project.edits.activeClipId = nil
-            project.edits.clips = []
-            project.edits.cutWordIds = project.edits.cutWordIds.filter { wordIndex[$0].map(words.contains) ?? true }
-            project.edits.cutPauseIds = project.edits.cutPauseIds.filter { id in
-                pauseIndex[id].map { $0.afterIndex >= lower && $0.afterIndex < upper } ?? true
-            }
-            project.edits.corrections = project.edits.corrections.filter { wordIndex[$0.key].map(words.contains) ?? true }
-            project.captions = CaptionSettings()
-            project.export = ProjectExport()
-            project.share = ProjectShare()
-            project.ai = ProjectAI()
-            return project
-        }
-        return inside(old) == inside(new)
-    }
+    /// The scope the open Rewrite session rewrites, on its own tab; nil with no session there.
+    var rewriteScope: RewriteScope? { rewrite?.rewriteScope }
 }

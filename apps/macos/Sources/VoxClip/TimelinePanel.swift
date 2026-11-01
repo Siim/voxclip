@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
+import Observation
 import VoxClipCore
 
-// The v2 timeline panel (ux/v2 notes.md §6, impl-plan V7a and V7b): a 28 pt toolbar over the
+// The v2 timeline panel (ux/v2 notes.md §6, impl-plan V7a, V7b and V9): a 28 pt toolbar over the
 // AppKit lanes (TimelineCanvas.swift). It fills the shell's bottom panel, which ⌘J hides.
 
 /// The bottom panel: its toolbar and the lanes. F6 stops here (EditorPaneFocus); ← → and
@@ -10,11 +11,13 @@ import VoxClipCore
 @MainActor struct TimelinePanel: View {
     let model: EditorModel
     let shell: WorkspaceShell
+    @State private var zoom = TimelineZoom()
     @State private var exportsSelected = false
     var body: some View {
         VStack(spacing: 0) {
-            TimelineToolbar(model: model, shell: shell, exportsSelected: $exportsSelected)
-            if exportsSelected { TimelineExportsList(model: model) } else { TimelineCanvas(model: model) }
+            TimelineToolbar(model: model, shell: shell, zoom: zoom, exportsSelected: $exportsSelected)
+            if exportsSelected { TimelineExportsList(model: model) }
+            else { TimelineCanvas(model: model, shell: shell, zoom: zoom) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.window"))
@@ -27,38 +30,32 @@ import VoxClipCore
             case .home: 115
             default: 119
             }
-            return TimelineCanvasView.handleKey(code, shift: press.modifiers.contains(.shift), model: model) ? .handled : .ignored
+            guard press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
+            let handled = zoom.canvas?.interaction.key(code, shift: press.modifiers.contains(.shift))
+                ?? TimelineInteraction.handleKey(code, shift: press.modifiers.contains(.shift), model: model)
+            return handled ? .handled : .ignored
         }
     }
 }
 
 /// The toolbar (notes.md §6, f1): the TIMELINE tab, Edited / Source, the transport ⏮ ▶ ⏭,
 /// the timecode readout, the src TC and the selection's length; Hide (⌘J) at the end.
-/// Zoom, track height, snapping and Maximize arrive with V9. EXPORTS reuses the Explorer ledger list. When the
+/// Zoom, track height, snapping and Maximize follow notes.md §6; EXPORTS shares the Explorer ledger. When the
 /// panel is too narrow the src TC goes first, then the selection's length (impl-plan §3.5).
 @MainActor struct TimelineToolbar: View {
     let model: EditorModel
     let shell: WorkspaceShell
+    var zoom = TimelineZoom()
     @Binding var exportsSelected: Bool
-    init(model: EditorModel, shell: WorkspaceShell, exportsSelected: Binding<Bool> = .constant(false)) {
-        self.model = model; self.shell = shell; _exportsSelected = exportsSelected
+    init(model: EditorModel, shell: WorkspaceShell, zoom: TimelineZoom = TimelineZoom(), exportsSelected: Binding<Bool> = .constant(false)) {
+        self.model = model; self.shell = shell; self.zoom = zoom; _exportsSelected = exportsSelected
     }
     var body: some View {
+        GeometryReader { geometry in
         HStack(spacing: 6) {
             panelTab("Timeline", selected: !exportsSelected) { exportsSelected = false }
             panelTab("Exports", selected: exportsSelected) { exportsSelected = true }
-            if !exportsSelected { transport }
-            Spacer(minLength: 0)
-            TimelineToolbarButton(symbol: "chevron.down.square", name: EditorIconAction.hideTimeline.name, help: "Hide Timeline (⌘J)") { shell.toggleTimeline() }
-                .disabled(!shell.layout.rightVisible)
-                .accessibilityIdentifier("voxclip.timeline.hide")
-        }
-        .padding(.leading, 10).padding(.trailing, 6)
-        .frame(height: TimelineMetrics.toolbar)
-        .overlay(alignment: .bottom) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
-    }
-    private var transport: some View {
-        HStack(spacing: 6) {
+            if !exportsSelected {
             Spacer().frame(width: 10)
             TimelineAxisPicker(model: model)
             Spacer().frame(width: 14)
@@ -71,6 +68,7 @@ import VoxClipCore
                 .accessibilityIdentifier("voxclip.timeline.end")
             Spacer().frame(width: 8)
             TimelineReadout(model: model)
+            if geometry.size.width >= 920 {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 6) {
                     Spacer().frame(width: 10)
@@ -84,8 +82,49 @@ import VoxClipCore
                 }
                 Color.clear.frame(width: 0, height: 0)
             }
-            .layoutPriority(1)
+            .layoutPriority(-1)
+            }
+            Spacer(minLength: 0)
+            if geometry.size.width >= 720 {
+                Button { model.timelineSnapping.toggle() } label: {
+                    TimelineSnapGlyph().stroke(DesignValues.color(model.timelineSnapping ? "text.primary" : "text.tertiary"), lineWidth: 1)
+                        .frame(width: 12, height: 12).frame(width: 24, height: 22)
+                        .background(model.timelineSnapping ? DesignValues.color("bg.selectedRow") : .clear, in: RoundedRectangle(cornerRadius: 5))
+                }
+                    .buttonStyle(.plain).help("Snap to words").accessibilityLabel("Snapping")
+                    .accessibilityValue(model.timelineSnapping ? "On" : "Off")
+                    .accessibilityIdentifier("voxclip.timeline.snapping")
+                    .columnLayoutEvidence("timeline.snapping")
+            }
+            if geometry.size.width >= 840 {
+                Menu {
+                    ForEach(TrackHeight.allCases, id: \.self) { height in
+                        Button { shell.layout.trackHeight = height } label: {
+                            if shell.layout.trackHeight == height { Label(height.label, systemImage: "checkmark") } else { Text(height.label) }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal").font(.system(size: 12)).frame(width: 24, height: 22)
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .help("Track Height (S / M / L)")
+                .accessibilityLabel("Track height").accessibilityValue(shell.layout.trackHeight.label)
+                .columnLayoutEvidence("timeline.trackHeight")
+            }
+            TimelineZoomControl(zoom: zoom, slider: geometry.size.width >= 800)
+            TimelineToolbarButton(symbol: shell.layout.timelineMaximized ? "chevron.down" : "chevron.up", name: shell.layout.timelineMaximized ? "Restore Timeline" : "Maximize Timeline", help: shell.layout.timelineMaximized ? "Restore Timeline" : "Maximize Timeline") { shell.layout.timelineMaximized.toggle() }
+                .accessibilityIdentifier("voxclip.timeline.maximize")
+                .columnLayoutEvidence("timeline.maximize")
+            } else { Spacer(minLength: 0) }
+            TimelineToolbarButton(symbol: "chevron.down.square", name: EditorIconAction.hideTimeline.name, help: "Hide Timeline (⌘J)") { shell.toggleTimeline() }
+                .disabled(!shell.layout.rightVisible)
+                .accessibilityIdentifier("voxclip.timeline.hide")
+                .columnLayoutEvidence("timeline.hide")
         }
+        .padding(.leading, 10).padding(.trailing, 6)
+        }
+        .frame(height: TimelineMetrics.toolbar)
+        .overlay(alignment: .bottom) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
     }
     private func panelTab(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -96,9 +135,9 @@ import VoxClipCore
         }
         .buttonStyle(.plain).accessibilityLabel(title)
         .accessibilityValue(selected ? "Selected" : "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityIdentifier("voxclip.timeline.tab." + title.lowercased())
     }
-
 }
 
 /// Edited / Source (notes.md §6): one state with Show cuts, so it flips the transcript too.
@@ -221,6 +260,7 @@ import VoxClipCore
             .accessibilityLabel("Source time")
             .accessibilityValue(ai ? "AI voice" : timecode(floor(time)))
             .accessibilityIdentifier("voxclip.timeline.sourceTime")
+            .columnLayoutEvidence("timeline.sourceReadout")
         }
     }
 }
@@ -244,6 +284,7 @@ import VoxClipCore
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(String(format: "%.1f seconds selected", locale: Locale(identifier: "en_US_POSIX"), length))
             .accessibilityIdentifier("voxclip.timeline.selectionLength")
+            .columnLayoutEvidence("timeline.selectionLength")
         }
     }
 }
@@ -251,7 +292,67 @@ import VoxClipCore
 /// The lanes in SwiftUI.
 @MainActor struct TimelineCanvas: NSViewRepresentable {
     let model: EditorModel
-    func makeNSView(context: Context) -> TimelineCanvasView { TimelineCanvasView(model: model) }
+    var shell: WorkspaceShell? = nil
+    var zoom: TimelineZoom? = nil
+    func makeNSView(context: Context) -> TimelineCanvasView {
+        let view = TimelineCanvasView(model: model, shell: shell)
+        zoom?.attach(view)
+        return view
+    }
     func updateNSView(_ view: TimelineCanvasView, context: Context) {}
     static func dismantleNSView(_ view: TimelineCanvasView, coordinator: ()) { view.tearDown() }
+}
+
+
+/// Window-local zoom state shared by the native canvas and the toolbar. No undo or save.
+@MainActor @Observable final class TimelineZoom {
+    var value = 0.0
+    weak var canvas: TimelineCanvasView?
+    func attach(_ canvas: TimelineCanvasView) {
+        self.canvas = canvas
+        value = canvas.zoomValue
+        canvas.onZoom = { [weak self] value in if self?.value != value { self?.value = value } }
+    }
+    func step(_ direction: Double) { canvas?.zoom(by: pow(1.4, direction)) }
+    func set(_ value: Double) { canvas?.setZoom(value) }
+}
+
+@MainActor private struct TimelineZoomControl: View {
+    let zoom: TimelineZoom
+    let slider: Bool
+    var body: some View {
+        HStack(spacing: 2) {
+            TimelineToolbarButton(symbol: "minus", name: "Zoom timeline out", help: "Zoom Timeline Out (⌘−)") { zoom.step(-1) }
+                .columnLayoutEvidence("timeline.zoom.out")
+            if slider {
+                Slider(value: Binding(get: { zoom.value }, set: { zoom.set($0) }), in: 0...1)
+                    .controlSize(.mini).frame(width: 64)
+                    .accessibilityLabel("Timeline zoom")
+                    .accessibilityIdentifier("voxclip.timeline.zoom")
+                    .columnLayoutEvidence("timeline.zoom.slider")
+            }
+            TimelineToolbarButton(symbol: "plus", name: "Zoom timeline in", help: "Zoom Timeline In (⌘=)") { zoom.step(1) }
+                .columnLayoutEvidence("timeline.zoom.in")
+        }
+    }
+}
+
+
+/// The U-shaped magnet in the approved toolbar; no dependency on a newer SF Symbol.
+private struct TimelineSnapGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 2, y: 1))
+        path.addLine(to: CGPoint(x: 2, y: 7))
+        path.addCurve(to: CGPoint(x: 10, y: 7), control1: CGPoint(x: 2, y: 12), control2: CGPoint(x: 10, y: 12))
+        path.addLine(to: CGPoint(x: 10, y: 1))
+        path.addLine(to: CGPoint(x: 7, y: 1))
+        path.addLine(to: CGPoint(x: 7, y: 7))
+        path.addQuadCurve(to: CGPoint(x: 5, y: 7), control: CGPoint(x: 6, y: 9))
+        path.addLine(to: CGPoint(x: 5, y: 1))
+        path.closeSubpath()
+        path.move(to: CGPoint(x: 2, y: 4)); path.addLine(to: CGPoint(x: 5, y: 4))
+        path.move(to: CGPoint(x: 7, y: 4)); path.addLine(to: CGPoint(x: 10, y: 4))
+        return path
+    }
 }

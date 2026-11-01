@@ -60,10 +60,10 @@ extension StatusItem.Kind {
         switch self {
         case .harness: "AI"
         case .billing: "Billing"
+        case .spend: "ElevenLabs spend"
         case .task: "In progress"
         case .summary: "Edit summary"
         case .frame: "Frame"
-        case .spend: "Monthly spend"
         case .export: "Export"
         }
     }

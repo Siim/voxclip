@@ -16,6 +16,24 @@ def check_staged_actions(root):
             raise RuntimeError('Release exposes a DEBUG Voice Lab hook: ' + str(source))
 
 
+INTERNAL_BUILD_ARGUMENTS = {'Bool', 'Self.internalBuild', 'AppModel.internalBuild', 'false'}
+
+
+def check_internal_build(root):
+    """Text Rewrite ships in Release (impl-plan item 26); Voice Lab's development defaults and its beta-notice bypass do not.
+    Release reads `AppModel.internalBuild` as false, and every `internalBuild:` argument in Release source is that flag or
+    false (voice-lab §5)."""
+    flag = re.search(r'static var internalBuild: Bool \{\s*(\w+)\s*\}', release_source((root / 'VoxClip/VoiceLabSession.swift').read_text()))
+    if not flag or flag.group(1) != 'false':
+        raise RuntimeError('Release reads AppModel.internalBuild as ' + (flag.group(1) if flag else 'nothing'))
+    for source in sorted(root.rglob('*.swift')):
+        if '.build' in source.parts:
+            continue
+        for argument in re.findall(r'\binternalBuild:\s*([^,)\s]+)', release_source(source.read_text())):
+            if argument not in INTERNAL_BUILD_ARGUMENTS:
+                raise RuntimeError('Release passes internalBuild: ' + argument + ' in ' + str(source))
+
+
 def same_module_source():
     source = pathlib.Path(__file__).resolve().parents[2] / "apps/macos/Sources/VoxClipMedia/VoiceLab/VoiceSpeakerCheck.swift"
     declaration = source.read_text().split("public actor VoiceUseGuard", 1)[0]
@@ -56,6 +74,8 @@ def check(bin_path, build_path):
     root = pathlib.Path(__file__).resolve().parents[2]
     scan(root)
     check_staged_actions(root / 'apps/macos/Sources')
+    check_internal_build(root / 'apps/macos/Sources')
+    print('Release builds are not internal: Voice Lab keeps its beta notice and has no development defaults.')
     gate_source = (root / 'apps/macos/Sources/VoxClipCore/Domain/VoiceLab/VoiceConsent.swift').read_text()
     gate = re.search(r'public static func rewriteEnabled\([^}]+}', gate_source).group()
     with tempfile.TemporaryDirectory(prefix='voxclip-release-beta-') as directory:

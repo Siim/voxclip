@@ -14,11 +14,18 @@ import AppKit
 
 /// Reads the current menu and validates through the responder chain. Indexing never sends an action.
 @MainActor enum MenuCommandIndex {
+    private(set) static var isInvoking = false
+    /// Palette validation and dispatch are explicit menu choices, even during a Return key event.
+    static func invoking<T>(_ body: () -> T) -> T {
+        let previous = isInvoking; isInvoking = true
+        defer { isInvoking = previous }
+        return body()
+    }
     static func enabled(_ item: NSMenuItem) -> Bool {
         guard !item.isHidden, !item.isSeparatorItem, item.submenu == nil, let action = item.action,
               let target = NSApp.target(forAction: action, to: item.target, from: item) else { return false }
-        if let validator = target as? any NSMenuItemValidation { return validator.validateMenuItem(item) }
-        if let validator = target as? any NSUserInterfaceValidations { return validator.validateUserInterfaceItem(item) }
+        if let validator = target as? any NSMenuItemValidation { return invoking { validator.validateMenuItem(item) } }
+        if let validator = target as? any NSUserInterfaceValidations { return invoking { validator.validateUserInterfaceItem(item) } }
         return item.isEnabled
     }
     static func items(in menu: NSMenu? = NSApp.mainMenu) -> [CommandPaletteItem] {
@@ -42,14 +49,14 @@ import AppKit
     }
     @discardableResult static func run(_ item: CommandPaletteItem) -> Bool {
         guard enabled(item.menuItem), let action = item.menuItem.action else { return false }
-        return NSApp.sendAction(action, to: item.menuItem.target, from: item.menuItem)
+        return invoking { NSApp.sendAction(action, to: item.menuItem.target, from: item.menuItem) }
     }
     static func shortcut(_ item: NSMenuItem) -> String {
         guard !item.keyEquivalent.isEmpty else { return "" }
         let flags = item.keyEquivalentModifierMask
         let prefix = [(NSEvent.ModifierFlags.control, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.command, "⌘")]
             .filter { flags.contains($0.0) }.map(\.1).joined()
-        let names = ["\r": "↩", "\t": "Tab", " ": "Space", "\u{7f}": "⌫", "\u{1b}": "Esc",
+        let names: [String: String] = ["\r": "↩", "\t": "Tab", " ": "Space", "\u{7f}": "⌫", "\u{1b}": "Esc",
                      String(UnicodeScalar(NSUpArrowFunctionKey)!): "↑", String(UnicodeScalar(NSDownArrowFunctionKey)!): "↓"]
         return prefix + (names[item.keyEquivalent] ?? item.keyEquivalent.uppercased())
     }
@@ -72,7 +79,7 @@ import AppKit
     private weak var shell: WorkspaceShell?
     required init?(coder: NSCoder) { nil }
     override var intrinsicContentSize: NSSize { NSSize(width: preferredWidth, height: 24) }
-    @objc private func open() { shell?.showCommandPalette = true }
+    @objc private func open() { shell?.openCommandPalette() }
     override func draw(_ dirtyRect: NSRect) {
         let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
         DesignValues.nsColor(isHighlighted ? "bg.selectedRow" : "bg.input").setFill(); outline.fill()
@@ -101,6 +108,14 @@ import AppKit
     private(set) var results: [CommandPaletteItem] = []
     private weak var previousResponder: NSResponder?
     var onClose: (() -> Void)?
+    private var outsideMonitor: Any?
+    private var announcement: DispatchWorkItem?
+    private var isOpen = false
+    var announce: (String) -> Void = { message in
+        NSAccessibility.post(element: NSApplication.shared, notification: .announcementRequested, userInfo: [
+            .announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue
+        ])
+    }
     override var isFlipped: Bool { true }
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 500, height: 350))
@@ -124,7 +139,9 @@ import AppKit
         table.target = self; table.doubleAction = #selector(runSelection)
         table.run = { [weak self] in self?.runSelection() }
         table.close = { [weak self] in self?.close() }
+        table.move = { [weak self] amount in self?.move(amount) }
         table.setAccessibilityLabel("Command results")
+        field.setAccessibilityLinkedUIElements([table])
         scroll.documentView = table; scroll.hasVerticalScroller = true; scroll.scrollerStyle = .overlay
         scroll.drawsBackground = false
         for view in [field, count, scroll] { addSubview(view) }
@@ -136,6 +153,12 @@ import AppKit
         layer?.borderColor = DesignValues.nsColor("line.strong").cgColor
     }
     func open() {
+        if isOpen { focus(); return }
+        isOpen = true
+        outsideMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            MainActor.assumeIsolated { self?.dismissForOutsideMouseDown(event) }
+            return event
+        }
         // AppKit reuses a field editor between text fields. Restore its owning control,
         // otherwise the captured editor now belongs to this command field.
         if let editor = window?.firstResponder as? NSTextView, editor.isFieldEditor,
@@ -144,11 +167,42 @@ import AppKit
         commands = MenuCommandIndex.items()
         field.stringValue = ""; filter()
         field.setAccessibilityExpanded(true)
-        window?.makeFirstResponder(field)
+        focus()
     }
-    func close() {
+    func focus() { window?.makeFirstResponder(field) }
+    func dismissForOutsideMouseDown(_ event: NSEvent) {
+        dismissForMouseDown(at: event.locationInWindow, in: event.window)
+    }
+    func dismissForMouseDown(at point: NSPoint, in eventWindow: NSWindow?) {
+        guard isOpen else { return }
+        // Clicking the launcher is another request to focus this field; keep its query.
+        if eventWindow === window, let content = window?.contentView {
+            func onLauncher(_ view: NSView) -> Bool {
+                if view is CommandPaletteLauncher, !view.isHiddenOrHasHiddenAncestor,
+                   view.bounds.contains(view.convert(point, from: nil)) { return true }
+                return view.subviews.contains(where: onLauncher)
+            }
+            if onLauncher(content) { return }
+        }
+        if eventWindow !== window || !bounds.contains(convert(point, from: nil)) { close(restoringFocus: false) }
+    }
+    private var ownsFocus: Bool {
+        if let responder = window?.firstResponder as? NSView { return responder === self || responder.isDescendant(of: self) || responder === field.currentEditor() }
+        return false
+    }
+    func controlTextDidEndEditing(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            guard let self, self.isOpen, !self.ownsFocus else { return }
+            self.close(restoringFocus: false)
+        }
+    }
+    func close(restoringFocus: Bool = true) {
+        guard isOpen else { return }
+        isOpen = false
+        announcement?.cancel(); announcement = nil
+        if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }; outsideMonitor = nil
         field.setAccessibilityExpanded(false)
-        if let previousResponder { window?.makeFirstResponder(previousResponder) }
+        if restoringFocus, let previousResponder { window?.makeFirstResponder(previousResponder) }
         onClose?()
     }
     func controlTextDidChange(_ notification: Notification) { filter() }
@@ -159,6 +213,15 @@ import AppKit
         count.stringValue = results.count == 1 ? "1 result" : "\(results.count) results"
         field.setAccessibilityHelp(count.stringValue + ". Use arrow keys to choose, Return to run, Escape to close.")
         NSAccessibility.post(element: count, notification: .valueChanged)
+        announcement?.cancel()
+        let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.announceResults() } }
+        announcement = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+    }
+    func announceResults() {
+        announcement?.cancel(); announcement = nil
+        guard isOpen else { return }
+        announce(count.stringValue)
     }
     @objc func runSelection() {
         guard results.indices.contains(table.selectedRow) else { return }
@@ -180,6 +243,8 @@ import AppKit
         let next = max(0, min(results.count - 1, table.selectedRow + amount))
         table.selectRowIndexes(IndexSet(integer: next), byExtendingSelection: false); table.scrollRowToVisible(next)
         NSAccessibility.post(element: table, notification: .selectedRowsChanged)
+        let item = results[next]
+        announce("\(item.path) › \(item.title)" + (item.shortcut.isEmpty ? "" : ", " + item.shortcut))
     }
     func numberOfRows(in tableView: NSTableView) -> Int { results.count }
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -198,9 +263,11 @@ import AppKit
 @MainActor final class CommandResultsTable: NSTableView {
     var run: (() -> Void)?
     var close: (() -> Void)?
+    var move: ((Int) -> Void)?
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 36 || event.keyCode == 76 { run?() }
         else if event.keyCode == 53 { close?() }
+        else if event.keyCode == 125 || event.keyCode == 126 { move?(event.keyCode == 125 ? 1 : -1) }
         else { super.keyDown(with: event) }
     }
 }

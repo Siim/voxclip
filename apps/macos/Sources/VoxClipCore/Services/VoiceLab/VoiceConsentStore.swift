@@ -4,6 +4,11 @@ public actor VoiceConsentStore {
     public nonisolated let root: URL
     private let temporaryRecordings: URL
     private var reconciledTemporaryRecordings = false
+    /// IDs only; no statement, training audio, or undecodable journal contents enter diagnostics.
+    var abandonedEnrollments: Set<String> = []
+    public func takeAbandonedEnrollmentCount() -> Int {
+        let count = abandonedEnrollments.count; abandonedEnrollments.removeAll(); return count
+    }
     var claimedOperations: Set<UUID> = []
     private var liveEnrollments: Set<String> = []
     #if DEBUG
@@ -23,7 +28,7 @@ public actor VoiceConsentStore {
         root = locations.root.appendingPathComponent("VoiceLab/consent", isDirectory: true)
         temporaryRecordings = locations.cache.appendingPathComponent("voice-consent", isDirectory: true)
     }
-    public func reconcileAbandonedEnrollments() throws {
+    public func reconcileAbandonedEnrollments(now: Date = Date()) throws {
         try migrateLegacyOperations()
         let manager = FileManager.default
         if !reconciledTemporaryRecordings {
@@ -35,8 +40,10 @@ public actor VoiceConsentStore {
             let id = entry.lastPathComponent
             guard UUID(uuidString: id) != nil, !liveEnrollments.contains(id) else { continue }
             let directory = try directory(id)
+            let recovery = try enrollmentRecovery(recordID: id, now: now)
             guard !(try hasOperation(id)) else { continue }
             if try auditTombstone(recordID: id) != nil { continue }
+            if recovery != nil { continue }
             let recordFile = try file("record.json", in: directory)
             if manager.fileExists(atPath: recordFile.path) {
                 let stored = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: recordFile))
@@ -51,6 +58,7 @@ public actor VoiceConsentStore {
     }
     public func abandonEnrollment(recordID: String) throws {
         if !(try hasOperation(recordID)), let record = try? load(recordID), record.voiceId != "pending" { return }
+        try clearEnrollmentRecovery(recordID: recordID)
         try withdrawCreation(recordID: recordID)
         liveEnrollments.remove(recordID)
     }

@@ -33,15 +33,14 @@ extension EditorModel {
         switch command {
         case 1, 2, 3, 7, 8, 9, 29, 30, 31, 37, 40, 41, 42, 43, 44: return capabilities.edit
         case 34: return capabilities.ai
-        case 38: return app.voiceLabRewriteEnabled && capabilities.ai
-        case 39: return false
+        case 38: return RewriteEntryPolicy.canRun(editable: capabilities.ai, scope: rewriteScopeNow)
         case 45: return canExport && mediaExportable
         default: return nil
         }
     }
     var llmRuns: ProjectLlmRuns { app.projectLlmRuns(project.id) }
     var capabilities: EditorCapabilities {
-        EditorCapabilities(writable: !document.isVersion && !isLeaving, media: mediaResolved && !mediaUnreadable,
+        EditorCapabilities(writable: !document.isVersion && !isLeaving, media: mediaUsable,
             transcript: editingAvailable, exporting: exporting, aiBusy: llmRuns.isBusy)
     }
 }

@@ -163,8 +163,8 @@ import Testing
 
     /// §3.3: a Rewrite session belongs to its tab. It survives a tab switch and an edit
     /// outside its clip and stays current, hidden on other tabs (`rewrite` and
-    /// `rewriteRange` are nil there), shows again on its tab, and an edit inside its clip
-    /// or its words closes it.
+    /// `rewriteScope` are nil there), shows again on its tab, and an edit inside its clip
+    /// or its words shows R3 with its tab still dirty; undoing that edit shows the proposal (V13).
     @Test func aRewriteSessionSurvivesATabSwitch() async throws {
         let (shell, editor, undo) = try await openShell()
         defer { editor.close() }
@@ -174,35 +174,41 @@ import Testing
         let clips = editor.project.edits.clips
         let lower = try #require(clips.first { $0.id == "five-1" }.flatMap { editor.index($0.startWordId) })
         let other = try #require(clips.first { $0.id == "five-2" }.flatMap { editor.index($0.startWordId) })
-        let session = RewriteSession(editor: editor, range: lower...(lower + 2), envelope: nil, connector: nil)
+        let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.rewrite = session
-        editor.rewriteRange = lower...(lower + 2)
         #expect(editor.rewrite === session && session.current && shell.dirtyTabs.isEmpty)
-        session.edit("A different opening")
+        // A reply that cuts the middle word: a change that waits for review shows the dot (V15).
+        try session.receivePassage(editor.words[lower].text + " " + editor.words[lower + 2].text)
+        session.finishRun(seconds: 1)
+        let proposal = session.task.state
         #expect(shell.dirtyTabs == [.clip("five-1")])
         shell.selection = .clip("five-2")
-        #expect(session.isOpen && editor.openRewrite === session && editor.rewrite == nil && editor.rewriteRange == nil)
+        #expect(session.isOpen && editor.openRewrite === session && editor.rewrite == nil && editor.rewriteScope == nil)
         #expect(session.current && shell.dirtyTabs == [.clip("five-1")])
         step(undo) { editor.apply(.cutSelection(ids: [editor.words[other].id]), name: "Cut selection") }
         #expect(session.isOpen && editor.openRewrite === session)
         shell.selectTab(.clip("five-1"))
-        #expect(editor.rewrite === session && editor.rewriteRange == lower...(lower + 2) && session.project == editor.project && session.current)
+        #expect(editor.rewrite === session && editor.rewriteScope == .selection(lower...(lower + 2)) && session.project == editor.project && session.current)
         step(undo) { editor.apply(.cutSelection(ids: [editor.words[lower + 1].id]), name: "Cut selection") }
-        #expect(!session.isOpen && editor.openRewrite == nil && shell.dirtyTabs.isEmpty)
+        #expect(session.isOpen && session.task.state == .changed && !session.current && shell.dirtyTabs == [.clip("five-1")])
+        undo.undo()
+        #expect(session.isOpen && session.task.state == proposal && session.current)
     }
 
     /// The session's own words count as inside it even past its clip's edge.
-    @Test func anEditToTheSessionsWordsOutsideItsClipClosesIt() async throws {
+    @Test func anEditToTheSessionsWordsOutsideItsClipShowsR3() async throws {
         let (shell, editor, undo) = try await openShell()
         defer { editor.close() }
         shell.selection = .clip("five-1")
         let clip = try #require(editor.project.edits.clips.first { $0.id == "five-1" })
         let upper = try #require(editor.index(clip.endWordId))
         try #require(upper + 2 < editor.words.count)
-        let session = RewriteSession(editor: editor, range: (upper - 1)...(upper + 2), envelope: nil, connector: nil)
+        let session = RewriteSession(editor: editor, scope: .selection((upper - 1)...(upper + 2)), envelope: nil, connector: nil)
         editor.rewrite = session
+        try session.receivePassage("A different ending")
+        session.finishRun(seconds: 1)
         step(undo) { editor.apply(.cutSelection(ids: [editor.words[upper + 2].id]), name: "Cut selection") }
-        #expect(!session.isOpen && editor.openRewrite == nil)
+        #expect(session.isOpen && editor.openRewrite === session && session.task.state == .changed)
     }
 
     /// A Rewrite session closes with its tab, as Escape closes it: the active tab's × and
@@ -214,10 +220,10 @@ import Testing
         func open(on id: String) throws -> RewriteSession {
             shell.selection = .clip(id)
             let start = try #require(editor.project.edits.clips.first { $0.id == id }.flatMap { editor.index($0.startWordId) })
-            let session = RewriteSession(editor: editor, range: start...(start + 2), envelope: nil, connector: nil)
+            let session = RewriteSession(editor: editor, scope: .selection(start...(start + 2)), envelope: nil, connector: nil)
             editor.rewrite = session
-            editor.rewriteRange = start...(start + 2)
-            session.edit("A different opening")
+            try session.receivePassage(editor.words[start].text + " " + editor.words[start + 2].text)
+            session.finishRun(seconds: 1)
             return session
         }
         let active = try open(on: "five-1")
@@ -225,7 +231,7 @@ import Testing
         shell.closeTab(.clip("five-1"))
         #expect(!active.isOpen && editor.openRewrite == nil && shell.dirtyTabs.isEmpty)
         shell.selection = .clip("five-1")
-        #expect(editor.rewrite == nil && editor.rewriteRange == nil)
+        #expect(editor.rewrite == nil && editor.rewriteScope == nil)
 
         let inactive = try open(on: "five-1")
         shell.selection = .clip("five-2")
@@ -250,8 +256,10 @@ import Testing
     /// The consent before words go to a connector follows the session, not the tab or the
     /// project as it was when the session opened. After an edit in another clip, on another
     /// tab, it still asks and the words go. A connector change, or an edit inside the
-    /// session's clip, while it asks refuses: nothing is sent and no consent is kept. An
-    /// API-key send also confirms its cost on every send, after the privacy consent (VS).
+    /// session's clip, while it asks refuses: nothing is sent and no consent is kept, and
+    /// the edit shows R3 (V13). An API-key send also confirms its cost on every send, after
+    /// the privacy consent (VS). ⇧⌘R runs at once; a declined sheet on its first run closes
+    /// Rewrite with nothing sent, and one on a later run shows the proposal it would replace (V15).
     @Test func rewriteConsentFollowsTheSessionAcrossTabs() async throws {
         let (shell, editor, undo) = try await openShell()
         defer { editor.close() }
@@ -270,61 +278,73 @@ import Testing
         let other = try #require(clips.first { $0.id == "five-2" }.flatMap { editor.index($0.startWordId) })
         editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
         editor.selectedWordIDs = Set(editor.words[lower...(lower + 2)].map(\.id))
-        // Rewrite stays shut when the caret moves while it opens, as the clip's seek and the
-        // preview's time event still may; it opens once they have landed.
-        for _ in 0..<20 where editor.openRewrite == nil {
-            editor.beginRewrite()
-            await editor.rewriteOpenTask?.value
-        }
+        let asks = ConsentAsks()
+        // The run ⇧⌘R starts at once is declined, so nothing is sent and Rewrite closes, as Stop does.
+        app.connectorConsentOverride = { _, _, _ in asks.count += 1; return false }
+        editor.runRewrite()
+        await editor.rewriteOpenTask?.value
+        let declined = try #require(editor.openRewrite)
+        await declined.actionTask?.value
+        #expect(declined.connector != nil && declined.rewriteScope == .selection(lower...(lower + 2)) && declined.scope == .clip("five-1"))
+        #expect(asks.count == 1 && !declined.isOpen && editor.openRewrite == nil && !app.bool(consent))
+        #expect(await fake.sends == 0)
+
+        // Approved, the combined privacy and billing row asks once, and the words go.
+        app.connectorConsentOverride = { _, action, _ in asks.count += 1; return action == .rewrite }
+        editor.runRewrite()
+        await editor.rewriteOpenTask?.value
         let session = try #require(editor.openRewrite)
-        #expect(session.connector != nil && session.scope == .clip("five-1"))
+        await session.actionTask?.value
+        #expect(asks.count == 2 && app.bool(consent) && !session.changes.isEmpty)
+        #expect(await fake.sends == 1)
 
         shell.selection = .clip("five-2")
         step(undo) { editor.apply(.cutSelection(ids: [editor.words[other].id]), name: "Cut selection") }
         #expect(session.isOpen && editor.rewrite == nil && session.current)
-        let asks = ConsentAsks()
-        app.connectorConsentOverride = { _, action, _ in asks.count += 1; return action == .rewrite }
-        await session.prepare()
-        let quote = try #require(session.quote)
-        session.markEstimateShown(quote.id)
-        #expect(await session.propose(quote))
-        #expect(asks.count == 2 && app.bool(consent) && session.newWords == "A clearer passage")
-        #expect(await fake.sends == 1)
 
         app.settings.values[consent] = .bool(false)
-        let again = try #require(session.quote)
-        session.markEstimateShown(again.id)
         app.connectorConsentOverride = { _, _, _ in
             asks.count += 1
             app.settings.values["llm.model.anthropic"] = .string("fixture-other")
             return true
         }
-        #expect(await session.propose(again) == false)
+        #expect(await session.run() == false)
         #expect(asks.count == 3 && !app.bool(consent))
         #expect(await fake.sends == 1)
 
         app.settings.values["llm.model.anthropic"] = .string("fixture-local")
-        session.markEstimateShown(again.id)
-        #expect(session.canPropose)
+        #expect(session.current)
         app.connectorConsentOverride = { _, _, _ in
             asks.count += 1
             shell.selection = .clip("five-1")
             self.step(undo) { editor.apply(.cutSelection(ids: [editor.words[lower + 1].id]), name: "Cut selection") }
             return true
         }
-        #expect(await session.propose(again) == false)
-        #expect(asks.count == 4 && !app.bool(consent) && !session.isOpen && editor.openRewrite == nil)
+        #expect(await session.run() == false)
+        #expect(asks.count == 4 && !app.bool(consent) && session.isOpen && session.task.state == .changed)
         #expect(await fake.sends == 1)
     }
 
-    /// A session opened on Full Take has every word in scope: any edit closes it, as before.
-    @Test func aFullTakeRewriteSessionClosesOnAnyEdit() async throws {
+    /// A session on Full take reads every word: an edit to any word shows R3, and undoing
+    /// it the proposal; a new clip lies outside it (V13).
+    @Test func aFullTakeRewriteSessionReadsEveryWord() async throws {
         let (_, editor, undo) = try await openShell()
         defer { editor.close() }
-        let session = RewriteSession(editor: editor, range: 0...2, envelope: nil, connector: nil)
+        let session = RewriteSession(editor: editor, scope: .fullTake, envelope: nil, connector: nil)
         editor.rewrite = session
-        step(undo) { editor.apply(.cutSelection(ids: [editor.words[editor.words.count - 1].id]), name: "Cut selection") }
-        #expect(!session.isOpen && editor.rewrite == nil)
+        let words = session.source.filter { $0.kind == .word }.map(\.text)
+        try session.receivePassage((["Fresh"] + words.dropFirst()).joined(separator: " "))
+        session.finishRun(seconds: 1)
+        let proposal = session.task.state
+        if case .proposal(let set) = proposal { #expect(set.items.count == 1) } else { Issue.record("no proposal: \(proposal)") }
+        let last = try #require(editor.words.last(where: { $0.kind == .word }))
+        step(undo) { editor.apply(.cutSelection(ids: [last.id]), name: "Cut selection") }
+        #expect(session.isOpen && session.task.state == .changed && session.task.headline.text == "Full take changed")
+        undo.undo()
+        #expect(session.task.state == proposal && session.current)
+        let renamed = try #require(editor.project.edits.clips.first)
+        step(undo) { editor.apply(.renameClip(id: renamed.id, title: "Renamed"), name: "Rename clip") }
+        #expect(session.task.state == proposal && session.current)
     }
 
     /// Item 5: ⌘W closes a clip or suggestion tab; Full Take is pinned and ⌘W stays Close

@@ -59,7 +59,8 @@ extension HeavyMediaTests {
             #expect(abs(measurement.box.width - measurement.width) <= 0.5 && abs(measurement.box.height - (measurement.width * 9 / 16).rounded()) <= 0.5)
             #expect(abs(measurement.header.minY - measurement.box.maxY) <= 0.5 && abs(measurement.header.height - 30) <= 0.5)
             #expect(measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty)
-            #expect(measurement.jobs == (measurement.variant.hasPrefix("rewrite") ? ["captions", "rewrite"] : ["captions"]), Comment(rawValue: "\(measurement.variant) at \(measurement.width)"))
+            let expectedJobs = measurement.variant.hasPrefix("rewrite-takes-") ? ["captions", "voice"] : measurement.variant.hasPrefix("rewrite") ? ["captions", "rewrite"] : ["captions"]
+            #expect(measurement.jobs == expectedJobs, Comment(rawValue: "\(measurement.variant) at \(measurement.width)"))
         }
         struct HeightMeasurement: Decodable {
             let width: Double

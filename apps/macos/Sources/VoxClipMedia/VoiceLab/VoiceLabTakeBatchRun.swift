@@ -15,13 +15,14 @@ public struct VoiceLabTakeBatchRun: Sendable {
     /// Prepares every window's bounded set, one window after another, before anything is shown or approved. `inputs` are
     /// in source order, one per run, and are checked with `VoiceLabTakeBatch.validate(_:)` before any quote. A failure
     /// discards every set this call prepared.
-    public func prepare(_ inputs: [VoiceLabTakeInput], id: UUID = UUID()) async throws -> VoiceLabTakeBatch {
+    public func prepare(_ inputs: [VoiceLabTakeInput], id: UUID = UUID(),
+                        candidates: Int = VoiceLabPricing.maximumCandidates) async throws -> VoiceLabTakeBatch {
         guard inputs.count == runs.count else { throw VoiceLabError.invalidInput }
         try VoiceLabTakeBatch.validate(inputs)
         var windows: [VoiceLabTakeBatch.Window] = []
         do {
             for (run, input) in zip(runs, inputs) {
-                let quote = try await run.prepare(input)
+                let quote = try await run.prepare(input, candidates: candidates)
                 windows.append(.init(input: input, quote: quote))
             }
             return try VoiceLabTakeBatch(id: id, windows: windows)

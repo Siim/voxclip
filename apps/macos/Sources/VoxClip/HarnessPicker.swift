@@ -335,19 +335,21 @@ extension AppModel {
         let chosen = app.string("llm.connector")
         if let provider = app.providers.first(where: { $0.id == chosen }), provider.cli != nil,
            app.detectedConnectorStatus[chosen] == .cliSignedOut || app.harnessSignIn.providerID == chosen {
-            append(.sectionHeader(title: "Sign in to " + provider.shortName))
+            append(.sectionHeader(title: app.harnessSignIn.completed ? "Signed in to " + provider.shortName : "Sign in to " + provider.shortName))
             let instructions = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-            let text = [provider.cli?.signInHint, app.harnessSignIn.message(for: provider)].compactMap { $0 }.joined(separator: "\n")
+            let text = [app.harnessSignIn.completed ? nil : provider.cli?.signInHint, app.harnessSignIn.message(for: provider)].compactMap { $0 }.joined(separator: "\n")
             let label = NSTextField(wrappingLabelWithString: text)
             label.font = VCType.small.nsFont()
             label.frame = NSRect(x: 0, y: 0, width: 340, height: app.harnessSignIn.message(for: provider) == nil ? 38 : 66)
             instructions.view = label; instructions.isEnabled = false
             instructions.identifier = .init("voxclip.harness.signIn.message")
             append(instructions)
+            if !app.harnessSignIn.completed {
             for (title, action) in [("Sign In…", #selector(signIn)), ("Check Sign-In", #selector(checkSignIn))] {
                 let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
                 item.target = self; item.isEnabled = !app.harnessSignIn.checking
                 append(item)
+            }
             }
         }
         if let line = app.monthlySpendLine {

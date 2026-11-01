@@ -9,7 +9,7 @@ import VoxClipMedia
     var installed = false
     var progress: ModelDownloadProgress?
     var message: String?
-    let confirmation = ModelDownloadConfirmation()
+    private var downloadApproved = false
     @ObservationIgnored private unowned let app: AppModel
     @ObservationIgnored private var store: ModelStore?
     @ObservationIgnored private var embedder: ONNXSpeakerEmbedder?
@@ -22,14 +22,26 @@ import VoxClipMedia
             let catalog = try SpeakerModelCatalog(shared: shared)
             model = catalog.entry
             if store == nil {
-                let confirmation = confirmation
-                store = ModelStore(catalog: catalog, locations: app.locations, namespace: .voiceLab, confirm: { model, bytes in try await confirmation.request(model, bytes: bytes) })
+                store = ModelStore(catalog: catalog, locations: app.locations, namespace: .voiceLab, confirm: { [weak self] _, _ in
+                    await MainActor.run { self?.consumeDownloadApproval() ?? false }
+                })
             }
             installed = try await store?.verify(id: catalog.entry.id) == true
         } catch { installed = false; message = "The own-voice check model is unavailable. No audio was sent." }
     }
-    func download() {
-        guard let model, let store, progress == nil, app.bool("voiceLab.enabled") else { return }
+    var downloadLicence: String {
+        guard let model else { return "The own-voice check model is unavailable." }
+        let bytes = ByteCountFormatter.string(fromByteCount: model.totalBytes, countStyle: .file)
+        return "This model is published by \(model.publisher), not by VoxClip. It downloads from the publisher (\(bytes)) and runs on this Mac. Licence: \(model.license). By downloading you accept the publisher's terms."
+    }
+    private func consumeDownloadApproval() -> Bool {
+        defer { downloadApproved = false }
+        return downloadApproved && app.bool("voiceLab.enabled")
+    }
+    func cancelDownload() { downloadApproved = false; task?.cancel() }
+    func download(approved: Bool) {
+        guard approved, let model, let store, progress == nil, app.bool("voiceLab.enabled") else { return }
+        downloadApproved = true
         progress = .init(modelID: model.id, receivedBytes: 0, totalBytes: model.totalBytes)
         let requestID = UUID(); downloadID = requestID
         message = nil
@@ -87,32 +99,18 @@ import VoxClipMedia
                 if let progress = library.progress {
                     ProgressView(value: Double(progress.receivedBytes), total: Double(max(1, progress.totalBytes)))
                     Text(progress.verifying ? "Verifying download…" : "Downloading \(ByteCountFormatter.string(fromByteCount: progress.receivedBytes, countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: progress.totalBytes, countStyle: .file))").font(.caption)
-                    Button("Cancel") { library.task?.cancel(); library.confirmation.respond(false) }
+                    Button("Cancel") { library.cancelDownload() }
                 } else if library.installed {
                     Text("Installed ✓")
                     Button("Remove") { library.remove() }.disabled(app.voiceLabSession.busy || app.voiceLabSession.recorder.recording)
                 } else {
-                    Button("Download") { library.download() }.disabled(app.voiceLabSession.busy || !app.bool("voiceLab.enabled"))
+                    Text(library.downloadLicence).font(.caption)
+                    Link("Source page", destination: model.sourcePage)
+                    Button("Download") { library.download(approved: true) }.disabled(app.voiceLabSession.busy || !app.bool("voiceLab.enabled"))
                 }
             }
             if let message = library.message { Text(message).font(.caption) }
         }
         .task { await library.load() }
-        .confirmationDialog(downloadTitle, isPresented: Binding(get: { library.confirmation.pending != nil }, set: { if !$0 { library.confirmation.respond(false) } }), titleVisibility: .visible) {
-            if let model = library.confirmation.pending {
-                Button("Download") { library.confirmation.respond(true) }
-                Button("Open source page") { NSWorkspace.shared.open(model.sourcePage) }
-                Button("Cancel", role: .cancel) { library.confirmation.respond(false) }
-            }
-        } message: { Text(downloadMessage) }
-    }
-    private var downloadTitle: String {
-        guard let model = library.confirmation.pending else { return "Download model" }
-        return "Download \(model.displayName) from \(model.files.first?.url.host ?? "the publisher")?"
-    }
-    private var downloadMessage: String {
-        guard let model = library.confirmation.pending else { return "" }
-        let bytes = ByteCountFormatter.string(fromByteCount: library.confirmation.totalBytes, countStyle: .file)
-        return "This model is published by \(model.publisher), not by VoxClip. It downloads from the publisher (\(bytes)) and runs on this Mac. Licence: \(model.license). By downloading you accept the publisher's terms.\n\n\(model.attribution)"
     }
 }

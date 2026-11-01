@@ -8,6 +8,7 @@ import VoxClipCore
     var models: [ModelDescriptor] = []
     var installed: Set<String>?
     var progress: ModelDownloadProgress?
+    var lastProgress: ModelDownloadProgress?
     var error: String?
     let confirmation: ModelDownloadConfirmation
     var failedModelID: String?
@@ -45,11 +46,13 @@ import VoxClipCore
         guard installed?.contains(model.id) != true else { return }
         start(model, origin: .settings)
     }
-    /// The transcription sheet's Download (transcription §11.3): installs `model` and the models it requires, asking
-    /// for confirmation in the sheet, and returns when the download ends, true once all of them are installed.
+    /// The inline block's Download (transcription §11.3): installs `model` and the models it requires, using the terms already displayed in the block when accepted, and returns when the download ends, true once all of them are installed.
     /// A download already running for `model` is awaited instead of started again.
-    func install(_ model: ModelDescriptor) async -> Bool {
-        if progress == nil { start(model, origin: .transcription) }
+    func install(_ model: ModelDescriptor, publisherTermsAccepted: Bool = false) async -> Bool {
+        if progress == nil {
+            if publisherTermsAccepted { confirmation.approvedModelIDs = Set([model.id] + model.requires) }
+            start(model, origin: .transcription)
+        }
         guard progress?.modelID == model.id, let running = task else { return false }
         await running.value
         return ([model.id] + model.requires).allSatisfy { installed?.contains($0) == true }
@@ -64,7 +67,7 @@ import VoxClipCore
         error = nil
         task = Task { [weak self] in
             guard let self else { return }
-            defer { if downloadID == requestID { downloadID = nil; progress = nil } }
+            defer { if downloadID == requestID { lastProgress = progress; downloadID = nil; progress = nil; confirmation.approvedModelIDs = [] } }
             do {
                 try Task.checkCancellation()
                 try await store.install(id: model.id) { [weak self] update in
@@ -74,8 +77,17 @@ import VoxClipCore
                     }
                 }
                 try Task.checkCancellation(); installed = Set(try await store.installedModels()); error = nil
-            } catch is CancellationError {} catch VoxClipError.cancelled {} catch { failedModelID = model.id; self.error = await app.safeError(error) }
+            } catch is CancellationError {} catch VoxClipError.cancelled {} catch {
+                failedModelID = model.id
+                if let failure = error as? VoxClipError, failure.code == .rateLimited { self.error = "Hugging Face is busy. Try again in a minute." }
+                else if let failure = error as? VoxClipError, failure.code == .offline { self.error = "You're offline." }
+                else { self.error = await app.safeError(error) }
+            }
         }
+    }
+    func cancelTranscriptionDownload(modelID: String) {
+        guard downloadOrigin == .transcription, progress?.modelID == modelID else { return }
+        task?.cancel()
     }
     func remove(_ model: ModelDescriptor) {
         guard progress == nil else { return }

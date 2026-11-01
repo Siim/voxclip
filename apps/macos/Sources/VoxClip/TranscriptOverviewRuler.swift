@@ -3,10 +3,10 @@ import VoxClipCore
 
 /// The overview ruler at the transcript's right edge (notes.md §5), like an editor's
 /// scrollbar: the whole take from top to bottom, with the visible window, the open clip, the
-/// selection and AI words as marks by take time. It is decorative for VoiceOver, which reads
+/// selection, AI words and pending proposed changes as marks by take time. It is decorative for VoiceOver, which reads
 /// the same facts from the transcript, its rotors and the status bar, and it passes clicks on.
 @MainActor final class TranscriptOverviewRuler: NSView {
-    enum Kind: Equatable { case clip, ai, selection }
+    enum Kind: Equatable { case clip, ai, change, selection }
     /// A mark from `lower` to `upper`, as fractions of the take.
     struct Mark: Equatable {
         let kind: Kind
@@ -30,7 +30,7 @@ import VoxClipCore
     static func duration(_ model: EditorModel) -> Double { max(model.sourceDuration, model.words.last?.end ?? 0) }
 
     /// The marks for the editor's state, computed once per update: the open clip, enabled AI
-    /// passages and the selected words' extent.
+    /// passages, pending proposed changes and the selected words' extent.
     static func marks(model: EditorModel) -> [Mark] {
         let duration = duration(model), words = model.words
         guard duration > 0 else { return [] }
@@ -42,6 +42,7 @@ import VoxClipCore
             add(.clip, words[scope.lowerBound].start, words[scope.upperBound].end)
         }
         for segment in model.project.voiceLab.segments where segment.enabled { add(.ai, segment.replace.start, segment.replace.end) }
+        for span in model.pendingChangeSpans { add(.change, span.lowerBound, span.upperBound) }
         let selected = model.selectedWordIDs.compactMap { model.index($0) }
         if let first = selected.min(), let last = selected.max() { add(.selection, words[first].start, words[last].end) }
         return marks
@@ -77,7 +78,7 @@ import VoxClipCore
         }
         let clip = DesignValues.nsColor("clip.label").cgColor
         let layers: [(Kind, CGFloat, CGFloat, CGColor)] = [(.clip, 1, 2, clip.copy(alpha: 0.45) ?? clip), (.ai, 4, 5, DesignValues.nsColor("ai.tint").cgColor),
-                                                           (.selection, 4, 5, DesignValues.nsColor("tint.default").cgColor)]
+                                                           (.change, 4, 5, DesignValues.nsColor("change.add").cgColor), (.selection, 4, 5, DesignValues.nsColor("tint.default").cgColor)]
         for (kind, x, width, color) in layers {
             for row in Self.rows(marks, kind: kind, height: bounds.height) {
                 fill(CGRect(x: x, y: row.lowerBound, width: width, height: row.upperBound - row.lowerBound), color, radius: 1)

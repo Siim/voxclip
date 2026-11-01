@@ -224,7 +224,7 @@ struct VoiceLabPricingTests {
                 let wav = try #require(row["wav"] as? [String: Any])
                 quote = try await lab.prepareConversion(audio: VoiceLabRequestFixtures.wav(rate: try #require(wav["rate"] as? Int), frames: try #require(wav["frames"] as? Int)),
                                                         modelID: model, voice: .stock(voiceID: "stock123"), language: "en", seed: 7, cleanAudioOn: false, requestID: UUID())
-            case "createClone": quote = try await lab.prepareClone(clone, policy: createPolicy, requestID: UUID())
+            case "createClone": quote = try await lab.prepareEnrollmentClone(clone, policy: createPolicy, requestID: UUID())
             default: quote = try await lab.prepareDelete(voiceID: "own123", policy: policy, requestID: UUID())
             }
             let expected = try #require(row["expected"] as? [String: Any])
@@ -492,7 +492,7 @@ struct VoiceLabPricingTests {
             VoiceLabCloneSample(role: .training, wav: VoiceLabRequestFixtures.wav(rate: 8_000, frames: 40_000, fill: 1))
         ], createdAt: Date(timeIntervalSince1970: 1_793_000_000), removeBackgroundNoise: false)
         let cloneID = UUID(), deleteID = UUID()
-        let cloneQuote = try await lab.prepareClone(clone, policy: createPolicy, requestID: cloneID)
+        let cloneQuote = try await lab.prepareEnrollmentClone(clone, policy: createPolicy, requestID: cloneID)
         let created = try await lab.createOwnClone(clone, policy: createPolicy, requestID: cloneID, authorization: VoiceLabAuthorization(quote: cloneQuote, approved: true))
         let deleteQuote = try await lab.prepareDelete(voiceID: "own123", policy: ownPolicy, requestID: deleteID)
         let deleted = try await lab.deleteOwnClone(voiceID: "own123", policy: ownPolicy, requestID: deleteID, authorization: VoiceLabAuthorization(quote: deleteQuote, approved: true))

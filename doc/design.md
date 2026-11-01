@@ -346,7 +346,7 @@ The duration, a separator, then one status:
 
 Export statuses come from an app-local export ledger (§6.2), not from the project file.
 
-**Rewrite on a row** (§6.3). On macOS v2 the kept row's context menu offers **Rewrite Clip {n}**. Until V13 supplies whole-scope Rewrite, it selects that clip's kept words and enters the existing selection Rewrite policy; the clip is pinned so the session cannot disappear on the next preview. The hover-button rules below describe Windows.
+**Rewrite on a row** (§6.3). On macOS v2 the kept row's context menu offers **Rewrite Clip {n}**, shown while the clip keeps a word. It opens the clip's tab, lets go of the word selection and runs Rewrite on the clip with the scope bar's field text (§6.3.6 "Start"); the clip's tab is pinned so the session cannot disappear on the next preview. The hover-button rules below describe Windows.
 
 - The selected kept clip's row shows a **Rewrite** button after its meta line. Other kept rows, suggestion rows and Full take show it while the pointer is over them. No row shows it while a task is open. Its target is at least 24 pt (§15), and its accessible name is "Rewrite clip {n}" ("Rewrite full take" on Full take).
 - Clicking it selects the row if needed, then runs Rewrite with the scope bar's field text, or with Fix mistakes when the field is empty.
@@ -630,7 +630,7 @@ No other zoom in v1. Full take always fits.
 **Accessibility.**
 
 - The strip is one slider (macOS: `Canvas` with `.accessibilityRepresentation { Slider }`; Windows: a `RangeValue` automation peer). Its name is "Playhead", and its value reads like "22 seconds of 2 minutes 10 after cuts, 8 cuts". ← and → step by one word, ⇧← and ⇧→ by one sentence, Home and End go to the ends.
-- The trim handles are separate adjustable elements, "Clip 2 start" and "Clip 2 end", that step by one word.
+- Escape during a mouse trim cancels its preview without an edit or undo step. The trim handles are separate adjustable elements, "Clip 2 start" and "Clip 2 end", that step by one word.
 - Edited | Source is a two-option picker named "Timeline time".
 
 ### 5.3 Compact transport (viewer collapsed)
@@ -1090,7 +1090,7 @@ The instruction is bound into the quote like any instruction (`PatchRewriteReque
 
 - *Idle*: as above.
 - *Running*: the field is read-only and shows what was asked. The verb is replaced by a spinner and "Rewriting…", which is status, not a button. An indeterminate progress line runs along the bar, static under Reduce Motion. Stop lives in the panel.
-- *Proposal open*: the field keeps the asked text and stays editable. **Rewrite** sends again and replaces the proposal. When any change was edited, or takes exist, it first asks "Discard these {c} changes?" with **Keep Working** (the default) and **Discard Changes**.
+- *Proposal open*: the field keeps the asked text and stays editable. **Rewrite** sends again and replaces the proposal. When any change was edited, or takes exist, it first asks "Discard these {c} changes?" with **Keep Working** (the default) and **Discard Changes**, inline in the Rewrite job's footer rather than in an alert (Mac; the job comes to the panel to ask and the keyboard moves to Keep Working, wherever it was, with its focus ring and the question as its VoiceOver hint; Return, Space and Esc keep working, and Discard Changes takes a click or VoiceOver; once answered, the keyboard goes back where the question found it, such as the transcript or the Ask field).
 - *Another AI run holds the lease* (Find Clips, AI tighten; ai.md §4.7): the verb is replaced by the status "Finding clips…" or "Tightening…".
 - *Untranscribed project, or no editable scope*: the bar is hidden.
 
@@ -1175,6 +1175,8 @@ The transcript shows a proposal as tracked changes. The panel's change list and 
 
 The treatments of these states, and of the selected clip and a selection, come with the visual redesign. Their contrast pairs join `tools/design/contrast.mjs` then, and every text pair keeps at least 4.5:1 (§15).
 
+macOS (v2) draws them as a code diff. New words read in `text.primary` on `change.add` at 19 %, at the text's height with radius 2; removed words keep their place in `word.gone` with a 1 pt strike, as under Show cuts; words a change keeps (bridges) stay plain, and words already cut inside it fold like any cut. A 3 pt `change.add` bar at x 66 runs beside every line a pending change touches, at 100 % for the focused change and 50 % for the others; the line's glyph column shows the change's kind (waveform for voice, pencil for a fix, scissors for a cut, in `text.tertiary`), above the AI voice waveform. The focused change shows **Keep ⌘↩** and **Undo ⌘⌫**, 20 pt buttons over a blank the text keeps after its last word, or after the next word or two when they end its clause. An excluded change shows its original words with a dotted `text.tertiary` underline. A fix that only moves punctuation is not drawn; Keep All still applies it. While changes wait for review, AI words outside them lose their marker and underline and keep the gutter glyph. Pending changes are also marks on the overview ruler. **Keep** on a cut or fix applies it as one undo step, "Keep change {i}", whose undo also takes the change back to waiting, or to left out; on a voice change it includes it for takes, with no project change. A kept change is gone like a commit: restoring or correcting its words later never brings it back, and Keep All never applies it again. **Undo** leaves the change out (unchecked in the list) with no project change and no undo step. **Keep All** keeps every change still waiting: the cuts and fixes as one undo step named for the scope ("Rewrite clip {n}"), whose undo also takes the voice changes back to waiting. That undo acts only on its own proposal: after a new Rewrite it undoes the project alone. After Keep or Undo the focus moves to the next waiting change. The proposal belongs to its tab and shows only while that tab is open. VoiceOver reaches Keep, Undo and Edit through the transcript's custom actions and the **Proposed changes** rotor; the buttons themselves are not elements.
+
 **Inserted words** are display-only runs that map to no word ID.
 
 - macOS: an inserted-range table beside the word-to-character map, rebuilt per affected paragraph.
@@ -1226,10 +1228,13 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 
 **R0b. A send that asks first** (an API-key connector, or a CLI signed in with an API key; every send)
 
-- A sheet titled "Rewrite clip {n}?" with:
-  - "Sends the {w} words of clip {n} to {provider} with your key." For a CLI on an API key: "Sends the {w} words of clip {n} to Claude Code, billed to the API key it is signed in with." (Codex likewise.)
-  - "VoxClip can't tell what this costs. Check {provider}'s pricing."
-- Buttons **Cancel** and **Rewrite** (the default).
+- On Mac v2, an inline approval row sits in the slot below the clip bar and pushes the transcript down (v5 f22–f22c). The right panel stays as it was until Send.
+- Line 1: “Rewrite sends the {w} words of clip {n} to {provider} with your key.” A CLI on an API key names the CLI and says it is billed to the API key it is signed in with.
+- Detail: “No audio or video. {model}. Asks before each send.” Note: “VoxClip can't tell what this costs. Check {provider}'s pricing.” The provider's pricing is linked; no price is invented.
+- **Send** (accent), **Cancel**. On first use, one row combines the connector consent and the send: **Allow and Send**, **Not now**. A plan's first-use **Allow and Rewrite** stays neutral (ai.md §4.8).
+- A missing key is entered and saved inline; saving makes no request and reveals Send. Return ignores repeat, a keydown before the row, and the first 0.5 s after opening or rewording. ⌘Return sends; Esc cancels and preserves the Ask text. Space plays. A billed button never receives focus automatically.
+- Failures after Send appear in the Rewrite job's steps. **Try Again…** reopens this row; a rejected key offers an inline key field and **Save Key and Try Again…**. The Director thread job stays hidden until P1-09.
+- Windows retains its native R0b confirmation until its v2 port.
 
 **R1. Running**
 
@@ -1297,7 +1302,7 @@ Phase 0 connectors return one answer, so nothing streams: R1 waits until the rep
   | No changes | Headline "No changes needed"; body "{AI} found nothing to change in clip {n}." | — | **Ask for Something Else** (focuses the field) |
 
 - **Apply…** is one undo step named "Rewrite clip {n}". It announces "Applied {c} changes", closes the panel and moves focus to the first changed word.
-- **Turn On Voice Lab…** opens the one-time beta sheet (voice-lab.md §5). On **Turn on**, the excluded voice rows gain their checkboxes, checked.
+- **Turn On Voice Lab…** opens the inline Voice job on Mac (voice-lab.md §5). Turning it on approves the own-voice model download with the licence visible; voice rows become available after setup. Windows retains its platform first-use presentation until its inline job lands.
 - Announce "{c} changes proposed. {z} need your voice." when R2 appears, and move focus to the first change row.
 
 **R3. The scope changed while the panel was open**
@@ -1321,7 +1326,10 @@ Phase 0 connectors return one answer, so nothing streams: R1 waits until the rep
 
 #### 6.3.7 Your voice, from this clip
 
-The steps run inside the panel, and the proposal stays in the transcript. The title is "Your voice", with Beta and "Step {i} of 3" ("of 4" when a read-aloud is needed), plus the back button "Back to rewrite".
+**Mac inline job (V16, v3 f10 and v5 f23).** Rewrite's Turn On Voice Lab / Make Your Voice opens the right panel's Voice job, preserving the proposal. First use contains the beta notice, an inline ElevenLabs key field when needed, and the publisher, exact catalogue download size and licence immediately beside Turn On Voice Lab. That click enables the setting and approves that model download; installed models skip it. Progress, Cancel and Retry stay in the job. Nothing is uploaded. After setup, this Mac finds clear speech, shows the three explicit attestations and display name, and prepares the read-aloud statement before recording starts. The statement and recorder live in the job. Back to Rewrite keeps local work. Settings reuses the inline first-use card and is otherwise management (voices, deletion, storage, spend and turn off); it has no Create Your Voice entry or enrollment sheet. The speaker model's Settings row also places its licence and download action inline. The Mac enrollment flow supersedes the old opt-in and CreateVoiceSheet presentations.
+
+
+The steps run inside the panel, and the proposal stays in the transcript. On Mac, Beta · Step 1 of 2 covers setup, agreements and recording; Beta · Step 2 of 2 covers the locally prepared quote, creation and result (v3 f10/f11). Back to Rewrite preserves enrollment work. The older three-step numbering below remains a Windows reference until its inline job lands.
 
 The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set to the scope's clip; on device and free; voice-lab.md §6.5.1) starts when R2 appears with voice changes and no voice. V1 therefore usually knows the result already.
 
@@ -1329,13 +1337,13 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 
 - Headline "Add your ElevenLabs key". Text: "Your voice is made and spoken by ElevenLabs, with your own key. Create a key just for VoxClip with a monthly credit limit."
 - A secure field, "ElevenLabs API key".
-- Link **Make a restricted key**: a popover with the permission-list guidance of voice-lab.md §2.2.
+- Link **Make a restricted key** opens ElevenLabs key settings; permission guidance is voice-lab.md §2.2.
 - Primary **Save Key**.
 - Note:
   - macOS: "Saved in the macOS Keychain and used only by VoxClip for Voice Lab. Never passed to Claude Code, Codex or any other AI app. Saving makes no request."
   - Windows: "Saved for your Windows account and used only by VoxClip for Voice Lab. Never passed to Claude Code, Codex or any other AI app. Saving makes no request."
 
-**V1. Agree** (Step 1 of 3)
+**V1. Agree** (Mac Step 1 of 2; Windows Step 1 of 3)
 
 - Headline "Make your voice from this clip". Sub-line: "Your new words are spoken in your own voice. You do this once."
 - The speech row, by the state of the analysis:
@@ -1351,12 +1359,11 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 - Rows that appear only when a requirement is unmet:
   - The own-voice check is missing: "Download the own-voice check (27 MB)" · "Runs on this {Mac/PC}. Licence CC BY 4.0." with **Download**. The third-party download confirmation (§10) comes first, then "Downloading… {p}%" with **Cancel**.
   - Plan: "Instant voice cloning needs an ElevenLabs Starter plan or higher." or "Your ElevenLabs account has no free voice slots.", with the link **Open ElevenLabs**.
-- Note "Checks your ElevenLabs plan. Free; no audio is sent." Primary **Continue**.
-  - Continue stores the provider consent if it was shown, then runs the plan check (`GET /v1/user/subscription`, voice-lab.md §2.3).
-  - Pressed with a box unticked, Continue focuses that box and shows "Tick all three to continue." Nothing is disabled.
+- Mac primary **Read the Statement** prepares the statement locally after the three agreements; recording starts only on **Record**. No provider request is made here. The plan check belongs to the later priced Create My Voice action.
+- Windows legacy presentation, until its inline job lands: "Checks your ElevenLabs plan. Free; no audio is sent." Primary **Continue** stores provider consent and runs the plan check (`GET /v1/user/subscription`, voice-lab.md §2.3). With an unticked box, Continue focuses it and says "Tick all three to continue."
 - **Windows, until its speaker check is enabled** (voice-lab.md §6.6): an informational `InfoBar`, "Making a voice isn't available on Windows yet: the on-device check that it's your voice isn't ready. Your free changes still work." The only primary is **Apply {k} Free Changes**.
 
-**V2. Read aloud** (Step 2 of 3)
+**V2. Read aloud** (Mac Step 1 of 2; Windows Step 2 of 3)
 
 - Rows:
   - the speech row, done, as in V1;
@@ -1364,8 +1371,9 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 - Headline "Read this aloud, in one take".
 - The teleprompter shows the voice-lab.md §6.2 statement, generated per attempt, with the four nonce words emphasised.
 - The recorder:
-  - idle: **Record** (Space);
-  - recording: "Recording {m:ss}", a level meter and **Stop** (Space).
+  - idle: **Record**;
+  - recording: "Recording {m:ss}", a level meter and **Stop**.
+  - Space outside a text field plays or pauses the video. ⌘Return activates the current primary. A priced action never receives focus automatically, ignores repeats, and ignores ordinary Return during its first 0.5 s.
   - With VoiceOver or Narrator running, a note reads: "Using a screen reader? Wear headphones so it isn't recorded."
 - Note: "Stop after the last word (5 to 30 s). Nothing leaves this {Mac/PC} until you choose Create My Voice."
 - Errors show inline while the recorder stays:
@@ -1382,13 +1390,15 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
   - a done row, "Statement recorded and kept" · "You won't need to read it again.";
   - primary **Record a Read-Aloud**;
   - note "Nothing was sent. The check ran on this {Mac/PC}."
-- **Read-aloud** (too little speech, or a mismatch), Step 3 of 4: the headline "Read this aloud, about 90 s", the `scripts-en.txt` text and the same recorder, validated at 60 to 120 s. Then V3 runs again against the read-aloud, with the voice-lab.md §6.6 floor of 10 s. Below that floor: "Some of these recordings don't sound like the voice in your consent statement.", nothing is sent, and the primary is **Record a Read-Aloud** again.
+- **Read-aloud** (too little speech, or a mismatch), Step 3 of 4: the headline "Read this aloud, about 90 s", the `scripts-en.txt` text and the same recorder, validated at 60 to 90 s on Mac (the existing bounded recorder); the Windows design range remains 60 to 120 s. Then V3 runs again against the read-aloud, with the voice-lab.md §6.6 floor of 10 s. Below that floor: "Some of these recordings don't sound like the voice in your consent statement.", nothing is sent, and the primary is **Record a Read-Aloud** again.
 
-**V4. Ready to create** (Step 3 of 3)
+**V4. Ready to create** (Mac Step 2 of 2; Windows Step 3 of 3)
 
 - Headline "Ready to create your voice". A done row: "It's you" · "{m} of this video matches your statement." For a read-aloud: "Your read-aloud matches your statement."
 - Body: "Checks your plan, then sends your statement and {m} of your speech to ElevenLabs to create your voice. No video is sent."
-- Primary **Create My Voice · < $0.01**. The Scribe check costs under a cent and Instant Voice Clone costs $0. One approval covers the statement check and the creation (voice-lab.md §6.4).
+- Primary **Create My Voice · {quote price}**, computed from `preparePlan → plan.quote.estimate`; no hard-coded amount. One click approves plan check, statement verification and creation (voice-lab.md §6.4). Until that click, the statement and training audio stay local. A local mismatch makes no request. Monthly soft-cap warnings appear beside the action without another dialog; an unknown estimate explicitly names ElevenLabs pricing.
+- A recorded statement has **Play Statement**. The plan, statement and creation rows show what the click does. A failed verification returns to recording and creates no voice; there are no separate Verify and Create approval steps.
+- A durable verified enrollment offers **Resume Creation**, which prepares and displays a creation-only quote. It never automatically executes or repeats the statement transcription. Wrong key, changed region, expired or ambiguous journals retain Core C7's guards.
 
 **V5. Creating**
 
@@ -1398,20 +1408,21 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
   - done or running: "Statement read correctly" · "Checked by ElevenLabs";
   - running: "Creating “{name} (VoxClip)” in your ElevenLabs account", with an indeterminate bar;
   - waiting: "Back to clip {n}" · "{z} phrases to voice".
-- Footer note: "Sending your statement and {m} of your speech to ElevenLabs with your key. No video. < $0.01". There is no Cancel after dispatch; the journal owns recovery (voice-lab.md §6.8).
+- Footer note: "Sending your statement and {m} of your speech to ElevenLabs with your key. No video. < $0.01". On Mac, **Stop** requests cancellation; it cannot undo a dispatched request. The journal owns reconciliation and recovery (voice-lab.md §6.8).
 - The statement doesn't match (WER or nonce): "That didn't match the statement. Read it again, clearly, in one take." The panel returns to V2 with a new statement, and nothing is created. After three tries in 10 minutes: "That's three tries in 10 minutes. Try again at {time}."
 - `requires_verification`: "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back.", with **Open elevenlabs.io** and **Check Again**.
 - A local save failure, and recovery: the existing copy and actions (voice-lab.md §6.8), including **Remove This Voice**.
 
 **V6. Done.**
 
-- The panel returns to R2. The voice row reads "Your voice is ready", and the primary becomes **Make Takes · ≈ ${x}**. Takes never start by themselves.
+- The job shows "Your voice is ready." with **Back to Rewrite**. Returning shows R2; V18 supplies its priced Make Takes action. Takes never start by themselves.
 - Announce "Your voice is ready."
 
 #### 6.3.8 Takes and Use
 
 **T1. Approval.** It is the R2 primary.
 
+- On Mac, discovering a consented voice opens the Voice job in the existing panel host. Voice/model pickers, phrase rows and Review Changes share that job; Review Takes returns without another host. Preparing a price sends no synthesis or QA. The priced Make Takes click approves the displayed complete-set quote, not a later replacement. High or unknown estimates ask inline, with Keep Working as the safe primary and the confirmed action labelled as billed to the key. ElevenLabs' first-use privacy consent is inline too and cannot start paid takes.
 - One approval covers every included phrase's bounded take set (up to `CANDIDATES` = 3 each) and its Scribe QA, as one summed cap (voice-lab.md §8.6).
 - The use-time guard (voice-lab.md §6.9) runs first, on device, and is cached per (contentKey, recordId).
 - If the guard fails:
@@ -1423,6 +1434,7 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 
 - Headline: a spinner and "Making takes… phrase {i} of {z}", with **Stop**.
 - Rows fill as takes arrive. Generation for a phrase stops at the first take that fits.
+- Mac rows retain every failed take and the engine's status, including “Phrase 2 of 3…” and “Take N stopped.” Stop cancels and drains price preparation or generation, retains completed takes, and never starts a replacement quote. A stopped phrase is retried independently; finished phrases are not regenerated.
 - Announce "Phrase {i} fits."
 
 **T3. Ready.**
@@ -1434,7 +1446,8 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
   - then "Take {k} · {d} s · fits", or "· pauses +{x} s".
   - With more than one take: a 1·2·3 segmented control, the duration and a "Best match" tag. The focused row adds the link **Try Another · {amount}**: {amount} is that phrase's own take-set estimate, written by voice-lab.md §3.1 `format`. It reads **Try Another…** with no amount when that estimate confirms (voice-lab.md §3.1).
 - Below the list: **Play Clip {n} with New Voice**, which previews the clip with the selected takes, and the line "Made {t} takes · ≈ ${x} on your ElevenLabs account."
-- Footer: an info glyph with "Exports show AI MODIFIED on the video and in the post.", and the primary **Use Takes**.
+- Mac retries first prepare that phrase's quote with **Try Another…** (or **Try Again…** for an empty row). Its separately priced **Try Another · {amount}** action then appears beside the phrase-only send line. The engine holds one quote; no estimate is invented for another row. A retry requests one candidate for that phrase only. The 1/2/3 keys select a QA-passing slot in the focused phrase; failed slots remain visible but cannot be selected. Selection, Stop, price preparation, acceptance, leaving the rows and invalidation stop audition. Nothing autoplays.
+- Footer: "Exports show AI MODIFIED on the video. The post disclosure is optional.", and the primary **Use Takes**. The post-caption disclosure remains opt-in and OFF by default; the burned-in export label is unchanged.
 
 **Edge cases.**
 
@@ -1444,15 +1457,26 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
   - When rendering lands, the length choice (ADR-R28, voice-lab.md §8.9) returns as an info callout with two radio rows, neither preselected and never remembered: **Lip sync**, "Sends {s} s of video around the change to {provider} with your key. About ${x}, confirmed before it runs."; and **Retimed source video**, "Slows these {s} s of video to {r}× and crops in slightly around your face. Nothing is sent." (a shorter take: "Speeds these {s} s of video up to {r}× and crops in slightly around your face. Nothing is sent.").
   - The Lip sync sheet: "Lip sync this change?" / "This will cost about ${x} on your {provider} account." / "Sends {s} s of video around the change to {provider} with your key." with **Cancel** and **Continue**.
 - **Provider error.** A callout: "ElevenLabs rejected the key (401). Your edits are saved." It comes with an inline key field, **Save Key** and **Retry**. There is no Settings detour.
-- **Closing with unused paid takes.** A sheet: "Discard {t} takes?" / "You paid about ${x} for them. Your edits are saved." with **Keep Working** (the default) and **Discard Takes**.
+- **Rewriting with unused paid takes.** The existing inline discard question protects paid engine takes too. Keep Working is the safe primary; Discard Changes explicitly retires the proposal and takes. No takes approval or discard sheet is added on Mac.
 
 **T4. Use and done.**
 
-- **Use Takes** applies every included change as one undo step, "Rewrite clip {n}": the voice segments (`acceptAll`, voice-lab.md §8.12), the cuts and the fixes. The panel closes, Captions return, and focus moves to the first changed word.
+- **Use Takes** applies the selected fitting phrases and every included pending cut/fix as one scoped undo step, "Rewrite clip {n}" (or the selection/full-take name). It uses `RewriteSession.acceptTakes` → C4 `acceptAll` once; stopped, failed and changed-duration phrases are never described as accepted. The review closes and transcript focus moves to the first changed source word. In the same panel host, Voice shows the in-use phrase rows (v3's done frame), with **Play phrase in clip**, the chosen take and fitting duration. Captions remain available in the switcher.
 - A toast for 6 s: "Clip {n} rewritten: {z} phrases in your voice, {x} cuts, {y} fix." with **Undo** (⌘Z / Ctrl+Z). The same sentence is announced.
+- The in-use footer says **Spent {actual amount} on ElevenLabs for {t} takes. Exports carry an AI MODIFIED label.** with **Undo Voice**. Unknown spend says "Spend unavailable", never a guessed price. Both Undo buttons reverse the entire review, not one phrase; provider spend is not refunded. The feedback is session-only and disappears after a project/revision change. Its Undo never reverses an intervening edit. A stale publication or refused nonfitting set shows no success toast or undo entry.
 - The accepted words show as AI words (§4.1). The sidebar meta reads "AI modified", the viewer bar shows the AI modified tag, and the stage shows the preview label at the configured position. Export's accessible name adds ", contains AI-modified speech". The share disclosure is unchanged (voice-lab.md §11.3).
 
 #### 6.3.9 Edge states
+
+Leaving Voice via Back, the job switcher, a tab/scope change, Home, hidden right column or window/owner exit stops and discards an ongoing statement/read-aloud before hiding its controls. Already completed local draft audio survives temporary navigation. Automatic stop is session-owned and handled once even without a mounted view; canceled or late results cannot restore a discarded recording. No background/invisible recording is supported.
+
+Done/Back after successful creation and successful cancellation are terminal: they reset the transient enrollment step, price/plan, recovery presentation and agreement/recording draft. Reopening starts at actual prerequisites/agreement, never stale success. Saved voices and their consent audio survive. An unsaved remote creation must still be saved or explicitly removed; Done cannot silently drop it.
+
+Returning after creation refreshes the existing Rewrite review's voice choices under its current provider consent and selects the new active voice. Pending ElevenLabs verification is not a usable voice: the review explains verification/refresh, without sending takes or rebuilding the proposal. Once takes are paid, voice/model choices are locked; changing inputs by another route invalidates the plan but preserves its paid-review discard guard. A late discovery or generation response cannot revive a stale choice or take.
+
+The priced take plan pins pending cuts/corrections and proposal change content/states too, including corrected bridge speech. Leaving out a pending correction without editing the project invalidates old approval and Use Takes. Unpaid work needs a fresh quote and explicit click; paid work keeps its discard guard. An explicit take selection survives failed/better retries, Stop and slot eviction. Row Play pauses source playback, and source Play/Space stops take audition, including pending startup. Plain paid Return is timed from the actual key event, not delayed delivery; repeat and Space never spend.
+
+Accepted take charges update the local monthly total while review remains open, including stopped/late/unpriced responses. Daily transcription and monthly Voice Lab amounts share one status slot with separate labels, never a combined ledger; pending paid transcription suppresses the harness billing claim. These updates do not refresh a provider account.
 
 | State | Where | Copy and action |
 |---|---|---|
@@ -1460,8 +1484,8 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 | No AI chosen | R0 | §6.3.6 R0 |
 | Not enough clean speech | V1, then the read-aloud | §6.3.7 V1, below 30 s |
 | Speaker mismatch | V3 | §6.3.7 V3, mismatch |
-| A paid step of $0.50 or more, an unknown price, or crossing the monthly cap | sheet | voice-lab.md §3.1 copy |
-| AI on an API key | sheet R0b | §6.3.6 R0b |
+| A paid step of $0.50 or more, an unknown price, or crossing the monthly cap | inline panel question on Mac; existing presentation on Windows | voice-lab.md §3.1 copy |
+| AI on an API key | inline approval row R0b (Mac v2) | §6.3.6 R0b |
 | Too much to re-voice | R2 | the over-budget footer in §6.3.6 R2 |
 | Not the voice owner | T1 | §6.3.8 T1 |
 | Voice Lab off (release) | R2 | the §6.3.6 R2 footer |
@@ -1481,7 +1505,7 @@ Each item goes in the same change that replaces it, on both platforms:
 6. **Choose Voice…** and the separate "Use ElevenLabs?" alert before voice discovery, which fold into V1.
 7. The panel's "What should change?" field, the plain-text **New words** field and the read-only diff line. The scope bar's field and the edit popover replace them.
 8. The separate voice-creation sheet: `CreateVoiceSheet` (macOS), `CreateVoicePage` and `VoiceCreationDialog` (Windows). Their session logic moves into the panel steps; the views are deleted, not kept beside the new ones.
-9. The separate **Verify statement · < $0.01** and **Check ElevenLabs account** buttons, merged into Continue and Create My Voice.
+9. On Mac, the separate **Verify statement · < $0.01** and enrollment **Check ElevenLabs account** buttons, merged into the one priced **Create My Voice** action. Settings retains its account-management check.
 10. The training-source radio group. Project audio is automatic, and the read-aloud appears only when needed.
 11. "Download the own-voice check model in Settings → Voice Lab before creating a voice." The download is inline in V1.
 12. Outlined boxes per line for selections, Rewrite passages and changes in the transcript.
@@ -1612,33 +1636,21 @@ There is no Recent header and no grid.
 
 Recording (M2) adds **Record…** (`⌥⌘N` / `Ctrl+Shift+N`) next to Import Video… in the drop bar.
 
-### 7.1 Import sheet and the untranscribed state
+### 7.1 Inline Transcribe and the untranscribed state
 
-Opening a video makes it playable at once (section 13, "Importing"). Transcription then starts **immediately** with the routed plan (transcription.md section 11.2) unless one of these holds, in which case the import sheet appears first (macOS sheet on the main window, Windows `ContentDialog`):
+Opening a video makes it playable at once. On Mac v2, Transcribe is part of the transcript buffer (v5 f20–f21/f25), with no sheet, fill, ring or radius. Its text starts on the transcript's x 80 text column; glyphs sit in the gutter. The block pushes existing words down for Transcribe Again. Windows retains its current import dialog until this flow is ported.
 
-- Settings → Transcription → Engine is **Ask each time** (`transcription.engineMode = ask`);
-- the language is Auto and cannot be detected locally (no multilingual whisper model installed, or detection below 0.5);
-- the routed plan needs a download, a key or Apple speech assets;
-- the user chose **Transcribe…** (from the untranscribed state) or **Transcribe Again…**.
-
-```text
-┌ Transcribe interview-take-3 ─────────────────────────────────────────┐
-│ Language   [ Estonian ▾ ]   [x] Remember for new imports              │
-│ Engine     (•) On this Mac · TalTech Estonian (874 MB download)       │
-│            ( ) ElevenLabs Scribe · ≈ $0.04 · sends the audio track    │
-│ ▸ Advanced (ElevenLabs only)                                          │
-│     Speakers [ Off ▾ ]  (Off · Auto · 1 … 32)                         │
-│     Keyterms [ VoxClip, TalTech …                         ]          │
-│                                        [ Not now ]   [ Transcribe ]   │
-└───────────────────────────────────────────────────────────────────────┘
-```
-
-- **Language:** list with the most recent first (`transcription.recentLanguages`), then all languages alphabetically; Auto is offered only when detection can run. "Remember for new imports" writes `transcription.language`.
-- **Engine:** the routed choice first and selected, then the alternatives, each with its size line (transcription.md section 12.3) or cost line (section 8.5). ElevenLabs is listed only with a key; Apple only on macOS for supported locales.
-- **Advanced** (shown only when ElevenLabs is selected): Speakers (`Off` → `diarize=false`; `Auto` → `diarize=true`; a number → `diarize=true, num_speakers`), Keyterms (one per line or comma-separated, validated per transcription.md section 8.1; the offending term is named inline).
-- **Transcribe** runs the choice; choosing ElevenLabs for the first time shows its consent sheet (transcription.md section 8.5) before any upload. **Not now** closes the sheet and leaves the project untranscribed.
-- **Untranscribed state** (`transcript == null`: after Not now, cancel, `noSpeech` or a failure): the transcript page shows "This video isn't transcribed yet." with **Transcribe…** (opens the sheet). The Full take row's meta reads "Not transcribed", and the sidebar actions are disabled with the tooltip "Transcribe the video to select words." The video plays, and Export works with no captions and no cuts.
-- **Transcribe Again…** (macOS Edit menu, Windows CommandBar ⋯) confirms first: "Transcribe again? This replaces the transcript and removes {n} cuts, {m} corrections, {k} clips and the AI suggestions." [Transcribe Again] [Cancel] (editing spec section 10.5), then opens the sheet with the current engine and language selected.
+- A free installed engine starts on open with no choice block. English on this Mac defaults to Apple Speech, listed first; it needs no third-party model download. Settings' **On this Mac** routes English to Apple Speech and other languages to Whisper. A Whisper model explicitly chosen in the block remains the choice for that run.
+- Show the choice block when a model or Apple speech assets need downloading, the engine is paid, Settings says **Ask each time**, or the language cannot be detected locally. Auto with an installed multilingual Whisper model can run its local detection; without it, ask which language is spoken.
+- **Language:** recent languages, then the full alphabetic list, plus Auto for local detection. **Remember for new imports** writes only `transcription.language`; the engine for future imports comes from Settings.
+- **Engine:** Apple Speech first, On this Mac with the Whisper model picker, then ElevenLabs Scribe. Keep ElevenLabs discoverable without a key: show a secure field, **Save Key**, and the restricted-key link. Saving makes no request and reveals the paid primary only after success.
+- **Speakers and key terms:** ElevenLabs' folded advanced controls keep Off, Auto and 1–32 speakers, plus comma/newline separated keyterms (at most 100, each at most 50 characters). Keyterms multiply the catalogue estimate by 1.2.
+- Before a third-party model download, show its publisher, size, licence, source page and “By downloading you accept the publisher's terms.” **Download and Transcribe** is approval; there is no second confirmation. While downloading, language, engine and model remain editable. Completion starts the currently selected ready free engine. Selecting ElevenLabs pauses automatic continuation; the downloaded model stays installed.
+- Downloads show byte progress and Cancel. Failure replaces the download line, with retained bytes and **Retry** / **Not now**. Cancel preserves resumable partial files. **Not now** folds the block to “This video isn't transcribed yet. [Transcribe…]”. The video keeps playing and exports remain available without captions.
+- **Every ElevenLabs run requires a priced click**, including after `transcription.cloudConsent.elevenlabs` is stored: **Upload and Transcribe · ≈ $X**, calculated from duration × catalogue rate, plus the keyterms surcharge. No audio goes before this click. First use combines privacy and approval: “Uploads this video's audio to ElevenLabs with your key.” and “{duration} of sound, no video frames. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. Asked once.” Later runs omit the terms but keep the priced primary.
+- A paid primary never focuses itself. Space plays; a Return must be fresh, not repeat, postdate the row and arrive at least 0.5 s after it appears or changes. ⌘Return approves from the block. Saving a key resets the guard. Esc in the block or ⌘. cancels the current download/run.
+- Running steps cover reading, extraction, upload, transcription and alignment, with progress and six skeleton lines. Before upload: “Nothing has been sent yet. Cancel now and nothing is billed.” After upload starts: “If you cancel now, ElevenLabs may still bill audio it already received.” Cancel discards partial results and keeps the video. The status bar suppresses the harness's cost item during a paid transcription and shows ElevenLabs' daily estimate plus pending spend; canceled/failed uploads remain an upper bound. These are estimates, not invoices.
+- **Transcribe Again…** opens the block above the existing transcript: “This replaces the transcript and removes {n} cuts, {m} corrections, {k} clips and the AI suggestions.” The neutral **Transcribe Again** action starts with focus on **Cancel** and has no default or ⌘Return shortcut. Cancel keeps every edit. For ElevenLabs it reads **Transcribe Again · ≈ $X**, stays neutral, and the explicit click approves the upload and replacement. Successful replacement clears the named edits and suggestions in one undo step, “Transcribe video”; failure or cancellation keeps them. Existing exports stay.
 
 ---
 
@@ -1664,7 +1676,7 @@ After export the result is **Exported · file name · Show in Finder · Done**. 
 
 Inside that section, the editable caption retains the X weight (`/280`) and LinkedIn scalar (`/3,000`) counters, **Copy caption**, **Open X**, **Open LinkedIn**, drag-out files, and “VoxClip copies the caption and reveals the file. Add the video in the browser; nothing is posted automatically.” For targets with a generated AI-voice disclosure line, the plain toggle **Add 'AI MODIFIED' line to the post** is **OFF by default always**, including AI-voiced exports. Turning it on adds the exact line from the rendered export after a blank paragraph, with an uncut fallback if share-text rules are unavailable; turning it off removes it with no interstitial or warning. Only an export with AI-voiced phrases shows “Your video still shows the AI MODIFIED label.” A target without AI voice has no generated post-line control or hint. The burned-in video label remains unchanged. “Caption copied.” resets after two seconds. Browser opening accepts only HTTPS URLs at X or LinkedIn. Optional post text and truncation rules are in voice-lab.md §11.3 and publishing.md §2.1.
 
-Missing-media relinking uses an inline work-area banner: “This file looks different. Use it anyway?” and the candidate file name, **Use It**, **Choose Another…**, and **Cancel**. Only Use It confirms different media. Cancel or cancelling the system picker leaves the project unchanged. Duration mismatches beyond 0.05 seconds still refuse; a successful relink is one undo step. VoiceOver announces the banner and candidate name when it appears. Use It relinks the current project, preserving any intervening edits or tab scope changes. Cancel or Choose Another retires the candidate; a closing/closed project cannot relink, and a refused confirmation keeps its banner with an inline explanation.
+Missing-media relinking uses an inline work-area banner: “This file looks different. Use it anyway?” and the candidate file name, **Use It**, **Choose Another…**, and **Cancel**. Only Use It confirms different media. Cancel or cancelling the system picker leaves the project unchanged. Duration mismatches beyond 0.05 seconds still refuse; a successful relink is one undo step. VoiceOver announces the banner and candidate name when it appears. Use It relinks the current project, preserving any intervening edits or tab scope changes. Cancel or Choose Another retires the candidate; a closing/closed project cannot relink, and a refused confirmation keeps its banner with an inline explanation. Until the video is found and confirmed the Mac editor only reads (editing.md §10.3, v5 f24c and f24): the transcript, selection, Explorer, timeline and caption position work; the clip bar keeps Rewrite, Tighten, Hook and the Ask field in place, dimmed, with the reason as their tooltip; an open Rewrite closes and none starts; Export and its entries are refused ("Locate the video to export.", "Confirm the video to export."); and the status bar shows "Read-only until you locate the video" or "Read-only until you confirm the video" with an alert glyph where a running task shows. A video is missing only once its check answers: as a project opens or reverts, Locate… and the read-only note wait for that check, so a slow or external volume shows neither.
 
 M2's future Export & post remains scoped by publishing.md §3; its final post call is never retried automatically.
 
@@ -1752,9 +1764,9 @@ Single-letter keys (J K L I O P C [ ]) and bare Space, ⌫ and arrows act on the
 
 On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). Use Ctrl+Shift.
 
-**Mac command field (V11b).** The right title row and Home have “Search or run a command ⌘K”. It opens an in-window combo box and a scrollable list of enabled native menu commands with their menu paths and key hints. Filtering matches words in the title, path or shortcut. Validation never runs a command; Return revalidates and runs the selection after restoring the original responder, and Esc closes and restores focus. VoiceOver hears the combo box and results count. Help › Keyboard Shortcuts opens this field; the former Shortcuts sheet is removed. The Welcome Tour remains a sheet for now. In a Versions window commands belong to that window. With the right column hidden, ⌘K remains available from the keyboard and View menu.
+**Mac command field (V11b).** The right title row and Home have “Search or run a command ⌘K”. It opens an in-window combo box and a scrollable list of enabled native menu commands with their menu paths and key hints. Filtering matches words in the title, path or shortcut. Validation never runs a command; Return revalidates and runs the selection after restoring the original responder, and Esc closes and restores focus. Palette choices validate and run as explicit menu choices even while Return or ⌘K is the current event; bare Explorer keys retain their focus rules outside the palette. Repeating ⌘K, clicking the launcher or choosing Help › Keyboard Shortcuts refocuses an open field and keeps its query. Moving focus or clicking outside closes it without restoring the old focus. VoiceOver hears a debounced results count and the selected command on arrow moves; the field links to the results table. Help › Keyboard Shortcuts opens this field; the former Shortcuts sheet is removed. The Welcome Tour remains a sheet for now. In a Versions window commands belong to that window. With the right column hidden, ⌘K remains available from the keyboard and View menu.
 
-**Mac monthly spend and sign-in (V11b).** When Voice Lab is on, the status bar and harness picker show the ElevenLabs estimate from the local ledger for **this month**, including the count of unpriced actions. It refreshes when Voice Lab work finishes, the app becomes active, the date changes, or the picker opens. It is an estimate, not a provider invoice. Home uses the same harness picker before a project is open. For a signed-out Claude Code or Codex it contains instructions, **Sign In…**, **Check Sign-In**, and the result in place. Sign In opens Terminal with the catalogue's existing sign-in command (`claude` or `codex login`); it makes no model request. The Home sign-in alert is removed.
+**Mac monthly spend and sign-in (V11b).** When Voice Lab is on, the status bar and harness picker show the ElevenLabs estimate from the local ledger for **this month**, including the count of unpriced actions. It refreshes when Voice Lab work finishes, the app becomes active, the date changes, or the picker opens. It is an estimate, not a provider invoice. Home uses the same harness picker before a project is open. For a signed-out Claude Code or Codex it contains instructions, **Sign In…**, **Check Sign-In**, and the result in place. Sign In opens Terminal with the catalogue's existing sign-in command (`claude` or `codex login`); it makes no model request. The Home sign-in alert is removed. Home shows the picker row only while the selected CLI is signed out or has a result to show; the first-run hero retains no callouts. Returning from Sign In checks once. A ready result hides the sign-in actions immediately, clears on the following activation, and triggers no further probe. Announcements occur only when the result changes.
 
 **Mac timeline EXPORTS (V11b).** The bottom panel has TIMELINE and EXPORTS tabs. EXPORTS reuses the Explorer's `ExportsListModel`, 40 pt two-line rows, metadata and actions (Show in Finder, Open, Export again, Retry). Empty copy: “No exports yet. Export a clip or the full edit to see it here.” Selecting EXPORTS hides the timeline transport; Hide Timeline still works. It adds no sheet.
 
@@ -1789,7 +1801,9 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Stop a running Rewrite | ⌘. or Esc | Esc | Also the panel's **Stop** |
 | Close the Rewrite panel | Esc, when nothing runs | Esc | Focus returns to the scope's first word |
 | Rewrite panel's primary action | ⌘Return anywhere in the panel; plain Return only when focus is on a footer button or plain panel text, never on a change or phrase row, a checkbox or a text field | Ctrl+Enter in the panel | Return on a focused change row edits it (next row) |
-| Edit a proposed change | Return on a focused change or change row | Enter or F2 | Click also opens it (§6.3.5) |
+| Edit a proposed change | Return on a focused change or change row | Enter or F2 | Click also opens it (§6.3.5). macOS (v2): F2 too, and Return on a selection inside a change or over several changes; Return on a selection outside every change still corrects spelling. The change and its popover scroll into view |
+| Keep / undo the focused change | ⌘Return / ⌘⌫ in the transcript (macOS v2) | Ctrl+Enter / Ctrl+Backspace (proposed) | Undo leaves it out; it never changes the project (§6.3.5) |
+| Next / previous change | ⌥↓ / ⌥↑ in the transcript (macOS v2) | Alt+Down / Alt+Up (proposed) | Reads "Proposed change {i} of {c}: …". A selection outside the change it moves to is let go, so Return edits the change |
 | Include or exclude a change | Space on its row | Space | |
 | Compare takes | Space plays the focused phrase; ← → switch its take | Space; ← → | |
 | Write a Rewrite instruction | Click the field, or ⌃F6 to the scope bar, then Tab | Click, or F6, then Tab | |
@@ -1805,7 +1819,7 @@ On Windows avoid **Ctrl+Alt+letter** (AltGr on many layouts types characters). U
 | Show / hide timeline | ⌘J | Ctrl+J (planned) | The v2 bottom panel. It stays while the right column is hidden, until the viewer has its hover transport |
 | Selection bar focus | Tab or ⌃F6 | Shift+F10 or Menu key | |
 | Move focus to the next pane | ⌃F6 | F6 (Shift+F6 goes back) | Order in §15 |
-| Transcript text bigger / smaller / reset | ⌘+ / ⌘− / ⌘0 | Ctrl+= / Ctrl+− / Ctrl+0 | |
+| Timeline zoom / transcript text size | ⌘= / ⌘− (⌘+ also increases) | Ctrl+= / Ctrl+− / Ctrl+0 | Mac: both directions zoom the timeline when it has focus, and resize transcript text elsewhere. One visible View item per direction follows that focus. ⌘0 resets transcript text in the key editor, including Versions windows. The timeline toolbar exposes the single adjustable “Timeline zoom” slider; the canvas exposes playhead and edge controls. |
 | Export… | ⌘E | Ctrl+E | |
 | Import / open | ⌘O | Ctrl+O | |
 | New project | ⌘N (New Project from Video…, movie picker, main window) | Ctrl+N (new main window on Home) | Replaces "New window" |
@@ -1902,17 +1916,17 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Camera or mic denied (M2) | Record view | "Camera access is off. Turn it on in System Settings → Privacy & Security → Camera." [Open Settings] |
 | Unsaved changes | — | Projects autosave. macOS: an untitled project (never saved under a name) gets the system keep/delete prompt on close; named projects close silently. Windows: projects always have a file (architecture.md §2.6), so closing never prompts. |
 | Project can't be saved (Windows: leaving, closing or quitting) | Editor InfoBar (Error); navigation stays put | "Couldn't save this project. Your edits are still open. Check the folder or use Save project as…, then try again." (macOS shows the system save error) |
-| Transcribe again | confirmation | "Transcribe again? This replaces the transcript and removes {n} cuts, {m} corrections, {k} clips and the AI suggestions." [Transcribe Again] [Cancel] |
-| ElevenLabs first upload | sheet / ContentDialog | Title "Transcribe with ElevenLabs?" Body "ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent." [Continue] [Cancel] (transcription.md section 8.5) |
+| Transcribe again | Mac v2 inline buffer; Windows confirmation until ported | "Transcribe again? This replaces the transcript and removes {n} cuts, {m} corrections, {k} clips and the AI suggestions." [Transcribe Again] [Cancel] |
+| ElevenLabs first upload | Mac v2 inline buffer; Windows ContentDialog until ported | Mac: “Uploads this video's audio to ElevenLabs with your key.” Privacy detail and [Upload and Transcribe · ≈ $X] [Not now]; every run asks. Windows retains “Transcribe with ElevenLabs?” and [Continue] [Cancel] (transcription.md §8.5) |
 | Project saved outside the video folder (Windows) | InfoBar (Informational) | "Saved in VoxClip's folder. Use Save project as… to keep it with the video." |
 | Rewrite: scope bar | scope bar | Field placeholders: "What should change in clip {n}?" (a suggested clip the same), "What should change in this video?" (Full take), "What should change in these words?" (a selection). Suggestions: Fix mistakes · Make it clearer · Make it shorter · Fix grammar and punctuation only · Recent: "{text}" (instructions in §6.3.1). Verb **Rewrite**, or **Rewrite…** when the send asks first. Status instead of the verb: "Rewriting…", "Finding clips…", "Tightening…". With no connector the picker reads "Choose AI" |
 | Rewrite: menu titles | Edit menu, ⋯, sidebar and selection menus | Edit > "Rewrite Selection", "Rewrite Clip {n}" or "Rewrite Full Take", with "…" when the send asks first; the kept clip's menu "Rewrite Clip {n}"; the transcript menu "Rewrite", "Type New Words…" and "Insert Words…". Windows: "Rewrite selection", "Rewrite clip {n}", "Rewrite full take", "Type new words…", "Insert words…" |
-| Rewrite: send again over edits | scope bar, confirmation | "Discard these {c} changes?" [Keep Working] [Discard Changes] |
+| Rewrite: send again over edits | Rewrite job footer, inline | "Discard these {c} changes?" [Keep Working] [Discard Changes] |
 | Rewrite: AI picker | AI menu | Header "Used for Rewrite, Find Clips and Tighten with AI." Groups "Installed apps · your own sign-in", "On this {Mac/PC}", "Your API key". Trailing billing: "{model} · no extra cost", "{model} · billed to its API key", "Not signed in", "{model} · free", "on {host} · free", "Not running", "free · English", "asks before each send", "Add Key…". Then "Model" and "AI Settings…" |
 | Rewrite: panel header and context line | Rewrite panel | Titles "Rewrite clip {n}", "Rewrite {w} words", "Rewrite full take"; in voice steps "Your voice" with "Step {i} of 3" ("Step {i} of 4" with a read-aloud), "Beta" and "Back to rewrite". Context line "{AI} · {model} · no extra cost", "{AI} · {model} · billed to your key" or "{AI} · {model} · answered in {t} s". Other scopes substitute their words (§6.3) |
 | Rewrite: no AI chosen | Rewrite panel, R0 | "Who should rewrite clip {n}?" Rows: "Claude Code (installed CLI)" with "Signed in · Claude plan · no extra cost", "Signed in · billed to the API key Claude Code uses" or "Not signed in. Run `claude` in Terminal and sign in."; "Codex (installed CLI)" with "Signed in · ChatGPT plan · no extra cost" or "Not signed in. Run `codex login` in Terminal."; "Ollama" with "{model} on this {Mac/PC} · free" or, on macOS v2, "Ollama isn't answering at {url}. Start it, then choose Check Again."; "Apple on-device" with "free · English"; "Anthropic" with "your API key · asks before each send", and with no key the field "Paste your Anthropic API key" [Save Key]. Note "Change it any time from the menu above the transcript." [Check Again] [Use {name}] |
 | Rewrite: no AI set up | Rewrite panel, R0 | "No AI is set up yet" / "Rewrite needs an AI: an installed Claude Code or Codex, a local model, Apple on-device, or an API key." [AI Settings…] [Check Again] |
-| Rewrite: a send that asks first | sheet, R0b | Title "Rewrite clip {n}?" Body "Sends the {w} words of clip {n} to {provider} with your key." (a CLI on an API key: "Sends the {w} words of clip {n} to Claude Code, billed to the API key it is signed in with.") and "VoxClip can't tell what this costs. Check {provider}'s pricing." [Cancel] [Rewrite] |
+| Rewrite: a send that asks first | inline approval row, R0b (Mac v2) | “Rewrite sends the {w} words of clip {n} to {provider} with your key.” “No audio or video. {model}. Asks before each send.” [Send] [Cancel]. First use: [Allow and Send], with the privacy detail. “VoxClip can't tell what this costs. Check {provider}'s pricing.” links to pricing. No invented price. |
 | Rewrite: running | Rewrite panel, R1 | Quote "Asked: **Fix mistakes**, fix slips and repeats, keep my words, change as little as possible." or "Asked: “{instruction}”". Headline "Rewriting clip {n}…" with the elapsed time and [Stop]. Steps "Read clip {n}" · "{w} words · {m:ss}"; "Sent to {AI}" · "Text only. No audio or video." (a loopback server or Apple: "Running on this {Mac/PC}" · "Nothing leaves it."); "Waiting for {AI}…" · "Changes appear in the transcript when it answers."; "Check that each change fits". Announce "Rewriting clip {n}". Stop is silent |
 | Rewrite: send line | Rewrite panel footer | A CLI on a plan: "Sends the {w} words of clip {n} to {CLI} with your sign-in. Counts toward your {Claude plan \| ChatGPT plan}." A CLI on an API key: "Sends the {w} words of clip {n} to {CLI}, billed to the API key it is signed in with." An API key: "Sends the {w} words of clip {n} to {provider} with your key." A loopback server or Apple: "Runs on this {Mac/PC}. Nothing leaves it." A remote local server: "Sends the {w} words of clip {n} to {host}." |
 | Rewrite: couldn't rewrite | Rewrite panel, R1x | "Couldn't rewrite clip {n}", then the AI spec section 5 message and "Your edits are saved." [Try Again] ([Try Again…] when the send asks first). Signed out: "{CLI} isn't signed in. Run `claude` (or `codex login`) in Terminal and sign in, then choose Try Again." No key: the field "{provider} API key" [Save Key and Try Again]. Not running on macOS v2: "{server} isn't answering at {url}. Start it, then choose Try Again." Windows: "Ollama isn't running. Start it, then choose Try Again." Refused: "The model declined to rewrite this recording." [Ask for Something Else] |

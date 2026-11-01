@@ -12,6 +12,13 @@ import Testing
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { validations += 1; return allowed }
 }
 
+@MainActor private final class PaletteVoiceTarget: NSObject, NSMenuItemValidation {
+    let app: AppModel
+    init(app: AppModel) { self.app = app }
+    @objc func execute(_ sender: Any?) {}
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { app.bool("voiceLab.enabled") }
+}
+
 @MainActor private final class LazyPaletteMenu: NSObject, NSMenuDelegate {
     let item: NSMenuItem
     var updates = 0
@@ -68,9 +75,9 @@ import Testing
         #expect(view.control(view.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:))))
         #expect(target.runs == 1 && closes == 1)
         #expect(view.control(view.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:))))
-        #expect(closes == 2 && target.runs == 1)
+        #expect(closes == 1 && target.runs == 1, "a closed palette dismisses only once")
     }
-    @Test func remappedNativeCommandsAndDeletedSheetStayConsistent() throws {
+    @Test func remappedNativeCommandsAndDeletedSheetStayConsistent() async throws {
         let old = NSApp.mainMenu; defer { NSApp.mainMenu = old }
         let delegate = AppDelegate(); delegate.installMenus()
         func all(_ menu: NSMenu) -> [NSMenuItem] { menu.items.flatMap { [$0] + ($0.submenu.map(all) ?? []) } }
@@ -80,15 +87,33 @@ import Testing
         #expect(items.first { $0.tag == 61 }?.keyEquivalent == "k")
         #expect(items.first { $0.tag == 61 }?.keyEquivalentModifierMask == .command)
         #expect(items.first { $0.tag == 29 }?.keyEquivalentModifierMask == [.command, .option])
-        let app = AppModel.sharedModel
-        let prior = app.settings.values["voiceLab.enabled"]
-        defer { app.settings.values["voiceLab.enabled"] = prior }
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        let resources = try SharedResources.locate()
+        let project = try JSONProjectStore.decode(Data(contentsOf: resources.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        await app.shell.attachForTesting(VoxClipDocument(project: project, demo: true), preview: DemoPreviewEngine())
+        let controller = MainWindowController(shell: app.shell)
+        defer { controller.window?.close(); app.shell.editor?.close() }
+        let editor = try #require(app.shell.editor)
+        editor.mediaResolved = true; editor.refresh()
+        let editorDelegate = AppDelegate(model: app)
+        editorDelegate.installMenus(); editorDelegate.commandWindowForTesting = controller.window
+        let editorMain = try #require(NSApp.mainMenu)
+        // Rewrite is text-only and independent of the Voice Lab gate (decision 26).
+        // Insertion still awaits Core. A validated tag-39 fixture checks the command index's
+        // gate without exposing an unsupported production command.
+        let voice = PaletteVoiceTarget(app: app)
+        let insert = NSMenuItem(title: "Insert Words…", action: #selector(PaletteVoiceTarget.execute(_:)), keyEquivalent: "")
+        insert.tag = 39; insert.target = voice
+        try #require(editorMain.item(withTitle: "Edit")?.submenu).addItem(insert)
         app.settings.values["voiceLab.enabled"] = .bool(false)
-        #expect(!MenuCommandIndex.items().contains { $0.menuItem.tag == 38 || $0.title.contains("Voice Lab") })
+        #expect(!MenuCommandIndex.items().contains { $0.menuItem.tag == 39 })
+        #expect(MenuCommandIndex.items().contains { $0.menuItem.tag == 38 })
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        #expect(MenuCommandIndex.items().contains { $0.menuItem.tag == 39 })
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let editor = try String(contentsOf: root.appendingPathComponent("Sources/VoxClip/EditorView.swift"), encoding: .utf8)
+        let editorSource = try String(contentsOf: root.appendingPathComponent("Sources/VoxClip/EditorView.swift"), encoding: .utf8)
         let home = try String(contentsOf: root.appendingPathComponent("Sources/VoxClip/HomeView.swift"), encoding: .utf8)
-        #expect(!editor.contains("showShortcuts") && !home.contains("ShortcutsView") && !home.contains("NSAlert"))
+        #expect(!editorSource.contains("showShortcuts") && !home.contains("ShortcutsView") && !home.contains("NSAlert"))
     }
     @Test func transcriptSeparatesCommandFieldMakeClipAndFindClips() throws {
         let resources = try SharedResources.locate()
@@ -137,6 +162,83 @@ import Testing
         palette.table.keyDown(with: event)
         #expect(target.runs == 1 && !shell.showCommandPalette)
         #expect(window.firstResponder === original || window.firstResponder === original.currentEditor())
+    }
+
+    @Test func paletteChoicesIgnoreTheReturnKeyGateAndKeepOnceFromTheTranscript() async throws {
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        let resources = try SharedResources.locate()
+        let base = try JSONProjectStore.decode(Data(contentsOf: resources.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        let project = try DebugExplorer.fiveQuestions(from: base)
+        await app.shell.attachForTesting(VoxClipDocument(project: project, demo: true), preview: DemoPreviewEngine())
+        let controller = MainWindowController(shell: app.shell)
+        let editor = try #require(app.shell.editor)
+        defer { controller.window?.close(); editor.close() }
+        editor.mediaResolved = true; editor.refresh(); app.shell.selection = .clip("five-5")
+        editor.focusedPane = .transcript
+        let old = NSApp.mainMenu; defer { NSApp.mainMenu = old }
+        let delegate = AppDelegate(model: app); delegate.installMenus()
+        delegate.commandWindowForTesting = controller.window
+        let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        delegate.commandEventForTesting = event
+        let items = MenuCommandIndex.items()
+        let keep = try #require(items.first { $0.menuItem.tag == 40 })
+        #expect(!delegate.validateMenuItem(keep.menuItem), "bare Return still belongs to the transcript")
+        #expect(MenuCommandIndex.run(keep))
+        #expect(!editor.isSuggestion("five-5") && editor.undoSteps == 1)
+        #expect(!MenuCommandIndex.run(keep) && editor.undoSteps == 1)
+        #expect(!MenuCommandIndex.isInvoking)
+    }
+
+    @Test func focusLossAndOutsideClickDismissWithoutTakingFocusBack() async throws {
+        let target = PaletteTarget(), old = NSApp.mainMenu
+        NSApp.mainMenu = menu(target); defer { NSApp.mainMenu = old }
+        let shell = WorkspaceShell(app: AppModel(settingsStore: RegressionSettingsStore()))
+        let controller = EditorShellController(shell: shell)
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 640, height: 480), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false; window.contentView = controller.view
+        controller.apply(EditorShellState(shell: shell))
+        defer { controller.tearDown(); window.close() }
+        shell.openCommandPalette()
+        for _ in 0..<30 where controller.commandPalette == nil { await Task.yield() }
+        let palette = try #require(controller.commandPalette)
+        palette.field.stringValue = "make"; palette.filter()
+        window.makeFirstResponder(palette.table)
+        let launcher = CommandPaletteLauncher(shell: shell)
+        launcher.frame = NSRect(x: 0, y: 0, width: 220, height: 24); controller.view.addSubview(launcher)
+        let launchEvent = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: launcher.convert(NSPoint(x: 10, y: 10), to: nil), modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        palette.dismissForMouseDown(at: launchEvent.locationInWindow, in: window)
+        #expect(shell.showCommandPalette)
+        launcher.performClick(nil)
+        for _ in 0..<30 where palette.field.currentEditor() == nil { await Task.yield() }
+        #expect(palette.field.currentEditor() != nil && palette.field.stringValue == "make")
+        window.makeFirstResponder(controller.homeSearch)
+        palette.controlTextDidEndEditing(Notification(name: NSControl.textDidEndEditingNotification))
+        for _ in 0..<30 where shell.showCommandPalette { await Task.yield() }
+        #expect(!shell.showCommandPalette && (window.firstResponder === controller.homeSearch || window.firstResponder === controller.homeSearch.currentEditor()))
+        shell.openCommandPalette()
+        for _ in 0..<30 where controller.commandPalette == nil { await Task.yield() }
+        let reopened = try #require(controller.commandPalette)
+        let event = try #require(NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        reopened.dismissForOutsideMouseDown(event)
+        #expect(!shell.showCommandPalette && !window.isVisible)
+    }
+
+    @Test func resultAnnouncementsAndTheFieldTableLinkFollowSelection() throws {
+        let target = PaletteTarget(), old = NSApp.mainMenu
+        NSApp.mainMenu = menu(target); defer { NSApp.mainMenu = old }
+        let view = CommandPaletteView(); var spoken: [String] = []
+        view.announce = { spoken.append($0) }; view.open(); defer { view.close() }
+        #expect(view.field.accessibilityLinkedUIElements()?.first as? NSTableView === view.table)
+        view.field.stringValue = "missing"; view.filter()
+        view.field.stringValue = "clip"; view.filter()
+        #expect(spoken.isEmpty, "result announcements are debounced")
+        view.announceResults()
+        #expect(spoken == ["1 result"])
+        #expect(view.control(view.field, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveDown(_:))))
+        #expect(spoken.last?.contains("Make Clip from Selection") == true)
+        let arrow = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: String(UnicodeScalar(NSUpArrowFunctionKey)!), charactersIgnoringModifiers: String(UnicodeScalar(NSUpArrowFunctionKey)!), isARepeat: false, keyCode: 126))
+        view.table.keyDown(with: arrow)
+        #expect(spoken.count == 3 && spoken.last?.contains("Make Clip from Selection") == true)
     }
 
     @Test func commandFieldBelongsToTheKeyVersionsWindow() throws {

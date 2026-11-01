@@ -10,8 +10,9 @@ private actor SignInConnector: LLMConnector {
     nonisolated let id = ConnectorID.codex
     private var readiness: ConnectorStatus = .cliSignedOut
     private(set) var sends = 0
+    private(set) var checks = 0
     func set(_ status: ConnectorStatus) { readiness = status }
-    func status() -> ConnectorStatus { readiness }
+    func status() -> ConnectorStatus { checks += 1; return readiness }
     func knownCLIAuthMethod() -> String? { readiness == .ready ? "chatgpt" : nil }
     func models(refresh: Bool) -> [LLMModel] { [] }
     func send(_ request: LLMRequest, model: String) throws -> RawCompletion { sends += 1; throw CancellationError() }
@@ -71,6 +72,37 @@ private actor SignInConnector: LLMConnector {
         // User-selected paths remain one executable argument, including shell metacharacters.
         let path = "/fixture/a'b $(do-not-run)/codex"
         #expect(HarnessSignIn.command(provider: provider, path: path) == "'/fixture/a'\\''b $(do-not-run)/codex' login")
+    }
+    @Test func activationChecksSignInOnceAndAnnouncesOnlyChanges() async throws {
+        let app = AppModel(settingsStore: RegressionSettingsStore()); app.loadCatalogue()
+        let provider = try #require(app.providers.first { $0.id == "codex" })
+        app.set("llm.connector", .string(provider.id))
+        let connector = SignInConnector()
+        var spoken: [String] = [], file: URL?
+        app.harnessSignIn.announce = { spoken.append($0) }
+        await app.harnessSignIn.signIn(provider) { file = $0 }
+        defer { if let file { try? FileManager.default.removeItem(at: file) } }
+        #expect(app.harnessSignIn.pendingCheck)
+        await connector.set(.ready)
+        await app.harnessSignIn.checkPending(using: connector)
+        #expect(await connector.checks == 1)
+        #expect(spoken == ["Codex is signed in."] && !app.harnessSignIn.pendingCheck)
+        let menu = HarnessPicker(app: app).makeMenu()
+        #expect(!menu.items.contains { $0.title == "Sign In…" || $0.title == "Sign in to Codex" })
+        #expect(app.harnessSignIn.message(for: provider) == "Codex is signed in.")
+        await app.harnessSignIn.checkPending(using: connector)
+        #expect(await connector.checks == 1)
+        #expect(spoken.count == 1 && app.harnessSignIn.providerID == nil && app.harnessSignIn.result == nil)
+        await app.harnessSignIn.check(provider, using: connector)
+        await app.harnessSignIn.check(provider, using: connector)
+        #expect(spoken.count == 2, "the repeated ready status has no second announcement")
+        #expect(await connector.sends == 0)
+    }
+    @Test func homeSignInRowAppearsOnlyForSignedOutOrAnInlineResult() {
+        #expect(HomeView.showsHarnessSignIn(readiness: .cliSignedOut, result: nil))
+        #expect(HomeView.showsHarnessSignIn(readiness: .ready, result: "Signed in"))
+        #expect(!HomeView.showsHarnessSignIn(readiness: .ready, result: nil))
+        #expect(!HomeView.showsHarnessSignIn(readiness: nil, result: nil))
     }
     @Test func failedSignInStaysInlineAndCheckingDoesNotSend() async throws {
         let app = AppModel(settingsStore: RegressionSettingsStore()); app.loadCatalogue()

@@ -19,7 +19,7 @@ import VoxClipCore
         var results: [DebugUISuite.Result] = []
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         defer { windowControllers = [] }
-        // Fresh layout, Voice Lab on so the selection Rewrite can open, and Apple on-device as the AI; in memory only.
+        // Fresh layout, Voice Lab on as the captures were made, and Apple on-device as the AI; in memory only.
         let previousSettings = app.settings
         defer { app.settings = previousSettings }
         for key in [WorkspaceLayout.explorerWidthKey, WorkspaceLayout.rightWidthKey, WorkspaceLayout.timelineHeightKey] { app.settings.values[key] = nil }
@@ -61,14 +61,15 @@ import VoxClipCore
         }
         func near(_ a: CGFloat, _ b: CGFloat) -> Bool { abs(a - b) <= 1 }
 
-        // Full Take, no selection: Tighten and Hook, then the picker alone at the end.
+        // Full Take, no selection: Rewrite and the Ask field act on the full take (V13), with Tighten and Hook.
         shell.selection = .fullTake
         editor.selectedWordIDs = []
         // DebugShell checks the bar's region, 224, 38, 652 × 34 (notes.md §1), at every size; here it is the bar's own layout.
         settle()
         let end = bar.bounds.width
-        check("with no selection the bar shows Tighten and Hook, no Rewrite or Ask, and the picker 13 from its end",
-              bar.rewrite.isHidden && bar.ask.isHidden && !bar.tighten.isHidden && !bar.hook.isHidden && !bar.picker.isHidden && near(bar.picker.frame.maxX, end - 13))
+        check("with no selection the bar shows Rewrite (\"Rewrite full take\"), Tighten, Hook and \"Ask about Full Take…\", the picker 13 from its end",
+              !bar.rewrite.isHidden && bar.rewrite.accessibilityLabel() == "Rewrite full take" && !bar.ask.isHidden && bar.ask.placeholder == "Ask about Full Take…"
+                  && !bar.tighten.isHidden && !bar.hook.isHidden && !bar.picker.isHidden && near(bar.picker.frame.maxX, end - 13))
         check("VoiceOver reads the bar as the group \"Full Take tools\" with the picker \"AI: Apple on-device, On-device model\" (\(bar.picker.accessibilityLabel() ?? ""))",
               bar.accessibilityRole() == .group && bar.accessibilityLabel() == "Full Take tools" && bar.picker.accessibilityLabel() == "AI: Apple on-device, On-device model")
         results += try pixelChecks(bar: bar)

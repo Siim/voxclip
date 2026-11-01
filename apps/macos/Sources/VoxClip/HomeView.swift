@@ -17,7 +17,6 @@ import VoxClipCore
                 notices
                 if app.recent.isEmpty && shell.isHome {
                     hero
-                    callouts
                 } else {
                     dropBar
                     callouts
@@ -89,9 +88,12 @@ import VoxClipCore
         .overlay(RoundedRectangle(cornerRadius: VCTokens.radiusSheet).strokeBorder(DesignValues.color("line.strong"), style: Self.dashedStroke))
     }
 
+    static func showsHarnessSignIn(readiness: ConnectorStatus?, result: String?) -> Bool { readiness == .cliSignedOut || result != nil }
+
     @ViewBuilder private var callouts: some View {
         if let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }),
-           provider.cli != nil {
+           provider.cli != nil,
+           Self.showsHarnessSignIn(readiness: readiness, result: app.harnessSignIn.message(for: provider)) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(readiness == .cliSignedOut ? "Sign in to \(provider.shortName) in the AI picker to use Find Clips with AI." : "Who does the work")
                 HomeHarnessPicker(app: app).frame(width: 200, height: HarnessPicker.height)

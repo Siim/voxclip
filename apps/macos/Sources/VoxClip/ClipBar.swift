@@ -5,16 +5,20 @@ import VoxClipCore
 // row, on the editor surface with a hairline below. For a clip or Full Take it holds the verbs
 // Rewrite, Tighten and Hook, the Ask field and the harness picker; for a suggested clip it holds
 // "Suggested clip", Keep ⇧⌘↩ and Dismiss. A control that cannot act is not shown (design.md
-// §1.6), and with no editable scope (no transcript, missing media, a Versions window) the bar is
-// empty. Phase 0 meanings (impl-plan item 1): Rewrite and Ask open today's selection Rewrite with
-// the field's text as the instruction; Tighten cuts the scope's fillers and pauses as one undo
-// step; Hook finds hook clips in the take with one click.
+// §1.6), and with no editable scope (no transcript, a Versions window) the bar is empty; while the
+// video is missing or a relink waits for Use It, the verbs and the Ask field show dimmed, as v5 f24
+// draws the read-only editor (lead decision 7), and the status bar says why. Phase 0 meanings
+// (impl-plan item 1): Rewrite and Ask run Rewrite on the scope now (V13: the selection, else the
+// tab's clip, else Full Take) with the field's text as the instruction; Tighten cuts the scope's
+// fillers and pauses as one undo step; Hook finds hook clips in the take with one click.
 
-/// What the bar holds: nothing, a scope's verbs (the tab's clip, nil for Full Take), or a suggestion's Keep and Dismiss.
+/// What the bar holds: nothing, a scope's verbs (the tab's clip, nil for Full Take), a suggestion's Keep and Dismiss, or
+/// the scope's verbs dimmed while the editor only reads until its video is found or confirmed.
 enum ClipBarVariant: Equatable {
     case hidden
     case scope(String?)
     case suggestion(String)
+    case readOnly(String?)
 }
 
 /// The mockup's `.cbar`, `.verb`, `.ask` and `.btn` measurements, in points.
@@ -78,16 +82,10 @@ enum ClipBarMetrics {
         keep.onPress = { [weak self] in self?.keepSuggestion() }
         dismiss.onPress = { [weak self] in self?.dismissSuggestion() }
         toast.undo.onPress = { [weak self] in self?.undoTighten() }
-        rewrite.toolTip = "Rewrite the selected words (⇧⌘R)"
         hook.setAccessibilityLabel("Hook: find hook clips in this take")
-        hook.toolTip = "Find hook clips in this take. They land in Suggested."
-        askButton.setAccessibilityLabel("Ask about these words")
-        askButton.toolTip = "Ask about these words"
         keep.toolTip = "Keep this clip (⇧⌘↩)"
         ask.delegate = self
         ask.onFocus = { [weak self] in self?.askTookFocus() }
-        ask.placeholder = Self.askPlaceholder
-        ask.setAccessibilityLabel(Self.askPlaceholder.replacingOccurrences(of: "…", with: ""))
         ask.setAccessibilityHelp("Return opens Rewrite with what you type. Empty asks to fix mistakes.")
         render()
     }
@@ -95,8 +93,16 @@ enum ClipBarMetrics {
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 
-    /// The field's placeholder while it acts on the selection (V3b; V13 names the tab's clip).
-    static let askPlaceholder = "Ask about these words…"
+    /// What Rewrite and Ask act on now, named for the verb's VoiceOver name and tooltip and the field's placeholder:
+    /// "Rewrite selection" and "Ask about these words…", "Rewrite clip 1" and "Ask about Clip 1…", or "Rewrite full
+    /// take" and "Ask about Full Take…" (V13's `rewriteScopeNow`; design.md §1 item 1).
+    var rewriteNames: (verb: String, ask: String) {
+        switch model.rewriteScopeNow {
+        case .selection: ("Rewrite selection", "Ask about these words…")
+        case .clip(let id): ("Rewrite clip \(model.clipNumber(id) ?? 1)", "Ask about \(model.scopeName(id))…")
+        case .fullTake, nil: ("Rewrite full take", "Ask about Full Take…")
+        }
+    }
 
     func tearDown() {
         toastEnd?.cancel()
@@ -105,25 +111,19 @@ enum ClipBarMetrics {
 
     // MARK: State
 
-    /// What the bar holds now: nothing without an editable scope; Keep and Dismiss on a suggestion's tab; else the verbs.
+    /// What the bar holds now: the verbs dimmed while the video is missing or a relink waits; nothing without an editable
+    /// scope; Keep and Dismiss on a suggestion's tab; else the verbs.
     var currentVariant: ClipBarVariant {
-        guard model.transcribed, model.capabilities.edit else { return .hidden }
         let tab = shell.tabs.active
+        if model.transcribed, model.capabilities.writable, model.mediaReadOnlyNote != nil { return .readOnly(tab.clipID) }
+        guard model.transcribed, model.capabilities.edit else { return .hidden }
         if case .suggestion(let id) = tab, model.isSuggestion(id) { return .suggestion(id) }
         return .scope(tab.clipID)
     }
-    /// Today's selection Rewrite can open (impl-plan V3b): a selection, and the entry policy allows it.
-    var rewriteAvailable: Bool {
-        RewriteEntryPolicy.resolve(.selection, enabled: model.app.bool("voiceLab.enabled"), noticeAccepted: model.app.bool("voiceLab.betaNoticeAccepted"),
-                                   editable: model.capabilities.ai, selection: !model.selectedIDs.isEmpty) == .openPassage
-    }
-    /// The chosen AI asks before each send (C8), so the verb reads "Rewrite…" (design.md §3.1).
-    var rewriteAsksFirst: Bool {
-        guard let id = ConnectorID(rawValue: model.app.string("llm.connector")) else { return false }
-        if case .confirm = model.app.llmSendKind(id) { return true }
-        return false
-    }
-    var rewriteRunning: Bool { model.rewrite?.task.state == .running }
+    /// Rewrite can run on the scope now (V13): AI editing is available and there are words. Text Rewrite needs no
+    /// selection and no Voice Lab.
+    var rewriteAvailable: Bool { RewriteEntryPolicy.canRun(editable: model.capabilities.ai, scope: model.rewriteScopeNow) }
+    var rewriteRunning: Bool { model.rewrite?.task.state == .running && !model.sendConfirmation.isPresented }
     /// The Tighten toast shows until the project changes again or the tab moves.
     var toastShown: Bool {
         guard let tightened, case .scope = variant else { return false }
@@ -134,17 +134,21 @@ enum ClipBarMetrics {
     func render() {
         _ = model.projectRevision
         variant = currentVariant
-        let scoped: Bool, suggested: Bool
+        let scoped: Bool, suggested: Bool, readOnly: Bool
         switch variant {
         case .hidden:
-            scoped = false; suggested = false
+            scoped = false; suggested = false; readOnly = false
             setAccessibilityElement(false)
         case .scope(let clipID):
-            scoped = true; suggested = false
+            scoped = true; suggested = false; readOnly = false
+            setAccessibilityElement(true)
+            setAccessibilityLabel("\(model.scopeName(clipID)) tools")
+        case .readOnly(let clipID):
+            scoped = false; suggested = false; readOnly = true
             setAccessibilityElement(true)
             setAccessibilityLabel("\(model.scopeName(clipID)) tools")
         case .suggestion(let id):
-            scoped = false; suggested = true
+            scoped = false; suggested = true; readOnly = false
             setAccessibilityElement(true)
             setAccessibilityLabel("\(model.scopeName(id)) tools")
             keep.setAccessibilityLabel(EditorIconAction.suggestion(keep: true, number: model.clipNumber(id) ?? 0))
@@ -153,26 +157,42 @@ enum ClipBarMetrics {
         if !toastShown, tightened != nil { tightened = nil; toastEnd?.cancel() }
         let running = scoped && rewriteRunning
         let canRewrite = scoped && rewriteAvailable
-        rewrite.isHidden = !canRewrite || running
+        // Read-only: the verbs and the Ask field stay in place, dimmed, and say why (v5 f24).
+        let note = readOnly ? model.mediaReadOnlyNote : nil
+        for control in [rewrite, tighten, hook, askButton] as [NSControl] where control.isEnabled == readOnly { control.isEnabled = !readOnly }
+        if ask.isEnabled == readOnly { ask.isEnabled = !readOnly }
+        rewrite.isHidden = !readOnly && (!canRewrite || running)
         rewrite.isOn = model.rewrite != nil
-        rewrite.label = rewriteAsksFirst ? "Rewrite…" : "Rewrite"
-        rewrite.setAccessibilityLabel("Rewrite selection")
+        // The chosen AI asks before each send (C8): "Rewrite…", as Edit › Rewrite's title (design.md §3.1).
+        rewrite.label = model.rewriteAsksFirst ? "Rewrite…" : "Rewrite"
+        let names = rewriteNames
+        rewrite.setAccessibilityLabel(names.verb)
+        rewrite.toolTip = note ?? "\(names.verb) (⇧⌘R)"
+        let askName = names.ask.replacingOccurrences(of: "…", with: "")
+        if ask.placeholder != names.ask { ask.placeholder = names.ask }
+        ask.setAccessibilityLabel(askName)
+        askButton.setAccessibilityLabel(askName)
         rewriting.isHidden = !running
         let toasting = scoped && toastShown
         toast.isHidden = !toasting
         if let tightened, toasting { toast.show(cuts: tightened.cuts, undoName: tightened.undoName) }
-        tighten.isHidden = !scoped || toasting || !model.canTighten
-        if case .scope(let clipID) = variant {
+        tighten.isHidden = !readOnly && (!scoped || toasting || !model.canTighten)
+        switch variant {
+        case .scope(let clipID), .readOnly(let clipID):
             let name = model.scopeName(clipID)
             tighten.setAccessibilityLabel("Tighten \(name)")
-            tighten.toolTip = "Cut fillers and tighten pauses in \(name)"
+            tighten.toolTip = note ?? "Cut fillers and tighten pauses in \(name)"
+        case .hidden, .suggestion: break
         }
+        hook.toolTip = note ?? "Find hook clips in this take. They land in Suggested."
+        askButton.toolTip = note ?? askName
+        ask.toolTip = note
         finding.isHidden = !(scoped && model.finding)
-        hook.isHidden = !scoped || model.finding || !model.capabilities.ai
-        asks = canRewrite || running
+        hook.isHidden = !readOnly && (!scoped || model.finding || !model.capabilities.ai)
+        asks = readOnly || canRewrite || running
         ask.isEditable = !running
         if ask.currentEditor() == nil, ask.stringValue != model.rewriteInstruction { ask.stringValue = model.rewriteInstruction }
-        picker.isHidden = !scoped
+        picker.isHidden = !scoped && !readOnly
         picker.render()
         for view in [suggestionLabel, keep, dismiss] as [NSView] { view.isHidden = !suggested }
         linkKeyViews()
@@ -192,7 +212,7 @@ enum ClipBarMetrics {
     private var leadingViews: [NSView] {
         switch variant {
         case .hidden: []
-        case .scope: [rewrite, rewriting, tighten, toast, hook, finding, askButton]
+        case .scope, .readOnly: [rewrite, rewriting, tighten, toast, hook, finding, askButton]
         case .suggestion: [suggestionLabel, keep, dismiss]
         }
     }
@@ -219,7 +239,10 @@ enum ClipBarMetrics {
             place(view, x: x, width: size.width, height: size.height)
             x += size.width + ClipBarMetrics.gap
         }
-        guard case .scope = variant else { return }
+        switch variant {
+        case .scope, .readOnly: break
+        case .hidden, .suggestion: return
+        }
         let end = width - ClipBarMetrics.trailing
         let fieldStart = x + ClipBarMetrics.askMargin
         picker.compact = false
@@ -250,11 +273,15 @@ enum ClipBarMetrics {
 
     // MARK: Actions
 
-    /// Rewrite and Return in the Ask field: today's selection Rewrite with the field's text as its instruction
-    /// (impl-plan V3b). V13 swaps this one call for the scope's Rewrite.
+    /// Rewrite and Return in the Ask field: Rewrite on the scope now with the field's text as its instruction, as Edit ›
+    /// Rewrite and ⇧⌘R run it (V13's `runRewrite`); on the open session's own scope it sends again.
     func runRewrite() {
         commitAsk()
-        model.beginRewrite(entry: .selection)
+        model.sendConfirmation.onFinish = { [weak self] approved in
+            guard !approved, let self else { return }
+            _ = window?.makeFirstResponder(rewrite)
+        }
+        model.runRewrite()
     }
     /// Tighten on the bar's scope, one undo step, then "8 cuts · Undo" in its place.
     func runTighten() {
@@ -315,7 +342,17 @@ enum ClipBarMetrics {
         case #selector(NSResponder.insertNewline(_:)):
             if control === ask || askPopover?.isShown == true {
                 askPopover?.close()
-                if rewriteAvailable { runRewrite() }
+                if model.sendConfirmation.isPresented, let event = NSApp.currentEvent {
+                    _ = model.sendConfirmation.pressReturn(timestamp: event.timestamp, now: ProcessInfo.processInfo.systemUptime,
+                        isRepeat: event.isARepeat, command: event.modifierFlags.contains(.command))
+                } else if rewriteAvailable {
+                    commitAsk()
+                    model.sendConfirmation.onFinish = { [weak self] approved in
+                        guard !approved, let self else { return }
+                        _ = window?.makeFirstResponder(ask)
+                    }
+                    model.runRewrite(verb: "Ask")
+                }
                 return true
             }
             return false
@@ -331,7 +368,7 @@ enum ClipBarMetrics {
     func showAskPopover() {
         guard askPopover?.isShown != true else { return }
         let field = ClipBarAskField()
-        field.placeholder = Self.askPlaceholder
+        field.placeholder = rewriteNames.ask
         field.setAccessibilityLabel(ask.accessibilityLabel())
         field.stringValue = model.rewriteInstruction
         field.delegate = self
@@ -372,6 +409,7 @@ enum ClipBarMetrics {
     var label: String { didSet { if label != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true; updateTip() } } }
     var iconOnly = false { didSet { if iconOnly != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true; updateTip() } } }
     var isOn = false { didSet { if isOn != oldValue { needsDisplay = true } } }
+    override var isEnabled: Bool { didSet { if isEnabled != oldValue { needsDisplay = true } } }
     var onPress: () -> Void = {}
     private var hovering = false { didSet { if hovering != oldValue { needsDisplay = true } } }
     private var baseTip: String?
@@ -404,14 +442,17 @@ enum ClipBarMetrics {
     private var padding: CGFloat { style == .verb ? 8 : 10 }
     private var iconSize: CGFloat { style == .verb ? 14 : 12 }
     private var labelFont: NSFont { style == .verb ? VCType.body.nsFont() : VCType.body.nsFont(.medium) }
+    /// The pointer or a press lights the button only while it can act.
+    private var lit: Bool { isEnabled && (isOn || hovering || isHighlighted) }
     private var labelColor: NSColor {
-        switch style {
-        case .verb: DesignValues.nsColor(isOn || hovering || isHighlighted ? "text.primary" : "text.secondary")
+        guard isEnabled else { return DesignValues.nsColor("text.disabled") }
+        return switch style {
+        case .verb: DesignValues.nsColor(lit ? "text.primary" : "text.secondary")
         case .bordered: DesignValues.nsColor("text.primary")
         case .ghost: DesignValues.nsColor(hovering || isHighlighted ? "text.primary" : "text.secondary")
         }
     }
-    private var iconColor: NSColor { style == .verb ? DesignValues.nsColor(isOn || hovering || isHighlighted ? "text.secondary" : "text.tertiary") : labelColor }
+    private var iconColor: NSColor { style == .verb && isEnabled ? DesignValues.nsColor(lit ? "text.secondary" : "text.tertiary") : labelColor }
     private var hintAttributes: [NSAttributedString.Key: Any] { [.font: VCType.label.nsMono(), .foregroundColor: DesignValues.nsColor("text.tertiary")] }
     override var intrinsicContentSize: NSSize {
         if iconOnly { return NSSize(width: ClipBarMetrics.control, height: ClipBarMetrics.control) }
@@ -428,7 +469,7 @@ enum ClipBarMetrics {
     override func draw(_ dirtyRect: NSRect) {
         switch style {
         case .verb, .ghost:
-            if isOn || hovering || isHighlighted {
+            if lit {
                 DesignValues.nsColor("bg.selectedRow").setFill()
                 shape.fill()
             }

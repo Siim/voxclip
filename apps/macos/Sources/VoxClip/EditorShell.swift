@@ -635,6 +635,8 @@ struct EditorShellState: Equatable {
     }
 
     private func renderCommands() {
+        _ = shell.commandPaletteRequest
+        if shell.showCommandPalette, let palette = commandPalette { palette.focus(); return }
         if shell.showCommandPalette, commandPalette == nil {
             let palette = CommandPaletteView()
             commandPalette = palette

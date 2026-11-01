@@ -60,9 +60,9 @@ import VoxClipMedia
         model.mediaResolved = true
         let envelope = AudioEnvelope(sampleRate: 48_000, levels: Array(repeating: 0.01, count: 10_000))
         let connector = RewriteConnector(connector: RewriteFixtureConnector(), model: "fixture-local", name: "Fixture", group: "local", plan: "")
-        let session = RewriteSession(editor: model, range: 12...25, envelope: envelope, connector: connector)
-        model.rewrite = session; model.rewriteRange = 12...25
-        session.edit(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage.")
+        let session = RewriteSession(editor: model, scope: .selection(12...25), envelope: envelope, connector: connector)
+        model.rewrite = session
+        try session.receivePassage(variant == "rewrite-budget" ? Array(repeating: "replacement", count: 180).joined(separator: " ") : "A clearer way to explain what happened in this passage."); session.finishRun(seconds: 1)
         if variant.hasPrefix("rewrite-takes-") { try DebugRewriteGeneration.install(String(variant.dropFirst(14)), in: session) }
     }
     private static func measureResizes(app: AppModel, fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
@@ -274,6 +274,7 @@ import VoxClipMedia
         var results: [DebugUISuite.Result] = measurements.flatMap { measurement -> [DebugUISuite.Result] in
             let name = "right column \(measurement.variant) at \(measurement.width)"
             let rewriting = measurement.variant.hasPrefix("rewrite")
+            let expectedJobs = measurement.variant.hasPrefix("rewrite-takes-") ? ["captions", "voice"] : rewriting ? ["captions", "rewrite"] : ["captions"]
             let expected = ViewerSection.stageSize(ratio: ratio(measurement.variant, fixture: fixture), in: CGSize(width: measurement.width, height: ViewerSection.boxHeight(forWidth: measurement.width)))
             return [
                 .init(name: "\(name): minimum \(measurement.minimumWidth), proposed \(measurement.proposedWidth)", passed: measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5),
@@ -285,7 +286,7 @@ import VoxClipMedia
                 .init(name: "\(name): the 30 pt panel header sits under the viewer", passed: abs(measurement.header.minY - measurement.box.maxY) <= 0.5 && abs(measurement.header.height - PanelHost.headerHeight) <= 0.5 && abs(measurement.header.width - measurement.width) <= 0.5),
                 // Offscreen hosts don't vend SwiftUI's virtual accessibility elements, so the descendant check
                 // must be shown to have measured the real rows: the switcher's jobs and Captions' STYLE row.
-                .init(name: "\(name): the switcher shows \(measurement.jobs) and the Captions STYLE row only on Captions", passed: measurement.jobs == (rewriting ? ["captions", "rewrite"] : ["captions"]) && candidates("captions.style", measurement) == (rewriting ? 0 : 1))
+                .init(name: "\(name): the switcher shows \(measurement.jobs) and the Captions STYLE row only on Captions", passed: measurement.jobs == expectedJobs && candidates("captions.style", measurement) == (rewriting ? 0 : 1))
             ]
         }
         let hours = measurements.filter { $0.variant == "ai-rate-hours" }

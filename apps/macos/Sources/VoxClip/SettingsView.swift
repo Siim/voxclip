@@ -97,7 +97,7 @@ extension AppModel {
     @Bindable var app: AppModel
     var body: some View {
         Picker("Engine", selection: app.stringBinding("transcription.engineMode", fallback: "local")) {
-            Text("On this Mac").tag("local"); Text("ElevenLabs Scribe").tag("elevenlabs"); Text("Apple on-device").tag("apple"); Text("Ask each time").tag("ask")
+            Text("Apple Speech · on this Mac").tag("apple"); Text("On this Mac · Apple Speech for English, otherwise Whisper").tag("local"); Text("ElevenLabs Scribe").tag("elevenlabs"); Text("Ask each time").tag("ask")
         }
     }
 }
@@ -136,6 +136,7 @@ extension AppModel {
     var body: some View {
         Form {
             Section("Providers & Keys") {
+                ConnectorConfirmationView(confirmation: app.settingsSendConfirmation, compact: false)
                 ConnectorPicker(app: app)
                 // The clip bar's AI menu writes the same setting (design.md §9, impl-plan V3b).
                 Text("The AI menu above the transcript changes this too.").font(.caption).foregroundStyle(.secondary)
@@ -162,7 +163,7 @@ extension AppModel {
             Section("Installed CLI (your own sign-in)") {
                 ForEach(app.providers.filter { $0.group == "cli" }) { CLIConnectorRow(provider: $0, app: app) }
             }
-        }.formStyle(.grouped)
+        }.formStyle(.grouped).onDisappear { app.settingsSendConfirmation.cancel() }
     }
     private func localPrivacy(_ provider: ProviderChoice) -> String {
         if let host = app.localServerHost(provider) { return "Transcripts are sent to \(host)." }

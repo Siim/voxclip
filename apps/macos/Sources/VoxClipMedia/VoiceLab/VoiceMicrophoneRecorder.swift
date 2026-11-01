@@ -71,6 +71,8 @@ final class VoiceMicrophoneSamples: Sendable {
     @ObservationIgnored private var lastProgress = ContinuousClock.now
     @ObservationIgnored private var deadline = ContinuousClock.now
     @ObservationIgnored private var maximumSamples = 0
+    @ObservationIgnored package var onStopped: (@MainActor () -> Void)?
+    @ObservationIgnored private var startTurn = UUID()
     public init() {}
     isolated deinit {
         meter?.cancel()
@@ -79,9 +81,11 @@ final class VoiceMicrophoneSamples: Sendable {
     }
     public func start(maximumSeconds: Int) async throws {
         guard !recording, [30, 90].contains(maximumSeconds) else { return }
+        let turn = startTurn
         failure = nil
         guard await AVCaptureDevice.requestAccess(for: .audio) else { throw MicrophoneError.permission }
         try Task.checkCancellation()
+        guard startTurn == turn else { throw CancellationError() }
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -117,18 +121,22 @@ final class VoiceMicrophoneSamples: Sendable {
         }
     }
     public func stop() {
+        stop(notifying: true)
+    }
+    private func stop(notifying: Bool) {
         guard recording else { releaseResources(); return }
         // One reading closes the sink, so silence that latches after it can't slip into an accepted take.
         let final = sink?.state.withLock { value -> (silent: Bool, samples: [Float]) in
             value.closed = true
             return (value.silent, value.samples)
         }
-        if final?.silent == true { failInput(.silent); return }
+        if final?.silent == true { failInput(.silent, notifying: notifying); return }
         samples = final?.samples ?? []
         seconds = Double(samples.count) / 48_000
         recording = false; releaseResources()
+        if notifying { onStopped?() }
     }
-    public func discard() { stop(); samples = []; seconds = 0 }
+    public func discard() { startTurn = UUID(); stop(notifying: false); samples = []; seconds = 0; failure = nil }
     func checkInput(at now: ContinuousClock.Instant) {
         guard recording, let sink else { return }
         let reading = sink.state.withLock { ($0.samples.count, $0.level, $0.silent) }
@@ -140,11 +148,12 @@ final class VoiceMicrophoneSamples: Sendable {
         if lastProgress.duration(to: now) >= .milliseconds(1_500) { failInput(); return }
         if now >= deadline { stop() }
     }
-    private func failInput(_ error: MicrophoneError = .deviceLost) {
+    private func failInput(_ error: MicrophoneError = .deviceLost, notifying: Bool = true) {
         guard recording else { return }
         failure = error
         recording = false; samples = []; seconds = 0
         releaseResources()
+        if notifying { onStopped?() }
     }
     private func releaseResources() {
         meter?.cancel(); meter = nil

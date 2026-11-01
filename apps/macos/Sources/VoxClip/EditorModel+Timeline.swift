@@ -85,6 +85,8 @@ extension EditorModel {
 
     /// The selection's take range: its words and pauses, or nil when nothing is selected.
     var selectionSourceRange: ClosedRange<Double>? {
+        // Read observable collections once per selection frame, rather than once per ID.
+        let words = words, wordIndex = wordIndex, pauseIndex = pauseIndex
         var lower = Double.infinity, upper = -Double.infinity
         for id in selectedWordIDs {
             guard let index = wordIndex[id] else { continue }
@@ -104,6 +106,15 @@ extension EditorModel {
         return lower...max(lower, upper)
     }
 
+    /// The proposal's pending changes on `axis`, from each one's first word to its last: the ruler's
+    /// `change.add` bars, as the transcript's overview ruler marks them.
+    func timelinePendingChanges(on axis: TimelineAxis) -> [ClosedRange<Double>] {
+        pendingChangeSpans.map { span in
+            let lower = timelineTime(source: span.lowerBound, on: axis), upper = timelineTime(source: span.upperBound, on: axis)
+            return lower...max(lower, upper)
+        }
+    }
+
     /// The scope's start and end as the timeline seeks to them (Home and End).
     func seekTimelineBoundary(end: Bool) {
         let source: Double
@@ -112,17 +123,93 @@ extension EditorModel {
         seek(source: source)
     }
 
-    /// Seeks to `time` on `axis`; with `snap`, to the start of the word nearest it.
-    func seekTimeline(_ time: Double, on axis: TimelineAxis, snap: Bool = false) {
-        let source = timelineSourceTime(time, on: axis)
-        if snap, let word = word(at: source, nearest: true) { seek(source: word.start) } else { seek(source: source) }
+    /// Seeks to `time` on the displayed axis.
+    func seekTimeline(_ time: Double, on axis: TimelineAxis) {
+        seek(source: timelineSourceTime(time, on: axis))
+    }
+
+    /// Shared word selection with the transcript. Edited endpoints map through the render
+    /// plan; words and cut pauses between them remain selected across folded cuts. Only
+    /// original transcript IDs enter this set (proposal/inserted display runs never do).
+    @discardableResult
+    func selectTimeline(from anchor: Double, to head: Double, on axis: TimelineAxis, snap: Bool) -> ClosedRange<Double>? {
+        guard anchor.isFinite, head.isFinite, !words.isEmpty else { return nil }
+        let limit = max(0, timelineLength(on: axis))
+        let lower = min(anchor, head).clamped(to: 0...limit)
+        let upper = max(anchor, head).clamped(to: 0...limit)
+        let sourceLower = timelineSourceTime(lower, on: axis)
+        // An Edited seam is right-continuous for seeking. A selection ending at it owns
+        // the word on the left, not the first word after the closed cut.
+        let lastSample = axis == .edited && upper > lower ? max(lower, upper - 1 / (renderTimeline?.sampleRate ?? 48_000)) : upper
+        let sourceUpper = timelineSourceTime(lastSample, on: axis)
+        let first: Int?, last: Int?
+        if snap {
+            first = timelineSelectionBoundary(source: sourceLower, start: true, on: axis)
+            last = timelineSelectionBoundary(source: sourceUpper, start: false, on: axis)
+        } else {
+            first = words.firstIndex { $0.end > sourceLower }
+            last = words.lastIndex { $0.start < sourceUpper }
+        }
+        guard let first, let last else {
+            selectedWordIDs = []; selectedPauseIDs = []
+            return nil
+        }
+        let span: ClosedRange<Int>
+        if first <= last { span = first...last }
+        else if let word = word(at: (sourceLower + sourceUpper) / 2, nearest: true), let index = index(word.id) { span = index...index }
+        else { return nil }
+        let words = words, pauses = pauseByAfterIndex, cutPauses = cutPauseIDs
+        selectedWordIDs = Set(words[span].map(\.id))
+        selectedPauseIDs = Set(span.dropLast().compactMap { pauses[$0]?.id }.filter(cutPauses.contains))
+        return snap ? timelineSelection(on: axis) : lower...upper
+    }
+
+    private func timelineSelectionBoundary(source: Double, start: Bool, on axis: TimelineAxis) -> Int? {
+        // Snapshot once: per-word Observation reads dominate an hour-long drag otherwise.
+        let words = words, cuts = cutWordIDs
+        let scope = axis == .edited ? scopeBounds ?? 0...(words.count - 1) : 0...(words.count - 1)
+        var best: Int?, distance = Double.infinity
+        for index in scope where axis == .source || !cuts.contains(words[index].id) {
+            let candidate = abs((start ? words[index].start : words[index].end) - source)
+            if best == nil || candidate < distance { best = index; distance = candidate }
+        }
+        return best
+    }
+
+    /// Timeline navigation is confined to the active tab's scope. Edited skips folded
+    /// words when moving the caret; an extended range still owns their original IDs.
+    func stepTimeline(_ direction: Int, sentence: Bool, anchor: String? = nil, head: String? = nil) -> String? {
+        guard !words.isEmpty else { return nil }
+        let scope = scopeBounds ?? 0...(words.count - 1)
+        let visible = scope.filter { timelineAxis == .source || !cutWordIDs.contains(words[$0].id) }
+        guard !visible.isEmpty else { return nil }
+        let selected = selectedIDs
+        let current = head.flatMap(index) ?? (direction < 0 ? selected.first.flatMap(index) : selected.last.flatMap(index))
+            ?? word(at: sourceTime, nearest: true).flatMap { index($0.id) } ?? scope.lowerBound
+        var position = current
+        repeat {
+            let candidates = direction < 0 ? visible.last(where: { $0 < position }) : visible.first(where: { $0 > position })
+            guard let next = candidates else { break }
+            position = next
+            if !sentence || (direction < 0 ? position == scope.lowerBound || TranscriptParagraphs.endsSentence(words[position - 1].text) : TranscriptParagraphs.endsSentence(words[position].text)) { break }
+        } while true
+        position = position.clamped(to: scope)
+        if let anchor, let anchorIndex = index(anchor) {
+            let start = anchorIndex.clamped(to: scope)
+            let span = min(start, position)...max(start, position)
+            selectedWordIDs = Set(words[span].map(\.id))
+            selectedPauseIDs = Set(span.dropLast().compactMap { pauseByAfterIndex[$0]?.id }.filter(cutPauseIDs.contains))
+            if !isPlaying { seek(source: words[position].start) }
+        } else { select(words[position].id) }
+        return words[position].id
     }
 
     /// The word a drag of the open clip's In (`start`) or Out to `time` on `axis` lands on:
     /// the nearest word boundary to the take time there, kept on its side of the other edge.
-    func timelineTrimIndex(_ clip: ClipRange, start: Bool, time: Double, on axis: TimelineAxis) -> Int? {
+    func timelineTrimIndex(_ clip: ClipRange, start: Bool, time: Double, on axis: TimelineAxis, snap: Bool = true) -> Int? {
         let source = timelineSourceTime(time, on: axis)
-        guard let candidate = trimIndex(start: start, source: source),
+        let target = snap ? trimIndex(start: start, source: source) : (word(at: source) ?? word(at: source, nearest: true)).flatMap { index($0.id) }
+        guard let candidate = target,
               let lower = index(clip.startWordId), let upper = index(clip.endWordId) else { return nil }
         return start ? candidate.clamped(to: 0...upper) : candidate.clamped(to: lower...(words.count - 1))
     }
@@ -177,6 +264,51 @@ extension EditorModel {
             if cutPauseIDs.contains(pause.id) { ids.append(pause.id) }
         }
         return ids
+    }
+
+    /// The CC lane's cues on `axis` (notes.md §6, impl-plan V9) from the preview's caption
+    /// pages, with `removed` (Source's cut ranges) inside them. A page's words map through the
+    /// scope's current plan by their ids, so a cut shows before the preview has
+    /// laid the captions out again; a page of AI-voice words keeps the layout's own times.
+    /// Pages outside the open clip (a layout from before a tab switch) are left out.
+    func timelineCaptionCues(on axis: TimelineAxis, removed: [Range<Double>] = []) -> [TimelineCue] {
+        guard project.captions.styleId != "off" else { return [] }
+        let scope = scopeSourceRange
+        var pages: [TimelineCaptions.Page] = []
+        pages.reserveCapacity(captionPages.count)
+        for page in captionPages {
+            let visibleWords = page.words.filter { word in
+                guard let index = wordIndex[word.id] else { return true }
+                if cutWordIDs.contains(word.id) { return false }
+                guard let scope else { return true }
+                return words[index].end > scope.lowerBound && words[index].start < scope.upperBound
+            }
+            guard let first = visibleWords.first, let last = visibleWords.last else { continue }
+            let text = visibleWords.map(\.text).joined(separator: " ")
+            if let lower = wordIndex[first.id], let upper = wordIndex[last.id] {
+                let start = words[lower].start, end = max(start, words[upper].end)
+                if let scope, end <= scope.lowerBound || start >= scope.upperBound { continue }
+                let editedStart = timelineTime(source: start, on: .edited), editedEnd = timelineTime(source: end, on: .edited)
+                pages.append(.init(edited: editedStart..<max(editedStart, editedEnd), source: start..<end, text: text))
+            } else {
+                let start = timelineSourceTime(page.start, on: .edited), end = timelineSourceTime(max(page.start, page.end), on: .edited)
+                pages.append(.init(edited: page.start..<max(page.start, page.end), source: start..<max(start, end), text: text))
+            }
+        }
+        return TimelineCaptions.cues(pages, on: axis, removed: removed)
+    }
+
+    /// Where V1's filmstrip reads its frames (impl-plan V9), or nil when it has none: a demo,
+    /// media that is missing or unreadable, or a take without video.
+    var timelineFilmstripSource: FilmstripSource? {
+        guard !document.demo, mediaResolved, !mediaUnreadable, project.media.source.video != nil else { return nil }
+        return FilmstripSource(url: sourceURL, contentKey: project.media.source.contentKey, cache: app.locations.cache)
+    }
+
+    /// V1's name strip (notes.md §6): the end of the take's file name, as "…0075_D".
+    var timelineMediaName: String {
+        let stem = (URL(fileURLWithPath: project.media.source.absolutePath).lastPathComponent as NSString).deletingPathExtension
+        return stem.count > 7 ? "\u{2026}" + String(stem.suffix(6)) : stem
     }
 
     /// Every clip and suggestion in take time for the overview strip (notes.md §6), in
