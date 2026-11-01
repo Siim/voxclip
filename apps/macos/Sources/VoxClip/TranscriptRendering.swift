@@ -21,6 +21,13 @@ enum TranscriptSpanKind: Equatable {
     /// A comma that folds with the filler after it (`DisplayPunctuation`), shown in
     /// `word.gone` under Show cuts or in an opened fold.
     case comma
+    /// A run of a proposed change's new words (notes.md §5): display-only text that maps to
+    /// no word, so it cannot be selected. With the change marks on the words, these spans are
+    /// the inserted-range table beside the word map (impl-plan V14).
+    case inserted
+    /// The blank after the focused change that the Keep and Undo buttons stand over (impl-plan
+    /// item 23): a fold's characters, kerned to the buttons' width.
+    case spacer
 }
 
 struct TranscriptSpan: Equatable {
@@ -29,10 +36,12 @@ struct TranscriptSpan: Equatable {
     let pause: Bool
     var ids: [String] = []
     var kind: TranscriptSpanKind = .text
+    /// What the span is to a proposed change it belongs to.
+    var change: TranscriptChangeMark?
     var selectable: Bool { kind == .text }
     /// The same span `offset` characters later.
     func moved(by offset: Int) -> TranscriptSpan {
-        offset == 0 ? self : TranscriptSpan(id: id, range: NSRange(location: range.location + offset, length: range.length), pause: pause, ids: ids, kind: kind)
+        offset == 0 ? self : TranscriptSpan(id: id, range: NSRange(location: range.location + offset, length: range.length), pause: pause, ids: ids, kind: kind, change: change)
     }
 }
 
@@ -50,9 +59,11 @@ struct TranscriptSpan: Equatable {
     static func gap(textSize: Double) -> CGFloat { 13 * textSize / DesignValues.transcriptTextSize }
     static func dot(textSize: Double) -> CGFloat { 5 * textSize / DesignValues.transcriptTextSize }
     /// The kern after the glyph that makes the fold `gap` wide in `font`.
-    static func kern(font: NSFont, textSize: Double) -> CGFloat {
+    static func kern(font: NSFont, textSize: Double) -> CGFloat { kern(font: font, width: gap(textSize: textSize)) }
+    /// The kern after the glyph that makes its characters `width` wide in `font`.
+    static func kern(font: NSFont, width: CGFloat) -> CGFloat {
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: glyph, attributes: [.font: font]))
-        return gap(textSize: textSize) - CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        return width - CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
     }
 }
 
@@ -93,12 +104,20 @@ struct TranscriptParagraphContent: Equatable {
             case pause
             /// The kerned blank the AI marker draws over, before an AI passage.
             case aiMarker
+            /// A run of a proposed change's new words.
+            case inserted
+            /// The blank the focused change's Keep and Undo buttons stand over.
+            case spacer
         }
         var kind: Kind
         var id: String
         var text: String
         var ids: [String] = []
         var toolTip: String?
+        /// What the piece is to a proposed change it belongs to.
+        var change: TranscriptChangeMark?
+        /// The buttons a spacer makes room for.
+        var actions: [TranscriptChangeAction] = []
     }
     var firstWord: Int
     var start: Double
@@ -253,6 +272,8 @@ struct TranscriptAppearance: Equatable {
     var activeClipID: String?
     /// The playhead in take seconds: its paragraph's timecode is the current one (notes.md §2).
     var playhead: Double = 0
+    /// Proposed changes wait for review: AI words outside them lose their mark (notes.md §5).
+    var changesPending = false
 }
 
 /// Builds the transcript's text storage and styles its spans (impl-plan §3.1, V8a).
@@ -325,6 +346,12 @@ struct TranscriptAppearance: Equatable {
     private var caretRevision = -1
     /// The appearance the last whole-document write styled every span for, until `update`.
     private var wholeStyle: TranscriptAppearance?
+    /// The span ids of each shown change's first and last piece, by ordinal, as the storage holds them.
+    private(set) var changeEnds: [Int: (first: String, last: String)] = [:]
+    /// The span of the blank the focused change's Keep and Undo buttons stand over.
+    private(set) var spacerID: String?
+    /// The buttons the spacer makes room for.
+    private(set) var spacerActions: [TranscriptChangeAction] = []
 
     /// Writes the paragraphs whose content changed. `pending`, the appearance the next
     /// `update` brings, styles the replaced paragraphs, so a whole-document write for a tab
@@ -474,15 +501,31 @@ struct TranscriptAppearance: Equatable {
     /// edges do not split it. A comma that only exists because a filler follows folds with
     /// it (`DisplayPunctuation`). Uncut pauses show only with Show Pauses. Outside the open
     /// clip the words read as said: no folds, no struck words and no pauses.
+    ///
+    /// A proposed change (`EditorModel.proposalDisplay`, notes.md §5) shows the words it
+    /// removes struck, as words that never fold, and its new words as runs beside them; the
+    /// words it keeps stay plain, and words already cut inside it fold as any cut. While
+    /// changes wait for review the AI marker is not drawn (the marker budget). The focused
+    /// change gets the Keep and Undo buttons' blank (`placeSpacer`).
     private func contents(model: EditorModel, replacements: [VoiceLabSegment]) -> [TranscriptParagraphContent] {
         let words = transcript
         let cutWords = model.cutWordIDs, cutPauses = model.cutPauseIDs, fillers = model.fillerCandidateIDs
         let showsCuts = model.showsCuts, openEnds = model.openFoldEnds, scope = model.scopeBounds
         let pauses = model.pauseByAfterIndex, showPauses = model.showPauses
+        let proposal = model.proposalDisplay, marks = proposal?.marks ?? [:], changesPending = proposal?.pending ?? false
         var segments: [String: VoiceLabSegment] = [:]
         for segment in replacements where segments[segment.replace.firstWordId] == nil { segments[segment.replace.firstWordId] = segment }
         func inside(_ position: Int) -> Bool { scope?.contains(position) ?? true }
-        func removed(_ position: Int) -> Bool { inside(position) && cutWords.contains(words[position].id) && !aiWordIDs.contains(words[position].id) }
+        func removed(_ position: Int) -> Bool {
+            inside(position) && cutWords.contains(words[position].id) && !aiWordIDs.contains(words[position].id) && marks[words[position].id]?.role != .old
+        }
+        /// A proposed change's new words placed before or after a word.
+        func runs(before: Bool, _ id: String) -> [TranscriptParagraphContent.Piece] {
+            guard let proposal, let runs = before ? proposal.before[id] : proposal.after[id] else { return [] }
+            return runs.enumerated().map { offset, run in
+                .init(kind: .inserted, id: "change:\(run.mark.ordinal):\(before ? "before" : "after"):\(id):\(offset)", text: run.text, change: run.mark)
+            }
+        }
         /// The pause after a word, when it is in the open clip: between two of its words.
         func pause(after position: Int) -> Pause? {
             guard let pause = pauses[position], inside(position), inside(position + 1) else { return nil }
@@ -520,18 +563,21 @@ struct TranscriptAppearance: Equatable {
                     let open = showsCuts || openEnds.contains(where: ids.contains)
                     // The kept word before the run reads without a comma that only exists because a filler follows.
                     let wordFollows = position < paragraph.upperBound
-                    if let last = content.pieces.last, last.kind == .word, !cutWords.contains(last.id), wordIndex[last.id].map(inside) == true,
+                    if let last = content.pieces.last, last.kind == .word, last.change?.role != .old, !cutWords.contains(last.id), wordIndex[last.id].map(inside) == true,
                        DisplayPunctuation.foldsComma(last.text, foldRemovesFiller: filler, wordFollows: wordFollows) {
                         content.pieces[content.pieces.count - 1].text = DisplayPunctuation.withoutComma(last.text)
                         if open { content.pieces.append(.init(kind: .comma, id: "comma:\(last.id)", text: String(last.text.last ?? ","))) }
                     }
                     if open { content.pieces += items } else if let first = ids.first { content.pieces.append(.init(kind: .fold, id: first, text: TranscriptFold.text, ids: ids)) }
+                    // New words placed at a word the user cut since the proposal follow its fold.
+                    for id in ids { content.pieces += runs(before: true, id) + runs(before: false, id) }
                     if let trailing { content.pieces.append(trailing) }
                     continue
                 }
                 let word = words[position]
+                content.pieces += runs(before: true, word.id)
                 if let segment = segments[word.id] {
-                    content.pieces.append(.init(kind: .aiMarker, id: "ai:\(segment.id)", text: " "))
+                    if !changesPending { content.pieces.append(.init(kind: .aiMarker, id: "ai:\(segment.id)", text: " ")) }
                     if let replacement = segment.words {
                         let end = max(position + 1, (wordIndex[segment.replace.lastWordId] ?? position) + 1)
                         content.pieces.append(.init(kind: .replacement, id: word.id, text: replacement.map(\.text).joined(separator: " "), ids: words[position..<end].map(\.id)))
@@ -540,7 +586,8 @@ struct TranscriptAppearance: Equatable {
                     }
                 }
                 let corrected = corrections[word.id]
-                content.pieces.append(.init(kind: .word, id: word.id, text: corrected ?? word.text, toolTip: corrected != nil ? "Heard as: \(word.text)" : nil))
+                content.pieces.append(.init(kind: .word, id: word.id, text: corrected ?? word.text, toolTip: corrected != nil ? "Heard as: \(word.text)" : nil, change: marks[word.id]))
+                content.pieces += runs(before: false, word.id)
                 position += 1
                 if let pause = pause(after: position - 1) {
                     if cutPauses.contains(pause.id) {
@@ -551,7 +598,48 @@ struct TranscriptAppearance: Equatable {
             }
             result.append(content)
         }
+        if let proposal { placeSpacer(in: &result, proposal: proposal) } else { spacerID = nil; spacerActions = [] }
+        changeEnds = [:]
+        for paragraph in result {
+            for piece in paragraph.pieces where piece.kind != .spacer {
+                guard let ordinal = piece.change?.ordinal else { continue }
+                changeEnds[ordinal] = (changeEnds[ordinal]?.first ?? piece.id, piece.id)
+            }
+        }
         return result
+    }
+
+    /// Puts the Keep and Undo buttons' blank (impl-plan item 23) after the focused change's last
+    /// piece, glued to it so the buttons wrap with that word and never start a line. When that
+    /// piece does not end a clause and one of the next two plain words does, the blank follows
+    /// that word instead, as the mockup sets "in the clip. Keep Undo" (zoom-transcript.png).
+    private func placeSpacer(in paragraphs: inout [TranscriptParagraphContent], proposal: TranscriptProposalDisplay) {
+        spacerID = nil; spacerActions = []
+        guard let focused = proposal.focused, !proposal.actions.isEmpty else { return }
+        func endsClause(_ text: String) -> Bool { [",", ".", ";", ":", "?", "!", "\u{2026}"].contains { text.hasSuffix($0) } }
+        for index in paragraphs.indices.reversed() {
+            let pieces = paragraphs[index].pieces
+            guard let last = pieces.lastIndex(where: { $0.change?.ordinal == focused }), let mark = pieces[last].change else { continue }
+            var at = last
+            if !endsClause(pieces[last].text) {
+                for ahead in 1...2 where last + ahead < pieces.count {
+                    let piece = pieces[last + ahead]
+                    guard piece.kind == .word, piece.change == nil else { break }
+                    if endsClause(piece.text) { at = last + ahead; break }
+                }
+            }
+            let id = "spacer:\(focused)"
+            paragraphs[index].pieces.insert(.init(kind: .spacer, id: id, text: TranscriptFold.text,
+                                                  change: TranscriptChangeMark(ordinal: focused, kind: mark.kind, role: .spacer, pending: mark.pending, focused: true),
+                                                  actions: proposal.actions), at: at + 1)
+            spacerID = id; spacerActions = proposal.actions
+            return
+        }
+    }
+    /// The characters a shown change spans in the storage, from its first piece to its last.
+    func changeRange(_ ordinal: Int) -> NSRange? {
+        guard let ends = changeEnds[ordinal], let first = text?.map.span(id: ends.first), let last = text?.map.span(id: ends.last) else { return nil }
+        return NSRange(location: first.range.location, length: max(0, NSMaxRange(last.range) - first.range.location))
     }
 
     /// A paragraph's text, without its line break, and its spans counted from its first
@@ -565,14 +653,25 @@ struct TranscriptAppearance: Equatable {
         for (index, piece) in pieces.enumerated() {
             let range = NSRange(location: value.length, length: piece.text.utf16.count)
             let next = index + 1 < pieces.count ? pieces[index + 1].kind : nil
-            let space = next != .fold && next != .comma ? " " : ""
+            let space = next != .fold && next != .comma && next != .spacer ? " " : ""
             switch piece.kind {
             case .aiMarker:
                 spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, kind: .ai))
                 value.append(NSAttributedString(string: piece.text, attributes: styles.marker))
             case .word, .replacement:
-                spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, ids: piece.ids))
+                spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, ids: piece.ids, change: piece.change))
                 value.append(NSAttributedString(string: piece.text + space, attributes: styles.body))
+            case .inserted:
+                spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, kind: .inserted, change: piece.change))
+                value.append(NSAttributedString(string: piece.text + space, attributes: styles.body))
+            case .spacer:
+                // A fold's characters, kerned to the buttons' width (TranscriptProposalLayer).
+                spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, kind: .spacer, change: piece.change))
+                var spacer = styles.fold
+                spacer[.kern] = TranscriptFold.kern(font: font, width: TranscriptProposalLayer.reservedWidth(piece.actions))
+                value.append(NSAttributedString(string: TranscriptFold.joiner, attributes: styles.body))
+                value.append(NSAttributedString(string: TranscriptFold.glyph, attributes: spacer))
+                value.append(NSAttributedString(string: TranscriptFold.breakAfter, attributes: styles.body))
             case .comma:
                 spans.append(TranscriptSpan(id: piece.id, range: range, pause: false, kind: .comma))
                 value.append(NSAttributedString(string: piece.text + space, attributes: styles.body))
@@ -619,6 +718,7 @@ struct TranscriptAppearance: Equatable {
         } else if let previous, previous.query == state.query, previous.lowConfidence == state.lowConfidence {
             var ids = previous.cutWords.symmetricDifference(state.cutWords)
             ids.formUnion(previous.cutPauses.symmetricDifference(state.cutPauses))
+            if previous.changesPending != state.changesPending { ids.formUnion(aiWordIDs) }
             changed = ids
             // A tab switch or a trim restyles only the words whose in-clip state changed (impl-plan §3.1).
             if previous.scope != state.scope { scopeRuns = Self.scopeDifference(previous.scope, state.scope, count: transcript.count) }
@@ -741,12 +841,17 @@ struct TranscriptAppearance: Equatable {
     /// Outside the open clip a cut word reads as said, unstruck.
     private func style(_ span: TranscriptSpan, state: TranscriptAppearance) -> [NSAttributedString.Key: Any] {
         switch span.kind {
-        case .ai, .fold: return [.foregroundColor: NSColor.clear]
+        case .ai, .fold, .spacer: return [.foregroundColor: NSColor.clear]
         case .comma: return [.foregroundColor: DesignValues.nsColor("word.gone")]
+        // New words read in t1 on the change.add tint the fragment draws behind them.
+        case .inserted: return [.foregroundColor: DesignValues.nsColor("text.primary")]
         case .text: break
         }
+        // A word a proposed change removes: the Show-cuts strike.
+        if span.change?.role == .old { return [.foregroundColor: DesignValues.nsColor("word.gone"), .vcStrike: true] }
         let inside = state.scope.map { scope in wordIndex[span.id].map(scope.contains) ?? true } ?? true
-        if aiWordIDs.contains(span.id) {
+        // While changes wait for review, AI words keep only the gutter glyph (the marker budget).
+        if aiWordIDs.contains(span.id), !state.changesPending {
             // AI words read in t1 like proposed words (notes.md §5), and in word.outside beyond the clip.
             return [.foregroundColor: DesignValues.nsColor(inside ? "text.primary" : "word.outside"), .vcStrike: false, .vcUnderline: 3, .vcUnderlineColor: NSColor(DesignValues.accentText)]
         }
@@ -759,6 +864,11 @@ struct TranscriptAppearance: Equatable {
             result[.vcUnderlineColor] = DesignValues.nsColor("word.lowConfidence")
         }
         if !state.query.isEmpty, let word, (corrections[span.id] ?? word.text).localizedCaseInsensitiveContains(state.query) { result[.backgroundColor] = DesignValues.nsColor("pause.background") }
+        // An excluded change keeps its place: a dotted underline, so it can be focused and kept.
+        if span.change?.role == .slot {
+            result[.vcUnderline] = TranscriptChangeMark.slotUnderline
+            result[.vcUnderlineColor] = DesignValues.nsColor("text.tertiary")
+        }
         return result
     }
 
