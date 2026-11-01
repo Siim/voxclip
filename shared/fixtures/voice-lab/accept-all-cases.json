@@ -7408,9 +7408,9 @@
                 },
                 "seams": {
                   "in": {
-                    "kind": "synthToSynth",
-                    "fadeSamples": 18,
-                    "sourceHandleSamples": 0,
+                    "kind": "gap",
+                    "fadeSamples": 20,
+                    "sourceHandleSamples": 10,
                     "assetHandleFrames": 480
                   },
                   "out": {

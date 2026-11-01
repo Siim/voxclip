@@ -14,6 +14,19 @@ members), overlaps with enabled stored segments, invalid selected or alternative
 recipes, changed cuts that invalidate seams, missing/crossed/outside clip scope,
 and conflicting/deleted consent all refuse the whole operation.
 
+The `bad-alternate-scope-seam` input passes structural validation and its selected
+render. Its unselected second recipe uses a 20-sample gap seam with a 10-sample
+source handle at a synth neighbor: only output-plan alternative validation refuses
+it. Removing that loop must fail this row.
+
+The same generator writes `accept-all-review-cases.json`, schema
+`voxclip.accept-all-review.v1`. It has one empty-set refusal row, referencing the
+`single` input in `accept-all-cases.json` and overriding its segment list with `[]`.
+W2 must replay this file in addition to the unchanged 22-row file shape, refusing
+`invalidSegment` both through the edit command and the direct project transition.
+It contains no computed floats and is checked byte for byte by `check_drift.py`.
+No new category or row was appended to the fixture the twin already pins.
+
 Successful rows also round-trip through project encoding; a separate disk save/load
 test retains the mixed segment kinds, cuts and corrections. The Mac app suite
 checks one exact snapshot undo/redo and Edit > Undo's AppKit title for clip,

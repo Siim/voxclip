@@ -69,7 +69,8 @@ sets['existing-overlap']['project']['voiceLab']['voices'] = [copy.deepcopy(sets[
 sets['bad-second-recipe'] = copy.deepcopy(sets['mixed'])
 sets['bad-second-recipe']['segments'][1]['candidates'][0]['recipe']['qa']['peakDbfs'] = 0
 sets['bad-alternate-scope-seam'] = copy.deepcopy(sets['touching'])
-sets['bad-alternate-scope-seam']['segments'][1]['candidates'][1]['recipe']['seams']['in']['fadeSamples'] = 18
+sets['bad-alternate-scope-seam']['segments'][1]['candidates'][1]['recipe']['seams']['in'].update(
+    kind='gap', fadeSamples=20, sourceHandleSamples=10)
 sets['duplicate-id'] = copy.deepcopy(sets['touching'])
 sets['duplicate-id']['segments'][1]['id'] = sets['duplicate-id']['segments'][0]['id']
 sets['reuse-assets'] = copy.deepcopy(sets['mixed'])
@@ -145,3 +146,10 @@ case('unknown-clip', 'single', 'invalidScope', 'missing-clip')
 out = dict(version=1, inputs=sets, cases=rows)
 (FIXTURES / 'accept-all-cases.json').write_text(json.dumps(out, indent=2, ensure_ascii=False) + '\n')
 print(f'accept-all-cases.json: {len(rows)} cases')
+
+# Review vectors have a separate schema: the twin pins each existing file's exact cases and keys.
+review = dict(schema='voxclip.accept-all-review.v1', cases=[
+    dict(case='empty-set', input='single', segments=[], expected=dict(error='invalidSegment')),
+])
+(FIXTURES / 'accept-all-review-cases.json').write_text(json.dumps(review, indent=2) + '\n')
+print(f'accept-all-review-cases.json: {len(review["cases"])} cases')
