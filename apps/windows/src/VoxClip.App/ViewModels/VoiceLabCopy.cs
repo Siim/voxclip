@@ -48,7 +48,7 @@ internal static class VoiceLabCopy
         VoxClip.Media.Audio.MicrophoneError.DeviceLost => MicrophoneDeviceLost,
         _ => MicrophoneUnavailable
     };
-    internal const string BetaNotice = "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key.";
+    internal const string BetaNotice = "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key.";
     internal const string ToggleCaption = "Voice Lab is optional. Import, cut, captions, clips and export work without it.";
     internal const string KeyFootnote = "The key is encrypted for your Windows account. No request is made when you save it.";
     internal const string KeyGuidance = "Create a key just for VoxClip on elevenlabs.io → Developers → API keys. Allow only the permissions listed for the features you use, and set a monthly credit limit. Never enable voice-library publishing, sharing or workspace permissions for this key.";

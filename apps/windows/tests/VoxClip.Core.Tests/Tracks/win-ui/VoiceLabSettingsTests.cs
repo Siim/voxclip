@@ -417,7 +417,7 @@ public sealed class VoiceLabSettingsTests
     [Fact]
     public void CopyMatchesTheBindingSpecAndMacKeyGuidance()
     {
-        Assert.Equal("Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key.", VoiceLabCopy.BetaNotice);
+        Assert.Equal("Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key.", VoiceLabCopy.BetaNotice);
         var root = Path.GetDirectoryName(Shared)!;
         Assert.Contains(VoiceLabCopy.BetaNotice, File.ReadAllText(Path.Combine(root, "doc", "spec", "voice-lab.md")));
         var mac = File.ReadAllText(Path.Combine(root, "apps", "macos", "Sources", "VoxClip", "VoiceLabSettings.swift"));

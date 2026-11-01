@@ -1,9 +1,10 @@
 # Windows fixed contracts
 
-### 2026-11-01 — parity-copy-2 — correction and download parity
+### 2026-11-01 — parity-copy-2 — correction, download and beta copy parity
 
 - Inline corrections save valid typed text when focus leaves, on outside clicks, when the selection changes, and before transport actions. Esc cancels; empty, multiline and over-limit drafts are dropped. The view model owns the draft and closes the popup; the light-dismiss implementation is removed. Play/Pause waits for edit refreshes and uses the state before saving, so Pause during playback saves and stays paused. Headless `InlineCorrectionTests` cover these boundaries.
 - A dialog model download freezes engine, language and model choices. Completion continues only for the verified installed local model and the original engine/language/model choice; cancellation, changed choices and cloud never continue. `TranscriptionRoutingTests` cover the guard and its dialog wiring; paid uploads still require Transcribe and first-use consent.
+- Voice Lab's exact one-time copy promises only own-voice creation and rewritten words with ElevenLabs. Settings still exposes fal.ai/sync.so keys and monthly caps, left in place for a later task.
 - Owed native: popup focus/outside-click behavior, Return/Tab/Esc, playback Pause, download/cancel/consent, keyboard and Narrator on a real Windows PC. The VM stays off.
 
 ### 2026-10-31 - Windows own-voice training from the project's audio

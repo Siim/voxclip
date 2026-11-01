@@ -8,6 +8,10 @@ import Testing
 
 @Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
 @MainActor struct VoiceLabSessionTests {
+    @Test func betaNoticeDescribesOnlyTheShippedFeatures() {
+        #expect(VoiceLabSession.betaCopy == "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key.")
+    }
+
     @Test(arguments: [2, 3], [false, true]) func recoveryOperationAccessibilityIdentifiesEachVoiceAndAction(count: Int, sharedSuffix: Bool) throws {
         let shared = try SharedResources.locate()
         let date = try #require(ISO8601DateFormatter().date(from: "2026-10-30T12:00:00Z"))

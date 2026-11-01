@@ -475,7 +475,7 @@ Live transcript while recording (M2): partial words in `text.muted` italic; a "J
 | ⌫ / Delete on a selection | **Cut.** If the whole selection is already cut, **restore** it (toggle, like VoxConvo's tap to cut, tap again to restore) |
 | ⇧⌫ / Shift+Backspace | Restore the selection |
 | ⌥-click / Alt-click | Play from that word |
-| Right-click | Context menu: Make Clip (⌘K) · Cut · Restore · Rewrite… (Voice Lab on) · Correct Spelling… · Play from Here · Preview This Cut (P) · Copy Text. With a caret between words and Voice Lab on: Insert Words… |
+| Right-click | Context menu: Make Clip (⌘K) · Cut · Restore · Rewrite… (Voice Lab on) · Correct Spelling… · Play from Here · Preview This Cut (P) · Copy Text. Later (M3+), with a caret between words and Voice Lab on: Insert Words… |
 | Drop a file on the window | The whole-window overlay (§7). With a project open, it is saved first, then the new video opens in its place |
 
 On both platforms, an inline correction ends when focus leaves its field, on a click elsewhere, when the selection changes, and before any transport action. Save valid typed text on the word the field opened for; drop empty text, text containing a line break, or text beyond the project's correction limit, keeping the word unchanged. Esc cancels. Return and Tab keep their behavior above. Play/Pause uses the playing state before saving: Space or Pause during playback saves and stays paused, including when the save refreshes the preview.
@@ -999,6 +999,8 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 
 ### 6.3 Voice Lab in context (M3 beta)
 
+In 0.1.0, the entry points are **Rewrite…** on selections and in the Edit menu (the Windows editor's ⋯ menu), and **Create Your Voice…** in Settings → Voice Lab and Rewrite. **Change Voice…**, **Insert Words…** and **Lip sync** are later (M3+). The length-change choices below describe that later design; in 0.1.0 unsupported video choices stay disabled and cannot be accepted or exported.
+
 Voice Lab appears only when Settings → Voice Lab → Show Voice Lab (beta) is on (voice-lab.md §5).
 
 - **When it is off:**
@@ -1006,8 +1008,7 @@ Voice Lab appears only when Settings → Voice Lab → Show Voice Lab (beta) is 
   - Edit > Rewrite… (macOS) and ⋯ > Rewrite… (Windows) still exist, and open the one-time "Turn on Voice Lab" sheet from voice-lab.md §5.
 - **When it is on:**
   - the selection bar shows **Rewrite…** (⇧⌘R / Ctrl+R);
-  - the transcript context menu adds Rewrite… and, with a caret between words, **Insert Words…**.
-  - Both open the Rewrite panel. Rewrite combines voice-lab.md §8.1 entry points 1 (re-voice the selection) and 3 (fix with AI); Insert Words is entry point 2.
+  - the transcript context menu adds Rewrite…. It opens the Rewrite panel, combining voice-lab.md §8.1 entry points 1 (re-voice the selection) and 3 (fix with AI). Insert Words (entry point 2) is later (M3+).
 
 **Rewrite panel.** It replaces Captions in the right column. It is flush, with no card, no inset and no radius. A hairline sits above it and above its footer. Sections are separated by 12 of spacing and their labels, not by hairlines. The column scrolls when it has to. While it is open:
 
@@ -1077,9 +1078,9 @@ Keyboard: opening the panel focuses "What should change?". Esc closes it and ret
 |---|---|
 | Tighten with AI (M2) | Edit > Tighten with AI… and the toolbar capsule's menu, macOS overflow or Windows ⋯. Suggestions show as filler-style dotted underlines. The edit summary area offers **Cut All Suggestions** |
 | Clean audio (M2) | Edit > Clean Audio… and ⋯. It opens a right-column panel shaped like Rewrite: what it sends, the cost button "Clean Audio · ≈ $0.36", progress and Use |
-| Voice changer (M3) | Edit > Change Voice… (scope: the selected clip or the full take). It opens a right-column panel: Voice, Takes, disclosure, Use |
+| Voice changer (later, M3+) | Edit > Change Voice… (scope: the selected clip or the full take). It opens a right-column panel: Voice, Takes, disclosure, Use |
 | My voice (consent and clone) | Settings → Voice Lab → My voices, and the Rewrite panel's **Create Your Voice…** |
-| Lip sync | only as the length-changed choice in Rewrite |
+| Lip sync (later, M3+) | only as the length-changed choice in Rewrite |
 
 When rewritten speech requires a different video duration, show Lip sync and Retimed source video together and let the user choose for that rewrite (ADR-R28, Voice Lab §8.9), as specified above. The current capability guards for unsupported video remain until those paths are implemented and verified.
 

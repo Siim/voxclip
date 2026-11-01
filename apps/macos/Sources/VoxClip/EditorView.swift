@@ -6,7 +6,7 @@ import VoxClipCore
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Turn on Voice Lab").font(.title2)
-            Text("Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key.")
+            Text(VoiceLabSession.betaCopy)
             HStack {
                 Button("Cancel") { editor.showVoiceLabOptIn = false }.keyboardShortcut(.cancelAction)
                 Spacer()

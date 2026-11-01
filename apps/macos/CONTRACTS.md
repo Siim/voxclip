@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+### 2026-11-01 — parity-copy-2 — Voice Lab 0.1.0 copy
+
+- The one-time notice uses `VoiceLabSession.betaCopy` in Settings and the editor. It promises own-voice creation and rewritten words with ElevenLabs only; Change Voice and Lip sync are M3+. `VoiceLabSessionTests` checks the exact copy. Estonian consent QA is not applicable after the failed et-v1 calibration (89% versus 95% required).
+- Settings still shows fal.ai/sync.so keys and spending caps; this task leaves those rows in place. No new native window checks; beta layout and VoiceOver remain owed.
+
 ### 2026-11-01 — parity-copy-2 — inline correction parity
 
 - Design §4.2 records the same focus-loss, outside-click, selection-change and transport rule on both platforms. Mac now ends a correction when the selection extends as well as when it moves away, and rejects raw line breaks before trimming. The existing Return/Tab/Esc behavior stays in place; `TranscriptCorrectionTests` covers the added cases.

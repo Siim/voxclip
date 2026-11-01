@@ -396,9 +396,9 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 ## 5. M3 beta: gate and settings
 
 - Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default in release builds; development builds turn it on (below). Turning it on shows a one-time sheet:
-  - "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
+  - "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key."
   - Buttons [Turn on] and [Cancel].
-- With Voice Lab on, **Rewrite…** appears on transcript selections, **Change Voice…** is in the Edit menu, **My voice** is in Settings → Voice Lab, and **Lip sync** is offered inside Rewrite when the length changes (`doc/design.md` §6.3–§6.4). Each panel shows its cost, what it sends, and the label that export will add.
+- In 0.1.0, **Rewrite…** appears on transcript selections and in the Edit menu (the Windows editor's ⋯ menu). **Create Your Voice…** appears in Settings → Voice Lab and in Rewrite. Each panel shows its cost, what it sends, and the label that export will add. **Change Voice…** and **Lip sync** are later (M3+); they are not 0.1.0 entry points (`doc/design.md` §6.3–§6.4).
 - Settings → Voice Lab also shows:
   - the ElevenLabs, fal.ai and sync.so key rows (§2);
   - **My voices**: the consent records, with their voice name, creation date, ElevenLabs voice id, and [Delete voice];
@@ -1826,7 +1826,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
 Manual QA with real keys runs locally, never in CI:
 
 - one Clean audio run on a 3 min take;
-- one own-voice clone with the full consent flow in English and in Estonian;
+- one own-voice clone with the full consent flow in English; the Estonian consent flow is not applicable until Estonian has a calibrated speaker check. The et-v1 Riigikogu calibration failed: 89% same-speaker pass against the required 95%;
 - one own-voice clone from an Estonian project's audio with an English statement;
 - three patches (a replace, an insert, a bridged replace);
 - one voice-changer preview;
