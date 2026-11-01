@@ -19,13 +19,19 @@ import VoxClipCore
         // The panel also goes when its tab or the panel's job changes (impl-plan V3a, V4);
         // the session stays open then, and so does a send it approved. Closing it cancels its own work.
         .onDisappear { if !session.isOpen { approvalTask?.cancel() } }
-        .task { instructionFocused = true; await session.detectConnector(); await session.prepare() }
+        // The field takes the keyboard as the session opens, after Ask for Something Else, and back from a run that had
+        // it; a reply that arrives while the user works elsewhere leaves focus there.
+        .task {
+            if session.task.takeKeyboardHandover() { instructionFocused = true }
+            await session.detectConnector(); await session.prepare()
+        }
         .task(id: session.quote?.id) { if let id = session.quote?.id { session.markEstimateShown(id) } }
         .onChange(of: session.editor.paneFocusRequest) { _, _ in
             if session.editor.focusedPane == .panel { instructionFocused = true }
         }
         .onChange(of: instructionFocused) { _, focused in if focused { session.editor.focusedPane = .panel } }
         .onChange(of: wordsFocused) { _, focused in if focused { session.editor.focusedPane = .panel } }
+        .onChange(of: instructionFocused || wordsFocused) { _, focused in session.task.keyboardInPanel = focused }
         .onChange(of: session.editor.capabilities) { _, _ in
             if !session.current { session.editor.closeRewrite(returnFocus: false) }
         }

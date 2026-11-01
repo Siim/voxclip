@@ -493,6 +493,7 @@ actor RewriteFixtureConnector: LLMConnector {
         check("take start refusal uses Core edge and exact copy", RewriteSession.refusal(VoiceLabGeometryError.seamFadeOutsideTake(isStart: true)) == "This change is too close to the start of the take to blend in. Re-record this sentence instead.")
         check("take end refusal uses Core edge and exact copy", RewriteSession.refusal(VoiceLabGeometryError.seamFadeOutsideTake(isStart: false)) == "This change is too close to the end of the take to blend in. Re-record this sentence instead.")
         results += await directorChecks(app: app, fixture: fixture)
+        results += try await keyboardChecks(app: app, fixture: fixture)
         return results
     }
 }
@@ -605,6 +606,108 @@ extension DebugRewrite {
         let announced = Dictionary(scenes.compactMap { scene in scene.editor.map { (scene.name, $0.announcements) } }, uniquingKeysWith: { first, _ in first })
         results.append(.init(name: "R1 announces \"Rewriting these words\" once", passed: announced["r1"] == ["Rewriting these words"]))
         results.append(.init(name: "R1x announces its headline", passed: announced["r1x-refused"] == ["Couldn't rewrite these words."]))
+        return results
+    }
+
+    /// The Rewrite job's keyboard in an offscreen window like the main window (V12m review): opening focuses the field;
+    /// R1 takes the keyboard from the passage panel it replaces, so Esc (and ⌘., the same action) stops it; a reply that
+    /// arrives while the user works in the transcript leaves the keyboard there. A held stub connector on this Mac sends
+    /// nothing; the settings and the connector override are put back.
+    static func keyboardChecks(app: AppModel, fixture: Project) async throws -> [DebugUISuite.Result] {
+        var results: [DebugUISuite.Result] = []
+        func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        let keys = ["llm.connector", "llm.model.ollama", "voiceLab.enabled"]
+        let saved = keys.map { app.settings.values[$0] }, previousOverride = app.connectorOverride
+        defer { for (key, value) in zip(keys, saved) { app.settings.values[key] = value }; app.connectorOverride = previousOverride }
+        app.settings.values["llm.connector"] = .string("ollama")
+        app.settings.values["llm.model.ollama"] = .string("fixture-local")
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        var fake = RewriteFixtureConnector(id: .ollama, hold: true)
+        app.connectorOverride = { _ in fake }
+        var project = fixture
+        project.id = UUID().uuidString.lowercased()
+        project.edits = ProjectEdits()
+        project.transcript?.words = (0..<80).map { TimedWord(id: "keyboard-\($0)", text: "word\($0)", start: Double($0) + 1, end: Double($0) + 1.4) }
+        let shell = WorkspaceShell(app: app)
+        await shell.attachForTesting(VoxClipDocument(project: project, demo: true), selection: .fullTake)
+        guard let editor = shell.editor else { return [.init(name: "the Rewrite keyboard checks open an editor", passed: false)] }
+        defer { editor.close() }
+        editor.mediaResolved = true; editor.refresh()
+        editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
+
+        let size = NSSize(width: 1280, height: 800)
+        let window = MainWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size), styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let controller = DebugShellWindowController(window: window, shell: shell)
+        defer { window.close(); withExtendedLifetime(controller) {} }
+        window.appearance = NSAppearance(named: .darkAqua)
+        EditorShellController.prepare(window)
+        let host = NSHostingController(rootView: WorkspaceView(shell: shell).environment(app).sceneAccent())
+        host.sizingOptions = []
+        host.sceneBridgingOptions = []
+        window.contentViewController = host
+        window.setContentSize(size)
+        shell.windowWidth = size.width
+        window.orderBack(nil)
+        // Key, as the editor's window is while the user types; SwiftUI focus in a background window differs.
+        window.makeKey()
+
+        /// The right column's hosting view.
+        func right() -> NSView? {
+            func find(_ view: NSView) -> NSView? {
+                String(describing: type(of: view)).contains("RightColumnHost") ? view : view.subviews.lazy.compactMap(find).first
+            }
+            return window.contentView.flatMap(find)
+        }
+        func responder() -> String { window.firstResponder.map { String(describing: type(of: $0)) } ?? "none" }
+        /// The passage panel's field (or a key field) in the right column has the keyboard.
+        func fieldHasKeyboard() -> Bool { (window.firstResponder as? NSTextView).map { right().map($0.isDescendant) ?? false } ?? false }
+        /// The task's panel itself has the keyboard: the right column holds it, but no text field does.
+        func paneHasKeyboard() -> Bool { !(window.firstResponder is NSTextView) && (window.firstResponder as? NSView).map { right().map($0.isDescendant) ?? false } ?? false }
+        func until(_ done: () -> Bool) async throws { for _ in 0..<80 where !done() { try await Task.sleep(for: .milliseconds(25)) } }
+        func sends() async -> Int { await fake.counts().sends }
+        /// Opens Rewrite on words 3–5 as ⇧⌘R does and starts its send as a click on Rewrite does.
+        func open() async throws -> RewriteSession? {
+            editor.selectedWordIDs = Set(editor.words[3...5].map(\.id))
+            editor.beginRewrite()
+            await editor.rewriteOpenTask?.value
+            try await until { fieldHasKeyboard() }
+            return editor.openRewrite
+        }
+        func send(_ session: RewriteSession) async throws -> Task<Bool, Never>? {
+            await session.detectConnector(); await session.prepare()
+            guard let quote = session.quote else { return nil }
+            session.markEstimateShown(quote.id)
+            let sending = Task { await session.propose(quote) }
+            for _ in 0..<80 { if await sends() > 0 { break }; try await Task.sleep(for: .milliseconds(25)) }
+            return sending
+        }
+        try await until { right() != nil && focusTranscript(in: window) }
+
+        guard let first = try await open() else { return results + [.init(name: "Rewrite opens in the window", passed: false)] }
+        check("Rewrite opens with its field focused (first responder \(responder()))", fieldHasKeyboard())
+        let stopped = try await send(first)
+        try await until { paneHasKeyboard() }
+        check("R1 takes the keyboard from the passage panel it replaces (first responder \(responder()))", first.task.state == .running && paneHasKeyboard())
+        window.firstResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil)
+        check("Esc after a click on Rewrite stops R1 and closes Rewrite", !first.isOpen && editor.openRewrite == nil)
+        await fake.release()
+        _ = await stopped?.value
+
+        fake = RewriteFixtureConnector(id: .ollama, hold: true)
+        guard let second = try await open() else { return results + [.init(name: "Rewrite opens again in the window", passed: false)] }
+        let answered = try await send(second)
+        try await until { paneHasKeyboard() }
+        _ = focusTranscript(in: window)
+        try await until { !second.task.keyboardInPanel }
+        await fake.release()
+        _ = await answered?.value
+        // The passage panel's own work (detection, a fresh quote) runs as it appears; give it the time it takes.
+        for _ in 0..<20 { try await Task.sleep(for: .milliseconds(25)) }
+        let proposed = if case .proposal = second.task.state { true } else { false }
+        check("a reply that arrives while the user works in the transcript leaves the keyboard there (first responder \(responder()))",
+              proposed && window.firstResponder is TranscriptNSTextView)
+        editor.closeRewrite(returnFocus: false)
         return results
     }
 

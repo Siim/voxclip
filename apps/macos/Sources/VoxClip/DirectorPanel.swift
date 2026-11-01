@@ -11,6 +11,8 @@ import VoxClipCore
     /// The editor whose F6 order the panel joins; nil in scenes outside an editor.
     var model: EditorModel?
     @FocusState private var keyFieldFocused: Bool
+    /// The keyboard is in the panel: on the pane itself (F6, a handover) or a field inside it.
+    @FocusState private var keyboardWithin: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +36,8 @@ import VoxClipCore
         .accessibilityLabel(task.words.title)
         .accessibilityIdentifier("voxclip.director")
         .modifier(EditorPaneFocus(model: model, pane: .panel))
+        // Whether the keyboard is anywhere in the panel, for the handover between the panel's views.
+        .focused($keyboardWithin)
         // Esc and ⌘. (design.md §8): Stop while the task runs, which closes it too, else Close.
         .onExitCommand { (task.headline.stop ?? task.close).perform() }
         // ⌘Return from anywhere in the panel, Return outside a text field: the primary.
@@ -50,6 +54,12 @@ import VoxClipCore
             return .handled
         }
         .onChange(of: task.focusRequest) { _, _ in keyFieldFocused = true }
+        .onChange(of: keyboardWithin) { _, within in task.keyboardInPanel = within }
+        // Replacing the passage panel that had the keyboard, it takes it, so Esc, ⌘. and Return still act (design.md R1).
+        .task {
+            guard task.takeKeyboardHandover() else { return }
+            if task.cards.contains(where: { if case .keyField = $0 { true } else { false } }) { keyFieldFocused = true } else { keyboardWithin = true }
+        }
         .columnLayoutEvidence("director.panel")
     }
 

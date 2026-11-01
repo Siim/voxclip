@@ -61,6 +61,41 @@ private actor RefusingKeys: ProviderKeyStore {
     func answer(_ approved: Bool) { answer?.resume(returning: approved); answer = nil }
 }
 
+/// The right column in a window that is never shown, with an AppKit text view that stands in for the transcript, so a
+/// test can move the keyboard out of the panel. SwiftUI focus runs in it as in the editor's window when the panel is the
+/// window's content view (in a plain container view it does not take focus while the window is not key).
+@MainActor private struct PanelWindow {
+    let window: NSWindow
+    let host: NSHostingView<AnyView>
+    let elsewhere = NSTextView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+    init(editor: EditorModel) {
+        _ = NSApplication.shared
+        window = NSWindow(contentRect: CGRect(x: -10_000, y: -10_000, width: 404, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        host = NSHostingView(rootView: AnyView(PanelHost(model: editor, shell: WorkspaceShell(app: editor.app), width: 404, height: 600).environment(editor.app)))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 600)
+        window.contentView = host
+        host.addSubview(elsewhere)
+    }
+    /// Lays the panel out and lets SwiftUI run its updates and tasks, until `done` holds or for `turns` turns.
+    func settle(turns: Int = 2_000, until done: () -> Bool = { false }) async {
+        for _ in 0..<turns {
+            host.layoutSubtreeIfNeeded()
+            if done() { return }
+            await Task.yield()
+        }
+    }
+    /// The task's panel shows, not the passage panel.
+    var showsTaskPanel: Bool { DebugRightColumn.markers(in: host)["director.panel"] != nil }
+    /// A text field in the panel has the keyboard: the passage panel's instruction, or a key field.
+    var fieldHasKeyboard: Bool { (window.firstResponder as? NSTextView).map { $0 !== elsewhere && $0.isDescendant(of: host) } ?? false }
+    /// The task's panel itself has the keyboard (SwiftUI focus on a view that is not a text field).
+    var paneHasKeyboard: Bool { window.firstResponder === host }
+    /// Esc, and ⌘., which AppKit sends as the same action.
+    func escape() { window.firstResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil) }
+    func close() { window.close() }
+}
+
 /// The Rewrite job on the Director task (impl-plan V12m): R0 chooses the AI, R1 runs with
 /// its steps and Stop, R1x shows each error with its fix, and the panel's job follows the
 /// task. Stub connectors and in-memory keys only; the app model never starts, so it saves
@@ -553,6 +588,80 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(panel()["director.panel"] != nil)
         session.showReady()
         #expect(panel()["director.panel"] == nil)
+    }
+
+    /// The task's panel takes the keyboard from the passage panel it replaces, so Esc (and ⌘.) stop the run.
+    @Test func theTaskPanelTakesTheKeyboardSoEscStops() async throws {
+        let ollama = StubConnector(id: .ollama, hold: true)
+        let (app, _) = app("ollama", connectors: ["ollama": ollama])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        let panel = PanelWindow(editor: editor)
+        defer { panel.close() }
+        await panel.settle { panel.fieldHasKeyboard }
+        #expect(panel.fieldHasKeyboard, "opening Rewrite focuses its field")
+        let sending = try await send(session)
+        #expect(await waitUntilSending(ollama))
+        await panel.settle { panel.showsTaskPanel && panel.paneHasKeyboard }
+        #expect(panel.showsTaskPanel && panel.paneHasKeyboard && session.task.keyboardInPanel)
+        panel.escape()
+        #expect(!session.isOpen && editor.openRewrite == nil)
+        await ollama.release()
+        #expect(await sending.value == false)
+    }
+
+    /// The passage panel takes the keyboard back with the reply only when the keyboard stayed in the panel: a reply that
+    /// arrives while the user works elsewhere leaves focus there.
+    @Test(arguments: [true, false])
+    func aReplyTakesTheKeyboardOnlyFromThePanel(stayed: Bool) async throws {
+        let ollama = StubConnector(id: .ollama, hold: true)
+        let (app, _) = app("ollama", connectors: ["ollama": ollama])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        let panel = PanelWindow(editor: editor)
+        defer { panel.close() }
+        await panel.settle { panel.fieldHasKeyboard }
+        let sending = try await send(session)
+        #expect(await waitUntilSending(ollama))
+        await panel.settle { panel.paneHasKeyboard }
+        if !stayed {
+            panel.window.makeFirstResponder(panel.elsewhere)
+            await panel.settle { !session.task.keyboardInPanel }
+            #expect(!session.task.keyboardInPanel)
+        }
+        await ollama.release()
+        #expect(await sending.value)
+        await panel.settle { !panel.showsTaskPanel }
+        #expect(!panel.showsTaskPanel, "the proposal shows in the passage panel")
+        if stayed {
+            await panel.settle { panel.fieldHasKeyboard }
+            #expect(panel.fieldHasKeyboard)
+        } else {
+            await panel.settle(turns: 500)
+            #expect(panel.window.firstResponder === panel.elsewhere, "the reply moved focus to \(String(describing: panel.window.firstResponder))")
+        }
+    }
+
+    /// Ask for Something Else focuses the field (design.md R1x), wherever the keyboard was.
+    @Test func askForSomethingElseFocusesTheField() async throws {
+        let ollama = StubConnector(id: .ollama, failure: .refused(category: nil))
+        let (app, _) = app("ollama", connectors: ["ollama": ollama])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let session = try await open(editor)
+        let panel = PanelWindow(editor: editor)
+        defer { panel.close() }
+        await panel.settle { panel.fieldHasKeyboard }
+        _ = await (try await send(session)).value
+        #expect(session.task.state == .error(.refused))
+        await panel.settle { panel.showsTaskPanel && panel.paneHasKeyboard }
+        panel.window.makeFirstResponder(panel.elsewhere)
+        await panel.settle { !session.task.keyboardInPanel }
+        session.task.footer.primary?.perform()
+        await panel.settle { panel.fieldHasKeyboard }
+        #expect(session.task.state == .ready && panel.fieldHasKeyboard)
     }
 
     /// The DEBUG scene runner's scenes (R0, R0 with nothing, R1 and each R1x) at 404 and 300:

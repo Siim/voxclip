@@ -275,6 +275,12 @@ enum PanelError: Equatable, Sendable {
     var keyDraft = ""
     /// Bumped to ask the panel to focus its first field (a key field).
     private(set) var focusRequest = 0
+    /// The keyboard is in the task's panel; its views report it as their focus changes. Moving it out drops a handover.
+    @ObservationIgnored var keyboardInPanel = false { didSet { if !keyboardInPanel { keyboardHandover = false } } }
+    /// The view the panel draws next takes the keyboard: the task's first view, and the next one after a change of state
+    /// while the keyboard was in the panel. Until V15 the passage panel and the task's panel take turns, and the one that
+    /// goes takes the focused view with it; otherwise focus stays where the user moved it while the AI worked.
+    @ObservationIgnored private var keyboardHandover = true
 
     init(scope: RewriteScope, words: DirectorScope, state: State, close: PanelAction) {
         self.scope = scope; self.words = words; self.state = state; self.close = close
@@ -288,7 +294,15 @@ enum PanelError: Equatable, Sendable {
     /// Shows `state` with its panel content. Entering `.running` starts a new turn.
     func show(_ state: State, headline: PanelHeadline, cards: [PanelCard] = [], footer: PanelFooter = PanelFooter()) {
         if state == .running, self.state != .running { turn += 1 }
+        if state != self.state { keyboardHandover = keyboardHandover || keyboardInPanel }
         self.state = state; self.headline = headline; self.cards = cards; self.footer = footer
+    }
+    /// Asks the view the panel draws next to take the keyboard (Ask for Something Else focuses the field).
+    func handOverKeyboard() { keyboardHandover = true }
+    /// True once for the view that should take the keyboard as it appears.
+    func takeKeyboardHandover() -> Bool {
+        defer { keyboardHandover = false }
+        return keyboardHandover
     }
     /// Replaces the work log's steps while a run goes on.
     func update(_ steps: [ActivityStep]) {

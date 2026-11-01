@@ -257,7 +257,7 @@ extension RewriteSession {
         case .notRunning(let server): cards = [.text("\(server) isn't running. Start it, then choose Try Again.")]
         case .refused:
             cards = [.text("The model declined to rewrite this recording.")]
-            footer = PanelFooter(primary: PanelAction(id: "askElse", title: "Ask for Something Else") { [weak self] in self?.showReady() })
+            footer = PanelFooter(primary: PanelAction(id: "askElse", title: "Ask for Something Else") { [weak self] in self?.askForSomethingElse() })
         case .tooManyEntries, .tooMuchText:
             let findClips = task.scope == .fullTake ? PanelAction(id: "findClips", title: "Find Clips") { [weak editor] in
                 editor?.closeRewrite(returnFocus: false)
@@ -269,6 +269,11 @@ extension RewriteSession {
         task.show(.error(error), headline: headline, cards: cards, footer: footer)
         if case .noKey = error { task.requestFocus() }
         editor.announce(problem ?? headline.text + ".")
+    }
+    /// Refused: back to the passage panel with its field focused (design.md R1x).
+    func askForSomethingElse() {
+        task.handOverKeyboard()
+        showReady()
     }
     /// R1x for a scope over Rewrite's limits (voice-lab.md §8.1). Full take offers `findClips`;
     /// a clip has no primary, and Close closes.
