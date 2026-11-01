@@ -101,15 +101,4 @@ import Testing
         let single = TranscriptParagraphs.split(words: monologue(10_000))
         #expect(single.count == 67 && single.dropLast().allSatisfy { $0.count == 150 } && single.last?.count == 100)
     }
-
-    @Test func theParagraphHoldingAWordIsFoundByBinarySearch() {
-        let paragraphs = [0..<3, 3..<10, 10..<11]
-        #expect(TranscriptParagraphs.paragraph(containing: 0, in: paragraphs) == 0)
-        #expect(TranscriptParagraphs.paragraph(containing: 2, in: paragraphs) == 0)
-        #expect(TranscriptParagraphs.paragraph(containing: 3, in: paragraphs) == 1)
-        #expect(TranscriptParagraphs.paragraph(containing: 10, in: paragraphs) == 2)
-        #expect(TranscriptParagraphs.paragraph(containing: 11, in: paragraphs) == nil)
-        #expect(TranscriptParagraphs.paragraph(containing: -1, in: paragraphs) == nil)
-        #expect(TranscriptParagraphs.paragraph(containing: 0, in: []) == nil)
-    }
 }

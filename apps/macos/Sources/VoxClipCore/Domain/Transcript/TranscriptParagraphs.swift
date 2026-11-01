@@ -53,14 +53,4 @@ public enum TranscriptParagraphs {
         guard let last = text.last else { return false }
         return last == "." || last == "?" || last == "!" || last == "…"
     }
-
-    /// The paragraph holding the word at `index`, by binary search; nil outside the words.
-    public static func paragraph(containing index: Int, in paragraphs: [Range<Int>]) -> Int? {
-        var lower = 0, upper = paragraphs.count
-        while lower < upper {
-            let middle = (lower + upper) / 2
-            if paragraphs[middle].upperBound <= index { lower = middle + 1 } else { upper = middle }
-        }
-        return lower < paragraphs.count && paragraphs[lower].contains(index) ? lower : nil
-    }
 }
