@@ -87,7 +87,11 @@ import VoxClipCore
         let axis = model.timelineAxis
         let time = model.timelinePlayhead(on: axis)
         let parts = SMPTETimecode.format(seconds: time)
-        Text("\(Text(parts.dimPrefix).foregroundStyle(DesignValues.color("text.disabled")))\(Text(parts.value).foregroundStyle(DesignValues.color("text.primary")))")
+        // Two fixed-pitch runs side by side read as one timecode.
+        HStack(spacing: 0) {
+            Text(parts.dimPrefix).foregroundStyle(DesignValues.color("text.disabled"))
+            Text(parts.value).foregroundStyle(DesignValues.color("text.primary"))
+        }
             .font(VCType.body.mono(.medium)).tracking(0.13).fixedSize()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Playback time")

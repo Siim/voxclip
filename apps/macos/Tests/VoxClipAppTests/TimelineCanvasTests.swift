@@ -75,6 +75,10 @@ private actor TimelineTestSettings: SettingsStore {
         canvas.layoutSubtreeIfNeeded()
         canvas.renderContent()
         let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed]
+        // Lanes draw through their layers (the 60-minute budget measures this way).
+        lanes.forEach { $0.layer?.displayIfNeeded() }
+        let draws = lanes.map(\.draws)
+        #expect(draws.allSatisfy { $0 >= 1 })
         let invalidations = lanes.map(\.invalidations)
         let moves = canvas.overlay.playheadMoves
         for frame in 1...30 {
@@ -83,6 +87,8 @@ private actor TimelineTestSettings: SettingsStore {
             canvas.followPlayhead()
         }
         #expect(lanes.map(\.invalidations) == invalidations)
+        lanes.forEach { $0.layer?.displayIfNeeded() }
+        #expect(lanes.map(\.draws) == draws)
         #expect(canvas.overlay.playheadMoves == moves + 30)
         let x = Double(canvas.overlay.playhead.transform.m41)
         #expect(abs(x - (Double(TimelineMetrics.header) + canvas.viewport.x(15))) < 1e-6)

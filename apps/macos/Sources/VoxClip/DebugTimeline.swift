@@ -118,6 +118,8 @@ import VoxClipCore
             model.sourceTime = source; model.playhead = model.timelineTime(source: source, on: .edited)
             canvas.followPlayhead()
             canvas.layoutSubtreeIfNeeded(); canvas.displayIfNeeded()
+            let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed]
+            lanes.forEach { $0.layer?.displayIfNeeded() }
             let bitmap = try render(canvas)
             let scale = CGFloat(bitmap.pixelsWide) / canvas.bounds.width
             func color(_ x: CGFloat, _ y: CGFloat) -> [Double] { pixel(bitmap, x: Int(x * scale), y: Int(y * scale)) }
@@ -139,25 +141,27 @@ import VoxClipCore
             check("\(name) draws the playhead's head in the ruler's lower half", matches(color(playX, TimelineMetrics.ruler.y + 14), "tint.default"))
             let inX = TimelineMetrics.header + viewport.x(inOut.lowerBound), outX = TimelineMetrics.header + viewport.x(inOut.upperBound)
             check("\(name) draws the In bracket the full ruler height in clip.label", matches(color(inX + 0.75, TimelineMetrics.ruler.y + 12), "clip.label"))
-            check("\(name) draws the ruler inside In/Out on chrome", matches(color((inX + outX) / 2 + 2.5, TimelineMetrics.ruler.y + 13), "bg.window"))
+            check("\(name) draws the ruler inside In/Out on chrome", matches(color(inX + 3, TimelineMetrics.ruler.y + 13), "bg.window"))
             if inX - 8 > TimelineMetrics.header {
                 check("\(name) darkens the ruler outside In/Out", matches(color(inX - 6, TimelineMetrics.ruler.y + 13), "timeline.rulerOut"))
             }
             check("\(name) draws the track lanes on timeline.lane", matches(color(TimelineMetrics.header + 4, TimelineMetrics.tracks[0].y + 18), "timeline.lane"))
             let open = canvas.overview.x((model.timelineOverviewClips.first { $0.open }?.source.lowerBound ?? 0) + 0.3)
-            check("\(name) draws the open clip's overview block at 42% clip.label", matches(color(open, TimelineMetrics.overview.y + 12), "clip.label", alpha: 0.42, over: "timeline.lane")
-                  || matches(color(open, TimelineMetrics.overview.y + 8), "clip.label", alpha: 0.42, over: "timeline.lane"))
+            // One 10 pt band (y 7–17), or two 8 pt rows (3.5–11.5 and 12.5–20.5) once clips overlap.
+            check("\(name) draws the open clip's overview block at 42% clip.label",
+                  [8, 12, 16].contains { matches(color(open, TimelineMetrics.overview.y + $0), "clip.label", alpha: 0.42, over: "timeline.lane") })
             check("\(name) has no red pixels", !hasRed(bitmap))
             // A playhead tick moves only the playhead layers: no lane draws again.
-            let draws = [canvas.overview.draws, canvas.ruler.draws, canvas.bed.draws]
+            let draws = lanes.map(\.draws)
             let moves = canvas.overlay.playheadMoves
             let before = canvas.overlay.playhead.transform.m41
             let later = model.timelineSourceTime(model.timelinePlayhead(on: axis) + 0.5, on: axis)
             model.sourceTime = later; model.playhead = model.timelineTime(source: later, on: .edited)
             canvas.followPlayhead()
             canvas.displayIfNeeded()
-            check("\(name) moves the playhead layer on a tick without redrawing a lane (draws \(draws) → \([canvas.overview.draws, canvas.ruler.draws, canvas.bed.draws]))",
-                  [canvas.overview.draws, canvas.ruler.draws, canvas.bed.draws] == draws && canvas.overlay.playheadMoves > moves && canvas.overlay.playhead.transform.m41 > before)
+            lanes.forEach { $0.layer?.displayIfNeeded() }
+            check("\(name) moves the playhead layer on a tick without redrawing a lane (draws \(draws) → \(lanes.map(\.draws)))",
+                  draws.allSatisfy { $0 >= 1 } && lanes.map(\.draws) == draws && canvas.overlay.playheadMoves > moves && canvas.overlay.playhead.transform.m41 > before)
             // VoiceOver: the playhead slider keeps design §5.2's spoken value; In and Out adjust a word at a time.
             let children = canvas.accessibilityChildren()?.compactMap { $0 as? TimelineSliderElement } ?? []
             let labels = children.compactMap { $0.accessibilityLabel() }
@@ -246,11 +250,12 @@ import VoxClipCore
         canvas.renderContent()
         canvas.displayIfNeeded()
         let lanes: [TimelineLane] = [canvas.overview, canvas.ruler, canvas.bed]
+        // Each lane draws through its layer at once, in or out of a shown window.
         var redraws: [Double] = []
         for _ in 0..<30 {
             let start = ContinuousClock.now
             lanes.forEach { $0.invalidate() }
-            canvas.displayIfNeeded()
+            lanes.forEach { $0.layer?.displayIfNeeded() }
             redraws.append(milliseconds(start.duration(to: .now)))
         }
         let drawn = lanes.map(\.draws)
@@ -261,7 +266,7 @@ import VoxClipCore
             let start = ContinuousClock.now
             model.playhead = time; model.sourceTime = model.timelineSourceTime(time, on: .edited)
             canvas.followPlayhead()
-            canvas.displayIfNeeded()
+            lanes.forEach { $0.layer?.displayIfNeeded() }
             ticks.append(milliseconds(start.duration(to: .now)))
         }
         let redrawMaximum = redraws.max() ?? 0, tickP95 = percentile(ticks, 0.95), tickMaximum = ticks.max() ?? 0
