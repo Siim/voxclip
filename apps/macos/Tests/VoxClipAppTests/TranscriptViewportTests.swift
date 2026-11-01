@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import Foundation
 import Testing
@@ -156,3 +157,4 @@ import Testing
         #expect(caught == shown && !caught.caretHidden && !caught.selectionHidden, "the same overlays as after the layout pass: \(caught) vs \(shown)")
     }
 }
+#endif

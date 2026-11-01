@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import Foundation
 import Testing
@@ -217,3 +218,4 @@ import Testing
         #expect(text.accessibilityValue() == text.string && !text.string.contains("0:0"), "timecodes are drawn, never read as words")
     }
 }
+#endif
