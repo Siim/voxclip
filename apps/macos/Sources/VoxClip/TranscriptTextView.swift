@@ -303,7 +303,7 @@ private struct TranscriptDrawingFragment: @unchecked Sendable { let value: Trans
     }
     /// The take time the visible lines span, as fractions of the take for the overview ruler.
     func visibleTakeSpan() -> ClosedRange<Double>? {
-        guard let model, let manager = textLayoutManager, let content = manager.textContentManager, !map.spans.isEmpty else { return nil }
+        guard let model, let manager = textLayoutManager, let content = manager.textContentManager, !map.isEmpty else { return nil }
         let duration = TranscriptOverviewRuler.duration(model)
         guard duration > 0 else { return nil }
         let origin = textContainerOrigin, visible = visibleRect

@@ -103,7 +103,9 @@ struct TranscriptRangeMap {
     }
 
     var paragraphCount: Int { local.count }
-    /// Every span in text order.
+    var isEmpty: Bool { count == 0 }
+    /// Every span in text order, copied with document ranges: O(spans). Use `count`,
+    /// `isEmpty`, `span(id:)` or `intersecting(_:)` on paths that run per frame.
     var spans: [TranscriptSpan] {
         var result: [TranscriptSpan] = []
         result.reserveCapacity(count)
