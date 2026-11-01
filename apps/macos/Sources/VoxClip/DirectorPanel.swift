@@ -13,6 +13,9 @@ import VoxClipCore
     @FocusState private var keyFieldFocused: Bool
     /// The keyboard is in the panel: on the pane itself (F6, a handover) or a field inside it.
     @FocusState private var keyboardWithin: Bool
+    /// The pane itself has the keyboard, as `EditorPaneFocus` holds it. The handover sets it
+    /// too: on hosted CI's macOS 26, `keyboardWithin` alone did not move the focus to the pane.
+    @State private var paneHolds = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,7 +38,7 @@ import VoxClipCore
         .accessibilityElement(children: .contain)
         .accessibilityLabel(task.words.title)
         .accessibilityIdentifier("voxclip.director")
-        .modifier(EditorPaneFocus(model: model, pane: .panel))
+        .modifier(EditorPaneFocus(model: model, pane: .panel, holds: $paneHolds))
         // Whether the keyboard is anywhere in the panel, for the handover between the panel's views.
         .focused($keyboardWithin)
         // Esc and ⌘. (design.md §8): Stop while the task runs, which closes it too, else Close.
@@ -54,13 +57,20 @@ import VoxClipCore
             return .handled
         }
         .onChange(of: task.focusRequest) { _, _ in keyFieldFocused = true }
-        .onChange(of: keyboardWithin) { _, within in task.keyboardInPanel = within }
+        .onChange(of: keyboardWithin) { _, _ in reportKeyboard() }
+        .onChange(of: paneHolds) { _, _ in reportKeyboard() }
+        .onChange(of: keyFieldFocused) { _, _ in reportKeyboard() }
         // Replacing the passage panel that had the keyboard, it takes it, so Esc, ⌘. and Return still act (design.md R1).
         .task {
             guard task.takeKeyboardHandover() else { return }
-            if task.cards.contains(where: { if case .keyField = $0 { true } else { false } }) { keyFieldFocused = true } else { keyboardWithin = true }
+            if task.cards.contains(where: { if case .keyField = $0 { true } else { false } }) { keyFieldFocused = true } else { keyboardWithin = true; paneHolds = true }
         }
         .columnLayoutEvidence("director.panel")
+    }
+
+    /// Tells the task whether the keyboard is anywhere in the panel.
+    private func reportKeyboard() {
+        task.keyboardInPanel = keyboardWithin || paneHolds || keyFieldFocused
     }
 
     private var chooserRows: [ConnectorChoice]? {
