@@ -104,6 +104,7 @@ import VoxClipCore
         results += try await audioCaptures(app: app, fixture: fixture, directory: directory)
         results += try await missingCaptionPosition(app: app, fixture: fixture, directory: directory)
         mark("panel scenes")
+        results += try interactionScenes(app: app, fixture: fixture, directory: directory)
         results += try await panelScenes(app: app, shell: shell, model: model, directory: directory)
         mark("hide")
         shell.layout.rightVisible = true
@@ -112,6 +113,65 @@ import VoxClipCore
         let hidden = !shell.layout.timelineVisible
         shell.toggleTimeline()
         check("⌘J's toggle hides the timeline panel and shows it again", hidden && shell.layout.timelineVisible)
+        return results
+    }
+
+    /// Headless Timeline III scenes: real AppKit pointer events, shared word selection,
+    /// the ruler's 3 pt bar / track wash, and a deferred trim. Never orders a window.
+    static func interactionScenes(app: AppModel, fixture: Project, directory: URL) throws -> [DebugUISuite.Result] {
+        var project = fixture
+        project.media.source.durationSeconds = 60
+        project.transcript?.durationSeconds = 60
+        project.transcript?.words = (0..<60).map { index in
+            let start = Double(index)
+            return TimedWord(id: "interaction-\(index)", text: index % 10 == 9 ? "word." : "word", start: start, end: start + 0.8)
+        }
+        let clip = ClipRange(id: "interaction-clip", startWordId: "interaction-10", endWordId: "interaction-29")
+        project.edits = ProjectEdits(cutWordIds: ["interaction-14", "interaction-15"], clips: [clip], activeClipId: clip.id)
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
+        let canvas = TimelineCanvasView(model: model)
+        let window = NSWindow(contentRect: NSRect(x: -10_000, y: -10_000, width: 1056, height: 188), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false; window.appearance = NSAppearance(named: .darkAqua)
+        window.contentView = canvas
+        defer { canvas.tearDown(); window.close(); model.close() }
+        model.waveform = speech(words: model.words, duration: model.sourceDuration)
+        canvas.video.everyFrame = filmstripFrame()
+        var results: [DebugUISuite.Result] = []
+        func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
+        func event(_ type: NSEvent.EventType, _ point: NSPoint) throws -> NSEvent {
+            guard let event = NSEvent.mouseEvent(with: type, location: canvas.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+                                                windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { throw CocoaError(.coderInvalidValue) }
+            return event
+        }
+        for axis in [TimelineAxis.edited, .source] {
+            model.showsCuts = axis == .source; canvas.renderContent()
+            func point(_ source: Double, y: CGFloat) -> NSPoint {
+                NSPoint(x: canvas.headerWidth + canvas.viewport.x(model.timelineTime(source: source, on: axis)), y: y)
+            }
+            let y = TimelineMetrics.audio.y + 10
+            canvas.mouseDown(with: try event(.leftMouseDown, point(12, y: y)))
+            canvas.mouseDragged(with: try event(.leftMouseDragged, point(17.8, y: y)))
+            canvas.mouseUp(with: try event(.leftMouseUp, point(17.8, y: y)))
+            check("\(axis.rawValue) timeline drag shares original IDs across folded cuts", model.selectedWordIDs == Set((12...17).map { "interaction-\($0)" }))
+            check("\(axis.rawValue) ruler selection follows the transcript model", canvas.ruler.state.selection == model.timelineSelection(on: axis))
+            _ = try capture(canvas, name: "v2-timeline-selection-\(axis.rawValue)", directory: directory)
+            // A transcript selection writes back into exactly the same drawing state.
+            model.selectedWordIDs = Set((20...24).map { "interaction-\($0)" }); canvas.renderContent()
+            check("\(axis.rawValue) transcript selection draws back to timeline", canvas.content.selection == model.timelineSelection(on: axis))
+        }
+        let undo = UndoManager(); undo.groupsByEvent = false; model.undoManager = undo
+        let y = TimelineMetrics.ruler.y + 11
+        let edge = canvas.content.inOut!.upperBound
+        let start = NSPoint(x: canvas.headerWidth + canvas.viewport.x(edge), y: y)
+        let end = NSPoint(x: canvas.headerWidth + canvas.viewport.x(26.8), y: y)
+        canvas.mouseDown(with: try event(.leftMouseDown, start))
+        canvas.mouseDragged(with: try event(.leftMouseDragged, end))
+        check("trim preview leaves the project and undo untouched", model.activeClip == clip && !undo.canUndo)
+        _ = try capture(canvas, name: "v2-timeline-trim-preview", directory: directory)
+        undo.beginUndoGrouping(); canvas.mouseUp(with: try event(.leftMouseUp, end)); undo.endUndoGrouping()
+        check("trim release registers one Trim clip undo", model.activeClip?.endWordId == "interaction-26" && model.undoSteps == 1 && undo.undoActionName == "Trim clip")
+        undo.undo()
+        check("one undo restores the original edge", model.activeClip == clip && !undo.canUndo)
         return results
     }
 

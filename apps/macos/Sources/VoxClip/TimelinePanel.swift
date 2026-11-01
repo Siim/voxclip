@@ -27,7 +27,10 @@ import VoxClipCore
             case .home: 115
             default: 119
             }
-            return TimelineCanvasView.handleKey(code, shift: press.modifiers.contains(.shift), model: model) ? .handled : .ignored
+            guard press.modifiers.isDisjoint(with: [.command, .control, .option]) else { return .ignored }
+            let handled = zoom.canvas?.interaction.key(code, shift: press.modifiers.contains(.shift))
+                ?? TimelineCanvasView.handleKey(code, shift: press.modifiers.contains(.shift), model: model)
+            return handled ? .handled : .ignored
         }
     }
 }

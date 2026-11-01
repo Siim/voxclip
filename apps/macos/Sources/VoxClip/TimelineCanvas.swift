@@ -138,17 +138,12 @@ struct TimelineContent: Equatable {
     /// view ends that until the scope or the take changes.
     private var fitted = true
     private var observations: [ShellObservation] = []
-    private var drag: Drag?
+    lazy var interaction = TimelineInteraction(canvas: self)
     private let playheadElement = TimelineSliderElement()
     private let inElement = TimelineSliderElement()
     private let outElement = TimelineSliderElement()
-
-    private enum Drag: Equatable {
-        case scrub
-        case overview
-        /// The open clip's In (`start`) or Out, and the word it would land on.
-        case trim(clip: ClipRange, start: Bool, index: Int?)
-    }
+    private let zoomElement = TimelineSliderElement()
+    private let selectionElement = TimelineSelectionElement()
 
     init(model: EditorModel, shell: WorkspaceShell? = nil) {
         self.model = model
@@ -180,7 +175,7 @@ struct TimelineContent: Equatable {
             self.layoutLanes()
         }
         configureAccessibility()
-        toolTip = "Drag to scrub. Shift-drag snaps to word starts. Double-click a cut to restore it."
+        toolTip = "Click to seek. Drag to select words. Option-drag bypasses snapping. Double-click a cut to restore it."
         layoutLanes()
         observations = [
             ShellObservation { [weak self] in self?.renderContent() },
@@ -207,6 +202,7 @@ struct TimelineContent: Equatable {
     func tearDown() {
         observations.forEach { $0.cancel() }
         observations = []
+        interaction.cancel()
         video.cancelLoads()
     }
 
@@ -263,6 +259,7 @@ struct TimelineContent: Equatable {
     /// It reads no playhead, so playback never runs it.
     func renderContent(keepingZoom: Bool = false) {
         _ = model.transcriptRevision
+        interaction.reconcile()
         let axis = model.timelineAxis
         var next = TimelineContent()
         next.axis = axis
@@ -314,7 +311,7 @@ struct TimelineContent: Equatable {
         playheadSource = model.sourceTime
         let paged = viewport.showing(playheadTime)
         // A scrub or a trim keeps the view under the pointer; an overview drag pages it.
-        if paged != viewport, drag == nil || drag == .overview {
+        if paged != viewport, interaction.followsPlayhead {
             viewport = paged
             apply()
         } else {
@@ -325,11 +322,13 @@ struct TimelineContent: Equatable {
     private func placePlayhead() {
         let overviewX = overview.x(playheadSource)
         overlay.movePlayhead(laneX: viewport.x(playheadTime), overviewX: overviewX)
+        let x = headerWidth + viewport.x(playheadTime).clamped(to: 0...laneWidth)
+        playheadElement.setAccessibilityFrameInParentSpace(NSRect(x: x - 5, y: TimelineMetrics.ruler.y, width: 10, height: max(22, trackClip.frame.maxY - TimelineMetrics.ruler.y)))
         overlay.placeOverviewLabels(overview.labels(playheadX: overviewX), top: TimelineMetrics.overview.y)
     }
 
     /// Gives each lane what it draws. A lane redraws only when its own input changed.
-    private func apply() {
+    func apply() {
         let window: ClosedRange<Double>
         let visible = viewport.visible
         if content.axis == .source { window = visible }
@@ -340,7 +339,7 @@ struct TimelineContent: Equatable {
         }
         overview.state = TimelineOverviewLane.State(clips: content.clips, takeLength: content.takeLength, window: window,
                                                     takeLabel: durationLabel(content.takeLength))
-        ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: content.selection)
+        ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: interaction.selection ?? content.selection)
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
         // On Source A1 dims outside the In/Out the ruler shows, the dragged edge included.
         audio.state = TimelineAudioLane.State(viewport: viewport, pieces: content.pieces, waveform: content.waveform, removed: content.removed,
@@ -353,7 +352,7 @@ struct TimelineContent: Equatable {
         updateScrollers()
         onZoom?(zoomValue)
         let top = TimelineMetrics.tracks.first?.y ?? TimelineMetrics.ruler.maxY
-        overlay.showWash(content.selection.map { range in
+        overlay.showWash((interaction.selection ?? content.selection).map { range in
             let lower = viewport.x(range.lowerBound), upper = viewport.x(range.upperBound)
             return NSRect(x: lower, y: top, width: max(0, upper - lower), height: max(0, min(trackClip.frame.maxY, TimelineMetrics.rows(trackHeight).last!.maxY - verticalOffset) - top))
         })
@@ -362,77 +361,13 @@ struct TimelineContent: Equatable {
     }
 
     /// In and Out on the axis, with the edge being dragged at the word it would land on.
-    private var shownInOut: ClosedRange<Double>? {
-        guard let current = content.inOut else { return nil }
-        guard case .trim(_, let start, let index)? = drag, let index, model.words.indices.contains(index) else { return current }
-        let time = model.timelineTime(source: start ? model.words[index].start : model.words[index].end, on: content.axis)
-        return start ? min(time, current.upperBound)...current.upperBound : current.lowerBound...max(time, current.lowerBound)
-    }
+    private var shownInOut: ClosedRange<Double>? { interaction.inOut(content.inOut) }
 
     // MARK: Pointer and keys
 
-    override func mouseDown(with event: NSEvent) {
-        window?.makeFirstResponder(self)
-        let point = convert(event.locationInWindow, from: nil)
-        guard point.x >= headerWidth else { return }
-        let laneX = Double(point.x - headerWidth)
-        if point.y < TimelineMetrics.overview.maxY {
-            drag = .overview
-            seekOverview(at: point.x)
-            return
-        }
-        if point.y < TimelineMetrics.ruler.maxY, let target = trimTarget(at: point.x) {
-            drag = .trim(clip: target.clip, start: target.start, index: nil)
-            return
-        }
-        if event.clickCount == 2, point.y >= TimelineMetrics.ruler.maxY {
-            model.restoreCut(at: viewport.time(atX: laneX), on: content.axis, tolerance: Double(TimelineMetrics.reach) / viewport.ptPerSecond)
-            return
-        }
-        drag = .scrub
-        model.seekTimeline(viewport.time(atX: laneX), on: content.axis, snap: !event.modifierFlags.contains(.option) && (model.timelineSnapping || event.modifierFlags.contains(.shift)))
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        let laneX = Double(point.x - headerWidth)
-        switch drag {
-        case .overview?: seekOverview(at: point.x)
-        case .scrub?: model.seekTimeline(viewport.time(atX: laneX), on: content.axis, snap: !event.modifierFlags.contains(.option) && (model.timelineSnapping || event.modifierFlags.contains(.shift)))
-        case .trim(let clip, let start, _)?:
-            drag = .trim(clip: clip, start: start, index: model.timelineTrimIndex(clip, start: start, time: viewport.time(atX: laneX), on: content.axis))
-            apply()
-        case nil: break
-        }
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        let ended = drag
-        drag = nil
-        if case .trim(let clip, let start, let index?)? = ended {
-            model.trimClip(clip, start: start, index: index)
-            // The trimmed clip at the zoom it was dropped at, so the edge stays under the pointer.
-            renderContent(keepingZoom: true)
-        } else {
-            apply()
-        }
-        // A scrub may have left the playhead off the lanes: page to it now the pointer is up.
-        followPlayhead()
-    }
-
-    /// The open clip's In or Out under `x` in the ruler, within reach, while it can be trimmed.
-    private func trimTarget(at x: CGFloat) -> (clip: ClipRange, start: Bool)? {
-        guard model.capabilities.edit, let clip = model.activeClip, let inOut = content.inOut else { return nil }
-        let inX = headerWidth + viewport.x(inOut.lowerBound), outX = headerWidth + viewport.x(inOut.upperBound)
-        let toIn = abs(x - inX), toOut = abs(x - outX)
-        guard min(toIn, toOut) <= TimelineMetrics.reach else { return nil }
-        return (clip, toIn <= toOut)
-    }
-
-    private func seekOverview(at x: CGFloat) {
-        guard content.takeLength > 0 else { return }
-        model.seek(source: overview.time(atX: x).clamped(to: 0...content.takeLength))
-    }
+    override func mouseDown(with event: NSEvent) { interaction.mouseDown(event) }
+    override func mouseDragged(with event: NSEvent) { interaction.mouseDragged(event) }
+    override func mouseUp(with event: NSEvent) { interaction.mouseUp(event) }
 
     #if DEBUG
     func auditViewport(_ next: TimelineViewport) { fitted = false; viewport = next; apply() }
@@ -446,6 +381,7 @@ struct TimelineContent: Equatable {
     func setZoom(_ value: Double) { zoom(by: zoomMinimum * pow(zoomMaximum / zoomMinimum, value.clamped(to: 0...1)) / viewport.ptPerSecond) }
     func zoom(by factor: Double, anchor: Double? = nil) {
         guard factor.isFinite, factor > 0 else { return }
+        interaction.cancel()
         let x = anchor ?? viewport.x(playheadTime).clamped(to: 0...laneWidth)
         let time = viewport.time(atX: x)
         viewport.ptPerSecond = (viewport.ptPerSecond * factor).clamped(to: zoomMinimum...zoomMaximum)
@@ -457,6 +393,7 @@ struct TimelineContent: Equatable {
     func pan(by points: Double) {
         let next = viewport.panned(by: points, within: 0...max(content.length, 1))
         guard next != viewport else { return }
+        interaction.cancel()
         fitted = false; viewport = next; apply()
     }
     func scroll(to fraction: Double) {
@@ -487,20 +424,10 @@ struct TimelineContent: Equatable {
     }
 
     override func keyDown(with event: NSEvent) {
-        if !Self.handleKey(event.keyCode, shift: event.modifierFlags.contains(.shift), model: model) { super.keyDown(with: event) }
+        if !interaction.keyDown(event) { super.keyDown(with: event) }
     }
-
-    /// The timeline's own keys (Space, J/K/L, I/O and [ ] are menu commands): ← and → step a
-    /// word, with ⇧ a sentence; Home and End go to the scope's bounds. True when handled.
     @discardableResult static func handleKey(_ code: UInt16, shift: Bool, model: EditorModel) -> Bool {
-        switch code {
-        case 123: model.step(-1, sentence: shift)
-        case 124: model.step(1, sentence: shift)
-        case 115: model.seekTimelineBoundary(end: false)
-        case 119: model.seekTimelineBoundary(end: true)
-        default: return false
-        }
-        return true
+        TimelineInteraction.handleKey(code, shift: shift, model: model)
     }
 
     // MARK: Accessibility
@@ -508,7 +435,9 @@ struct TimelineContent: Equatable {
     /// The playhead slider (its spoken value is design §5.2's) and, while a clip is open,
     /// its In and Out handles, which VoiceOver adjusts a word at a time.
     private func configureAccessibility() {
-        setAccessibilityElement(false)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.group)
+        setAccessibilityLabel("Timeline")
         playheadElement.setAccessibilityParent(self)
         playheadElement.setAccessibilityLabel("Playhead")
         playheadElement.setAccessibilityIdentifier("voxclip.timeline.playhead")
@@ -517,7 +446,21 @@ struct TimelineContent: Equatable {
             let axis = self.model.timelineAxis
             return (self.model.timelinePlayhead(on: axis), 0...max(0, self.model.timelineLength(on: axis)), self.model.timelineAccessibilityValue)
         }
-        playheadElement.adjust = { [weak self] up in self?.model.step(up ? 1 : -1) }
+        playheadElement.adjust = { [weak self] up in _ = self?.model.stepTimeline(up ? 1 : -1, sentence: false) }
+        zoomElement.setAccessibilityParent(self)
+        zoomElement.setAccessibilityLabel("Timeline zoom")
+        zoomElement.setAccessibilityIdentifier("voxclip.timeline.canvas.zoom")
+        zoomElement.read = { [weak self] in
+            guard let self else { return (0, 0...1, "") }
+            return (self.zoomValue, 0...1, "\(Int((self.zoomValue * 100).rounded())) percent")
+        }
+        zoomElement.adjust = { [weak self] up in self?.zoom(by: up ? 1.4 : 1 / 1.4) }
+        selectionElement.setAccessibilityParent(self)
+        selectionElement.setAccessibilityIdentifier("voxclip.timeline.selection")
+        selectionElement.read = { [weak self] in
+            guard let self, let range = self.model.timelineSelection(on: self.model.timelineAxis) else { return "No selection" }
+            return "\(self.model.selectedWordIDs.count) words, \(timelineSpokenTime(range.lowerBound)) to \(timelineSpokenTime(range.upperBound)), \(self.model.timelineAxis == .source ? "source" : "edited")"
+        }
         for (element, start) in [(inElement, true), (outElement, false)] {
             element.setAccessibilityParent(self)
             element.setAccessibilityIdentifier(start ? "voxclip.timeline.in" : "voxclip.timeline.out")
@@ -533,7 +476,12 @@ struct TimelineContent: Equatable {
 
     private func layoutAccessibility() {
         let inOut = shownInOut
-        playheadElement.setAccessibilityFrameInParentSpace(NSRect(x: headerWidth, y: 0, width: CGFloat(laneWidth), height: bounds.height))
+        let playheadX = headerWidth + viewport.x(playheadTime).clamped(to: 0...laneWidth)
+        playheadElement.setAccessibilityFrameInParentSpace(NSRect(x: playheadX - 5, y: TimelineMetrics.ruler.y, width: 10, height: max(22, trackClip.frame.maxY - TimelineMetrics.ruler.y)))
+        zoomElement.setAccessibilityFrameInParentSpace(NSRect(x: headerWidth, y: 0, width: laneWidth, height: TimelineMetrics.overview.height))
+        let laneRuler = NSRect(x: headerWidth, y: TimelineMetrics.ruler.y, width: laneWidth, height: TimelineMetrics.ruler.height)
+        let selection = content.selection.map { NSRect(x: headerWidth + viewport.x($0.lowerBound), y: laneRuler.minY, width: max(1, viewport.x($0.upperBound) - viewport.x($0.lowerBound)), height: laneRuler.height).intersection(laneRuler) } ?? laneRuler
+        selectionElement.setAccessibilityFrameInParentSpace(selection.isNull ? laneRuler : selection)
         if let inOut, let number = model.activeClip.flatMap({ model.clipNumber($0.id) }) {
             inElement.setAccessibilityLabel("Clip \(number) start")
             outElement.setAccessibilityLabel("Clip \(number) end")
@@ -546,7 +494,19 @@ struct TimelineContent: Equatable {
 
     override func accessibilityChildren() -> [Any]? {
         let times: [Any] = content.inOut == nil || model.activeClip == nil ? [playheadElement] : [playheadElement, inElement, outElement]
-        return times + headers + [horizontalScroller, verticalScroller].filter { !$0.isHidden }
+        return times + [selectionElement, zoomElement] + headers + [horizontalScroller, verticalScroller].filter { !$0.isHidden }
+    }
+}
+
+/// Spoken selection summary reads the same IDs as the transcript, including folded cuts.
+final class TimelineSelectionElement: NSAccessibilityElement {
+    nonisolated(unsafe) var read: @MainActor () -> String = { "No selection" }
+    override func accessibilityRole() -> NSAccessibility.Role? { .staticText }
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityLabel() -> String? { "Timeline selection" }
+    override func accessibilityValue() -> Any? {
+        let read = read
+        return MainActor.assumeIsolated { read() }
     }
 }
 
@@ -1265,6 +1225,8 @@ enum TrackHeight: String, CaseIterable {
     let button = NSButton()
     var action: (() -> Void)?
     private(set) var on = true
+    private static let idFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
+    private static let nameFont = NSFont.systemFont(ofSize: 11)
     init(id: String, name: String) {
         trackID = id; self.name = name
         super.init(frame: .zero)
@@ -1293,10 +1255,10 @@ enum TrackHeight: String, CaseIterable {
     override func layout() { super.layout(); button.frame = NSRect(x: bounds.width - 24, y: (bounds.height - 22) / 2, width: 22, height: 22) }
     override func draw(_ dirtyRect: NSRect) {
         DesignValues.nsColor("bg.window").setFill(); bounds.fill()
-        let font = NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold)
+        let font = Self.idFont
         TimelineLane.draw(trackID, font: font, color: DesignValues.nsColor("text.secondary"), x: 10, baseline: bounds.midY + font.xHeight / 2)
         if bounds.width >= 100 {
-            let nameFont = NSFont.systemFont(ofSize: 11)
+            let nameFont = Self.nameFont
             TimelineLane.draw(name, font: nameFont, color: DesignValues.nsColor("text.tertiary"), x: trackID == "CC" ? 29 : 34, baseline: bounds.midY + nameFont.xHeight / 2)
         }
     }

@@ -54,8 +54,8 @@ private actor TimelineTestSettings: SettingsStore {
     }
 
     /// A left-button event at `point` in the canvas (top-left origin).
-    private func mouse(_ type: NSEvent.EventType, _ point: NSPoint, in canvas: NSView, clicks: Int = 1) throws -> NSEvent {
-        try #require(NSEvent.mouseEvent(with: type, location: canvas.convert(point, to: nil), modifierFlags: [], timestamp: 0,
+    private func mouse(_ type: NSEvent.EventType, _ point: NSPoint, in canvas: NSView, clicks: Int = 1, flags: NSEvent.ModifierFlags = []) throws -> NSEvent {
+        try #require(NSEvent.mouseEvent(with: type, location: canvas.convert(point, to: nil), modifierFlags: flags, timestamp: 0,
                                         windowNumber: canvas.window?.windowNumber ?? 0, context: nil, eventNumber: 0, clickCount: clicks, pressure: 1))
     }
 
@@ -190,7 +190,7 @@ private actor TimelineTestSettings: SettingsStore {
         model.activate(nil)
         canvas.renderContent()
         #expect(canvas.content.inOut == nil && canvas.content.scope == nil)
-        #expect(canvas.accessibilityChildren()?.compactMap { $0 as? TimelineSliderElement }.count == 1)
+        #expect(canvas.accessibilityChildren()?.compactMap { $0 as? TimelineSliderElement }.count == 2)
     }
 
     @Test func showCutsIsAViewSettingOffByDefault() throws {
@@ -341,7 +341,7 @@ private actor TimelineTestSettings: SettingsStore {
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close() }
         canvas.renderContent()
-        #expect(canvas.toolTip == "Drag to scrub. Shift-drag snaps to word starts. Double-click a cut to restore it.")
+        #expect(canvas.toolTip == "Click to seek. Drag to select words. Option-drag bypasses snapping. Double-click a cut to restore it.")
         // Words 14 and 15 close to one seam, where the piece after them starts.
         let pieces = model.timelinePieces.pieces
         let after = try #require(pieces.indices.dropFirst().first { pieces[$0].source.lowerBound - pieces[$0 - 1].source.upperBound > 1 })
@@ -1068,6 +1068,232 @@ private actor TimelineTestSettings: SettingsStore {
         _ = try Pixels(lane)
         #expect(lane.tiles > 10)
         #expect(lane.names == 0, "Coalescing subpoint pieces must not invent a wide piece's name strip")
+    }
+
+    // MARK: Timeline III
+
+    private func timelineKey(_ code: UInt16, _ characters: String = "", shift: Bool = false) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: shift ? [.shift] : [], timestamp: 0,
+                                      windowNumber: 0, context: nil, characters: characters, charactersIgnoringModifiers: characters,
+                                      isARepeat: false, keyCode: code))
+    }
+
+    @Test(arguments: [TimelineAxis.edited, .source]) func timelineDragAndTranscriptSpanSelectTheSameOriginalIDs(_ axis: TimelineAxis) throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = axis == .source
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let y = TimelineMetrics.audio.y + 12
+        func point(_ source: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(model.timelineTime(source: source, on: axis)), y: y) }
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point(12), in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, point(17.8), in: canvas))
+        canvas.mouseUp(with: try mouse(.leftMouseUp, point(17.8), in: canvas))
+        let timelineIDs = model.selectedWordIDs
+        #expect(timelineIDs == Set((12...17).map { "t\($0)" }))
+        #expect(canvas.ruler.state.selection == model.timelineSelection(on: axis))
+        let coordinator = TranscriptTextView.Coordinator(model: model)
+        let scroll = TranscriptTextView.makeScrollView(model: model, coordinator: coordinator)
+        let text = try #require(scroll.documentView as? TranscriptNSTextView)
+        coordinator.updating = true
+        coordinator.renderer.rebuild(model: model)
+        coordinator.updating = false
+        let first = try #require(text.map.span(id: "t12")), last = try #require(text.map.span(id: "t17"))
+        let span = NSRange(location: first.range.location, length: NSMaxRange(last.range) - first.range.location)
+        let ranges = text.map.selectionRanges(in: span)
+        model.selectedWordIDs = []
+        text.selectedRanges = ranges.map { NSValue(range: $0) }
+        coordinator.textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification, object: text))
+        #expect(model.selectedWordIDs == timelineIDs, "The hidden cut's IDs are shared through transcript folds")
+        canvas.renderContent()
+        #expect(canvas.content.selection == model.timelineSelection(on: axis))
+        #expect(canvas.ruler.state.selection == canvas.content.selection)
+        #expect(model.undoSteps == 0 && !model.document.isDocumentEdited)
+        withExtendedLifetime((coordinator, scroll)) {}
+    }
+
+    @Test func rulerDragSelectsBackwardsAndOptionBypassesTheMagnet() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let y = TimelineMetrics.ruler.y + 12
+        func p(_ source: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(source), y: y) }
+        for flags: NSEvent.ModifierFlags in [[], [.option]] {
+            canvas.mouseDown(with: try mouse(.leftMouseDown, p(17.05), in: canvas, flags: flags))
+            canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(12.85), in: canvas, flags: flags))
+            if flags.isEmpty { #expect(model.selectedWordIDs == Set((13...16).map { "t\($0)" })) }
+            else {
+                #expect(model.selectedWordIDs == Set((13...17).map { "t\($0)" }))
+                let preview = try #require(canvas.interaction.selection)
+                #expect(abs(preview.lowerBound - 12.85) < 0.001 && abs(preview.upperBound - 17.05) < 0.001)
+            }
+            canvas.mouseUp(with: try mouse(.leftMouseUp, p(12.85), in: canvas, flags: flags))
+        }
+        model.timelineSnapping = false
+        canvas.mouseDown(with: try mouse(.leftMouseDown, p(12), in: canvas))
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, p(17.05), in: canvas))
+        #expect(model.selectedWordIDs == Set((12...17).map { "t\($0)" }))
+    }
+
+    @Test(arguments: [TimelineAxis.edited, .source], [true, false]) func trimPointerTransactionIsExactlyOneUndo(_ axis: TimelineAxis, _ start: Bool) throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = axis == .source
+        let undo = UndoManager(), clip = try #require(model.activeClip)
+        undo.groupsByEvent = false; model.undoManager = undo
+        undo.removeAllActions()
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let old = try #require(canvas.content.inOut)
+        func p(_ time: Double) -> NSPoint { NSPoint(x: canvas.headerWidth + canvas.viewport.x(time), y: TimelineMetrics.ruler.y + 11) }
+        let begin = p(start ? old.lowerBound : old.upperBound)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, begin, in: canvas))
+        for index in (start ? [11, 12, 13] : [28, 27, 26]) {
+            let source = start ? model.words[index].start : model.words[index].end
+            let point = p(model.timelineTime(source: source, on: axis))
+            canvas.mouseDragged(with: try mouse(.leftMouseDragged, point, in: canvas))
+            #expect(model.activeClip == clip && model.undoSteps == 0 && !undo.canUndo)
+        }
+        let source = start ? model.words[13].start : model.words[26].end
+        undo.beginUndoGrouping()
+        canvas.mouseUp(with: try mouse(.leftMouseUp, p(model.timelineTime(source: source, on: axis)), in: canvas))
+        undo.endUndoGrouping()
+        #expect(model.activeClip.map { start ? $0.startWordId : $0.endWordId } == (start ? "t13" : "t26"))
+        #expect(model.undoSteps == 1 && undo.undoActionName == "Trim clip")
+        undo.undo()
+        #expect(model.activeClip == clip && !undo.canUndo && undo.canRedo)
+        undo.redo()
+        #expect(model.activeClip.map { start ? $0.startWordId : $0.endWordId } == (start ? "t13" : "t26"))
+    }
+
+    @Test func voiceOverAdjustsEachEdgeBothWaysAndHasSelectionAndZoom() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let children = try #require(canvas.accessibilityChildren())
+        func slider(_ id: String) throws -> TimelineSliderElement {
+            try #require(children.compactMap { $0 as? TimelineSliderElement }.first { $0.accessibilityIdentifier() == "voxclip.timeline.\(id)" })
+        }
+        let undo = UndoManager(), clip = try #require(model.activeClip)
+        undo.groupsByEvent = false; model.undoManager = undo
+        for (id, start) in [("in", true), ("out", false)] {
+            let edge = try slider(id)
+            undo.removeAllActions()
+            let index = try #require(model.index(start ? clip.startWordId : clip.endWordId))
+            undo.beginUndoGrouping()
+            #expect(edge.accessibilityPerformIncrement())
+            undo.endUndoGrouping()
+            #expect(model.activeClip.map { start ? $0.startWordId : $0.endWordId } == model.words[index + 1].id)
+            #expect(undo.undoActionName == "Trim clip")
+            undo.beginUndoGrouping()
+            #expect(edge.accessibilityPerformDecrement())
+            undo.endUndoGrouping()
+            #expect(model.activeClip == clip)
+        }
+        model.selectedWordIDs = ["t12", "t13"]
+        let summary = try #require(children.compactMap { $0 as? TimelineSelectionElement }.first)
+        #expect((summary.accessibilityValue() as? String)?.hasPrefix("2 words,") == true)
+        let zoom = try slider("canvas.zoom"), oldZoom = canvas.viewport.ptPerSecond
+        #expect(zoom.accessibilityPerformIncrement())
+        #expect(canvas.viewport.ptPerSecond > oldZoom)
+        #expect(zoom.accessibilityPerformDecrement())
+        #expect(abs(canvas.viewport.ptPerSecond - oldZoom) < 0.001)
+        #expect(canvas.accessibilityRole() == .group && canvas.accessibilityLabel() == "Timeline")
+    }
+
+    @Test func keyboardOnlyCanSelectTrimPlayAndStopInsideTheActiveTab() async throws {
+        var project = try project()
+        project.transcript?.words[19] = TimedWord(id: "t19", text: "word?", start: 19, end: 19.8)
+        let app = try app(), model = editor(app, project: project)
+        defer { model.close() }
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        model.selectedWordIDs = ["t12"]
+        canvas.keyDown(with: try timelineKey(124))
+        #expect(model.selectedWordIDs == ["t13"])
+        // The F6-focused SwiftUI panel forwards to this same path.
+        #expect(canvas.interaction.key(124, shift: true))
+        #expect(model.selectedWordIDs == Set((13...19).map { "t\($0)" }))
+        canvas.keyDown(with: try timelineKey(123, shift: true))
+        #expect(model.selectedWordIDs == Set((10...13).map { "t\($0)" }), "Reverse selection keeps its anchor")
+        canvas.keyDown(with: try timelineKey(124))
+        #expect(model.selectedWordIDs == ["t16"], "Edited caret skips the two folded words")
+        canvas.keyDown(with: try timelineKey(34, "i"))
+        #expect(model.activeClip?.startWordId == "t16")
+        canvas.keyDown(with: try timelineKey(37, "l"))
+        #expect(model.isPlaying)
+        canvas.keyDown(with: try timelineKey(40, "k"))
+        #expect(!model.isPlaying)
+        canvas.keyDown(with: try timelineKey(115))
+        for _ in 0..<100 { await Task.yield() }
+        #expect(model.sourceTime == model.words[16].start)
+        canvas.keyDown(with: try timelineKey(119))
+        for _ in 0..<100 { await Task.yield() }
+        #expect(model.sourceTime == model.words[29].end)
+        model.selectedWordIDs = ["t29"]
+        canvas.keyDown(with: try timelineKey(124))
+        #expect(model.selectedWordIDs == ["t29"], "Navigation never leaves the active clip tab")
+    }
+
+    @Test func scrollerOwnsItsHitRegionAndScopeChangesCancelAnEdgeDrag() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent(); canvas.zoom(by: 4)
+        let frame = canvas.horizontalScroller.frame
+        let hit = canvas.hitTest(canvas.convert(NSPoint(x: frame.midX, y: frame.midY), to: canvas.superview))
+        #expect(hit === canvas.horizontalScroller)
+        let old = try #require(canvas.content.inOut)
+        let point = NSPoint(x: canvas.headerWidth + canvas.viewport.x(old.lowerBound), y: TimelineMetrics.ruler.y + 11)
+        canvas.mouseDown(with: try mouse(.leftMouseDown, point, in: canvas))
+        let drop = NSPoint(x: point.x + 60, y: point.y)
+        canvas.mouseDragged(with: try mouse(.leftMouseDragged, drop, in: canvas))
+        model.activate(nil)
+        canvas.mouseUp(with: try mouse(.leftMouseUp, drop, in: canvas))
+        #expect(model.project.edits.clips.first?.startWordId == "t10" && model.undoSteps == 0)
+    }
+
+    @Test func selectionAtAnEditedSeamStopsBeforeTheClosedCut() throws {
+        let app = try app(), model = editor(app, project: try project())
+        defer { model.close() }
+        let after = try #require(model.timelinePieces.pieces.first { $0.source.lowerBound >= 15.8 })
+        let seam = after.edited.lowerBound
+        _ = model.selectTimeline(from: model.timelineTime(source: 12, on: .edited), to: seam, on: .edited, snap: true)
+        #expect(model.selectedWordIDs == ["t12", "t13"])
+        #expect(model.timelineSourceTime(seam, on: .edited) >= 15.8)
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        let range = try #require(canvas.content.selection)
+        let x = canvas.headerWidth + canvas.viewport.x((range.lowerBound + range.upperBound) / 2)
+        let pixels = try Pixels(canvas)
+        #expect(try pixels.shows(x, TimelineMetrics.ruler.y + 20, "tint.default"))
+        #expect(try pixels.shows(x, TimelineMetrics.ruler.y + 21, "tint.default"))
+        #expect(try pixels.shows(x, TimelineMetrics.tracks[0].y + 18, "tint.wash", over: "timeline.videoPiece"))
+        #expect(abs((canvas.overlay.wash.backgroundColor?.alpha ?? 0) - 0.07) < 0.001)
+    }
+
+    @Test func timelineInteractionScenesExerciseTheRealPointerPath() throws {
+        let app = try app()
+        let directory = app.locations.root.appendingPathComponent("interaction-scenes", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        print("V10 scenes: \(directory.path)")
+        let results = try DebugTimeline.interactionScenes(app: app, fixture: try project(), directory: directory)
+        #expect(results.count == 9)
+        for result in results { #expect(result.passed, "\(result.name)") }
+        for name in ["v2-timeline-selection-edited", "v2-timeline-selection-source", "v2-timeline-trim-preview"] {
+            #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent("\(name).png").path))
+        }
     }
 
 }
