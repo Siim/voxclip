@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import Foundation
 import Testing
@@ -343,3 +344,4 @@ import Testing
         for span in spans { #expect(map.span(id: span.id) == span && span.ids.allSatisfy { map.span(id: $0) == span }) }
     }
 }
+#endif
