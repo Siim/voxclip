@@ -85,6 +85,7 @@ enum ClipBarMetrics {
         askButton.toolTip = "Ask about these words"
         keep.toolTip = "Keep this clip (⇧⌘↩)"
         ask.delegate = self
+        ask.onFocus = { [weak self] in self?.askTookFocus() }
         ask.placeholder = Self.askPlaceholder
         ask.setAccessibilityLabel(Self.askPlaceholder.replacingOccurrences(of: "…", with: ""))
         ask.setAccessibilityHelp("Return opens Rewrite with what you type. Empty asks to fix mistakes.")
@@ -286,6 +287,9 @@ enum ClipBarMetrics {
 
     // MARK: The Ask field
 
+    /// Typing in the field is the tab and clip-bar pane's (F6's stop), so the Explorer's bare Return and Delete
+    /// (Clip › Keep, Dismiss, Rename, Remove) never take the field's keys, and the next F6 goes on to the transcript.
+    private func askTookFocus() { model.focusedPane = .tabs }
     private func commitAsk() {
         if ask.currentEditor() != nil || ask.stringValue != model.rewriteInstruction { model.rewriteInstruction = Self.limited(ask.stringValue) }
     }
@@ -331,6 +335,7 @@ enum ClipBarMetrics {
         field.setAccessibilityLabel(ask.accessibilityLabel())
         field.stringValue = model.rewriteInstruction
         field.delegate = self
+        field.onFocus = { [weak self] in self?.askTookFocus() }
         (field.cell as? ClipBarAskCell)?.trailingInset = ClipBarMetrics.askLeading
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 48))
         field.frame = NSRect(x: 12, y: 12, width: 276, height: ClipBarMetrics.control)
@@ -594,6 +599,8 @@ enum ClipBarMetrics {
 /// keeps its text clear of it. Its focus ring follows the rounded box.
 @MainActor final class ClipBarAskField: NSTextField {
     override class var cellClass: AnyClass? { get { ClipBarAskCell.self } set {} }
+    /// Called when the field takes keyboard focus, by a click, Tab or a popover opening.
+    var onFocus: () -> Void = {}
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 300, height: ClipBarMetrics.control))
         identifier = NSUserInterfaceItemIdentifier("voxclip.clipBar.ask")
@@ -615,6 +622,11 @@ enum ClipBarMetrics {
         set { placeholderAttributedString = NSAttributedString(string: newValue, attributes: [.font: VCType.body.nsFont(), .foregroundColor: DesignValues.nsColor("text.tertiary")]) }
     }
     override var mouseDownCanMoveWindow: Bool { false }
+    override func becomeFirstResponder() -> Bool {
+        guard super.becomeFirstResponder() else { return false }
+        onFocus()
+        return true
+    }
 }
 
 @MainActor final class ClipBarAskCell: NSTextFieldCell {

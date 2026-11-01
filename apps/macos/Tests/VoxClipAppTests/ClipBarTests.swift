@@ -307,6 +307,87 @@ private actor HookFixtureConnector: LLMConnector {
         #expect(!editor.project.edits.clips.contains { $0.id == "five-5" })
     }
 
+    // MARK: Keys
+
+    private func menuItem(_ tag: Int, _ key: Int, _ modifiers: NSEvent.ModifierFlags) -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: NSSelectorFromString("performEditorCommand:"), keyEquivalent: String(UnicodeScalar(UInt16(key))!))
+        item.keyEquivalentModifierMask = modifiers
+        item.tag = tag
+        return item
+    }
+    private func keyDown(_ key: Int, _ modifiers: NSEvent.ModifierFlags, code: UInt16) throws -> NSEvent {
+        let character = String(UnicodeScalar(UInt16(key))!)
+        return try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0, windowNumber: 0, context: nil,
+                                             characters: character, charactersIgnoringModifiers: character, isARepeat: false, keyCode: code))
+    }
+
+    /// Keep's ⇧⌘↩ on a suggestion's tab (Clip › Keep Suggestion's hidden alternate) answers from the transcript and the
+    /// bar, not only from the Explorer; the bare Return and Delete of Keep, Dismiss, Rename and Remove still need the
+    /// Explorer's list.
+    @Test func keepsShiftCommandReturnWorksFromTheTranscript() async throws {
+        let (shell, editor, _, bar) = try await open(try fiveQuestions())
+        defer { bar.tearDown(); editor.close() }
+        shell.selection = .clip("five-5")
+        bar.render()
+        #expect(bar.variant == .suggestion("five-5"))
+        let transcript = TranscriptNSTextView(usingTextLayoutManager: true)
+        transcript.model = editor
+        let list = NSTableView()
+        let keep = menuItem(40, NSCarriageReturnCharacter, []), alternate = menuItem(40, NSCarriageReturnCharacter, [.command, .shift])
+        let dismiss = menuItem(41, NSDeleteCharacter, [])
+        let plainReturn = try keyDown(NSCarriageReturnCharacter, [], code: 36), shiftCommandReturn = try keyDown(NSCarriageReturnCharacter, [.command, .shift], code: 36)
+        let delete = try keyDown(NSDeleteCharacter, [], code: 51)
+        editor.focusedPane = .transcript
+        #expect(AppDelegate.clipRowKeyEnabled(alternate, event: shiftCommandReturn, pane: editor.focusedPane, renaming: false, responder: transcript))
+        #expect(AppDelegate.clipRowKeyEnabled(alternate, event: shiftCommandReturn, pane: .tabs, renaming: false, responder: bar.keep))
+        #expect(!AppDelegate.clipRowKeyEnabled(keep, event: plainReturn, pane: editor.focusedPane, renaming: false, responder: transcript))
+        #expect(!AppDelegate.clipRowKeyEnabled(dismiss, event: delete, pane: editor.focusedPane, renaming: false, responder: transcript))
+        // The Explorer's list keeps its bare keys; a rename in progress keeps every key, the alternate's too.
+        #expect(AppDelegate.clipRowKeyEnabled(keep, event: plainReturn, pane: .sidebar, renaming: false, responder: list))
+        #expect(AppDelegate.clipRowKeyEnabled(dismiss, event: delete, pane: .sidebar, renaming: false, responder: list))
+        #expect(!AppDelegate.clipRowKeyEnabled(alternate, event: shiftCommandReturn, pane: .sidebar, renaming: true, responder: list))
+        // Chosen from the menu, not by a key, they need no focus.
+        #expect(AppDelegate.clipRowKeyEnabled(keep, event: nil, pane: .transcript, renaming: false, responder: transcript))
+    }
+
+    /// Return and Delete typed in the Ask field stay the field's, also when the Explorer was the last pane to take focus:
+    /// the field puts focus in the tab and clip-bar pane, and Rename Clip… and Remove Clip refuse their bare keys while
+    /// text is typed.
+    @Test func theAskFieldKeepsItsReturnAndDelete() async throws {
+        let app = AppModel(settingsStore: RegressionSettingsStore())
+        app.set("llm.connector", .string("apple-foundation"))
+        app.set("voiceLab.enabled", .bool(true))
+        app.set("voiceLab.betaNoticeAccepted", .bool(true))
+        let (shell, editor, _, bar) = try await open(try fiveQuestions(), app: app)
+        defer { bar.tearDown(); editor.close() }
+        shell.selection = .clip("five-1")
+        let clip = try #require(editor.activeClip), first = try #require(editor.index(clip.startWordId))
+        editor.selectedWordIDs = Set(editor.words[(first + 1)...(first + 3)].map(\.id))
+        lay(bar, width: 652)
+        #expect(shows(bar.ask) && !editor.isSuggestion("five-1"))
+        let window = NSWindow(contentRect: NSRect(x: -10000, y: -10000, width: 652, height: ShellMetrics.clipBar), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.contentView?.addSubview(bar)
+        // The Explorer's row was clicked last; then a click in the field.
+        editor.focusedPane = .sidebar
+        #expect(window.makeFirstResponder(bar.ask))
+        let responder = window.firstResponder
+        #expect(responder is NSText && bar.ask.currentEditor() != nil)
+        #expect(editor.focusedPane == .tabs)
+        let rename = menuItem(43, NSCarriageReturnCharacter, []), remove = menuItem(44, NSDeleteCharacter, [])
+        let plainReturn = try keyDown(NSCarriageReturnCharacter, [], code: 36), delete = try keyDown(NSDeleteCharacter, [], code: 51)
+        for pane in [EditorPane.sidebar, editor.focusedPane] {
+            #expect(!AppDelegate.clipRowKeyEnabled(rename, event: plainReturn, pane: pane, renaming: false, responder: responder), "\(pane)")
+            #expect(!AppDelegate.clipRowKeyEnabled(remove, event: delete, pane: pane, renaming: false, responder: responder), "\(pane)")
+        }
+        // The field's own delegate takes its Return (Rewrite) instead.
+        #expect(bar.control(bar.ask, textView: try #require(responder as? NSTextView), doCommandBy: #selector(NSResponder.insertNewline(_:))))
+        await editor.rewriteOpenTask?.value
+        editor.closeRewrite(returnFocus: false)
+        #expect(editor.project.edits.clips.contains { $0.id == "five-1" })
+    }
+
     // MARK: Rewrite and Ask
 
     @Test func rewriteOpensTheSelectionRewriteWithTheFieldAsItsInstruction() async throws {

@@ -7,7 +7,8 @@ import VoxClipCore
 /// its frames against f1 at 1280 × 800 (Rewrite 12 in, the Ask field to 10 from the end, the
 /// picker 3 inside it), its fill and hairline, the verbs and Ask with a selection and without
 /// one, Tighten's step and toast, a suggestion's Keep and Dismiss with ⇧⌘↩, the Find Clips
-/// popover at Hook, Tab from the active tab into the bar, VoiceOver's group and the picker's
+/// popover at Hook, Tab from the active tab into the bar, the Ask field's and ⇧⌘↩'s keys against the
+/// Clip menu, 24 pt targets, VoiceOver's group and the picker's
 /// name, and the collapses: labels at 1128 (the editor keeps 602), icons under 600, "Ask…"
 /// under 440. Captures `v2-clipbar-*`
 /// offscreen; `sceneCaptures` takes the real-window `v2-clipbar-1280.png`.
@@ -87,6 +88,26 @@ import VoxClipCore
         check("the verbs read Rewrite, Tighten (when it can act) and Hook in f1's order, left to right (\(verbs.map(\.label)))",
               !bar.rewrite.isHidden && !bar.hook.isHidden && zip(verbs, verbs.dropFirst()).allSatisfy { $0.frame.maxX < $1.frame.minX })
         check("VoiceOver reads \"Clip 1 tools\"", bar.accessibilityLabel() == "Clip 1 tools")
+        // A click in the Ask field after the Explorer: the field's pane takes focus, and Return and Delete stay the field's.
+        editor.focusedPane = .sidebar
+        let askFocused = window.makeFirstResponder(bar.ask)
+        check("a click in the Ask field after the Explorer puts focus in the tab and clip-bar pane",
+              askFocused && editor.focusedPane == .tabs && window.firstResponder is NSText)
+        if askFocused, let clipMenu = NSApp.mainMenu?.items.first(where: { $0.title == "Clip" })?.submenu {
+            let delete = String(UnicodeScalar(NSDeleteCharacter)!)
+            let keys = [(43, "\r", UInt16(36)), (44, delete, UInt16(51))].compactMap { tag, key, code -> (NSMenuItem, NSEvent)? in
+                guard let item = clipMenu.items.first(where: { $0.tag == tag && $0.keyEquivalentModifierMask.isEmpty }),
+                      let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                                   characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: code) else { return nil }
+                return (item, event)
+            }
+            // Checked against the stale Explorer focus too, which a mouse selection in the transcript leaves.
+            check("Rename Clip… and Remove Clip leave the Ask field's Return and Delete alone",
+                  keys.count == 2 && keys.allSatisfy { item, event in
+                      [EditorPane.sidebar, editor.focusedPane].allSatisfy { !AppDelegate.clipRowKeyEnabled(item, event: event, pane: $0, renaming: shell.renaming != nil, responder: window.firstResponder) }
+                  })
+        }
+        window.makeFirstResponder(nil)
         try JSONEncoder().encode(["rewrite": rewrite, "tighten": frame(bar.tighten), "hook": frame(bar.hook), "ask": ask, "picker": picker])
             .write(to: directory.appendingPathComponent("v2-clipbar-1280-frames.json"), options: .atomic)
         try capture(bar, name: "v2-clipbar-1280", directory: directory)
@@ -133,9 +154,23 @@ import VoxClipCore
         check("a suggestion's bar shows Suggested clip, Keep and Dismiss, and no verbs",
               bar.variant == .suggestion("five-5") && !bar.keep.isHidden && !bar.dismiss.isHidden && bar.rewrite.isHidden && bar.hook.isHidden && bar.picker.isHidden)
         try capture(bar, name: "v2-clipbar-suggestion", directory: directory)
+        check("Keep and Dismiss are 24 pt targets around their 22 pt chips (\(bar.keep.frame.height), \(bar.dismiss.frame.height))",
+              bar.keep.frame.height == 24 && bar.dismiss.frame.height == 24 && bar.keep.chip.height == 22)
         if let main = NSApp.mainMenu, let clipMenu = main.items.first(where: { $0.title == "Clip" })?.submenu {
             let alternate = clipMenu.items.first { $0.tag == 40 && $0.keyEquivalentModifierMask == [.command, .shift] && $0.keyEquivalent == "\r" }
+            let plainKeep = clipMenu.items.first { $0.tag == 40 && $0.keyEquivalentModifierMask.isEmpty }
             check("Clip › Keep Suggestion answers ⇧⌘↩ as a hidden alternate", alternate?.isHidden == true && alternate?.allowsKeyEquivalentWhenHidden == true)
+            // ⇧⌘↩ from the transcript keeps the tab's suggestion; the bare Return stays the Explorer's.
+            _ = focusTranscript(in: window)
+            editor.focusedPane = .transcript
+            let shiftCommandReturn = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                                      characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)
+            let plainReturn = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+                                               characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36)
+            check("⇧⌘↩ reaches Keep Suggestion from the transcript, the bare Return does not (\(String(describing: window.firstResponder.map { type(of: $0) })))",
+                  window.firstResponder is TranscriptNSTextView
+                  && alternate.map { AppDelegate.clipRowKeyEnabled($0, event: shiftCommandReturn, pane: editor.focusedPane, renaming: shell.renaming != nil, responder: window.firstResponder) } == true
+                  && plainKeep.map { AppDelegate.clipRowKeyEnabled($0, event: plainReturn, pane: editor.focusedPane, renaming: shell.renaming != nil, responder: window.firstResponder) } == false)
         }
         let steps = editor.undoSteps
         undo.beginUndoGrouping(); bar.keep.performClick(nil); undo.endUndoGrouping()
