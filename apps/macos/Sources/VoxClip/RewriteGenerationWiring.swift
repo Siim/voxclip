@@ -8,9 +8,15 @@ extension RewriteSession {
         reportGenerationProblem(nil)
         let app = editor.app
         if !app.bool("voiceLab.providerConsent.elevenlabs") {
-            guard let window = editor.window,
-                  await RewriteApprovalSheet(title: "Use ElevenLabs?", copy: VoiceLabSession.providerCopy, parent: window).confirm(), current else { return }
-            app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
+            task.ask(PanelConfirm(question: VoiceLabSession.providerCopy,
+                cancel: PanelAction(id: "cancelVoiceProvider", title: "Cancel") { [weak self] in self?.task.dismissConfirm() },
+                confirm: PanelAction(id: "allowVoiceProvider", title: "Allow ElevenLabs") { [weak self] in
+                    guard let self, current, task.confirm?.confirm.id == "allowVoiceProvider" else { return }
+                    task.dismissConfirm()
+                    app.set("voiceLab.providerConsent.elevenlabs", .bool(true))
+                    makeTakes()
+                }))
+            return
         }
         do {
             let language = project.transcript?.language ?? "en"
@@ -26,6 +32,7 @@ extension RewriteSession {
         if let reviewing { await reviewing.value }
         guard current, let generation, review != nil, overBudget == nil, !includedVoice.isEmpty, let takeBackend else { return }
         takePlan?.invalidate(); takePlan = nil
+        takeQuotePhrase = nil; takeRowsShown = true
         guard let recordID = generation.selectedVoiceID, let modelID = generation.selectedModelID,
               let audio = project.media.source.audio else { return }
         let revision = self.revision, ordinals = includedVoice

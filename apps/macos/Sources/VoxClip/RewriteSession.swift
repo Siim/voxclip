@@ -117,6 +117,9 @@ struct RewriteChange: Equatable, Sendable {
     private(set) var revision = 0
     private(set) var generation: RewriteGenerationSession?
     var takePlan: ClipTakePlan?
+    var takeQuotePhrase: Int?
+    var focusedTakePhrase = 0
+    var takeRowsShown = true
     @ObservationIgnored var takeBackend: ((Int, @escaping VoiceLabTakeDispatchBoundary) -> ClipTakePlan.Backend)?
     @ObservationIgnored var takePlanOrdinals: [Int] = []
     @ObservationIgnored var takeRegion: ElevenLabsRegion?

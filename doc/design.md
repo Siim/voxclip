@@ -1419,6 +1419,7 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 
 **T1. Approval.** It is the R2 primary.
 
+- On Mac, discovering a consented voice opens the Voice job in the existing panel host. Voice/model pickers, phrase rows and Review Changes share that job; Review Takes returns without another host. Preparing a price sends no synthesis or QA. The priced Make Takes click approves the displayed complete-set quote, not a later replacement. High or unknown estimates ask inline, with Keep Working as the safe primary and the confirmed action labelled as billed to the key. ElevenLabs' first-use privacy consent is inline too and cannot start paid takes.
 - One approval covers every included phrase's bounded take set (up to `CANDIDATES` = 3 each) and its Scribe QA, as one summed cap (voice-lab.md §8.6).
 - The use-time guard (voice-lab.md §6.9) runs first, on device, and is cached per (contentKey, recordId).
 - If the guard fails:
@@ -1430,6 +1431,7 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 
 - Headline: a spinner and "Making takes… phrase {i} of {z}", with **Stop**.
 - Rows fill as takes arrive. Generation for a phrase stops at the first take that fits.
+- Mac rows retain every failed take and the engine's status, including “Phrase 2 of 3…” and “Take N stopped.” Stop cancels and drains price preparation or generation, retains completed takes, and never starts a replacement quote. A stopped phrase is retried independently; finished phrases are not regenerated.
 - Announce "Phrase {i} fits."
 
 **T3. Ready.**
@@ -1441,7 +1443,8 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
   - then "Take {k} · {d} s · fits", or "· pauses +{x} s".
   - With more than one take: a 1·2·3 segmented control, the duration and a "Best match" tag. The focused row adds the link **Try Another · {amount}**: {amount} is that phrase's own take-set estimate, written by voice-lab.md §3.1 `format`. It reads **Try Another…** with no amount when that estimate confirms (voice-lab.md §3.1).
 - Below the list: **Play Clip {n} with New Voice**, which previews the clip with the selected takes, and the line "Made {t} takes · ≈ ${x} on your ElevenLabs account."
-- Footer: an info glyph with "Exports show AI MODIFIED on the video and in the post.", and the primary **Use Takes**.
+- Mac retries first prepare that phrase's quote with **Try Another…** (or **Try Again…** for an empty row). Its separately priced **Try Another · {amount}** action then appears beside the phrase-only send line. The engine holds one quote; no estimate is invented for another row. A retry requests one candidate for that phrase only. The 1/2/3 keys select a QA-passing slot in the focused phrase; failed slots remain visible but cannot be selected. Selection, Stop, price preparation, acceptance, leaving the rows and invalidation stop audition. Nothing autoplays.
+- Footer: "Exports show AI MODIFIED on the video. The post disclosure is optional.", and the primary **Use Takes**. The post-caption disclosure remains opt-in and OFF by default; the burned-in export label is unchanged.
 
 **Edge cases.**
 
@@ -1451,7 +1454,7 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
   - When rendering lands, the length choice (ADR-R28, voice-lab.md §8.9) returns as an info callout with two radio rows, neither preselected and never remembered: **Lip sync**, "Sends {s} s of video around the change to {provider} with your key. About ${x}, confirmed before it runs."; and **Retimed source video**, "Slows these {s} s of video to {r}× and crops in slightly around your face. Nothing is sent." (a shorter take: "Speeds these {s} s of video up to {r}× and crops in slightly around your face. Nothing is sent.").
   - The Lip sync sheet: "Lip sync this change?" / "This will cost about ${x} on your {provider} account." / "Sends {s} s of video around the change to {provider} with your key." with **Cancel** and **Continue**.
 - **Provider error.** A callout: "ElevenLabs rejected the key (401). Your edits are saved." It comes with an inline key field, **Save Key** and **Retry**. There is no Settings detour.
-- **Closing with unused paid takes.** A sheet: "Discard {t} takes?" / "You paid about ${x} for them. Your edits are saved." with **Keep Working** (the default) and **Discard Takes**.
+- **Rewriting with unused paid takes.** The existing inline discard question protects paid engine takes too. Keep Working is the safe primary; Discard Changes explicitly retires the proposal and takes. No takes approval or discard sheet is added on Mac.
 
 **T4. Use and done.**
 

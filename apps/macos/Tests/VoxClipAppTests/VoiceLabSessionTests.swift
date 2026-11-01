@@ -636,7 +636,7 @@ import Synchronization
             "Checks your plan, then sends the consent recording and 47 s of speech from Interview to create your own voice. No video is sent. ≈ $0.00")
         #expect(VoiceLabSession.creationCopy(projectName: nil, keptSeconds: 47.99, cost: "≈ $0.00") ==
             "Checks your plan, then sends the consent recording and training audio to create your own voice. No video is sent. ≈ $0.00")
-        #expect(RewriteTakesView.makeVoiceTitle == "Make Your Voice")
+        #expect(DirectorTakeRows.makeVoiceTitle == "Make Your Voice")
     }
     @Test func statementLanguageNeedsACalibratedSpeakerCheck() throws {
         let model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry

@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Review Voice Lab takes inline by phrase, audition and choose slots with 1/2/3, and approve real complete-set or phrase-only retry quotes without a takes sheet. Stop keeps finished takes; failed and nonfitting rows stay visible.
+
 - Create your own voice with one priced click after a private on-device check, with explicit creation-only recovery after an interruption.
 - Make your own voice in the right panel, with inline setup, model download, consent and recording.
 - Core preflights Rewrite placement against review cuts before quoting takes, refuses empty acceptance sets, and requires scoped app acceptance for sets (C4 review).

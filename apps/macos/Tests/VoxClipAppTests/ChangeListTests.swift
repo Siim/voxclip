@@ -46,7 +46,7 @@ import Testing
             "r2-voice-lab-off": ("1 phrase needs your voice. Voice Lab (beta) makes it from this clip.", "Turn On Voice Lab", "Apply 2 Free Changes"),
             "r2-make-takes": ("Nothing paid yet.\nTakes < $0.01 on ElevenLabs.", "Keep All", "Make Takes"),
             "r2-make-voice": ("Nothing paid yet. Next: make your voice from this clip. Once.", "Keep All", "Make Your Voice"),
-            "r2-use-take": ("Exports show AI MODIFIED on the video and in the post.", nil, "Use Take 1"),
+            "r2-use-take": ("Exports show AI MODIFIED on the video. The post disclosure is optional.", nil, "Use Takes"),
             "r2-several-voices": ("Nothing paid yet.\nTakes < $0.01 on ElevenLabs.", "Keep All", "Make Takes"),
             "r2-over-budget": ("Make Takes appears when the phrases fit.", nil, "Apply 1 Free Change"),
             "r2-nothing-included": ("Keep a change to apply it.", nil, nil),
@@ -204,19 +204,19 @@ import Testing
         var quotes = 0
         generation.prepareQuote = { quotes += 1 }
         session.showProposal()
-        #expect(session.includedVoicesSeen == [2] && generation.readyToAccept && session.task.footer.primary?.title == "Use Take 1")
+        #expect(session.includedVoicesSeen == [2] && session.usableTakeCount == 1 && session.task.footer.primary?.title == "Use Takes")
         // Keep phrase 3 too: several phrases, no takes. Then leave phrase 2 out: phrase 3 alone.
         session.review(3, .keep)
         #expect(session.task.footer.note?.contains("Rewrite one passage") == false)
         session.review(2, .undo)
         await settle { quotes == 1 }
         #expect(session.includedVoice == [3] && session.includedVoicesSeen == [3] && !generation.readyToAccept && quotes == 1)
-        #expect(session.task.footer.primary == nil && session.task.footer.note?.hasPrefix("Nothing paid yet.") == true)
+        #expect(session.task.footer.primary?.title == "Prepare Takes" && session.task.footer.note?.hasPrefix("Nothing paid yet.") == true)
         #expect(await session.acceptTakes() == false && editor.project.voiceLab.segments.isEmpty)
         // Back to phrase 2 alone: its takes no longer fit either, and it is quoted again.
         session.review(2, .keep); session.review(3, .undo)
         await settle { quotes == 2 }
-        #expect(session.includedVoice == [2] && session.includedVoicesSeen == [2] && quotes == 2 && session.task.footer.primary == nil)
+        #expect(session.includedVoice == [2] && session.includedVoicesSeen == [2] && quotes == 2 && session.task.footer.primary?.title == "Prepare Takes")
     }
 
     /// A footer drawn for one phrase's quote makes no takes of another: a Make Takes the transcript's reviews left on screen
@@ -249,13 +249,13 @@ import Testing
             items: [], window: window, incomingSilence: nil, outgoingSilence: nil, providerConsent: true))
         session.showProposal()
         let stale = try #require(session.task.footer.primary)
-        #expect(stale.title.hasPrefix("Make Takes") && generation.canExecute)
+        #expect(stale.title == "Prepare Takes" && session.pricedTakeAction() == nil && generation.canExecute)
         // ⌘↩ on phrase 3 and ⌘⌫ on phrase 2 in the transcript; the list follows them on a later turn.
         editor.keepChange(3); editor.excludeChange(2)
         stale.perform()
         #expect(generation.phase != .generating)
         await settle { session.includedVoicesSeen == [3] && quotes == 1 }
-        #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary == nil)
+        #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary?.title == "Prepare Takes")
         await generation.finishGenerationForTests()
     }
 

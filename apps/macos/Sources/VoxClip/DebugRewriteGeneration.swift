@@ -32,6 +32,13 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
         session.configureGeneration(client: ElevenLabsVoiceLab(keys: RewriteGenerationFixtureKeys(), region: .default),
             store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
         session.generation?.showFixture(state, voice: record)
+        if state != "no-voice", let envelope = session.envelope {
+            let plan = try ClipTakePlan(project: session.project, scope: session.scope, envelope: envelope,
+                hunks: session.changes.enumerated().filter { $0.element.hunk.kind != .voice || session.includedVoice.contains($0.offset + 1) }.map { $0.element.hunk },
+                makeInput: { _ in throw VoiceLabError.invalidInput })
+            plan.showFixture(state)
+            session.takePlan = plan
+        }
     }
     static func captures(app: AppModel, directory: URL) throws -> [String] {
         let previous = app.settings
@@ -54,7 +61,7 @@ private struct RewriteGenerationFixtureKeys: KeyProvider {
             for width: CGFloat in [300, 360, 560] {
                 for scheme: ColorScheme in [.light, .dark] {
                     guard let generation = session.generation else { throw CocoaError(.coderInvalidValue) }
-                    let content = RewriteTakesView(session: session, generation: generation, generate: {}).snapshot.padding(16)
+                    let content = DirectorTakeRows(session: session, generation: generation).padding(16)
                         .frame(width: width).sceneAccent().environment(\.colorScheme, scheme)
                     let renderer = ImageRenderer(content: content)
                     renderer.scale = 2

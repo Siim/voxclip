@@ -69,6 +69,8 @@ import VoxClipMedia
     private(set) var estimate: CostEstimate?
     private(set) var cost: VoiceLabCostPresentation.Kind?
     private(set) var spent = VoiceLabTakeRunQuote.total(of: [], takes: 0)
+    let audition: VoiceLabAudition
+    @ObservationIgnored private var auditionTurn = UUID()
     @ObservationIgnored private let project: Project
     @ObservationIgnored private let scope: VoiceLabOutputScope
     @ObservationIgnored private let makeInput: @MainActor (Phrase) async throws -> VoiceLabTakeInput
@@ -94,10 +96,11 @@ import VoxClipMedia
     init(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope, hunks: [VoiceLabDiffHunk],
          makeInput: @escaping @MainActor (Phrase) async throws -> VoiceLabTakeInput,
          readCap: @escaping @MainActor () async throws -> VoiceLabMonthlyCap? = { nil },
-         isCurrent: @escaping @MainActor () -> Bool = { true }) throws {
+         isCurrent: @escaping @MainActor () -> Bool = { true }, audition: VoiceLabAudition = VoiceLabAudition()) throws {
         var final = project
         final.edits.cutWordIds += hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds)
         self.project = final; self.scope = scope; self.makeInput = makeInput; self.readCap = readCap; self.isCurrent = isCurrent
+        self.audition = audition
         phrases = try Self.preparePlan(project: project, scope: scope, envelope: envelope, hunks: hunks)
     }
 
@@ -126,6 +129,33 @@ import VoxClipMedia
 
     func connect(_ backend: Backend) { precondition(self.backend == nil); self.backend = backend }
 
+    #if DEBUG
+    func showFixture(_ state: String) {
+        for index in phrases.indices {
+            let window = phrases[index].window
+            let changed = state == "length-changed"
+            let frames = Int64(EditingPrimitives.jsRound((window.end - window.start + (changed ? 1.4 : 0)) * 24_000))
+            let fit = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
+                trimStartFrame: 0, trimEndFrame: frames, windowStart: window.start, windowEnd: window.end,
+                windowStartSample: window.startSample, windowEndSample: window.endSample, outputFrames: frames,
+                words: [.init(text: phrases[index].text, start: 0.1, end: max(0.2, Double(frames) / 24_000 - 0.1), synthetic: true)])
+            let audio = VoiceLabTakeAudio(sampleRate: 24_000, trimmed: [], mixed: [], patchRange: 0..<0, seams: [], gainDb: 0, roomTone: nil,
+                fit: changed ? .changedDuration(fit, naturalOut: Double(frames) / 24_000, residualSeconds: 1.4) : .exact(fit))
+            let qa = VoiceLabTakeQAResult(values: .init(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -10, speakerScore: 0.9), failures: [])
+            let passing = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, audio: audio, qa: qa, score: 0.9)
+            let failed = VoiceLabTakeRow(id: UUID(), index: 1, seed: 2, failure: .qa([.transcript]))
+            phrases[index].takes = state == "none-passed" ? [Take(number: 1, row: failed)] : [Take(number: 1, row: passing), Take(number: 2, row: failed)]
+            phrases[index].selectedID = state == "none-passed" ? nil : passing.id
+            phrases[index].status = .ready
+            if state == "generating" { phrases[index].status = .generating("Phrase \(index + 1) of \(phrases.count)…"); generating = true }
+            if state == "cancelled" { phrases[index].status = .stopped("Take 2 stopped.") }
+            if state == "none-passed" { phrases[index].status = .failed("These takes didn't sound right. Edit the words or try again.") }
+        }
+        if state == "provider-error" { problem = "ElevenLabs rejected the key (401). Your edits are saved." }
+        if state == "cost-confirmation" { problem = "VoxClip can't tell what this costs. Check ElevenLabs' pricing." }
+    }
+    #endif
+
     func prepare() async {
         await prepareQuote(indices: phrases.map(\.id), decoding: true, candidates: VoiceLabPricing.maximumCandidates)
     }
@@ -137,6 +167,7 @@ import VoxClipMedia
 
     private func prepareQuote(indices: [Int], decoding: Bool, candidates: Int) async {
         guard !preparing, !generating, !publishing, !retired, operation == nil, let backend else { return }
+        stopAudition()
         preparing = true; problem = ""; batch = nil; cost = nil; revision += 1
         let version = revision
         operation = Task { [weak self] in
@@ -193,6 +224,7 @@ import VoxClipMedia
     func start(approved: Bool, quoteID: UUID?) async {
         guard approved, !generating, !preparing, !publishing, !retired, operation == nil, let batch, let backend else { return }
         guard quoteID == batch.id else { return }
+        stopAudition()
         generating = true; problem = ""
         let version = revision
         operation = Task { [weak self] in
@@ -244,6 +276,7 @@ import VoxClipMedia
     }
 
     func stop() async {
+        stopAudition()
         guard preparing || generating else { return }
         stopping = true; revision += 1; operation?.cancel()
         if let phrase = runningPhrase {
@@ -257,6 +290,7 @@ import VoxClipMedia
     }
 
     func invalidate() {
+        stopAudition()
         retired = true; revision += 1; operation?.cancel(); batch = nil; cost = nil
         let backend = backend
         Task { await backend?.invalidate() }
@@ -265,8 +299,27 @@ import VoxClipMedia
     @discardableResult func select(take: UUID, phrase: Int) -> Bool {
         guard !generating, !preparing, !publishing, !retired, isCurrent(), phrases.indices.contains(phrase),
               phrases[phrase].takes.contains(where: { $0.id == take && $0.row.selectable }) else { return false }
+        stopAudition()
         phrases[phrase].selectedID = take
         return true
+    }
+
+    func stopAudition() {
+        auditionTurn = UUID()
+        audition.stop()
+    }
+
+    func play(phrase: Int) async {
+        guard stillCurrent, !generating, !preparing, !publishing, phrases.indices.contains(phrase),
+              let take = phrases[phrase].selected else { return }
+        let wasPlaying = audition.isPlaying && audition.takeId == take.id
+        stopAudition()
+        guard !wasPlaying else { return }
+        let turn = auditionTurn
+        guard let audio = await scratch(take: take.id, phrase: phrase), turn == auditionTurn, stillCurrent,
+              phrases[phrase].selectedID == take.id, !generating, !preparing, !publishing else { return }
+        do { try audition.play(audio, takeId: take.id, selectionId: String(phrase)) }
+        catch { problem = Self.copy(error) }
     }
 
     func dispatch(_ request: UUID, start: @escaping @Sendable () throws -> Void) async throws {
@@ -313,6 +366,7 @@ import VoxClipMedia
     }
 
     func acceptance(at date: Date = Date()) async throws -> Acceptance {
+        stopAudition()
         let version = revision
         try checkCurrent(version)
         guard !generating, !preparing, !publishing, let backend else { throw Failure.stale }

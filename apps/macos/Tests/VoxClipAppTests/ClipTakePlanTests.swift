@@ -1,4 +1,5 @@
 #if DEBUG
+import AppKit
 import Foundation
 import Synchronization
 import Testing
@@ -8,6 +9,12 @@ import Testing
 
 private struct ClipTakeKeys: KeyProvider {
     func key(for provider: String) async throws -> String? { "inert-fixture-key" }
+}
+@MainActor private final class TakeReviewPlayback: VoiceLabAuditionBackend {
+    var position = 0.0
+    var stops = 0
+    func play() -> Bool { true }
+    func stop() { stops += 1 }
 }
 private actor ClipTakeSpeaker: SpeakerEmbedder {
     nonisolated let modelID = "fixture-calibrated"
@@ -107,6 +114,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let root: URL
         let plan: ClipTakePlan
         let ledger: VoiceLabSpendLedger
+        let playback: TakeReviewPlayback
+        let source: Project
+        let envelope: AudioEnvelope
         var preparations = 0
         var approved = 0
         var decoded = 0
@@ -117,7 +127,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var beforePublish: (() async -> Void)?
         var beforeDispatch: (() -> Void)?
         var current = true
-        init(root: URL, plan: ClipTakePlan, ledger: VoiceLabSpendLedger) { self.root = root; self.plan = plan; self.ledger = ledger }
+        init(root: URL, plan: ClipTakePlan, ledger: VoiceLabSpendLedger, playback: TakeReviewPlayback, source: Project, envelope: AudioEnvelope) {
+            self.root = root; self.plan = plan; self.ledger = ledger; self.playback = playback; self.source = source; self.envelope = envelope
+        }
     }
     private func project() throws -> (Project, [Float], AudioEnvelope) {
         let shared = try SharedResources.locate()
@@ -164,6 +176,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             prices: try VoiceLabPriceCatalog.load(shared: shared), spend: ledger, enforceCapabilities: true)
         let (sourceProject, pcm, envelope) = try project()
         let project = sourceProject
+        let playback = TakeReviewPlayback()
+        let audition = VoiceLabAudition(makeBackend: { _, _ in playback })
         weak var fixture: Fixture?
         let plan: ClipTakePlan
         do {
@@ -178,9 +192,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 guard let fixture, let cap = fixture.cap else { return nil }
                 let total = await ledger.total(provider: "elevenlabs", at: Date())
                 return VoiceLabMonthlyCap(limit: cap, spent: try #require(total).usd)
-            }, isCurrent: { fixture?.current ?? true })
+            }, isCurrent: { fixture?.current ?? true }, audition: audition)
         } catch { try? FileManager.default.removeItem(at: root); throw error }
-        let made = Fixture(root: root, plan: plan, ledger: ledger); fixture = made
+        let made = Fixture(root: root, plan: plan, ledger: ledger, playback: playback, source: project, envelope: envelope); fixture = made
         ClipTakeHTTP.state.withLock { $0.duration = plan.phrases[0].originalLength }
         let storage = VoiceLabTakeStorage(projectId: project.id, paidRoot: root.appendingPathComponent("paid"), scratchRoot: root.appendingPathComponent("scratch"))
         let check = VoiceSpeakerCheck(embedder: ClipTakeSpeaker(), calibratedThreshold: 0.45)
@@ -467,6 +481,108 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         editor.sendRewriteAgain(session)
         #expect(session.task.confirm?.question == "Discard these 3 changes?")
         #expect(!fixture.plan.generating && fixture.plan.phrases[0].selected != nil)
+    }
+
+    private func session(_ fixture: Fixture) -> (EditorModel, RewriteSession) {
+        let app = AppModel(settingsStore: RegressionSettingsStore(), locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": fixture.root.path]))
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
+        let editor = EditorModel(document: VoxClipDocument(project: fixture.source, demo: true), app: app, preview: DemoPreviewEngine())
+        let session = RewriteSession(editor: editor, scope: .fullTake, envelope: fixture.envelope, connector: nil)
+        editor.rewrite = session
+        session.takePlan = fixture.plan
+        return (editor, session)
+    }
+
+    @Test func inlinePriceCapturesItsQuoteBeforeDeferredExecution() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        await fixture.plan.prepare()
+        let old = try #require(session.pricedTakeAction())
+        #expect(old.priced && old.title.contains("Make Takes") && old.title.contains("$"))
+        await fixture.plan.prepareAnother(phrase: 0)
+        old.perform()
+        await session.takesTask?.value
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
+        session.takeQuotePhrase = 0
+        let retry = try #require(session.pricedTakeAction(phrase: 0))
+        #expect(retry.title.contains("Try Another") && session.takeSendLine.contains("only phrase 1"))
+        retry.perform()
+        await session.takesTask?.value
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
+    }
+
+    @Test func selectionStopAndInvalidationAlwaysEndAuditionWithoutAutoplay() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare(); await plan.start(approved: true)
+        #expect(!plan.audition.isPlaying)
+        await plan.play(phrase: 0)
+        #expect(plan.audition.isPlaying)
+        let selected = try #require(plan.phrases[0].selectedID)
+        #expect(plan.select(take: selected, phrase: 0))
+        #expect(!plan.audition.isPlaying && fixture.playback.stops == 1)
+        await plan.play(phrase: 0); await plan.stop()
+        #expect(!plan.audition.isPlaying && fixture.playback.stops == 2)
+        await plan.play(phrase: 0); plan.invalidate()
+        #expect(!plan.audition.isPlaying && fixture.playback.stops == 3)
+        await plan.play(phrase: 0)
+        #expect(!plan.audition.isPlaying)
+    }
+
+    @Test func rowKeysPickOnlyTheFocusedPhraseAndKeepFailedRowsVisible() async throws {
+        let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        let plan = fixture.plan
+        await plan.prepare(); await plan.start(approved: true)
+        let before = plan.phrases.map(\.selectedID)
+        await plan.prepareAnother(phrase: 1); await plan.tryAnother(phrase: 1, approved: true)
+        session.focusedTakePhrase = 1
+        session.selectTake(number: 1)
+        #expect(plan.phrases.map(\.selectedID) == before)
+        session.selectTake(number: 2)
+        #expect(plan.phrases[1].selected?.number == 2 && plan.phrases[0].selectedID == before[0] && plan.phrases[2].selectedID == before[2])
+        ClipTakeHTTP.state.withLock { $0.failQA = true }
+        await plan.prepareAnother(phrase: 1); await plan.tryAnother(phrase: 1, approved: true)
+        #expect(plan.phrases[1].takes.count == 3 && plan.phrases[1].takes.contains { !$0.row.selectable })
+        #expect(!plan.phrases[1].takeDetail.isEmpty && session.usableTakeCount == 3)
+    }
+
+    @Test func inlineConfirmationIsSafeAndCannotApproveAReplacementQuote() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let (editor, session) = session(fixture); defer { editor.close() }
+        fixture.cap = 0
+        await fixture.plan.prepare()
+        let action = try #require(session.pricedTakeAction())
+        action.perform()
+        let confirmation = try #require(session.task.confirm)
+        #expect(confirmation.cancel.title == "Keep Working" && confirmation.confirm.priced)
+        #expect(session.task.pressReturn(command: true) && session.task.confirm == nil)
+        confirmation.confirm.perform()
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
+        action.perform()
+        let stale = try #require(session.task.confirm?.confirm)
+        fixture.cap = nil
+        await fixture.plan.prepareAnother(phrase: 0)
+        stale.perform()
+        await session.takesTask?.value
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
+        #expect(!fixture.plan.generating)
+    }
+
+    @Test func phraseReviewUsesCommandReturnAndFreshPricedActivation() {
+        var ran = 0
+        let task = DirectorTask(scope: .fullTake, words: DirectorScope(kind: .fullTake, wordCount: 24), state: .choosingAI,
+            close: PanelAction(id: "close", title: "Close", perform: {}))
+        task.show(.choosingAI, headline: PanelHeadline(text: "Takes"), cards: [.takes],
+            footer: PanelFooter(primary: PanelAction(id: "paid", title: "Make Takes · fixture", priced: true) { ran += 1 }))
+        #expect(task.job == .voice && !task.pressReturn(command: false) && ran == 0)
+        #expect(task.pressReturn(command: true) && ran == 1)
+        task.show(.choosingAI, headline: PanelHeadline(text: "Takes"),
+            footer: PanelFooter(primary: PanelAction(id: "paid2", title: "Make Takes · fixture", priced: true) { ran += 1 }))
+        #expect(task.pressReturn(command: false) && ran == 1)
+        task.primaryAppearedAt = Date().addingTimeInterval(-1)
+        #expect(task.pressReturn(command: false) && ran == 2)
     }
 }
 #endif

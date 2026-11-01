@@ -38,7 +38,7 @@ enum PanelJob: String, CaseIterable, Sendable {
     @MainActor static func available(in model: EditorModel) -> [PanelJob] {
         var jobs: [PanelJob] = [.captions]
         if let task = model.panelTask { jobs.append(task.job) }
-        if model.hasVoiceJob { jobs.append(.voice) }
+        if model.hasVoiceJob, !jobs.contains(.voice) { jobs.append(.voice) }
         if model.exportJob.isOpen { jobs.append(.export) }
         return jobs
     }
@@ -141,9 +141,10 @@ extension WorkspaceShell {
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
+                if let task = model.panelTask, task.confirm != nil { DirectorPanel(task: task, model: model) }
+                else if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
                 else if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
-                else if job == .rewrite, let session = model.rewrite {
+                else if (job == .rewrite || job == .voice), let session = model.rewrite {
                     DirectorPanel(task: session.task, model: model)
                 } else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
