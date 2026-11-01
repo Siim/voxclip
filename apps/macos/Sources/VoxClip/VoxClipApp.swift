@@ -285,7 +285,7 @@ import VoxClipCore
         case 31: editor.setClipEdge(start: false)
         case 32: editor.moveClip(-1)
         case 33: editor.moveClip(1)
-        case 34: editor.requestFindClips(from: .overflow)
+        case 34: editor.requestFindClips(from: .clipBar)
         case 37: confirmRetranscription()
         case 38: editor.beginRewrite(entry: .menu)
         case 39: editor.beginRewrite(inserting: true)
@@ -541,6 +541,10 @@ import VoxClipCore
         command(clip, "Find Clips…", 34, "k", [.command, .shift])
         command(clip, "Cancel Finding Clips", 49, ".")
         command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])
+        // The clip bar's Keep ⇧⌘↩ on a suggestion's tab (impl-plan §3.2, V3b), a hidden alternate.
+        command(clip, "Keep Suggestion", 40, String(UnicodeScalar(NSCarriageReturnCharacter)!), [.command, .shift])
+        clip.items.last?.isHidden = true
+        clip.items.last?.allowsKeyEquivalentWhenHidden = true
         command(clip, "Dismiss Suggestion", 41, String(UnicodeScalar(NSDeleteCharacter)!), [])
         command(clip, "Keep All Suggestions", 42)
         command(clip, "Rename Clip…", 43, String(UnicodeScalar(NSCarriageReturnCharacter)!), [])

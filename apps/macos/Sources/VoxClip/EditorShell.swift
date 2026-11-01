@@ -782,7 +782,8 @@ struct EditorShellState: Equatable {
     /// The editor column beside the right column.
     let columns = ShellSplitController(vertical: true, identifier: "voxclip.editor.split")
     let tabRow = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "tabBar")
-    let clipBar = ShellBand(fill: "bg.surface", bottomLine: true, movesWindow: false, region: "clipBar")
+    /// The clip bar under the tab row (impl-plan V3b): the scope's verbs, the Ask field and the harness picker.
+    let clipBar: ClipBarView
     private let rightTitle = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: true, region: "rightTitle")
     /// The editor's tabs (impl-plan V3a), filling the tab row up to its trailing controls.
     let tabBar: EditorTabBarView
@@ -821,6 +822,7 @@ struct EditorShellState: Equatable {
         self.model = model
         self.shell = shell
         tabBar = EditorTabBarView(shell: shell, model: model)
+        clipBar = ClipBarView(model: model, shell: shell)
         showCuts = ShowCutsToggle(model: model)
         super.init(vertical: false, identifier: "voxclip.shell.work", dividerToken: "line.edge")
         build()
@@ -889,6 +891,8 @@ struct EditorShellState: Equatable {
         rightTitle.spacing = 6
         tabRow.trailingInset = 8
         tabRow.fillsLeading = tabBar
+        // Tab from the active tab goes on into the clip bar (F6 reaches the row at the active tab).
+        tabBar.nextKeyViewAfterTabs = clipBar
         overflow.describe(EditorIconAction.moreCommands.name)
         overflow.target = self
         overflow.action = #selector(showOverflow(_:))
@@ -902,7 +906,8 @@ struct EditorShellState: Equatable {
             ShellObservation { [weak self] in self?.renderExport() },
             ShellObservation { [weak self] in self?.renderFindClips() },
             ShellObservation { [weak self] in self?.followSizes() },
-            ShellObservation { [weak self] in self?.showCuts.render() }
+            ShellObservation { [weak self] in self?.showCuts.render() },
+            ShellObservation { [weak self] in self?.clipBar.render() }
         ]
     }
 
@@ -910,6 +915,7 @@ struct EditorShellState: Equatable {
         observations.forEach { $0.cancel() }
         observations = []
         tabBar.tearDown()
+        clipBar.tearDown()
         findClipsPopover?.close()
         showRightOverlay(false, refocus: false)
     }
@@ -985,7 +991,7 @@ struct EditorShellState: Equatable {
         overflowMenu().popUp(positioning: nil, at: NSPoint(x: 0, y: sender.isFlipped ? sender.bounds.maxY + 4 : -4), in: sender)
     }
     /// Today's toolbar commands, which also stay in the menus (impl-plan V1a). Find
-    /// Clips… opens its popover at ⋯.
+    /// Clips… opens its popover at the clip bar (impl-plan item 17).
     func overflowMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -1007,27 +1013,30 @@ struct EditorShellState: Equatable {
     @objc private func cutFillers() { model.apply(.cutFillers, name: "Cut fillers") }
     @objc private func tightenPauses() { model.apply(.tightenPauses, name: "Tighten pauses") }
     @objc private func restoreCuts() { model.apply(.restoreCuts, name: "Restore cuts") }
-    @objc private func findClips() { model.requestFindClips(from: .overflow) }
+    @objc private func findClips() { model.requestFindClips(from: .clipBar) }
     @objc private func toggleTimeline() { shell.toggleTimeline() }
     @objc private func toggleRight() { shell.toggleViewer() }
 
-    /// The Find Clips popover from the menus, ⇧⌘K and ⋯ opens at ⋯ (impl-plan item 17).
+    /// The Find Clips popover from the menus, ⇧⌘K, ⋯ and Hook with no AI chosen opens at
+    /// the clip bar's Hook (impl-plan item 17).
     private func renderFindClips() {
-        let wanted = model.showFindClips && model.findClipsAnchor == .overflow
-        if wanted, findClipsPopover?.isShown != true, overflow.window != nil {
+        let wanted = model.showFindClips && model.findClipsAnchor == .clipBar
+        let anchor = clipBar.findClipsAnchorView
+        if wanted, findClipsPopover?.isShown != true, anchor.window != nil {
             let popover = NSPopover()
             popover.behavior = .transient
             popover.contentViewController = ShellHost.controller(FindClipsPopover(model: model), app: shell.app, sizing: [.preferredContentSize])
             popover.delegate = self
             findClipsPopover = popover
-            popover.show(relativeTo: overflow.bounds, of: overflow, preferredEdge: .maxY)
+            clipBar.layoutSubtreeIfNeeded()
+            popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
         } else if !wanted, let popover = findClipsPopover, popover.isShown {
             popover.close()
         }
     }
     func popoverDidClose(_ notification: Notification) {
         findClipsPopover = nil
-        if model.showFindClips && model.findClipsAnchor == .overflow { model.showFindClips = false }
+        if model.showFindClips && model.findClipsAnchor == .clipBar { model.showFindClips = false }
     }
 
     // MARK: Sizes

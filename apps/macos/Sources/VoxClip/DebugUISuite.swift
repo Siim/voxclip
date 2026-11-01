@@ -685,7 +685,7 @@ import ApplicationServices
             app.providerKeyStoreOverride = nil
         }
         app.set("llm.connector", .string("openai"))
-        editor.requestFindClips(from: .overflow)
+        editor.requestFindClips(from: .clipBar)
         check("Find Clips shows a missing key in its popover", await hasInspectorStatus("Key missing", in: window))
         check("Find Clips stays actionable with a missing key", inspectorElement("findClipsAction", in: window)?.enabled == true)
         do {

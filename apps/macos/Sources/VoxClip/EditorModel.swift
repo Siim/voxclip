@@ -14,7 +14,7 @@ struct EditorRenderSnapshot {
     let document: VoxClipDocument
     let app: AppModel
     var showFindClips = false
-    var findClipsAnchor = FindClipsAnchor.overflow
+    var findClipsAnchor = FindClipsAnchor.clipBar
     /// The sidebar's "Choose how VoxClip finds clips…" callout (no connector chosen).
     var showAISetup = false
     var selectedWordIDs: Set<String> = [] {
@@ -76,6 +76,8 @@ struct EditorRenderSnapshot {
     var showVoiceLabOptIn = false
     var rewriteInsertionAfterID: String?
     @ObservationIgnored var rewriteOpenTask: Task<Void, Never>?
+    /// The clip bar's Ask field (impl-plan V3b): the instruction the next Rewrite asks; empty asks Fix mistakes. In memory only.
+    var rewriteInstruction = ""
     private var pendingRewriteSelection: Set<String> = []
     func beginRewrite(inserting: Bool = false, entry: RewriteEntry = .selection) {
         let action = RewriteEntryPolicy.resolve(inserting ? .insertWords : entry, enabled: app.bool("voiceLab.enabled"),
@@ -89,13 +91,14 @@ struct EditorRenderSnapshot {
         let pauses = selectedPauseIDs
         let caret = sourceTime
         let signature = rewriteConnectorSignature
+        let instruction = rewriteInstruction
         rewriteOpenTask = Task { [weak self] in
             guard let self else { return }
             if waveform == nil { await loadWaveform() }
             guard !Task.isCancelled, capabilities.ai, app.voiceLabRewriteEnabled, project == snapshot,
                   selectedWordIDs == selection, selectedPauseIDs == pauses, sourceTime == caret,
                   rewriteConnectorSignature == signature else { return }
-            openRewriteSession(range: lower...upper)
+            openRewriteSession(range: lower...upper, instruction: instruction)
         }
     }
     /// Opens a Rewrite session on `range` with the AI chosen now; with none, its panel asks which (R0).
@@ -1127,9 +1130,9 @@ struct EditorRenderSnapshot {
 @MainActor func copyText(_ text: String) { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
 
 extension EditorModel {
-    /// Where the Find Clips popover opens: the tab row's ⋯ button (the menus, ⇧⌘K and ⋯;
-    /// impl-plan item 17) or the sidebar's action.
-    enum FindClipsAnchor { case overflow, sidebar }
+    /// Where the Find Clips popover opens: the clip bar, at Hook (the menus, ⇧⌘K, ⋯ and Hook
+    /// with no AI chosen; impl-plan item 17), or the sidebar's action.
+    enum FindClipsAnchor { case clipBar, sidebar }
     static let noClipsMatched = "No clips matched. Try another style or describe what you want."
     /// The chosen clip-finding connector, nil when none is set up.
     var findConnector: ProviderChoice? { app.providers.first { $0.id == app.string("llm.connector") } }
@@ -1139,15 +1142,29 @@ extension EditorModel {
         findClipsAnchor = anchor
         showFindClips = true
     }
-    /// Asks the chosen connector for clips. They arrive as suggestions in one undo step.
-    func findClips() {
+    /// Hook (impl-plan item 17): one click finds hook clips in the take with the Hooks preset, through the same route,
+    /// lease and Suggested results as Find Clips; the popover's own preset and instructions stay as they were. With no AI
+    /// chosen it opens the Find Clips popover at the clip bar on Hooks instead, which says how to choose one.
+    func runHook() {
+        guard capabilities.ai, !words.isEmpty else { return }
+        guard findConnector != nil else {
+            preset = .hooks
+            requestFindClips(from: .clipBar)
+            return
+        }
+        showFindClips = false
+        findClips(preset: .hooks, instruction: "")
+    }
+    /// Asks the chosen connector for clips with `preset` and `instruction`, the popover's when nil. They arrive as
+    /// suggestions in one undo step.
+    func findClips(preset requestedPreset: ClipPresetID? = nil, instruction requestedInstruction: String? = nil) {
         guard capabilities.ai, let shared = app.shared, let transcript = project.transcript, let provider = app.providers.first(where: { $0.id == app.string("llm.connector") }) else { return }
         let corrections = project.edits.corrections
         let cuts = Set(project.edits.cutWordIds)
         let selectedModel = app.string("llm.model.\(provider.id)", fallback: provider.defaultModel ?? "")
         let selectedSignature = rewriteConnectorSignature
-        let selectedPreset = preset
-        let instructions = instruction
+        let selectedPreset = requestedPreset ?? preset
+        let instructions = requestedInstruction ?? instruction
         let snapshot = project
         do {
             guard self.capabilities.ai, self.project == snapshot, self.app.string("llm.connector") == provider.id,

@@ -291,9 +291,9 @@ private final class FullScreenStandIn: NSWindow {
         #expect(work.timelineToggle.isEnabled && work.timelineItem.canCollapse)
     }
 
-    /// ⇧⌘K in the transcript and ⋯ › Find Clips… both ask for the popover at ⋯. The Clip
+    /// ⇧⌘K in the transcript and ⋯ › Find Clips… both ask for the popover at the clip bar. The Clip
     /// menu's item (tag 34) is DebugMenus' check; the popover itself is DebugShell's.
-    @Test func findClipsFromTheTranscriptAndFromOverflowAnchorsAtOverflow() throws {
+    @Test func findClipsFromTheTranscriptAndFromOverflowAnchorsAtTheClipBar() throws {
         _ = NSApplication.shared
         let app = AppModel()
         let model = try editor(app)
@@ -303,7 +303,7 @@ private final class FullScreenStandIn: NSWindow {
         let key = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .shift], timestamp: 0, windowNumber: 0, context: nil,
                                                 characters: "K", charactersIgnoringModifiers: "K", isARepeat: false, keyCode: 40))
         text.keyDown(with: key)
-        #expect(model.showFindClips && model.findClipsAnchor == .overflow)
+        #expect(model.showFindClips && model.findClipsAnchor == .clipBar)
         model.showFindClips = false
 
         let work = EditorWorkController(model: model, shell: WorkspaceShell(app: app))
@@ -312,11 +312,12 @@ private final class FullScreenStandIn: NSWindow {
         let index = try #require(menu.items.firstIndex { $0.title == "Find Clips…" })
         #expect(menu.items[index].isEnabled)
         menu.performActionForItem(at: index)
-        #expect(model.showFindClips && model.findClipsAnchor == .overflow)
+        #expect(model.showFindClips && model.findClipsAnchor == .clipBar)
         model.showFindClips = false
     }
 
-    /// VoiceOver reads the shell as five groups, in this order (impl-plan V1b).
+    /// VoiceOver reads the shell as five groups, in this order (impl-plan V1b), with the clip
+    /// bar's "Full Take tools" in the editor (design.md §10, V3b).
     @Test func theShellReadsAsFiveNamedGroups() async throws {
         let (shell, controller, _) = try await openShell()
         defer { controller.tearDown(); shell.editor?.close() }
@@ -325,7 +326,7 @@ private final class FullScreenStandIn: NSWindow {
             let own = view.isAccessibilityElement() && view.accessibilityRole() == .group && !label.isEmpty ? [label] : []
             return own + view.subviews.flatMap(groups)
         }
-        #expect(groups(controller.view) == ["Explorer", "Editor", "Viewer and panel", "Timeline", "Status"])
+        #expect(groups(controller.view) == ["Explorer", "Editor", "Full Take tools", "Viewer and panel", "Timeline", "Status"])
         let explorer = try #require(view("voxclip.shell.explorer", in: controller.view))
         #expect(!(explorer.accessibilityChildren() ?? []).isEmpty)
     }

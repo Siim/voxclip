@@ -526,7 +526,7 @@ import VoxClipCore
         window.setContentSize(NSSize(width: 900, height: 800))
         for _ in 0..<40 where shell.windowWidth >= shell.explorerCollapseWidth { try await Task.sleep(for: .milliseconds(25)) }
         app.settings.values["llm.connector"] = nil
-        editor.requestFindClips(from: .overflow)
+        editor.requestFindClips(from: .clipBar)
         check("at 900 Find Clips opens its popover without expanding the collapsed sidebar",
               shell.windowWidth < shell.explorerCollapseWidth && editor.showFindClips && !editor.showAISetup && !shell.sidebarOverlay && !shell.layout.explorerVisible)
         editor.showFindClips = false
@@ -847,8 +847,8 @@ import VoxClipCore
 
         app.settings.values["llm.connector"] = nil
         shell.layout.explorerVisible = false
-        model.requestFindClips(from: .overflow)
-        check("with no connector, Find Clips immediately opens the popover and preserves the hidden sidebar", !model.showAISetup && model.showFindClips && model.findClipsAnchor == .overflow && !shell.layout.explorerVisible)
+        model.requestFindClips(from: .clipBar)
+        check("with no connector, Find Clips immediately opens the popover and preserves the hidden sidebar", !model.showAISetup && model.showFindClips && model.findClipsAnchor == .clipBar && !shell.layout.explorerVisible)
         for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
             try await DebugUISuite.snapshot(FindClipsPopover(model: model).environment(app), name: "find-clips-no-connector-\(suffix)", size: NSSize(width: 380, height: 300), appearance: appearance, directory: directory, active: true)
         }

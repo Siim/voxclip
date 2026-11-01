@@ -244,6 +244,8 @@ enum EditorTabMetrics {
 
     /// The active tab's button.
     var activeItem: EditorTabItemView? { items[shell.tabs.active] }
+    /// Where Tab goes from a tab: the clip bar (impl-plan V3b).
+    weak var nextKeyViewAfterTabs: NSView? { didSet { for item in items.values { item.nextKeyView = nextKeyViewAfterTabs } } }
 
     /// F6's stop for the tab and clip-bar rows: the active tab.
     @discardableResult func focusActiveTab() -> Bool {
@@ -284,6 +286,7 @@ enum EditorTabMetrics {
         item.onClose = { [weak self] tab in self?.shell.closeTab(tab) }
         item.onKeepOpen = { [weak self] tab in self?.shell.tabs.keepOpen(tab) }
         item.onStep = { [weak self] tab, step in self?.step(step, from: tab) }
+        item.nextKeyView = nextKeyViewAfterTabs
         items[tab] = item
         strip.addSubview(item)
         return item
