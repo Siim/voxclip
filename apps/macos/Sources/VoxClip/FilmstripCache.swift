@@ -102,7 +102,7 @@ actor FilmstripCache {
 
     /// Reads the frame from the take's cache entry, or decodes it from the take and stores it
     /// there. The entry is leased while it is read or written (architecture §8.2).
-    nonisolated static func decodeFrame(_ source: FilmstripSource, _ frame: Int64, _ tolerance: Double) async -> CGImage? {
+    @concurrent nonisolated static func decodeFrame(_ source: FilmstripSource, _ frame: Int64, _ tolerance: Double) async -> CGImage? {
         var lease: CacheKeyLease?
         if let cache = source.cache { lease = await CacheKeyRegistry.shared(cache: cache).lease(source.contentKey) }
         defer { lease?.release() }
@@ -110,18 +110,13 @@ actor FilmstripCache {
         if let folder = ThumbnailCache.posterFolder(in: source.cache, contentKey: source.contentKey, create: false),
            let image = ThumbnailCache.readPoster(folder.appendingPathComponent(name)) { return image }
         guard !Task.isCancelled else { return nil }
-        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: source.url))
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = pixelSize
         let slack = CMTime(seconds: max(1.0 / Double(TimelineFilmstrip.fps), tolerance), preferredTimescale: 600)
-        generator.requestedTimeToleranceBefore = slack
-        generator.requestedTimeToleranceAfter = slack
-        let request = FilmstripRequest(generator)
+        let request = FilmstripRequest(url: source.url, size: pixelSize, tolerance: slack)
         let time = CMTime(seconds: Double(frame) / Double(TimelineFilmstrip.fps), preferredTimescale: 600)
         let image = await withTaskCancellationHandler {
             await request.image(at: time)
         } onCancel: {
-            request.cancel()
+            Task { await request.cancel() }
         }
         guard let image, !Task.isCancelled else { return nil }
         if let folder = ThumbnailCache.posterFolder(in: source.cache, contentKey: source.contentKey, create: true) {
@@ -131,10 +126,29 @@ actor FilmstripCache {
     }
 }
 
-/// One frame decode. `cancelAllCGImageGeneration` is safe to call from the cancellation handler.
-private final class FilmstripRequest: @unchecked Sendable {
+/// One confined AVFoundation object graph. The callback carries only its immutable image
+/// and a continuation; generator setup, requests and cancellation all stay on this actor.
+private actor FilmstripRequest {
     private let generator: AVAssetImageGenerator
-    init(_ generator: AVAssetImageGenerator) { self.generator = generator }
-    func image(at time: CMTime) async -> CGImage? { try? await generator.image(at: time).image }
-    func cancel() { generator.cancelAllCGImageGeneration() }
+    private var cancelled = false
+    init(url: URL, size: CGSize, tolerance: CMTime) {
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = size
+        generator.requestedTimeToleranceBefore = tolerance
+        generator.requestedTimeToleranceAfter = tolerance
+        self.generator = generator
+    }
+    func image(at time: CMTime) async -> CGImage? {
+        guard !cancelled, !Task.isCancelled else { return nil }
+        return await withCheckedContinuation { continuation in
+            generator.generateCGImagesAsynchronously(forTimes: [NSValue(time: time)]) { _, image, _, result, _ in
+                continuation.resume(returning: result == .succeeded ? image : nil)
+            }
+        }
+    }
+    func cancel() {
+        cancelled = true
+        generator.cancelAllCGImageGeneration()
+    }
 }
