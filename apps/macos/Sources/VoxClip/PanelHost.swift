@@ -47,11 +47,8 @@ struct PanelJobChoice {
 }
 
 extension EditorModel {
-    /// The Rewrite session the panel shows: the one on the active tab, while Voice Lab's
-    /// Rewrite is on.
-    var panelRewrite: RewriteSession? { app.voiceLabRewriteEnabled ? rewrite : nil }
-    /// The task the panel shows: the active tab's Rewrite session's.
-    var panelTask: DirectorTask? { panelRewrite?.task }
+    /// The task the panel shows: the active tab's Rewrite session's. Text Rewrite needs no Voice Lab (impl-plan V13).
+    var panelTask: DirectorTask? { rewrite?.task }
 }
 
 extension WorkspaceShell {
@@ -108,12 +105,8 @@ extension WorkspaceShell {
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if job == .rewrite, let session = model.panelRewrite {
-                    // The task's panel, or the passage panel while it waits to send or shows a proposal (until V13 and V15).
-                    switch session.task.state {
-                    case .ready, .proposal: RewritePanel(session: session)
-                    case .choosingAI, .running, .error: DirectorPanel(task: session.task, model: model)
-                    }
+                if job == .rewrite, let session = model.rewrite {
+                    DirectorPanel(task: session.task, model: model)
                 } else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

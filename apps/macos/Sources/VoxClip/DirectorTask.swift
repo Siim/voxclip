@@ -53,14 +53,19 @@ struct DirectorScope: Equatable, Sendable {
         case .selection(let inClip): inClip ? "clip" : "video"
         }
     }
-    /// R1x's headline for a scope over Rewrite's limits: "Clip 1 is too long to rewrite at once".
-    var tooLong: String {
+    /// The scope as a sentence's subject: "Clip 1", "Full take", "These words" (design.md R1x "{Full take | Clip {n}}").
+    var subject: String {
         switch kind {
-        case .clip(let number): "Clip \(number) is too long to rewrite at once"
-        case .fullTake: "Full take is too long to rewrite at once"
-        case .selection: wordCount == 1 ? "This word is too long to rewrite at once" : "These words are too long to rewrite at once"
+        case .clip(let number): "Clip \(number)"
+        case .fullTake: "Full take"
+        case .selection: wordCount == 1 ? "This word" : "These words"
         }
     }
+    /// R1x's headline for a scope over Rewrite's limits: "Clip 1 is too long to rewrite at once".
+    var tooLong: String { subject + (isPlural ? " are" : " is") + " too long to rewrite at once" }
+    /// R3's headline: "Clip 1 changed".
+    var changed: String { subject + " changed" }
+    private var isPlural: Bool { if case .selection = kind { wordCount != 1 } else { false } }
 }
 
 /// The context line (design.md §6.3.4): the AI's short name, its model and the send's state.
@@ -105,11 +110,13 @@ extension PanelAction: Equatable {
     static func == (lhs: PanelAction, rhs: PanelAction) -> Bool { lhs.id == rhs.id && lhs.title == rhs.title }
 }
 
-/// The headline, with its optional sub-line. While the task runs it carries the spinner, the
+/// The headline, with its optional sub-line and tag. While the task runs it carries the spinner, the
 /// elapsed time since `runningSince` and Stop.
 struct PanelHeadline: Equatable {
     var text: String
     var sub: String? = nil
+    /// A tag after the headline: "Beta" while R2 shows phrases in your voice with Voice Lab on (design.md §6.3.4).
+    var tag: String? = nil
     var runningSince: Date? = nil
     var stop: PanelAction? = nil
 }
@@ -144,23 +151,55 @@ struct ActivityStep: Identifiable, Equatable, Sendable {
 }
 
 /// A change a proposal makes, in transcript order; `ordinal` is the "Change {i} of {c}" the
-/// panel and the transcript share (design.md §6.3.5).
+/// panel and the transcript share (design.md §6.3.5). The proposal's producer keeps it as the
+/// transcript's proposal reads it, so its review follows the transcript's Keep and Undo.
 struct ProposalItem: Identifiable, Equatable, Sendable {
     enum Kind: String, Sendable { case cut, fix, voice }
+    /// Reviewed per change (impl-plan item 7): pending until kept or left out. A kept cut or fix is in the project; a kept
+    /// voice change is included for takes. A change left out is the change list's unchecked row.
+    enum State: Sendable { case pending, kept, excluded }
     let ordinal: Int
     let kind: Kind
     /// The transcript words it replaces or removes, in order.
     let sourceWordIDs: [String]
     /// Its new words; empty for a cut.
     let newWords: [String]
-    var included = true
+    /// The words it replaces or removes as the transcript reads them (corrections applied), in order.
+    var oldWords: [String] = []
+    /// It adds something the speaker didn't say: a number, a link or a name found nowhere in the scope or the instruction
+    /// (voice-lab.md §8.1 `checkThis`).
+    var checkThis = false
+    var state = State.pending
+    /// What its row reads: the words it would leave, or for a cut the words it removes.
+    var quote = ""
+    /// A line under the quote: why a voice change can't be made, or a warning.
+    var note: String? = nil
+    /// The note is a warning ("Check this: …", "Needs Voice Lab (beta)"): `status.warning` with its glyph.
+    var warns = false
+    /// It can be kept or left out. A voice change that can't be made has no review and stays left out (design.md R2).
+    var reviewable = true
+    /// "Change 1 of 6: removed to, to the; inserted your, in the", with ", left out" or ", kept" after a review.
+    var spoken = ""
     var id: Int { ordinal }
 }
 
 /// A proposal: what a task would change, before anything changes the project (design.md §6.5).
 struct ChangeSet: Equatable, Sendable {
     var items: [ProposalItem]
+    /// The change the transcript focuses, which the list shows selected.
+    var focused: Int? = nil
     var voiceCount: Int { items.filter { $0.kind == .voice }.count }
+    /// R2's headline: "6 changes", "1 change", or "No changes needed".
+    var headline: String { items.isEmpty ? "No changes needed" : items.count == 1 ? "1 change" : "\(items.count) changes" }
+    /// R2's sub-line: "2 cuts · 1 fix · 3 phrases in your voice", zero parts left out; nil with no changes.
+    var subline: String? {
+        func part(_ kind: ProposalItem.Kind, _ one: String, _ many: String) -> String? {
+            let count = items.filter { $0.kind == kind }.count
+            return count == 0 ? nil : count == 1 ? "1 \(one)" : "\(count) \(many)"
+        }
+        let parts = [part(.cut, "cut", "cuts"), part(.fix, "fix", "fixes"), part(.voice, "phrase in your voice", "phrases in your voice")].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
     /// "6 changes proposed. 3 need your voice." (design.md §10).
     var announcement: String {
         let changes = items.count == 1 ? "1 change proposed." : "\(items.count) changes proposed."
@@ -201,6 +240,14 @@ enum PanelCard: Identifiable, Equatable {
     case chooser([ConnectorChoice], saveKey: PanelAction?)
     /// A secure field for an API key, typed into `DirectorTask.keyDraft`; `label` is its placeholder and name.
     case keyField(provider: String, label: String)
+    /// A proposal's change list (R2), one row per change; `DirectorTask.review` keeps, undoes and focuses a change.
+    case changes(ChangeSet)
+    /// A warning callout: "These changes re-voice 72 words; …" (R2 over the voice budget).
+    case callout(String)
+    /// The Ask field with `placeholder`, where Ask for Something Else puts the keyboard. The clip bar holds it from V3b.
+    case ask(placeholder: String)
+    /// Voice Lab's takes for the proposal's voice change, until the Takes job (V18).
+    case takes
 
     var id: String {
         switch self {
@@ -209,6 +256,10 @@ enum PanelCard: Identifiable, Equatable {
         case .text(let text): "text:\(text)"
         case .chooser: "chooser"
         case .keyField(let provider, _): "key:\(provider)"
+        case .changes: "changes"
+        case .callout(let text): "callout:\(text)"
+        case .ask: "ask"
+        case .takes: "takes"
         }
     }
 }
@@ -245,18 +296,20 @@ enum PanelError: Equatable, Sendable {
     enum State: Equatable {
         /// R0: no AI is chosen.
         case choosingAI
-        /// Nothing runs: the task waits for the user to send (until V13 sends as a task opens).
-        case ready
-        /// R1.
+        /// R1. A task with an AI starts here, as its run starts as it opens.
         case running
-        /// R2: the proposal, shown by the passage panel until V15.
+        /// R2: the proposal, or "No changes needed" with no items. Its set follows each change's review.
         case proposal(ChangeSet)
         /// R1x.
         case error(PanelError)
+        /// R3: an edit inside the scope while a proposal was open or a run went on (design.md §6.3.6). Undoing back to the
+        /// proposal's revision shows it again.
+        case changed
     }
 
     let scope: RewriteScope
-    let words: DirectorScope
+    /// The scope's words; a new run reads them again (`rescope`), as edits in the scope change its count.
+    private(set) var words: DirectorScope
     private(set) var state: State
     /// Counts the runs started: a new turn brings the task's job back to the panel
     /// (`WorkspaceShell.panelJob(for:)`), though the user switched to Captions before it.
@@ -267,6 +320,12 @@ enum PanelError: Equatable, Sendable {
     private(set) var footer = PanelFooter()
     /// Closes the task ("Close Rewrite", Esc).
     let close: PanelAction
+    /// The harness line's borderless action: R2's "Ask again" (notes.md §7).
+    private(set) var contextAction: PanelAction?
+    /// Keeps, undoes, focuses or edits a change of a `.changes` card, by ordinal (impl-plan item 7).
+    @ObservationIgnored var review: (@MainActor (Int, ChangeReview) -> Void)?
+    /// The producer's work as the task's panel appears: Rewrite detects its AI for the context line's dot.
+    @ObservationIgnored var appeared: (@MainActor () async -> Void)?
     /// The row picked in a chooser card.
     private(set) var choice: String?
     /// Told when the user picks another row, so the producer can retitle the primary.
@@ -277,28 +336,50 @@ enum PanelError: Equatable, Sendable {
     private(set) var focusRequest = 0
     /// The keyboard is in the task's panel; its views report it as their focus changes. Moving it out drops a handover.
     @ObservationIgnored var keyboardInPanel = false { didSet { if !keyboardInPanel { keyboardHandover = false } } }
-    /// The view the panel draws next takes the keyboard: the task's first view, and the next one after a change of state
-    /// while the keyboard was in the panel. Until V15 the passage panel and the task's panel take turns, and the one that
-    /// goes takes the focused view with it; otherwise focus stays where the user moved it while the AI worked.
-    @ObservationIgnored private var keyboardHandover = true
+    /// The view the panel draws next takes the keyboard after a change of state while the keyboard was in the panel, so a
+    /// panel drawn again (another job or tab and back) gets back the keyboard it had; otherwise focus stays where the user
+    /// moved it while the AI worked. A task starts with focus where it was (design.md §10).
+    @ObservationIgnored private var keyboardHandover = false
 
+    /// A task that starts in `.running` is on its first turn; one that chooses its AI first gets turn 1 as it runs.
     init(scope: RewriteScope, words: DirectorScope, state: State, close: PanelAction) {
         self.scope = scope; self.words = words; self.state = state; self.close = close
+        turn = state == .running ? 1 : 0
         headline = PanelHeadline(text: words.title)
     }
+    /// The scope's words as a new run reads them.
+    func rescope(_ words: DirectorScope) { if words != self.words { self.words = words } }
 
     /// The right column's job that shows the task. Voice steps and takes move it to the
     /// Voice and Takes jobs (V16–V18).
     var job: PanelJob { .rewrite }
 
-    /// Shows `state` with its panel content. Entering `.running` starts a new turn.
-    func show(_ state: State, headline: PanelHeadline, cards: [PanelCard] = [], footer: PanelFooter = PanelFooter()) {
+    /// Shows `state` with its panel content. Entering `.running` starts a new turn. A proposal shown again after a review
+    /// is the same step: the keyboard stays where it is.
+    func show(_ state: State, headline: PanelHeadline, cards: [PanelCard] = [], footer: PanelFooter = PanelFooter(), contextAction: PanelAction? = nil) {
         if state == .running, self.state != .running { turn += 1 }
-        if state != self.state { keyboardHandover = keyboardHandover || keyboardInPanel }
-        self.state = state; self.headline = headline; self.cards = cards; self.footer = footer
+        if !Self.sameStep(state, self.state) { keyboardHandover = keyboardHandover || keyboardInPanel }
+        self.state = state; self.headline = headline; self.cards = cards; self.footer = footer; self.contextAction = contextAction
     }
-    /// Asks the view the panel draws next to take the keyboard (Ask for Something Else focuses the field).
-    func handOverKeyboard() { keyboardHandover = true }
+    private static func sameStep(_ lhs: State, _ rhs: State) -> Bool {
+        if case .proposal = lhs, case .proposal = rhs { return true }
+        return lhs == rhs
+    }
+    /// What the panel shows: a state with its content.
+    struct Shown {
+        let state: State
+        let headline: PanelHeadline
+        let cards: [PanelCard]
+        let footer: PanelFooter
+        let contextAction: PanelAction?
+        let context: DirectorContext?
+    }
+    var shown: Shown { Shown(state: state, headline: headline, cards: cards, footer: footer, contextAction: contextAction, context: context) }
+    /// Shows `shown` again: what a run replaced, when the run ends with nothing sent.
+    func show(_ shown: Shown) {
+        show(shown.state, headline: shown.headline, cards: shown.cards, footer: shown.footer, contextAction: shown.contextAction)
+        context = shown.context
+    }
     /// True once for the view that should take the keyboard as it appears.
     func takeKeyboardHandover() -> Bool {
         defer { keyboardHandover = false }
@@ -322,4 +403,39 @@ enum PanelError: Equatable, Sendable {
         for case .activity(let steps) in cards { return steps }
         return []
     }
+    /// The change list on the panel, if it shows one.
+    var changes: ChangeSet? {
+        for case .changes(let set) in cards { return set }
+        return nil
+    }
+
+    /// Return in the panel, outside a text field (design.md §10, "Rewrite without a pointer"): with a change list, Return
+    /// edits the focused change and ⌘Return runs the primary, so walking the list never applies, makes takes or pays;
+    /// elsewhere either runs the primary. False when nothing acts.
+    func pressReturn(command: Bool) -> Bool {
+        if let changes, !command {
+            guard let focused = changes.focused, let review else { return false }
+            review(focused, .edit)
+            return true
+        }
+        guard let primary = footer.primary else { return false }
+        primary.perform()
+        return true
+    }
+    /// Space on the change list: leaves the focused change out, or keeps one left out, as its row's checkbox would
+    /// (design.md R2). A kept cut or fix is in the project; ⌘Z takes it back. False when nothing acts.
+    func pressSpace() -> Bool {
+        guard let changes, let review, let item = changes.items.first(where: { $0.ordinal == changes.focused }), item.reviewable else { return false }
+        switch item.state {
+        case .pending: review(item.ordinal, .undo)
+        case .excluded: review(item.ordinal, .keep)
+        case .kept:
+            guard item.kind == .voice else { return false }
+            review(item.ordinal, .undo)
+        }
+        return true
+    }
 }
+
+/// What a change list row asks of its change.
+enum ChangeReview: Sendable { case focus, keep, undo, edit }

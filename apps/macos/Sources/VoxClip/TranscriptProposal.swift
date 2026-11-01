@@ -47,6 +47,10 @@ struct TranscriptChange: Equatable, Identifiable {
     /// An insertion has no source word; its words stand here.
     var anchor: Anchor?
     var state: State
+    /// It can be kept, left out or edited. The Rewrite job clears it on a phrase in your voice it can't make now (Voice
+    /// Lab off, a language with no voice check, a refused placement; design.md R2), which stays left out with no Keep,
+    /// Undo or edit here or in the change list until the job includes it again.
+    var reviewable = true
     var id: Int { ordinal }
 
     init(ordinal: Int, parts: [Part], anchor: Anchor? = nil, state: State = .pending) {
@@ -252,6 +256,39 @@ private struct TranscriptChangeReader {
         }
         return (old, absorbed, before, after, inserted)
     }
+    /// What a change removes and inserts as the transcript reads them, in reading order: the transcript's rotor and the
+    /// panel's change list read the same words.
+    func words(_ change: TranscriptChange) -> (removed: [String], inserted: [String]) {
+        let layout = layout(change)
+        let removed = (change.span + layout.absorbed).filter(layout.old.contains)
+            .sorted { (wordIndex[$0] ?? .max) < (wordIndex[$1] ?? .max) }
+        return (removed.map(text), layout.inserted)
+    }
+}
+
+extension TranscriptChange {
+    /// "Proposed change 1 of 5: removed to, to the; inserted your, in the", with ", left out" or ", kept" after a review;
+    /// the panel's list says "Change 1 of 5: …" (design.md §6.3.5: one ordinal for both).
+    func description(prefix: String = "Proposed change", count: Int, removed: [String], inserted: [String]) -> String {
+        func trimmed(_ text: String) -> String { text.hasSuffix(",") || text.hasSuffix(";") ? String(text.dropLast()) : text }
+        var parts: [String] = []
+        if !removed.isEmpty { parts.append("removed " + trimmed(removed.joined(separator: " "))) }
+        if !inserted.isEmpty { parts.append("inserted " + inserted.map(trimmed).joined(separator: ", ")) }
+        let reviewed = state == .excluded ? ", left out" : state == .kept ? ", kept" : ""
+        return "\(prefix) \(ordinal) of \(count): " + parts.joined(separator: "; ") + reviewed
+    }
+}
+
+/// A change as the Rewrite job's change list reads it (impl-plan V15): the words it removes and inserts, the words it
+/// would leave, and whether the project already holds it.
+struct TranscriptChangeReading: Equatable {
+    let change: TranscriptChange
+    let removed: [String]
+    let inserted: [String]
+    /// Its span as it would read: `EditorModel.changeText(_:)`.
+    let text: String
+    /// A cut or fix whose words the project already holds.
+    let applied: Bool
 }
 
 extension EditorModel {
@@ -277,7 +314,7 @@ extension EditorModel {
             }
             // What it removes and inserts, in every state: the rotor reads a change left out too.
             let layout = reader.layout(change)
-            let removed = (change.span + layout.absorbed).filter(layout.old.contains).map(reader.text), inserted = layout.inserted
+            let (removed, inserted) = reader.words(change)
             var positions: [Int] = change.span.compactMap { index[$0] }
             if change.state == .excluded {
                 for id in change.span { display.marks[id] = mark(.slot) }
@@ -297,17 +334,12 @@ extension EditorModel {
                 switch anchor { case .after(let id), .before(let id): positions += index[id].map { [$0] } ?? [] }
             }
             let lower = positions.min() ?? 0, upper = positions.max() ?? lower
-            func trimmed(_ text: String) -> String { text.hasSuffix(",") || text.hasSuffix(";") ? String(text.dropLast()) : text }
-            var parts: [String] = []
-            if !removed.isEmpty { parts.append("removed " + trimmed(removed.joined(separator: " "))) }
-            if !inserted.isEmpty { parts.append("inserted " + inserted.map(trimmed).joined(separator: ", ")) }
-            let state = change.state == .excluded ? ", left out" : change.state == .kept ? ", kept" : ""
             // The ordinal the change list shares (design.md §6.3.5), of all the proposal's changes.
             let count = proposal.changes.count
             display.shown.append(.init(ordinal: change.ordinal, kind: change.kind, state: change.state, count: count,
-                                       description: "Proposed change \(change.ordinal) of \(count): " + parts.joined(separator: "; ") + state, words: lower...upper))
+                                       description: change.description(count: count, removed: removed, inserted: inserted), words: lower...upper))
         }
-        if let focused = display.focused, capabilities.edit, let change = proposal[focused] {
+        if let focused = display.focused, capabilities.edit, let change = proposal[focused], change.reviewable {
             switch change.state {
             case .pending: display.actions = [.keep, .undo]
             case .kept: display.actions = [.undo]
@@ -330,6 +362,18 @@ extension EditorModel {
             words += layout.after[id] ?? []
         }
         return words.joined(separator: " ")
+    }
+
+    /// Every change of the proposal as the Rewrite job's change list reads it, in transcript order (impl-plan V15): kept
+    /// and left-out changes too, which the transcript no longer draws.
+    var changeReadings: [TranscriptChangeReading] {
+        guard let proposal else { return [] }
+        let reader = TranscriptChangeReader(self)
+        return proposal.changes.map { change in
+            let (removed, inserted) = reader.words(change)
+            return TranscriptChangeReading(change: change, removed: removed, inserted: inserted, text: changeText(change.ordinal),
+                                           applied: reader.isApplied(change))
+        }
     }
 
     /// The take time each pending change spans, from its first word to its last, for the
@@ -382,8 +426,8 @@ extension EditorModel {
         } else if display.shown(ordinal) == nil { proposal.focused = display.shown.first?.ordinal }
         self.proposal = proposal
     }
-    /// The cuts and corrections that apply a change's free parts.
-    private func commands(_ change: TranscriptChange) -> [EditCommand] {
+    /// The cuts and corrections that apply a change's free parts; Use Takes applies the pending ones with the take.
+    func commands(_ change: TranscriptChange) -> [EditCommand] {
         let reader = TranscriptChangeReader(self)
         var commands: [EditCommand] = []
         for part in change.parts {
@@ -401,8 +445,10 @@ extension EditorModel {
     /// Keep (⌘↩, impl-plan item 7): a cut or fix applies as one undo step, "Keep change {i}",
     /// whose undo also puts the change back as it was, pending or left out; a voice change is
     /// included for takes, with no project change and no undo step. Either is `.kept` from then on.
+    /// A change that can't be reviewed (`reviewable`) is not kept, and nothing is announced.
     @discardableResult func keepChange(_ ordinal: Int) -> Bool {
-        guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }) else { return false }
+        guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }),
+              proposal.changes[index].reviewable else { return false }
         let change = proposal.changes[index], order = proposalDisplay?.shown.map(\.ordinal) ?? []
         guard change.state != .kept else { return false }
         let previous = proposal
@@ -418,10 +464,11 @@ extension EditorModel {
         announce("Kept change \(ordinal)")
         return true
     }
-    /// Undo (⌘⌫, impl-plan item 7): the change is excluded, `included = false` in the change
-    /// list. The project does not change and no undo step is added.
+    /// Undo (⌘⌫, impl-plan item 7): the change is excluded, its row left out in the change list.
+    /// The project does not change and no undo step is added.
     @discardableResult func excludeChange(_ ordinal: Int) -> Bool {
-        guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }), proposal.changes[index].state != .excluded else { return false }
+        guard capabilities.edit, var proposal, let index = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }),
+              proposal.changes[index].reviewable, proposal.changes[index].state != .excluded else { return false }
         let order = proposalDisplay?.shown.map(\.ordinal) ?? []
         proposal.changes[index].state = .excluded
         self.proposal = proposal
@@ -475,7 +522,7 @@ extension EditorModel {
     /// new text replaces its parts. Nothing is sent. An empty text turns it into a cut of its
     /// words; a text equal to them leaves nothing to change, so the change is left out.
     @discardableResult func editChange(_ ordinal: Int, text: String) -> Bool {
-        guard var proposal, let slot = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }) else { return false }
+        guard var proposal, let slot = proposal.changes.firstIndex(where: { $0.ordinal == ordinal }), proposal.changes[slot].reviewable else { return false }
         var change = proposal.changes[slot]
         let trimmed = EditingPrimitives.jsTrim(text)
         let reader = TranscriptChangeReader(self)

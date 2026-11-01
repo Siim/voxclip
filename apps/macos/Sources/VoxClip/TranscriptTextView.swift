@@ -701,9 +701,9 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         let box = TranscriptGutter.visualBox(of: line, font: renderer.font).offsetBy(dx: origin.x + fragment.layoutFragmentFrame.minX, dy: origin.y + fragment.layoutFragmentFrame.minY)
         layer.show(renderer.spacerActions, blank: x, line: box)
     }
-    /// Renders the model now, as `updateNSView` would, so a change focused from a click or the
-    /// rotor has its place in the text before it is measured.
-    private func renderNow() {
+    /// Renders the model now, as `updateNSView` would, so a change focused from a click, the
+    /// rotor or the Rewrite job's change list has its place in the text before it is measured.
+    func renderNow() {
         guard let model, let coordinator = delegate as? TranscriptTextView.Coordinator else { return }
         coordinator.updating = true
         TranscriptTextView.render(model, coordinator: coordinator)
@@ -889,7 +889,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     func refreshSelectionBar() {
         guard let model else { return }
         let display = model.proposalDisplay
-        let signature = "\(model.selectedWordIDs.sorted()):\(model.selectedPauseIDs.sorted()):\(model.findVisible):\(model.correctionID ?? ""):\(model.cutWordIDs):\(model.cutPauseIDs):\(model.capabilities):\(model.app.voiceLabRewriteEnabled):\(display?.focused ?? 0):\(display?.actions ?? [])"
+        let signature = "\(model.selectedWordIDs.sorted()):\(model.selectedPauseIDs.sorted()):\(model.findVisible):\(model.correctionID ?? ""):\(model.cutWordIDs):\(model.cutPauseIDs):\(model.capabilities):\(model.rewriteAsksFirst):\(display?.focused ?? 0):\(display?.actions ?? [])"
         guard signature != barSignature else { return }
         barSignature = signature
         configureAccessibilityActions()
@@ -911,7 +911,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         if model?.capabilities.edit == true {
             actions += [NSAccessibilityCustomAction(name: "Make Clip", target: self, selector: #selector(accessibleMakeClip)), NSAccessibilityCustomAction(name: "Cut selected words", target: self, selector: #selector(accessibleCut)), NSAccessibilityCustomAction(name: "Restore selection", target: self, selector: #selector(accessibleRestore)), NSAccessibilityCustomAction(name: "Correct spelling", target: self, selector: #selector(accessibleCorrect))]
         }
-        if model?.capabilities.ai == true && model?.app.voiceLabRewriteEnabled == true { actions.append(NSAccessibilityCustomAction(name: "Rewrite", target: self, selector: #selector(accessibleRewrite))) }
+        if model?.capabilities.ai == true { actions.append(NSAccessibilityCustomAction(name: "Rewrite", target: self, selector: #selector(accessibleRewrite))) }
         // Keep and Undo are reached here and through the Proposed changes rotor, not the buttons (impl-plan §3.7).
         if let display = model?.proposalDisplay, let focused = display.focused {
             for action in display.actions {
@@ -997,7 +997,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         } else { host.alphaValue = 1 }
     }
     @objc func accessibleMakeClip() -> Bool { guard model?.capabilities.edit == true, model?.selectedIDs.isEmpty == false else { return false }; model?.makeClip(); return true }
-    @objc func accessibleRewrite() -> Bool { guard model?.capabilities.ai == true && model?.app.voiceLabRewriteEnabled == true, model?.selectedIDs.isEmpty == false else { return false }; model?.beginRewrite(entry: .context); return true }
+    @objc func accessibleRewrite() -> Bool { guard model?.capabilities.ai == true, model?.selectedIDs.isEmpty == false else { return false }; model?.runRewrite(); return true }
     @objc func accessibleCut() -> Bool { guard let model, model.capabilities.edit, !model.selectedIDs.isEmpty || !model.selectedPauseIDs.isEmpty else { return false }; model.cutSelection(); return true }
     @objc func accessibleRestore() -> Bool { guard let model, model.capabilities.edit else { return false }; model.cutSelection(restore: true); return true }
     @objc func accessibleCorrect() -> Bool { guard let model, model.capabilities.edit, !model.selectedIDs.isEmpty else { return false }; model.beginCorrection(); updateCorrection(); return true }
@@ -1146,7 +1146,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
                 if shift { model.requestFindClips(from: .overflow) } else { model.makeClip() }
                 return
             }
-            if shift, event.charactersIgnoringModifiers?.lowercased() == "r" { model.beginRewrite(entry: .shortcut); return }
+            if shift, event.charactersIgnoringModifiers?.lowercased() == "r" { model.runRewrite(); return }
             if event.keyCode == 126, let first = model.words.first { model.select(first.id); return }
             if event.keyCode == 125, let last = model.words.last { model.select(last.id); return }
             super.keyDown(with: event); return
@@ -1200,7 +1200,8 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
         for (title, action) in [("Cut", #selector(cutWords)), ("Restore", #selector(restoreWords)), ("Correct spelling…", #selector(correctWord)), ("Play from here", #selector(playHere)), ("Preview this cut", #selector(previewCut)), ("Make clip from selection", #selector(makeClip)), ("Copy text", #selector(copy(_:)))] { let item = NSMenuItem(title: title, action: action, keyEquivalent: ""); item.target = self; menu.addItem(item) }
-        if model?.app.voiceLabRewriteEnabled == true { let item = NSMenuItem(title: "Rewrite…", action: #selector(rewriteWords), keyEquivalent: "r"); item.keyEquivalentModifierMask = [.command, .shift]; item.target = self; menu.addItem(item) }
+        let rewrite = NSMenuItem(title: model?.rewriteAsksFirst == true ? "Rewrite…" : "Rewrite", action: #selector(rewriteWords), keyEquivalent: "r")
+        rewrite.keyEquivalentModifierMask = [.command, .shift]; rewrite.target = self; menu.addItem(rewrite)
         if let model, model.app.voiceLabRewriteEnabled, let segment = voiceLabSegment {
             let enabled = model.capabilities.edit && !model.capabilities.exporting && !model.capabilities.aiBusy
             menu.addItem(.separator())
@@ -1221,7 +1222,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
         if [#selector(toggleVoiceLab), #selector(deleteVoiceLab), #selector(chooseVoiceLab(_:))].contains(item.action) {
             return model?.app.voiceLabRewriteEnabled == true && voiceLabSegment != nil && model?.capabilities.edit == true && model?.capabilities.exporting == false && model?.capabilities.aiBusy == false
         }
-        if item.action == #selector(rewriteWords) { return model?.app.voiceLabRewriteEnabled == true && model?.capabilities.ai == true && model?.selectedIDs.isEmpty == false }
+        if item.action == #selector(rewriteWords) { return model?.capabilities.ai == true && model?.selectedIDs.isEmpty == false }
         if [#selector(cutWords), #selector(restoreWords)].contains(item.action) {
             return model?.capabilities.edit == true && (model?.selectedIDs.isEmpty == false || model?.selectedPauseIDs.isEmpty == false)
         }
@@ -1236,7 +1237,7 @@ final class TranscriptViewportRelay: NSObject, NSTextViewportLayoutControllerDel
     @objc private func playHere() { model?.transport(" ", shift: true) }
     @objc private func previewCut() { model?.transport("p") }
     @objc private func makeClip() { model?.makeClip() }
-    @objc private func rewriteWords() { model?.beginRewrite(entry: .context) }
+    @objc private func rewriteWords() { model?.runRewrite() }
     private var voiceLabSegment: VoiceLabSegment? {
         guard let model else { return nil }
         return model.project.voiceLab.segments.first { segment in

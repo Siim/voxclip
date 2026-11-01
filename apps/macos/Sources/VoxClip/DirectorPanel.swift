@@ -11,6 +11,8 @@ import VoxClipCore
     /// The editor whose F6 order the panel joins; nil in scenes outside an editor.
     var model: EditorModel?
     @FocusState private var keyFieldFocused: Bool
+    /// The Ask field (`.ask`) has the keyboard.
+    @FocusState private var askFocused: Bool
     /// The keyboard is in the panel: on the pane itself (F6, a handover) or a field inside it.
     @FocusState private var keyboardWithin: Bool
     /// The pane itself has the keyboard, as `EditorPaneFocus` holds it. The handover sets it
@@ -43,34 +45,53 @@ import VoxClipCore
         .focused($keyboardWithin)
         // Esc and ⌘. (design.md §8): Stop while the task runs, which closes it too, else Close.
         .onExitCommand { (task.headline.stop ?? task.close).perform() }
-        // ⌘Return from anywhere in the panel, Return outside a text field: the primary.
+        // ⌘Return from anywhere in the panel: the primary. Return outside a text field edits the focused change of a change
+        // list, else runs the primary; Space leaves the focused change out or keeps it (`DirectorTask.pressReturn`).
         .onKeyPress(keys: [.return]) { press in
-            guard let primary = task.footer.primary, press.modifiers.contains(.command) || !keyFieldFocused else { return .ignored }
-            primary.perform()
-            return .handled
+            let command = press.modifiers.contains(.command)
+            guard command || !keyFieldFocused && !askFocused else { return .ignored }
+            return task.pressReturn(command: command) ? .handled : .ignored
+        }
+        .onKeyPress(keys: [.space]) { press in
+            guard press.modifiers.isEmpty, !keyFieldFocused, !askFocused else { return .ignored }
+            return task.pressSpace() ? .handled : .ignored
         }
         .onKeyPress(keys: [.upArrow, .downArrow]) { press in
-            guard !keyFieldFocused, let rows = chooserRows, !rows.isEmpty else { return .ignored }
-            let index = rows.firstIndex { $0.id == task.choice } ?? -1
-            let next = press.key == .upArrow ? max(0, index - 1) : min(rows.count - 1, index + 1)
-            task.choose(rows[next].id)
+            guard !keyFieldFocused, !askFocused else { return .ignored }
+            if let rows = chooserRows, !rows.isEmpty {
+                let index = rows.firstIndex { $0.id == task.choice } ?? -1
+                let next = press.key == .upArrow ? max(0, index - 1) : min(rows.count - 1, index + 1)
+                task.choose(rows[next].id)
+                return .handled
+            }
+            // ↑ and ↓ walk the change list, as ⌥↑ and ⌥↓ walk the hunks.
+            guard let changes = task.changes, !changes.items.isEmpty else { return .ignored }
+            let index = changes.items.firstIndex { $0.ordinal == changes.focused } ?? -1
+            let next = press.key == .upArrow ? max(0, index - 1) : min(changes.items.count - 1, index + 1)
+            task.review?(changes.items[next].ordinal, .focus)
             return .handled
         }
-        .onChange(of: task.focusRequest) { _, _ in keyFieldFocused = true }
+        .onChange(of: task.focusRequest) { _, _ in
+            if task.cards.contains(where: { if case .ask = $0 { true } else { false } }) { askFocused = true } else { keyFieldFocused = true }
+        }
         .onChange(of: keyboardWithin) { _, _ in reportKeyboard() }
         .onChange(of: paneHolds) { _, _ in reportKeyboard() }
         .onChange(of: keyFieldFocused) { _, _ in reportKeyboard() }
+        .onChange(of: askFocused) { _, _ in reportKeyboard() }
         // Replacing the passage panel that had the keyboard, it takes it, so Esc, ⌘. and Return still act (design.md R1).
+        // Then the producer's own work as the panel appears (Rewrite detects its AI).
         .task {
-            guard task.takeKeyboardHandover() else { return }
-            if task.cards.contains(where: { if case .keyField = $0 { true } else { false } }) { keyFieldFocused = true } else { keyboardWithin = true; paneHolds = true }
+            if task.takeKeyboardHandover() {
+                if task.cards.contains(where: { if case .keyField = $0 { true } else { false } }) { keyFieldFocused = true } else { keyboardWithin = true; paneHolds = true }
+            }
+            await task.appeared?()
         }
         .columnLayoutEvidence("director.panel")
     }
 
     /// Tells the task whether the keyboard is anywhere in the panel.
     private func reportKeyboard() {
-        task.keyboardInPanel = keyboardWithin || paneHolds || keyFieldFocused
+        task.keyboardInPanel = keyboardWithin || paneHolds || keyFieldFocused || askFocused
     }
 
     private var chooserRows: [ConnectorChoice]? {
@@ -91,6 +112,18 @@ import VoxClipCore
                     .columnLayoutEvidence("director.context", text: context.text)
             }
             Spacer(minLength: 4)
+            // R2's "Ask again" (notes.md §7): borderless, before Close.
+            if let again = task.contextAction {
+                Button(action: again.perform) {
+                    Label(again.title, systemImage: "arrow.clockwise").labelStyle(.titleAndIcon)
+                        .font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                        .padding(.horizontal, 6).frame(height: 22).contentShape(Rectangle())
+                        .modifier(PanelButtonEvidence(action: again))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(again.title)
+                .accessibilityIdentifier("voxclip.director.\(again.id)")
+            }
             Button(action: task.close.perform) {
                 Image(systemName: "xmark").font(.system(size: 11, weight: .medium))
                     .foregroundStyle(DesignValues.color("text.tertiary"))
@@ -126,6 +159,21 @@ import VoxClipCore
         case .keyField(let provider, let label):
             KeyField(label: label, text: $task.keyDraft, focused: $keyFieldFocused) { task.footer.primary?.perform() }
                 .columnLayoutEvidence("director.key.\(provider)")
+        case .changes(let set): ChangeListCard(set: set, task: task)
+        case .callout(let text):
+            Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: "exclamationmark.triangle.fill") }
+                .font(VCType.callout.font()).foregroundStyle(DesignValues.color("status.warning"))
+                .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(DesignValues.color("line.default"), lineWidth: 1) }
+                .accessibilityElement(children: .combine)
+                .columnLayoutEvidence("director.callout", text: text)
+        case .ask(let placeholder):
+            // The Ask field, bound to the editor; Return runs Rewrite on the task's scope. The clip bar holds it from V3b.
+            if let model {
+                AskField(editor: model, focused: $askFocused) { model.runRewrite(scope: task.scope) }
+                    .columnLayoutEvidence("director.ask", text: placeholder)
+            }
+        case .takes: RewriteTakesCard(model: model)
         }
     }
 }
@@ -148,6 +196,14 @@ import VoxClipCore
             if let sub = headline.sub {
                 Text(sub).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if let tag = headline.tag {
+                // "Beta" in a hairline capsule (design.md §6.3.4), read after the headline.
+                Text(tag).font(VCType.small.font(.medium)).foregroundStyle(DesignValues.color("text.secondary"))
+                    .padding(.horizontal, 5).frame(height: 16)
+                    .overlay { RoundedRectangle(cornerRadius: 4).strokeBorder(DesignValues.color("line.strong"), lineWidth: 1) }
+                    .fixedSize()
+                    .columnLayoutEvidence("director.tag", text: tag)
             }
             if let since = headline.runningSince {
                 TimelineView(.periodic(from: since, by: 1)) { context in

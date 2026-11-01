@@ -450,6 +450,41 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(!red)
     }
 
+    /// A pending proposed change is a 3 pt `change.add` bar in the ruler on either axis, under the selection's bar
+    /// (notes.md §6), and goes once it is kept or left out (impl-plan V14, V15).
+    @Test(arguments: [TimelineAxis.edited, .source]) func pendingChangesAreRulerBars(_ axis: TimelineAxis) throws {
+        let app = try app()
+        let model = editor(app, project: try project())
+        defer { model.close() }
+        model.showsCuts = axis == .source
+        // The playhead inside the clip before the canvas follows it, so neither axis pages.
+        model.sourceTime = 20.4
+        model.playhead = model.timelineTime(source: 20.4, on: .edited)
+        model.proposal = TranscriptProposal(clipID: "clip-1", title: "Rewrite clip 1", changes: [
+            TranscriptChange(ordinal: 1, parts: [.init(kind: .cut, sourceWordIDs: ["t20", "t21"])])
+        ])
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        canvas.renderContent()
+        canvas.followPlayhead()
+        let change = try #require(canvas.content.changes.first)
+        #expect(canvas.content.changes.count == 1 && canvas.ruler.state.changes == canvas.content.changes)
+        #expect(abs(change.lowerBound - model.timelineTime(source: 20, on: axis)) < 1e-6 && abs(change.upperBound - model.timelineTime(source: 21.8, on: axis)) < 1e-6)
+        canvas.layoutSubtreeIfNeeded()
+        window.displayIfNeeded()
+        let x = TimelineMetrics.header + CGFloat(canvas.viewport.x((change.lowerBound + change.upperBound) / 2))
+        #expect(try Pixels(canvas).shows(x, TimelineMetrics.ruler.y + 20.5, "change.add"))
+        // The selection's bar draws over it.
+        model.selectedWordIDs = ["t20", "t21"]
+        canvas.renderContent()
+        window.displayIfNeeded()
+        #expect(try Pixels(canvas).shows(x, TimelineMetrics.ruler.y + 20.5, "tint.default"))
+        model.selectedWordIDs = []
+        model.excludeChange(1)
+        canvas.renderContent()
+        #expect(canvas.content.changes.isEmpty && canvas.ruler.state.changes.isEmpty)
+    }
+
     // MARK: A1
 
     /// The default project with words 14, 15, 20 and 24 cut, a speech envelope (each word

@@ -243,7 +243,8 @@ private final class GenerationDispatchCount: Sendable {
         #expect(RewriteSession.proposalError(.refused(category: nil), provider: "Example", model: "test").contains("declined to rewrite"))
         #expect(RewriteSession.proposalError(.truncated, provider: "Example", model: "test").contains("rewrite was incomplete"))
     }
-    @Test(arguments: 0..<4) func exposureAndGenerationShareTheBetaGate(bits: Int) throws {
+    /// Takes keep Voice Lab's beta gate; text Rewrite needs none (impl-plan V13): Edit › Rewrite is on in every case.
+    @Test(arguments: 0..<4) func takesShareTheBetaGateAndTextRewriteDoesNot(bits: Int) throws {
         let enabled = bits & 1 != 0, accepted = bits & 2 != 0
         let app = AppModel()
         app.settings.values["voiceLab.enabled"] = .bool(enabled)
@@ -254,10 +255,10 @@ private final class GenerationDispatchCount: Sendable {
         let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
         let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
         defer { editor.close() }
-        let session = RewriteSession(editor: editor, range: 0...0, envelope: nil, connector: nil)
-        let expected = VoiceLabGate.rewriteEnabled(enabled: enabled, noticeAccepted: accepted, internalBuild: RewriteEntryPolicy.buildEnabled)
+        let session = RewriteSession(editor: editor, scope: .selection(0...0), envelope: nil, connector: nil)
+        let expected = VoiceLabGate.rewriteEnabled(enabled: enabled, noticeAccepted: accepted, internalBuild: AppModel.internalBuild)
         #expect(app.voiceLabRewriteEnabled == expected)
-        #expect(editor.mutationEnabled(38) == expected)
+        #expect(editor.mutationEnabled(38) == true)
         #expect(session.generationIsCurrent(region: .default) == expected)
         #expect(!session.generationIsCurrent(region: .eu))
         app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(false)
@@ -265,7 +266,7 @@ private final class GenerationDispatchCount: Sendable {
         let lease = try #require(editor.llmRuns.acquire())
         #expect(editor.mutationEnabled(38) == false)
         editor.llmRuns.release(lease)
-        #expect(editor.mutationEnabled(38) == expected)
+        #expect(editor.mutationEnabled(38) == true)
         editor.mediaResolved = false
         #expect(editor.mutationEnabled(38) == false)
     }
@@ -455,29 +456,6 @@ private final class GenerationDispatchCount: Sendable {
         #expect(session.canExecute && session.rows == retained && session.selectedID == retainedID)
         session.invalidate()
     }
-    @Test func editedWordsRefreshTheQuoteWithoutDiscardingPreviousTakes() async throws {
-        let app = AppModel()
-        app.settings.values["voiceLab.enabled"] = .bool(true)
-        app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
-        app.settings.values["transcription.elevenlabs.region"] = .string("default")
-        let shared = try SharedResources.locate()
-        let project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-render-v3.voxclip")))
-        let editor = EditorModel(document: VoxClipDocument(project: project, demo: true), app: app, preview: DemoPreviewEngine())
-        defer { editor.close() }
-        let rewrite = RewriteSession(editor: editor, range: 0...0, envelope: nil, connector: nil)
-        rewrite.configureGeneration(client: ElevenLabsVoiceLab(keys: GenerationTestKeys(), region: .default),
-            store: VoiceConsentStore(locations: app.locations), speaker: .unavailable)
-        let generation = try #require(rewrite.generation)
-        let previous = row(index: 0)
-        generation.review(.init(rows: [previous], end: .completed))
-        var preparations = 0
-        generation.prepareQuote = { preparations += 1 }
-        rewrite.edit("New wording")
-        await generation.finishQuotePreparationForTests()
-        #expect(preparations == 1 && generation.rows == [previous] && generation.selectedID == previous.id)
-        #expect(!generation.readyToAccept)
-        rewrite.close()
-    }
     @Test func changedLengthRequiresExplicitTakeAndVideoChoices() {
         let session = session(); let take = row(index: 0, residual: 0.5)
         session.review(VoiceLabTakeRunResult(rows: [take], end: .completed))
@@ -564,11 +542,11 @@ private final class GenerationDispatchCount: Sendable {
     }
     @Test func remoteLocalServerNeverClaimsNothingLeavesTheMac() {
         for url in ["http://localhost:11434", "http://127.0.0.1:8080", "http://[::1]:8080"] {
-            #expect(RewriteSession.localSendLine(count: 12, baseURL: url) == "Runs on this Mac. Nothing leaves it.")
+            #expect(RewriteSession.localSendLine(words: "these 12 words", baseURL: url) == "Runs on this Mac. Nothing leaves it.")
         }
-        #expect(RewriteSession.localSendLine(count: 12, baseURL: "http://192.168.1.2:8080") == "Sends these 12 words to 192.168.1.2.")
-        #expect(RewriteSession.localSendLine(count: 12, baseURL: "https://inference.example.test") == "Sends these 12 words to inference.example.test.")
-        #expect(!RewriteSession.localSendLine(count: 12, baseURL: "invalid").contains("Nothing leaves"))
+        #expect(RewriteSession.localSendLine(words: "these 12 words", baseURL: "http://192.168.1.2:8080") == "Sends these 12 words to 192.168.1.2.")
+        #expect(RewriteSession.localSendLine(words: "the 118 words of clip 1", baseURL: "https://inference.example.test") == "Sends the 118 words of clip 1 to inference.example.test.")
+        #expect(!RewriteSession.localSendLine(words: "these 12 words", baseURL: "invalid").contains("Nothing leaves"))
     }
     @Test func unavailableCleaningHasAnExplicitReasonAndSafeAlternative() {
         let copy = RewriteSession.refusal(VoiceLabGeometryError.roomToneUnavailable)

@@ -19,7 +19,7 @@ actor ConsentFixtureConnector: LLMConnector {
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) -> RawCompletion {
         sends += 1
-        let text = request.feature == .test ? "{\"ok\":true,\"echo\":\"voxclip\"}" : request.feature == .voiceRewrite ? "{\"rewrite\":\"A clearer passage\"}" : "{\"clips\":[]}"
+        let text = request.feature == .test ? "{\"ok\":true,\"echo\":\"voxclip\"}" : request.feature == .voiceRewrite ? RewriteFixtureReply.text(for: request) : "{\"clips\":[]}"
         return RawCompletion(text: text, model: model, stop: .complete)
     }
 }
@@ -36,10 +36,8 @@ actor ConsentFixtureConnector: LLMConnector {
 @MainActor enum DebugConnectorRequests {
     static func run(fixture: Project, directory: URL) async throws -> [DebugUISuite.Result] {
         var results: [DebugUISuite.Result] = []
-        results.append(.init(name: "Release shortcuts omit Rewrite without hiding other bindings", passed:
-            !ShortcutsView.bindings(internalBuild: false).contains { $0.contains("Rewrite") || $0.contains("⇧⌘R") }
-                && ShortcutsView.bindings(internalBuild: true).contains("⇧⌘R|Rewrite")
-                && ShortcutsView.lines == ShortcutsView.bindings(internalBuild: RewriteEntryPolicy.buildEnabled)))
+        results.append(.init(name: "Shortcuts list text Rewrite after Find clips", passed:
+            ShortcutsView.lines.firstIndex(of: "⇧⌘R|Rewrite") == ShortcutsView.lines.firstIndex(of: "⇧⌘K|Find clips").map { $0 + 1 }))
         func check(_ name: String, _ passed: Bool) { results.append(.init(name: name, passed: passed)) }
         for id in ["anthropic", "claude-code", "codex"] {
             let methods: [String?] = id == "anthropic" ? ["api_key"] : ["api_key", id == "codex" ? "chatgpt" : "claude.ai", nil, "unrecognized"]
@@ -73,12 +71,9 @@ actor ConsentFixtureConnector: LLMConnector {
                         editor.findClips()
                         await editor.findTask?.value
                     case .rewrite:
-                        editor.beginRewrite()
+                        editor.runRewrite()
                         await wait { editor.rewrite != nil }
-                        if let session = editor.rewrite {
-                            await session.detectConnector(); await session.prepare()
-                            if let quote = session.quote { session.markEstimateShown(quote.id); _ = await session.propose(quote) }
-                        }
+                        await editor.rewrite?.actionTask?.value
                     case .test:
                         _ = await testProvider(provider, app: app)
                     }

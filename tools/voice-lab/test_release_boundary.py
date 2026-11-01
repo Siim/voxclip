@@ -1,7 +1,20 @@
+import pathlib
 import subprocess
+import tempfile
 import unittest
 
-from check_release_boundary import CAPABILITY_CALL, POLICY_CALL, PROOF_CALL, require_access_rejection, same_module_source
+from check_release_boundary import CAPABILITY_CALL, POLICY_CALL, PROOF_CALL, check_internal_build, require_access_rejection, same_module_source
+
+FLAG = """extension AppModel {
+    static var internalBuild: Bool {
+        #if DEBUG
+        true
+        #else
+        %s
+        #endif
+    }
+}
+"""
 
 
 class ReleaseBoundaryTests(unittest.TestCase):
@@ -29,6 +42,28 @@ class ReleaseBoundaryTests(unittest.TestCase):
         self.assertIn('func authorized(for quote: VoiceLabQuote, proof: VoiceSpeakerMatch)', source)
         self.assertIn('fileprivate init(recordID:', source)
         self.assertIn('type(of: policy.capability!).init(quote: quote, reserve: nil, validate: {})', CAPABILITY_CALL)
+
+    def test_release_builds_are_never_internal(self):
+        root = pathlib.Path(__file__).resolve().parents[2] / 'apps/macos/Sources'
+        check_internal_build(root)
+        cases = {
+            'false': 'let gate = VoiceLabGate.rewriteEnabled(enabled: true, noticeAccepted: false, internalBuild: Self.internalBuild)',
+            'true': None,
+        }
+        for release, call in cases.items():
+            with tempfile.TemporaryDirectory() as directory:
+                sources = pathlib.Path(directory)
+                (sources / 'VoxClip').mkdir()
+                (sources / 'VoxClip/VoiceLabSession.swift').write_text(FLAG % release)
+                if call:
+                    (sources / 'VoxClip/Gate.swift').write_text('#if DEBUG\nlet any = f(internalBuild: true)\n#endif\n' + call + '\n')
+                    check_internal_build(sources)
+                    (sources / 'VoxClip/Gate.swift').write_text(call.replace('Self.internalBuild', 'true') + '\n')
+                    with self.assertRaisesRegex(RuntimeError, 'internalBuild: true'):
+                        check_internal_build(sources)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'internalBuild as true'):
+                        check_internal_build(sources)
 
 
 if __name__ == '__main__':

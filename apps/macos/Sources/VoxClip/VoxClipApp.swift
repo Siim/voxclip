@@ -199,10 +199,6 @@ import VoxClipCore
         if let url = item.representedObject as? URL { openFile(url, app: model) }
     }
     func menuNeedsUpdate(_ menu: NSMenu) {
-        if menu.title == "Edit" {
-            menu.items.first { $0.tag == 38 }?.isHidden = !model.voiceLabRewriteEnabled
-            return
-        }
         menu.removeAllItems()
         model.recentProjects.refresh(model.recent)
         for url in model.recent {
@@ -287,8 +283,7 @@ import VoxClipCore
         case 33: editor.moveClip(1)
         case 34: editor.requestFindClips(from: .overflow)
         case 37: confirmRetranscription()
-        case 38: editor.beginRewrite(entry: .menu)
-        case 39: editor.beginRewrite(inserting: true)
+        case 38: editor.runRewrite()
         case 40: if let id = selectedClipID { editor.keep(id) }
         case 41: if let id = selectedClipID { editor.dismiss(id) }
         case 42: editor.keepAll()
@@ -364,6 +359,7 @@ import VoxClipCore
             return NSApp.keyWindow != nil
         }
         if item.action == #selector(performEditorCommand(_:)) {
+            if item.tag == 38 { item.title = editor?.rewriteMenuTitle ?? "Rewrite Full Take" }
             switch item.tag {
             case 13: return mainWindowIsKey
             case 14: return mainWindowIsKey && model.shell.document != nil
@@ -400,8 +396,7 @@ import VoxClipCore
             }
             switch item.tag {
             case 1, 3, 29: return editor.capabilities.edit && !editor.selectedIDs.isEmpty
-            case 38: return RewriteEntryPolicy.resolve(.menu, enabled: model.bool("voiceLab.enabled"), noticeAccepted: model.bool("voiceLab.betaNoticeAccepted"), editable: editor.capabilities.ai, selection: !editor.selectedIDs.isEmpty) != .unavailable
-            case 39: return false
+            case 38: return RewriteEntryPolicy.canRun(editable: editor.capabilities.ai, scope: editor.rewriteScopeNow)
             case 48: return !editor.selectedIDs.isEmpty
             case 2: return editor.capabilities.edit && (!editor.selectedWordIDs.isDisjoint(with: editor.cutWordIDs) || !editor.selectedPauseIDs.isDisjoint(with: editor.cutPauseIDs))
             case 40, 41: return editor.capabilities.edit && selectedClipID.map(editor.isSuggestion) == true
@@ -496,10 +491,8 @@ import VoxClipCore
         command(edit, "Cut Selection", 1, String(UnicodeScalar(NSDeleteCharacter)!), [])
         command(edit, "Restore Selection", 2, String(UnicodeScalar(NSDeleteCharacter)!), [.shift])
         command(edit, "Correct Word", 3, "c", [])
-        command(edit, "Rewrite…", 38, "r", [.command, .shift])
-        edit.delegate = self
-        edit.items.first { $0.tag == 38 }?.isHidden = !model.voiceLabRewriteEnabled
-        edit.items.first { $0.tag == 38 }?.allowsKeyEquivalentWhenHidden = false
+        // Edit › Rewrite {scope} (design.md §8): `validateMenuItem` retitles it for the scope and the AI.
+        command(edit, "Rewrite Full Take", 38, "r", [.command, .shift])
         command(edit, "Copy Text", 48)
         command(edit, "Find…", 4, "f")
         command(edit, "Find Next", 5, "g")

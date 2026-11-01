@@ -77,6 +77,8 @@ extension ProviderChoice {
     var providers: [ProviderChoice] = []
     var styles: [CaptionStyle] = []
     var recent: [URL] = []
+    /// Rewrite's recent instructions per project ID, most recent first (`rewriteSuggestions(for:)`). In memory only.
+    var rewriteRecents: [String: [String]] = [:]
     func noteRecent(_ url: URL) {
         if !Self.isTestSession { NSDocumentController.shared.noteNewRecentDocumentURL(url) }
         recent.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
@@ -245,7 +247,7 @@ extension ProviderChoice {
         log = logger
         secrets = SecretStore(log: logger)
         self.settingsStore = settingsStore ?? JSONSettingsStore(locations: data, logger: logger)
-        unsetDefaults = developmentDefaults && settingsStore == nil ? VoiceLabGate.developmentDefaults(internalBuild: RewriteEntryPolicy.buildEnabled) : [:]
+        unsetDefaults = developmentDefaults && settingsStore == nil ? VoiceLabGate.developmentDefaults(internalBuild: Self.internalBuild) : [:]
         projectStore = JSONProjectStore(logger: logger)
         self.updates = updates
         self.modelDownloader = modelDownloader
@@ -363,7 +365,9 @@ extension ProviderChoice {
             if bool(consent) { set(consent, .bool(false)) }
         }
         if key == "voiceLab.labelPosition" { Task { await shell.editor?.updatePreview(load: false) } }
-        if key == "voiceLab.enabled" || key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
+        // Text Rewrite needs no Voice Lab (design.md §6.3): turning it on or off leaves an open session, whose takes
+        // follow `voiceLabRewriteEnabled` on their own (`RewriteSession.generationIsCurrent`).
+        if key == "llm.connector" || key.hasPrefix("llm.model.") || key.hasPrefix("llm.baseUrl.") || key.hasPrefix("llm.cliPath.") {
             shell.editor?.closeRewrite(returnFocus: false)
         }
         guard settingsLoaded else { if loadingSettings { pendingSettings[key] = value }; return true }
@@ -422,9 +426,13 @@ extension ProviderChoice {
         let provider = providers.first { context == "ai:\($0.label)" || context == "ai-test:\($0.label)" }
         let message = UserMessages.message(error, context: context, model: provider.map { string("llm.model.\($0.id)", fallback: $0.defaultModel ?? "the selected model") } ?? "the selected model", installHint: provider?.cli?.installHint, signInHint: provider?.cli?.signInHint, connectorID: provider?.id)
         guard !message.isEmpty else { return "" }
+        await logFailure(error, context: context)
+        return await log.redact(message)
+    }
+    /// Writes a failure's code to the app log, never its text: "llm: code=operationFailed" for an AI context.
+    func logFailure(_ error: any Error, context: String) async {
         let category = context.hasPrefix("ai") ? "llm" : context == "export" ? "export" : "settings"
         await log.write(LogEntry(level: .error, category: category, message: "code=\((error as? VoxClipError)?.code.rawValue ?? (error is LLMError ? "llmFailure" : "operationFailed"))"))
-        return await log.redact(message)
     }
     func checkUpdates(manual: Bool) async {
         do {

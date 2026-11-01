@@ -8,9 +8,9 @@ extension ProviderChoice {
     var choiceName: String { id == "apple-foundation" ? "Apple on-device" : label }
 }
 
-// The Rewrite job's states on the Director task (design.md §6.3.6, impl-plan V12m): R0
-// chooses the AI, R1 runs with its four steps, R1x shows an error with its fix. The passage
-// panel still shows the task while it waits to send and once a proposal arrives (V13, V15).
+// The Rewrite job's states on the Director task (design.md §6.3.6, impl-plan V12m, V13, V15):
+// R0 chooses the AI, R1 runs with its four steps, R1x shows an error with its fix, R2 lists the
+// proposal's changes (ChangeList.swift), R3 shows an edit in the scope.
 extension RewriteSession {
     /// The catalogue entry of the session's connector.
     var provider: ProviderChoice? { connector.flatMap { connector in editor.app.providers.first { $0.id == connector.connector.id.rawValue } } }
@@ -162,7 +162,6 @@ extension RewriteSession {
     func runSteps(reached: Int) -> [ActivityStep] {
         let words = task.words
         let count = words.wordCount == 1 ? "1 word" : "\(words.wordCount) words"
-        let span: Double = (source.last?.end ?? 0) - (source.first?.start ?? 0)
         func status(_ index: Int) -> ActivityStep.Status { index < reached ? .done : index == reached && index > 1 ? .running : .waiting }
         let read = "Read \(words.name)"
         let sent = runsOnThisMac ? "Running on this Mac" : "Sent to \(aiName)"
@@ -173,42 +172,36 @@ extension RewriteSession {
             ActivityStep(id: "check", title: "Check that each change fits", detail: "", status: status(3), spoken: "Check that each change fits"),
         ]
     }
-    /// R1 starts as the user sends: the quote of what was asked, the steps with nothing sent yet, Stop, and the send line
+    /// R1 starts as the run does: the quote of what was asked, the steps with nothing sent yet, Stop, and the send line
     /// as the note. The consent and the cost sheet ask over it; `sendRun` announces it once they pass.
     func beginRun() {
-        let asked: PanelCard = instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? .asked(preset: "Fix mistakes", text: "fix slips and repeats, keep my words, change as little as possible.")
-            : .asked(preset: nil, text: "“\(instruction)”")
+        let suggestion = RewriteSuggestions.suggestion(for: instruction)
+        let asked: PanelCard = suggestion.asked.map { .asked(preset: suggestion.title, text: $0) } ?? .asked(preset: nil, text: "“\(suggestion.title)”")
         let stop = PanelAction(id: "stop", title: "Stop") { [weak editor] in editor?.closeRewrite() }
         task.show(.running, headline: PanelHeadline(text: "Rewriting \(task.words.name)…", runningSince: Date(), stop: stop),
                   cards: [asked, .activity(runSteps(reached: 1))], footer: PanelFooter(note: sendLine))
     }
-    /// The consent passed and the words go: R1 waits for the AI. Announced now, not while a sheet still asks.
+    /// The consent passed and the words go: R1 waits for the AI. Announced now, not while a sheet still asks, and a typed
+    /// instruction joins the project's recent ones (design.md §6.3.1).
     func sendRun() {
         guard task.state == .running else { return }
         task.update(runSteps(reached: 2))
+        editor.app.noteRewriteInstruction(instruction, for: project.id)
         editor.announce("Rewriting \(task.words.name)")
     }
     func advanceRun(to reached: Int) {
         guard task.state == .running else { return }
         task.update(runSteps(reached: reached))
     }
-    /// The reply is in: the proposal's changes, announced. The passage panel shows them until V15.
+    /// The reply is in: the proposal shows in the transcript and as the change list (R2), announced.
     func finishRun(seconds: Double) {
-        // A reply the passage panel cannot review (over the word-diff limit) shows its problem there, unannounced.
-        guard let hunks = review?.diff.hunks else { showReady(); return }
-        let items = hunks.enumerated().map { index, hunk in
-            ProposalItem(ordinal: index + 1, kind: hunk.kind == .cut ? .cut : hunk.kind == .textOnly ? .fix : .voice,
-                         sourceWordIDs: hunk.sourceWordIds, newWords: hunk.newTokens)
-        }
-        let changes = ChangeSet(items: items)
         refreshContext(answered: seconds)
-        task.show(.proposal(changes), headline: PanelHeadline(text: items.isEmpty ? "No changes needed" : items.count == 1 ? "1 change" : "\(items.count) changes"))
-        editor.announce(items.isEmpty ? "No changes needed." : changes.announcement)
-    }
-    /// Back to the passage panel with nothing sent: a declined sheet, or a send that went stale.
-    func showReady() {
-        task.show(.ready, headline: PanelHeadline(text: task.words.title))
+        // A reply whose changes cannot be reviewed shows R1x with the review's problem.
+        guard review != nil else { fail(.message(problem)); return }
+        showReplyInTranscript()
+        showProposal()
+        guard case .proposal(let set) = task.state else { return }
+        editor.announce(set.items.isEmpty ? "No changes needed." : set.announcement)
     }
 
     // MARK: R1x
@@ -216,7 +209,14 @@ extension RewriteSession {
     /// The error a failed send shows, nil for a cancelled one, which is silent.
     func panelError(_ error: any Error) async -> PanelError? {
         if let plan = error as? ScopeRewritePlanError, let size = PanelError(plan) { return size }
-        guard let error = error as? LLMError else { return .message(await editor.app.safeError(error, context: "ai:\(aiName)")) }
+        // The rest is a failure the app log keeps by its code: a plan Core refused, a placement, a quote the service
+        // refused, missing resources. Each shows the session's own copy. An AI's error is its connector's to log.
+        if !(error is LLMError) { await editor.app.logFailure(error, context: "ai:\(aiName)") }
+        if let plan = error as? ScopeRewritePlanError {
+            return .message(plan == .empty ? "\(task.words.subject) has no words left to rewrite. Your edits are saved."
+                                            : "\(task.words.subject) can't be rewritten as it stands. Your edits are saved.")
+        }
+        guard let error = error as? LLMError else { return .message(await editor.app.log.redact(Self.refusal(error))) }
         switch error {
         case .cancelled: return nil
         case .cliSignedOut: return .signedOut(cli: aiName, command: provider?.id == "codex" ? "codex login" : "claude")
@@ -256,8 +256,8 @@ extension RewriteSession {
             }
         case .notRunning(let server): cards = [.text("\(server) isn't running. Start it, then choose Try Again.")]
         case .refused:
-            cards = [.text("The model declined to rewrite this recording.")]
-            footer = PanelFooter(primary: PanelAction(id: "askElse", title: "Ask for Something Else") { [weak self] in self?.askForSomethingElse() })
+            cards = [.text("The model declined to rewrite this recording."), .ask(placeholder: AskField.placeholder(words))]
+            footer = PanelFooter(primary: askForSomethingElse)
         case .tooManyEntries, .tooMuchText:
             let findClips = task.scope == .fullTake ? PanelAction(id: "findClips", title: "Find Clips") { [weak editor] in
                 editor?.closeRewrite(returnFocus: false)
@@ -270,10 +270,10 @@ extension RewriteSession {
         if case .noKey = error { task.requestFocus() }
         editor.announce(problem ?? headline.text + ".")
     }
-    /// Refused: back to the passage panel with its field focused (design.md R1x).
-    func askForSomethingElse() {
-        task.handOverKeyboard()
-        showReady()
+    /// Ask for Something Else (R1x refused, R2 with no changes): the keyboard goes to the Ask field, which the clip bar
+    /// holds from V3b and the job's panel until then.
+    var askForSomethingElse: PanelAction {
+        PanelAction(id: "askElse", title: "Ask for Something Else") { [weak self] in self?.task.requestFocus() }
     }
     /// R1x for a scope over Rewrite's limits (voice-lab.md §8.1). Full take offers `findClips`;
     /// a clip has no primary, and Close closes.
@@ -286,21 +286,17 @@ extension RewriteSession {
         }
         return (PanelHeadline(text: words.tooLong), [.text(body)], PanelFooter(primary: findClips))
     }
-    /// Sends again with a fresh quote. While another AI request holds the project (Find Clips, or a Rewrite in another
-    /// window) it says so and keeps Try Again.
+    /// Runs again, with a fresh quote (`run`). While another AI request holds the project (Find Clips, or a Rewrite in
+    /// another window) it says so and keeps Try Again.
     func tryAgain() async {
         guard isOpen else { return }
         guard connector != nil else { await showChooser(); return }
-        await prepareFreshQuote()
-        guard isOpen, !Task.isCancelled else { return }
         if editor.llmRuns.isBusy, case .error(let error) = task.state {
             fail(error, problem: editor.finding ? "Find Clips is still running. Choose Try Again when it finishes."
                                                 : "Another AI request on this project is still running. Choose Try Again when it finishes.")
             return
         }
-        guard let quote else { showReady(); return }
-        markEstimateShown(quote.id)
-        await propose(quote)
+        await run()
     }
     private func saveKeyAndTryAgain(_ provider: String) async {
         let key = task.keyDraft.trimmingCharacters(in: .whitespacesAndNewlines)

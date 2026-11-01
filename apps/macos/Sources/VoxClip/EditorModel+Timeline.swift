@@ -104,6 +104,15 @@ extension EditorModel {
         return lower...max(lower, upper)
     }
 
+    /// The proposal's pending changes on `axis`, from each one's first word to its last: the ruler's
+    /// `change.add` bars, as the transcript's overview ruler marks them.
+    func timelinePendingChanges(on axis: TimelineAxis) -> [ClosedRange<Double>] {
+        pendingChangeSpans.map { span in
+            let lower = timelineTime(source: span.lowerBound, on: axis), upper = timelineTime(source: span.upperBound, on: axis)
+            return lower...max(lower, upper)
+        }
+    }
+
     /// The scope's start and end as the timeline seeks to them (Home and End).
     func seekTimelineBoundary(end: Bool) {
         let source: Double

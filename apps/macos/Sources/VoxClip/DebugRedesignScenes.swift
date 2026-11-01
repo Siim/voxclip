@@ -136,14 +136,14 @@ import VoxClipMedia
         editor.showExport = false
         shell.selection = .fullTake
         editor.selectedWordIDs = Set(editor.words[12...15].map(\.id))
-        editor.beginRewrite()
+        editor.rewriteInstruction = "Make this clearer"
+        editor.runRewrite()
         await DebugConnectorRequests.wait { editor.rewrite != nil }
         guard let session = editor.rewrite else { throw CocoaError(.coderInvalidValue) }
-        session.setInstruction("Make this clearer")
-        await session.detectConnector(); await session.prepare()
-        if let quote = session.quote { session.markEstimateShown(quote.id) }
+        await session.actionTask?.value
         try await scene("live-rewrite")
         editor.closeRewrite(returnFocus: false)
+        editor.rewriteInstruction = ""
         try ProjectJSON.encoder().encode(results).write(to: directory.appendingPathComponent("redesign-scenes.json"), options: .atomic)
         return results
     }
