@@ -47,10 +47,9 @@ import VoxClipCore
             .ignoresSafeArea()
             .preferredColorScheme(shell.app.appearance)
     }
-    /// Export, Transcribe Again, Keyboard Shortcuts and the tour.
+    /// Transcribe Again, Keyboard Shortcuts and the tour.
     private func sheets(on content: some View) -> some View {
         content
-            .sheet(isPresented: editorFlag(\.showExport)) { if let editor = shell.editor { ExportSheet(model: editor) } }
             .sheet(isPresented: editorFlag(\.showTranscribe)) { if let editor = shell.editor { TranscriptionSheet(model: editor) } }
             .sheet(isPresented: editorFlag(\.showVoiceLabOptIn)) {
                 if let editor = shell.editor { VoiceLabOptInView(editor: editor) }
@@ -165,6 +164,7 @@ import VoxClipCore
             if let notice = shell.notice { InlineNotice(text: notice) }
             if let error = model.error, !error.isEmpty { InlineNotice(text: error) }
             if let error = model.previewError, !error.isEmpty { InlineNotice(text: error) }
+            MediaRelinkBanner(model: model)
             if !model.document.demo, !model.mediaResolved {
                 Button("Locate…") { model.locateMedia() }
             }
@@ -184,5 +184,22 @@ import VoxClipCore
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(DesignValues.color("bg.surface"))
         .scrollEdgeEffectStyle(.automatic, for: .vertical)
+    }
+}
+
+/// Missing media is resolved in the work area; system file pickers are the only modal step.
+@MainActor struct MediaRelinkBanner: View {
+    @Bindable var model: EditorModel
+    var body: some View {
+        if let candidate = model.mediaRelinkCandidate {
+            VStack(alignment: .leading, spacing: 6) {
+                InlineNotice(text: "This file looks different. Use it anyway? \(candidate.url.lastPathComponent)")
+                HStack {
+                    Button("Use It") { Task { await model.confirmMediaRelink() } }.accessibilityIdentifier("voxclip.relink.use")
+                    Button("Choose Another…") { model.locateMedia() }.accessibilityIdentifier("voxclip.relink.choose")
+                    Button("Cancel") { model.cancelMediaRelink() }.accessibilityIdentifier("voxclip.relink.cancel")
+                }.padding(.horizontal, 12)
+            }.accessibilityElement(children: .contain).accessibilityLabel("Locate media confirmation")
+        }
     }
 }

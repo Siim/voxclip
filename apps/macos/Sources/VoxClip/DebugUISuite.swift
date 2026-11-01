@@ -537,14 +537,10 @@ import ApplicationServices
                           export.exportTitle == "Export Clip…" && export.accessibilityLabel() == "Export Clip…" && export.isEnabled)
                     export.performClick(nil)
                 } else { check("the title row's Export button is discoverable", false) }
-                try await waitUntil { window.attachedSheet != nil }
-                check("Export from the title row opens Export for the selected clip", editor.showExport && editor.activeClip?.id == clip.id && editor.exportClipIDs == [clip.id])
-                if let sheet = window.attachedSheet {
-                    check("clip export opens an attached sheet", sheet.isVisible)
-                } else { check("clip export opens an attached sheet", false) }
-                editor.showExport = false
-                try await waitUntil { window.attachedSheet == nil }
-                check("the export sheet closes before the editor changes", window.attachedSheet == nil && !editor.showExport)
+                try await waitUntil { shell.panelJob(for: editor) == .export }
+                check("Export from the title row opens the right-panel job for the selected clip", editor.exportJob.isOpen && editor.activeClip?.id == clip.id && editor.exportClipIDs == [clip.id] && window.attachedSheet == nil)
+                editor.finishExportJob()
+                check("Done returns from Export without a sheet", window.attachedSheet == nil && !editor.exportJob.isOpen)
                 shell.selection = .fullTake
             }
             let appearance = app.string("general.appearance", fallback: "system")
@@ -636,6 +632,7 @@ import ApplicationServices
             results += try await DebugTabs.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugClipBar.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugExplorer.sceneCaptures(app: app, fixture: interview, directory: destination)
+            results += try await DebugExport.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugStatusBar.sceneCaptures(app: app, fixture: interview, directory: destination)
             results += try await DebugTranscriptPixels.scenes(app: app, fixture: interview, directory: destination, native: true)
             results += try await DebugRewrite.directorCaptures(app: app, fixture: interview, directory: destination)
@@ -1008,8 +1005,8 @@ import ApplicationServices
             try await snapshot(SettingsView().environment(app), name: "settings-light", size: NSSize(width: 800, height: 560), appearance: .aqua, directory: destination)
             check("closing Settings preserves AppModel library and download task", app.modelLibrary === library && library.task != nil && !downloadTask.isCancelled)
             try await snapshot(OnboardingView().environment(app), name: "onboarding-light", size: NSSize(width: 616, height: 536), appearance: .aqua, directory: destination)
-            try await snapshot(ExportSheet(model: model).environment(app), name: "export-light", size: NSSize(width: 668, height: 500), appearance: .aqua, directory: destination)
-            try await snapshot(ExportSheet(model: model).environment(app), name: "export-dark", size: NSSize(width: 668, height: 500), appearance: .darkAqua, directory: destination)
+            try await snapshot(ExportJobView(model: model).environment(app), name: "export-light", size: NSSize(width: 668, height: 500), appearance: .aqua, directory: destination)
+            try await snapshot(ExportJobView(model: model).environment(app), name: "export-dark", size: NSSize(width: 668, height: 500), appearance: .darkAqua, directory: destination)
             try await snapshot(OnboardingView().environment(app), name: "onboarding-dark", size: NSSize(width: 616, height: 536), appearance: .darkAqua, directory: destination)
             results += try await DebugShell.run(app: app, fixture: project, directory: destination)
             results += try await DebugTabs.run(app: app, fixture: project, directory: destination)

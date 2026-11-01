@@ -48,6 +48,44 @@ import Testing
         host.layoutSubtreeIfNeeded()
         return host
     }
+    /// The system's Always preference must not let a native scrollbar cross the column edge.
+    @Test(arguments: [CGSize(width: 404, height: 522), CGSize(width: 324, height: 322)])
+    func legacyCaptionScrollersStayInsideTheColumn(size: CGSize) async throws {
+        let (shell, editor) = try await openShell()
+        defer { editor.close() }
+        let view = await host(PanelHost(model: editor, shell: shell, width: size.width, height: size.height, fineTune: true), size: size)
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        defer { window.close() }
+        let scrolls = DebugRightColumn.scrollViews(in: view)
+        #expect(scrolls.count == 2)
+        for scroll in scrolls {
+            scroll.scrollerStyle = .legacy
+            scroll.autohidesScrollers = false
+            scroll.tile()
+        }
+        view.layoutSubtreeIfNeeded()
+        #expect(DebugColumnBounds.scrollerOverflow(in: view).isEmpty,
+                Comment(rawValue: DebugColumnBounds.scrollerOverflow(in: view).joined(separator: "; ")))
+    }
+
+    @Test func captionErrorHonoursAZeroPropertiesProposalAtTheMinimumSize() async throws {
+        let (shell, editor) = try await openShell()
+        defer { editor.close() }
+        let size = CGSize(width: 324, height: 322)
+        let view = await host(PanelHost(model: editor, shell: shell, width: size.width, height: size.height), size: size)
+        await editor.waitForPendingPreviewForAudit()
+        editor.captionError = "Captions couldn't be drawn. Your media and edits are safe. Choose another style or try again."
+        for _ in 0..<200 where DebugRightColumn.markers(in: view)["caption.error"] == nil {
+            view.layoutSubtreeIfNeeded(); await Task.yield()
+        }
+        view.layoutSubtreeIfNeeded()
+        let properties = try #require(DebugRightColumn.markers(in: view)["captions.properties"])
+        #expect(properties.height == 0 && properties.maxY <= size.height)
+        #expect(DebugRightColumn.viewOverflow(view).isEmpty)
+    }
+
     private func gallery(_ markers: [String: CGRect]) throws -> CGRect {
         try #require(markers.first { $0.key.hasPrefix("caption.gallery.") }?.value)
     }

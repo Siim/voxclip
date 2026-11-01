@@ -42,4 +42,9 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - The Mac editor's status bar shows your AI and its billing after detection, running work, the open clip's duration and cuts, available Rewrite changes, the export frame and export state. Choose an aspect directly from the status bar's Frame menu.
 - The Mac Explorer has compact Take, Clips, Outline and Suggested sections, preview tabs on single click, pinned tabs on double-click, and paragraph navigation with AI voice indicators.
 - On Mac, Rewrite asks in its panel, not in an alert, before a new run would discard takes or changes you edited: Keep Working or Discard Changes. Undoing a Keep no longer brings back a change you left out after it.
+- Export now opens in the right panel instead of a window.
+- The AI MODIFIED line in a post is now off by default.
+- Relinking a moved video asks in a banner instead of a dialog.
+- The Mac Captions panel keeps scrollbars inside its column, local AI errors name the server URL, and the viewer transport shows current time and scope length.
+- The Mac Explorer shows your voices and recent exports, with file actions, export status and Retry in place.
 - Not tested on: TODO list the test machines that were not available (doc/plan.md section 6).

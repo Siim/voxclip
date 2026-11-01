@@ -589,7 +589,7 @@ extension DebugRewrite {
             ("r1x-message", .claudeCode, "Claude Code", "cli", .message(LLMError.timeout.userMessage(label: "Claude Code", feature: .voiceRewrite) ?? "")),
             ("r1x-signed-out", .codex, "Codex", "cli", .signedOut(cli: "Codex", command: "codex login")),
             ("r1x-no-key", .anthropic, "Anthropic", "apiKey", .noKey(provider: "anthropic", name: "Anthropic")),
-            ("r1x-not-running", .ollama, "Ollama", "local", .notRunning(server: "Ollama")),
+            ("r1x-not-running", .ollama, "Ollama", "local", .notRunning(server: "Ollama", url: "http://127.0.0.1:11434")),
             ("r1x-refused", .claudeCode, "Claude Code", "cli", .refused),
         ]
         for (name, id, label, group, error) in errors {

@@ -26,7 +26,7 @@ import Testing
         let (shell, editor) = try await open()
         defer { editor.close() }
         let checks = DebugExplorer.explorerChecks(shell: shell)
-        #expect(checks.count == 4)
+        #expect(checks.count == 6)
         #expect(checks.allSatisfy { $0.passed })
     }
 
@@ -287,7 +287,7 @@ import Testing
         defer { editor.close() }
         let other = WorkspaceShell(app: shell.app)
         for section in ExplorerSection.allCases {
-            #expect(shell.explorerExpanded(section))
+            #expect(shell.explorerExpanded(section) == (section != .voices && section != .exports))
             shell.setExplorerExpanded(section, false)
             #expect(!other.explorerExpanded(section) && shell.app.settings.values[section.key] == .bool(false))
             shell.setExplorerExpanded(section, true)
@@ -355,7 +355,7 @@ import Testing
         #expect(editor.lastFindRequest?.preset == (hook ? .hooks : editor.preset))
     }
 
-    @Test func exportWarningsAppearOnlyForChangedAndFailedClips() async throws {
+    @Test func exportWarningsMoveFromClipsToTheExportsSection() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("voxclip-explorer-exports-" + UUID().uuidString)
@@ -370,16 +370,29 @@ import Testing
         }
         #expect(editor.exportRowStatus(clip.id) == .none && warning() == nil)
         let fingerprint = try ExportFingerprint.value(editor.project, target: .clip(clip.id), labelPosition: editor.app.voiceLabLabelPosition)
-        func record(_ fingerprint: String) throws {
+        func record(_ fingerprint: String, failed: Bool = false) throws {
             try editor.app.exportLedger.record(ExportRecord(projectID: editor.project.id, targetID: clip.id, exportedAt: Date(),
-                planFingerprint: fingerprint, styleId: editor.project.captions.styleId, aspect: editor.project.export.aspect, outputPath: folder.appendingPathComponent("clip.mp4").path))
+                planFingerprint: fingerprint, styleId: editor.project.captions.styleId, aspect: editor.project.export.aspect,
+                outputPath: folder.appendingPathComponent("clip.mp4").path, failed: failed))
+        }
+        func exportWarning() throws -> String? {
+            let row = try #require(editor.exportsList.rows.first)
+            let host = NSHostingView(rootView: ExplorerExportRow(editor: editor, row: row).frame(width: 224))
+            host.frame = NSRect(x: 0, y: 0, width: 224, height: 28)
+            host.layoutSubtreeIfNeeded()
+            let marker = DebugRightColumn.markers(in: host)["explorer.export"]
+            #expect(marker?.height == ExplorerMetrics.libraryRowHeight)
+            return DebugRightColumn.texts(in: host)["explorer.exportWarning"]
         }
         try record(fingerprint)
         #expect(editor.exportRowStatus(clip.id) == .exported && warning() == nil)
+        #expect(try exportWarning() == nil)
         try record("older-export")
-        #expect(editor.exportRowStatus(clip.id) == .changed && warning() == ClipExportStatus.changed.label)
-        editor.failedExports[ExportLedger.key(.clip(clip.id), aspect: editor.project.export.aspect)] = folder
-        #expect(editor.exportRowStatus(clip.id) == .failed && warning() == ClipExportStatus.failed.label)
+        #expect(editor.exportRowStatus(clip.id) == .changed && warning() == nil)
+        #expect(try exportWarning() == "Edited since export")
+        try record("older-export", failed: true)
+        #expect(editor.exportRowStatus(clip.id) == .failed && warning() == nil)
+        #expect(try exportWarning() == "Export failed")
     }
 
     @Test func clipTwelveKeepsItsNumberOnOneLine() async throws {

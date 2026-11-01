@@ -146,17 +146,27 @@ import VoxClipCore
 /// HH:MM:SS:FF, its leading zero groups dimmed. Only this view follows the playhead.
 @MainActor struct TimelineReadout: View {
     let model: EditorModel
+    /// The viewer uses the same axis with a compact current / length readout.
+    var includesLength = false
     var body: some View {
         let axis = model.timelineAxis
         let time = model.timelinePlayhead(on: axis)
         let parts = SMPTETimecode.format(seconds: time)
         // Two fixed-pitch runs side by side read as one timecode.
-        HStack(spacing: 0) {
-            Text(parts.dimPrefix).foregroundStyle(DesignValues.color("text.disabled"))
-            Text(parts.value).foregroundStyle(DesignValues.color("text.primary"))
+        Group {
+            if includesLength {
+                let text = "\(durationLabel(floor(time))) / \(durationLabel(model.timelineLength(on: axis)))"
+                Text(text).foregroundStyle(DesignValues.color("overlay.foreground"))
+                    .columnLayoutEvidence("viewer.readout", text: text)
+            } else {
+                HStack(spacing: 0) {
+                    Text(parts.dimPrefix).foregroundStyle(DesignValues.color("text.disabled"))
+                    Text(parts.value).foregroundStyle(DesignValues.color("text.primary"))
+                }
+                .columnLayoutEvidence("timeline.readout", text: parts.dimPrefix + parts.value)
+            }
         }
             .font(VCType.body.mono(.medium)).tracking(0.13).fixedSize()
-            .columnLayoutEvidence("timeline.readout", text: parts.dimPrefix + parts.value)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Playback time")
             .accessibilityValue("\(timecode(floor(time))) of \(timecode(model.timelineLength(on: axis)))")

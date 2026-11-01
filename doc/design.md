@@ -30,7 +30,7 @@ There are no Transcript and Clips modes and no inspector tabs.
 4. Make a clip. Select words. A small action bar appears beside the selection. Choose **Make Clip** (⌘K / Ctrl+K). The new clip appears in the sidebar and is selected.
 5. Find clips. Choose **Find Clips** (⇧⌘K / Ctrl+Shift+K) and pick a preset. The results appear in the sidebar under **Suggested**, each with Keep and Dismiss.
 6. Shape a clip. Select its row. The transcript marks it, the viewer plays only that clip, and the timeline zooms to it. Choose a Frame (9:16) and a caption style.
-7. Export. **Export Clip…** (⌘E / Ctrl+E) opens the export sheet with that clip already chosen.
+7. Export. **Export Clip…** (⌘E / Ctrl+E) opens the Mac right-panel Export job with that clip already chosen. Windows opens its Export dialog.
 8. Rewrite a clip. Select its row and choose **Rewrite** (⇧⌘R / Ctrl+R), with or without an instruction in the bar above the transcript. The proposed changes show in the transcript and in a panel that replaces Captions. Apply the cuts and fixes at once, or, with Voice Lab on, make your voice from the clip and use takes for the new phrases (§6.3). The new words show inline in the transcript with an AI marker.
 9. Choose Home (⌘1 / Ctrl+1) to see the library. The open project stays in the sidebar. Opening another project saves the open one and replaces it in place.
 
@@ -130,9 +130,9 @@ Main window (macOS: exactly one. Windows: one per process window; Ctrl+N opens a
 │     │     Tighten Pauses · Restore Cuts · Find Clips · Export Video… / Export Clip… · viewer toggle
 │     ├─ Scope bar (above the transcript): scope label · instruction field · Rewrite · AI picker  (§6.3.1)
 │     ├─ Transcript page (centre) + selection bar: Make Clip · Cut · Restore · Rewrite
-│     ├─ Right column: Viewer (stage, viewer bar, Frame) over Captions, or the Rewrite panel while a task is open (§6.3.4)
+│     ├─ Right column: Viewer over Captions, Rewrite (§6.3.4), or the Mac Export job (§8)
 │     └─ Timeline strip (bottom, under the centre and right columns)
-├─ Transient: Find Clips popover/flyout · Import sheet (§7.1) · Export sheet (§8) ·
+├─ Transient: Find Clips popover/flyout · Import sheet (§7.1) · Windows Export dialog (§8) ·
 │     Voice Lab consent and cost confirmations · Keyboard shortcuts
 └─ Settings window (⌘, / Ctrl+,): General · Transcription · AI · Export · Accounts (M2) ·
       Voice Lab (M3 beta) · About
@@ -295,7 +295,13 @@ How it is built:
 
 ### 3.4 Sidebar rows
 
-**macOS v2 Explorer.** The flat pane keeps a native plain `List` and its system selection highlight (the accepted deviation from the mockup's `selrow`). In the editor its sections are Take, Clips, Outline and Suggested. Each disclosure has an uppercase 11 pt semibold heading and a spoken name such as "Clips, 2 items". The take heading is the project title with no visible count; VoiceOver reads "{title}, 1 item". Clips and Suggested show counts, while Outline shows the open tab’s `scopeName` as trailing context when it fits. Expanded state persists under `ui.explorer.take`, `.clips`, `.outline`, `.suggested` and `.recent`; this never edits the project. Starting Find Clips or Hook, or focusing a suggestion, expands Suggested. Moving selection to a hidden clip row expands its owning Clips or Suggested section. Home shows Home and Recent.
+**macOS v2 Explorer.** The flat pane keeps a native plain `List` and its system selection highlight (the accepted deviation from the mockup's `selrow`). In the editor its sections are Take, Clips, Outline, Suggested, Voices and Exports. Voices is hidden entirely when Voice Lab is off, in every build. Each disclosure has an uppercase 11 pt semibold heading and a spoken name such as "Clips, 2 items". The take heading is the project title with no visible count; VoiceOver reads "{title}, 1 item". Clips and Suggested show counts, while Outline shows the open tab’s `scopeName` as trailing context when it fits. Expanded state persists under `ui.explorer.take`, `.clips`, `.outline`, `.suggested`, `.voices`, `.exports` and `.recent`; this never edits the project. Starting Find Clips or Hook, or focusing a suggestion, expands Suggested. Moving selection to a hidden clip row expands its owning Clips or Suggested section. Home shows Home and Recent.
+
+**Voices and Exports (macOS V2b).** These sections stay at the Explorer bottom, collapsed by default, with counts and the same 28 pt uppercase disclosure headers. Expanded library rows are 40 pt per f14 and the V2b review decision (one-line navigation rows remain 28 pt); their two lines are a 13 pt title and 11 pt metadata, each truncated at the tail. Help and VoiceOver carry the complete text. A long expanded library scrolls within a bounded area. The section's VoiceOver group name is “Voices, {n} items” or “Exports, {n} items” (singular “1 item”).
+
+Voices projects `voiceLabSession.visibleRecords` only while `voiceLab.enabled` is on. Each row has a person glyph, voice name, “made {date} from {source}”, and Ready or Needs attention (warning text for the latter, also spoken). Consent records identify video audio or a read-aloud, rather than retaining a project name. **Manage in Settings** opens Settings › Voice Lab; management stays there.
+
+Exports projects the open project's ledger, newest first, one row per target and aspect, retaining the last successful output when a later attempt fails. A row has a 36×20 thumbnail from the exported file, “Clip {n} · {aspect}” (or Full Take), and “{m:ss} · {resolution} · {size} · {time}”. Only the duration uses SF Mono 11; resolution, size and wall-clock time use system 11 pt. Actual duration, dimensions and byte size are saved with new successful outputs. Older records remain readable; missing output facts display “—”. Failed attempts persist with their retry folder and appear even after reopening the app. Only Edited since export and Export failed show a trailing 11 pt `exclamationmark.triangle` in `status.warning`; Exported stays quiet. Clip rows have no export warning glyph. All states remain in help and VoiceOver. A 24 pt reveal button and **Show in Finder** / **Open** context actions use the exported file (disabled if unavailable). **Export again** opens the right-panel Export job with that row's target and aspect; failed rows also offer **Retry** with their saved folder. Neither action starts a render. Removed targets stay visible with their saved name, with export actions disabled. A running export retains its captured target.
 
 A single click previews a clip or suggestion in the one temporary tab. Double-click keeps that tab open; selecting an already pinned tab leaves it pinned. Opening a Rewrite session from any entry point or marking a tab dirty also pins its preview immediately. Preview replacement preserves any remaining session or pending review work before opening the next clip. Return still keeps a suggestion or renames a kept clip, and Delete dismisses or removes it. The Outline uses the take's `TranscriptParagraphs`, filtered by overlap with the open tab, with take time in mono `m:ss` and the first six words. A click scrolls through the transcript's scope-scroll path without moving scope, playhead or word selection. A green dot means pending changes (wired when V14 and V2 are both merged); a blue dot means enabled AI speech in that paragraph. Both states are spoken. Outline Return/Delete do not rename or remove the open clip; ⇧⌘↩ still keeps its suggestion.
 
@@ -442,7 +448,7 @@ The column background is the page (`bg.surface` on Windows). On macOS it is the 
 | Transcript pane would drop below 596 (macOS) or 588 (Windows), about 1150 window width | The right column collapses first. "Show Viewer" (⌥⌘I) and View > Show Viewer bring it back; showing it at this width hides the sidebar to make room. The timeline gains the compact transport (§5.3). Below a window width of 1100 the toolbar capsule is icon-only (§3.5) | The right column collapses first. The Viewer toggle brings it back, and showing it hides the pane (`IsPaneOpen = false`). The timeline gains the compact transport. `CommandBar` overflow takes Tighten pauses and Restore cuts |
 | < 960 | Only reachable in full screen or Split View. The sidebar collapses (`columnVisibility = .detailOnly`); the toolbar sidebar button brings it back as an overlay | `NavigationView` goes `LeftMinimal`; the `TitleBar` pane toggle opens it as an overlay |
 
-The sidebar collapses last, because it holds the clips. While the viewer is collapsed, caption styling is unavailable until Show Viewer. The Export sheet still offers the caption style picker.
+The sidebar collapses last, because it holds the clips. While the viewer is collapsed, caption styling is unavailable until Show Viewer. Opening the Mac Export job reveals the right panel and its caption style picker. The Windows Export dialog also offers caption style.
 
 ---
 
@@ -552,6 +558,8 @@ Rewrite shows whenever the editor allows AI actions (`capabilities.ai`, the same
 ## 5. Viewer, transport and timeline
 
 ### 5.1 Viewer
+
+**macOS v2 transport.** With the timeline hidden, the viewer's hover/focus transport uses `TimelineReadout` in its compact SF Mono style: current / length, for example `0:12 / 0:43`. Edited shows the open scope's output playhead and duration; Source follows the timeline's take time and source duration. The timeline toolbar keeps its SMPTE readout. At narrow widths the speed yields before the time and axis switch.
 
 **Stage.**
 
@@ -1014,12 +1022,13 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 **Export ledger** (app-local, not in the project).
 
 - **Location:** `<app data>/exports.json`, keyed by project id and target ("full" or a clip id). macOS also keys it by aspect, so a row shows the status for the project's current Frame. Windows keeps one record per target.
-- **Record:** `{exportedAt, planFingerprint, styleId, aspect, outputPath}`, written after each successful export.
+- **Record:** `{exportedAt, planFingerprint, styleId, aspect, outputPath}`, written after each successful export. macOS V2b adds optional `targetName`, `durationSeconds`, `width`, `height`, `byteSize`, `failed` and `retryFolder`; failures (including cancellation) also replace the latest attempt. Old successful records still decode.
 - **Fingerprint:** `planFingerprint` is a SHA-256 over the render inputs both platforms share (`apps/windows/CONTRACTS.md`): the source's content key, duration, oriented size, rotation, frame rate, sample rate and channels; the scoped edit plan; quality and the resolved output encoding; the effective caption style and, when captions are on, the scoped caption words (including their timings), language, overrides and position for the aspect; and the Voice Lab output plan, disclosure and selected assets. SRT intent, titles, share text, the folder, word confidence, speakers, project bookkeeping timestamps and recipe provenance are left out.
 - **Statuses:**
-  - **Exported:** a record exists and its `planFingerprint` matches the current one.
-  - **Edited since export:** a record exists and the fingerprints differ.
-  - **Exporting / Export failed:** taken from the live export queue.
+  - **Exported:** a successful record exists and its `planFingerprint` matches the current one.
+  - **Edited since export:** a successful record exists and the fingerprints differ.
+  - **Exporting:** taken from the live export queue.
+  - **Export failed:** the live failed attempt, or on macOS a persisted failed ledger entry. Windows keeps its live-queue status.
 - Clearing app data removes the statuses, never the project.
 
 ### 6.3 Rewrite (clip-first) and your voice
@@ -1210,7 +1219,7 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 - A radio list of the connectors detected now, each with a status line:
   - "Claude Code (installed CLI)": "Signed in · Claude plan · no extra cost", or "Signed in · billed to the API key Claude Code uses", or "Not signed in. Run `claude` in Terminal and sign in."
   - "Codex (installed CLI)": "Signed in · ChatGPT plan · no extra cost", or "Not signed in. Run `codex login` in Terminal."
-  - "Ollama": "{model} on this {Mac/PC} · free", or "Not running. Start Ollama, then choose Check Again."
+  - "Ollama": "{model} on this {Mac/PC} · free", or, on macOS v2, "Ollama isn't answering at {url}. Start it, then choose Check Again."
   - "Apple on-device" (macOS): "free · English"
   - "Anthropic": "your API key · asks before each send". With no key, a secure field "Paste your Anthropic API key" and **Save Key** appear under the row.
 - Note: "Change it any time from the menu above the transcript."
@@ -1251,7 +1260,7 @@ Phase 0 connectors return one answer, so nothing streams: R1 waits until the rep
 - Fixes that replace the body:
   - Signed out: "{CLI} isn't signed in. Run `claude` (or `codex login`) in Terminal and sign in, then choose Try Again."
   - No key: a secure field "{provider} API key" with **Save Key and Try Again**.
-  - Not running: "Ollama isn't running. Start it, then choose Try Again." (LM Studio likewise.)
+  - Not running on macOS v2: "{server} isn't answering at {url}. Start it, then choose Try Again." The URL is the address attempted by the connector (Ollama or LM Studio). The clip bar and harness picker retain that same address; no send or edit occurs. Windows retains "Ollama isn't running. Start it, then choose Try Again." (LM Studio likewise.)
 - Refused: "The model declined to rewrite this recording." Primary: **Ask for Something Else**, which focuses the field.
 - Too large (voice-lab.md §8.1): headline "{Full take | Clip {n}} is too long to rewrite at once". Primary on Full take: **Find Clips**; otherwise none, and the close button closes. The body names the limit that was reached:
   - more than 3,000 entries: "Rewrite works on up to 3,000 words at a time. This {video | clip} has {n}. Choose a clip or select a passage.";
@@ -1516,7 +1525,7 @@ The Director will run an AI session that proposes cuts, clips, rewrites and capt
 
 ## 7. Home
 
-**Interim macOS v2 export state.** Until V2b, clip rows show a trailing 11 pt `exclamationmark.triangle` in `status.warning` only for "Edited since export" or "Export failed". Exported and Not exported have no glyph. The state remains in help and VoiceOver, and failed exports retain Retry export in the context menu. V2b moves the warning to its Exports section.
+**macOS v2 export state.** The Explorer’s Exports section (§3.4) owns the trailing 11 pt `exclamationmark.triangle` in `status.warning` for Edited since export and Export failed. Exported has no glyph; a target with no ledger record has no Exports row. Clip rows have no export warning glyph. Export state remains in help and VoiceOver, and failed exports retain Retry in the Exports context menu (and Retry export in the clip context menu).
 
 Home is the sidebar's first row, in the main window. It is never a separate window. While Home is selected the window title is "VoxClip" (macOS) and the open project, if any, keeps its sidebar section (rows only, no action footer).
 
@@ -1637,46 +1646,29 @@ Opening a video makes it playable at once (section 13, "Importing"). Transcripti
 
 ## 8. Export and share
 
-macOS: a sheet on the main window. Windows: a `ContentDialog` (`DefaultButton="Primary"`). It opens from **Export Video…** or **Export Clip…** (⌘E / Ctrl+E), the sidebar row menu (Export Clip…) and, on macOS, File > Export…. Disabled with the reason "Keep at least one word before exporting." when everything is cut (`!summary.canExport`), and with the reasons in §5.4.4 while the video is missing or unreadable and for demo projects.
+macOS: Export is a job in the right panel, below the existing reframed viewer (v3 f14). The header reads **Export · Clip 1** (or the captured full-edit/batch target) and keeps the panel switcher. The title-row **Export Video…** / **Export Clip…**, File > Export… (⌘E) and Explorer Export/Retry open that job with their requested target. There is no Export window or sheet. Windows retains its `ContentDialog` until its inline-actions lane migrates it. Existing export capability reasons still apply: keep at least one word, resolve missing/unreadable video, and leave demo projects before exporting.
 
-The sheet edits the project: **Aspect**, **Quality**, **Also save .srt** and **Save to** read and write the project's `export` object (`aspect`, `quality`, `srt`, `folder`), and the **Captions** picker reads and writes `captions.styleId`, the same value as Captions in the right column (§6.1); the picker keeps "Off" (`"off"`). New projects start from the Settings → Export defaults. Output size, bitrate and frame rate are derived from architecture.md section 4.1 and never stored.
+Setup uses the Captions job's flat spacing, 16 pt inset, 24 pt property rows, 12 pt labels, 11 pt metadata and hairlines. Settings scroll; the footer stays visible.
 
-```text
-┌ Export ───────────────────────────────────────────────────────────────┐
-│ ┌──────────────┐  What      (•) This clip · Clip 2 · 0:20              │
-│ │  first-frame │            ( ) All clips · All 4 clips                │
-│ │  thumbnail   │            ( ) Full video · 2:10                      │
-│ │  with the    │  Aspect    [9:16]  1:1  16:9  Original                │
-│ │  captions    │  Captions  Highlight ▾          [x] Also save .srt    │
-│ └──────────────┘  Quality   [Standard]  High                           │
-│                   Save to   ~/Movies/VoxClip ▾                         │
-│                                                                        │
-│                                             [ Cancel ]   [ Export ]    │
-└────────────────────────────────────────────────────────────────────────┘
+- **What:** This clip (number, title, duration), All N kept clips in transcript order, or Full video. The requested target is captured when the job opens. Export still uses `.fullEdit` or one `.clip(id)` per target.
+- **Aspect:** segmented **9:16 · 1:1 · 16:9 · Original**, with “Reframed on your face, preview above”. Values and suffixes remain `9x16`, `1x1`, `16x9`, `source`.
+- **Captions:** burn-in switch, the existing style picker including Off, and **Also save .srt**. Switching captions off preserves the last non-Off style for switching back on.
+- **Quality:** **Standard / High**, the engine's real option. f14's resolution/frame-rate rows map to read-only derived output size and fps. No new encoding options or persisted size/fps fields are introduced.
+- **Save to:** current folder and **Choose…** using the permitted system directory picker.
+- **File name:** editable job-specific pattern, initialized from Settings. `{project}-{clip}-{aspect}` uses the existing base-name sanitization, 100-character cap, fallback, safe folder containment and collision suffixes (` 2`, ` 3`). `{clip}` is `full` for a full edit.
+- Aspect, quality, SRT, folder and caption style edit the existing project settings. The file-name pattern and requested target belong to the job. Panel/tab switches preserve setup state and share drafts. Calling Export again while idle re-targets to the active tab when it differs and clears the old result; a running export resumes its captured target. Choosing This clip captures the active clip for both the header and render.
+- **AI speech:** when an export includes AI voice, the read-aloud notice remains “This video contains AI-modified speech. It will show AI MODIFIED.” The mandatory burned-in video label and provenance are unchanged. The post line is optional, separately controlled below.
+- Footer: **0:38 · about 24 MB · H.264**, estimated from target edited duration and the resolved video/audio bitrates. The primary reads **Export Clip 1**, **Export 4 Clips** or **Export Full Edit**; after failure it reads **Try again**.
 
-after export (same sheet / dialog content replaced):
-┌ Export ───────────────────────────────────────────────────────────────┐
-│ ✓ Saved 2 videos to Movies/VoxClip                                     │
-│   interview-take-3-galley-9x16.mp4   0:42                              │
-│   interview-take-3-hooks-9x16.mp4    0:31                              │
-│                                                                        │
-│ Share   [ Show in Finder ]  [ Copy caption ]  [ Open X ]  [ Open LinkedIn ] │
-│ Caption ┌──────────────────────────────────────────────────┐ 212/280 X │
-│         │ Clip title + first sentence (editable)           │           │
-│         └──────────────────────────────────────────────────┘           │
-│                                                         [ Done ]       │
-└────────────────────────────────────────────────────────────────────────┘
-```
+While running, inline progress reads “Rendering 1 of 2 · 42% · about 1 min left” and exposes **Cancel**. The status bar continues showing its export progress. Switching panel or tab leaves the editor-owned export task running. Errors appear inline, and Retry in the Explorer opens setup for the failed target and folder. A successful target still records the export ledger (§6.2).
 
-- Single-choice options are segmented choice rows, not dropdowns (except the caption style, which has many values). Named levels, not numbers.
-- **What** is a single choice of **This clip** ("Clip 2 · It has to work on mute · 0:20"; only when a clip row is selected), **All clips** ("All 4 clips", the kept clips in transcript order, disabled when there are none) and **Full video** ("Full video · 2:10"). It defaults to the selected sidebar row. The `ExportTarget` lists are unchanged: `.fullEdit`, or one `.clip(id)` per clip.
-- **Aspect** offers `9:16 · 1:1 · 16:9 · Original`. The stored values and the file name suffixes (`9x16`, `1x1`, `16x9`, `source`) are unchanged. Windows must map options by value, not by index.
-- Progress replaces the form: "Rendering 1 of 2 · 42% · about 1 min left" with a fixed-width bar (Windows: fixed width, the Fluent `ProgressBar` minimum width otherwise pushes text) and **Cancel**. Closing the sheet keeps the export running. Progress shows on the sidebar row of the target being rendered ("Exporting 42%") instead of the toolbar subtitle or the Windows footer.
-- **Ledger.** A finished export writes the ledger record (§6.2).
-- **AI speech.** When the export target contains accepted AI speech, the sheet shows the disclosure line "This video contains AI-modified speech. It will show AI MODIFIED." above the buttons.
-- File name pattern: `{project}-{clip}-{aspect}.mp4` (`{clip}` is `full` for the full edit; aspect as `16x9`, `9x16`, `1x1`, `source`), de-duplicated with ` 2`, ` 3`.
-- **Share helpers (M1)**, behaviour in publishing.md section 2: Show in Finder / Show in Explorer, Copy caption (also offers the file for drag-out from the row), Open X (web intent with the caption), Open LinkedIn (composer with the caption). The caption field shows a per-destination count (X 280, LinkedIn 3,000).
-- M2 adds "Also post to VoxConvo @handle" (checkbox, only when connected, otherwise "Connect…") and the primary becomes **Export & post**. Posting follows publishing.md section 3: the button disables on press, the final post call is never retried automatically, "Try again" reuses the render.
+After export the result is **Exported · file name · Show in Finder · Done**. **Done** returns to the previous available panel job, falling back to Captions. A new Rewrite session or turn brings Rewrite forward while Export remains available in the switcher. Sharing is optional: **Share to X or LinkedIn…** starts collapsed, and its open/closed state is remembered in `ui.export.shareExpanded`. Done never prompts about sharing.
+
+Inside that section, the editable caption retains the X weight (`/280`) and LinkedIn scalar (`/3,000`) counters, **Copy caption**, **Open X**, **Open LinkedIn**, drag-out files, and “VoxClip copies the caption and reveals the file. Add the video in the browser; nothing is posted automatically.” For targets with a generated AI-voice disclosure line, the plain toggle **Add 'AI MODIFIED' line to the post** is **OFF by default always**, including AI-voiced exports. Turning it on adds the exact line from the rendered export after a blank paragraph, with an uncut fallback if share-text rules are unavailable; turning it off removes it with no interstitial or warning. Only an export with AI-voiced phrases shows “Your video still shows the AI MODIFIED label.” A target without AI voice has no generated post-line control or hint. The burned-in video label remains unchanged. “Caption copied.” resets after two seconds. Browser opening accepts only HTTPS URLs at X or LinkedIn. Optional post text and truncation rules are in voice-lab.md §11.3 and publishing.md §2.1.
+
+Missing-media relinking uses an inline work-area banner: “This file looks different. Use it anyway?” and the candidate file name, **Use It**, **Choose Another…**, and **Cancel**. Only Use It confirms different media. Cancel or cancelling the system picker leaves the project unchanged. Duration mismatches beyond 0.05 seconds still refuse; a successful relink is one undo step. VoiceOver announces the banner and candidate name when it appears. Use It relinks the current project, preserving any intervening edits or tab scope changes. Cancel or Choose Another retires the candidate; a closing/closed project cannot relink, and a refused confirmation keeps its banner with an inline explanation.
+
+M2's future Export & post remains scoped by publishing.md §3; its final post call is never retried automatically.
 
 ---
 
@@ -1890,9 +1882,9 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Everything cut | Editor, Export | Export disabled; status "Keep at least one word before exporting." |
 | Suggestion selected, Export pressed | Export tooltip | "Keep this clip to export it." |
 | Edit summary | toolbar subtitle / command row | §3.5 grammar: "{edited} after cuts · {n} cuts", "Clip {k} · {edited} after cuts · {n} cuts", "Clip {k} · {edited} · No cuts yet" |
-| Export progress | Export sheet; sidebar row | sheet: "Rendering {i} of {n} · {p}% · about {t} left" [Cancel]; row: "Exporting {p}%" with a ring. Announce "Exporting {n} video(s)", then "Rendering {i} of {n} · {p}%" at 25, 50 and 75% |
-| Export done | Export sheet | "Saved {n} video(s) to {folder}" + share buttons. Announce it with the folder's name; Copy caption announces "Caption copied." |
-| Export failure | Export sheet; sidebar row | sheet: "Export stopped: {reason}. Your edits are saved." [Try again]; row: "⚠ Export failed" [Retry]. Announce the sheet message; a cancelled export is silent |
+| Export progress | Mac Export job / Windows dialog; Explorer row | job/dialog: "Rendering {i} of {n} · {p}% · about {t} left" [Cancel]; row: "Exporting {p}%" with a ring. Announce "Exporting {n} video(s)", then "Rendering {i} of {n} · {p}%" at 25, 50 and 75% |
+| Export done | Mac Export job / Windows dialog | Mac: "Exported" + file name, Show in Finder and Done; sharing is optional and collapsed by default. Windows: "Saved {n} video(s) to {folder}" + share buttons. Announce the saved result with the folder's name; Copy caption announces "Caption copied." |
+| Export failure | Mac Export job / Windows dialog; Explorer row | job/dialog: "Export stopped: {reason}. Your edits are saved." [Try again]; row: "⚠ Export failed" [Retry]. Announce the inline error; a cancelled export is silent |
 | Export destination conflict | Export failure reason | "A file named {name} appeared in the export folder. Export again to replace it, or choose another name." Never silently replace a file which appeared or changed after the export was approved. |
 | Exported, then edited | sidebar row, second line | "⚠ Edited since export" in `status.warning` |
 | No encoder (Windows) | Export | "No H.264 encoder is available on this PC. Install the Media Feature Pack or update your graphics driver." (Error) |
@@ -1903,7 +1895,7 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Update ready (Windows) | InfoBar | "VoxClip {version} is ready. Restart to update." [Restart now]; during transcription, clip search or export the button is disabled with "Finish the current task first." |
 | Up to date | manual check | "VoxClip {version} is the latest version." |
 | Update check offline | manual check | "Couldn't check for updates. You're offline." |
-| Post failure (M2) | Export sheet | "Saved to {folder}. Posting to VoxConvo failed: {reason}." [Try again] (render reused, never auto-retried) |
+| Post failure (M2) | Mac Export job / Windows dialog | "Saved to {folder}. Posting to VoxConvo failed: {reason}." [Try again] (render reused, never auto-retried) |
 | Camera or mic denied (M2) | Record view | "Camera access is off. Turn it on in System Settings → Privacy & Security → Camera." [Open Settings] |
 | Unsaved changes | — | Projects autosave. macOS: an untitled project (never saved under a name) gets the system keep/delete prompt on close; named projects close silently. Windows: projects always have a file (architecture.md §2.6), so closing never prompts. |
 | Project can't be saved (Windows: leaving, closing or quitting) | Editor InfoBar (Error); navigation stays put | "Couldn't save this project. Your edits are still open. Check the folder or use Save project as…, then try again." (macOS shows the system save error) |
@@ -1915,12 +1907,12 @@ Voice: short, factual, calm, always reassuring about the media. No exclamation m
 | Rewrite: send again over edits | Rewrite job footer, inline | "Discard these {c} changes?" [Keep Working] [Discard Changes] |
 | Rewrite: AI picker | AI menu | Header "Used for Rewrite, Find Clips and Tighten with AI." Groups "Installed apps · your own sign-in", "On this {Mac/PC}", "Your API key". Trailing billing: "{model} · no extra cost", "{model} · billed to its API key", "Not signed in", "{model} · free", "on {host} · free", "Not running", "free · English", "asks before each send", "Add Key…". Then "Model" and "AI Settings…" |
 | Rewrite: panel header and context line | Rewrite panel | Titles "Rewrite clip {n}", "Rewrite {w} words", "Rewrite full take"; in voice steps "Your voice" with "Step {i} of 3" ("Step {i} of 4" with a read-aloud), "Beta" and "Back to rewrite". Context line "{AI} · {model} · no extra cost", "{AI} · {model} · billed to your key" or "{AI} · {model} · answered in {t} s". Other scopes substitute their words (§6.3) |
-| Rewrite: no AI chosen | Rewrite panel, R0 | "Who should rewrite clip {n}?" Rows: "Claude Code (installed CLI)" with "Signed in · Claude plan · no extra cost", "Signed in · billed to the API key Claude Code uses" or "Not signed in. Run `claude` in Terminal and sign in."; "Codex (installed CLI)" with "Signed in · ChatGPT plan · no extra cost" or "Not signed in. Run `codex login` in Terminal."; "Ollama" with "{model} on this {Mac/PC} · free" or "Not running. Start Ollama, then choose Check Again."; "Apple on-device" with "free · English"; "Anthropic" with "your API key · asks before each send", and with no key the field "Paste your Anthropic API key" [Save Key]. Note "Change it any time from the menu above the transcript." [Check Again] [Use {name}] |
+| Rewrite: no AI chosen | Rewrite panel, R0 | "Who should rewrite clip {n}?" Rows: "Claude Code (installed CLI)" with "Signed in · Claude plan · no extra cost", "Signed in · billed to the API key Claude Code uses" or "Not signed in. Run `claude` in Terminal and sign in."; "Codex (installed CLI)" with "Signed in · ChatGPT plan · no extra cost" or "Not signed in. Run `codex login` in Terminal."; "Ollama" with "{model} on this {Mac/PC} · free" or, on macOS v2, "Ollama isn't answering at {url}. Start it, then choose Check Again."; "Apple on-device" with "free · English"; "Anthropic" with "your API key · asks before each send", and with no key the field "Paste your Anthropic API key" [Save Key]. Note "Change it any time from the menu above the transcript." [Check Again] [Use {name}] |
 | Rewrite: no AI set up | Rewrite panel, R0 | "No AI is set up yet" / "Rewrite needs an AI: an installed Claude Code or Codex, a local model, Apple on-device, or an API key." [AI Settings…] [Check Again] |
 | Rewrite: a send that asks first | sheet, R0b | Title "Rewrite clip {n}?" Body "Sends the {w} words of clip {n} to {provider} with your key." (a CLI on an API key: "Sends the {w} words of clip {n} to Claude Code, billed to the API key it is signed in with.") and "VoxClip can't tell what this costs. Check {provider}'s pricing." [Cancel] [Rewrite] |
 | Rewrite: running | Rewrite panel, R1 | Quote "Asked: **Fix mistakes**, fix slips and repeats, keep my words, change as little as possible." or "Asked: “{instruction}”". Headline "Rewriting clip {n}…" with the elapsed time and [Stop]. Steps "Read clip {n}" · "{w} words · {m:ss}"; "Sent to {AI}" · "Text only. No audio or video." (a loopback server or Apple: "Running on this {Mac/PC}" · "Nothing leaves it."); "Waiting for {AI}…" · "Changes appear in the transcript when it answers."; "Check that each change fits". Announce "Rewriting clip {n}". Stop is silent |
 | Rewrite: send line | Rewrite panel footer | A CLI on a plan: "Sends the {w} words of clip {n} to {CLI} with your sign-in. Counts toward your {Claude plan \| ChatGPT plan}." A CLI on an API key: "Sends the {w} words of clip {n} to {CLI}, billed to the API key it is signed in with." An API key: "Sends the {w} words of clip {n} to {provider} with your key." A loopback server or Apple: "Runs on this {Mac/PC}. Nothing leaves it." A remote local server: "Sends the {w} words of clip {n} to {host}." |
-| Rewrite: couldn't rewrite | Rewrite panel, R1x | "Couldn't rewrite clip {n}", then the AI spec section 5 message and "Your edits are saved." [Try Again] ([Try Again…] when the send asks first). Signed out: "{CLI} isn't signed in. Run `claude` (or `codex login`) in Terminal and sign in, then choose Try Again." No key: the field "{provider} API key" [Save Key and Try Again]. Not running: "Ollama isn't running. Start it, then choose Try Again." Refused: "The model declined to rewrite this recording." [Ask for Something Else] |
+| Rewrite: couldn't rewrite | Rewrite panel, R1x | "Couldn't rewrite clip {n}", then the AI spec section 5 message and "Your edits are saved." [Try Again] ([Try Again…] when the send asks first). Signed out: "{CLI} isn't signed in. Run `claude` (or `codex login`) in Terminal and sign in, then choose Try Again." No key: the field "{provider} API key" [Save Key and Try Again]. Not running on macOS v2: "{server} isn't answering at {url}. Start it, then choose Try Again." Windows: "Ollama isn't running. Start it, then choose Try Again." Refused: "The model declined to rewrite this recording." [Ask for Something Else] |
 | Rewrite: too large | Rewrite panel, R1x | "{Full take \| Clip {n}} is too long to rewrite at once" / over 3,000 words: "Rewrite works on up to 3,000 words at a time. This {video \| clip} has {n}. Choose a clip or select a passage."; over 20,000 bytes of text: "This {video \| clip} has more text than Rewrite can send at once. Choose a clip or select a passage." [Find Clips] on Full take |
 | Rewrite: proposal | Rewrite panel, R2 | Context line "{AI} · {model} · answered in {t} s". Headline "{c} changes" ("1 change"), sub-line "{x} cuts · {y} fixes · {z} phrases in your voice". Announce "{c} changes proposed. {z} need your voice." |
 | Rewrite: change rows | Rewrite panel, R2 | Voice: "“{new words}”" / "Your voice · replaces “{removed words}”", or "Your voice · new words". Fix: "{Commas \| Spelling \| Capitals \| Punctuation} in “{text}”" / "Fix · text only, free". Cut: "Cut “{removed words}”" / "Cut · free". `checkThis` (Warning): "Check this: it adds something you didn't say." Colliding, no checkbox: "Too close to the change before it to voice separately. Edit them together or leave one out." Voice Lab off, no checkbox (Warning): "Needs Voice Lab (beta)". Uncalibrated language, no checkbox (Warning): "Your voice works in English projects only for now." A row refused by placement shows its refusal copy below |
@@ -2108,7 +2100,7 @@ Typography uses the system font: the transcript at 19/32 (SF Pro; Segoe UI Varia
 | Rewrite takes per phrase | `Picker(.segmented)` | `Segmented` (CommunityToolkit) |
 | Status / errors | inline callout row | `InfoBar` |
 | Home | `.dropDestination(for: URL.self)`, `.searchable(placement: .toolbar)`, `LazyVGrid(.adaptive)` | `AllowDrop`, `AutoSuggestBox`, `GridView` |
-| Export | `.sheet` | `ContentDialog` |
+| Export | right-panel `ExportJobView` | `ContentDialog` |
 | Settings | `Settings`-style window with `TabView`, `.formStyle(.grouped)` | Settings window + `NavigationView` + `SettingsCard` / `SettingsExpander` |
 | Key field / storage | `SecureField` / Keychain | `PasswordBox` / DPAPI |
 | Shortcuts | `.keyboardShortcut`, menus, `onKeyPress` | `KeyboardAccelerator` |

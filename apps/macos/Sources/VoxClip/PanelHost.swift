@@ -7,10 +7,11 @@ import VoxClipCore
 
 /// A job of the right column's one panel (notes.md §7).
 enum PanelJob: String, CaseIterable, Sendable {
-    case captions, rewrite, voice, takes, director
+    case captions, rewrite, voice, takes, director, export
 
     var title: String {
         switch self {
+        case .export: "Export"
         case .captions: "Captions"
         case .rewrite: "Rewrite"
         case .voice: "Voice"
@@ -21,6 +22,7 @@ enum PanelJob: String, CaseIterable, Sendable {
     /// The switcher's glyph, in the mockup's order: captions, pencil, waveform, chat.
     var symbol: String {
         switch self {
+        case .export: "square.and.arrow.up"
         case .captions: "captions.bubble"
         case .rewrite: "pencil"
         case .voice: "waveform"
@@ -33,8 +35,10 @@ enum PanelJob: String, CaseIterable, Sendable {
     /// cannot act is not shown"). Captions always, and the job of the task open on the
     /// active tab (Rewrite; Voice and Takes with V16–V18, Director with Phase 1).
     @MainActor static func available(in model: EditorModel) -> [PanelJob] {
-        guard let task = model.panelTask else { return [.captions] }
-        return [.captions, task.job]
+        var jobs: [PanelJob] = [.captions]
+        if let task = model.panelTask { jobs.append(task.job) }
+        if model.exportJob.isOpen { jobs.append(.export) }
+        return jobs
     }
 }
 
@@ -61,12 +65,14 @@ extension WorkspaceShell {
         let jobs = PanelJob.available(in: model)
         let task = model.openRewrite?.task
         if let asking = model.panelTask, asking.confirm != nil { return asking.job }
-        if let choice = panelChoice, choice.task === task, choice.turn == task?.turn, jobs.contains(choice.job) { return choice.job }
+        if let choice = panelChoice, choice.task === task, choice.turn == (task?.turn ?? 0), jobs.contains(choice.job) { return choice.job }
         return model.panelTask?.job ?? .captions
     }
     /// The switcher's pick.
     func choosePanelJob(_ job: PanelJob, for model: EditorModel) {
         guard PanelJob.available(in: model).contains(job) else { return }
+        let current = panelJob(for: model)
+        if job == .export, current != .export { model.exportJob.previousJob = current }
         let task = model.openRewrite?.task
         panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0)
     }
@@ -107,7 +113,8 @@ extension WorkspaceShell {
                 .modifier(EditorPaneFocus(model: model, pane: .viewer))
             PanelHeader(model: model, shell: shell, job: job)
             Group {
-                if job == .rewrite, let session = model.rewrite {
+                if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+                else if job == .rewrite, let session = model.rewrite {
                     DirectorPanel(task: session.task, model: model)
                 } else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
@@ -138,7 +145,7 @@ extension WorkspaceShell {
     var body: some View {
         // The tab's name follows the scope and the clips' numbering, which only these make observable.
         let scope = model.renderedActiveClipID, _ = model.projectRevision
-        let context = model.scopeName(scope)
+        let context = job == .export ? model.exportJobContext : model.scopeName(scope)
         HStack(spacing: 7) {
             Text(job.title).font(VCType.body.font(.semibold)).foregroundStyle(DesignValues.color("text.primary"))
                 .fixedSize().accessibilityAddTraits(.isHeader)
