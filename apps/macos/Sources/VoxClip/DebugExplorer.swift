@@ -21,6 +21,14 @@ import VoxClipCore
               && ExplorerMetrics.thumbnailSize == CGSize(width: 36, height: 20))
         check("Explorer disclosures and row actions have at least 24 point targets", ExplorerMetrics.rowHeight >= EditorAccessibilityPolicy.minimumTarget
               && ExplorerMetrics.outlineHeight >= EditorAccessibilityPolicy.minimumTarget)
+        let exports = editor.exportsList.rows
+        let ledgerCount = shell.app.exportLedger.records.filter { $0.projectID == editor.project.id }.count
+        check("Explorer Exports equals the open project's ledger and speaks its count", exports.count == ledgerCount
+              && ExplorerHeader(shell: shell, section: .exports, count: exports.count).accessibilityName == ExplorerSection.exports.accessibilityLabel(count: ledgerCount))
+        let visibleVoices = shell.explorerShowsVoices ? shell.app.voiceLabSession.visibleRecords.count : 0
+        check("Explorer Voices follows the beta gate and visible records and speaks its count", shell.explorerVoices.count == visibleVoices
+              && (shell.app.bool("voiceLab.enabled") || !shell.explorerShowsVoices)
+              && ExplorerHeader(shell: shell, section: .voices, count: visibleVoices).accessibilityName == ExplorerSection.voices.accessibilityLabel(count: visibleVoices))
         return results
     }
 

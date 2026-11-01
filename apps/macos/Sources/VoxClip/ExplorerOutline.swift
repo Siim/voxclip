@@ -3,7 +3,7 @@ import VoxClipCore
 
 /// Explorer sections are view preferences, shared between windows; no project edit.
 enum ExplorerSection: String, CaseIterable {
-    case take, clips, outline, suggested, recent
+    case take, clips, outline, suggested, voices, exports, recent
     var key: String { "ui.explorer.\(rawValue)" }
     var title: String { rawValue.capitalized }
     func accessibilityLabel(count: Int, title: String? = nil) -> String { "\(title ?? self.title), \(count) \(count == 1 ? "item" : "items")" }
@@ -29,7 +29,7 @@ struct ExplorerOutlineEntry: Identifiable, Equatable {
 }
 
 extension WorkspaceShell {
-    func explorerExpanded(_ section: ExplorerSection) -> Bool { app.bool(section.key, fallback: true) }
+    func explorerExpanded(_ section: ExplorerSection) -> Bool { app.bool(section.key, fallback: section != .voices && section != .exports) }
     func setExplorerExpanded(_ section: ExplorerSection, _ expanded: Bool) { app.set(section.key, .bool(expanded)) }
 
     var outlineEntries: [ExplorerOutlineEntry] {
@@ -80,5 +80,38 @@ extension WorkspaceShell {
         // The row's scope seek can finish during startup; the selected words, project
         // and connector still have to match, while its playhead need not stay still.
         editor.beginRewrite(entry: .menu, selectionAnchored: true)
+    }
+}
+
+/// Voice management remains in Settings. Only visible consent records are projected;
+/// the enabled setting is required in every build, independently of Settings visibility.
+struct ExplorerVoiceEntry: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let made: String
+    let needsAttention: Bool
+    var state: String { needsAttention ? "Needs attention" : "Ready" }
+    var accessibilityLabel: String { "\(name), \(made), \(state)" }
+    init(record: VoiceConsentRecord, needsAttention: Bool) {
+        id = record.id; name = record.voiceName
+        let date = UTCTimestamp.date(from: record.createdAt)
+        let day = date?.formatted(date: .abbreviated, time: .omitted) ?? String(record.createdAt.prefix(10))
+        let sources = Set(record.samples.map(\.source))
+        let source = sources == ["project"] ? "video audio" : sources == ["readAloud"] ? "a read-aloud" : "recorded audio"
+        made = "made \(day) from \(source)"
+        self.needsAttention = needsAttention
+    }
+}
+
+extension WorkspaceShell {
+    var explorerShowsVoices: Bool { !showsHome && app.bool("voiceLab.enabled") }
+    var explorerVoices: [ExplorerVoiceEntry] {
+        guard explorerShowsVoices else { return [] }
+        let session = app.voiceLabSession
+        return session.visibleRecords.map { record in
+            let attention = record.status != .active || session.deleting.contains(record.id)
+                || session.operations.contains { $0.recordID == record.id && !$0.finished }
+            return ExplorerVoiceEntry(record: record, needsAttention: attention)
+        }
     }
 }

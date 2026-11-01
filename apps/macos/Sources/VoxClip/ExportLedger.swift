@@ -12,6 +12,14 @@ struct ExportRecord: Codable, Equatable {
     let styleId: String
     let aspect: AspectRatio
     let outputPath: String
+    // Optional additions preserve voxclip-export ledgers written before V2b.
+    var targetName: String? = nil
+    var durationSeconds: Double? = nil
+    var width: Int? = nil
+    var height: Int? = nil
+    var byteSize: Int64? = nil
+    var failed: Bool? = nil
+    var retryFolder: String? = nil
 }
 
 @MainActor @Observable final class ExportLedger {
@@ -249,6 +257,7 @@ extension EditorModel {
         if exporting, activeExportKey == key { return .exporting(exportPercent) }
         if failedExports[key] != nil { return .failed }
         guard let entry = app.exportLedger.entry(projectID: project.id, targetID: ExportLedger.targetID(target), aspect: aspect) else { return .none }
+        if entry.failed == true { return .failed }
         return entry.planFingerprint == (try? ExportFingerprint.value(project, target: target, labelPosition: app.voiceLabLabelPosition)) ? .exported : .changed
     }
 
@@ -257,7 +266,9 @@ extension EditorModel {
     }
 
     func retryExport(target: ExportTarget) {
-        guard let folder = failedExports[ExportLedger.key(target, aspect: project.export.aspect)], mediaExportable else { return }
+        let record = app.exportLedger.entry(projectID: project.id, targetID: ExportLedger.targetID(target), aspect: project.export.aspect)
+        let savedFolder = record.flatMap { $0.failed == true ? $0.retryFolder : nil }.map { URL(fileURLWithPath: $0) }
+        guard let folder = failedExports[ExportLedger.key(target, aspect: project.export.aspect)] ?? savedFolder, mediaExportable else { return }
         presentExport(clipIDs: { if case .clip(let id) = target { return [id] }; return [] }(), folder: folder)
     }
 

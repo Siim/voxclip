@@ -295,7 +295,13 @@ How it is built:
 
 ### 3.4 Sidebar rows
 
-**macOS v2 Explorer.** The flat pane keeps a native plain `List` and its system selection highlight (the accepted deviation from the mockup's `selrow`). In the editor its sections are Take, Clips, Outline and Suggested. Each disclosure has an uppercase 11 pt semibold heading and a spoken name such as "Clips, 2 items". The take heading is the project title with no visible count; VoiceOver reads "{title}, 1 item". Clips and Suggested show counts, while Outline shows the open tab’s `scopeName` as trailing context when it fits. Expanded state persists under `ui.explorer.take`, `.clips`, `.outline`, `.suggested` and `.recent`; this never edits the project. Starting Find Clips or Hook, or focusing a suggestion, expands Suggested. Moving selection to a hidden clip row expands its owning Clips or Suggested section. Home shows Home and Recent.
+**macOS v2 Explorer.** The flat pane keeps a native plain `List` and its system selection highlight (the accepted deviation from the mockup's `selrow`). In the editor its sections are Take, Clips, Outline, Suggested, Voices and Exports. Voices is hidden entirely when Voice Lab is off, in every build. Each disclosure has an uppercase 11 pt semibold heading and a spoken name such as "Clips, 2 items". The take heading is the project title with no visible count; VoiceOver reads "{title}, 1 item". Clips and Suggested show counts, while Outline shows the open tab’s `scopeName` as trailing context when it fits. Expanded state persists under `ui.explorer.take`, `.clips`, `.outline`, `.suggested`, `.voices`, `.exports` and `.recent`; this never edits the project. Starting Find Clips or Hook, or focusing a suggestion, expands Suggested. Moving selection to a hidden clip row expands its owning Clips or Suggested section. Home shows Home and Recent.
+
+**Voices and Exports (macOS V2b).** These sections stay at the Explorer bottom, collapsed by default, with counts and the same 28 pt uppercase disclosure headers. Expanded rows are 28 pt, keeping notes.md's Explorer grid; their two lines are a 13 pt title and 11 pt metadata, each truncated at the tail. Help and VoiceOver carry the complete text. A long expanded library scrolls within a bounded area. The section's VoiceOver group name is “Voices, {n} items” or “Exports, {n} items” (singular “1 item”).
+
+Voices projects `voiceLabSession.visibleRecords` only while `voiceLab.enabled` is on. Each row has a person glyph, voice name, “made {date} from {source}”, and Ready or Needs attention (warning text for the latter, also spoken). Consent records identify video audio or a read-aloud, rather than retaining a project name. **Manage in Settings** opens Settings › Voice Lab; management stays there.
+
+Exports projects the open project's ledger, newest first, one latest attempt per target and aspect. A row has a 36×20 thumbnail from the exported file, “Clip {n} · {aspect}” (or Full Take), and “{m:ss} · {resolution} · {size} · {time}”. Actual duration, dimensions and byte size are saved with new successful outputs. Older records remain readable; missing output facts display “—”. Failed attempts persist with their retry folder and appear even after reopening the app. Only Edited since export and Export failed show a trailing 11 pt `exclamationmark.triangle` in `status.warning`; Exported stays quiet. Clip rows have no export warning glyph. All states remain in help and VoiceOver. A 24 pt reveal button and **Show in Finder** / **Open** context actions use the exported file (disabled if unavailable). **Export again** opens the right-panel Export job with that row's target and aspect; failed rows also offer **Retry** with their saved folder. Neither action starts a render. Removed targets stay visible with their saved name, with export actions disabled. A running export retains its captured target.
 
 A single click previews a clip or suggestion in the one temporary tab. Double-click keeps that tab open; selecting an already pinned tab leaves it pinned. Opening a Rewrite session from any entry point or marking a tab dirty also pins its preview immediately. Preview replacement preserves any remaining session or pending review work before opening the next clip. Return still keeps a suggestion or renames a kept clip, and Delete dismisses or removes it. The Outline uses the take's `TranscriptParagraphs`, filtered by overlap with the open tab, with take time in mono `m:ss` and the first six words. A click scrolls through the transcript's scope-scroll path without moving scope, playhead or word selection. A green dot means pending changes (wired when V14 and V2 are both merged); a blue dot means enabled AI speech in that paragraph. Both states are spoken. Outline Return/Delete do not rename or remove the open clip; ⇧⌘↩ still keeps its suggestion.
 
@@ -1016,12 +1022,13 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 **Export ledger** (app-local, not in the project).
 
 - **Location:** `<app data>/exports.json`, keyed by project id and target ("full" or a clip id). macOS also keys it by aspect, so a row shows the status for the project's current Frame. Windows keeps one record per target.
-- **Record:** `{exportedAt, planFingerprint, styleId, aspect, outputPath}`, written after each successful export.
+- **Record:** `{exportedAt, planFingerprint, styleId, aspect, outputPath}`, written after each successful export. macOS V2b adds optional `targetName`, `durationSeconds`, `width`, `height`, `byteSize`, `failed` and `retryFolder`; failures (including cancellation) also replace the latest attempt. Old successful records still decode.
 - **Fingerprint:** `planFingerprint` is a SHA-256 over the render inputs both platforms share (`apps/windows/CONTRACTS.md`): the source's content key, duration, oriented size, rotation, frame rate, sample rate and channels; the scoped edit plan; quality and the resolved output encoding; the effective caption style and, when captions are on, the scoped caption words (including their timings), language, overrides and position for the aspect; and the Voice Lab output plan, disclosure and selected assets. SRT intent, titles, share text, the folder, word confidence, speakers, project bookkeeping timestamps and recipe provenance are left out.
 - **Statuses:**
-  - **Exported:** a record exists and its `planFingerprint` matches the current one.
-  - **Edited since export:** a record exists and the fingerprints differ.
-  - **Exporting / Export failed:** taken from the live export queue.
+  - **Exported:** a successful record exists and its `planFingerprint` matches the current one.
+  - **Edited since export:** a successful record exists and the fingerprints differ.
+  - **Exporting:** taken from the live export queue.
+  - **Export failed:** the live failed attempt, or on macOS a persisted failed ledger entry. Windows keeps its live-queue status.
 - Clearing app data removes the statuses, never the project.
 
 ### 6.3 Rewrite (clip-first) and your voice
@@ -1516,7 +1523,7 @@ The Director will run an AI session that proposes cuts, clips, rewrites and capt
 
 ## 7. Home
 
-**Interim macOS v2 export state.** Until V2b, clip rows show a trailing 11 pt `exclamationmark.triangle` in `status.warning` only for "Edited since export" or "Export failed". Exported and Not exported have no glyph. The state remains in help and VoiceOver, and failed exports retain Retry export in the context menu. V2b moves the warning to its Exports section.
+**macOS v2 export state.** The Explorer’s Exports section (§3.4) owns the trailing 11 pt `exclamationmark.triangle` in `status.warning` for Edited since export and Export failed. Exported has no glyph; a target with no ledger record has no Exports row. Clip rows have no export warning glyph. Export state remains in help and VoiceOver, and failed exports retain Retry in the Exports context menu (and Retry export in the clip context menu).
 
 Home is the sidebar's first row, in the main window. It is never a separate window. While Home is selected the window title is "VoxClip" (macOS) and the open project, if any, keeps its sidebar section (rows only, no action footer).
 

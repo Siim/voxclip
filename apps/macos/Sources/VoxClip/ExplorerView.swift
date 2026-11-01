@@ -42,7 +42,7 @@ import VoxClipCore
 
     var body: some View {
         ScrollViewReader { rows in
-            keys(list)
+            content
                 // A rename ends, and keeps its text, when the selection changes.
                 .onChange(of: shell.selection) { _, row in
                     shell.endRename()
@@ -54,6 +54,14 @@ import VoxClipCore
                     listFocused = true
                 }
                 .accessibilityLabel("Explorer")
+        }
+    }
+    private var content: some View {
+        VStack(spacing: 0) {
+            keys(list)
+            if !shell.showsHome, let editor = shell.editor {
+                ExplorerLibrarySections(shell: shell, editor: editor)
+            }
         }
     }
     private var list: some View {
@@ -299,11 +307,6 @@ import VoxClipCore
             Spacer(minLength: 0)
             if editor.containsAISpeech(clipID: clip.id) { ExplorerVoiceGlyph() }
             Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
-            if exportStatus == .changed || exportStatus == .failed {
-                Image(systemName: "exclamationmark.triangle").font(.system(size: 11))
-                    .foregroundStyle(DesignValues.color("status.warning")).accessibilityHidden(true)
-                    .columnLayoutEvidence("explorer.exportWarning", text: exportStatus.label)
-            }
         }
         .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
         .overlay(alignment: .leading) {
@@ -684,6 +687,7 @@ private struct ExplorerVoiceGlyph: View {
                 ProjectSection(shell: shell, document: document, editor: editor, listFocused: false)
             }
             Spacer(minLength: 0)
+            if let editor = shell.editor { ExplorerLibrarySections(shell: shell, editor: editor) }
         }
         .padding(.horizontal, 12)
         .frame(width: shell.layout.explorerWidth, alignment: .topLeading)

@@ -312,21 +312,35 @@ extension EditorModel {
         exportError = nil; exports = []; exportDisclosureLines = [:]; exporting = true; exportStartedAt = Date(); exportIndex = 1
         exportClipIDs = targets.compactMap { if case .clip(let id) = $0 { id } else { nil } }
         activeExportKey = targets.first.map { ExportLedger.key($0, aspect: snapshot.export.aspect) }
+        var targetNames: [String: String] = [:]
+        for target in targets {
+            switch target {
+            case .fullEdit: targetNames["full"] = "Full Take"
+            case .clip(let id): targetNames[id] = scopeName(id)
+            }
+        }
         let total = targets.count
         announce(total == 1 ? "Exporting 1 video" : "Exporting \(total) videos")
         exportTask = Task { [weak self] in
             guard let self else { return }
             defer { exporting = false; exportProgress = nil; activeExportKey = nil }
             await app.log.write(LogEntry(level: .info, category: "export", message: "start targets=\(targets.count)"))
+            var attempt: ExportRecord?
             do {
                 if document.demo { throw VoxClipError.notImplemented("synthetic-preview-only") }
-                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 for (position, target) in targets.enumerated() {
-                    try Task.checkCancellation(); exportIndex = position + 1
+                    exportIndex = position + 1
                     let key = ExportLedger.key(target, aspect: snapshot.export.aspect)
                     activeExportKey = key
                     failedExports[key] = nil
                     exportProgress = nil
+                    let targetName = targetNames[ExportLedger.targetID(target)] ?? "Full Take"
+                    attempt = ExportRecord(projectID: snapshot.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
+                        planFingerprint: (try? ExportFingerprint.value(snapshot, target: target, labelPosition: labelPosition)) ?? "",
+                        styleId: snapshot.captions.styleId, aspect: snapshot.export.aspect, outputPath: "",
+                        targetName: targetName, failed: true, retryFolder: folder.path)
+                    try Task.checkCancellation()
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                     let render = try await renderRequest(target: target, snapshot: renderSnapshot, labelPosition: labelPosition)
                     let fingerprint = try ExportFingerprint.value(snapshot, target: target, labelPosition: labelPosition)
                     let name: String
@@ -350,7 +364,10 @@ extension EditorModel {
                     exports.append(result)
                     recordShareDisclosure(target, disclosure: render.voiceLab?.prepared.disclosure)
                     try app.exportLedger.record(ExportRecord(projectID: snapshot.id, targetID: ExportLedger.targetID(target), exportedAt: Date(),
-                        planFingerprint: fingerprint, styleId: snapshot.captions.styleId, aspect: snapshot.export.aspect, outputPath: result.outputURL.path))
+                        planFingerprint: fingerprint, styleId: snapshot.captions.styleId, aspect: snapshot.export.aspect, outputPath: result.outputURL.path,
+                        targetName: targetName, durationSeconds: result.durationSeconds, width: result.width, height: result.height,
+                        byteSize: (try? result.outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)))
+                    attempt = nil
                     activeExportKey = nil
                 }
                 await app.log.write(LogEntry(level: .info, category: "export", message: "success targets=\(exports.count)"))
@@ -358,12 +375,24 @@ extension EditorModel {
                 if openFolderAfter { NSWorkspace.shared.activateFileViewerSelecting(exports.map(\.outputURL)) }
             } catch is CancellationError {
                 if let key = activeExportKey { failedExports[key] = folder }
+                if let attempt {
+                    do { try app.exportLedger.record(attempt) }
+                    catch { await app.log.write(LogEntry(level: .error, category: "export", message: "Could not save failed export state")) }
+                }
                 await app.log.write(LogEntry(level: .info, category: "export", message: "cancelled"))
             } catch VoxClipError.cancelled {
                 if let key = activeExportKey { failedExports[key] = folder }
+                if let attempt {
+                    do { try app.exportLedger.record(attempt) }
+                    catch { await app.log.write(LogEntry(level: .error, category: "export", message: "Could not save failed export state")) }
+                }
                 await app.log.write(LogEntry(level: .info, category: "export", message: "cancelled"))
             } catch {
                 if let key = activeExportKey { failedExports[key] = folder }
+                if let attempt {
+                    do { try app.exportLedger.record(attempt) }
+                    catch { await app.log.write(LogEntry(level: .error, category: "export", message: "Could not save failed export state")) }
+                }
                 exportError = await app.safeError(error, context: "export")
                 if let exportError, !exportError.isEmpty { announce(exportError) }
             }
