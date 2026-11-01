@@ -668,30 +668,43 @@ private actor RefusingKeys: ProviderKeyStore {
     }
 
     /// Lead decision (MVP integration): the inline "Discard this change?" moves the keyboard to its safe answer, Keep
-    /// Working, from wherever it was (here the transcript), with the question as the answer's VoiceOver hint. Return and
-    /// Space as typed choose it; Space leaves the change list alone while the question waits.
-    @Test(arguments: ["\r", " "])
-    func theDiscardQuestionMovesTheKeyboardToKeepWorking(key: String) async throws {
+    /// Working, from wherever it was (here the transcript, or a text field such as the clip bar's Ask field), with the
+    /// question as the answer's VoiceOver hint. Return and Space as typed choose it; Space leaves the change list alone
+    /// while the question waits. Answered, the question gives the keyboard back where it found it, as the sheet it
+    /// replaced did, so the user types on.
+    @Test(arguments: zip(["\r", " "], [false, true]))
+    func theDiscardQuestionMovesTheKeyboardToKeepWorking(key: String, fromField: Bool) async throws {
         let ollama = StubConnector(id: .ollama)
         let (app, _) = app("ollama", connectors: ["ollama": ollama])
         let editor = try editor(app)
         defer { editor.close() }
         let panel = PanelWindow(editor: editor)
         defer { panel.close() }
-        panel.window.makeFirstResponder(panel.elsewhere)
+        editor.window = panel.window
+        let field = NSTextField(frame: CGRect(x: 0, y: 0, width: 80, height: 22))
+        panel.host.addSubview(field)
+        let start: NSView = fromField ? field : panel.elsewhere
+        // `start` has the keyboard: the text view itself, or the field editor editing the field.
+        func startHasKeyboard() -> Bool {
+            guard let responder = panel.window.firstResponder as? NSTextView else { return false }
+            return responder === start || responder.isFieldEditor && (responder.delegate as? NSView) === start
+        }
+        panel.window.makeFirstResponder(start)
         let session = try await open(editor)
         await panel.settle { panel.showsTaskPanel }
-        #expect(panel.window.firstResponder === panel.elsewhere && !panel.answerHasKeyboard, "\(panel.state(session.task))")
+        #expect(startHasKeyboard() && !panel.answerHasKeyboard, "\(panel.state(session.task))")
         var answered: [String] = []
         session.task.ask(PanelConfirm(question: "Discard this change?",
                                       cancel: PanelAction(id: "keepWorking", title: "Keep Working") { answered.append("keep"); session.task.dismissConfirm() },
                                       confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { answered.append("discard") }))
         await panel.settle { panel.answerHasKeyboard }
-        #expect(panel.answerHasKeyboard && session.task.keyboardInPanel && panel.window.firstResponder !== panel.elsewhere, "\(panel.state(session.task))")
+        #expect(panel.answerHasKeyboard && session.task.keyboardInPanel && !startHasKeyboard(), "\(panel.state(session.task))")
         #expect(DebugRightColumn.texts(in: panel.host)["director.question"] == "Discard this change?")
         let reviews = session.task.changes?.items.map(\.state)
         panel.press(key, keyCode: key == "\r" ? 36 : 49)
         #expect(answered == ["keep"] && session.task.confirm == nil && session.task.changes?.items.map(\.state) == reviews && session.isOpen)
+        await panel.settle(until: startHasKeyboard)
+        #expect(startHasKeyboard() && !session.task.keyboardInPanel, "Keep Working gives the keyboard back: \(panel.state(session.task))")
     }
 
     /// Ask for Something Else focuses the field (design.md R1x), wherever the keyboard was.

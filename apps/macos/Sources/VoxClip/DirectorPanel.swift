@@ -20,6 +20,9 @@ import VoxClipCore
     /// The question's safe answer, Keep Working, has the keyboard: a question takes it as it appears (lead decision,
     /// MVP integration), so Return, Space and Esc all keep the work.
     @FocusState private var answerFocused: Bool
+    /// Where the keyboard was when a question took it, given back once the question is answered, as the sheet it
+    /// replaced gave it back. Nil when the user moved the keyboard away from the answer meanwhile.
+    @State private var keyboardBeforeQuestion: KeyboardSpot?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,7 +86,11 @@ import VoxClipCore
         .onChange(of: keyboardWithin) { _, _ in reportKeyboard() }
         .onChange(of: keyFieldFocused) { _, _ in reportKeyboard() }
         .onChange(of: askFocused) { _, _ in reportKeyboard() }
-        .onChange(of: answerFocused) { _, _ in reportKeyboard() }
+        .onChange(of: answerFocused) { _, focused in
+            reportKeyboard()
+            // The user moved the keyboard away from a waiting question: it stays where they put it once it is answered.
+            if !focused, task.confirm != nil { keyboardBeforeQuestion = nil }
+        }
         // Replacing the passage panel that had the keyboard, it takes it, so Esc, ⌘. and Return still act (design.md R1).
         .task {
             guard task.takeKeyboardHandover() else { return }
@@ -91,8 +98,13 @@ import VoxClipCore
             await Self.askForFocus(until: { handoverTook }) { if keyField { keyFieldFocused = true } else { keyboardWithin = true } }
         }
         // A question moves the keyboard to its safe answer, wherever it was; VoiceOver hears the question as it appears.
+        // Answered, it gives the keyboard back: to the transcript or the clip bar's Ask field, or the panel itself.
         .task(id: task.confirm?.question) {
-            guard task.confirm != nil else { return }
+            guard task.confirm != nil else {
+                if let spot = keyboardBeforeQuestion { keyboardBeforeQuestion = nil; await giveKeyboardBack(to: spot) }
+                return
+            }
+            if keyboardBeforeQuestion == nil { keyboardBeforeQuestion = keyboardSpot }
             await Self.askForFocus(until: { answerFocused }) { answerFocused = true }
         }
         // The producer's own work as the panel appears (Rewrite detects its AI), beside the handover's.
@@ -114,6 +126,37 @@ import VoxClipCore
             if took() || Task.isCancelled { return }
             request()
             try? await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    /// Where a question found the keyboard: the panel's Ask field, its key field, the panel itself, or a view outside it.
+    private enum KeyboardSpot {
+        case ask, keyField, pane
+        case outside(WeakView)
+        struct WeakView { weak var view: NSView? }
+        /// The view with the window's keyboard: a text field rather than the field editor that edits it.
+        @MainActor static func view(holding window: NSWindow) -> NSView? {
+            if let editor = window.firstResponder as? NSTextView, editor.isFieldEditor { return editor.delegate as? NSView }
+            return window.firstResponder as? NSView
+        }
+    }
+    /// Where the keyboard is now; nil outside an editor's window.
+    private var keyboardSpot: KeyboardSpot? {
+        if askFocused { return .ask }
+        if keyFieldFocused { return .keyField }
+        if keyboardWithin { return .pane }
+        guard let window = model?.window, let view = KeyboardSpot.view(holding: window) else { return nil }
+        return .outside(KeyboardSpot.WeakView(view: view))
+    }
+    /// Puts the keyboard back where a question found it, asking as the handover does.
+    private func giveKeyboardBack(to spot: KeyboardSpot) async {
+        switch spot {
+        case .ask: await Self.askForFocus(until: { askFocused }) { askFocused = true }
+        case .keyField: await Self.askForFocus(until: { keyFieldFocused }) { keyFieldFocused = true }
+        case .pane: await Self.askForFocus(until: { keyboardWithin }) { keyboardWithin = true }
+        case .outside(let held):
+            guard let view = held.view, let window = view.window, !view.isHiddenOrHasHiddenAncestor else { return }
+            await Self.askForFocus(until: { KeyboardSpot.view(holding: window) === view }) { window.makeFirstResponder(view) }
         }
     }
 
