@@ -30,6 +30,30 @@ struct CardFit: Sendable, Hashable {
         return CardFit(surface: .clipRow, width: Int(26 * scale), height: Int(46 * scale), boxX: 2 * scale, boxY: (centre - 7.5) * scale, boxWidth: 22 * scale, boxHeight: 15 * scale,
                        fontMin: Int(4 * scale), fontMax: Int(9 * scale))
     }
+    /// A Captions gallery tile (ux/v2 notes.md §7): `width` (whole points, at least 48) × 40
+    /// with a box inset 8 across and 6 down, one line, 12 → 8 pt, plates drawn. It is drawn as
+    /// the one-line, plate-drawing header-chip surface, which no Mac view draws since V5.
+    static func galleryTile(width: CGFloat, scale: Double = 2) -> CardFit {
+        let points = max(48, Double(width).rounded(.down))
+        return CardFit(surface: .headerChip, width: Int(points * scale), height: Int(40 * scale), boxX: 8 * scale, boxY: 6 * scale,
+                       boxWidth: (points - 16) * scale, boxHeight: 28 * scale, fontMin: Int(8 * scale), fontMax: Int(12 * scale))
+    }
+}
+
+extension CaptionCardText {
+    /// The phrase every gallery tile shows, "and one cool" (ux/v2 notes.md §7), so that only the
+    /// style changes from tile to tile. It is drawn as a card is (design §5.4.2): in its key
+    /// word, "cool", which takes the style's emphasis, or at its end for a style that reveals
+    /// word by word or character by character. `style` is the resolved style the tile draws;
+    /// the source is nominal, since the renderer never reads it.
+    static func gallerySample(_ style: CaptionStyle) -> CaptionCardText {
+        let words = [("and", true), ("one", true), ("cool", false)].enumerated().map { index, word in
+            CaptionCardWord(id: "sample-\(index)", text: word.0, display: word.0, weak: word.1)
+        }
+        let reveal = style.reveal?.unit ?? .page
+        return CaptionCardText(source: .transcript, words: words, keyIndex: 2, styleMaxLines: style.layout.maxLines,
+                               drawsAtLastWord: reveal == .word || reveal == .char, holdGapSec: style.layout.holdGapSec)
+    }
 }
 
 /// One card to draw: VoxClipCore's `CaptionCardText` for a scope, in the library style it
