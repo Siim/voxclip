@@ -3,7 +3,7 @@
 Status:
 
 - **§4 Clean audio**: normative for M2.
-- **§5 to §12 Voice Lab beta**: target design for rewriting a passage or full take in the user's own voice, voice changing and lip sync. The Mac and Windows Core service foundation is described in §2.6. The clip-first Rewrite of 2026-10-31 (§3.1, §5, §6.4 to §6.7, §8.1, §8.4, §8.6, §8.12 and `doc/design.md` §6.3) is specified ahead of the apps. Until the Phase 0 packages land, both apps carry passage Rewrite with re-voiced takes and Create Your Voice behind the beta switch (§5); on Windows, voice creation waits for the speaker check (§6.6). Full-take rewriting, the voice changer and lip sync have no UI yet, and the release gates remain open.
+- **§5 to §12 Voice Lab beta**: the Mac beta includes passage Rewrite, clip-audio checkbox consent, scoped voice changing, explicit sentence-context review and per-passage duration choices. The Mac and Windows Core service foundation is described in §2.6. Windows voice creation still waits for the native speaker check (§6.6). Lip-sync provider jobs and local result validation are implemented as services; the editor workflow and lip-sync render route remain unavailable. Native, real-voice, provider and release gates remain open.
 - **§13**: later capabilities and integration limits.
 
 Voice Lab is every VoxClip feature that sends the user's voice to an AI service and gets new audio or video back. It is separate from transcription (`doc/spec/transcription.md`) and from AI tighten (`doc/spec/ai.md` §12). AI tighten only proposes cuts, never makes synthetic media, and never reuses anything defined here.
@@ -434,7 +434,7 @@ Development builds turn Voice Lab on by default, because the app is under active
 
 ## 6. My voice: consent-guarded own-voice clone (ElevenLabs IVC)
 
-ElevenLabs' Instant Voice Clone API has no consent or verification step. Its response carries only `requires_verification`. VoxClip adds its own guard.
+ElevenLabs' Instant Voice Clone guide requires confirmation of rights and consent. The creation API accepts sample files and returns `requires_verification`; VoxClip must honor that flag. A recorded statement was VoxClip's additional product guard, not a mandatory field of the IVC creation endpoint. ADR-R34 replaces that extra recording for existing project speech with explicit checkbox consent. The read-aloud route retains its recorded-statement flow.
 
 The app is open source, so the guard is good-faith friction and an audit trail, not security. The real backstops are ElevenLabs' terms and the traceability of its output to the user's account.
 
@@ -446,12 +446,22 @@ The app is open source, so the guard is good-faith friction and an audit trail, 
 
   It links to `https://elevenlabs.io/terms-of-use` and `https://elevenlabs.io/use-policy`.
 - **Attestations**: three checkboxes, all required:
-  - "This is my own voice."
+  - "I confirm this is my own voice and I consent to creating a voice clone."
   - "I am 18 or older."
   - "I will use it only on videos of myself."
 - **Display name**: 1 to 60 Unicode scalars after trimming Unicode whitespace; the trimmed name is stored and used in the statement and the voice name. It must not contain a control character (§6.7). The consent form applies the same count as `addVoiceReference` (§10.5) before the paid clone is created, so a name the reference would refuse never reaches ElevenLabs. Grapheme clusters and UTF-16 units are not the measure: 31 decomposed `õ` (62 scalars) are refused.
 
-### 6.2 Consent statement
+### 6.1.1 Existing clip audio: checkbox consent (ADR-R34)
+
+For the project-audio choice, the inline agreement leads to **Use Clip Audio**, enabled only with a valid display name, all three explicit attestations and usable analyzed speech. The checkbox text is the fixed `VoiceConsentRecord.ProjectConsent.text`, saved verbatim as evidence. Explain: "Your agreement is saved with the selected clip audio. You do not need to record a consent statement. ElevenLabs may ask you to verify the voice after creation."
+
+Preparation extracts the selected project spans, takes the first accepted training span as the reference and runs the existing calibrated speaker-consistency checks against that reference. This checks consistency among the selected audio; it does not independently establish the user's identity. At least 30 seconds must pass, up to 120 seconds. The named reference is one of the training uploads, sent exactly once. No microphone, statement nonce, fabricated transcript or Scribe statement request is involved. Project speech may be reused from the full source according to §6.5.1; the scope label is not a promise that a very short clip alone supplies enough training speech.
+
+The ready step shows the selected speech duration, checkbox consent and the actual creation quote. Only **Create My Voice** authorizes the account check and upload. Changing the agreement or audio invalidates the ready plan. A response that requires verification stays unusable until genuine provider verification is completed and checked again. The read-aloud choice remains available when project speech is insufficient or unsuitable.
+
+The Mac implementation uses this route. Windows Core accepts `/2` evidence, private reference storage and creation-only quote binding for compatibility; portable tests cover that contract. Native Windows clone creation remains gated on the speaker check. This does not claim a completed Windows enrollment workflow or relax its speaker gate.
+
+### 6.2 Consent statement (recorded-statement route)
 
 A new statement is generated for each attempt:
 
@@ -468,12 +478,17 @@ A new statement is generated for each attempt:
 
 ### 6.3 Live recording
 
+This section applies only to the recorded-statement/read-aloud route; §6.1.1 requires no microphone recording.
+
 - The statement is recorded from the microphone in the app. Imported files are not accepted.
 - Recording uses the M2 capture stack: 48 kHz mono, at least 5 s, at most 30 s, with a level meter and a "Read this aloud" teleprompter.
+- **macOS callback isolation.** Both AVAudioEngine taps are Sendable callbacks created by the synchronized sample sink, outside the main-actor recorder. They consume each audio buffer on the audio queue without accessing UI state. The main-actor meter reads the sink; stopping closes it before removing the taps, so a late callback cannot change an accepted or discarded take.
 - The recording is kept in memory and in `<data>/VoiceLab/consent/<recordId>/statement.wav`.
 - **Windows capture.** Windows records the default Console-role WASAPI input in shared mode on its own thread and keeps device-rate mono samples in memory; the session converts them once to 48 kHz with the Core resampler. The statement is validated at 5–30 s; training capture stops at 90 s and is validated at 60–120 s. The temporary 16 kHz Scribe input is removed after verification. The endpoint is fixed for a take: device loss, a stalled input, unplugging, lock or sleep discards the take instead of switching devices. Silence is exact digital zero on every original channel for 2.0 s, or packets flagged silent; opposite-phase stereo is not silence. Closing Settings, turning Voice Lab off, an update restart (reported as busy) and quitting discard and abandon an active capture, and startup removes abandoned statements even with the beta gate off. macOS likewise stops a take after 2.0 s of digital zero on every input channel before the mono mix.
 
 ### 6.4 Verification
+
+The statement/Scribe checks below apply to recorded statements. The attested project route has no statement to transcribe and prepares a creation-only quote; its local speaker reference is selected project speech (§6.1.1). Provider-required verification remains separate and mandatory for both routes.
 
 1. **Order.** After the live statement (§6.3), the speaker match (§6.6) runs on device first, against the selected project spans or the read-aloud. Only when enough audio passes does the panel offer **Create My Voice**. Its single approval covers, in order: the plan check (§2.3); then, only if the plan check passes, Scribe transcription of the statement (ElevenLabs Scribe v2, transcription.md §8, with `language_code` set to the statement language; under $0.01); then, only if item 3 passes, the creation (§6.7). The approval binds everything §6.7's quote binds: the trimmed name, the language, the creation time, the noise-removal choice, and each file's position, role and SHA-256 (the statement is the first file). So the file set is final when the user approves, and any change to these needs a new approval. A failed plan check stops before Scribe and spends nothing. A failed statement check creates nothing and spends only the Scribe request.
 2. **Normalise.** Tokenise both texts on whitespace and normalise with `normalizeForMatch` (`editing.md` §4.7).
@@ -545,6 +560,8 @@ The levels and the cuts use the same placed source timeline, the one transcript 
 
 #### 6.5.2 Making your voice inside Rewrite
 
+**ADR-R34 update:** project audio now follows §6.1.1 without recording a statement. V1 proceeds through **Use Clip Audio**, local consistency checking, then the priced create action. References below to comparing or keeping a live statement apply to the legacy recorded route only. A project mismatch means selected spans are inconsistent with the chosen project-speech reference.
+
 Voices are made only from Rewrite, when a proposal has phrases in your voice and no consented voice exists for the project's language. The steps and copy are `doc/design.md` §6.3.7 "Your voice, from this clip": add a key (if missing), agree (the notice, three attestations, the name and the plan check), read the statement aloud, the on-device check, then **Create My Voice**.
 
 - The analysis starts with the proposal, using `preferRange` = the rewrite's clip (Full take: none; a selection: the clip containing it, if any).
@@ -562,6 +579,8 @@ The guards of the old sheet carry over unchanged:
 - **Which voices a project lists.** Rewrite lists only voices whose statement language is the project's transcript language, and the statement falls back to English while only English is calibrated (§6.2). A voice made from a project in an uncalibrated language could never be listed there, so the steps are not offered in it.
 
 ### 6.6 Speaker match (on device)
+
+For attested project consent, the first accepted project training WAV supplies the owner-reference embedding. The same calibrated model, per-window comparisons, retained-duration minimum and use-time checks apply; references below to the statement mean that chosen reference for this route. Checkbox consent supplies the ownership attestation, not a fabricated speaker-identity verification.
 
 ```swift
 public protocol SpeakerEmbedder: Sendable {
@@ -606,7 +625,7 @@ Pooled results are 30/47,088 false accepts (0.063710%) and 874/876 same-speaker 
 
 ### 6.7 Create the voice
 
-The creation is reached only through the single approval of §6.4 item 1, after the statement check passes. The rest of this section is unchanged.
+For recorded statements, creation is reached through the single approval of §6.4 item 1 after its statement check passes. For attested project audio, creation uses the separate explicit creation-only quote in §6.1.1. The request contains only accepted training WAVs (1–24 files, each 5–30 seconds, 30–120 seconds retained in total); there is no consent-statement file. Its description identifies checkbox consent and the project-reference hash, rather than calling it a consent recording. Name, language, exact file order/bytes, reference evidence, complete timestamped attestations and account are bound to the quote. The recorded-statement request below remains byte-compatible.
 
 ```
 POST {base}/v1/voices/add
@@ -653,9 +672,18 @@ The boundary is `voxclip-` plus 32 lowercase hex, quoted in the request's Conten
 - `requires_verification == true`: do not use the voice. Show "ElevenLabs needs to verify this voice before it can be used. Finish verification on elevenlabs.io, then come back." Store the record with `status: "verificationRequired"`.
 - Errors map as in §4.3, with the permission `create_instant_voice_clone`.
 
+On Mac, a completely observed, typed clone-endpoint `subscriptionRequired`, `featureUnavailable` or missing `create_instant_voice_clone` permission settles the dispatched operation as terminal `refused`. The private operation journal retains sanitized refusal proof and dispatch/account/audit evidence, and the original actionable error stays visible. The private enrollment inputs and reference audio remain available until their original 24-hour expiry for a fresh quote and explicit approval; a consumed quote is never reused. Network loss, cancellation, incomplete refusals, 5xx and malformed accepted responses remain ambiguous and keep the existing remote-reconciliation boundary. A failed refusal-journal write cannot establish settlement across restart and remains ambiguous. Neither outcome automatically repeats creation.
+
+
 ### 6.8 Consent record
 
-Creation-only recovery reuses the saved clone request: it uploads the saved consent statement **and** training audio to ElevenLabs. Only the Scribe statement check is skipped. The recovery list, ready rows and priced-action send line all disclose both uploads and no video; quote/payload pricing is unchanged.
+Recovery reuses the exact saved clone request. A recorded-statement `/1` recovery uploads its saved statement and training audio, skipping only Scribe. An attested `/2` recovery uploads only saved training audio and retains its original checkbox evidence and reference hash; it never invents a recorded statement. Both require a fresh explicit priced action with the original account and preserve the dispatched-operation boundary against duplicate creation.
+
+The Mac attested route writes `voxclip-consent/2`, with no `statement` field. Its `projectConsent` object has `{language, text, audioFile: "reference.wav", audioSha256}`. The fixed text must match the displayed checkbox exactly; the first training sample has the same audio hash, every sample is sourced from `project`, and all timestamped attestations are required. It retains the model/threshold/reference embedding, training hashes, creator account, status and app fields. A reference mismatch, substituted sample, changed consent text, mixed evidence type or incomplete attestation refuses creation/recovery/use. Its private audit records `consentMethod: "projectAttestation"` and `referenceAudioSha256`, with no false `statementSha256`. Cancellation and deletion remove the reference audio using the same durable cleanup boundary.
+
+The synthetic shared record `shared/fixtures/voice-lab/consent-record-project.json` pins the attested format for both Cores and schema validation. `tools/fixtures/voice-lab/generate_creator.py` derives it from the unchanged recorded fixture, with one 30-second project sample and the fixed reference hash. It contains no real voice audio or provider asset.
+
+Existing `voxclip-consent/1` files remain strict recorded-statement records. Their JSON fields, validation and historical evidence are preserved; they are not silently migrated into attestations. The example below is this recorded format.
 
 Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never uploaded, and never inside a project file:
 
@@ -682,7 +710,7 @@ Stored locally in `<data>/VoiceLab/consent/<recordId>/record.json`, never upload
 
 After the on-device match, macOS `VoiceEnrollment.preparePlan` returns an `EnrollmentQuote(verify, create)` without provider calls. The inline Voice job shows the statement playback, send line and **Create My Voice · {quote price}**. That single click approves `execute(approved:)`, which runs the plan check, Scribe verification and creation in that order. A speaker mismatch sends no request. A statement mismatch clears the recording and returns to recording, creating nothing. The former sheet and its compatibility `verify`, `prepare` and `create` APIs have been deleted; tests exercise the combined job and its Core plan. A verified crash boundary offers **Resume Creation** to prepare a creation-only quote, followed by an explicit priced click. Recovery never automatically replays Scribe or creation.
 
-A passed Scribe verification is atomically journaled at `<data>/VoiceLab/consent/<recordId>/enrollment.json` before the creation intent. This private, temporary journal holds the combined quote, exact WAV file set, verified consent draft and training duration. It is separate from the minimal remote-operation journal below. Startup preserves this verified enrollment only before the original creation time plus 24 hours, and exposes it for **Create again**, never an automatic paid retry. At the 24-hour boundary it removes the temporary journal, statement and training audio. An undecodable, invalid-bound or stale journal is abandoned and reported by count, without preventing other valid journals or saved voices from loading. Recovery binds the original key fingerprint and region, statement hash, file roles and bytes, name, language, creation time and speaker model/threshold. It reuses the original unsent create quote only within its original five-minute lifetime; otherwise it prepares a new creation quote and requires a new click. A recovered `EnrollmentQuote.verify` is absent and its `estimate` counts creation alone, matching exactly what `execute` will send. It does not prepare another verification quote or resend the already verified statement to Scribe. A creation already dispatched cannot use this path and follows remote reconciliation instead. Cancellation clears the temporary journal before attempting withdrawal or statement removal; successful creation and dispatched-operation reconciliation also remove it.
+A passed Scribe verification is atomically journaled at `<data>/VoiceLab/consent/<recordId>/enrollment.json` before the creation intent. This private, temporary journal holds the combined quote, exact WAV file set, verified consent draft and training duration. It is separate from the minimal remote-operation journal below. Startup preserves this verified enrollment only before the original creation time plus 24 hours, and exposes it for **Create again**, never an automatic paid retry. At the 24-hour boundary it removes the temporary journal, statement and training audio. An undecodable, invalid-bound or stale journal is abandoned and reported by count, without preventing other valid journals or saved voices from loading. Recovery binds the original key fingerprint and region, statement hash, file roles and bytes, name, language, creation time and speaker model/threshold. It reuses the original unsent create quote only within its original five-minute lifetime; otherwise it prepares a new creation quote and requires a new click. A recovered `EnrollmentQuote.verify` is absent and its `estimate` counts creation alone, matching exactly what `execute` will send. It does not prepare another verification quote or resend the already verified statement to Scribe. An uncertain dispatched creation cannot use this path and follows remote reconciliation instead. A durably settled typed refusal may recover its retained inputs only through a new quote and explicit approval, retaining the previous operation audit. Cancellation clears the temporary journal before attempting withdrawal or statement removal; successful creation and ambiguous dispatched-operation reconciliation also remove it. A settled refusal preserves its private retry inputs until their original expiry, and reconciliation only cleans its local pending draft without provider calls.
 
 - Sample audio is deleted after a successful upload. Only the hashes stay.
 - `samples[].source` is `project` for spans of the open project's audio (§6.5 a) and `readAloud` for a read-aloud (§6.5 b). Each entry keeps the SHA-256 and `seconds` of the WAV as sent and its speaker score. The record stores no project path, span times or transcript text.
@@ -711,6 +739,8 @@ Creation proceeds `intent` → `dispatched` → `created` → `saved`, then remo
 Creation can instead move to `withdrawing` → `withdrawn`; the journal is removed only after the local statement and any known remote voice are gone. A known creation with valid consent can finish a failed local save without another create request. The Voice job also offers **Remove This Voice**, which durably requests withdrawal before removing the statement. Settings lists every unfinished operation with its plain state and Retry, including the unfinished-account check described above. Only live `dispatched` and `created` operations before the 24-hour deadline block a new creation; withdrawing and abandoned operations do not. One reconciler runs at launch, when Voice Lab opens and when a persisted retry becomes due. The store actor writes and claims a live creation intent in one call, before another task can observe it. The creator releases the claim on every outcome, including local cleanup failures; operation claims prevent concurrent reconciliation and dispatch of the same operation.
 
 ### 6.9 Use-time guard
+
+Mac Make Takes pins the observed creator key and region through discovery, quote preparation, approval, synthesis and QA transcription dispatch. Changing the credential refuses the existing approval before sending. A legacy record with no historical creator remains usable only when its recorded region and owned-voice discovery match; the run pins the account actually observed without inventing historical creator evidence.
 
 Before generating anything with the clone for a project, run the guard:
 
@@ -746,6 +776,8 @@ A Professional Voice Clone path, where ElevenLabs runs its own voice-captcha ver
 ---
 
 ## 7. Voice changer (speech-to-speech)
+
+Mac conversion planning reads a bounded source-audio RMS envelope on the original source clock and omits the partial final 10 ms bucket. Regions without audio have zero planning energy, so an otherwise valid passage can be selected when the video's audio track starts later or ends earlier. This planning envelope never supplies provider audio: each upload still requires continuous decoded samples across its exact reviewed range and real overlap handles. Voice discovery does not require an unused subscription-read permission. Clone creation still checks its required paid plan.
 
 ### 7.1 Targets
 
@@ -1292,7 +1324,7 @@ On Mac the inline phrase rows read `RewriteSession.takePlan` (`ClipTakePlan`), n
 
 Scribe QA is separately priced as `speechToText`/`scribe_v2`, but its bounded quote is included inside the approved run total, not approved after synthesis. The run reserves at most 290 seconds per QA request, including the half-second source context on each available side. A candidate whose final QA buffer exceeds that cap is invalid and is not sent to Scribe. The spend ledger retains the conservative quoted estimate only for accepted sends; it is not an actual provider invoice. Mac W4 reads back the private float32 scratch WAV containing the fitted audio, static gain, room-tone loop and centred seams. Scribe's PCM16 upload is encoded from that readback; mixed sample peak and seam loudness jump measure the same readback. Speaker matching and flatness still measure the ungained trimmed paid take, not source context or room tone. Scribe dispatch uses the same voice and current-input gates as TTS. Missing or malformed alignment remains invalid under §2.6. The §8.8 fallback is not enabled until its LCS tie-breaking and interpolation bounds at missing leading/trailing neighbours are defined precisely; no alignment repair is silently purchased.
 
-The W3 input holds decoded source audio on the source sample grid, an already-placed window and complete patch text including bridge words. W4 owns bounded media extraction and scratch sizing; W3 bounds each paid candidate and its QA buffer as above. Source level and room tone are checked before any paid request. The existing W2 calibration requires at least three seconds of voiced speech for an embedding; shorter generated takes remain failed, unselectable speaker-QA rows and do not buy Scribe QA. W3 does not pad or repeat short speech, borrow the owner's source speech into the candidate embedding, or invent a short-duration threshold. A calibrated short-take policy remains an open release item, particularly for one-to-three-word patches.
+The W3 input holds decoded source audio on the source sample grid, an already-placed window and complete patch text including bridge words. W4 owns bounded media extraction and scratch sizing; W3 bounds each paid candidate and its QA buffer as above. Source level and room tone are checked before any paid request. The existing W2 calibration requires at least three seconds of voiced speech for an embedding. A generated candidate with too few real speech samples records `insufficientGeneratedSpeech`, stays unselectable and does not buy Scribe QA. This means the speaker check could not run; it is not a measured speaker mismatch or evidence of wrong words. Unperformed speaker and transcript measurements remain absent, and the inline row names the unavailable check rather than saying the take failed a speech comparison. W3 does not pad or repeat short speech, borrow the owner's source speech into the candidate embedding, or invent a short-duration threshold. A calibrated short-take policy remains an open release item, particularly for one-to-three-word patches.
 
 For the W3 transcript comparison, assign a Scribe word to the fitted patch when the midpoint of its recognised interval lies in the half-open fitted patch interval. The extra source context remains in the acoustical checks and upload but does not enter the intended-text token comparison.
 
@@ -1481,13 +1513,15 @@ Settings → Voice Lab → Lip sync has two choices: the provider (fal.ai, sync.
 
 One lip-sync job per provider at a time, queued. Progress shows "Lip sync · queued (3)" → "Lip sync · 40%" → "Lip sync · downloading", with [Cancel].
 
+Local result import uses a private `.partial.mp4` stage so AVFoundation recognizes the container before publication. Bounded copy, self-contained container checks, H.264 metadata validation, hash binding, cancellation and no-clobber publication remain mandatory. A successful service import does not enable the editor's lip-sync render route.
+
 ---
 
 ## 10. Data model: AI segments in the edit plan
 
 ### 10.1 Version 2 project representation (ADR-R24)
 
-`schemaVersion: 1` continues to require exactly `voiceLab: {"segments": []}`. A project that stores generated media may use `schemaVersion: 2` and a `voiceLab` object with required `assets` and `segments` arrays. An ordinary project is not rewritten to v2 merely because the app understands this format. Both native Core serializers retain unknown reverse-DNS `extensions` when they load and save all supported versions. Current readers reject version 4 or later.
+`schemaVersion: 1` continues to require exactly `voiceLab: {"segments": []}`. A project that stores generated media may use `schemaVersion: 2` and a `voiceLab` object with required `assets` and `segments` arrays. An ordinary project is not rewritten to v2 merely because the app understands this format. Both native Core serializers retain unknown reverse-DNS `extensions` when they load and save all supported versions. Current readers accept versions 1–4 and reject version 5 or later. Version 4 adds the explicit context-demo and motion fields described in `context-demo.md`; it retains the v3 Voice Lab policy.
 
 A v2 asset is `{id, kind: "audio", file, sha256, durationSeconds, sampleRate, createdAt}`. `file` is a relative `<projectId>/<assetId>.wav` or `.flac` name under the paid VoiceLab store. Asset IDs used as file components contain only lowercase ASCII letters, digits, `_` and `-`; Windows device names (`con`, `prn`, `aux`, `nul`, `com1`–`com9`, `lpt1`–`lpt9`) are rejected. There is no colon, trailing dot/space, absolute path, URI, parent traversal or backslash path. A project carries no audio bytes, credentials, or consent-statement recording. Assets are immutable paid outputs and delete/disable operations do not erase them. A media adapter must resolve the store path, verify SHA-256 and duration before rendering; this Core round only validates the reference and plans pieces.
 
@@ -1510,6 +1544,8 @@ Core validation applies the same rule in two places:
 A v2 segment has `{id, kind, enabled, replace, outDuration, audio, text, words, provenance, qa, candidates, selectedCandidateIndex}`. `kind` is `tts` or `voiceChanger`. `replace` has source seconds `start` and `end` plus `firstWordId` and `lastWordId`; this round supports positive-length passage and full-take replacement. Insertion (`afterWordId` and a zero-length source range) is reserved for a later version with an explicit inverse mapping rule. `audio` identifies the selected asset, trim bounds, stretch and gain. `outDuration` must equal the trimmed asset duration times stretch within one asset sample. `candidates` retain their asset IDs, score and rejection reason; the selected index must name an unrejected candidate and match `audio.assetId`. `provenance` records provider endpoint name, model, voice ID, optional consent **record ID**, optional request ID, optional seed and creation time. `qa` has optional transcript match, loudness jump, peak and speaker score. All persisted numbers must be finite.
 
 For `tts`, `text` contains original and new spoken text and `words` contains positive, ordered times relative to the output start, each with a `synthetic` flag. In version 2 only, `synthetic: false` marks a bridge word whose text was kept although its audio was re-voiced. In version 3 recipes every TTS word, bridge words included, is `synthetic: true` (§8.8, §10.5). `voiceChanger` stores `text: null` and `words: null`; captions retain the source words. This v2 object is the first audio-only project format, not the final Voice Lab schema.
+
+In v3/v4, an unranked `voiceChanger` candidate may store `score: null`; its exact recipe, measured loudness and peak remain required. Conversion does not invent a TTS ranking, transcript match or speaker score. TTS candidates and legacy v2 candidates still require a finite ranking score when unrejected.
 
 **Historical v2 omissions.** Version 3 now specifies these fields in §10.4. Version 2 does not imply defaults for any omitted field:
 
@@ -1619,7 +1655,7 @@ All source intervals use JavaScript half-up rounding on the source sample grid; 
 
 An incoming synth seam needs `floor(N/2)` output samples of asset handle before its trim; an outgoing seam needs `ceil(N/2)` after its trim, including when two synth pieces share the seam. For a needed half of `k` source-grid output samples, the minimum raw handle is `ceil(k × assetSampleRate / (sourceSampleRate × audio.stretch))` asset frames. A touching synth seam has zero source handle on both sides and keeps the one N-frame fade.
 
-`video.mode` is one of `source`, `retimed`, `zoomCover`, or `lipsync`, with mode-specific data validated and retained. Pure Core preparation accepts `source` when rounded replacement input/output sample lengths are equal, and the §8.9 step 3 policies `zoomCover` and `lipsync` with their validated mode-specific data. `retimed` and changed-duration source mode still report `videoModeUnsupported`; unknown mode strings and integer enum values are invalid. Native request capture (`VoiceLabRenderInput` on both Cores) accepts only prepared source-video recipes and reports `videoModeUnsupported` for Zoom cover and Lip sync before any paid snapshot or native work. This separates fit-policy preparation from the current source-only native render capability; it does not enable retiming or lip-sync rendering. Core validation keeps a stored fit factor within `STRETCH_OK` (`[0.92, 1.08]`). That range is only a validation bound: under ADR-R30 every renderable recipe has a fit factor of 1, and Media refuses any other value (below). Retime policies validate `[0.80, 1.25]`. TTS requires timestamped alignment, applicable transcript and calibrated speaker QA evidence; stock voice changing does not inherit TTS-specific transcript/speaker gates. Core does not claim a QA record proves actual speaker verification.
+`video.mode` is one of `source`, `retimed`, `zoomCover`, or `lipsync`, with mode-specific data validated and retained. Pure Core preparation accepts `source` when rounded replacement input/output sample lengths are equal, and the §8.9 step 3 policies `zoomCover` and `lipsync` with their validated mode-specific data. `retimed` and changed-duration source mode still report `videoModeUnsupported`; unknown mode strings and integer enum values are invalid. Native Mac request capture accepts prepared source-video recipes and the explicitly chosen, composition-verified `zoomCover` route with factor 0.80–1.25 and crop 1.12. Windows retains its explicit unsupported visual-route refusal. Both platforms still refuse legacy retimed and lip-sync rendering before native work. Provider job support alone does not enable a render route. Core validation keeps a stored fit factor within `STRETCH_OK` (`[0.92, 1.08]`). That range is only a validation bound: under ADR-R30 every renderable recipe has a fit factor of 1, and Media refuses any other value (below). Retime policies validate `[0.80, 1.25]`. TTS requires timestamped alignment, applicable transcript and calibrated speaker QA evidence; stock voice changing does not inherit TTS-specific transcript/speaker gates. Core does not claim a QA record proves actual speaker verification.
 
 The prepared disclosure derives kinds, synthetic output seconds, persistence (`voiceChanger ≥ 50%` or all AI `> 30%`), first exposure `[0,min(3,duration)]`, and clamped segment intervals expanded by 0.5 s and merged when their gap is less than 1 s. It stores 150 ms fades, chosen position and language-specific post text. It does not draw a label, write XMP/sidecar output or accept a render. Callers use it only with native composition and visible/provenance output bound to the same prepared contract.
 

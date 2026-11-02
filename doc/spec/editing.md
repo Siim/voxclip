@@ -148,6 +148,8 @@ ClipRange { id, startWordId, endWordId, title?, origin: manual | ai, aiResultId?
 
 The clip is a **range layer**. Selecting a clip never writes cut flags. Words outside the clip are excluded only when the plan is built (7.1), so cuts and corrections made while a clip is active stay in `cutWordIds` and `corrections` when the clip changes or is left.
 
+On Mac, clip and suggestion views hide surrounding transcript and timeline context by default. One in-memory **Show surrounding context** toggle reveals both, independently of Show cuts. It resets off when entering a different scope, while Full Take always stays full. Transcript rendering intersects the original source ranges without changing word IDs or timing; timeline display and overview bounds are separate from the playback plan. This view preference changes no project data, dirty state, Undo history, clip boundaries, source-to-edited mapping or export scope.
+
 Indices: a clip is resolved to item indices `[startIndex, endIndex]` with `0 <= startIndex <= endIndex < items.count`. Index-based APIs (session ops, `clipTimes`, the clip finder) use these indices. The project file stores ids.
 
 ### 2.6 EditSegment (planner input)

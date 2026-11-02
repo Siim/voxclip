@@ -4,6 +4,23 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Record and place silent context demos from a reviewed app window, webpage or code project in the Mac editor, with source-bound saving and Undo.
+- Edit clip pan and zoom cues in the Mac FX Motion lane, with reduced-motion preview and matching export framing.
+- Change a selection or full take into your saved voice on Mac, with a separate price approval, measured audio checks and explicit audition.
+- Review a complete sentence when a rewritten phrase is too short for the calibrated speech check, then approve a fresh exact-text quote.
+- Choose source duration or a verified take's natural duration for each rewritten passage; video adapts while generated audio remains unstretched.
+- Report insufficient generated speech accurately and refuse clearly undersized takes before payment. Definitive clone-plan or permission refusals allow a freshly approved retry.
+
+- Create your own Mac voice from existing clip speech with checkbox consent, without recording an extra consent statement.
+
+- Hide surrounding transcript and timeline context by default in Mac clip and suggestion tabs; one Show surrounding context toggle restores both.
+
+- Keep the Mac ElevenLabs transcription and Save Key buttons visible while a key is missing, with clear disabled states.
+
+- Fix a Mac crash when starting microphone recording for Voice Lab.
+
+- Fix a blank Mac workspace caused by chrome backgrounds painting over neighboring content.
+
 - Inline transcription, API-key approval and Voice review now share the integrated workspace without extra sheets; quotes track pending corrections, in-flight paid work retains its discard protection, chosen takes survive retries, playback and audition stop each other, and monthly spend updates during review.
 
 - Inline review questions keep their panel alive and return the keyboard to the transcript or field after Keep Working.
@@ -42,7 +59,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Mac: Transcribe now runs inline in the transcript, with editable model downloads, Apple Speech first for English, priced ElevenLabs approval on every run, and inline Transcribe Again.
 - Mac confirms API-key AI sends and first-use privacy inline below the clip bar. Saving a key makes no request, and every billed retry asks again.
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
-- On Mac, the timeline adds an FX Motion lane with “Director results land here,” matching the saved S/M/L track heights and overlay scrolling.
+- On Mac, the FX Motion lane exposes accessible controls for adding, editing and removing clip motion cues, alongside saved S/M/L track heights and overlay scrolling.
 - On Mac, drag in the timeline or transcript to select the same words, trim In/Out with one undo step, navigate and select by word or sentence with the keyboard, and adjust the playhead, edges and zoom with VoiceOver. A click near a trim handle leaves the clip unchanged.
 - On Mac the timeline adds video filmstrips and caption cues, caption visibility and preview mute in the track headers, saved S/M/L track heights, zoom buttons and slider, pinch zoom, overlay scrolling, and Maximize. Source view leaves cut video empty, darkens cut parts inside caption cues, and dims media outside In/Out.
 - Import a video and transcribe it with word timestamps: ElevenLabs Scribe with your own key, local Whisper models, or Apple Speech on Mac. If a local model is missing, VoxClip offers to download it.
@@ -57,7 +74,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Voice Lab (beta, off until you turn it on): say the new words in your own cloned voice with your ElevenLabs key. Each paid step shows its cost and asks first.
 - Voice Lab's rewrite planner places several phrases in source order, merges colliding voice windows only when their seams and patch budget remain safe, and explains which change cannot be voiced separately.
 - Voice Lab's rewrite planner respects deletions in the same review when searching for safe voice seams, without re-voicing words marked for removal.
-- Make your voice from the clip you are rewriting, or from a 90-second read-aloud. You always record a short consent statement live. A speaker check on your computer runs before anything is sent, then one click checks your statement and creates the voice. Nothing is created if a check fails.
+- Make your voice from the clip you are rewriting with explicit checkbox consent, or use the read-aloud route with a live consent statement. A speaker check on your computer runs before anything is sent, and a separate priced approval creates the voice. Nothing is created if a check fails.
 - The speaker check is calibrated for English only, so your voice works in English projects in this release.
 - Every export that contains generated speech is marked AI MODIFIED on screen, and the mark is also embedded in the file's metadata and a provenance sidecar. You can move the label but not turn it off.
 - Share text for such an export ends with a line saying it contains AI-modified speech, and VoxClip asks before you share without it.

@@ -1,0 +1,51 @@
+# Context demonstrations and clip motion
+
+Status: Mac integration and synthetic preview/export validation on 2026-11-02. Real recording, interaction and accessibility acceptance remain separate from fake-backed and synthetic-media tests. Windows reads and validates the v4 format and refuses visual routes it cannot render. The previously delivered Mac bundle predates this work.
+
+The user can start from a webpage URL, a code-project folder or an exact running app window. A source repository is optional. A demonstration records the real application or page, remains silent, and appears over the matching narration. Captures can be previewed, trimmed, moved, replaced or removed. Original narration, source words and source word timings remain unchanged.
+
+## Project format
+
+Schema version 4 adds optional `contextDemo` and `motionCues` root fields. Existing v1/v2/v3 documents preserve their versions and shapes until a deliberate feature edit. Feature mutations upgrade through the v3 Voice Lab migration policy before promoting to v4; a v4 document is never downgraded to v3. A new field present under a legacy version, including empty or null, is rejected. Version 4 retains v3 paid-asset, consent, clean-audio and render-recipe rules.
+
+A context document has format `voxclip-context-demo`, version 1, a project ID, plan ID, revision, source content key, full narration snapshot, asset inventory and placements. The source content key is the current media SHA-256. Matching project IDs and timings are insufficient after a different-content relink. The separate codec is for explicit import/export; it is not an automatically discovered second source of truth.
+
+Placements use captured-asset trim seconds and a start position in the full edited narration. Selecting a clip changes the view, not the document coordinate system. The clip-local playhead maps through source time into the full edited timeline before creating a placement. Render preparation verifies the full narration, clips to the requested scope, and rebases output placement times to zero. Stale source content, narration mappings, revisions, cancelled preparation and invalid scope fail without substituting an older recording.
+
+Assets are local H.264 MP4, at most 30 seconds, with even dimensions up to 1920 × 1080 and at most 64 MiB retained per asset. Canonical paths are `context-demo/<projectId>/<assetId>.mp4` under the app data root. Paths, identities, byte sizes, SHA-256, metadata and first-frame decoding are checked before composition. Placement ranges are positive, source-bounded, sample-aligned, ordered and nonoverlapping. A plan supports at most 64 assets and 64 placements. Removing a placement retains only the document's canonical references; file deletion must not break an active render lease or Undo history.
+
+## Recording and review
+
+Opening a panel or choosing a source does not begin recording, run a project command, inspect accessibility controls, request permission or send provider requests. Screen Recording access is checked through an explicit user action. Start uses a current, single-use reviewed request and an exact window/process binding. It never falls back to recording the desktop, microphone or system audio.
+
+The native writer finalizes an H.264 MP4 and verifies the local result before offering placement. The retained-file budget is strict. ScreenCaptureKit has no per-writer kernel byte quota, so polling and finalization may discard a file after a short transient overshoot. Operating-system enumeration and termination cannot be promised to finish at an exact deadline.
+
+Cancellation drains capture and actions before releasing their resources. A completed result that arrives after cancellation is verified and discarded even though its operation task is already cancelled; cancellation does not interrupt that bounded cleanup or turn it into a successful recording.
+
+For webpage demos, the app owns the browser window and binds capture to that exact window. The user reviews exact navigation, scroll, link and pause actions. Standard page JavaScript is off by default and can be explicitly enabled for the reviewed page; this does not enable an arbitrary evaluation interface. Exact URL and history fencing, a nonpersistent store, denied media/geolocation permissions and blocked forms, credentials, downloads and popups remain enforced. Capture begins before actions run. Cancel and browser invalidation first cancel capture, then stop actions. The window is retained until capture cleanup and action completion have drained, and only that operation's window is closed. Older cleanup cannot clear a newer review or publish success after cancellation.
+
+Code-project setup separates bounded folder inspection, exact command review and explicit Start/Stop. Choosing or inspecting a folder does not run a command or install dependencies. The existing executor limits a plan to three commands, 60 seconds each and 90 seconds overall, with exact executable/argument/working-directory and minimal-environment review. Approved commands can execute project hooks and use the network; this executor is not a sandbox. A running preview URL or app window can be selected separately for capture.
+
+The desktop route can record while the user operates the selected window, or execute an explicitly reviewed set of native Accessibility actions. Access checks and inspection run only from explicit buttons. Focus, press, native scroll, nonsecret value replacement and pause actions bind to the exact inspected window and process launch, and Start begins capture before executing them. Cancellation drains recording and actions before releasing the window. Unsupported exact-window mapping fails inline; there is no title, geometry or desktop fallback. The native implementation currently has a guarded private window-ID SPI fallback, which remains a distribution gate until supported mapping is verified.
+
+Placement, trim, move, replace, removal and motion edits replace one Project snapshot and use one Undo transaction. Removing a clip removes its motion cues in the same transaction. An explicit transcript replacement or different-content relink invalidates source-bound demo/motion plans; a matching-source relink preserves them.
+
+## Motion
+
+Motion cues belong to a clip and half-open original source interval. Canonical wire requires 2–8 strictly increasing keyframes, first progress 0 and last progress 1, scale 1–1.35 and normalized anchors 0–1. Cue duration is 0.1–120 seconds, at most 64 cues per clip. The FX lane opens native controls for adding, editing and deleting cues. Draft changes do not mutate the project until committed.
+
+The renderer evaluates source time from the output timeline, then the authored cue's source-relative progress. Retained cuts can produce a jump at a seam; retimed output keeps the original source progress. Defensive evaluation uses the earliest source start, then ID, and applies the first cue without compounding transforms. Full Take has no active clip and applies no clip motion. Preview respects Reduce Motion by returning identity; export applies authored motion.
+
+## Shared composition and export
+
+Preview and export use the existing single `FrameCompositor`. The base narration stays present, captured tracks contain video only, and each instruction requires the base and active demo track. Missing required frames fail; no cached or black frame is reported as a successful demo. A validated demo track retains its backing AVFoundation asset until insertion into the composition completes.
+
+The compositor applies video geometry and authored motion before existing captions and Voice Lab disclosure. Demo assets are copied through descriptor-safe, no-follow paths into private immutable snapshots retained by render leases. App/CLI request construction supplies the actual source key, canonical data root, requested scope and clip identity. Export fingerprints and preview caches include demo revisions, assets, placements and motion. Source-only fast export is unavailable when it would omit active visual work. MP4 readers receive all video tracks from the copied composition. Layered or synthetic preview updates rebuild the prepared graph, retaining full-timeline instructions, framing and leases; the caption-only reuse path is limited to an unchanged ordinary source composition.
+
+On macOS, strict directory traversal maps the fixed system aliases `/var`, `/tmp` and `/etc` to their `/private` locations before opening each component without following links. User-created symbolic links remain refused. Project inspection counts a file identity once when case-insensitive filesystem aliases such as `README.md` and `readme.md` name the same file.
+
+Each rewrite passage offers a fresh explicit choice between keeping source duration and matching video duration to the verified take. Matching duration preserves unstretched audio and uses the validated `zoomCover` recipe: source/output factor 0.80–1.25 inclusive, crop scale 1.12. Acceptance requires actual composition preparation from the exact staged project and retains that preparation. Legacy retimed and lip-sync routes remain unavailable until their complete render paths are implemented. Provider job support alone does not enable lip-sync acceptance.
+
+## Verification
+
+Shared schema/fixture checks and Swift/C# roundtrips cover legacy preservation, strict v4 input and invalid values. Dedicated fake-backed tests cover plans, currentness, cancellation, capture storage, browser lifetimes, scope mappings, motion, export identity and Undo. Synthetic composition tests verify track selection and rendering separately from native selected-window recording. Native acceptance still includes recording a real app/page, playback, keyboard and VoiceOver, preview/export visual agreement, listening and supported Windows architectures. Passing one layer does not imply another has run.
