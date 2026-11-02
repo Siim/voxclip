@@ -715,7 +715,7 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(!session.task.keyboardInPanel)
         await ollama.release()
         #expect(await session.sending?.value == true)
-        await panel.settle { session.task.state == .proposal }
+        await panel.settle { if case .proposal = session.task.state { true } else { false } }
         await panel.settle(turns: 500)
         #expect(panel.window.firstResponder === panel.elsewhere, "a reply after F6 and a move out keeps the keyboard outside")
     }
