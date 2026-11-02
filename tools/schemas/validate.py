@@ -49,12 +49,14 @@ def schema_for(path, document, by_name):
         return by_name["settings.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-voice-lab-prices/1":
         return by_name["voice-lab-prices.schema.json"]
-    if isinstance(document, dict) and document.get("schema") == "voxclip-consent/1":
+    if isinstance(document, dict) and document.get("schema") in {"voxclip-consent/1", "voxclip-consent/2"}:
         return by_name["consent.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-voice-statements/1":
         return by_name["voice-statements.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-voice-models/1":
         return by_name["voice-models.schema.json"]
+    if isinstance(document, dict) and document.get("format") == "voxclip-context-demo":
+        return by_name["context-demo.schema.json"]
     raise SystemExit(f"{path}: no schema applies (expected .voxclip, .transcript.json, voxclip-settings/1 "
                      "or voxclip-voice-lab-prices/1)")
 
@@ -64,11 +66,13 @@ def main(argv):
     fixtures = ROOT / "shared" / "fixtures"
     files = [pathlib.Path(a) for a in argv] or sorted([
         *fixtures.joinpath("projects").glob("*.voxclip"),
+        *fixtures.joinpath("context-demo").glob("*.voxclip"),
         *fixtures.joinpath("media").glob("*.transcript.json"),
     ]) + [ROOT / "shared" / "catalog" / "voice-lab.json",
           ROOT / "shared" / "voice-lab" / "statements.json",
           fixtures / "voice-lab" / "consent-record.json",
           fixtures / "voice-lab" / "consent-record-creator.json",
+          fixtures / "voice-lab" / "consent-record-project.json",
           ROOT / "shared" / "catalog" / "voice-lab-models.json"]
     if not files:
         print("no files to validate", file=sys.stderr)

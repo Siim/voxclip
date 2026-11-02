@@ -1,0 +1,44 @@
+{
+  "schema": "voxclip-consent/2",
+  "recordId": "6f0c2c1e-8a0e-4c5e-9d1f-0b9d4a7f2e11",
+  "provider": "elevenlabs",
+  "type": "ivc",
+  "voiceId": "fixtureOwnVoice",
+  "voiceName": "Example (VoxClip)",
+  "status": "active",
+  "createdAt": "2026-10-29T12:00:00Z",
+  "deletedAt": null,
+  "attestations": {
+    "ownVoice": true,
+    "adult": true,
+    "ownVideosOnly": true,
+    "acceptedAt": "2026-10-29T11:59:00Z"
+  },
+  "samples": [
+    {
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "seconds": 30,
+      "source": "project",
+      "speakerScore": 1
+    }
+  ],
+  "speaker": {
+    "model": "fixture-calibrated",
+    "threshold": 0.8,
+    "embedding": "AACAPwAAAAA="
+  },
+  "app": {
+    "version": "0.1.0",
+    "platform": "macos"
+  },
+  "creator": {
+    "region": "eu",
+    "keyFingerprint": "0123456789abcdef"
+  },
+  "projectConsent": {
+    "language": "en",
+    "text": "I confirm this is my own voice and I consent to creating a voice clone.",
+    "audioFile": "reference.wav",
+    "audioSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
