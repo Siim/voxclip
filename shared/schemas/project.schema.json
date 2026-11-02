@@ -1798,6 +1798,71 @@
               "type": "boolean"
             }
           ]
+        },
+        "shortSpeech": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "recordId",
+            "consentMethod",
+            "voicedFrames",
+            "takeCount"
+          ],
+          "properties": {
+            "mode": {
+              "enum": [
+                "pooled",
+                "unmeasured"
+              ]
+            },
+            "recordId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "consentMethod": {
+              "enum": [
+                "recordedStatement",
+                "projectAttestation"
+              ]
+            },
+            "voicedFrames": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "takeCount": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "mode": {
+                    "const": "pooled"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "voicedFrames": {
+                    "minimum": 48000
+                  },
+                  "takeCount": {
+                    "minimum": 2
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "voicedFrames": {
+                    "maximum": 47999
+                  }
+                }
+              }
+            }
+          ]
         }
       }
     },

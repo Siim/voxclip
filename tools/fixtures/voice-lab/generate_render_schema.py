@@ -47,7 +47,17 @@ d['voiceLabVideoRecipe']['allOf'] = [
 ]
 d['voiceLabRenderQA'] = obj({'transcriptTokens': nullable(integer), 'transcriptExact': nullable({'type': 'boolean'}), 'transcriptMatch': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}),
                               'lufsJumpLu': num, 'peakDbfs': num, 'speakerScore': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}),
-                              'speakerThreshold': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}), 'speakerModel': nullable(string), 'speakerPassed': nullable({'type': 'boolean'})})
+                              'speakerThreshold': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}), 'speakerModel': nullable(string), 'speakerPassed': nullable({'type': 'boolean'}),
+                              'shortSpeech': obj({'mode': {'enum': ['pooled', 'unmeasured']}, 'recordId': string,
+                                                  'consentMethod': {'enum': ['recordedStatement', 'projectAttestation']},
+                                                  'voicedFrames': integer, 'takeCount': {'type': 'integer', 'minimum': 1}})},
+                             required=['transcriptTokens', 'transcriptExact', 'transcriptMatch', 'lufsJumpLu', 'peakDbfs',
+                                       'speakerScore', 'speakerThreshold', 'speakerModel', 'speakerPassed'])
+d['voiceLabRenderQA']['properties']['shortSpeech']['allOf'] = [
+    {'if': {'properties': {'mode': {'const': 'pooled'}}},
+     'then': {'properties': {'voicedFrames': {'minimum': 48000}, 'takeCount': {'minimum': 2}}},
+     'else': {'properties': {'voicedFrames': {'maximum': 47999}}}}
+]
 d['voiceLabCost'] = obj({'quoteId': idref, 'usd': nullable({'type': 'number', 'minimum': 0})})
 d['voiceLabRenderRecipe'] = obj({'audio': d['voiceLabSegment']['properties']['audio'], 'words': d['voiceLabSegment']['properties']['words'], 'outDuration': {'type': 'number', 'exclusiveMinimum': 0}, 'seed': {'type': 'integer', 'minimum': 0, 'maximum': 4294967295},
                                  'chunks': {'type': 'array', 'minItems': 1, 'items': {'$ref': '#/$defs/voiceLabChunk'}}, 'roomTone': nullable({'$ref': '#/$defs/voiceLabRoomTone'}),

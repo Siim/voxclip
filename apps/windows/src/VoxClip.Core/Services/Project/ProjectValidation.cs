@@ -141,7 +141,17 @@ internal static class ProjectValidation
         Object(recipe.GetProperty("video"), "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode");
         Choice(recipe.GetProperty("video").GetProperty("mode"), "source", "retimed", "zoomCover", "lipsync");
         Choice(recipe.GetProperty("voiceSource"), "own", "stock");
-        Object(recipe.GetProperty("qa"), "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed");
+        var qa = recipe.GetProperty("qa");
+        Object(qa, "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", "shortSpeech");
+        if (qa.TryGetProperty("shortSpeech", out var shortSpeech))
+        {
+            Object(shortSpeech, "mode recordId consentMethod voicedFrames takeCount");
+            Choice(shortSpeech.GetProperty("mode"), "pooled", "unmeasured");
+            Text(shortSpeech.GetProperty("recordId"), 0, int.MaxValue);
+            Choice(shortSpeech.GetProperty("consentMethod"), "recordedStatement", "projectAttestation");
+            Number(shortSpeech.GetProperty("voicedFrames"), 0, int.MaxValue, true);
+            Number(shortSpeech.GetProperty("takeCount"), 0, int.MaxValue, true);
+        }
         Object(recipe.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt region");
         Object(recipe.GetProperty("cost"), "quoteId usd");
     }
