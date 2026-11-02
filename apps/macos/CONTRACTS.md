@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+### 2026-11-02 — Windows consent/context compatibility handoff
+
+- Windows consolidation commits project-attestation `/2`, insufficient generated-speech QA, strict v4 context/motion persistence and guarded App/CLI callers. It updates existing implementations without leaving duplicates; no source files were deleted in this consolidation. Local Release Core, portable Media/CLI and UI tests, typecheck and the four-assembly release precheck pass; native Windows acceptance remains owed.
+- The next integration must reconcile `doc/spec/voice-lab.md`, the consent/project/context schemas and the new consent/context fixtures with the concurrent Mac changes. Windows preserves legacy formats, refuses unsupported visual composition, and keeps native speaker parity disabled. Full Windows details and current test counts are in `apps/windows/CONTRACTS.md` and `doc/windows-project-consent.md`.
+
+
 ### 2026-11-01 - W4/W2b final hosted App follow-up (track/v2-core)
 
 - The resize regression now replays both overlay and legacy scrollbars. A legacy scroller reserves 17 points on the local system: the text and backdrop must fill `scroll.contentSize.width`, while the text measure is capped at 680 points after subtracting the transcript gutters. The old fixed-width expectations reproduce the hosted two-issue failure locally with legacy scrollbars; both styles now pass with the caret, selection, viewport and ruler checks retained.

@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Windows preserves project voice consent and v4 context/motion metadata, distinguishes insufficient generated speech from a measured mismatch, and refuses unsupported visual exports while keeping saved edits intact.
+
 - Windows v2 shell now connects scoped inline Rewrite/Hook jobs, transcript review, real caption timeline snapshots and durable local transcription estimates; native Windows acceptance remains pending.
 - Windows gains an Explorer workspace, preview/pinned clip tabs, local one-step Tighten, inline Rename and a Ctrl+K command palette; changing tabs no longer dirties a project or consumes Undo.
 - Windows Core now combines scoped Rewrite, collision-aware phrase placement and atomic take acceptance with the shared v2 transcript and timeline math; paid voice creation remains blocked until native speaker parity is verified.
