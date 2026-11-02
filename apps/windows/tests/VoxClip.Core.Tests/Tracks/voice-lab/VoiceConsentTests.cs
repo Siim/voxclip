@@ -120,7 +120,7 @@ public sealed class VoiceConsentTests
             Assert.False(pending.Finished);
             Assert.True(pending.RecoveryNeedsReview);
             Assert.False(pending.RemoteStateUnknown);
-            Assert.Equal(record.Statement.AudioSha256, pending.Audit!.StatementSha256);
+            Assert.Equal(record.Statement!.AudioSha256, pending.Audit!.StatementSha256);
             Assert.False(pending.Audit.RemoteStateUnknown);
             Assert.Equal(0, remote.Calls);
             method.CreateDelegate<Action<Guid, DateTimeOffset>>(store)(operation.Id, Now.AddDays(2));
@@ -131,7 +131,7 @@ public sealed class VoiceConsentTests
         Assert.True(tombstone.RemoteStateUnknown);
         Assert.True(tombstone.Audit!.RemoteStateUnknown);
         Assert.Equal(Now.AddDays(2), tombstone.Audit.DeletedAt);
-        Assert.Equal(record.Statement.AudioSha256, tombstone.Audit.StatementSha256);
+        Assert.Equal(record.Statement!.AudioSha256, tombstone.Audit.StatementSha256);
         Assert.Equal(record.Samples.Select(sample => sample.Sha256), tombstone.Audit.RecordingSha256s);
         Assert.False(File.Exists(Path.Combine(store.Root, record.RecordId, "statement.wav")));
         Assert.False(File.Exists(Path.Combine(store.Root, record.RecordId, "record.json")));
@@ -359,7 +359,7 @@ public sealed class VoiceConsentTests
         id ??= Guid.NewGuid().ToString("D");
         store.SaveStatement(wav, id);
         var record = Fixture();
-        return record with { RecordId = id, VoiceId = voice, Statement = record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+        return record with { RecordId = id, VoiceId = voice, Statement = record.Statement! with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
     }
     [Theory]
     [InlineData("legacyOperation")]
@@ -715,8 +715,8 @@ public sealed class VoiceConsentTests
             word.GetProperty("start").GetDouble(), word.GetProperty("end").GetDouble(), null, "speaker_0", WordKind.Word, 0)).ToArray();
         var raw = new RawTranscript(new(TranscriptEngine.Elevenlabs, "scribe_v2", null, "x", null), 1,
             new(GroupingEnd.LastToken, GroupingConfidence.Single, false), words, "en", null, true, TimingSource.Native, "fixture-consent-response");
-        var statement = new VoiceConsentStatement("en", record.Statement.Text, record.Statement.Nonce);
-        Assert.Equal(record.Statement.Stt, VoiceStatementMatch.Verify(raw, statement));
+        var statement = new VoiceConsentStatement("en", record.Statement!.Text, record.Statement!.Nonce);
+        Assert.Equal(record.Statement!.Stt, VoiceStatementMatch.Verify(raw, statement));
         Assert.Throws<VoiceConsentException>(() => VoiceStatementMatch.Verify(raw with { Language = "et" }, statement));
         Assert.Throws<VoiceConsentException>(() => VoiceStatementMatch.Verify(raw with { Tokens = words[..^1] }, statement));
         Assert.Throws<VoiceConsentException>(() => VoiceStatementMatch.Verify(raw with { Tokens = words.Take(10).ToArray() }, statement));
@@ -791,7 +791,7 @@ public sealed class VoiceConsentTests
         Assert.Equal(clock.Now.AddSeconds(30), current.NextAttemptAt);
         Assert.False(File.Exists(Path.Combine(store.Root, record.RecordId, "statement.wav")));
         Assert.False(File.Exists(Path.Combine(store.Root, record.RecordId, "record.json")));
-        Assert.Equal(record.Statement.AudioSha256, current.Audit!.StatementSha256);
+        Assert.Equal(record.Statement!.AudioSha256, current.Audit!.StatementSha256);
         var second = store.BeginClaimedCreation(Draft(store), Guid.NewGuid(), ElevenLabsRegion.Default, clock.Now);
         store.Release(second.Id);
         await reconciler.ReconcileAsync(operation.Id, ct: Token);
@@ -832,14 +832,14 @@ public sealed class VoiceConsentTests
         await new VoiceOperationReconciler(store, _ => client, clock).ReconcileAsync(ct: Token);
         Assert.Empty(store.Operations());
         var audit = store.AuditTombstone(record.RecordId)!;
-        Assert.Equal(record.Statement.AudioSha256, audit.StatementSha256);
+        Assert.Equal(record.Statement!.AudioSha256, audit.StatementSha256);
         Assert.Equal("late", audit.RemoteVoiceId);
         Assert.NotNull(audit.DeletedAt);
         Assert.Empty(store.ActiveVoices());
         store.State.Live.Clear();
         store.ReconcileAbandonedEnrollments();
         var bytes = File.ReadAllText(Path.Combine(store.Root, record.RecordId, "audit.json"));
-        Assert.DoesNotContain(record.Statement.Text, bytes);
+        Assert.DoesNotContain(record.Statement!.Text, bytes);
         Assert.DoesNotContain(record.Speaker.Embedding, bytes);
         Assert.Equal(audit.StatementSha256, store.AuditTombstone(record.RecordId)!.StatementSha256);
         Assert.Equal(2, remote.Calls);
@@ -928,7 +928,7 @@ public sealed class VoiceConsentTests
         var record = Draft(store);
         var id = Guid.NewGuid();
         store.BeginClaimedCreation(record, id, ElevenLabsRegion.Default, Now);
-        var permit = store.CreationPermit(record.RecordId, id, record.Statement.AudioSha256);
+        var permit = store.CreationPermit(record.RecordId, id, record.Statement!.AudioSha256);
         await permit.Start(() => { Assert.Equal(VoiceOperationState.Dispatched, store.Operation(id).State); return Task.FromResult(0); }, Token);
         permit.Finish();
         store.Release(id);

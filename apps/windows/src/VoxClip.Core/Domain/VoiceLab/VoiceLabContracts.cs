@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Speech;
@@ -36,7 +37,7 @@ public sealed record VoiceLabEstimate(string Provider, VoiceLabOperation Operati
 public enum VoiceLabLanguageModeKind { Explicit, AutoDetected }
 public sealed record VoiceLabLanguageMode(VoiceLabLanguageModeKind Kind, string ExpectedLanguage);
 /// <summary>The exact destination and input the caller reviews before approving a paid action. For a clone, <c>ContentSha256</c>
-/// is the consent statement sample; the prepared action binds every sample.</summary>
+/// is the recorded statement or attested project reference sample; the prepared action binds every sample.</summary>
 public sealed record VoiceLabReview(VoiceLabOperation Operation, Guid RequestId, string Provider,
     ElevenLabsRegion? Region, string Endpoint, string? ModelId, string? VoiceId,
     VoiceLabLanguageMode? LanguageMode, string? ContentSha256, string? ConsentRecordId,
@@ -82,13 +83,15 @@ public sealed record VoiceLabAuthorization
 public sealed record OwnVoicePolicy(string RecordId, string? CloneVoiceId, bool RecordActive, bool ProviderConsentGranted,
     bool StatementVerified, bool SpeakerMatched, bool OwnerConfirmed)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public VoiceConsentMethod ConsentMethod { get; init; }
     internal VoiceDispatchPermit? DispatchPermit { get; init; }
     internal Func<CancellationToken, Task>? ValidateDispatch { get; init; }
     internal VoiceConsentCreator? Creator { get; init; }
     internal long? ModelRevision { get; init; }
     public void Validate(string? selectedVoiceId = null)
     {
-        if (string.IsNullOrWhiteSpace(RecordId) || !RecordActive || !ProviderConsentGranted || !StatementVerified || !OwnerConfirmed ||
+        if (string.IsNullOrWhiteSpace(RecordId) || !RecordActive || !ProviderConsentGranted || !Enum.IsDefined(ConsentMethod) ||
+            ConsentMethod == VoiceConsentMethod.RecordedStatement && !StatementVerified || !OwnerConfirmed ||
             selectedVoiceId is not null && CloneVoiceId != selectedVoiceId)
             throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         if (!SpeakerMatched) throw new VoiceLabException(VoiceLabErrorKind.SpeakerMismatch);

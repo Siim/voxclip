@@ -156,15 +156,19 @@ internal sealed class VoiceLabActionGate
         claimedRunActions.Remove(token);
     }
 
-    internal static string BoundFingerprint(string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review) =>
-        Fingerprint(fingerprint, review.Operation.ToString(), review.RequestId.ToString("D"), review.Provider,
+    internal static string BoundFingerprint(string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review)
+    {
+        string?[] fields = [fingerprint, review.Operation.ToString(), review.RequestId.ToString("D"), review.Provider,
             review.Region?.ToString(), review.Endpoint, review.ModelId, review.VoiceId, review.LanguageMode?.Kind.ToString(),
             review.LanguageMode?.ExpectedLanguage, review.ContentSha256, review.ConsentRecordId, review.DisplayName, review.MimeType,
             review.ConsentPolicy?.RecordId, review.ConsentPolicy?.CloneVoiceId, review.ConsentPolicy?.RecordActive.ToString(),
             review.ConsentPolicy?.ProviderConsentGranted.ToString(), review.ConsentPolicy?.StatementVerified.ToString(),
             review.ConsentPolicy?.SpeakerMatched.ToString(), review.ConsentPolicy?.OwnerConfirmed.ToString(),
             estimate.Units.ToString("R", System.Globalization.CultureInfo.InvariantCulture), estimate.Unit,
-            estimate.Usd?.ToString(System.Globalization.CultureInfo.InvariantCulture), estimate.Credits?.ToString(), estimate.Basis);
+            estimate.Usd?.ToString(System.Globalization.CultureInfo.InvariantCulture), estimate.Credits?.ToString(), estimate.Basis];
+        return Fingerprint(review.ConsentPolicy is { ConsentMethod: not VoiceConsentMethod.RecordedStatement } policy
+            ? [.. fields, policy.ConsentMethod.ToString()] : fields);
+    }
 
     internal static string Fingerprint(params string?[] parts)
     {

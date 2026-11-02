@@ -83,7 +83,8 @@ internal sealed class DebugVoiceCreationBackend : IVoiceCreationBackend
         var template = JsonSerializer.Deserialize<VoiceConsentRecord>(File.ReadAllBytes(Path.Combine(fixtures, "consent-record.json")), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         var record = template with { RecordId = draft.RecordId, VoiceName = draft.Name + " (VoxClip)", VoiceId = "fixture" + Guid.NewGuid().ToString("N"), CreatedAt = clock.GetUtcNow(),
             Status = scenario == "verification" ? VoiceConsentStatus.VerificationRequired : VoiceConsentStatus.Active,
-            Statement = template.Statement with { Text = statement!.Text, Nonce = statement.Nonce.ToArray(), AudioSha256 = VoiceConsentStore.Hash(store.Statement(draft.RecordId)) }, Attestations = attestations! };
+            Statement = (template.Statement ?? throw new VoiceConsentException(VoiceConsentError.InvalidRecord)) with
+                { Text = statement!.Text, Nonce = statement.Nonce.ToArray(), AudioSha256 = VoiceConsentStore.Hash(store.Statement(draft.RecordId)) }, Attestations = attestations! };
         creates++;
         if (scenario == "uncertain")
         {

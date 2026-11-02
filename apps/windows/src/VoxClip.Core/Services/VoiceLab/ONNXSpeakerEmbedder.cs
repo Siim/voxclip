@@ -58,10 +58,12 @@ public sealed class ONNXSpeakerEmbedder : IDisposable
     }
     public async Task<float[]> EmbeddingAsync(float[] pcm16k, CancellationToken ct) =>
         SpeakerAudio.Embedding(await WindowEmbeddingsAsync(pcm16k, ct).ConfigureAwait(false));
+    internal async Task<float[]> GeneratedEmbeddingAsync(float[] pcm16k, CancellationToken ct) =>
+        SpeakerAudio.Embedding(await WindowEmbeddingsAsync(pcm16k, ct, generated: true).ConfigureAwait(false));
     /// <summary>A project span's embedding and its parts (voice-lab.md §6.6, <see cref="SpeakerAudio.PartEmbeddings"/>).</summary>
     public async Task<(float[] Whole, float[][] Parts)> PartEmbeddingsAsync(float[] pcm16k, CancellationToken ct) =>
         SpeakerAudio.PartEmbeddings(await WindowEmbeddingsAsync(pcm16k, ct).ConfigureAwait(false));
-    private async Task<float[][]> WindowEmbeddingsAsync(float[] pcm16k, CancellationToken ct)
+    private async Task<float[][]> WindowEmbeddingsAsync(float[] pcm16k, CancellationToken ct, bool generated = false)
     {
         var snapshot = pcm16k.ToArray();
         await gate.WaitAsync(ct).ConfigureAwait(false);
@@ -71,8 +73,9 @@ public sealed class ONNXSpeakerEmbedder : IDisposable
             var ranges = await VoicedRangesAsync(snapshot, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             var voiced = SpeakerAudio.Select(snapshot, ranges);
+            var windows = generated ? SpeakerAudio.GeneratedWindows(voiced) : SpeakerAudio.Windows(voiced);
             var embedded = new List<float[]>();
-            foreach (var window in SpeakerAudio.Windows(voiced))
+            foreach (var window in windows)
             {
                 ct.ThrowIfCancellationRequested();
                 var features = SpeakerAudio.Features(window);
@@ -130,6 +133,14 @@ public sealed class VoiceSpeakerCheck
     {
         ValidateAvailability();
         return embedder!.EmbeddingAsync(pcm16k, ct);
+    }
+    public Task<float[]> GeneratedEmbeddingAsync(float[] samples, int sampleRate, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (sampleRate != 24000 || samples.Any(sample => !float.IsFinite(sample))) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
+        if (samples.Length < sampleRate * 3) throw new VoiceInsufficientGeneratedSpeechException();
+        ValidateAvailability();
+        return embedder!.GeneratedEmbeddingAsync(VoiceConsentAudio.Resample(samples, sampleRate), ct);
     }
     public Task<(float[] Whole, float[][] Parts)> PartEmbeddingsAsync(float[] pcm16k, CancellationToken ct)
     {

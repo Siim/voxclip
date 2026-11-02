@@ -16,6 +16,7 @@ public static class VoiceLabRecipeBuilder
         var asset = published.Assets.FirstOrDefault(asset => asset.Id == published.Audio.AssetId);
         if (!row.Selectable || row.Audio is not { } take || row.Qa is not { Passed: true } qa || row.Receipt is not { } receipt || row.Quote is not { } quote ||
             qa.SpeakerScore is not { } score || !double.IsFinite(score) || score < record.Speaker.Threshold ||
+            qa.TranscriptMatch is not { } match || qa.LufsJumpLu is not { } jump || qa.PeakDbfs is not { } peak ||
             record.Status != VoiceConsentStatus.Active || record.RecordId != input.RecordId || receipt.VoiceId != record.VoiceId || receipt.ModelId != input.ModelId ||
             !published.Words.SequenceEqual(take.Fit.Plan.Words) || published.Audio.Stretch != 1 || !double.IsFinite(published.OutDuration) || published.OutDuration <= 0 ||
             asset is null || record.Attestations.AcceptedAt > createdAt)
@@ -42,7 +43,7 @@ public static class VoiceLabRecipeBuilder
             return new(edge.Kind, edge.FadeSamples, edge.FadeSamples - inner, (long)frames);
         }
         var tokens = VoiceLabTakeQuality.Tokens(input.Text).Length;
-        var checkedQa = new VoiceLabRenderQa(tokens, tokens <= 5 ? qa.TranscriptMatch == 1 : null, qa.TranscriptMatch, qa.LufsJumpLu, qa.PeakDbfs,
+        var checkedQa = new VoiceLabRenderQa(tokens, tokens <= 5 ? match == 1 : null, match, jump, peak,
             score, record.Speaker.Threshold, record.Speaker.Model, true);
         var provenance = new VoiceLabProvenance(receipt.Provider, receipt.Endpoint.TrimStart('/'), input.ModelId, record.VoiceId, record.RecordId,
             receipt.ActionId.ToString("D"), row.Seed, createdAt) { Region = receipt.Region.ToString().ToLowerInvariant() };

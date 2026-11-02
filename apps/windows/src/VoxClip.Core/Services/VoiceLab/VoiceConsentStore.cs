@@ -15,20 +15,28 @@ public enum VoiceOperationKind { Create, Delete }
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceOperationState>))]
 public enum VoiceOperationState { Intent, Dispatched, Created, Saved, Withdrawing, Withdrawn, RemoteDeleted, AudioRemoved, Tombstoned, Abandoned }
 
-public sealed record VoiceConsentAudit(string RecordId, string StatementSha256, string[] RecordingSha256s,
+public sealed record VoiceConsentAudit(string RecordId, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? StatementSha256, string[] RecordingSha256s,
     DateTimeOffset CreatedAt, DateTimeOffset AcceptedAt, string Language, string? RemoteVoiceId, DateTimeOffset? DeletedAt,
-    VoiceConsentCreator? Creator = null, bool RemoteStateUnknown = false)
+    VoiceConsentCreator? Creator = null, bool RemoteStateUnknown = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceConsentMethod? ConsentMethod = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ReferenceAudioSha256 = null)
 {
+    [JsonIgnore] public VoiceConsentMethod Method => ConsentMethod ?? VoiceConsentMethod.RecordedStatement;
     internal static VoiceConsentAudit From(VoiceConsentRecord record)
     {
         record.Validate();
-        return new(record.RecordId, record.Statement.AudioSha256, record.Samples.Select(sample => sample.Sha256).ToArray(),
-            record.CreatedAt, record.Attestations.AcceptedAt, record.Statement.Language, record.VoiceId == "pending" ? null : record.VoiceId, record.DeletedAt, record.CreatorIdentity);
+        return new(record.RecordId, record.Statement?.AudioSha256, record.Samples.Select(sample => sample.Sha256).ToArray(),
+            record.CreatedAt, record.Attestations.AcceptedAt, record.Language, record.VoiceId == "pending" ? null : record.VoiceId, record.DeletedAt, record.CreatorIdentity,
+            ConsentMethod: record.ConsentMethod == VoiceConsentMethod.ProjectAttestation ? record.ConsentMethod : null,
+            ReferenceAudioSha256: record.ConsentMethod == VoiceConsentMethod.ProjectAttestation ? record.ReferenceAudioSha256 : null);
     }
     internal void Validate(string recordId)
     {
         Creator?.Validate();
-        if (RecordId != recordId || !VoiceConsentRecord.HashValid(StatementSha256) || RecordingSha256s.Length is < 1 or > 24 ||
+        if (Method == VoiceConsentMethod.RecordedStatement ? StatementSha256 is null || !VoiceConsentRecord.HashValid(StatementSha256) || ReferenceAudioSha256 is not null
+            : Method != VoiceConsentMethod.ProjectAttestation || StatementSha256 is not null || ReferenceAudioSha256 is null ||
+                !VoiceConsentRecord.HashValid(ReferenceAudioSha256) || RecordingSha256s.FirstOrDefault() != ReferenceAudioSha256) throw VoiceConsentStore.Invalid();
+        if (RecordId != recordId || !Guid.TryParseExact(RecordId, "D", out _) || RecordingSha256s.Length is < 1 or > 24 ||
             RecordingSha256s.Any(hash => !VoiceConsentRecord.HashValid(hash)) || Language is not ("en" or "et") ||
             RemoteVoiceId is { } remote && !VoiceConsentRecord.SafeId(remote)) throw VoiceConsentStore.Invalid();
     }
@@ -142,7 +150,9 @@ public sealed class VoiceConsentStore
         if (info.Exists) VoiceConsentPrivacy.Validate(path, false);
         return path;
     }
-    public void SaveStatement(byte[] wav, string recordId)
+    public void SaveStatement(byte[] wav, string recordId) => SaveReference(wav, recordId, "statement.wav");
+    public void SaveReferenceAudio(byte[] wav, string recordId) => SaveReference(wav, recordId, "reference.wav");
+    private void SaveReference(byte[] wav, string recordId, string name)
     {
         var snapshot = wav.ToArray();
         var format = VoiceConsentAudio.ValidateWav(snapshot);
@@ -150,7 +160,9 @@ public sealed class VoiceConsentStore
         lock (State.Sync)
         {
             if (HasOperation(recordId) || File.Exists(Path.Combine(DirectoryFor(recordId), "record.json")) || State.Revoked.Contains(recordId)) throw Invalid();
-            Write(snapshot, FileIn(DirectoryFor(recordId, true), "statement.wav"), "saveStatement");
+            var directory = DirectoryFor(recordId, true);
+            if (File.Exists(FileIn(directory, name == "statement.wav" ? "reference.wav" : "statement.wav"))) throw Invalid();
+            Write(snapshot, FileIn(directory, name), "saveStatement");
             State.Live.Add(recordId);
         }
     }
@@ -158,13 +170,37 @@ public sealed class VoiceConsentStore
     {
         lock (State.Sync) return Read(FileIn(DirectoryFor(recordId), "statement.wav"), 16 * 1024 * 1024);
     }
+    public byte[] ReferenceAudio(string recordId)
+    {
+        lock (State.Sync)
+        {
+            var directory = DirectoryFor(recordId);
+            if (File.Exists(FileIn(directory, "record.json")))
+            {
+                var record = JsonSerializer.Deserialize(Read(FileIn(directory, "record.json"), 256 * 1024), VoiceConsentJson.Default.VoiceConsentRecord) ?? throw Invalid();
+                record.Validate();
+                if (record.RecordId != recordId) throw Invalid();
+                return ReferenceAudio(record);
+            }
+            var names = new[] { "statement.wav", "reference.wav" }.Where(name => File.Exists(FileIn(directory, name))).ToArray();
+            if (names.Length != 1) throw Invalid();
+            return Read(FileIn(directory, names[0]), 16 * 1024 * 1024);
+        }
+    }
+    private byte[] ReferenceAudio(VoiceConsentRecord record)
+    {
+        var wav = Read(FileIn(DirectoryFor(record.RecordId), record.ReferenceAudioFile), 16 * 1024 * 1024);
+        if (Hash(wav) != record.ReferenceAudioSha256) throw Invalid();
+        return wav;
+    }
     public void Save(VoiceConsentRecord record)
     {
         lock (State.Sync)
         {
             record.Validate();
             record = record.CanonicalCreator();
-            if (record.Status != VoiceConsentStatus.Deleted && Hash(Statement(record.RecordId)) != record.Statement.AudioSha256) throw Invalid();
+            if (record.Status == VoiceConsentStatus.Deleted) State.Revoked.Add(record.RecordId);
+            if (record.Status != VoiceConsentStatus.Deleted) ReferenceAudio(record);
             Write(JsonSerializer.SerializeToUtf8Bytes(record, VoiceConsentJson.Default.VoiceConsentRecord), FileIn(DirectoryFor(record.RecordId, true), "record.json"), "saveRecord");
         }
     }
@@ -174,7 +210,8 @@ public sealed class VoiceConsentStore
         {
             var record = JsonSerializer.Deserialize(Read(FileIn(DirectoryFor(id), "record.json"), 256 * 1024), VoiceConsentJson.Default.VoiceConsentRecord) ?? throw Invalid();
             record.Validate();
-            if (record.RecordId != id || record.Status != VoiceConsentStatus.Deleted && !HasOperation(id) && Hash(Statement(id)) != record.Statement.AudioSha256) throw Invalid();
+            if (record.RecordId != id) throw Invalid();
+            if (record.Status != VoiceConsentStatus.Deleted && !HasOperation(id)) ReferenceAudio(record);
             return record;
         }
     }
@@ -214,8 +251,10 @@ public sealed class VoiceConsentStore
         ArgumentNullException.ThrowIfNull(validateDispatch);
         if (!VoiceSpeakerCheck.WindowsNativeParityVerified) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
         ValidateUse(record);
-        return new(record.RecordId, record.VoiceId, true, true, true, true, true)
+        return new(record.RecordId, record.VoiceId, true, true, record.ConsentMethod == VoiceConsentMethod.RecordedStatement, true, true)
         {
+            ConsentMethod = record.ConsentMethod,
+            Creator = record.CreatorIdentity,
             DispatchPermit = new(this, record.RecordId, requestId, () =>
             {
                 if (!VoiceSpeakerCheck.WindowsNativeParityVerified) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
@@ -225,22 +264,22 @@ public sealed class VoiceConsentStore
         };
     }
     public VoiceCreationClaim ClaimCreation(VoiceConsentRecord record, Guid requestId, ElevenLabsRegion region, DateTimeOffset now) =>
-        new(this, BeginClaimedCreation(record, requestId, region, now), record.Statement.AudioSha256);
+        new(this, BeginClaimedCreation(record, requestId, region, now), record.ReferenceAudioSha256);
     public OwnVoicePolicy CreateDeletionPolicy(string recordId)
     {
         lock (State.Sync)
         {
             var record = Load(recordId);
             if (record.Status == VoiceConsentStatus.Deleted || record.VoiceId == "pending") throw Invalid();
-            return new(recordId, record.VoiceId, true, true, true, true, true)
-                { Creator = record.CreatorIdentity };
+            return new(recordId, record.VoiceId, true, true, record.ConsentMethod == VoiceConsentMethod.RecordedStatement, true, true)
+                { Creator = record.CreatorIdentity, ConsentMethod = record.ConsentMethod };
         }
     }
     internal VoiceDispatchPermit CreationPermit(string recordId, Guid requestId, string statementHash) => new(this, recordId, requestId, () =>
     {
         var operation = Operation(requestId);
         if (operation.Kind != VoiceOperationKind.Create || operation.State != VoiceOperationState.Intent || operation.RecordId != recordId ||
-            Operations().Any(other => other.Id != requestId && other.BlocksCreation(clock.GetUtcNow())) || Hash(Statement(recordId)) != statementHash) throw Invalid();
+            Operations().Any(other => other.Id != requestId && other.BlocksCreation(clock.GetUtcNow())) || Hash(ReferenceAudio(recordId)) != statementHash) throw Invalid();
         Transition(requestId, VoiceOperationState.Dispatched, clock.GetUtcNow());
         ClearEnrollmentRecovery(recordId);
     });
@@ -492,7 +531,8 @@ public sealed class VoiceConsentStore
     }
     internal void DiscardStatement(string recordId)
     {
-        lock (State.Sync) DeleteFile(FileIn(DirectoryFor(recordId), "statement.wav"), "removeStatement");
+        lock (State.Sync)
+            foreach (var name in new[] { "statement.wav", "reference.wav" }) DeleteFile(FileIn(DirectoryFor(recordId), name), "removeStatement");
     }
     internal void DiscardUnresolvedDraft(VoiceOperation value)
     {
@@ -589,12 +629,33 @@ public sealed class VoiceConsentStore
     {
         var record = value.Record;
         record.Validate();
-        value.Quote.Validate(value.Request, new(record.Statement.Language, record.Statement.Text, record.Statement.Nonce));
-        if (record.VoiceId != "pending" || value.Request.RecoveryNonce != record.RecordId || value.Request.Samples.Count != record.Samples.Length + 1 ||
-            !value.Request.Samples[0].Wav.SequenceEqual(Statement(record.RecordId)) || Hash(value.Request.Samples[0].Wav) != record.Statement.AudioSha256 ||
+        IEnumerable<VoiceLabCloneSample> training;
+        if (record.ProjectConsent is { } consent)
+        {
+            value.Quote.Validate(value.Request, consent, record.Attestations);
+            training = value.Request.Samples;
+        }
+        else
+        {
+            var statement = record.Statement ?? throw Invalid();
+            value.Quote.Validate(value.Request, new(statement.Language, statement.Text, statement.Nonce));
+            training = value.Request.Samples.Skip(1);
+        }
+        var samples = training.ToArray();
+        if (record.VoiceId != "pending" || value.Request.RecoveryNonce != record.RecordId || samples.Length != record.Samples.Length ||
+            !value.Request.Samples[0].Wav.SequenceEqual(ReferenceAudio(record.RecordId)) || Hash(value.Request.Samples[0].Wav) != record.ReferenceAudioSha256 ||
             value.TrainingMilliseconds is < 10000 or > 120000) throw Invalid();
-        foreach (var (sample, audit) in value.Request.Samples.Skip(1).Zip(record.Samples))
+        foreach (var (sample, audit) in samples.Zip(record.Samples))
+        {
             if (sample.Role != VoiceLabCloneSampleRole.Training || Hash(sample.Wav) != audit.Sha256) throw Invalid();
+            if (record.ConsentMethod == VoiceConsentMethod.ProjectAttestation)
+            {
+                var format = VoiceConsentAudio.ValidateWav(sample.Wav);
+                if (Math.Abs(format.Frames / (double)format.Rate - audit.Seconds) >= 0.001) throw Invalid();
+            }
+        }
+        if (record.ConsentMethod == VoiceConsentMethod.ProjectAttestation && (value.TrainingMilliseconds is < 30000 or > 120000 ||
+            value.TrainingMilliseconds != record.Samples.Sum(sample => (long)Math.Floor(sample.Seconds * 1000 + 0.5)))) throw Invalid();
     }
     public VoiceEnrollmentRecovery? EnrollmentRecovery(string recordId)
     {
@@ -614,6 +675,7 @@ public sealed class VoiceConsentStore
                 // Delete the entry, never open a symlink's target. One bad journal must not hide the remaining voices.
                 File.Delete(journal);
                 File.Delete(Path.Combine(directory, "statement.wav"));
+                File.Delete(Path.Combine(directory, "reference.wav"));
                 SyncDirectory(directory);
                 abandonedEnrollmentIds.Add(recordId);
                 return null;
@@ -675,7 +737,7 @@ public sealed class VoiceConsentStore
                         continue;
                     }
                 }
-                foreach (var name in new[] { "statement.wav", "record.json" }) DeleteFile(FileIn(path, name), "abandonedEnrollment");
+                foreach (var name in new[] { "statement.wav", "reference.wav", "record.json" }) DeleteFile(FileIn(path, name), "abandonedEnrollment");
                 if (!Directory.EnumerateFileSystemEntries(path).Any()) Directory.Delete(path);
             }
         }
@@ -758,8 +820,10 @@ public sealed class VoiceCreationClaim : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentNullException.ThrowIfNull(validateDispatch);
         var operation = Operation;
-        return new(operation.RecordId, null, true, true, true, true, true)
+        var method = operation.Audit?.Method ?? VoiceConsentMethod.RecordedStatement;
+        return new(operation.RecordId, null, true, true, method == VoiceConsentMethod.RecordedStatement, true, true)
         {
+            ConsentMethod = method,
             DispatchPermit = store.CreationPermit(operation.RecordId, id, statementHash), ValidateDispatch = validateDispatch,
             Creator = new(operation.Region, operation.CreatorKeyFingerprint)
         };

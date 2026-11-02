@@ -315,7 +315,7 @@ public sealed class VoiceLabRequestGoldenTests
             var recordId = Guid.NewGuid().ToString("D");
             var wav = clone.Request.Samples.Single(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement).Wav;
             store.SaveStatement(wav, recordId);
-            record = record with { RecordId = recordId, VoiceId = "pending", Statement = record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+            record = record with { RecordId = recordId, VoiceId = "pending", Statement = record.Statement! with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
             using var claim = store.ClaimCreation(record, id, ElevenLabsRegion.Default, DateTimeOffset.UtcNow);
             var policy = claim.DispatchPolicy(_ => Task.CompletedTask);
             var keys = new SuspendingKeys();

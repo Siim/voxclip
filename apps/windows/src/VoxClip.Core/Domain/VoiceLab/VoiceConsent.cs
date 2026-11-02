@@ -93,6 +93,23 @@ public enum VoiceConsentStatus
     [JsonStringEnumMemberName("deleted")] Deleted
 }
 public sealed record VoiceConsentStatementRecord(string Language, string Text, string[] Nonce, string AudioFile, string AudioSha256, VoiceStatementMatch Stt);
+[JsonConverter(typeof(JsonStringEnumConverter<VoiceConsentMethod>))]
+public enum VoiceConsentMethod
+{
+    [JsonStringEnumMemberName("recordedStatement")] RecordedStatement,
+    [JsonStringEnumMemberName("projectAttestation")] ProjectAttestation
+}
+[method: JsonConstructor]
+public sealed record VoiceProjectConsent(string Language, [property: JsonPropertyName("text")] string ConsentText, string AudioFile, string AudioSha256)
+{
+    public const string Text = "I confirm this is my own voice and I consent to creating a voice clone.";
+    public VoiceProjectConsent(string language, string audioSha256) : this(language, Text, "reference.wav", audioSha256) { }
+    public void Validate()
+    {
+        if (Language is not ("en" or "et") || ConsentText != Text || AudioFile != "reference.wav" || !VoiceConsentRecord.HashValid(AudioSha256))
+            throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+    }
+}
 public sealed record VoiceConsentAttestations(bool OwnVoice, bool Adult, bool OwnVideosOnly, DateTimeOffset AcceptedAt)
 {
     [JsonIgnore] public bool Complete => OwnVoice && Adult && OwnVideosOnly;
@@ -114,11 +131,17 @@ public sealed class VoiceCreatorMismatchException() : Exception(Explanation)
     public const string Explanation = "This voice was created with a different ElevenLabs key or region. Use that key to delete it, or remove it from VoxClip only; the voice may stay in that ElevenLabs account.";
 }
 public sealed record VoiceConsentRecord(string Schema, string RecordId, string Provider, string Type, string VoiceId, string VoiceName,
-    VoiceConsentStatus Status, DateTimeOffset CreatedAt, DateTimeOffset? DeletedAt, VoiceConsentStatementRecord Statement,
+    VoiceConsentStatus Status, DateTimeOffset CreatedAt, DateTimeOffset? DeletedAt,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceConsentStatementRecord? Statement,
     VoiceConsentAttestations Attestations, VoiceConsentSample[] Samples, VoiceConsentSpeaker Speaker, VoiceConsentApp App,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceConsentCreator? Creator = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ElevenLabsRegion? Region = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ElevenLabsRegion? Region = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceProjectConsent? ProjectConsent = null)
 {
+    [JsonIgnore] public VoiceConsentMethod ConsentMethod => Schema == "voxclip-consent/2" ? VoiceConsentMethod.ProjectAttestation : VoiceConsentMethod.RecordedStatement;
+    [JsonIgnore] public string Language => Statement?.Language ?? ProjectConsent?.Language ?? "";
+    [JsonIgnore] public string ReferenceAudioFile => Statement?.AudioFile ?? ProjectConsent?.AudioFile ?? "";
+    [JsonIgnore] public string ReferenceAudioSha256 => Statement?.AudioSha256 ?? ProjectConsent?.AudioSha256 ?? "";
     [JsonIgnore] public VoiceConsentCreator CreatorIdentity => Creator ?? new(Region ?? ElevenLabsRegion.Default, null);
     internal VoiceConsentRecord CanonicalCreator() => Creator is { KeyFingerprint: null } legacy
         ? this with { Creator = null, Region = legacy.Region } : this;
@@ -127,16 +150,32 @@ public sealed record VoiceConsentRecord(string Schema, string RecordId, string P
         Creator?.Validate();
         if (Region is { } region && (!Enum.IsDefined(region) || Creator is { } creator && creator.Region != region))
             throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
-        if (Schema != "voxclip-consent/1" || !Guid.TryParseExact(RecordId, "D", out _) || Provider != "elevenlabs" || Type != "ivc" ||
+        switch (Schema)
+        {
+            case "voxclip-consent/1":
+                if (Statement is not { } statement || ProjectConsent is not null || statement.AudioFile != "statement.wav" ||
+                    statement.Language is not ("en" or "et") || statement.Text.Length == 0 || statement.Nonce.Length != 4 ||
+                    statement.Nonce.Distinct().Count() != 4 || !double.IsFinite(statement.Stt.Wer) || statement.Stt.Wer is < 0 or > 0.15 ||
+                    !HashValid(statement.AudioSha256)) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+                break;
+            case "voxclip-consent/2":
+                if (Statement is not null || ProjectConsent is not { } consent || Samples.FirstOrDefault()?.Sha256 != consent.AudioSha256 ||
+                    Samples.Any(sample => sample.Source != "project")) throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+                consent.Validate();
+                break;
+            default: throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+        }
+        if (!Guid.TryParseExact(RecordId, "D", out _) || Provider != "elevenlabs" || Type != "ivc" ||
             !SafeId(VoiceId) || VoiceName.EnumerateRunes().Count() is < 1 or > 70 || !Enum.IsDefined(Status) || !Attestations.Complete ||
-            Statement.AudioFile != "statement.wav" || Statement.Language is not ("en" or "et") || Statement.Text.Length == 0 ||
-            Statement.Nonce.Length != 4 || Statement.Nonce.Distinct().Count() != 4 || !double.IsFinite(Statement.Stt.Wer) ||
-            Statement.Stt.Wer is < 0 or > 0.15 || !HashValid(Statement.AudioSha256) || Speaker.Model.Length == 0 ||
+            Speaker.Model.Length == 0 ||
             !double.IsFinite(Speaker.Threshold) || Speaker.Threshold is < 0 or > 1 || DecodeEmbedding(Speaker.Embedding) is null ||
             Samples.Length is < 1 or > 24 || Samples.Any(sample => !HashValid(sample.Sha256) || !double.IsFinite(sample.Seconds) ||
                 sample.Seconds is < 5 or > 30 || sample.Source is not ("project" or "readAloud") || !double.IsFinite(sample.SpeakerScore) ||
                 sample.SpeakerScore < Speaker.Threshold || sample.SpeakerScore > 1.00001) ||
             App.Platform is not ("macos" or "windows") || App.Version.Length == 0 || (Status == VoiceConsentStatus.Deleted) != DeletedAt.HasValue)
+            throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
+        if (ConsentMethod == VoiceConsentMethod.ProjectAttestation &&
+            Samples.Sum(sample => (long)Math.Floor(sample.Seconds * 1000 + 0.5)) is < 30000 or > 120000)
             throw new VoiceConsentException(VoiceConsentError.InvalidRecord);
     }
     internal VoiceConsentRecord AssignVoice(string id, bool verification) => this with

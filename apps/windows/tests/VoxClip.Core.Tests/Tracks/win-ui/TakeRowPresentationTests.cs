@@ -12,7 +12,7 @@ public sealed class TakeRowPresentationTests
     {
         var plan = new VoiceLabFitPlan([new(VoiceLabFitEditKind.Insert, 0, 19200)], new(0, 0), new(0, 0), 0, 57600, 0, 1.2, 0, 57600, 57600, []);
         VoiceLabFitResult fit = fits ? new VoiceLabFitResult.Exact(plan) : new VoiceLabFitResult.ChangedDuration(plan, 1.4, .2);
-        return new(Guid.NewGuid(), index, 1, Audio: new(48000, [], [], 0, 0, [], 0, null, fit), Qa: new(1, 0, -3, null, []), Score: score);
+        return new(Guid.NewGuid(), index, 1, Audio: new(48000, [], [], 0, 0, [], 0, null, fit), Qa: new(1, 0, -3, .8, []), Score: score);
     }
     [Fact]
     public void RowsUseInvariantMonoDurationCorePauseNotesAndQualifiedActions()

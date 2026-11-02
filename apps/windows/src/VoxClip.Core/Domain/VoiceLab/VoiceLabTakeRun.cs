@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
@@ -59,11 +60,21 @@ public sealed class VoiceLabTakeRunQuote
     }
 }
 
-public enum VoiceLabTakeQaFailure { Transcript, Clipping, Loudness, Speaker }
-public sealed record VoiceLabTakeQaResult(double TranscriptMatch, double LufsJumpLu, double PeakDbfs, double? SpeakerScore,
+[JsonConverter(typeof(JsonStringEnumConverter<VoiceLabTakeQaFailure>))]
+public enum VoiceLabTakeQaFailure
+{
+    [JsonStringEnumMemberName("transcript")] Transcript,
+    [JsonStringEnumMemberName("clipping")] Clipping,
+    [JsonStringEnumMemberName("loudness")] Loudness,
+    [JsonStringEnumMemberName("speaker")] Speaker,
+    [JsonStringEnumMemberName("insufficientGeneratedSpeech")] InsufficientGeneratedSpeech
+}
+public sealed class VoiceInsufficientGeneratedSpeechException() : Exception("The generated audio does not contain enough speech for the calibrated speaker check.");
+public sealed record VoiceLabTakeQaResult(double? TranscriptMatch, double? LufsJumpLu, double? PeakDbfs, double? SpeakerScore,
     IReadOnlyList<VoiceLabTakeQaFailure> Failures)
 {
-    public bool Passed => Failures.Count == 0;
+    public bool Passed => Failures.Count == 0 && TranscriptMatch is { } match && double.IsFinite(match) &&
+        LufsJumpLu is { } jump && double.IsFinite(jump) && PeakDbfs is { } peak && double.IsFinite(peak) && SpeakerScore is { } score && double.IsFinite(score);
 }
 public sealed record VoiceLabQaTranscript(IReadOnlyList<VoiceLabWord> Words, VoiceLabReceipt Receipt);
 public static class VoiceLabTakeQuality

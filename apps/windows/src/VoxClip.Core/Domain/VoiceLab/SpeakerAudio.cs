@@ -47,6 +47,12 @@ public static class SpeakerAudio
         if (speech.Length < WindowSize || speech.Any(sample => !float.IsFinite(sample))) throw Mismatch();
         for (var start = 0; start <= speech.Length - WindowSize; start += HopSize) yield return speech[start..(start + WindowSize)];
     }
+    internal static IEnumerable<float[]> GeneratedWindows(float[] voiced)
+    {
+        if (voiced.Any(sample => !float.IsFinite(sample))) throw Mismatch();
+        if (voiced.Length < WindowSize) throw new VoiceInsufficientGeneratedSpeechException();
+        return Windows(voiced);
+    }
     public static float[] Select(float[] pcm, IReadOnlyList<(int Start, int End)> ranges)
     {
         if (pcm.Any(sample => !float.IsFinite(sample))) throw Mismatch();

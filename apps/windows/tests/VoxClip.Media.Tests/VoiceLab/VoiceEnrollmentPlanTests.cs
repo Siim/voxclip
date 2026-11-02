@@ -12,7 +12,7 @@ using Xunit;
 
 namespace VoxClip.Media.Tests.VoiceLab;
 
-public sealed class VoiceEnrollmentPlanTests
+public sealed partial class VoiceEnrollmentPlanTests
 {
     private static CancellationToken Token => TestContext.Current.CancellationToken;
     private static JsonNode Vectors() => JsonNode.Parse(FixtureLoader.ReadText("fixtures/voice-lab/enrollment-cases.json"))!;
@@ -44,6 +44,8 @@ public sealed class VoiceEnrollmentPlanTests
     {
         internal string Flow = "success";
         internal int Embeddings;
+        internal string? CreationBody;
+        internal bool VerificationRequired;
         internal readonly List<string> Events = [];
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -60,7 +62,8 @@ public sealed class VoiceEnrollmentPlanTests
                     Events.Add("verify"); json = Flow == "verify-fail" ? "{\"language_code\":\"eng\",\"text\":\"wrong\",\"words\":[{\"text\":\"wrong\",\"type\":\"word\",\"start\":0,\"end\":1}]}"
                         : FixtureLoader.ReadText("fixtures/voice-lab/consent-scribe.json"); break;
                 case "/v1/voices/add":
-                    Events.Add("create"); json = "{\"voice_id\":\"fixtureOwnVoice\",\"requires_verification\":false}";
+                    CreationBody = request.Content!.ReadAsStringAsync(ct).GetAwaiter().GetResult();
+                    Events.Add("create"); json = "{\"voice_id\":\"fixtureOwnVoice\",\"requires_verification\":" + (VerificationRequired ? "true" : "false") + "}";
                     if (Flow == "create-fail") status = HttpStatusCode.InternalServerError; break;
                 default: throw new InvalidOperationException(request.RequestUri.AbsolutePath);
             }
@@ -81,7 +84,7 @@ public sealed class VoiceEnrollmentPlanTests
         {
             Directory.CreateDirectory(Root);
             var record = JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
-            Statement = new(record.Statement.Language, record.Statement.Text, record.Statement.Nonce);
+            Statement = new(record.Statement!.Language, record.Statement!.Text, record.Statement!.Nonce);
             Store = new(Locations, point => { if (CrashAfterVerify && point == "enrollmentVerified") throw new Crash(); }, Clock);
             Client = NewClient(); Service = NewService(Store, Client);
         }
@@ -116,8 +119,8 @@ public sealed class VoiceEnrollmentPlanTests
                 var plan = await f.Prepare(id == "speaker-mismatch"); Assert.Empty(f.Remote.Events);
                 Assert.Equal(plan.Quote.Verify!.Estimate.Usd + plan.Quote.Create.Estimate.Usd, plan.Quote.Estimate.Usd);
                 var record = await f.Service.ExecuteAsync(plan, id != "declined", id != "disabled", "test", Token);
-                Assert.Equal(f.Statement.Text, record.Statement.Text); Assert.Equal(VoiceConsentStore.Hash(Wav()), record.Statement.AudioSha256);
-                Assert.Equal(0, record.Statement.Stt.Wer); Assert.NotEmpty(record.Statement.Stt.TranscriptionId);
+                Assert.Equal(f.Statement.Text, record.Statement!.Text); Assert.Equal(VoiceConsentStore.Hash(Wav()), record.Statement!.AudioSha256);
+                Assert.Equal(0, record.Statement!.Stt.Wer); Assert.NotEmpty(record.Statement!.Stt.TranscriptionId);
                 Assert.Equal(JsonSerializer.Serialize(record, VoiceConsentJson.Default.VoiceConsentRecord), JsonSerializer.Serialize(f.Store.Load(f.Id), VoiceConsentJson.Default.VoiceConsentRecord)); Assert.Empty(f.Store.RecoverableEnrollments());
                 await Assert.ThrowsAsync<VoiceLabException>(() => f.Service.ExecuteAsync(plan, true, true, "test", Token));
             }
@@ -208,7 +211,7 @@ public sealed class VoiceEnrollmentPlanTests
                 Assert.Equal(row["sameQuote"]!.GetValue<bool>(), recovered.Quote.Create.Id == plan.Quote.Create.Id);
                 Assert.Empty(f.Remote.Events);
                 if (S(row, "action") == "decline") await Assert.ThrowsAsync<VoiceLabException>(() => service.ExecuteAsync(recovered, false, true, "test", Token));
-                else { var record = await service.ExecuteAsync(recovered, true, true, "test", Token); Assert.Equal(f.Statement.Text, record.Statement.Text); Assert.Empty(store.RecoverableEnrollments()); }
+                else { var record = await service.ExecuteAsync(recovered, true, true, "test", Token); Assert.Equal(f.Statement.Text, record.Statement!.Text); Assert.Empty(store.RecoverableEnrollments()); }
             }
             Assert.Equal(Rows(row["events"]!).Select(item => item.GetValue<string>()), f.Remote.Events);
         }

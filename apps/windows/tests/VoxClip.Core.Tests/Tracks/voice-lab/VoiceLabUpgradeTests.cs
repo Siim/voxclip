@@ -158,7 +158,7 @@ public sealed class VoiceLabUpgradeTests
         Assert.Single(legacy.VoiceLab.Segments);
         var v1 = ExtendedV1();
         Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabProject.UpgradeToV3(v1 with { VoiceLab = v1.VoiceLab with { Assets = [] } }));
-        Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabProject.UpgradeToV3(v1 with { SchemaVersion = 4 }));
+        Error(VoiceLabProjectErrorCode.InvalidSegment, () => VoiceLabProject.UpgradeToV3(v1 with { SchemaVersion = 5 }));
     }
 
     [Fact]

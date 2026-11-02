@@ -49,7 +49,7 @@ def schema_for(path, document, by_name):
         return by_name["settings.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-voice-lab-prices/1":
         return by_name["voice-lab-prices.schema.json"]
-    if isinstance(document, dict) and document.get("schema") == "voxclip-consent/1":
+    if isinstance(document, dict) and document.get("schema") in {"voxclip-consent/1", "voxclip-consent/2"}:
         return by_name["consent.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-voice-statements/1":
         return by_name["voice-statements.schema.json"]
@@ -69,6 +69,7 @@ def main(argv):
           ROOT / "shared" / "voice-lab" / "statements.json",
           fixtures / "voice-lab" / "consent-record.json",
           fixtures / "voice-lab" / "consent-record-creator.json",
+          fixtures / "voice-lab" / "consent-record-project.json",
           ROOT / "shared" / "catalog" / "voice-lab-models.json"]
     if not files:
         print("no files to validate", file=sys.stderr)

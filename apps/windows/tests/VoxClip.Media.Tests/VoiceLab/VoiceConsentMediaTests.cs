@@ -46,7 +46,7 @@ public sealed class VoiceConsentMediaTests
         var wav = VoiceTrainingAudio.Wav(Tone(48000, 6));
         var record = System.Text.Json.JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
         record = record with { RecordId = Guid.NewGuid().ToString("D"), VoiceId = "pending",
-            Statement = record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+            Statement = record.Statement! with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
         store.SaveStatement(wav, record.RecordId);
         using var claim = store.ClaimCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, DateTimeOffset.UtcNow);
         var reconciler = new VoiceOperationReconciler(store, _ => throw new InvalidOperationException("No transport allowed"));

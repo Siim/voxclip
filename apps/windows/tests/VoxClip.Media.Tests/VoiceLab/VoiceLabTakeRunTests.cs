@@ -16,7 +16,7 @@ using Xunit;
 
 namespace VoxClip.Media.Tests.VoiceLab;
 
-public sealed class VoiceLabTakeRunTests
+public sealed partial class VoiceLabTakeRunTests
 {
     [Theory]
     [InlineData(false)]
@@ -591,6 +591,7 @@ public sealed class VoiceLabTakeRunTests
         /// <summary>The source speech each authorization was asked about.</summary>
         internal readonly List<float[]> Speech = [];
         internal bool SpeakerFailure;
+        internal bool InsufficientSpeech;
         internal bool Current = true;
         internal Fixture(Func<VoiceLabTakeInput, VoiceLabTakeInput>? input = null)
         {
@@ -601,7 +602,7 @@ public sealed class VoiceLabTakeRunTests
             var wav = VoiceTrainingAudio.Wav(Enumerable.Range(0, 48000 * 6).Select(index => (float)(0.1 * Math.Sin(2 * Math.PI * 100 * index / 48000))).ToArray());
             Record = JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
             Record = Record with { RecordId = Guid.NewGuid().ToString("D"), Speaker = Record.Speaker with { Embedding = VoiceConsentRecord.EncodeEmbedding([1f, 0f]), Threshold = 0.45 },
-                Statement = Record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+                Statement = Record.Statement! with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
             Store.SaveStatement(wav, Record.RecordId); Store.Save(Record);
             Ledger = new(locations);
             Client = ElevenLabsVoiceLab.ForTesting(Keys, Remote, ElevenLabsRegion.Default, clock: Clock, spend: Ledger);
@@ -614,7 +615,12 @@ public sealed class VoiceLabTakeRunTests
                     DispatchPermit = new(Store, record.RecordId, request, () => Store.ValidateUse(record), binding),
                     ValidateDispatch = _ => Task.CompletedTask, ModelRevision = model
                 });
-            }, (_, _, ct) => { ct.ThrowIfCancellationRequested(); return Task.FromResult(SpeakerFailure ? new float[] { 0, 1 } : [1f, 0f]); });
+            }, (_, _, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                if (InsufficientSpeech) throw new VoiceInsufficientGeneratedSpeechException();
+                return Task.FromResult(SpeakerFailure ? new float[] { 0, 1 } : [1f, 0f]);
+            });
             Run = new(Client, Store, new(Guid.NewGuid().ToString("D"), Path.Combine(Root, "Paid"), Path.Combine(Root, "scratch")), Gate,
                 _ => Task.FromResult(Current), checks);
             var source = Samples = Enumerable.Range(0, 24000 * 8).Select(index =>

@@ -34,7 +34,7 @@ public sealed class VoiceLabRecoveryTests
                 writer.Write("data"u8); writer.Write(160000); writer.Write(new byte[160000]);
             }
             var wav = wave.ToArray();
-            record = record with { Statement = record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+            record = record with { Statement = record.Statement! with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
             store.SaveStatement(wav, record.RecordId);
             VoiceOperation operation;
             using (var claim = store.ClaimCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, DateTimeOffset.UtcNow))

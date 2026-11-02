@@ -11,7 +11,6 @@
     "status",
     "createdAt",
     "deletedAt",
-    "statement",
     "attestations",
     "samples",
     "speaker",
@@ -29,7 +28,10 @@
       }
     },
     "schema": {
-      "const": "voxclip-consent/1"
+      "enum": [
+        "voxclip-consent/1",
+        "voxclip-consent/2"
+      ]
     },
     "recordId": {
       "type": "string",
@@ -238,6 +240,34 @@
           ]
         }
       }
+    },
+    "projectConsent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "language",
+        "text",
+        "audioFile",
+        "audioSha256"
+      ],
+      "properties": {
+        "language": {
+          "enum": [
+            "en",
+            "et"
+          ]
+        },
+        "text": {
+          "const": "I confirm this is my own voice and I consent to creating a voice clone."
+        },
+        "audioFile": {
+          "const": "reference.wav"
+        },
+        "audioSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
     }
   },
   "allOf": [
@@ -267,5 +297,46 @@
     }
   ],
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://voxclip.app/schemas/consent.schema.json"
+  "$id": "https://voxclip.app/schemas/consent.schema.json",
+  "oneOf": [
+    {
+      "properties": {
+        "schema": {
+          "const": "voxclip-consent/1"
+        }
+      },
+      "required": [
+        "statement"
+      ],
+      "not": {
+        "required": [
+          "projectConsent"
+        ]
+      }
+    },
+    {
+      "properties": {
+        "schema": {
+          "const": "voxclip-consent/2"
+        },
+        "samples": {
+          "items": {
+            "properties": {
+              "source": {
+                "const": "project"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "projectConsent"
+      ],
+      "not": {
+        "required": [
+          "statement"
+        ]
+      }
+    }
+  ]
 }

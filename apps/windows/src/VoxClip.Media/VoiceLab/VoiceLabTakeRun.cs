@@ -43,11 +43,11 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         return new(record =>
         {
             speaker.ValidateAvailability();
-            if (!speaker.Supports(record.Statement.Language) || speaker.ModelId != record.Speaker.Model || speaker.Threshold != record.Speaker.Threshold)
+            if (!speaker.Supports(record.Language) || speaker.ModelId != record.Speaker.Model || speaker.Threshold != record.Speaker.Threshold)
                 throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
         }, (record, speech, request, binding, model, ct) => guard.AuthorizeAsync("take:" + VoiceConsentStore.Hash(System.Runtime.InteropServices.MemoryMarshal.AsBytes(speech.AsSpan()).ToArray()),
             record.RecordId, speech, request, true, ct: ct, binding: binding, modelRevision: model),
-            (samples, rate, ct) => speaker.EmbeddingAsync(VoiceConsentAudio.Resample(samples, rate), ct));
+            (samples, rate, ct) => speaker.GeneratedEmbeddingAsync(samples, rate, ct));
     }
     internal Guid? PreparedSetId { get { lock (sync) return pending?.Quote.Id; } }
     public VoiceLabTakeScratch? Scratch(Guid id) { lock (sync) return scratches.GetValueOrDefault(id); }
@@ -79,7 +79,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             var record = store.Load(snapshot.RecordId);
             store.ValidateUse(record);
             checks.Validate(record);
-            if (snapshot.Language != record.Statement.Language) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+            if (snapshot.Language != record.Language) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
             if (!await inputsAreCurrent(ct).ConfigureAwait(false)) throw new VoiceLabRunInvalidatedException();
             Check(version, binding, ct);
             var preflight = VoiceLabTakeProcessing.Preflight(snapshot);
@@ -96,7 +96,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             for (var index = 0; index < 3; index++)
             {
                 var options = snapshot.Options(index);
-                var review = new OwnVoicePolicy(record.RecordId, record.VoiceId, true, true, true, true, true);
+                var review = new OwnVoicePolicy(record.RecordId, record.VoiceId, true, true, record.ConsentMethod == VoiceConsentMethod.RecordedStatement, true, true)
+                    { ConsentMethod = record.ConsentMethod };
                 var synthesis = client.PrepareSynthesis(snapshot.Text, snapshot.ModelId, VoiceLabVoiceChoice.Own(record.VoiceId, review), snapshot.Language, options, Guid.NewGuid());
                 try { quotes.Add(new(index, options.Seed, synthesis, client.PrepareQa(snapshot.Language, record.RecordId, Guid.NewGuid()))); }
                 catch { client.DiscardTakeRun(new(id, [new(index, options.Seed, synthesis, synthesis)])); throw; }
@@ -260,13 +261,15 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 float[] vector;
                 try
                 {
-                    if (audio.Trimmed.Length < audio.SampleRate * 3) throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
+                    if (audio.Trimmed.Length < audio.SampleRate * 3) throw new VoiceInsufficientGeneratedSpeechException();
                     vector = await checks.Embedding(audio.Trimmed, audio.SampleRate, ct).ConfigureAwait(false);
                 }
-                catch (VoiceConsentException error) when (error.Kind == VoiceConsentError.SpeakerMismatch)
+                catch (Exception error) when (error is VoiceInsufficientGeneratedSpeechException or VoiceConsentException { Kind: VoiceConsentError.SpeakerMismatch })
                 {
-                    var failed = new VoiceLabTakeQaResult(0, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
-                        VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
+                    var failed = error is VoiceInsufficientGeneratedSpeechException
+                        ? new VoiceLabTakeQaResult(null, null, null, null, [VoiceLabTakeQaFailure.InsufficientGeneratedSpeech])
+                        : new VoiceLabTakeQaResult(null, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
+                            VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
                     rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, Generated: generated, Quote: take, Audio: audio, Qa: failed));
                     await progress(rows.AsReadOnly()).ConfigureAwait(false);
                     await ValidateAsync(value, ct).ConfigureAwait(false);
@@ -284,7 +287,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 var upper = audio.PatchEnd / (double)audio.SampleRate;
                 var inside = recognized.Words.Where(word => (word.Start + word.End) / 2 >= lower && (word.Start + word.End) / 2 < upper).Select(word => word.Text).ToArray();
                 var qa = VoiceLabTakeQuality.Evaluate(value.Input.Text, inside, audio.Mixed, audio.SampleRate, audio.Seams, score, value.Record.Speaker.Threshold);
-                var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start, qa.TranscriptMatch, VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
+                var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start,
+                    qa.TranscriptMatch ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput), VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
                 var row = new VoiceLabTakeRow(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, qaReceipt, generated, take, audio, qa, rank);
                 rows.Add(row);
                 lock (sync) { Check(value.Revision, value.Binding, ct); acceptedRows[row.Id] = (row, value); }
