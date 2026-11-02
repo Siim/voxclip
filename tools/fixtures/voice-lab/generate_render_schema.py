@@ -6,11 +6,17 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[3]
 path = root / 'shared/schemas/project.schema.json'
 s = json.loads(path.read_text())
-s['title'] = 'VoxClip project file (.voxclip), schemaVersion 1, 2 or 3'
-s['properties']['schemaVersion']['enum'] = [1, 2, 3]
+s['title'] = 'VoxClip project file (.voxclip), schemaVersion 1, 2, 3 or 4'
+s['properties']['schemaVersion']['enum'] = [1, 2, 3, 4]
 s['properties']['voiceLab']['oneOf'] = [{'$ref': '#/$defs/voiceLabV1'}, {'$ref': '#/$defs/voiceLabV2'}, {'$ref': '#/$defs/voiceLabV3'}]
-s['allOf'] = [item for item in s['allOf'] if item.get('if', {}).get('properties', {}).get('schemaVersion', {}).get('const') != 3]
-s['allOf'].append({'if': {'properties': {'schemaVersion': {'const': 3}}}, 'then': {'properties': {'voiceLab': {'$ref': '#/$defs/voiceLabV3'}}}})
+voice_rule = {'if': {'properties': {'schemaVersion': {'enum': [3, 4]}}}, 'then': {'properties': {'voiceLab': {'$ref': '#/$defs/voiceLabV3'}}}}
+for index, item in enumerate(s['allOf']):
+    version = item.get('if', {}).get('properties', {}).get('schemaVersion', {})
+    if version.get('const') == 3 or version.get('enum') == [3, 4]:
+        s['allOf'][index] = voice_rule
+        break
+else:
+    s['allOf'].append(voice_rule)
 d = s['$defs']
 string = {'type': 'string', 'minLength': 1}
 idref = {'$ref': '#/$defs/id'}
