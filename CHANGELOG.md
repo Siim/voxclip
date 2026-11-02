@@ -4,7 +4,9 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- Short phrases in casual speech can now be re-voiced, with words checked per take and voice checked across the run. Start with one priced take per phrase; approve another only when needed.
+- Keep short-phrase retries tied to earlier voice checks, require explicit selection of unmeasured takes, and show each phrase's check result once.
+
+- Short phrases in casual speech can now be re-voiced, with words checked per take and voice checked in small groups. Start with one priced take per phrase; approve another only when needed.
 - Keep offline compiler and consent checks aligned with the integrated Mac implementation.
 
 - Preserve schema v4 when regenerating the Voice Lab project contract.
