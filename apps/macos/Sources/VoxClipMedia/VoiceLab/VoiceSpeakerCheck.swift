@@ -110,12 +110,22 @@ public final class VoiceSpeakerCheck: Sendable {
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
         return try await SpeakerAudio.embedding(pcm16k, using: embedder)
     }
-    func generatedEmbedding(_ samples: [Float], sampleRate: Int) async throws -> [Float] {
-        guard sampleRate == 24_000, samples.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
-        guard samples.count >= sampleRate * 3 else { throw GeneratedSpeechError.insufficientSpeech }
+    /// VAD may inspect short input. The calibrated embedding still requires 48,000 voiced frames.
+    func generatedVoicedSamples(_ samples: [Float], sampleRate: Int) async throws -> [Float] {
+        guard sampleRate == 24_000, !samples.isEmpty, samples.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
-        return try await SpeakerAudio.embedding(VoiceConsentAudio.resample(samples, rate: sampleRate),
-                                                using: GeneratedSpeechEmbedder(base: embedder))
+        try await embedder.validateAvailability()
+        let voiced = try await embedder.voicedSamples(VoiceConsentAudio.resample(samples, rate: sampleRate))
+        guard voiced.count <= samples.count, voiced.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        return voiced
+    }
+    func generatedEmbedding(_ samples: [Float], sampleRate: Int) async throws -> [Float] {
+        try await generatedVoicedEmbedding(generatedVoicedSamples(samples, sampleRate: sampleRate))
+    }
+    func generatedVoicedEmbedding(_ voiced16k: [Float]) async throws -> [Float] {
+        guard voiced16k.count >= SpeakerAudio.windowSize else { throw GeneratedSpeechError.insufficientSpeech }
+        guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
+        return try await SpeakerAudio.embedding(voiced16k, using: GeneratedSpeechEmbedder(base: embedder))
     }
     public func partEmbeddings(_ pcm16k: [Float]) async throws -> (whole: [Float], parts: [[Float]]) {
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
@@ -131,10 +141,11 @@ private struct GeneratedSpeechEmbedder: SpeakerEmbedder {
     func validateAvailability() async throws { try await base.validateAvailability() }
     func embed(_ pcm16k: [Float]) async throws -> [Float] { try await base.embed(pcm16k) }
     func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] {
-        let voiced = try await base.voicedSamples(pcm16k)
-        guard voiced.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
-        guard voiced.count >= SpeakerAudio.windowSize else { throw VoiceSpeakerCheck.GeneratedSpeechError.insufficientSpeech }
-        return voiced
+        // The caller already extracted VAD output, once per generated take. Do not run VAD again
+        // over concatenation seams or borrow any non-generated samples into this stream.
+        guard pcm16k.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        guard pcm16k.count >= SpeakerAudio.windowSize else { throw VoiceSpeakerCheck.GeneratedSpeechError.insufficientSpeech }
+        return pcm16k
     }
 }
 

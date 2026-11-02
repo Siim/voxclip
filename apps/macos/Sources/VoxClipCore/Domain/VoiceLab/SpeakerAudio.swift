@@ -78,7 +78,7 @@ public enum SpeakerAudio {
     }
 
     public static func energySpeech(_ pcm: [Float]) throws -> [Float] {
-        guard pcm.count >= windowSize, pcm.allSatisfy({ $0.isFinite }) else { throw VoiceConsentError.speakerMismatch }
+        guard pcm.count >= 160, pcm.allSatisfy({ $0.isFinite }) else { throw VoiceConsentError.speakerMismatch }
         let gate = pow(10.0, -45.0 / 20.0)
         let ranges = stride(from: 0, through: pcm.count - 160, by: 160).compactMap { start -> Range<Int>? in
             let range = start..<(start + 160)

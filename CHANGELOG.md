@@ -4,12 +4,14 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Short phrases in casual speech can now be re-voiced, with words checked per take and voice checked across the run. Start with one priced take per phrase; approve another only when needed.
+
 - Record and place silent context demos from a reviewed app window, webpage or code project in the Mac editor, with source-bound saving and Undo.
 - Edit clip pan and zoom cues in the Mac FX Motion lane, with reduced-motion preview and matching export framing.
 - Change a selection or full take into your saved voice on Mac, with a separate price approval, measured audio checks and explicit audition.
 - Review a complete sentence when a rewritten phrase is too short for the calibrated speech check, then approve a fresh exact-text quote.
 - Choose source duration or a verified take's natural duration for each rewritten passage; video adapts while generated audio remains unstretched.
-- Report insufficient generated speech accurately and refuse clearly undersized takes before payment. Definitive clone-plan or permission refusals allow a freshly approved retry.
+- Report unavailable voice measurements accurately. Definitive clone-plan or permission refusals allow a freshly approved retry.
 
 - Create your own Mac voice from existing clip speech with checkbox consent, without recording an extra consent statement.
 

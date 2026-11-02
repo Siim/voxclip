@@ -77,13 +77,18 @@ public enum VoiceLabRecipeBuilder {
         guard row.selectable, let take = row.audio, let checked = row.qa, checked.passed,
               let receipt = row.receipt, let quote = row.quote, let jump = checked.values.lufsJumpLu,
               let peak = checked.values.peakDbfs, let match = checked.values.transcriptMatch,
-              let score = checked.values.speakerScore, score >= record.speaker.threshold,
               record.status == .active, record.id == input.recordID, receipt.voiceID == record.voiceId,
               receipt.modelID == input.modelID, published.words == take.words,
               published.audio.stretch == 1, published.outDuration.isFinite, published.outDuration > 0,
               let asset = published.assets.first(where: { $0.id == published.audio.assetId }),
               let verifiedAt = ISO8601DateFormatter().date(from: record.attestations.acceptedAt),
               verifiedAt <= createdAt else { throw VoiceLabProjectError.qaRejected }
+        let evidence = row.voiceCheck.evidence
+        let unmeasured = evidence.map { $0.valid && $0.mode == .unmeasured && $0.recordID == record.id && $0.consentMethod == record.consentMethod } == true
+        let score = checked.values.speakerScore
+        guard evidence.map({ $0.valid && $0.recordID == record.id && $0.consentMethod == record.consentMethod }) ?? true,
+              unmeasured ? score == nil : score.map({ $0.isFinite && $0 >= record.speaker.threshold }) == true
+        else { throw VoiceLabProjectError.qaRejected }
         let plan = take.fit.plan
         let options = VoiceLabVideoDurationOptions(row: row, sourceSampleRate: input.sourceSampleRate)
         guard let videoChoice, options.allows(videoChoice) else { throw VoiceLabProjectError.videoModeUnsupported }
@@ -113,7 +118,7 @@ public enum VoiceLabRecipeBuilder {
         let tokens = VoiceLabTakeQuality.tokens(input.text).count
         let qa = VoiceLabRenderQA(transcriptTokens: tokens, transcriptExact: tokens <= 5 ? match == 1 : nil,
             transcriptMatch: match, lufsJumpLu: jump, peakDbfs: peak, speakerScore: score,
-            speakerThreshold: record.speaker.threshold, speakerModel: record.speaker.model, speakerPassed: true)
+            speakerThreshold: record.speaker.threshold, speakerModel: record.speaker.model, speakerPassed: !unmeasured, shortSpeech: evidence)
         var provenance = VoiceLabProvenance(provider: receipt.provider, endpoint: receipt.endpoint, model: input.modelID,
             voiceId: record.voiceId, consentRecordId: record.id, requestId: receipt.requestID.uuidString,
             seed: row.seed, createdAt: createdAt)

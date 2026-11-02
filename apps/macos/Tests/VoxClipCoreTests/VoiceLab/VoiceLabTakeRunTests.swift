@@ -102,6 +102,8 @@ private final class TakeRunHTTP: Sendable {
         var firstStatus = 200
         var mismatchCount = 0
         var duration = 4.0
+        var durations: [Double] = []
+        var recognized: [String] = []
         var missingAlignment = false
         var remoteRequiresVerification = false
         var malformedAlignment = false
@@ -125,10 +127,21 @@ private actor TakeRunEmbedder: SpeakerEmbedder {
     nonisolated let modelID = "fixture-calibrated"
     nonisolated let dimension = 2
     let drift: Bool
+    let voicedFraction: Double
+    let generatedRawFrames: (@Sendable () -> Int)?
     var calls = 0
     var streams = 0
-    init(drift: Bool) { self.drift = drift }
-    func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] { streams += 1; return pcm16k }
+    init(drift: Bool, voicedFraction: Double = 1, generatedRawFrames: (@Sendable () -> Int)? = nil) {
+        self.drift = drift; self.voicedFraction = voicedFraction; self.generatedRawFrames = generatedRawFrames
+    }
+    func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] {
+        streams += 1
+        let basis = generatedRawFrames.map { frames in
+            let raw = frames()
+            return pcm16k.count <= raw ? raw : pcm16k.count
+        } ?? pcm16k.count
+        return Array(pcm16k.prefix(min(pcm16k.count, Int(Double(basis) * voicedFraction))))
+    }
     func embed(_ pcm16k: [Float]) async throws -> [Float] {
         calls += 1
         return drift && streams > 1 ? [0, 1] : [1, 0]
@@ -154,7 +167,7 @@ struct VoiceLabTakeRunTests {
     }
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
-                         boundary: VoiceLabTakeDispatchBoundary? = nil) async throws -> Fixture {
+                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", voicedFraction: Double = 1) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
         let store = VoiceConsentStore(locations: locations)
@@ -181,6 +194,7 @@ struct VoiceLabTakeRunTests {
                 let state = http.value.withLock { state in
                     state.seeds.append(seed); state.contexts.append(["previous": body["previous_text"] as? String ?? "", "next": body["next_text"] as? String ?? ""])
                     state.entered = true
+                    if !state.durations.isEmpty { state.duration = state.durations[(state.seeds.count - 1) % state.durations.count] }
                     return state
                 }
                 http.dispatched.fire()
@@ -192,9 +206,10 @@ struct VoiceLabTakeRunTests {
                     var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200).rounded()).littleEndian
                     withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
                 }
-                let characters = Array("Hello").map(String.init)
-                let starts = characters.indices.map { 0.1 + Double($0) * (state.duration - 0.2) / 5 }
-                let ends = characters.indices.map { 0.1 + Double($0 + 1) * (state.duration - 0.2) / 5 }
+                let generatedText = try #require(body["text"] as? String)
+                let characters = Array(generatedText).map(String.init)
+                let starts = characters.indices.map { 0.1 + Double($0) * (state.duration - 0.2) / Double(characters.count) }
+                let ends = characters.indices.map { 0.1 + Double($0 + 1) * (state.duration - 0.2) / Double(characters.count) }
                 let alignment: Any = state.missingAlignment ? NSNull() : ["characters": characters, "character_start_times_seconds": state.malformedAlignment ? Array(starts.dropLast()) : starts, "character_end_times_seconds": ends]
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["audio_base64": pcm.base64EncodedString(), "alignment": alignment]))
             case ("POST", "/v1/speech-to-text"):
@@ -209,8 +224,15 @@ struct VoiceLabTakeRunTests {
                 }
                 let state = http.value.withLock { $0.qa += 1; return $0 }
                 if state.malformedQA { return (200, [:], Data(#"{"language_code":"eng"}"#.utf8)) }
-                let text = state.qa <= state.mismatchCount ? "different" : "Hello"
-                return (200, [:], try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": [["type": "word", "text": text, "start": 0.65, "end": state.duration + 0.35]]]))
+                let text = state.recognized.isEmpty ? (state.qa <= state.mismatchCount ? "different" : text)
+                    : state.recognized[(state.qa - 1) % state.recognized.count]
+                let tokens = text.split(separator: " ").map(String.init)
+                let step = (state.duration - 0.2) / Double(tokens.count)
+                let words = tokens.enumerated().map { index, token -> [String: Any] in
+                    ["type": "word", "text": token, "start": 0.6 + Double(index) * step,
+                     "end": 0.6 + Double(index + 1) * step]
+                }
+                return (200, [:], try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": words]))
             default: Issue.record("Unexpected take-run request"); return (500, [:], Data())
             }
         }
@@ -218,7 +240,10 @@ struct VoiceLabTakeRunTests {
         let client = ElevenLabsVoiceLab(keys: SpeechTestKeys(value: "synthetic-take-key"), session: URLSession(configuration: SpeechStubHTTP.configuration(for: base)),
             prices: VoiceLabPricingTests.catalogIfPresent, spend: ledger, enforceCapabilities: true)
         let clock = TakeRunClock(); await client.useClock({ clock.now() }, monotonic: { clock.elapsed() })
-        let speakerCheck = VoiceSpeakerCheck(embedder: TakeRunEmbedder(drift: drift), calibratedThreshold: 0.45)
+        let generatedRawFrames: @Sendable () -> Int = { http.value.withLock { Int($0.duration * 16_000) } }
+        let rawFrames: (@Sendable () -> Int)? = voicedFraction < 1 ? generatedRawFrames : nil
+        let speakerCheck = VoiceSpeakerCheck(embedder: TakeRunEmbedder(drift: drift, voicedFraction: voicedFraction,
+            generatedRawFrames: rawFrames), calibratedThreshold: 0.45)
         let storage = VoiceLabTakeStorage(projectId: UUID().uuidString.lowercased(), paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch"))
         let makeRun: () -> VoiceLabTakeRun = {
             VoiceLabTakeRun(client: client, store: store, speaker: speakerCheck, storage: storage, dispatchIfCurrent: { request, start in
@@ -254,13 +279,13 @@ struct VoiceLabTakeRunTests {
         let window = VoiceLabWindow(firstWordId: "old", lastWordId: "old", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 2, end: 6,
             startSample: 48_000, endSample: 144_000, leftSeam: .init(kind: .hard, time: 2, sample: 48_000, fadeSamples: 288),
             rightSeam: .init(kind: .hard, time: 6, sample: 144_000, fadeSamples: 288))
-        let input = VoiceLabTakeInput(text: "Hello", modelID: "eleven_v3", recordID: record.id, language: "en", seed: UInt32.max,
+        let input = VoiceLabTakeInput(text: text, modelID: "eleven_v3", recordID: record.id, language: "en", seed: UInt32.max,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: window,
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         let lastWindow = VoiceLabWindow(firstWordId: "last", lastWordId: "last", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 7, end: 7.5,
             startSample: 168_000, endSample: 180_000, leftSeam: .init(kind: .hard, time: 7, sample: 168_000, fadeSamples: 288),
             rightSeam: .init(kind: .hard, time: 7.5, sample: 180_000, fadeSamples: 288))
-        let laterInput = VoiceLabTakeInput(text: "Hello", modelID: "eleven_v3", recordID: record.id, language: "en", seed: 7,
+        let laterInput = VoiceLabTakeInput(text: text, modelID: "eleven_v3", recordID: record.id, language: "en", seed: 7,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: lastWindow,
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input,
@@ -579,24 +604,103 @@ struct VoiceLabTakeRunTests {
         #expect(result.best?.selectable == true && result.best?.fits == false)
         #expect(result.ranked.map(\.index) == [0, 1, 2])
     }
-    @Test func shortUncalibratedSpeakerAudioIsNeverPaddedOrSelected() async throws {
-        let fixture = try await fixture { $0.duration = 1 }; defer { try? FileManager.default.removeItem(at: fixture.root) }
+    @Test func shortSingleTakeGetsWordsAndAcousticChecks() async throws {
+        let fixture = try await fixture { $0.duration = 1.4 }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input, candidates: 1)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first)
+        #expect(fixture.http.value.withLock { $0.qa == 1 && $0.seeds.count == 1 })
+        #expect(row.qaReceipt != nil && row.qa?.values.transcriptMatch == 1)
+        #expect(row.qa?.values.peakDbfs != nil && row.qa?.values.lufsJumpLu != nil)
+        #expect(row.selectable && row.failure == nil)
+    }
+
+    @Test func aCompletedShortSetRunsWordsAndReportsTruthfulUnmeasuredVoice() async throws {
+        let fixture = try await fixture { $0.duration = 1 }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)
         let result = try await fixture.run.execute(quote, approved: true)
-        #expect(result.rows.count == 3 && result.best == nil)
-        #expect(result.rows.allSatisfy { $0.failure == .qa([.insufficientGeneratedSpeech]) && !$0.selectable })
+        #expect(result.rows.count == 3 && result.best != nil)
         for row in result.rows {
-            let audio = try #require(row.audio)
-            let receipt = try #require(row.receipt)
-            #expect(audio.trimmed.count < audio.sampleRate * 3)
-            #expect(row.generated?.pcm.count == 48_000)
-            #expect(row.qa?.failures == [.insufficientGeneratedSpeech])
-            #expect(row.qa?.values == VoiceLabQA())
-            #expect(row.qaReceipt == nil && row.score == nil)
-            #expect(row.acceptedRequestIDs == Set([receipt.requestID]))
+            #expect(row.selectable && row.failure == nil && row.qaReceipt != nil)
+            #expect(row.qa?.values.transcriptMatch == 1 && row.qa?.values.speakerScore == nil)
+            #expect(row.voiceCheck.evidence?.mode == .unmeasured)
+            #expect(row.voiceCheck.shortPhraseCopy == "voice couldn't be measured (under 3 s of speech)")
+            #expect(row.acceptedRequestIDs.count == 2)
         }
-        #expect(fixture.http.value.withLock { $0.qa == 0 })
+        #expect(fixture.http.value.withLock { $0.qa == 3 && $0.seeds.count == 3 })
     }
+
+    @Test func replayThirteenCasualPhrasesWithPooledVoiceAndTwoWrongWords() async throws {
+        // Synthetic 24 kHz sine waves only; no user WAVs or voice. The supplied raw durations
+        // are replayed exactly. Stub VAD retains roughly 75% of each raw 24 kHz duration
+        // from the available trimmed samples, approximating voiced speech; even 3.12 s raw takes therefore stay below the 3 s calibrated window.
+        let cases: [(String, [Double])] = [
+            ("game development of the flight simulator.", [2.72, 2.00, 2.96]),
+            ("and yeah I keep going.", [2.24, 1.68, 1.92]),
+            ("The next idea is", [2.08, 2.40, 1.76]),
+            ("to the way.", [1.76, 1.36, 2.32]),
+            ("development of the flight simulator game.", [2.72, 2.96, 3.12]),
+            ("and yeah I keep going", [2.00, 2.40, 2.16]),
+            ("The next idea is", [1.84, 2.40, 1.84]),
+            ("to how.", [2.24, 1.52, 2.32]),
+            ("Players can collaborate.", [2.40, 2.48, 2.24]),
+            ("game development of the flight simulator.", [3.12, 2.48, 2.72]),
+            ("and yeah I keep going.", [2.24, 2.32, 1.44]),
+            ("The next idea is", [1.92, 2.24, 1.92]),
+            ("to the ones that were in the original.", [2.16, 2.72, 2.64])
+        ]
+        var allRows: [VoiceLabTakeRow] = []
+        for range in [0..<9, 9..<13] {
+            let pool = VoiceLabShortTakePool()
+            var fixtures: [Fixture] = []
+            defer { for fixture in fixtures { try? FileManager.default.removeItem(at: fixture.root) } }
+            var pending: [VoiceLabTakeRow] = []
+            for index in range {
+                let (text, durations) = cases[index]
+                let recognized = index == 0 ? [text.replacingOccurrences(of: "flight", with: "fight"),
+                                               text.replacingOccurrences(of: "flight", with: "fight"), text] : [text, text, text]
+                let fixture = try await fixture({ $0.durations = durations; $0.recognized = recognized }, text: text, voicedFraction: 0.75)
+                fixtures.append(fixture)
+                let quote = try await fixture.run.prepare(fixture.input, candidates: 3)
+                let result = try await fixture.run.execute(quote, approved: true, shortTakePool: pool)
+                #expect(result.rows.count == 3)
+                #expect(result.rows.allSatisfy { !$0.selectable && $0.voiceCheck == .waiting && $0.qaReceipt != nil })
+                #expect(fixture.http.value.withLock { $0.seeds.count == 3 && $0.qa == 3 })
+                for (row, seconds) in zip(result.rows, durations) {
+                    #expect(row.generated?.pcm.count == Int(seconds * 24_000) * 2)
+                    #expect(row.voiceCheck == .waiting)
+                }
+                pending += result.rows
+            }
+            let checked = await pool.finish()
+            #expect(checked.count == range.count * 3)
+            for row in pending {
+                let result = try #require(checked[row.id])
+                #expect(result.voiceCheck.evidence?.mode == .pooled)
+                #expect(result.voiceCheck.evidence?.takeCount == range.count * 3)
+                // Independent totals: sum of the supplied raw durations × 16,000 × 0.75.
+                #expect(result.voiceCheck.evidence?.voicedFrames == (range.lowerBound == 0 ? 718_080 : 335_040))
+                #expect(result.qa?.values.speakerScore == 1)
+                allRows.append(result)
+            }
+        }
+        #expect(allRows.count == 39 && allRows.filter(\.selectable).count == 37)
+        #expect(allRows.prefix(2).allSatisfy { $0.qa?.failures == [.transcript] && $0.failure == .qa([.transcript]) })
+        #expect(allRows.dropFirst(2).allSatisfy { $0.qa?.passed == true && $0.failure == nil })
+    }
+
+    @Test func offVoicePoolFailsEveryCompletedShortTake() async throws {
+        let fixture = try await fixture({ $0.duration = 1.8 }, drift: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input, candidates: 3)
+        let result = try await fixture.run.execute(quote, approved: true)
+        #expect(result.rows.count == 3 && result.best == nil)
+        #expect(result.rows.allSatisfy { $0.qa?.failures == [.speaker] && $0.failure == .qa([.speaker]) && !$0.selectable })
+        #expect(result.rows.allSatisfy { $0.qa?.values.transcriptMatch == 1 && $0.qaReceipt != nil })
+    }
+
     @Test func approvalRejectsAChangedQuoteSetWithoutSending() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let original = try await fixture.run.prepare(fixture.input)

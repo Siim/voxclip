@@ -4,7 +4,7 @@ import whisper
 
 public enum SpeakerVAD {
     public static func ranges(_ pcm: [Float], model: URL) throws -> [Range<Int>] {
-        guard pcm.count >= 48_000, pcm.count <= 16_000 * 240, pcm.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        guard !pcm.isEmpty, pcm.count <= 16_000 * 240, pcm.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
         try Task.checkCancellation()
         var options = whisper_vad_default_context_params()
         options.n_threads = 2; options.use_gpu = false
