@@ -241,6 +241,8 @@ member VoxClip.App.Controls.DirectorPanel :: method internal get_FocusTarget()
 member VoxClip.App.Controls.DirectorVoiceSteps :: method internal .ctor()
 member VoxClip.App.Controls.EditorTabStrip :: field private ScopeRequested
 member VoxClip.App.Controls.EditorTabStrip :: field private syncing
+member VoxClip.App.Controls.EditorTabStrip :: field private tabs
+member VoxClip.App.Controls.EditorTabStrip :: method internal get_SelectedItem()
 member VoxClip.App.Controls.EditorTabStrip :: method private Close(string)
 member VoxClip.App.Controls.EditorTabStrip :: method private Render()
 member VoxClip.App.Controls.EditorTabStrip :: method public .ctor()
