@@ -55,6 +55,8 @@ def schema_for(path, document, by_name):
         return by_name["voice-statements.schema.json"]
     if isinstance(document, dict) and document.get("schema") == "voxclip-voice-models/1":
         return by_name["voice-models.schema.json"]
+    if isinstance(document, dict) and document.get("format") == "voxclip-context-demo":
+        return by_name["context-demo.schema.json"]
     raise SystemExit(f"{path}: no schema applies (expected .voxclip, .transcript.json, voxclip-settings/1 "
                      "or voxclip-voice-lab-prices/1)")
 
@@ -64,6 +66,7 @@ def main(argv):
     fixtures = ROOT / "shared" / "fixtures"
     files = [pathlib.Path(a) for a in argv] or sorted([
         *fixtures.joinpath("projects").glob("*.voxclip"),
+        *fixtures.joinpath("context-demo").glob("*.voxclip"),
         *fixtures.joinpath("media").glob("*.transcript.json"),
     ]) + [ROOT / "shared" / "catalog" / "voice-lab.json",
           ROOT / "shared" / "voice-lab" / "statements.json",

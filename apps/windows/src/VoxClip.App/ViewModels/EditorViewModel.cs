@@ -316,8 +316,7 @@ public sealed class EditorViewModel : ObservableObject
     {
         var local = EditingEngine.FromProject(snapshot) ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
         foreach (var operation in operations) local = reduce(local, operation);
-        return snapshot with { Edits = new(local.PauseThresholdSeconds, local.PauseKeepSeconds, local.CutWordIds.ToArray(), local.CutPauseIds.ToArray(),
-            new Dictionary<string, string>(local.Corrections), local.Clips.ToArray(), local.ActiveClipId) };
+        return EditingEngine.ApplyToProject(snapshot, local);
     }
     public bool ApplyVoiceLab(IReadOnlyList<VoiceLabSegment> segments, IReadOnlyList<VoiceLabAsset> assets, VoiceLabVoiceReference voice,
         VoiceLabOutputScope scope, string actionName, Project? expectedProject = null, IReadOnlyList<EditOperation>? localOperations = null)
@@ -349,8 +348,7 @@ public sealed class EditorViewModel : ObservableObject
                 if (modifiedAt <= snapshot.ModifiedAt) modifiedAt = snapshot.ModifiedAt.AddTicks(1);
                 var nextState = state;
                 foreach (var operation in localOperations ?? []) nextState = reduce(nextState, operation);
-                var combined = nextState == state ? snapshot : snapshot with { Edits = new(nextState.PauseThresholdSeconds, nextState.PauseKeepSeconds,
-                    nextState.CutWordIds.ToArray(), nextState.CutPauseIds.ToArray(), new Dictionary<string, string>(nextState.Corrections), nextState.Clips.ToArray(), nextState.ActiveClipId) };
+                var combined = nextState == state ? snapshot : EditingEngine.ApplyToProject(snapshot, nextState);
                 var history = new VoiceLabEditHistory(combined, IsDirty);
                 var change = command is VoiceLabEditCommand.AcceptAll all
                     ? history.Apply(all.Segments, all.Assets, all.Voice, scope, actionName!, modifiedAt)
@@ -510,7 +508,10 @@ public sealed class EditorViewModel : ObservableObject
         var next = from.Pop();
         to.Push(CaptureHistory(next.ActionName));
         state = next.State;
+        var sameSource = next.Project.Media.Source.ContentKey == project.Media.Source.ContentKey &&
+            next.Project.Media.Source.SizeBytes == project.Media.Source.SizeBytes;
         project = project with { Edits = next.Project.Edits, Captions = next.Project.Captions, VoiceLab = next.Project.VoiceLab,
+            ContextDemo = sameSource ? next.Project.ContextDemo : null, MotionCues = sameSource ? next.Project.MotionCues : [],
             SchemaVersion = next.Project.SchemaVersion, ModifiedAt = next.Project.ModifiedAt };
         Refresh();
     }
@@ -588,7 +589,7 @@ public sealed class EditorViewModel : ObservableObject
             state = EditingEngine.Reduce(state, new EditOperation.ReplaceTranscript(value));
             project = EditingEngine.ApplyToProject(project, state);
         }
-        else project = project with { Transcript = value, Ai = new([]) };
+        else project = ProjectStore.ReplaceTranscript(project, value);
         undo.Clear(); redo.Clear(); selectionAnchor = -1; selectionEnd = -1;
         InitializeState(); Refresh();
     }
@@ -698,8 +699,10 @@ public sealed class EditorViewModel : ObservableObject
     private void SyncProject()
     {
         if (state is null) return;
+        var clipIds = state.Clips.Select(clip => clip.Id).ToHashSet(StringComparer.Ordinal);
         project = project with { ModifiedAt = now(), Edits = new(state.PauseThresholdSeconds, state.PauseKeepSeconds,
-            state.CutWordIds.ToArray(), state.CutPauseIds.ToArray(), new Dictionary<string, string>(state.Corrections), state.Clips.ToArray(), state.ActiveClipId) };
+            state.CutWordIds.ToArray(), state.CutPauseIds.ToArray(), new Dictionary<string, string>(state.Corrections), state.Clips.ToArray(), state.ActiveClipId),
+            MotionCues = project.MotionCues.Where(cue => clipIds.Contains(cue.ClipID)).ToArray() };
     }
 
     private void Refresh()

@@ -14,7 +14,7 @@ internal static class VoiceLabDisclosure
         try
         {
             var project = snapshot();
-            if (project.SchemaVersion != 3 && project.VoiceLab.Segments.All(segment => !segment.Enabled)) return false;
+            if (project.SchemaVersion < 3 && project.VoiceLab.Segments.All(segment => !segment.Enabled)) return false;
             var scope = clipId is null ? VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Full : VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Clip(clipId);
             return VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract.Prepare(project, scope, labelPosition).Disclosure.Required;
         }
@@ -39,12 +39,15 @@ internal static class ExportFingerprint
     internal static string TargetId(ExportTarget target) => target is ExportTarget.Clip clip ? clip.Id : "full";
     internal static string For(Project project, ExportTarget target, VoxClip.Core.Domain.VoiceLab.VoiceLabLabelPosition? labelPosition = null)
     {
+        if (project.ContextDemo is { Placements.Length: > 0 } || project.MotionCues.Count > 0)
+            return Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(
+                "unsupported-windows-visuals-v1\n" + TargetId(target) + "\n" + ProjectSerialization.Serialize(project))));
         var state = ExportSelection.Scope(EditingEngine.FromProject(project), target);
         var media = ExportRenderInput.Media(project);
         var plan = ExportRenderInput.Plan(media, state);
         var output = ExportRenderInput.Output(media, project.Export);
         object? voice = null;
-        if (project.SchemaVersion == 3)
+        if (project.SchemaVersion >= 3)
         {
             var scope = target is ExportTarget.Clip clip ? VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Clip(clip.Id) : VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope.Full;
             var prepared = VoxClip.Core.Domain.VoiceLab.VoiceLabRenderContract.Prepare(project, scope, labelPosition ?? VoiceLabSettingsState.LabelPosition(null));

@@ -74,6 +74,7 @@ internal static class CliOperations
         if (!Path.GetExtension(path).Equals(".voxclip", StringComparison.OrdinalIgnoreCase))
             return (null, await ProbeInputAsync(path, ct).ConfigureAwait(false));
         var opened = await ServicesMergeAdapter.Projects().LoadAsync(path, ct).ConfigureAwait(false);
+        VoiceLabRenderContract.RequireWindowsVisualSupport(opened.Project);
         if (opened.ResolvedMediaPath is null) throw new VoxClipException(VoxClipErrorCode.MediaMissing, $"Can't find {Path.GetFileName(opened.Project.Media.Source.AbsolutePath)}. Edits are saved.");
         return (opened.Project, await ProbeInputAsync(opened.ResolvedMediaPath, ct).ConfigureAwait(false));
     }
@@ -108,6 +109,7 @@ internal static class CliOperations
             }
             else project = media.Audio is null ? NewProject(media, null, string.Empty) : await TranscribeMediaAsync(media, arguments, ct).ConfigureAwait(false);
         }
+        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
         ValidateRequestedScope(project.Edits.Clips, project.Transcript?.Words.Count ?? 0,
             arguments.GetValue<string?>("--clip"), arguments.GetValue<string?>("--range"));
         if (arguments.GetValue<bool>("--cut-fillers") || arguments.GetValue<bool>("--tighten-pauses") ||
@@ -119,7 +121,7 @@ internal static class CliOperations
         }
         var scope = project.Edits.ActiveClipId is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full;
         VoiceLabRenderInput? voice = null;
-        if (project.SchemaVersion == 3)
+        if (project.SchemaVersion >= 3)
         {
             var prepared = VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight);
             if (prepared.OutputPlan.RequiresSyntheticRendering)
@@ -446,6 +448,7 @@ internal static class CliOperations
 
     internal static EditPlan BuildPlan(Project project, bool activeClip)
     {
+        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
         VoiceLabProject.RequireLegacyRendering(project, activeClip && project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full);
         return BuildPlanUnchecked(project, activeClip);
     }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/project.schema.json",
-  "title": "VoxClip project file (.voxclip), schemaVersion 1, 2 or 3",
+  "title": "VoxClip project file (.voxclip), schemaVersion 1, 2, 3 or 4",
   "description": "One portable UTF-8 JSON document per project, identical on macOS and Windows. It references the source media (never embeds it) and stores the transcript, the edits (cut set, corrections, clip range layer), caption choices, export choices, share captions and cached AI clip results. Caches (levels, thumbnails, proxies) live in the app support directory, never here. Secrets never appear in this file. Semantics that JSON Schema cannot express are normative in doc/spec/editing.md section 10. The apps do not run a JSON Schema engine at runtime; they decode strictly into typed models (doc/architecture.md section 2.1), and tests validate every file the apps write against this schema.",
   "type": "object",
   "additionalProperties": false,
@@ -30,7 +30,8 @@
       "enum": [
         1,
         2,
-        3
+        3,
+        4
       ]
     },
     "id": {
@@ -129,6 +130,18 @@
       "propertyNames": {
         "pattern": "^[a-z0-9]+(?:\\.[a-z0-9-]+)+$"
       }
+    },
+    "contextDemo": {
+      "$ref": "context-demo.schema.json",
+      "description": "Optional schema-v4 source-bound capture plan. Omit when absent; never auto-load an independent sidecar."
+    },
+    "motionCues": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/motionCue"
+      },
+      "default": [],
+      "description": "Schema-v4 source-take motion cues. Omit when empty; runtime validates clip identity, media bounds, uniqueness and at most 64 cues per clip."
     }
   },
   "allOf": [
@@ -168,7 +181,10 @@
       "if": {
         "properties": {
           "schemaVersion": {
-            "const": 3
+            "enum": [
+              3,
+              4
+            ]
           }
         }
       },
@@ -177,6 +193,35 @@
           "voiceLab": {
             "$ref": "#/$defs/voiceLabV3"
           }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "enum": [
+              1,
+              2,
+              3
+            ]
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "contextDemo"
+              ]
+            },
+            {
+              "required": [
+                "motionCues"
+              ]
+            }
+          ]
         }
       }
     }
@@ -2463,6 +2508,98 @@
           "minimum": 1
         }
       }
+    },
+    "motionKeyframe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "progress",
+        "scale",
+        "anchorX",
+        "anchorY"
+      ],
+      "properties": {
+        "progress": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 1.35
+        },
+        "anchorX": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "anchorY": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "motionCue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "clipID",
+        "sourceStart",
+        "sourceEnd",
+        "keyframes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "clipID": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "sourceStart": {
+          "type": "number",
+          "minimum": 0
+        },
+        "sourceEnd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "keyframes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/motionKeyframe"
+          },
+          "maxItems": 8,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/motionKeyframe",
+              "properties": {
+                "progress": {
+                  "const": 0
+                }
+              }
+            }
+          ],
+          "contains": {
+            "properties": {
+              "progress": {
+                "const": 1
+              }
+            },
+            "required": [
+              "progress"
+            ]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      },
+      "description": "Canonical wire only: duration is 0.1...120 seconds with 1e-9 arithmetic tolerance; progress is strictly ascending with first 0 and last 1. Runtime rejects noncanonical arrays before model normalization. Overlap is permitted for defensive evaluation; authored UI rejects it."
     }
   }
 }

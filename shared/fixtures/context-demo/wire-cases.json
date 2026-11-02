@@ -1,0 +1,2404 @@
+{
+  "format": "voxclip-context-demo-wire-cases/1",
+  "valid": [
+    {
+      "id": "both-features",
+      "patches": []
+    },
+    {
+      "id": "demo-only",
+      "patches": [
+        {
+          "path": "/motionCues",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "motion-only",
+      "patches": [
+        {
+          "path": "/contextDemo",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "no-features",
+      "patches": [
+        {
+          "path": "/contextDemo",
+          "remove": true
+        },
+        {
+          "path": "/motionCues",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "empty-motion",
+      "patches": [
+        {
+          "path": "/contextDemo",
+          "remove": true
+        },
+        {
+          "path": "/motionCues",
+          "value": []
+        }
+      ]
+    },
+    {
+      "id": "desktop-target",
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target",
+          "value": {
+            "kind": "desktopApp",
+            "displayName": "Synthetic app",
+            "locator": "com.example.synthetic"
+          }
+        }
+      ]
+    },
+    {
+      "id": "code-project-target",
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target",
+          "value": {
+            "kind": "codeProject",
+            "displayName": "Synthetic project",
+            "locator": "file:///tmp/voxclip-synthetic-project"
+          }
+        }
+      ]
+    },
+    {
+      "id": "maximum-revision",
+      "patches": [
+        {
+          "path": "/contextDemo/revision",
+          "value": 2147483647
+        }
+      ]
+    },
+    {
+      "id": "minimum-motion-duration",
+      "patches": [
+        {
+          "path": "/motionCues/0/sourceEnd",
+          "value": 1.1
+        }
+      ]
+    },
+    {
+      "id": "stale-narration-recoverable",
+      "patches": [
+        {
+          "path": "/contextDemo/narration/pieces/0/source/end",
+          "value": 6
+        }
+      ]
+    },
+    {
+      "id": "defensive-motion-overlap",
+      "patches": [
+        {
+          "path": "/motionCues",
+          "value": [
+            {
+              "id": "motion-a",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-b",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "id": "unknown-root",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-demo",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-narration",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/narration/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-piece",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/narration/pieces/0/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-range",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/narration/pieces/0/source/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-asset",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-target",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-placement",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/placements/0/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-motion",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues/0/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "unknown-keyframe",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues/0/keyframes/0/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "future-project",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 5
+        }
+      ],
+      "tooNew": true
+    },
+    {
+      "id": "future-demo",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/version",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "id": "v4-requires-v3-voice-policy",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/voiceLab/cleanAudio",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "v4-unknown-voice-policy",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/voiceLab/cleanAudio/unexpected",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "v4-numeric-voice-policy",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/voiceLab/cleanAudio/mode",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "null-demo",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "null-motion",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues",
+          "value": null
+        }
+      ]
+    },
+    {
+      "id": "missing-source-key",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/sourceContentKey",
+          "remove": true
+        }
+      ]
+    },
+    {
+      "id": "source-key-binding",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/sourceContentKey",
+          "value": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ]
+    },
+    {
+      "id": "project-id-binding",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/projectId",
+          "value": "00000000-0000-0000-0000-000000000001"
+        }
+      ]
+    },
+    {
+      "id": "invalid-source-key",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/sourceContentKey",
+          "value": "ABC"
+        }
+      ]
+    },
+    {
+      "id": "negative-revision",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/revision",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "id": "revision-overflow",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/revision",
+          "value": 2147483648
+        }
+      ]
+    },
+    {
+      "id": "unsafe-asset-path",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/relativePath",
+          "value": "../demo.mp4"
+        }
+      ]
+    },
+    {
+      "id": "wrong-project-asset-path",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/relativePath",
+          "value": "context-demo/00000000-0000-0000-0000-000000000001/demo-a.mp4"
+        }
+      ]
+    },
+    {
+      "id": "target-credentials",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target/locator",
+          "value": "https://user:password@example.com"
+        }
+      ]
+    },
+    {
+      "id": "target-scheme",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target/locator",
+          "value": "ftp://example.com"
+        }
+      ]
+    },
+    {
+      "id": "encoded-control-project-path",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target",
+          "value": {
+            "kind": "codeProject",
+            "displayName": "Synthetic project",
+            "locator": "file:///tmp/project%00name"
+          }
+        }
+      ]
+    },
+    {
+      "id": "unknown-target-kind",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target/kind",
+          "value": "shell"
+        }
+      ]
+    },
+    {
+      "id": "numeric-target-kind",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target/kind",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "id": "numeric-string-target-kind",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target/kind",
+          "value": "2"
+        }
+      ]
+    },
+    {
+      "id": "target-kind-casing",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/target/kind",
+          "value": "WebPage"
+        }
+      ]
+    },
+    {
+      "id": "asset-hash",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/sha256",
+          "value": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+        }
+      ]
+    },
+    {
+      "id": "asset-duration",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/durationSeconds",
+          "value": 31
+        }
+      ]
+    },
+    {
+      "id": "asset-byte-budget",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/byteSize",
+          "value": 67108865
+        }
+      ]
+    },
+    {
+      "id": "asset-odd-width",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/pixelWidth",
+          "value": 1279
+        }
+      ]
+    },
+    {
+      "id": "asset-timestamp",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/assets/0/createdAt",
+          "value": "2026-11-02T00:00:00+02:00"
+        }
+      ]
+    },
+    {
+      "id": "missing-asset",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/placements/0/assetId",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "id": "trim-past-asset",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/placements/0/source/end",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "trim-negative",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/placements/0/source/start",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "id": "trim-empty",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/placements/0/source/end",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "placement-past-narration",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/placements/0/editedStartSeconds",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "id": "placement-off-grid",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/placements/0/editedStartSeconds",
+          "value": 1.000001
+        }
+      ]
+    },
+    {
+      "id": "overlapping-placements",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/placements",
+          "value": [
+            {
+              "id": "placement-a",
+              "assetId": "demo-a",
+              "source": {
+                "start": 0,
+                "end": 1
+              },
+              "editedStartSeconds": 1
+            },
+            {
+              "id": "placement-b",
+              "assetId": "demo-a",
+              "source": {
+                "start": 0,
+                "end": 1
+              },
+              "editedStartSeconds": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "duplicate-assets",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/assets",
+          "value": [
+            {
+              "id": "demo-a",
+              "requestId": "request-a",
+              "target": {
+                "kind": "webPage",
+                "displayName": "Synthetic example",
+                "locator": "https://example.com/demo"
+              },
+              "relativePath": "context-demo/5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/demo-a.mp4",
+              "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "durationSeconds": 2,
+              "pixelWidth": 1280,
+              "pixelHeight": 720,
+              "byteSize": 4096,
+              "createdAt": "2026-11-02T00:00:00.000Z"
+            },
+            {
+              "id": "demo-a",
+              "requestId": "request-a",
+              "target": {
+                "kind": "webPage",
+                "displayName": "Synthetic example",
+                "locator": "https://example.com/demo"
+              },
+              "relativePath": "context-demo/5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11/demo-a.mp4",
+              "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "durationSeconds": 2,
+              "pixelWidth": 1280,
+              "pixelHeight": 720,
+              "byteSize": 4096,
+              "createdAt": "2026-11-02T00:00:00.000Z"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "narration-output-samples",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/narration/outputSamples",
+          "value": 336001
+        }
+      ]
+    },
+    {
+      "id": "narration-hole",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/narration/pieces/0/output/start",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "narration-source-reversed",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/narration/pieces/0/source/start",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "id": "narration-source-past-media",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/contextDemo/narration/pieces/0/source/end",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "id": "narration-rate",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/contextDemo/narration/sampleRate",
+          "value": 0
+        }
+      ]
+    },
+    {
+      "id": "motion-unknown-clip",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/motionCues/0/clipID",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "id": "motion-past-media",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/motionCues/0/sourceEnd",
+          "value": 8
+        }
+      ]
+    },
+    {
+      "id": "motion-short",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/motionCues/0/sourceEnd",
+          "value": 1.01
+        }
+      ]
+    },
+    {
+      "id": "motion-long",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/motionCues/0/sourceEnd",
+          "value": 122
+        }
+      ]
+    },
+    {
+      "id": "motion-negative",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues/0/sourceStart",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "id": "motion-duplicate-id",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/motionCues",
+          "value": [
+            {
+              "id": "motion-a",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-a",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "motion-per-clip-budget",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/motionCues",
+          "value": [
+            {
+              "id": "motion-0",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-1",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-2",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-3",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-4",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-5",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-6",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-7",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-8",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-9",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-10",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-11",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-12",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-13",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-14",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-15",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-16",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-17",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-18",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-19",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-20",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-21",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-22",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-23",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-24",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-25",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-26",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-27",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-28",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-29",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-30",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-31",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-32",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-33",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-34",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-35",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-36",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-37",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-38",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-39",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-40",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-41",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-42",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-43",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-44",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-45",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-46",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-47",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-48",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-49",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-50",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-51",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-52",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-53",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-54",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-55",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-56",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-57",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-58",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-59",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-60",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-61",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-62",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-63",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            },
+            {
+              "id": "motion-64",
+              "clipID": "clip-main",
+              "sourceStart": 1,
+              "sourceEnd": 2,
+              "keyframes": [
+                {
+                  "progress": 0,
+                  "scale": 1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                },
+                {
+                  "progress": 1,
+                  "scale": 1.1,
+                  "anchorX": 0.5,
+                  "anchorY": 0.5
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "motion-keyframe-budget",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues/0/keyframes",
+          "value": [
+            {
+              "progress": 0.0,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0.125,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0.25,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0.375,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0.5,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0.625,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0.75,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0.875,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 1.0,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "motion-keyframe-duplicate",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/motionCues/0/keyframes",
+          "value": [
+            {
+              "progress": 0,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 1,
+              "scale": 1.1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "motion-first-endpoint",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues/0/keyframes/0/progress",
+          "value": 0.1
+        }
+      ]
+    },
+    {
+      "id": "motion-last-endpoint",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues/0/keyframes/1/progress",
+          "value": 0.9
+        }
+      ]
+    },
+    {
+      "id": "motion-keyframe-reversed",
+      "schemaValid": true,
+      "patches": [
+        {
+          "path": "/motionCues/0/keyframes",
+          "value": [
+            {
+              "progress": 0,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0.8,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 0.2,
+              "scale": 1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            },
+            {
+              "progress": 1,
+              "scale": 1.1,
+              "anchorX": 0.5,
+              "anchorY": 0.5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "motion-scale",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues/0/keyframes/0/scale",
+          "value": 1.36
+        }
+      ]
+    },
+    {
+      "id": "motion-anchor",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues/0/keyframes/0/anchorX",
+          "value": -0.1
+        }
+      ]
+    },
+    {
+      "id": "motion-bool-number",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/motionCues/0/keyframes/0/scale",
+          "value": true
+        }
+      ]
+    },
+    {
+      "id": "v1-new-fields",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "v1-empty-new-fields",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 1
+        },
+        {
+          "path": "/contextDemo",
+          "remove": true
+        },
+        {
+          "path": "/motionCues",
+          "value": []
+        }
+      ]
+    },
+    {
+      "id": "v2-new-fields",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 2
+        }
+      ]
+    },
+    {
+      "id": "v2-empty-new-fields",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 2
+        },
+        {
+          "path": "/contextDemo",
+          "remove": true
+        },
+        {
+          "path": "/motionCues",
+          "value": []
+        }
+      ]
+    },
+    {
+      "id": "v3-new-fields",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "id": "v3-empty-new-fields",
+      "schemaValid": false,
+      "patches": [
+        {
+          "path": "/schemaVersion",
+          "value": 3
+        },
+        {
+          "path": "/contextDemo",
+          "remove": true
+        },
+        {
+          "path": "/motionCues",
+          "value": []
+        }
+      ]
+    }
+  ],
+  "legacy": [
+    {
+      "version": 1,
+      "path": "fixtures/projects/interview-take.voxclip"
+    },
+    {
+      "version": 2,
+      "path": "fixtures/voice-lab/passage-project.voxclip"
+    },
+    {
+      "version": 3,
+      "path": "fixtures/voice-lab/passage-render-v3.voxclip"
+    }
+  ]
+}

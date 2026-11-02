@@ -225,12 +225,13 @@ public sealed partial class EditorPage : Page
         => ExportRenderInput.Media(project);
     private async Task<ComposeSnapshot> SnapshotAsync(CancellationToken ct, EditState? stateOverride = null, Project? projectOverride = null)
     {
+        VoiceLabRenderContract.RequireWindowsVisualSupport(projectOverride ?? ViewModel.Project);
         var source = media ?? MediaFromProject(projectOverride ?? ViewModel.Project);
         var state = projectOverride is null ? stateOverride ?? ViewModel.State : stateOverride;
         var project = projectOverride ?? ViewModel.ScopedProject(state);
         var scope = project.Edits.ActiveClipId is { } id ? VoiceLabOutputScope.Clip(id) : VoiceLabOutputScope.Full;
         VoiceLabRenderInput? voice = null;
-        if (project.SchemaVersion == 3)
+        if (project.SchemaVersion >= 3)
         {
             var prepared = VoiceLabRenderContract.Prepare(project, scope, VoiceLabSettingsState.LabelPosition(App.Services.Settings.GetString("voiceLab.labelPosition")));
             if (prepared.OutputPlan.RequiresSyntheticRendering)
@@ -853,6 +854,7 @@ if (insertion ||
             Transcript.Announce(reason);
             return;
         }
+        VoiceLabRenderContract.RequireWindowsVisualSupport(ViewModel.Project);
         await new ExportDialog(owner, ViewModel, demo, (project, state, ct) => SnapshotAsync(ct, state, project), clipId) { XamlRoot = XamlRoot }.ShowAsync();
     }, "Export");
     internal async Task PromptTranscriptionAsync() => await RunAsync(async () =>

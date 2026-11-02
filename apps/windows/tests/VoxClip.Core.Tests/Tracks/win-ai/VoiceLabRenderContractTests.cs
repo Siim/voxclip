@@ -80,6 +80,35 @@ public sealed class VoiceLabRenderContractTests
         Assert.Equal(["voiceChanger"], stock.Disclosure.Kinds);
         Assert.Equal("The voice in this video was changed with AI.", stock.Disclosure.PostText);
     }
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void ConversionNeedsMeasuredQaButNoTtsRank(int version)
+    {
+        var conversion = Fixture("voice-changer-half-render-v3") with { SchemaVersion = version };
+        var segment = conversion.VoiceLab.Segments[0];
+        conversion = Replace(conversion, segment with { Candidates = [segment.Candidates[0] with { Score = null }] });
+        var roundTrip = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(conversion));
+        Assert.Equal(ProjectSerialization.Serialize(conversion), ProjectSerialization.Serialize(roundTrip));
+        Assert.Single(VoiceLabRenderContract.Prepare(roundTrip, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight).SelectedSegmentRecipes);
+        segment = conversion.VoiceLab.Segments[0];
+        var candidate = segment.Candidates[0];
+        var recipe = candidate.Recipe!;
+        var bad = Replace(conversion, segment with { Candidates = [candidate with { Recipe = recipe with {
+            Qa = recipe.Qa with { PeakDbfs = 0 } } }] });
+        Error(VoiceLabProjectErrorCode.QaRejected, () => VoiceLabProject.Validate(bad));
+
+        var tts = Fixture() with { SchemaVersion = version };
+        segment = tts.VoiceLab.Segments[0];
+        tts = Replace(tts, segment with { Candidates = [segment.Candidates[0] with { Score = null }, segment.Candidates[1]] });
+        Error(VoiceLabProjectErrorCode.InvalidCandidate, () => VoiceLabProject.Validate(tts));
+        var legacy = Fixture("passage-project");
+        segment = legacy.VoiceLab.Segments[0];
+        legacy = Replace(legacy, segment with { Kind = VoiceLabSegmentKind.VoiceChanger, Text = null, Words = null,
+            Candidates = [segment.Candidates[0] with { Score = null }] });
+        Error(VoiceLabProjectErrorCode.InvalidCandidate, () => VoiceLabProject.Validate(legacy));
+    }
+
     [Fact]
     public void DisclosureLineLanguageUsesThePrimarySubtag()
     {
@@ -95,6 +124,14 @@ public sealed class VoiceLabRenderContractTests
             {
                 var project = Fixture(name);
                 project = project with { Transcript = project.Transcript! with { Language = code } };
+                // The shared disclosure corpus also includes language strings forbidden in
+                // persisted transcripts. Strict project snapshots reject these before rendering.
+                if (code is not null && !System.Text.RegularExpressions.Regex.IsMatch(code, @"\A[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*\z"))
+                {
+                    Assert.Throws<System.Text.Json.JsonException>(() =>
+                        VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight));
+                    continue;
+                }
                 var line = VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight).Disclosure.PostText;
                 Assert.Equal(lines.GetProperty(kinds).GetProperty(key).GetString(), line);
             }
@@ -410,7 +447,7 @@ public sealed class VoiceLabRenderContractTests
         Error(VoiceLabProjectErrorCode.UnsafePath, () => VoiceLabProject.Validate(project with { VoiceLab = project.VoiceLab with { Assets = [project.VoiceLab.Assets![0] with { File = "../outside.wav" }, project.VoiceLab.Assets[1]] } }));
         Error(VoiceLabProjectErrorCode.DanglingAsset, () => VoiceLabProject.Validate(Replace(project, project.VoiceLab.Segments[0] with { Audio = project.VoiceLab.Segments[0].Audio with { AssetId = "missing" } })));
         var raw = File.ReadAllText(Path.Combine(FixtureLoader.SharedRoot, "fixtures", "voice-lab", "passage-render-v3.voxclip"));
-        Assert.ThrowsAny<Exception>(() => ProjectSerialization.Deserialize(raw.Replace("\"schemaVersion\": 3", "\"schemaVersion\": 4", StringComparison.Ordinal)));
+        Assert.ThrowsAny<Exception>(() => ProjectSerialization.Deserialize(raw.Replace("\"schemaVersion\": 3", "\"schemaVersion\": 5", StringComparison.Ordinal)));
         Assert.ThrowsAny<Exception>(() => ProjectSerialization.Deserialize(raw.Replace("\"assetId\": null,\n      \"mix\": null", "\"mix\": null", StringComparison.Ordinal)));
         foreach (var missing in new[] { "seams", "video", "qa", "consentVerifiedAt" })
         {

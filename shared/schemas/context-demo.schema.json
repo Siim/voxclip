@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Siim/voxclip/main/shared/schemas/context-demo.schema.json",
+  "title": "VoxClip context demonstration document, version 1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "projectId",
+    "planId",
+    "revision",
+    "sourceContentKey",
+    "narration",
+    "assets",
+    "placements"
+  ],
+  "properties": {
+    "format": {
+      "const": "voxclip-context-demo"
+    },
+    "version": {
+      "const": 1
+    },
+    "projectId": {
+      "$ref": "#/$defs/uuid"
+    },
+    "planId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647
+    },
+    "sourceContentKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "narration": {
+      "$ref": "#/$defs/narration"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/asset"
+      },
+      "maxItems": 64
+    },
+    "placements": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/placement"
+      },
+      "maxItems": 64
+    }
+  },
+  "description": "Explicit import/export document embedded only in project schema v4. Runtime additionally binds projectId and sourceContentKey to the owning Project, validates exact sample-grid narration coverage, safe project-relative asset paths, unique identities, referenced assets, asset-trim bounds and ordered nonoverlapping edited placements. Stale narration may be saved for recovery but cannot render until current.",
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "timestamp": {
+      "description": "RFC 3339 UTC timestamp, whole seconds or fractions, always with Z.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,9})?Z$"
+    },
+    "range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "displayName",
+        "locator"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "desktopApp",
+            "codeProject",
+            "webPage"
+          ]
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "description": "Runtime also rejects blank/control text, bounds UTF-8 byte length, validates target-specific locators, and refuses URL credentials."
+    },
+    "piece": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "output",
+        "synthetic"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/range"
+        },
+        "output": {
+          "$ref": "#/$defs/range"
+        },
+        "synthetic": {
+          "type": "boolean"
+        }
+      }
+    },
+    "narration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampleRate",
+        "outputSamples",
+        "pieces"
+      ],
+      "properties": {
+        "sampleRate": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 384000
+        },
+        "outputSamples": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "pieces": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/piece"
+          },
+          "maxItems": 100000,
+          "minItems": 1
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "requestId",
+        "target",
+        "relativePath",
+        "sha256",
+        "durationSeconds",
+        "pixelWidth",
+        "pixelHeight",
+        "byteSize",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+          "not": {
+            "pattern": "^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$"
+          }
+        },
+        "requestId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "target": {
+          "$ref": "#/$defs/target"
+        },
+        "relativePath": {
+          "type": "string",
+          "pattern": "^context-demo/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/[a-z0-9][a-z0-9_-]{0,63}\\.mp4$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "durationSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 30
+        },
+        "pixelWidth": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 1920,
+          "multipleOf": 2
+        },
+        "pixelHeight": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 1080,
+          "multipleOf": 2
+        },
+        "byteSize": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "assetId",
+        "source",
+        "editedStartSeconds"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "assetId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$"
+        },
+        "source": {
+          "$ref": "#/$defs/range"
+        },
+        "editedStartSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}
