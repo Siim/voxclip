@@ -42,14 +42,4 @@ public enum VoiceLabTakeVoiceCheck: Sendable, Equatable {
         case .shortSpeech(let evidence): evidence.valid
         }
     }
-    public var shortPhraseCopy: String? {
-        switch self {
-        case .perTake: nil
-        case .waiting: "waiting for the voice check"
-        case .shortSpeech(let evidence):
-            evidence.mode == .pooled
-                ? "Short phrase · words checked · voice checked across \(evidence.takeCount) takes"
-                : "voice couldn't be measured (under 3 s of speech)"
-        }
-    }
 }

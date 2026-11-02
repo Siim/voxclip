@@ -20,6 +20,29 @@ import Testing
             fit: changedDuration ? .changedDuration(plan, naturalOut: 1.5, residualSeconds: 0.5) : .exact(plan))
     }
 
+    @Test(arguments: [VoiceLabTakeQAFailure.transcript, .speaker])
+    func reviewerFailedTakeNeverClaimsSuccessfulPooledCheck(failure: VoiceLabTakeQAFailure) {
+        let qa = VoiceLabTakeQAResult(values: .init(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -10), failures: [])
+        let pending = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, audio: audio(), qa: qa, voiceCheck: .waiting)
+        let evidence = VoiceLabShortSpeechEvidence(mode: .pooled, recordId: "own", consentMethod: .recordedStatement,
+            voicedFrames: 60_000, takeCount: 3)
+        let failed = pending.checkingVoice(.shortSpeech(evidence), score: failure == .speaker ? 0 : 1, failure: .qa([failure]))
+        #expect(failed.shortPhraseCopy == nil)
+        #expect(TakeFailurePresentation.shortSpeechSummary([failed], selected: nil).isEmpty)
+    }
+
+    @Test func reviewerPooledSummaryAppearsOncePerPhrase() {
+        let qa = VoiceLabTakeQAResult(values: .init(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -10), failures: [])
+        let evidence = VoiceLabShortSpeechEvidence(mode: .pooled, recordId: "own", consentMethod: .recordedStatement,
+            voicedFrames: 60_000, takeCount: 3)
+        let rows = (0..<3).map { index in
+            VoiceLabTakeRow(id: UUID(), index: index, seed: 1, audio: audio(), qa: qa, voiceCheck: .waiting)
+                .checkingVoice(.shortSpeech(evidence), score: 1)
+        }
+        #expect(TakeFailurePresentation.shortSpeechSummary(rows, selected: rows[0].id)
+            == ["Short phrase · words checked · voice checked across 3 takes"])
+    }
+
     @Test func shortPhraseCopyNamesWaitingPooledAndOwnCloneUnmeasuredStates() throws {
         let qa = VoiceLabTakeQAResult(values: .init(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -10), failures: [])
         let waiting = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, audio: audio(), qa: qa, voiceCheck: .waiting)
@@ -27,13 +50,13 @@ import Testing
         #expect(TakeFailurePresentation.leftOut(waiting, number: 1) == "Take 1 · waiting for the voice check")
         let pooled = VoiceLabShortSpeechEvidence(mode: .pooled, recordId: "own", consentMethod: .recordedStatement,
             voicedFrames: 60_000, takeCount: 3)
-        #expect(VoiceLabTakeVoiceCheck.shortSpeech(pooled).shortPhraseCopy == "Short phrase · words checked · voice checked across 3 takes")
+        #expect(waiting.checkingVoice(.shortSpeech(pooled), score: 1).shortPhraseCopy == "Short phrase · words checked · voice checked across 3 takes")
         for method: VoiceConsentRecord.ConsentMethod in [.recordedStatement, .projectAttestation] {
             let evidence = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordId: "own", consentMethod: method,
                 voicedFrames: 22_400, takeCount: 1)
             let row = waiting.checkingVoice(.shortSpeech(evidence))
             #expect(row.selectable && row.qa?.values.speakerScore == nil && row.failure == nil)
-            #expect(row.voiceCheck.shortPhraseCopy == "voice couldn't be measured (under 3 s of speech)")
+            #expect(row.shortPhraseCopy == "voice couldn't be measured (under 3 s of speech)")
             #expect(TakeFailurePresentation.reason(for: row) == nil)
         }
         let invalid = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordId: "own", consentMethod: .projectAttestation,

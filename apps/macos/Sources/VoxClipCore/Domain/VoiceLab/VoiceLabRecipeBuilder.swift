@@ -84,11 +84,15 @@ public enum VoiceLabRecipeBuilder {
               let verifiedAt = ISO8601DateFormatter().date(from: record.attestations.acceptedAt),
               verifiedAt <= createdAt else { throw VoiceLabProjectError.qaRejected }
         let evidence = row.voiceCheck.evidence
-        let unmeasured = evidence.map { $0.valid && $0.mode == .unmeasured && $0.recordId == record.id && $0.consentMethod == record.consentMethod } == true
-        let score = checked.values.speakerScore
-        guard evidence.map({ $0.valid && $0.recordId == record.id && $0.consentMethod == record.consentMethod }) ?? true,
-              unmeasured ? score == nil : score.map({ $0.isFinite && $0 >= record.speaker.threshold }) == true
-        else { throw VoiceLabProjectError.qaRejected }
+        let evidenceMatches: Bool
+        if let evidence {
+            evidenceMatches = evidence.valid && evidence.recordId == record.id && evidence.consentMethod == record.consentMethod
+        } else { evidenceMatches = true }
+        let unmeasured: Bool = evidence?.mode == .unmeasured
+        let score: Double? = checked.values.speakerScore
+        let measuredPassed: Bool = score.map { $0.isFinite && $0 >= record.speaker.threshold } ?? false
+        let voiceAllowed: Bool = unmeasured ? score == nil : measuredPassed
+        guard evidenceMatches, voiceAllowed else { throw VoiceLabProjectError.qaRejected }
         let plan = take.fit.plan
         let options = VoiceLabVideoDurationOptions(row: row, sourceSampleRate: input.sourceSampleRate)
         guard let videoChoice, options.allows(videoChoice) else { throw VoiceLabProjectError.videoModeUnsupported }

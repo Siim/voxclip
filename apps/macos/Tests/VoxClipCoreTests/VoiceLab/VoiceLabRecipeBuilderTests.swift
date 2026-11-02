@@ -3,6 +3,16 @@ import Testing
 @testable import VoxClipCore
 
 @Suite struct VoiceLabRecipeBuilderTests {
+    @Test func shortSpeechEvidenceUsesCanonicalRecordIdKey() throws {
+        let evidence = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordId: "own", consentMethod: .recordedStatement,
+            voicedFrames: 16_000, takeCount: 1)
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(evidence)) as? [String: Any])
+        #expect(Set(object.keys) == ["mode", "recordId", "consentMethod", "voicedFrames", "takeCount"])
+        object["recordID"] = object.removeValue(forKey: "recordId")
+        let oldKey = try JSONSerialization.data(withJSONObject: object)
+        #expect(throws: DecodingError.self) { try JSONDecoder().decode(VoiceLabShortSpeechEvidence.self, from: oldKey) }
+    }
+
     @Test(arguments: [0, 1, 2], ["consent-record.json", "consent-record-project.json"])
     func paidAndFittedRecipesPassV3WithoutChangingSource(policy: Int, recordFile: String) throws {
         let fitted = policy == 1
