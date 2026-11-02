@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import VoxClipCore
 
 struct MotionCueDraft: Equatable {
@@ -28,9 +29,125 @@ struct TimelineMotionCue: Equatable {
     let range: Range<Double>
 }
 
+/// One inline editing draft. Only Apply/Delete reach the existing Project snapshot commands.
+@MainActor @Observable final class MotionCueEditing {
+    var draft: MotionCueDraft { didSet { status = nil } }
+    var selectedFrame: Int
+    var status: String?
+    let returnJob: PanelJob
+
+    init(draft: MotionCueDraft, returnJob: PanelJob) {
+        self.draft = draft
+        self.returnJob = returnJob
+        selectedFrame = min(1, draft.keyframes.count - 1)
+    }
+
+    func selectCue(_ id: String, model: EditorModel) {
+        guard let next = model.motionCueDraft(id: id.isEmpty ? nil : id) else { return }
+        draft = next
+        selectedFrame = min(1, next.keyframes.count - 1)
+    }
+
+    @discardableResult func apply(model: EditorModel) -> Bool {
+        guard model.motionCueEditing === self else { return false }
+        guard model.applyMotionCue(draft) else {
+            status = model.motionCueValidation(draft) ?? "No changes to apply."
+            return false
+        }
+        selectCue(draft.id, model: model)
+        status = "Motion cue saved. Undo restores the previous state."
+        return true
+    }
+
+    func deleteCue(model: EditorModel) {
+        guard model.motionCueEditing === self else { return }
+        guard let original = draft.original, model.deleteMotionCue(original) else {
+            status = "This cue changed or is no longer editable. Choose it again before deleting."
+            return
+        }
+        selectCue("", model: model)
+        status = "Motion cue deleted. Undo restores it."
+    }
+
+    enum FrameField { case progress, scale, anchorX, anchorY }
+
+    func frameValue(_ field: FrameField) -> Double {
+        guard draft.keyframes.indices.contains(selectedFrame) else { return 0 }
+        let frame = draft.keyframes[selectedFrame]
+        switch field {
+        case .progress: return frame.progress
+        case .scale: return frame.scale
+        case .anchorX: return frame.anchorX
+        case .anchorY: return frame.anchorY
+        }
+    }
+
+    func setFrameValue(_ field: FrameField, to value: Double) {
+        guard draft.keyframes.indices.contains(selectedFrame) else { return }
+        let frame = draft.keyframes[selectedFrame]
+        var progress = frame.progress
+        if field == .progress, selectedFrame > 0, selectedFrame < draft.keyframes.count - 1 {
+            let lower: Double = draft.keyframes[selectedFrame - 1].progress + 0.0001
+            let upper: Double = draft.keyframes[selectedFrame + 1].progress - 0.0001
+            progress = min(upper, max(lower, value))
+        }
+        draft.keyframes[selectedFrame] = MotionKeyframe(progress: progress,
+            scale: field == .scale ? value : frame.scale,
+            anchorX: field == .anchorX ? value : frame.anchorX,
+            anchorY: field == .anchorY ? value : frame.anchorY)
+    }
+
+    func addKeyframe() {
+        guard draft.keyframes.count < MotionCue.maximumKeyframes, selectedFrame >= 0,
+              selectedFrame < draft.keyframes.count - 1 else { return }
+        let first = draft.keyframes[selectedFrame]
+        let last = draft.keyframes[selectedFrame + 1]
+        guard last.progress - first.progress >= 0.0004 else { return }
+        let progress: Double = (first.progress + last.progress) / 2
+        let duration: Double = draft.sourceEnd - draft.sourceStart
+        let sourceTime: Double = draft.sourceStart + progress * duration
+        let transform = draft.cue.transform(atSourceTime: sourceTime)
+        draft.keyframes.insert(MotionKeyframe(progress: progress, scale: transform.scale,
+            anchorX: transform.anchorX, anchorY: transform.anchorY), at: selectedFrame + 1)
+        selectedFrame += 1
+    }
+
+    func removeKeyframe() {
+        guard selectedFrame > 0, selectedFrame < draft.keyframes.count - 1, draft.keyframes.count > 2 else { return }
+        draft.keyframes.remove(at: selectedFrame)
+        selectedFrame -= 1
+    }
+}
+
 extension EditorModel {
+    @discardableResult func openMotionCueJob(id: String? = nil, in shell: WorkspaceShell) -> Bool {
+        if let reason = motionCueUnavailableReason { announce(reason); return false }
+        // An existing approval question keeps its ownership and focus until answered.
+        guard panelTask?.confirm == nil, let draft = motionCueDraft(id: id) else { return false }
+        let previous = motionCueEditing?.returnJob ?? shell.panelJob(for: self)
+        motionCueEditing = MotionCueEditing(draft: draft, returnJob: previous)
+        shell.choosePanelJob(.motion, for: self)
+        if !shell.viewerShown { shell.toggleViewer() }
+        focusedPane = .panel
+        paneFocusRequest += 1
+        return true
+    }
+
+    func closeMotionCueJob(in shell: WorkspaceShell) {
+        guard let editing = motionCueEditing else { return }
+        motionCueEditing = nil
+        let previous = PanelJob.available(in: self).contains(editing.returnJob) ? editing.returnJob : .captions
+        let exportReturn = shell.exportReturnJob
+        shell.choosePanelJob(previous, for: self)
+        // Resuming Export is not a new Export entry: Done must still return to its original job.
+        if previous == .export { shell.exportReturnJob = exportReturn }
+        focusedPane = shell.layout.timelineVisible ? .timeline : .transcript
+        paneFocusRequest += 1
+    }
+
     var motionCueUnavailableReason: String? {
         _ = projectRevision
+        if isLeaving { return "This editor is closing. Open the project again before changing motion." }
         if !capabilities.writable { return "Open an editable project to change motion." }
         if !capabilities.media { return "Locate the source video before adding motion. Your media and edits are safe." }
         if !capabilities.transcript { return "Transcribe the video before adding motion." }

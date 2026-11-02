@@ -76,6 +76,7 @@ struct EditorRenderSnapshot {
     var connectorSendVerb = "Rewrite"
     @ObservationIgnored lazy var transcription = InlineTranscription(model: self)
     var contextDemoSession: ContextDemoSession?
+    var motionCueEditing: MotionCueEditing?
     var voiceChange: VoiceChangeSession?
     var correctionID: String?
     var correctionText = ""
@@ -443,7 +444,7 @@ struct EditorRenderSnapshot {
     }
     /// Set by the shell's leave boundary: edits freeze, and late results cannot
     /// change a project that is leaving.
-    var isLeaving = false { didSet { if isLeaving { app.voiceLabSession.leaveVoiceControls(owner: self); contextDemoSession?.close(); contextDemoSession = nil; voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }; transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) } } }
+    var isLeaving = false { didSet { if isLeaving { app.voiceLabSession.leaveVoiceControls(owner: self); contextDemoSession?.close(); contextDemoSession = nil; motionCueEditing = nil; voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }; transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) } } }
     /// Called when a refresh finds a different active clip, for example after Undo.
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
     /// Called when a refresh finds the clips changed: made, kept, dismissed, removed, or back after Undo. The tabs follow it.
@@ -601,6 +602,7 @@ struct EditorRenderSnapshot {
         if mediaUsable { await updatePreview(load: true); await transcription.openOnImport() }
     }
     func close() {
+        motionCueEditing = nil
         app.voiceLabSession.leaveVoiceControls(owner: self)
         contextDemoSession?.close(); contextDemoSession = nil
         voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }
@@ -616,6 +618,7 @@ struct EditorRenderSnapshot {
         cacheLease?.release(); cacheLease = nil
     }
     func reloadFromDocument(previousProjectID: String) {
+        motionCueEditing = nil
         app.voiceLabSession.leaveVoiceControls(owner: self)
         contextDemoSession?.close(); contextDemoSession = nil
         voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }
@@ -729,6 +732,7 @@ struct EditorRenderSnapshot {
         transcriptRevision += 1
         followWaveformKey()
         if edits.activeClipId != renderedActiveClipID {
+            motionCueEditing = nil
             showsSurroundingContext = false
             captionPages = []
             renderedActiveClipID = edits.activeClipId

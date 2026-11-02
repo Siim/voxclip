@@ -1,204 +1,164 @@
-import AppKit
 import SwiftUI
 import VoxClipCore
 
-struct MotionCuePanel: View {
+/// The existing right-panel job host owns the title/context row. Controls scroll; actions stay pinned.
+@MainActor struct MotionCuePanel: View {
     let model: EditorModel
-    let close: () -> Void
+    @Bindable var editing: MotionCueEditing
+    let shell: WorkspaceShell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var draft: MotionCueDraft
-    @State private var selectedCueID: String
-    @State private var selectedFrame = 0
-    @State private var status: String?
-
-    init(model: EditorModel, cueID: String? = nil, close: @escaping () -> Void) {
-        self.model = model
-        self.close = close
-        let initial = model.motionCueDraft(id: cueID) ?? MotionCueDraft(cue: MotionCue(id: "", clipID: "", sourceStart: 0, sourceEnd: 0))
-        _draft = State(initialValue: initial)
-        _selectedCueID = State(initialValue: initial.original?.id ?? "")
-    }
+    @FocusState private var keyboardWithin: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Motion").font(.headline)
-                Spacer()
-                Button("Done", action: close).keyboardShortcut(.cancelAction)
+        panelContents
+            .modifier(EditorPaneFocus(model: model, pane: .panel))
+            .focused($keyboardWithin)
+            .onExitCommand { model.closeMotionCueJob(in: shell) }
+            .onAppear { keyboardWithin = true }
+            .onDisappear(perform: discardDraft)
+            .columnLayoutEvidence("motion.keyboard", text: keyboardWithin ? "focused" : "idle")
+    }
+
+    private func discardDraft() {
+        if model.motionCueEditing === editing { model.motionCueEditing = nil }
+    }
+
+    private var panelContents: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Pan and zoom").font(VCType.title3.font(.semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    cueControls
+                    keyframeControls
+                    note(reduceMotion
+                        ? "Reduce Motion: preview stays still. Export includes your authored motion."
+                        : "Smooth pan and zoom. Apply to update preview and export.")
+                    note("Original audio and source word timings stay unchanged.")
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let reason = model.motionCueUnavailableReason {
-                Text(reason).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            } else {
-                editor
-            }
+            footer
         }
-        .padding(16)
-        .frame(width: 360)
+        .font(VCType.callout.font())
+        .foregroundStyle(DesignValues.color("text.primary"))
+        .background(DesignValues.color("bg.window"))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Motion editor")
         .accessibilityIdentifier("voxclip.motion.panel")
-        .onChange(of: model.activeClip?.id) { _, _ in selectCue("") }
-        .onChange(of: model.project.motionCues) { _, _ in
-            selectCue(model.clipMotionCues.contains(where: { $0.id == selectedCueID }) ? selectedCueID : "")
-        }
         .transaction { if reduceMotion { $0.animation = nil } }
     }
 
-    private var editor: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Picker("Cue", selection: $selectedCueID) {
+    private var cueControls: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("Cue", selection: Binding(get: { editing.draft.original?.id ?? "" }, set: {
+                editing.selectCue($0, model: model)
+            })) {
                 Text("New motion cue").tag("")
                 ForEach(model.clipMotionCues) { cue in
-                    Text("\(cue.sourceStart, specifier: "%.2f")–\(cue.sourceEnd, specifier: "%.2f") s source").tag(cue.id)
+                    Text("\(timecode(cue.sourceStart))–\(timecode(cue.sourceEnd)) source").tag(cue.id)
                 }
             }
-            .onChange(of: selectedCueID) { _, value in selectCue(value) }
+            .frame(height: 24)
             .accessibilityIdentifier("voxclip.motion.cue")
-            HStack {
-                TextField("Source start (s)", value: $draft.sourceStart, format: .number.precision(.fractionLength(2)))
-                    .accessibilityIdentifier("voxclip.motion.start")
-                TextField("Source end (s)", value: $draft.sourceEnd, format: .number.precision(.fractionLength(2)))
-                    .accessibilityIdentifier("voxclip.motion.end")
-            }
-            .textFieldStyle(.roundedBorder)
-            Text("Source seconds, inside the open clip. Cut video is skipped.")
-                .font(.caption).foregroundStyle(.secondary)
-            Divider()
-            Picker("Keyframe", selection: $selectedFrame) {
-                ForEach(draft.keyframes.indices, id: \.self) { index in
-                    Text("\(index + 1) · \(draft.keyframes[index].progress * 100, specifier: "%.0f")%").tag(index)
+            sourceField("Source start (s)", value: $editing.draft.sourceStart, id: "start")
+            sourceField("Source end (s)", value: $editing.draft.sourceEnd, id: "end")
+            note("Source seconds, inside the open clip. Cut video is skipped.")
+        }
+    }
+
+    private var keyframeControls: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Picker("Keyframe", selection: $editing.selectedFrame) {
+                ForEach(editing.draft.keyframes.indices, id: \.self) { index in
+                    Text("\(index + 1) · \(editing.draft.keyframes[index].progress * 100, specifier: "%.0f")%")
+                        .tag(index)
                 }
             }
+            .frame(height: 24)
             .accessibilityIdentifier("voxclip.motion.keyframe")
-            if draft.keyframes.indices.contains(selectedFrame) {
+            if editing.draft.keyframes.indices.contains(editing.selectedFrame) {
                 frameControls
             }
-            HStack {
-                Button("Add keyframe", action: addKeyframe)
-                    .disabled(draft.keyframes.count >= MotionCue.maximumKeyframes || selectedFrame >= draft.keyframes.count - 1)
+            HStack(spacing: 8) {
+                Button("Add keyframe", action: editing.addKeyframe)
+                    .disabled(editing.draft.keyframes.count >= MotionCue.maximumKeyframes
+                        || editing.selectedFrame >= editing.draft.keyframes.count - 1)
                     .accessibilityHint("Adds a keyframe halfway to the next keyframe. Maximum eight.")
-                Button("Remove keyframe", action: removeKeyframe)
-                    .disabled(selectedFrame == 0 || selectedFrame >= draft.keyframes.count - 1 || draft.keyframes.count <= 2)
+                Button("Remove keyframe", action: editing.removeKeyframe)
+                    .disabled(editing.selectedFrame == 0 || editing.selectedFrame >= editing.draft.keyframes.count - 1
+                        || editing.draft.keyframes.count <= 2)
             }
-            Text(reduceMotion ? "Reduce Motion: preview stays still. Export includes your authored motion." : "Smooth pan and zoom. Apply to update preview and export.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Text("Original audio and source word timings stay unchanged.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let message = status ?? model.motionCueValidation(draft) {
-                Text(message).font(.caption).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("voxclip.motion.status")
-            }
-            HStack {
-                Button("Delete cue", role: .destructive) {
-                    if let original = draft.original, model.deleteMotionCue(original) {
-                        selectCue("")
-                        status = "Motion cue deleted. Undo restores it."
-                    } else {
-                        status = "This cue changed or is no longer editable. Choose it again before deleting."
-                    }
-                }
-                .disabled(draft.original == nil)
-                .accessibilityIdentifier("voxclip.motion.delete")
-                Spacer()
-                Button(draft.original == nil ? "Add cue" : "Apply") {
-                    guard model.applyMotionCue(draft) else {
-                        status = model.motionCueValidation(draft) ?? "No changes to apply."
-                        return
-                    }
-                    let id = draft.id
-                    selectCue(id)
-                    status = "Motion cue saved. Undo restores the previous state."
-                }
-                .disabled(model.motionCueValidation(draft) != nil || draft.original == draft.cue)
-                .accessibilityIdentifier("voxclip.motion.apply")
-            }
+            .frame(height: 24)
         }
     }
 
     private var frameControls: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            let frame = draft.keyframes[selectedFrame]
-            Text("Position in cue: \(frame.progress * 100, specifier: "%.1f")%")
-            Slider(value: frameBinding(.progress), in: 0...1, step: 0.001) { Text("Position in cue") }
-                .disabled(selectedFrame == 0 || selectedFrame == draft.keyframes.count - 1)
-            Text("Zoom: \(frame.scale * 100, specifier: "%.0f")%")
-            Slider(value: frameBinding(.scale), in: 1...MotionCue.maximumScale, step: 0.01) { Text("Zoom") }
-                .accessibilityValue("\(Int(frame.scale * 100)) percent")
-            Text("Horizontal framing: \(frame.anchorX * 100, specifier: "%.0f")%")
-            Slider(value: frameBinding(.anchorX), in: 0...1, step: 0.01) { Text("Horizontal framing") }
+        VStack(spacing: 4) {
+            frameRow("Position", field: .progress, range: 0...1, step: 0.001)
+                .disabled(editing.selectedFrame == 0 || editing.selectedFrame == editing.draft.keyframes.count - 1)
+            frameRow("Zoom", field: .scale, range: 1...MotionCue.maximumScale, step: 0.01)
+            frameRow("Horizontal", field: .anchorX, range: 0...1, step: 0.01)
                 .accessibilityHint("Zero keeps the left edge; one hundred percent keeps the right edge. Visible when zoomed in.")
-            Text("Vertical framing: \(frame.anchorY * 100, specifier: "%.0f")%")
-            Slider(value: frameBinding(.anchorY), in: 0...1, step: 0.01) { Text("Vertical framing") }
+            frameRow("Vertical", field: .anchorY, range: 0...1, step: 0.01)
                 .accessibilityHint("Zero keeps the top edge; one hundred percent keeps the bottom edge. Visible when zoomed in.")
         }
     }
 
-    private enum FrameField: Equatable { case progress, scale, anchorX, anchorY }
-
-    private func frameBinding(_ field: FrameField) -> Binding<Double> {
-        Binding {
-            guard draft.keyframes.indices.contains(selectedFrame) else { return 0 }
-            let frame = draft.keyframes[selectedFrame]
-            switch field {
-            case .progress: return frame.progress
-            case .scale: return frame.scale
-            case .anchorX: return frame.anchorX
-            case .anchorY: return frame.anchorY
+    private var footer: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let message = model.motionCueValidation(editing.draft) ?? editing.status {
+                note(message).accessibilityIdentifier("voxclip.motion.status")
             }
-        } set: { value in
-            guard draft.keyframes.indices.contains(selectedFrame) else { return }
-            let frame = draft.keyframes[selectedFrame]
-            var progress = frame.progress
-            if field == .progress, selectedFrame > 0, selectedFrame < draft.keyframes.count - 1 {
-                progress = min(draft.keyframes[selectedFrame + 1].progress - 0.0001, max(draft.keyframes[selectedFrame - 1].progress + 0.0001, value))
+            HStack(spacing: 4) {
+                PanelButton(action: PanelAction(id: "motion.delete", title: "Delete cue") {
+                    editing.deleteCue(model: model)
+                }, kind: .ghost)
+                .disabled(editing.draft.original == nil || model.motionCueUnavailableReason != nil)
+                .accessibilityIdentifier("voxclip.motion.delete")
+                Spacer(minLength: 0)
+                PanelButton(action: PanelAction(id: "motion.cancel", title: "Cancel") {
+                    model.closeMotionCueJob(in: shell)
+                }, kind: .ghost)
+                .accessibilityIdentifier("voxclip.motion.cancel")
+                PanelButton(action: PanelAction(id: "motion.apply", title: editing.draft.original == nil ? "Add cue" : "Apply") {
+                    editing.apply(model: model)
+                }, kind: .primary)
+                .disabled(model.motionCueValidation(editing.draft) != nil || editing.draft.original == editing.draft.cue)
+                .keyboardShortcut(.return, modifiers: .command)
+                .accessibilityIdentifier("voxclip.motion.apply")
+                .columnLayoutEvidence("motion.apply")
             }
-            draft.keyframes[selectedFrame] = MotionKeyframe(progress: progress,
-                scale: field == .scale ? value : frame.scale,
-                anchorX: field == .anchorX ? value : frame.anchorX,
-                anchorY: field == .anchorY ? value : frame.anchorY)
-            status = nil
         }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .overlay(alignment: .top) { Rectangle().fill(DesignValues.color("line.default")).frame(height: 1) }
+        .columnLayoutEvidence("motion.footer")
     }
 
-    private func selectCue(_ id: String) {
-        guard let next = model.motionCueDraft(id: id.isEmpty ? nil : id) else { return }
-        selectedCueID = next.original?.id ?? ""
-        draft = next
-        selectedFrame = min(1, next.keyframes.count - 1)
-        status = nil
+    private func sourceField(_ title: String, value: Binding<Double>, id: String) -> some View {
+        HStack(spacing: 8) {
+            Text(title).foregroundStyle(DesignValues.color("text.secondary"))
+            Spacer(minLength: 0)
+            TextField(title, value: value, format: .number.precision(.fractionLength(2)))
+                .textFieldStyle(.roundedBorder).frame(width: 88)
+                .accessibilityLabel(title).accessibilityIdentifier("voxclip.motion.\(id)")
+        }.frame(height: 24)
     }
 
-    private func addKeyframe() {
-        guard draft.keyframes.count < MotionCue.maximumKeyframes, selectedFrame < draft.keyframes.count - 1 else { return }
-        let first = draft.keyframes[selectedFrame]
-        let last = draft.keyframes[selectedFrame + 1]
-        guard last.progress - first.progress >= 0.0004 else { return }
-        let progress = (first.progress + last.progress) / 2
-        let transform = draft.cue.transform(atSourceTime: draft.sourceStart + progress * (draft.sourceEnd - draft.sourceStart))
-        draft.keyframes.insert(MotionKeyframe(progress: progress, scale: transform.scale, anchorX: transform.anchorX, anchorY: transform.anchorY), at: selectedFrame + 1)
-        selectedFrame += 1
-        status = nil
+    private func frameRow(_ title: String, field: MotionCueEditing.FrameField, range: ClosedRange<Double>, step: Double) -> some View {
+        HStack(spacing: 8) {
+            Text(title).foregroundStyle(DesignValues.color("text.secondary")).frame(width: 64, alignment: .leading)
+            Slider(value: Binding(get: { editing.frameValue(field) }, set: { editing.setFrameValue(field, to: $0) }),
+                   in: range, step: step) { Text(title) }
+                .labelsHidden().accessibilityValue("\(Int(editing.frameValue(field) * 100)) percent")
+            Text("\(editing.frameValue(field) * 100, specifier: "%.0f")%")
+                .frame(width: 36, alignment: .trailing)
+        }.frame(height: 24)
     }
 
-    private func removeKeyframe() {
-        guard selectedFrame > 0, selectedFrame < draft.keyframes.count - 1, draft.keyframes.count > 2 else { return }
-        draft.keyframes.remove(at: selectedFrame)
-        selectedFrame -= 1
-        status = nil
+    private func note(_ text: String) -> some View {
+        Text(text).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+            .fixedSize(horizontal: false, vertical: true)
     }
-}
-
-@MainActor final class MotionCuePopover {
-    let popover = NSPopover()
-
-    init(model: EditorModel, cueID: String?) {
-        popover.behavior = .transient
-        popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        popover.contentViewController = NSHostingController(rootView: MotionCuePanel(model: model, cueID: cueID) { [weak popover] in popover?.performClose(nil) })
-    }
-
-    func show(relativeTo view: NSView) {
-        popover.show(relativeTo: NSRect(x: view.bounds.midX, y: 0, width: 1, height: view.bounds.height), of: view, preferredEdge: .minY)
-    }
-
-    func close() { popover.performClose(nil) }
 }

@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Edit Mac clip motion inline in the right panel, with Apply and Escape to cancel, instead of opening a popover.
 - Record and place silent context demos from a reviewed app window, webpage or code project in the Mac editor, with source-bound saving and Undo.
 - Edit clip pan and zoom cues in the Mac FX Motion lane, with reduced-motion preview and matching export framing.
 - Change a selection or full take into your saved voice on Mac, with a separate price approval, measured audio checks and explicit audition.
