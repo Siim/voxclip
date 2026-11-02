@@ -40,6 +40,22 @@ struct VoiceLabTakeQualityTests {
             #expect(result.passed == row.failures.isEmpty)
         }
     }
+    @Test func incompleteSpeakerEvidenceCannotBeRankedOrSelected() throws {
+        let qa = VoiceLabTakeQAResult(values: VoiceLabQA(), failures: [.insufficientGeneratedSpeech])
+        let audio = VoiceLabTakeAudio(sampleRate: 24_000, trimmed: [0.1], mixed: [0.1], patchRange: 0..<1,
+            seams: [], gainDb: 0, roomTone: nil, fit: Self.fit(window: 1, residual: 0))
+        let incomplete = VoiceLabTakeRow(id: UUID(), index: 0, seed: 0, audio: audio, qa: qa,
+            score: 1, failure: .qa([.insufficientGeneratedSpeech]))
+        let result = VoiceLabTakeRunResult(rows: [incomplete], end: .completed)
+        #expect(!qa.passed)
+        #expect(qa.values.speakerScore == nil)
+        #expect(!incomplete.selectable)
+        #expect(result.ranked.isEmpty)
+        #expect(result.best == nil)
+        #expect(VoiceLabTakeQAFailure.insufficientGeneratedSpeech != .speaker)
+        let encoded = try JSONEncoder().encode(VoiceLabTakeQAFailure.insufficientGeneratedSpeech)
+        #expect(try JSONDecoder().decode(VoiceLabTakeQAFailure.self, from: encoded) == .insufficientGeneratedSpeech)
+    }
     @Test func quoteSetCostIncludesEveryQACapAndWrapsSeeds() throws {
         let speech = CostEstimate(provider: "elevenlabs", operation: "textToSpeech", units: 5, unit: "character", usd: Decimal(string: "0.1"), basis: "fixture")
         let qa = CostEstimate(provider: "elevenlabs", operation: "speechToText", units: 290, unit: "second", usd: Decimal(string: "0.1"), basis: "fixture")

@@ -98,6 +98,29 @@ import Testing
         #expect(stock.disclosure.kinds == ["voiceChanger"])
         #expect(stock.disclosure.postText == "The voice in this video was changed with AI.")
     }
+    @Test(arguments: [3, 4]) func conversionNeedsMeasuredQAButNoTTSRank(version: Int) throws {
+        var conversion = try fixture("voice-changer-half-render-v3")
+        conversion.schemaVersion = version
+        conversion.voiceLab.segments[0].candidates[0].score = nil
+        let roundTrip = try JSONProjectStore.decode(ProjectJSON.encode(conversion))
+        #expect(roundTrip == conversion)
+        let prepared = try VoiceLabRenderContract.prepare(roundTrip, scope: .full, labelPosition: .topRight)
+        #expect(prepared.selectedSegmentRecipes.count == 1)
+        conversion.voiceLab.segments[0].candidates[0].recipe!.qa.peakDbfs = 0
+        #expect(throws: VoiceLabProjectError.qaRejected) { try VoiceLabProject.validate(conversion) }
+
+        var tts = try fixture()
+        tts.schemaVersion = version
+        tts.voiceLab.segments[0].candidates[0].score = nil
+        #expect(throws: VoiceLabProjectError.invalidCandidate) { try VoiceLabProject.validate(tts) }
+        var legacy = try fixture("passage-project")
+        legacy.voiceLab.segments[0].kind = .voiceChanger
+        legacy.voiceLab.segments[0].text = nil
+        legacy.voiceLab.segments[0].words = nil
+        legacy.voiceLab.segments[0].candidates[0].score = nil
+        #expect(throws: VoiceLabProjectError.invalidCandidate) { try VoiceLabProject.validate(legacy) }
+    }
+
     @Test func disclosureLineLanguageUsesThePrimarySubtag() throws {
         struct Share: Decodable {
             struct Language: Decodable { let code: String?; let estonian: Bool }
@@ -374,8 +397,9 @@ import Testing
         project = try fixture()
         project.voiceLab.segments[0].audio.assetId = "missing"
         #expect(throws: VoiceLabProjectError.danglingAsset) { try VoiceLabProject.validate(project) }
-        var future = try fixture(); future.schemaVersion = 4
-        #expect(throws: VoxClipError.projectTooNew) { try ProjectJSON.decode(ProjectJSON.encoder().encode(future)) }
+        var future = try #require(JSONSerialization.jsonObject(with: ProjectJSON.encode(fixture())) as? [String: Any])
+        future["schemaVersion"] = 5
+        #expect(throws: VoxClipError.projectTooNew) { try ProjectJSON.decode(JSONSerialization.data(withJSONObject: future)) }
         var extended = try fixture(); extended.extensions = ["example.keep": .object(["value": .number(7)])]
         #expect(try ProjectJSON.decode(ProjectJSON.encode(extended)).extensions == extended.extensions)
         let raw = try #require(String(data: FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"), encoding: .utf8))

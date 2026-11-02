@@ -83,7 +83,7 @@ public enum VoiceLabRenderContract {
 
     private static func selectedRecipes(_ project: Project, plan: VoiceLabOutputPlan,
                                         excluding: Set<String> = []) throws -> [VoiceLabSelectedRecipe] {
-        if project.schemaVersion == 3 && project.voiceLab.cleanAudio?.mode == .on { throw VoiceLabProjectError.cleanAudioUnsupported }
+        if project.schemaVersion >= 3 && project.voiceLab.cleanAudio?.mode == .on { throw VoiceLabProjectError.cleanAudioUnsupported }
         var selected: [VoiceLabSelectedRecipe] = []
         for piece in plan.pieces where piece.kind == .synth && !excluding.contains(piece.segmentId ?? "") {
             guard let segment = project.voiceLab.segments.first(where: { $0.id == piece.segmentId }),
@@ -95,6 +95,18 @@ public enum VoiceLabRenderContract {
             if recipe.video.mode == .retimed || (recipe.video.mode == .source &&
                 piece.sourceEndSample - piece.sourceStartSample != piece.outputEndSample - piece.outputStartSample) {
                 throw VoiceLabProjectError.videoModeUnsupported
+            }
+            if recipe.video.mode == .zoomCover {
+                let sourceSamples = piece.sourceEndSample - piece.sourceStartSample
+                let outputSamples = piece.outputEndSample - piece.outputStartSample
+                guard sourceSamples > 0, outputSamples > 0, recipe.audio.stretch == 1,
+                      recipe.video.sourceStartSample == piece.sourceStartSample,
+                      recipe.video.sourceEndSample == piece.sourceEndSample,
+                      recipe.video.outputSamples == outputSamples,
+                      let factor = recipe.video.retimeFactor, factor.isFinite,
+                      (0.80...1.25).contains(factor),
+                      abs(factor - Double(sourceSamples) / Double(outputSamples)) <= 1e-6
+                else { throw VoiceLabProjectError.videoModeUnsupported }
             }
             guard let asset = project.voiceLab.assets?.first(where: { $0.id == recipe.audio.assetId }) else { throw VoiceLabProjectError.danglingAsset }
             #if os(Windows)

@@ -113,7 +113,14 @@ public enum VoiceLabRenderValidation {
               recipe.audio.stretch == 1 || abs(recipe.audio.stretch - recipe.outDuration / (recipe.audio.trimEnd - recipe.audio.trimStart)) <= 1e-6,
               recipe.audio.stretch == 1 || (0.92...1.08).contains((recipe.audio.trimEnd - recipe.audio.trimStart) / recipe.outDuration)
         else { throw VoiceLabProjectError.invalidRange }
-        if recipe.audio.stretch == 1 {
+        if recipe.video.mode == .zoomCover {
+            let assetRate = Double(asset.sampleRate)
+            let contentFrames = samples(recipe.audio.trimEnd, assetRate) - samples(recipe.audio.trimStart, assetRate)
+            guard recipe.audio.stretch == 1, contentFrames > 0,
+                  contentFrames == samples(recipe.outDuration, assetRate),
+                  abs(recipe.outDuration - Double(contentFrames) / assetRate) <= 1 / rate
+            else { throw VoiceLabProjectError.invalidRange }
+        } else if recipe.audio.stretch == 1 {
             let assetRate = Double(asset.sampleRate)
             let contentFrames = samples(recipe.audio.trimEnd, assetRate) - samples(recipe.audio.trimStart, assetRate)
             let windowSamples: Int64 = end - start

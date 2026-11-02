@@ -37,7 +37,7 @@ import Testing
         let published = VoiceLabPublishedTake(assets: assets, audio: audio, outDuration: 3.2 - 2.5, words: words,
             chunks: stored.candidates[0].recipe!.chunks)
         let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: input, published: published, record: record,
-            createdAt: Date(timeIntervalSince1970: 1_800_000_000), videoChoice: nil)
+            createdAt: Date(timeIntervalSince1970: 1_800_000_000), videoChoice: .source)
         #expect(candidate.recipe?.audio.assetId == (fitted ? "fitted-test" : asset.id))
         #expect(candidate.recipe?.chunks[0].assetId == asset.id)
         #expect(candidate.recipe?.cost.usd == 0.2)

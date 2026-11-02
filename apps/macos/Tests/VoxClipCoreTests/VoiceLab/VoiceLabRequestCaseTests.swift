@@ -23,14 +23,12 @@ enum VoiceLabRequestFixtures {
         if junkBytes > 0 { bytes += Array("JUNK".utf8) + le(junkBytes, 4) + [UInt8](repeating: 0, count: junkBytes + junkBytes % 2) }
         bytes += Array("fmt ".utf8) + le(16, 4) + le(1, 2) + le(channels, 2) + le(rate, 4) + le(rate * 2, 4) + le(2, 2) + le(16, 2)
         bytes += Array("data".utf8) + le(frames * 2, 4)
-        if fill == 0 { bytes += [UInt8](repeating: 0, count: frames * 2) }
-        else {
-            let sample = le(fill, 2)
-            bytes.reserveCapacity(bytes.count + frames * 2)
-            for _ in 0..<frames { bytes.append(sample[0]); bytes.append(sample[1]) }
-        }
-        bytes.replaceSubrange(4..<8, with: le(bytes.count - 8, 4))
-        return Data(bytes)
+        bytes.replaceSubrange(4..<8, with: le(bytes.count + frames * 2 - 8, 4))
+        var wav = Data(bytes)
+        wav.reserveCapacity(bytes.count + frames * 2)
+        let samples = [UInt16](repeating: UInt16(truncatingIfNeeded: fill).littleEndian, count: frames)
+        samples.withUnsafeBytes { wav.append(contentsOf: $0) }
+        return wav
     }
     static func wav(_ spec: [String: Any]) throws -> Data {
         wav(rate: try #require(spec["rate"] as? Int), frames: try #require(spec["frames"] as? Int), fill: spec["fill"] as? Int ?? 0,

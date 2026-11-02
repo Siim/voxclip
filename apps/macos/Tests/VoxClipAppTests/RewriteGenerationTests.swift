@@ -193,6 +193,7 @@ private final class GenerationDispatchCount: Sendable {
         let voice = try JSONDecoder().decode(VoiceConsentRecord.self,
             from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))
         session.showFixture("ready", voice: voice)
+        #expect(session.chooseVideo(.source))
         let window = VoiceLabWindow(firstWordId: "word", lastWordId: "word", leftBridgeWordIds: [], rightBridgeWordIds: [],
             start: 1, end: 2, startSample: 24_000, endSample: 48_000,
             leftSeam: .init(kind: .hard, time: 1, sample: 24_000, fadeSamples: 288),
@@ -282,6 +283,16 @@ private final class GenerationDispatchCount: Sendable {
             }
         }, inputsAreCurrent: { true }), inputsAreCurrent: current)
     }
+    private func fixtureInput() -> VoiceLabTakeInput {
+        let window = VoiceLabWindow(firstWordId: "word", lastWordId: "word", leftBridgeWordIds: [], rightBridgeWordIds: [],
+            start: 1, end: 2, startSample: 24_000, endSample: 48_000,
+            leftSeam: .init(kind: .hard, time: 1, sample: 24_000, fadeSamples: 288),
+            rightSeam: .init(kind: .hard, time: 2, sample: 48_000, fadeSamples: 288))
+        return VoiceLabTakeInput(text: "Hello", modelID: "fixture-model", recordID: "fixture-record", language: "en", seed: 7,
+            contentKey: "test", source: [], sourceSampleRate: 24_000, items: [], window: window,
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+    }
+
     private func row(index: Int, residual: Double = 0, failure: Bool = false, score: Double = 1) -> VoiceLabTakeRow {
         let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
             trimStartFrame: 0, trimEndFrame: 24_000, windowStart: 1, windowEnd: 2, windowStartSample: 24_000, windowEndSample: 48_000,
@@ -295,7 +306,8 @@ private final class GenerationDispatchCount: Sendable {
         let session = session()
         let rejected = row(index: 0, failure: true, score: 1)
         let best = row(index: 1, score: 0.9)
-        session.review(VoiceLabTakeRunResult(rows: [rejected, best], end: .earlyStop))
+        session.review(VoiceLabTakeRunResult(rows: [rejected, best], end: .earlyStop), input: fixtureInput())
+        #expect(session.chooseVideo(.source))
         #expect(session.bestID == best.id && session.selectedID == best.id && session.readyToAccept)
         #expect(!session.select(rejected.id))
         session.invalidate()
@@ -307,6 +319,7 @@ private final class GenerationDispatchCount: Sendable {
         let voice = try JSONDecoder().decode(VoiceConsentRecord.self,
             from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))
         session.showFixture("ready", voice: voice)
+        #expect(session.chooseVideo(.source))
         let first = row(index: 0), chosen = row(index: 2, score: 0.9)
         let window = VoiceLabWindow(firstWordId: "word", lastWordId: "word", leftBridgeWordIds: [], rightBridgeWordIds: [],
             start: 1, end: 2, startSample: 24_000, endSample: 48_000,
@@ -317,11 +330,13 @@ private final class GenerationDispatchCount: Sendable {
             incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         session.review(.init(rows: [first, chosen], end: .completed), input: input)
         #expect(session.select(chosen.id))
+        #expect(session.chooseVideo(.source))
         let originalRows = session.rows
         var prepared: [UUID] = []
         session.prepareForTests = { _ in
             #expect(session.rows == originalRows && session.selectedID == chosen.id)
             #expect(session.select(first.id) && session.select(chosen.id))
+            #expect(session.chooseVideo(.source))
             let takes = (0..<3).map { index in
                 let estimate = CostEstimate(provider: "elevenlabs", operation: "test", units: 1, unit: "take",
                     usd: unknownPrice ? nil : Decimal(string: "0.01"), basis: "test")
@@ -363,6 +378,7 @@ private final class GenerationDispatchCount: Sendable {
         let voice = try JSONDecoder().decode(VoiceConsentRecord.self,
             from: Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json")))
         session.showFixture("ready", voice: voice)
+        #expect(session.chooseVideo(.source))
         let window = VoiceLabWindow(firstWordId: "word", lastWordId: "word", leftBridgeWordIds: [], rightBridgeWordIds: [],
             start: 1, end: 2, startSample: 24_000, endSample: 48_000,
             leftSeam: .init(kind: .hard, time: 1, sample: 24_000, fadeSamples: 288),
@@ -458,7 +474,7 @@ private final class GenerationDispatchCount: Sendable {
     }
     @Test func changedLengthRequiresExplicitTakeAndVideoChoices() {
         let session = session(); let take = row(index: 0, residual: 0.5)
-        session.review(VoiceLabTakeRunResult(rows: [take], end: .completed))
+        session.review(VoiceLabTakeRunResult(rows: [take], end: .completed), input: fixtureInput())
         #expect(session.phase == .lengthChanged && session.bestID == take.id && session.selectedID == take.id)
         #expect(!session.readyToAccept && session.videoChoice == nil)
         #expect(session.select(take.id) && !session.readyToAccept)
@@ -476,7 +492,7 @@ private final class GenerationDispatchCount: Sendable {
         let next = row(index: 2, residual: changedLength ? 0.5 : 0, score: 0.9)
         let lower = row(index: 1, score: 0.1)
         let failed = row(index: 3, failure: true, score: 2)
-        session.review(.init(rows: [first, lower, next, failed], end: .completed))
+        session.review(.init(rows: [first, lower, next, failed], end: .completed), input: fixtureInput())
         await session.reject(first)
         #expect(session.selectedID == next.id && session.bestID == next.id)
         #expect(session.phase == (changedLength ? .lengthChanged : .readyToAccept))
@@ -485,15 +501,15 @@ private final class GenerationDispatchCount: Sendable {
         #expect(session.selectedID == next.id && session.phase != .nonePassed)
         await session.reject(next)
         #expect(session.selectedID == nil && session.bestID == nil && session.phase == .nonePassed)
-        #expect(session.announcement == "These takes didn't sound right. Try different wording or re-record.")
+        #expect(session.announcement == "No usable takes. One take left out. The voice did not pass the speaker-match check.")
         session.invalidate()
     }
     @Test func nonePassedFatalAndStaleStatesCannotBeAccepted() {
         let session = session()
-        session.review(VoiceLabTakeRunResult(rows: [row(index: 0, failure: true)], end: .completed))
+        session.review(VoiceLabTakeRunResult(rows: [row(index: 0, failure: true)], end: .completed), input: fixtureInput())
         #expect(session.phase == .nonePassed && session.selectedID == nil && !session.readyToAccept)
         let passing = row(index: 1)
-        session.review(VoiceLabTakeRunResult(rows: [passing], end: .fatal))
+        session.review(VoiceLabTakeRunResult(rows: [passing], end: .fatal), input: fixtureInput())
         #expect(session.phase == .failed && !session.select(passing.id) && !session.readyToAccept)
         let stale = self.session(current: { false })
         stale.review(VoiceLabTakeRunResult(rows: [passing], end: .completed))
@@ -522,10 +538,11 @@ private final class GenerationDispatchCount: Sendable {
         }
     }
     @Test func completionAnnouncementsCountOnlyActualTakes() {
-        #expect(RewriteGenerationSession.completionAnnouncement(count: 3, fittedTake: nil) == "Three takes ready.")
-        #expect(RewriteGenerationSession.completionAnnouncement(count: 1, fittedTake: nil) == "One take ready.")
-        #expect(RewriteGenerationSession.completionAnnouncement(count: 2, fittedTake: nil) == "Two takes ready.")
-        #expect(RewriteGenerationSession.completionAnnouncement(count: 1, fittedTake: 1) == "Take 1 fits.")
+        #expect(RewriteGenerationSession.completionAnnouncement(rows: [], fittedTake: nil) == "No usable takes.")
+        #expect(RewriteGenerationSession.completionAnnouncement(rows: [row(index: 0)], fittedTake: nil) == "One take fits.")
+        #expect(RewriteGenerationSession.completionAnnouncement(rows: [row(index: 0), row(index: 1)], fittedTake: nil) == "Two takes fit.")
+        #expect(RewriteGenerationSession.completionAnnouncement(rows: (0..<4).map { row(index: $0) }, fittedTake: nil) == "4 takes fit.")
+        #expect(RewriteGenerationSession.completionAnnouncement(rows: [row(index: 0)], fittedTake: 1) == "Take 1 fits.")
     }
     @Test func completionAnnouncementsCountEveryFailedTake() {
         for failures in [1, 2] {
@@ -533,12 +550,111 @@ private final class GenerationDispatchCount: Sendable {
                 let session = session()
                 session.review(VoiceLabTakeRunResult(rows: [row(index: 0, failure: true),
                     row(index: 1, residual: 0.5, failure: failures == 2, score: 0.1),
-                    row(index: 2, residual: fits ? 0 : 0.5, score: 0.9)], end: .completed))
-                let count = failures == 1 ? "one" : "two"
-                let expected = fits ? "Take 3 fits. \(count.capitalized) failed the speech check." : "Three takes ready, \(count) failed the speech check."
+                    row(index: 2, residual: fits ? 0 : 0.5, score: 0.9)], end: .completed), input: fixtureInput())
+                let count = failures == 1 ? "One take" : "Two takes"
+                let checked = failures == 1 ? "Two takes passed checks but need" : "One take passed checks but needs"
+                let first = fits ? "Take 3 fits." : "No take fits yet. \(checked) a timing change."
+                let expected = "\(first) \(count) left out. The voice did not pass the speaker-match check."
                 #expect(session.announcement == expected)
             }
         }
+    }
+    @Test(arguments: [VoiceLabTakeRunEnd.completed, .fatal, .invalidated])
+    func unavailableChecksKeepTheirCauseAndNeverOfferAUsableTake(end: VoiceLabTakeRunEnd) async {
+        let session = session()
+        var preparations = 0
+        session.prepareQuote = { preparations += 1 }
+        let failure = VoiceLabTakeFailure.qa([.insufficientGeneratedSpeech])
+        let take = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1,
+            qa: .init(values: .init(), failures: [.insufficientGeneratedSpeech]), failure: failure)
+        session.review(.init(rows: [take], end: end, failure: failure), input: fixtureInput())
+        #expect(session.runFailure == failure && session.rows == [take])
+        #expect(session.problem.contains("at least 3 seconds of voiced speech"))
+        #expect(session.selectedID == nil && session.bestID == nil && !session.readyToAccept)
+        #expect(!session.select(take.id) && session.takeToAutoplay() == nil)
+        await session.play(take)
+        #expect(!session.audition.isPlaying && session.audition.takeId == nil)
+        #expect(!session.announcement.contains("ready") && !session.announcement.contains("did not pass"))
+        await session.finishQuotePreparationForTests()
+        #expect(preparations == 0 && session.quote == nil && session.cost == nil)
+        session.invalidate()
+        #expect(session.runFailure == nil)
+    }
+    @Test(arguments: [VoiceLabTakeRunEnd.completed, .fatal])
+    func failedRunsDoNotAutomaticallyRequoteOrRetry(end: VoiceLabTakeRunEnd) async throws {
+        let (session, state) = try await replacementSession()
+        let failure: VoiceLabTakeFailure = end == .fatal ? .provider(.network) : .qa([.insufficientGeneratedSpeech])
+        let take = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, failure: failure)
+        session.executeForTests = { _, progress, started in
+            state.executions += 1
+            try await started()
+            try await session.dispatchWithCurrentCost({})
+            await progress([take])
+            return .init(rows: [take], end: end, failure: failure)
+        }
+        session.approve(true)
+        await session.finishGenerationForTests()
+        #expect(state.preparations == 1 && state.executions == 1)
+        #expect(session.runFailure == failure && !session.problem.isEmpty)
+        #expect(!session.canExecute && !session.readyToAccept && session.rows == [take])
+        session.approve(true)
+        await session.finishGenerationForTests()
+        #expect(state.preparations == 1 && state.executions == 1)
+        session.invalidate()
+    }
+    @Test func fatalProviderCauseIsNotReplacedByGenericOperationCopy() {
+        let session = session()
+        let passing = row(index: 0)
+        session.review(.init(rows: [passing], end: .fatal, failure: .provider(.network)), input: fixtureInput())
+        #expect(session.runFailure == .provider(.network))
+        #expect(session.problem.contains("connection problem"))
+        #expect(session.announcement.contains("No take can be used"))
+        #expect(!session.announcement.contains("fits") && !session.announcement.contains("ready"))
+        #expect(!session.readyToAccept && !session.select(passing.id))
+        session.invalidate()
+    }
+    @Test func changedInputsAnnounceStalenessInsteadOfReadiness() {
+        let session = session()
+        let take = row(index: 0)
+        session.review(.init(rows: [take], end: .completed), input: fixtureInput())
+        #expect(session.chooseVideo(.source))
+        #expect(session.readyToAccept)
+        session.inputsChanged(prepareNewQuote: false)
+        #expect(session.rows == [take] && !session.readyToAccept)
+        #expect(session.announcement.contains("no longer match") && !session.announcement.contains("fits"))
+        session.invalidate()
+        #expect(session.announcement.isEmpty)
+    }
+    @Test func refusalBeforeLaunchRetainsPriorSelectionAndActualCauseWithoutRequoting() async throws {
+        let (session, state) = try await replacementSession()
+        let previous = session.rows, selection = session.selectedID
+        session.executeForTests = { _, _, _ in
+            state.executions += 1
+            return .init(rows: [], end: .fatal, failure: .provider(.quotaExceeded))
+        }
+        session.approve(true)
+        await session.finishGenerationForTests()
+        #expect(session.rows == previous && session.selectedID == selection)
+        #expect(session.runFailure == .provider(.quotaExceeded) && session.problem.contains("quota"))
+        #expect(!session.problem.contains("consent") && session.announcement.contains("No new takes"))
+        #expect(state.preparations == 1 && state.executions == 1 && !session.canExecute)
+        session.invalidate()
+    }
+    @Test func thrownTransportFailureKeepsItsCauseWithoutRequoting() async throws {
+        let (session, state) = try await replacementSession()
+        session.executeForTests = { _, _, started in
+            state.executions += 1
+            try await started()
+            try await session.dispatchWithCurrentCost({})
+            throw VoiceLabError.network
+        }
+        session.approve(true)
+        await session.finishGenerationForTests()
+        #expect(session.phase == .failed && session.runFailure == .provider(.network))
+        #expect(session.problem.contains("connection problem") && session.announcement.contains("No take can be used"))
+        #expect(state.preparations == 1 && state.executions == 1 && !session.canExecute)
+        #expect(session.selectedID == nil && !session.readyToAccept && session.rows.isEmpty)
+        session.invalidate()
     }
     @Test func remoteLocalServerNeverClaimsNothingLeavesTheMac() {
         for url in ["http://localhost:11434", "http://127.0.0.1:8080", "http://[::1]:8080"] {
@@ -554,7 +670,7 @@ private final class GenerationDispatchCount: Sendable {
     }
     @Test func theBestTakeAutoplaysOnlyOnceAndNeverAfterAnotherSelection() {
         let session = session(); let first = row(index: 0); let second = row(index: 1, score: 0.9)
-        session.review(.init(rows: [first, second], end: .completed))
+        session.review(.init(rows: [first, second], end: .completed), input: fixtureInput())
         #expect(session.takeToAutoplay()?.id == first.id)
         #expect(session.takeToAutoplay() == nil)
         #expect(session.select(second.id))

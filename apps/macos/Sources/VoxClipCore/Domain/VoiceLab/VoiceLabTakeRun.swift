@@ -79,7 +79,12 @@ public struct VoiceLabTakeRunQuote: Sendable, Equatable, Identifiable {
     }
 }
 
-public enum VoiceLabTakeQAFailure: String, Sendable, Codable { case transcript, clipping, loudness, speaker }
+public enum VoiceLabTakeQAFailure: String, Sendable, Codable {
+    case transcript, clipping, loudness, speaker
+    /// The candidate did not supply the calibrated amount of real generated speech for speaker QA.
+    /// This records an unavailable check, not a measured mismatch with the owner's voice.
+    case insufficientGeneratedSpeech
+}
 public struct VoiceLabTakeQAResult: Sendable, Equatable {
     public let values: VoiceLabQA
     public let failures: [VoiceLabTakeQAFailure]

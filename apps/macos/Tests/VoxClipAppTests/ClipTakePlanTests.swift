@@ -296,6 +296,17 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         return made
     }
 
+    private func chooseSourceDuration(_ plan: ClipTakePlan) throws {
+        for phrase in plan.phrases where phrase.selected?.row.selectable == true {
+            try #require(plan.chooseVideo(.source, phrase: phrase.id))
+        }
+    }
+
+    private func sourceAcceptance(_ plan: ClipTakePlan) async throws -> ClipTakePlan.Acceptance {
+        try chooseSourceDuration(plan)
+        return try await plan.acceptance()
+    }
+
     @Test func threePhrasesQuoteOneSetAndWaitForApprovalThenFit() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
@@ -313,7 +324,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.qa == 3 })
         let spent = await fixture.ledger.total(provider: "elevenlabs", at: Date())
         #expect(plan.spent.usd == spent?.usd)
-        let acceptance = try await plan.acceptance()
+        for index in plan.phrases.indices { #expect(plan.chooseVideo(.source, phrase: index)) }
+        let acceptance = try await sourceAcceptance(plan)
         #expect(acceptance.segments.count == 3 && !acceptance.assets.isEmpty)
         let selected = try #require(plan.phrases.first?.selectedID)
         let scratch = await plan.scratch(take: selected, phrase: 0)
@@ -360,7 +372,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(fixture.plan.phrases[1].status == .stopped("Take 1 stopped."))
         #expect(fixture.plan.phrases[2].status == .waiting)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
-        let output = try await fixture.plan.acceptance()
+        let output = try await sourceAcceptance(fixture.plan)
         #expect(output.segments.count == 1)
     }
 
@@ -382,7 +394,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(plan.phrases[1].selectedID == earlier.id && plan.phrases[1].lengthDifference != nil)
         let kept = await plan.scratch(take: earlier.id, phrase: 1)
         #expect(kept?.isValid == true)
-        let output = try await plan.acceptance()
+        let output = try await sourceAcceptance(plan)
         #expect(output.segments.count == 3)
     }
 
@@ -410,7 +422,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let selected = try #require(plan.phrases[0].selectedID)
         let scratch = await plan.scratch(take: selected, phrase: 0)
         #expect(scratch?.isValid == true)
-        let output = try await plan.acceptance()
+        let output = try await sourceAcceptance(plan)
         #expect(output.segments.count == 1)
     }
 
@@ -452,7 +464,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             #expect(live == 3 && plan.phrases[0].takes.count == 3 && plan.phrases[0].takes.contains { $0.id == selected })
             for take in plan.phrases[0].takes {
                 #expect(plan.select(take: take.id, phrase: 0))
-                #expect(try await plan.acceptance().segments.count == 1)
+                #expect(try await sourceAcceptance(plan).segments.count == 1)
             }
         }
         var survivors: [VoiceLabTakeScratch] = []
@@ -486,7 +498,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(plan.phrases[0].selectedID == selected)
         #expect(plan.phrases[0].status == .failed(RewriteSession.refusal(VoiceLabError.unauthorized)))
         #expect(plan.spent.units == 1)
-        let output = try await plan.acceptance()
+        let output = try await sourceAcceptance(plan)
         #expect(output.segments.count == 1)
     }
 
@@ -637,6 +649,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     @Test func changedInputsRefuseStalePublicationAndDispatch() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        try chooseSourceDuration(fixture.plan)
         fixture.beforePublish = { [weak fixture] _ in fixture?.current = false }
         await #expect(throws: ClipTakePlan.Failure.stale) { try await fixture.plan.acceptance() }
         await fixture.plan.prepareAnother(phrase: 0)
@@ -841,7 +854,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await barrier.wait()
         await plan.stop(); await retry.value
         #expect(plan.phrases[0].selectedID == selected.id)
-        let accepted = try await plan.acceptance()
+        let accepted = try await sourceAcceptance(plan)
         #expect(accepted.segments.count == 1 && fixture.publishedIDs == [selected.id])
     }
 
@@ -934,6 +947,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         session.takeQuotePhrase = 0
         let retry = try #require(session.pricedTakeAction(phrase: 0))
         #expect(retry.title.contains("Try Another") && session.takeSendLine.contains("only phrase 1"))
+        if case .inline(let amount)? = fixture.plan.cost {
+            #expect(retry.title == "Try Another · " + amount)
+            #expect(retry.title.components(separatedBy: "≈").count <= 2)
+        } else { Issue.record("This fixture must exercise the inline retry price") }
         retry.perform()
         await session.takesTask?.value
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
@@ -972,6 +989,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         ClipTakeHTTP.state.withLock { $0.failQA = true }
         await plan.prepareAnother(phrase: 1); await plan.tryAnother(phrase: 1, approved: true)
         #expect(plan.phrases[1].takes.count == 3 && plan.phrases[1].takes.contains { !$0.row.selectable })
+        try chooseSourceDuration(plan)
         #expect(!plan.phrases[1].takeDetail.isEmpty && session.usableTakeCount == 3)
     }
 
@@ -1035,6 +1053,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
         await fixture.plan.play(phrase: 0)
         #expect(fixture.plan.audition.isPlaying)
+        try chooseSourceDuration(fixture.plan)
         session.showProposal()
         #expect(session.task.footer.primary?.id == "useTakes")
         undo.beginUndoGrouping()
@@ -1077,6 +1096,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         installReview(session, fixture: fixture, withFreeChanges: false)
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        try chooseSourceDuration(fixture.plan)
         let barrier = ClipTakeBarrier()
         fixture.beforePublish = { phrase in if phrase == 1 { await barrier.pause() } }
         let accepting = Task { await session.acceptTakes() }
@@ -1094,6 +1114,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         installReview(session, fixture: fixture, withFreeChanges: false)
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
+        try chooseSourceDuration(fixture.plan)
         undo.beginUndoGrouping(); let accepted = await session.acceptTakes(); undo.endUndoGrouping()
         #expect(accepted && editor.canUndoVoiceRewrite)
         undo.beginUndoGrouping(); editor.apply(.correct(id: "w0", text: "Later"), name: "Later correction"); undo.endUndoGrouping()
@@ -1112,6 +1133,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await barrier.wait()
         session.stopTakes(); await session.takesTask?.value; await operation.value
         #expect(fixture.plan.phrases[1].takeDetail == "Take 1 stopped.")
+        try chooseSourceDuration(fixture.plan)
         #expect(await session.acceptTakes())
         let feedback = try #require(editor.currentVoiceFeedback)
         #expect(editor.project.voiceLab.segments.count == 1 && feedback.phrases.count == 1)

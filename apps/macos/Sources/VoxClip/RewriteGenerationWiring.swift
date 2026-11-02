@@ -38,7 +38,7 @@ extension RewriteSession {
             let speaker = try await app.speakerModelLibrary.check(language: language)
             guard current else { return }
             let region = ElevenLabsRegion(rawValue: app.string("transcription.elevenlabs.region", fallback: "default")) ?? .default
-            let client = ElevenLabsVoiceLab(keys: app.secrets, region: region, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
+            let client = ElevenLabsVoiceLab(keys: VoiceChangePinnedKeys(source: app.secrets), region: region, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
             configureGeneration(client: client, store: VoiceConsentStore(locations: app.locations), speaker: speaker)
             await generation?.discover(language: language)
         } catch { generationProblem(error) }
@@ -64,11 +64,17 @@ extension RewriteSession {
             }
             takePlanOrdinals = selected.map { $0.offset + 1 }
             guard let envelope else { throw RewriteSessionError.noSourceAudio }
+            let contextReview = acceptedSpeechContext
+            let contextRequest = try contextReview.map { try currentSpeechContextRequest($0) }
+            let hunks: [VoiceLabDiffHunk]
+            if let contextReview, let contextRequest {
+                hunks = try contextReview.replacingHunks(current: contextRequest, envelope: envelope)
+            } else { hunks = selected.map { $0.element.hunk } }
             let sampleRate: Double = Double(audio.sampleRate)
             let sampleCount: Double = project.media.source.durationSeconds * sampleRate
             let frames: Int64 = Int64(EditingPrimitives.jsRound(sampleCount))
             let outputScope = scope, sourceURL = editor.sourceURL
-            let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: selected.map { $0.element.hunk },
+            let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks,
                 makeInput: { phrase in
                     let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
                     let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
@@ -90,13 +96,24 @@ extension RewriteSession {
                 }, acceptedChargesChanged: { [weak app = editor.app] in
                     await app?.refreshMonthlySpend()
                 })
+            plan.prepareDurationRender = durationRenderPreparer()
+            if let contextReview, let contextRequest {
+                try contextReview.validatePreparedPhrases(plan.phrases, current: contextRequest, envelope: envelope)
+                bindSpeechContext(contextReview, to: plan)
+            }
             plan.connect(takeBackend(plan.phrases.count) { [weak plan] request, start in
                 guard let plan else { throw CancellationError() }
                 try await plan.dispatch(request, start: start)
             })
             takePlan = plan
-            await plan.prepare()
-        } catch { generation.fail(ClipTakePlan.copy(error)) }
+            if let contextReview {
+                takeQuotePhrase = contextReview.targetPhraseID
+                await plan.prepareSpeechContext(phrase: contextReview.targetPhraseID)
+            } else { await plan.prepare() }
+        } catch {
+            generation.fail(ClipTakePlan.copy(error))
+            offerSpeechContext(for: error)
+        }
     }
     func currentGenerationCap() async throws -> VoiceLabMonthlyCap? {
         let total = await VoiceLabSpendLedger(locations: editor.app.locations).total(provider: "elevenlabs", at: Date())

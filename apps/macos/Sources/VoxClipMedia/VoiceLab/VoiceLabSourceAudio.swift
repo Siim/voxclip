@@ -65,6 +65,23 @@ public enum VoiceLabSourceAudio {
         return (VoiceLabSourceExcerpt(totalFrames: total, regions: regions), envelope)
     }
 
+    /// Source-clock RMS buckets for conversion planning. The display waveform may include a
+    /// partial tail; this reads bounded PCM chunks and keeps only complete 10 ms buckets.
+    /// Missing audio regions have zero planning energy. Provider extraction still requires real,
+    /// continuous source samples and never uses this planning-only coverage rule.
+    public static func sourceEnvelope(source: URL, durationSeconds: Double, sampleRate: Int) async throws -> AudioEnvelope {
+        guard (8_000...96_000).contains(sampleRate) else { throw VoiceLabSourceAudioError.unsupportedRate }
+        let count = EditingPrimitives.jsRound(durationSeconds * Double(sampleRate))
+        guard durationSeconds.isFinite, durationSeconds > 0, count.isFinite,
+              count >= Double((sampleRate + 49) / 50), count < 0x1p53 else {
+            throw VoiceLabSourceAudioError.rangeOutsideMedia
+        }
+        var levels = EnvelopeAccumulator(sampleRate: sampleRate)
+        try await decodeMono(source: source, range: 0..<Int64(count), sampleRate: sampleRate,
+                             planningEnvelope: true) { levels.append($0) }
+        return levels.envelope
+    }
+
     /// The take run resamples the source to the generated audio's rate for staging (§8.9).
     static let takeAssetRate = 24_000
 
@@ -110,7 +127,8 @@ public enum VoiceLabSourceAudio {
 
     /// Source frames `range` as mono Float32, decoded in chunks of `decodeChunkFrames` through `conversionInput` and
     /// handed to `body` one chunk at a time. A remainder shorter than 20 ms joins the chunk before it.
-    private static func decodeMono(source: URL, range: Range<Int64>, sampleRate: Int, _ body: ([Float]) -> Void) async throws {
+    private static func decodeMono(source: URL, range: Range<Int64>, sampleRate: Int,
+                                   planningEnvelope: Bool = false, _ body: ([Float]) -> Void) async throws {
         let chunkSamples: Int = decodeChunkFrames(sampleRate: sampleRate)
         let chunkFrames: Int64 = Int64(chunkSamples)
         let trailingSamples: Int = (sampleRate + 49) / 50
@@ -121,7 +139,8 @@ public enum VoiceLabSourceAudio {
             try Task.checkCancellation()
             var end = min(range.upperBound, start + chunkFrames)
             if range.upperBound - end < trailingFrames { end = range.upperBound }
-            let wav = try await conversionInput(source: source, startSample: start, endSample: end, sourceSampleRate: Double(sampleRate))
+            let wav = try await conversionData(source: source, startSample: start, endSample: end,
+                sourceSampleRate: Double(sampleRate), silenceGaps: planningEnvelope, allowMissingTail: planningEnvelope)
             var chunk: [Float] = []
             chunk.reserveCapacity(max(0, (wav.count - 44) / 2))
             for offset in stride(from: 44, to: wav.count, by: 2) {
@@ -180,6 +199,12 @@ public enum VoiceLabSourceAudio {
     /// is that silence too.
     public static func conversionInput(source: URL, startSample: Int64, endSample: Int64,
                                        sourceSampleRate: Double, silenceGaps: Bool = false) async throws -> Data {
+        try await conversionData(source: source, startSample: startSample, endSample: endSample,
+            sourceSampleRate: sourceSampleRate, silenceGaps: silenceGaps, allowMissingTail: false)
+    }
+
+    private static func conversionData(source: URL, startSample: Int64, endSample: Int64,
+                                       sourceSampleRate: Double, silenceGaps: Bool, allowMissingTail: Bool) async throws -> Data {
         let (rate, frames) = try conversionChunk(startSample: startSample, endSample: endSample,
                                                  sourceSampleRate: sourceSampleRate)
         do {
@@ -195,10 +220,10 @@ public enum VoiceLabSourceAudio {
                 throw VoiceLabSourceAudioError.rangeOutsideMedia
             }
             // A training cut reads past endSample to the frame after a gap; the loop stops once the cut is complete.
-            let readEnd = silenceGaps ? duration : CMTime(value: endSample, timescale: CMTimeScale(rate))
+            let readEnd = silenceGaps && !allowMissingTail ? duration : CMTime(value: endSample, timescale: CMTimeScale(rate))
             return try await decode(asset: asset, track: track, rate: rate, channels: Int(native.mChannelsPerFrame),
                                     startSample: startSample, endSample: endSample, readEnd: readEnd, frames: frames,
-                                    silenceGaps: silenceGaps)
+                                    silenceGaps: silenceGaps, allowMissingTail: allowMissingTail)
         } catch {
             if error is VoiceLabSourceAudioError || error is CancellationError { throw error }
             throw VoiceLabSourceAudioError.unreadable
@@ -395,7 +420,7 @@ public enum VoiceLabSourceAudio {
 
     private static func decode(asset: AVURLAsset, track: AVAssetTrack, rate: Int, channels: Int,
                                startSample: Int64, endSample: Int64, readEnd: CMTime, frames: Int,
-                               silenceGaps: Bool) async throws -> Data {
+                               silenceGaps: Bool, allowMissingTail: Bool) async throws -> Data {
         let reader = try AVAssetReader(asset: asset)
         reader.timeRange = CMTimeRange(start: CMTime(value: startSample, timescale: CMTimeScale(rate)), end: readEnd)
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: MediaSupport.pcm(rate: Double(rate), channels: channels))
@@ -408,6 +433,9 @@ public enum VoiceLabSourceAudio {
             while !accumulator.isComplete, let sample = try await MediaSupport.nextSample(provider) {
                 try Task.checkCancellation()
                 try accumulator.append(sample)
+            }
+            if !accumulator.isComplete, allowMissingTail, silenceGaps, reader.status == .completed {
+                accumulator.finishPlanningCoverage()
             }
             guard accumulator.isComplete else {
                 throw reader.status == .failed ? VoiceLabSourceAudioError.unreadable : VoiceLabSourceAudioError.rangeOutsideMedia
@@ -433,6 +461,12 @@ public enum VoiceLabSourceAudio {
         private(set) var next: Int64
         private(set) var wav: Data
         var isComplete: Bool { next == endSample }
+
+        /// Used only after successful decoder EOF for the private conversion-planning envelope.
+        mutating func finishPlanningCoverage() {
+            precondition(silenceGaps)
+            next = endSample
+        }
 
         init(rate: Int, channels: Int, startSample: Int64, endSample: Int64, frames: Int, origin: Double = 0.0,
              silenceGaps: Bool = false) {

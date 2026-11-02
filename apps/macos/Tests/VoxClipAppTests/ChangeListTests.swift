@@ -19,13 +19,24 @@ import Testing
         return (app, DebugRewrite.proposalScenes(app: app, fixture: fixture))
     }
     /// One scene, with an undo manager, its session following the transcript again.
-    private func scene(_ name: String, voiceLab: Bool = true) throws -> (EditorModel, RewriteSession, UndoManager, [DirectorScene]) {
+    private func scene(_ name: String, voiceLab: Bool = true,
+                       verifiablePhrases: Bool = false) throws -> (EditorModel, RewriteSession, UndoManager, [DirectorScene]) {
         let (app, all) = try scenes()
         app.settings.values["voiceLab.enabled"] = .bool(voiceLab)
         app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(voiceLab)
         let scene = try #require(all.first { $0.name == name })
         let editor = try #require(scene.editor)
         let session = try #require(editor.openRewrite)
+        if verifiablePhrases {
+            let passage = session.source.compactMap { word -> String? in
+                guard let index = Int(word.text.dropFirst(4)) else { return word.text }
+                if index == 12 || (21...25).contains(index) || (39...43).contains(index) { return nil }
+                if index == 20 || index == 38 { return "Comprehensive terminology demonstrates exceptionally natural pronunciation." }
+                return word.text
+            }.joined(separator: " ")
+            try session.receivePassage(passage)
+            session.finishRun(seconds: 14)
+        }
         let undo = UndoManager(); undo.groupsByEvent = false; editor.undoManager = undo
         editor.announcements = []
         session.showProposal()
@@ -191,7 +202,7 @@ import Testing
     /// Paid takes stay with their original review. Changing inclusion retires acceptance without replacing paid work
     /// or preparing a quote until the existing discard question is explicitly answered.
     @Test func takesStayWithTheirPhrase() async throws {
-        let (editor, session, _, scenes) = try scene("r2-several-voices")
+        let (editor, session, _, scenes) = try scene("r2-several-voices", verifiablePhrases: true)
         defer { scenes.forEach { $0.editor?.close() } }
         editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
         #expect(session.includedVoice == [2, 3] && session.task.footer.primary?.title == "Make Takes")
@@ -199,6 +210,9 @@ import Testing
         #expect(session.includedVoice == [2] && session.task.footer.primary?.title == "Make Takes")
         // Phrase 2's takes: one passed. Nothing is quoted or sent here.
         try DebugRewriteGeneration.install("ready", in: session)
+        if let plan = session.takePlan {
+            for index in plan.phrases.indices { #expect(plan.chooseVideo(.source, phrase: index)) }
+        }
         let generation = try #require(session.generation)
         var quotes = 0
         generation.prepareQuote = { quotes += 1 }
@@ -224,7 +238,7 @@ import Testing
     /// A footer drawn for one phrase's quote makes no takes of another: a Make Takes the transcript's reviews left on screen
     /// for a turn sends nothing, and the footer waits for the new phrase's quote.
     @Test func makeTakesForALeftOutPhraseSendsNothing() async throws {
-        let (editor, session, _, scenes) = try scene("r2-several-voices")
+        let (editor, session, _, scenes) = try scene("r2-several-voices", verifiablePhrases: true)
         defer { scenes.forEach { $0.editor?.close() } }
         editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
         session.review(3, .undo)

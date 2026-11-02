@@ -81,7 +81,7 @@ import VoxClipMedia
     }
     func useGuard(store: VoiceConsentStore, recordID: String) async throws -> VoiceUseGuard {
         let record = try await store.load(recordID)
-        return VoiceUseGuard(store: store, check: try await check(language: record.statement.language))
+        return VoiceUseGuard(store: store, check: try await check(language: record.language))
     }
 }
 

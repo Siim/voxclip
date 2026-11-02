@@ -23,6 +23,7 @@ import VoxClipMedia
         var takes: [Take] = []
         var selectedID: UUID?
         var explicitlySelected = false
+        var videoChoice: VoiceLabVideoMode?
         var selected: Take? { takes.first { $0.id == selectedID } }
         var originalLength: Double { window.end - window.start }
         var lengthDifference: Double? { selected?.length.map { $0 - originalLength } }
@@ -33,11 +34,19 @@ import VoxClipMedia
     }
     enum Failure: Error, Equatable {
         case placement(VoiceLabWindowRefusal), budget, spendingCap, unknownSpend, stale, noSelection
+        case insufficientSpeechWindow(phrase: Int, maximumSeconds: Double)
+        case insufficientPlannedSpeech(phrase: Int, estimatedSeconds: Double)
+        case speechEstimateUnavailable
     }
     struct Acceptance {
         let segments: [VoiceLabSegment]
         let assets: [VoiceLabAsset]
         let voice: VoiceLabVoiceReference
+    }
+    private struct PreparedVideoSelection {
+        let choices: [UUID: VoiceLabVideoMode]
+        let acceptance: Acceptance
+        let render: PreparedVideoDurationRender
     }
     struct Backend {
         var prepare: @MainActor ([VoiceLabTakeInput], [Int], Int) async throws -> VoiceLabTakeBatch
@@ -68,6 +77,7 @@ import VoxClipMedia
     private(set) var preparing = false
     private(set) var generating = false
     private(set) var publishing = false
+    private(set) var preparingVideo = false
     private(set) var problem = ""
     private(set) var estimate: CostEstimate?
     private(set) var cost: VoiceLabCostPresentation.Kind?
@@ -81,8 +91,14 @@ import VoxClipMedia
     @ObservationIgnored private let makeInput: @MainActor (Phrase) async throws -> VoiceLabTakeInput
     @ObservationIgnored private let readCap: @MainActor () async throws -> VoiceLabMonthlyCap?
     @ObservationIgnored private let isCurrent: @MainActor () -> Bool
+    @ObservationIgnored private var contextIsCurrent: @MainActor () -> Bool = { true }
+    @ObservationIgnored private var validateContextInputs: @MainActor ([VoiceLabTakeInput]) throws -> Void = { _ in }
     @ObservationIgnored private let acceptedChargesChanged: @MainActor () async -> Void
     @ObservationIgnored private var backend: Backend?
+    @ObservationIgnored var prepareDurationRender: VideoDurationRenderPreparer?
+    @ObservationIgnored private var preparedVideoSelection: PreparedVideoSelection?
+    @ObservationIgnored private(set) var videoPreparationFailure: (any Error)?
+    @ObservationIgnored private var videoRevision = UUID()
     @ObservationIgnored private var inputs: [VoiceLabTakeInput] = []
     @ObservationIgnored private var nextSeeds: [UInt32] = []
     @ObservationIgnored private var batch: VoiceLabTakeBatch?
@@ -96,9 +112,68 @@ import VoxClipMedia
     @ObservationIgnored private var retired = false
     @ObservationIgnored private var stopping = false
     @ObservationIgnored private var runningPhrase: Int?
-    var stillCurrent: Bool { !retired && isCurrent() }
+    var stillCurrent: Bool { !retired && isCurrent() && contextIsCurrent() }
     var isRetired: Bool { retired }
     var approvalID: UUID? { batch?.id }
+    static let minimumGeneratedSpeechSeconds = Double(SpeakerAudio.windowSize) / 16_000
+    private var videoChoices: [UUID: VoiceLabVideoMode] {
+        Dictionary(uniqueKeysWithValues: phrases.compactMap { phrase in
+            guard let selected = phrase.selected, selected.row.selectable, let choice = phrase.videoChoice else { return nil }
+            return (selected.id, choice)
+        })
+    }
+    private var selectedPhrases: [Phrase] { phrases.filter { $0.selected?.row.selectable == true } }
+    var canAccept: Bool {
+        guard stillCurrent, !generating, !preparing, !publishing, !preparingVideo,
+              !selectedPhrases.isEmpty, selectedPhrases.allSatisfy({ phrase in
+                  phrase.videoChoice.map { videoAvailability(phrase: phrase.id).allows($0) } == true
+              }) else { return false }
+        return !selectedPhrases.contains(where: { $0.videoChoice == .retimed }) || preparedVideoSelection?.choices == videoChoices
+    }
+
+    func videoAvailability(phrase: Int) -> VideoDurationChoiceAvailability {
+        let row = phrases.indices.contains(phrase) ? phrases[phrase].selected?.row : nil
+        return VideoDurationChoiceAvailability(row: row, sourceSampleRate: project.media.source.audio?.sampleRate ?? 48_000,
+            rendererReady: prepareDurationRender != nil && VoiceLabRenderInput.supportsVideoMode(.zoomCover))
+    }
+
+    @discardableResult func chooseVideo(_ choice: VoiceLabVideoMode, phrase: Int) -> Bool {
+        guard stillCurrent, !generating, !preparing, !publishing, !preparingVideo, phrases.indices.contains(phrase),
+              videoAvailability(phrase: phrase).allows(choice) else { return false }
+        if phrases[phrase].videoChoice == choice { return true }
+        clearPreparedVideo()
+        phrases[phrase].videoChoice = choice
+        return true
+    }
+
+    private func clearPreparedVideo() {
+        videoRevision = UUID(); preparedVideoSelection = nil
+        videoPreparationFailure = nil
+    }
+
+    func prepareVideoChoices(at date: Date = Date()) async {
+        guard stillCurrent, !generating, !preparing, !publishing, !preparingVideo,
+              !selectedPhrases.isEmpty, selectedPhrases.allSatisfy({ $0.videoChoice != nil }),
+              selectedPhrases.contains(where: { $0.videoChoice == .retimed }) else { return }
+        if preparedVideoSelection?.choices == videoChoices { return }
+        let turn = videoRevision, choices = videoChoices
+        preparingVideo = true
+        defer { preparingVideo = false }
+        do {
+            let output = try await publishSelection(at: date)
+            let proposed = try VoiceLabEditCommand.acceptAll(segments: output.segments, assets: output.assets, voice: output.voice)
+                .applying(to: project, outputScope: scope)
+            let render = try await VideoDurationRenderReadiness.prepare(proposed, scope: scope, using: prepareDurationRender)
+            try Task.checkCancellation()
+            guard stillCurrent, turn == videoRevision, choices == videoChoices else { throw Failure.stale }
+            preparedVideoSelection = PreparedVideoSelection(choices: choices, acceptance: output, render: render)
+            problem = ""
+        } catch {
+            if turn == videoRevision {
+                preparedVideoSelection = nil; videoPreparationFailure = error; problem = Self.copy(error)
+            }
+        }
+    }
 
     init(project: Project, scope: VoiceLabOutputScope, envelope: AudioEnvelope, hunks: [VoiceLabDiffHunk],
          makeInput: @escaping @MainActor (Phrase) async throws -> VoiceLabTakeInput,
@@ -106,7 +181,9 @@ import VoxClipMedia
          isCurrent: @escaping @MainActor () -> Bool = { true }, audition: VoiceLabAudition = VoiceLabAudition(),
          acceptedChargesChanged: @escaping @MainActor () async -> Void = {}) throws {
         var final = project
-        final.edits.cutWordIds += hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds)
+        for id in hunks.filter({ $0.kind == .cut }).flatMap(\.sourceWordIds) where !final.edits.cutWordIds.contains(id) {
+            final.edits.cutWordIds.append(id)
+        }
         self.project = final; self.scope = scope; self.makeInput = makeInput; self.readCap = readCap; self.isCurrent = isCurrent
         self.audition = audition
         self.acceptedChargesChanged = acceptedChargesChanged
@@ -133,10 +210,83 @@ import VoxClipMedia
         var final = project
         final.edits.cutWordIds += hunks.filter { $0.kind == .cut }.flatMap(\.sourceWordIds)
         try VoiceLabRenderContract.validatePlacement(final, scope: scope, windows: phrases.map(\.window))
+        try validateSpeechAvailability(phrases, project: final, scope: scope)
         return phrases
     }
 
+    static func validateSpeechAvailability(_ phrases: [Phrase], project: Project, scope: VoiceLabOutputScope) throws {
+        let rate: VoiceLabSpeechRate
+        do { rate = try VoiceLabLengthBudget.rate(transcript: RewriteSession.corrected(project)) }
+        catch { throw Failure.speechEstimateUnavailable }
+        for phrase in phrases {
+            let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: phrase.window)
+            let meter = try VoiceLabFitMeter.measure(text: phrase.text, window: phrase.window, incomingSilence: silence.incoming,
+                outgoingSilence: silence.outgoing, rate: rate.charactersPerSecond, newWords: phrase.text)
+            guard meter.upperBoundSeconds >= minimumGeneratedSpeechSeconds else {
+                throw Failure.insufficientSpeechWindow(phrase: phrase.id + 1, maximumSeconds: meter.upperBoundSeconds)
+            }
+            let seconds = Double(VoiceLabTextLength.length(phrase.text)) / rate.charactersPerSecond
+            guard seconds >= minimumGeneratedSpeechSeconds else {
+                throw Failure.insufficientPlannedSpeech(phrase: phrase.id + 1, estimatedSeconds: seconds)
+            }
+        }
+    }
+
     func connect(_ backend: Backend) { precondition(self.backend == nil); self.backend = backend }
+
+    func bindSpeechContext(_ validateInputs: @escaping @MainActor ([VoiceLabTakeInput]) throws -> Void,
+                           current: @escaping @MainActor () -> Bool) {
+        validateContextInputs = validateInputs
+        contextIsCurrent = current
+    }
+
+    func replaceSpeechContext(hunks: [VoiceLabDiffHunk], envelope: AudioEnvelope, phrase index: Int) async throws {
+        guard stillCurrent, !preparing, !generating, !publishing, !preparingVideo, operation == nil,
+              let backend, phrases.indices.contains(index), phrases[index].selected == nil,
+              inputs.count == phrases.count, nextSeeds.count == phrases.count else { throw Failure.stale }
+        let prepared = try Self.preparePlan(project: project, scope: scope, envelope: envelope, hunks: hunks)
+        guard prepared.count == phrases.count,
+              zip(prepared, phrases).allSatisfy({ fresh, old in
+                  fresh.id == old.id && fresh.indices == old.indices && (old.id == index ||
+                      (fresh.text.utf8.elementsEqual(old.text.utf8) && fresh.window == old.window))
+              }) else { throw Failure.stale }
+        stopAudition(); clearPreparedVideo()
+        revision += 1; batch = nil; cost = nil; estimate = nil
+        let version = revision
+        preparing = true
+        do {
+            await backend.discard()
+            try checkCurrent(version)
+            let input = try await makeInput(prepared[index])
+            try checkCurrent(version)
+            guard input.text.utf8.elementsEqual(prepared[index].text.utf8), input.window == prepared[index].window else {
+                throw Failure.stale
+            }
+            var updated = inputs
+            updated[index] = input
+            try validateContextInputs(updated)
+            var windows = phrases.map { phrase in
+                guard phrase.id != index, let fit = phrase.selected?.row.audio?.fit.plan else { return prepared[phrase.id].window }
+                var window = phrase.window
+                window.start = fit.windowStart; window.end = fit.windowEnd
+                window.startSample = fit.windowStartSample; window.endSample = fit.windowEndSample
+                return window
+            }
+            windows[index] = prepared[index].window
+            try validate(windows)
+            for take in phrases[index].takes {
+                await backend.retire(index, take.id)
+                try checkCurrent(version)
+            }
+            phrases[index] = prepared[index]
+            inputs = updated; nextSeeds[index] = input.seed
+            problem = ""; preparing = false
+        } catch {
+            preparing = false
+            throw error
+        }
+        await prepareQuote(indices: [index], decoding: false, candidates: VoiceLabPricing.maximumCandidates)
+    }
 
     #if DEBUG
     func showFixture(_ state: String) {
@@ -174,13 +324,18 @@ import VoxClipMedia
         await prepareQuote(indices: phrases.map(\.id), decoding: true, candidates: VoiceLabPricing.maximumCandidates)
     }
 
+    func prepareSpeechContext(phrase: Int) async {
+        guard phrases.indices.contains(phrase) else { return }
+        await prepareQuote(indices: [phrase], decoding: true, candidates: VoiceLabPricing.maximumCandidates)
+    }
+
     func prepareAnother(phrase index: Int) async {
         guard phrases.indices.contains(index), inputs.indices.contains(index) else { return }
         await prepareQuote(indices: [index], decoding: false, candidates: 1)
     }
 
     private func prepareQuote(indices: [Int], decoding: Bool, candidates: Int) async {
-        guard !preparing, !generating, !publishing, !retired, operation == nil, let backend else { return }
+        guard !preparing, !generating, !publishing, !preparingVideo, !retired, operation == nil, let backend else { return }
         stopAudition()
         preparing = true; problem = ""; batch = nil; cost = nil; revision += 1
         let version = revision
@@ -209,6 +364,7 @@ import VoxClipMedia
                     }
                 }
                 try validate(inputs.map(\.window))
+                try validateContextInputs(inputs)
                 let requested = indices.map { inputs[$0] }
                 try VoiceLabTakeBatch.validate(requested)
                 let quoted = try await backend.prepare(requested, indices, candidates)
@@ -236,7 +392,7 @@ import VoxClipMedia
     }
 
     func start(approved: Bool, quoteID: UUID?) async {
-        guard approved, !generating, !preparing, !publishing, !retired, operation == nil, let batch, let backend else { return }
+        guard approved, !generating, !preparing, !publishing, !preparingVideo, !retired, operation == nil, let batch, let backend else { return }
         guard quoteID == batch.id else { return }
         stopAudition()
         generating = true; problem = ""; receivedInBatch = []
@@ -247,6 +403,7 @@ import VoxClipMedia
                 try checkCurrent(version)
                 try validate(phrases.map(\.window))
                 try await checkCap(batch.estimate, version: version)
+                try validateContextInputs(inputs)
                 try await backend.approve(batch, batchIndices)
                 for (offset, phrase) in batchIndices.enumerated() {
                     try checkCurrent(version)
@@ -291,6 +448,7 @@ import VoxClipMedia
 
     func stop() async {
         stopAudition()
+        if preparingVideo { clearPreparedVideo() }
         guard preparing || generating else { return }
         stopping = true; revision += 1; operation?.cancel()
         if let phrase = runningPhrase {
@@ -305,6 +463,7 @@ import VoxClipMedia
 
     func invalidate() {
         stopAudition()
+        clearPreparedVideo()
         guard !retired else { return }
         retired = true; revision += 1; operation?.cancel(); batch = nil; cost = nil
         let backend = backend
@@ -318,9 +477,13 @@ import VoxClipMedia
     }
 
     @discardableResult func select(take: UUID, phrase: Int) -> Bool {
-        guard !generating, !preparing, !publishing, !retired, isCurrent(), phrases.indices.contains(phrase),
+        guard !generating, !preparing, !publishing, !preparingVideo, !retired, isCurrent(), phrases.indices.contains(phrase),
               phrases[phrase].takes.contains(where: { $0.id == take && $0.row.selectable }) else { return false }
         stopAudition()
+        if phrases[phrase].selectedID != take {
+            clearPreparedVideo()
+            phrases[phrase].videoChoice = nil
+        }
         phrases[phrase].selectedID = take
         phrases[phrase].explicitlySelected = true
         return true
@@ -347,6 +510,7 @@ import VoxClipMedia
     func dispatch(_ request: UUID, start: @escaping @Sendable () throws -> Void) async throws {
         let version = revision
         try checkCurrent(version)
+        try validateContextInputs(inputs)
         guard generating, let remaining = progress?.remainingEstimate(from: request) else { throw Failure.stale }
         do { try await checkCap(remaining, version: version) }
         catch {
@@ -397,18 +561,45 @@ import VoxClipMedia
         guard (revision == version || stopping), !retired, isCurrent() else { return }
         if phrases[phrase].explicitlySelected, phrases[phrase].selected?.row.selectable == true { return }
         let best = phrases[phrase].takes.filter { $0.row.selectable }.max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
-        if let best { phrases[phrase].selectedID = best.id }
+        if let best, best.id != phrases[phrase].selectedID {
+            clearPreparedVideo()
+            phrases[phrase].videoChoice = nil
+            phrases[phrase].selectedID = best.id
+        }
     }
 
     func acceptance(at date: Date = Date()) async throws -> Acceptance {
         stopAudition()
+        guard stillCurrent else { invalidate(); throw Failure.stale }
+        guard canAccept else { throw Failure.noSelection }
+        if selectedPhrases.contains(where: { $0.videoChoice == .retimed }) {
+            let turn = videoRevision, choices = videoChoices
+            preparingVideo = true
+            defer { preparingVideo = false }
+            let output = try await publishSelection(at: date)
+            let proposed = try VoiceLabEditCommand.acceptAll(segments: output.segments, assets: output.assets, voice: output.voice)
+                .applying(to: project, outputScope: scope)
+            let render = try await VideoDurationRenderReadiness.prepare(proposed, scope: scope, using: prepareDurationRender)
+            try Task.checkCancellation()
+            guard stillCurrent, turn == videoRevision, choices == videoChoices else { throw Failure.stale }
+            preparedVideoSelection = PreparedVideoSelection(choices: choices, acceptance: output, render: render)
+            return output
+        }
+        return try await publishSelection(at: date)
+    }
+
+    private func publishSelection(at date: Date) async throws -> Acceptance {
+        stopAudition()
         let version = revision
         try checkCurrent(version)
+        try validateContextInputs(inputs)
         guard !generating, !preparing, !publishing, let backend else { throw Failure.stale }
         publishing = true
         defer { publishing = false }
-        let selected = phrases.filter { $0.selected?.fits == true }
-        guard !selected.isEmpty else { throw Failure.noSelection }
+        let selected = selectedPhrases
+        guard !selected.isEmpty, selected.allSatisfy({ phrase in
+            phrase.videoChoice.map { videoAvailability(phrase: phrase.id).allows($0) } == true
+        }) else { throw Failure.noSelection }
         let windows = try selected.map { phrase -> VoiceLabWindow in
             guard let fit = phrase.selected?.row.audio?.fit.plan else { throw Failure.noSelection }
             var window = phrase.window
@@ -420,11 +611,11 @@ import VoxClipMedia
         var segments: [VoiceLabSegment] = [], assets: [VoiceLabAsset] = []
         var voice: VoiceLabVoiceReference?
         for phrase in selected {
-            guard let row = phrase.selected?.row, row.fits, let fit = row.audio?.fit.plan else { throw Failure.noSelection }
+            guard let row = phrase.selected?.row, row.selectable, let fit = row.audio?.fit.plan else { throw Failure.noSelection }
             let (published, record) = try await backend.publish(phrase.id, row, inputs[phrase.id], date)
             try checkCurrent(version)
             let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: inputs[phrase.id], published: published,
-                                                               record: record, createdAt: date, videoChoice: nil)
+                                                               record: record, createdAt: date, videoChoice: phrase.videoChoice)
             segments.append(try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: [candidate],
                 selected: 0, input: inputs[phrase.id], plan: fit))
             for asset in published.assets {
@@ -446,7 +637,7 @@ import VoxClipMedia
     }
     private func checkCurrent(_ version: Int) throws {
         try Task.checkCancellation()
-        guard version == revision, !retired, isCurrent() else { throw Failure.stale }
+        guard version == revision, stillCurrent else { throw Failure.stale }
     }
     private func checkCap(_ estimate: CostEstimate, version: Int) async throws {
         let cap = try await readCap()
@@ -461,7 +652,15 @@ import VoxClipMedia
         case Failure.unknownSpend: "VoxClip can't check your ElevenLabs spending limit. Nothing more was sent."
         case Failure.budget: "These changes re-voice too many words. Leave a phrase out or re-record."
         case Failure.stale: "The rewrite changed. Make a fresh takes plan before sending anything."
-        case Failure.noSelection: "Choose a take that fits before using takes."
+        case Failure.noSelection: "Choose a valid video duration for every selected passage before using takes."
+        case Failure.insufficientSpeechWindow(let phrase, _):
+            "Phrase \(phrase) has too little room for the 3 seconds of generated speech needed to verify the voice. Leave this phrase out or re-record the sentence. Nothing was sent for takes. Your edits are saved."
+        case Failure.insufficientPlannedSpeech(let phrase, _):
+            "Phrase \(phrase) is likely too short to verify the generated voice. Voice Lab needs at least 3 seconds of speech. Leave this phrase out or re-record the sentence. Nothing was sent for takes. Your edits are saved."
+        case Failure.speechEstimateUnavailable:
+            "There isn't enough timed speech to estimate whether these phrases can be verified. Leave the voice changes out or re-record these sentences. Nothing was sent for takes. Your edits are saved."
+        case is RewriteSpeechContextReview.Failure, is VoiceLabSpeechContextPlan.Failure:
+            RewriteSpeechContextReview.copy(error)
         case Failure.placement(.geometry(let error)): RewriteSession.refusal(error)
         case Failure.placement(let reason): reason.copy ?? "These phrases cannot be voiced together. Edit the words or leave one out."
         case is CancellationError: "Stopped. Finished takes are kept."

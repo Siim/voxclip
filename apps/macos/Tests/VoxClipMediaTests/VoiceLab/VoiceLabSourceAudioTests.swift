@@ -18,6 +18,53 @@ import VoxClipCore
         #expect(result.envelope == VoiceLabTakeProcessing.envelope(expected, sampleRate: 48_000))
     }
 
+    @Test func conversionEnvelopeUsesTheSourceClockAndDropsOnlyThePartialTail() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("partial-tail.mov"), rate = 48_000, frames = 480_240
+        try await movie(url, rate: rate, channels: 1, frames: frames, float: false) { frame, _ in Double(Self.mono(frame)) }
+        let envelope = try await VoiceLabSourceAudio.sourceEnvelope(source: url, durationSeconds: 10.005, sampleRate: rate)
+        let samples = Self.floats(try await VoiceLabSourceAudio.conversionInput(source: url,
+            startSample: 0, endSample: Int64(frames), sourceSampleRate: Double(rate)))
+        #expect(envelope == VoiceLabSourceAudio.envelope(samples: samples, sampleRate: rate))
+        #expect(envelope.levels.count == 1_000 && samples.count == frames)
+        await #expect(throws: VoiceLabSourceAudioError.rangeOutsideMedia) {
+            _ = try await VoiceLabSourceAudio.sourceEnvelope(source: url, durationSeconds: 10.02, sampleRate: rate)
+        }
+    }
+
+    @Test func conversionPlanningCoversShorterAudioWhileUploadsStillRequireActualSamples() async throws {
+        let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
+        let audioURL = root.appendingPathComponent("short-audio.mov")
+        try await movie(audioURL, rate: 48_000, channels: 1, frames: 24_000, float: false) { frame, _ in Double(Self.mono(frame)) }
+        let audioAsset = AVURLAsset(url: audioURL)
+        let videoAsset = AVURLAsset(url: try await NativeMediaFixtures.shared.file("counter.mov"))
+        let audio = try #require(try await audioAsset.loadTracks(withMediaType: .audio).first)
+        let video = try #require(try await videoAsset.loadTracks(withMediaType: .video).first)
+        let composition = AVMutableComposition()
+        let videoTrack = try #require(composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid))
+        let audioTrack = try #require(composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid))
+        try videoTrack.insertTimeRange(CMTimeRange(start: .zero, duration: CMTime(value: 2, timescale: 1)), of: video, at: .zero)
+        try audioTrack.insertTimeRange(CMTimeRange(start: .zero, duration: CMTime(value: 1, timescale: 2)), of: audio,
+                                      at: CMTime(value: 1, timescale: 2))
+        let source = root.appendingPathComponent("longer-video.mov")
+        let exporter = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
+        try await exporter.export(to: source, as: .mov)
+        let envelope = try await VoiceLabSourceAudio.sourceEnvelope(source: source, durationSeconds: 2, sampleRate: 48_000)
+        #expect(envelope.levels.count == 200)
+        #expect(envelope.levels.prefix(50).allSatisfy { $0 == 0 })
+        #expect(envelope.levels[50..<100].contains { $0 > 0 })
+        #expect(envelope.levels.suffix(100).allSatisfy { $0 == 0 })
+        let actual = try await VoiceLabSourceAudio.conversionInput(source: source, startSample: 24_000,
+            endSample: 48_000, sourceSampleRate: 48_000)
+        #expect(Self.floats(actual).count == 24_000)
+        for range in [0..<24_000, 48_000..<72_000] {
+            await #expect(throws: VoiceLabSourceAudioError.rangeOutsideMedia) {
+                _ = try await VoiceLabSourceAudio.conversionInput(source: source, startSample: Int64(range.lowerBound),
+                    endSample: Int64(range.upperBound), sourceSampleRate: 48_000)
+            }
+        }
+    }
+
     /// The old whole-track decode refused any source over 30,000,000 frames (10 min 25 s at 48 kHz) before reading it.
     @Test func rewriteSourceHoldsOnlyTheWindowAndRoomToneRegionsOfALongTrack() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }

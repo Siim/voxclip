@@ -584,7 +584,17 @@ struct VoiceLabTakeRunTests {
         let quote = try await fixture.run.prepare(fixture.input)
         let result = try await fixture.run.execute(quote, approved: true)
         #expect(result.rows.count == 3 && result.best == nil)
-        #expect(result.rows.allSatisfy { $0.qa?.failures.contains(.speaker) == true && !$0.selectable })
+        #expect(result.rows.allSatisfy { $0.failure == .qa([.insufficientGeneratedSpeech]) && !$0.selectable })
+        for row in result.rows {
+            let audio = try #require(row.audio)
+            let receipt = try #require(row.receipt)
+            #expect(audio.trimmed.count < audio.sampleRate * 3)
+            #expect(row.generated?.pcm.count == 48_000)
+            #expect(row.qa?.failures == [.insufficientGeneratedSpeech])
+            #expect(row.qa?.values == VoiceLabQA())
+            #expect(row.qaReceipt == nil && row.score == nil)
+            #expect(row.acceptedRequestIDs == Set([receipt.requestID]))
+        }
         #expect(fixture.http.value.withLock { $0.qa == 0 })
     }
     @Test func approvalRejectsAChangedQuoteSetWithoutSending() async throws {

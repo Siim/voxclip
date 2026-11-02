@@ -24,6 +24,25 @@ import xlocale
     private(set) var bestID: UUID?
     private(set) var selectedID: UUID?
     private(set) var videoChoice: VoiceLabVideoMode?
+    private(set) var runFailure: VoiceLabTakeFailure?
+    private(set) var preparingVideo = false
+    @ObservationIgnored var prepareDurationRender: VideoDurationRenderPreparer?
+    @ObservationIgnored private var videoRevision = UUID()
+    @ObservationIgnored private var preparedVideoAcceptance: PreparedVideoAcceptance?
+    private struct VideoAcceptance {
+        let original: Project
+        let review: Project
+        let proposed: Project
+        let scope: VoiceLabOutputScope
+        let segment: VoiceLabSegment
+        let assets: [VoiceLabAsset]
+        let voice: VoiceLabVoiceReference
+    }
+    private struct PreparedVideoAcceptance {
+        let takeID: UUID
+        let acceptance: VideoAcceptance
+        let render: PreparedVideoDurationRender
+    }
     private(set) var problem = ""
     private(set) var announcement = ""
     let audition = VoiceLabAudition()
@@ -94,8 +113,19 @@ import xlocale
     init(run: VoiceLabTakeRun, inputsAreCurrent: @escaping @MainActor () -> Bool = { true }) {
         self.run = run; self.inputsAreCurrent = inputsAreCurrent
     }
-    var readyToAccept: Bool { !accepting && reviewedInputsCurrent && inputsAreCurrent() && phase == .readyToAccept && selected?.selectable == true }
-    var acceptTitle: String { selected.map { "Use Take \($0.index + 1)" } ?? "Use Take 1" }
+    var readyToAccept: Bool {
+        guard !accepting, !preparingVideo, reviewedInputsCurrent, inputsAreCurrent(), phase == .readyToAccept,
+              selected?.selectable == true, let videoChoice, videoAvailability.allows(videoChoice) else { return false }
+        return videoChoice == .source || preparedVideoAcceptance?.takeID == selectedID
+    }
+    var videoAvailability: VideoDurationChoiceAvailability {
+        VideoDurationChoiceAvailability(row: selected, sourceSampleRate: input?.sourceSampleRate ?? 48_000,
+            rendererReady: prepareDurationRender != nil && VoiceLabRenderInput.supportsVideoMode(.zoomCover))
+    }
+    private func clearVideoChoice() {
+        videoRevision = UUID(); videoChoice = nil; preparedVideoAcceptance = nil
+    }
+    var acceptTitle: String { selected.map { "Use Take \($0.index + 1)" } ?? "Use Take" }
     var buttonTitle: String { generationButtonTitle(rows.isEmpty ? "Generate Takes" : "Generate Again") }
     func generationButtonTitle(_ action: String, takes: Int? = nil) -> String {
         let amount = quote?.estimate.usd.map { $0 == 0 ? "" : VoiceLabCostPresentation.format($0) } ?? ""
@@ -108,19 +138,18 @@ import xlocale
         problem = text
     }
     var retimeFactor: Double? {
-        guard let audio = selected?.audio, audio.fit.plan.outputFrames > 0 else { return nil }
-        return (audio.fit.plan.windowEnd - audio.fit.plan.windowStart) * Double(audio.sampleRate) / Double(audio.fit.plan.outputFrames)
+        videoAvailability.options?.retimeFactor
     }
-    var canRetime: Bool { VoiceLabRenderInput.supportsVideoMode(.zoomCover) && retimeFactor.map { (0.80...1.25).contains($0) } ?? false }
+    var canRetime: Bool { videoAvailability.allows(.retimed) }
     var lengthCopy: String {
         guard let row = selected, let audio = row.audio, case .changedDuration(_, _, let residual) = audio.fit else { return "" }
         let seconds = String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), abs(residual))
         return "Take \(row.index + 1) runs \(seconds) s \(residual >= 0 ? "longer" : "shorter") than the words it replaces. Choose how the video keeps up."
     }
     var retimeCopy: String {
-        guard VoiceLabRenderInput.supportsVideoMode(.zoomCover) else { return "Retimed source video is not available in this build. Re-record this sentence instead." }
+        if let reason = videoAvailability.changedReason { return reason }
         guard canRetime, let factor = retimeFactor, let audio = selected?.audio else { return "Retiming is unavailable outside 0.80×–1.25×. Re-record this sentence instead." }
-        return "\(factor < 1 ? "Slows" : "Speeds") these \(String(format: "%.1f", audio.fit.plan.windowEnd - audio.fit.plan.windowStart)) s of video \(factor < 1 ? "to" : "up to") \(String(format: "%.2f", factor))× and crops in slightly around your face. Nothing is sent."
+        return "\(factor < 1 ? "Slows" : "Speeds") these \(String(format: "%.1f", audio.fit.plan.windowEnd - audio.fit.plan.windowStart)) s of video \(factor < 1 ? "to" : "up to") \(String(format: "%.2f", factor))× and applies a centered 1.12× crop. Nothing is sent."
     }
     static func pauseFitNote(_ seconds: Double) -> String {
         let sign = seconds >= 0 ? "+" : "−"
@@ -139,7 +168,7 @@ import xlocale
     func play(_ row: VoiceLabTakeRow) async {
         guard row.selectable else { return }
         if audition.isPlaying && audition.takeId == row.id { audition.stop(); return }
-        _ = select(row.id)
+        guard select(row.id) else { return }
         do {
             guard let scratch = await run.scratch(for: row.id), selectedID == row.id, inputsAreCurrent() else { return }
             try audition.play(scratch, takeId: row.id, selectionId: row.id.uuidString)
@@ -158,13 +187,14 @@ import xlocale
         let next = VoiceLabTakeRunResult(rows: rows, end: .completed).best
         bestID = next?.id
         if selectedID == row.id {
+            clearVideoChoice()
             selectedID = next?.id; videoChoice = nil
             if let next {
                 phase = next.fits ? .readyToAccept : .lengthChanged
                 announcement = "Rejected Take \(row.index + 1). Take \(next.index + 1) selected."
             } else {
                 phase = .nonePassed
-                announcement = "These takes didn't sound right. Try different wording or re-record."
+                announcement = Self.completionAnnouncement(rows: rows, fittedTake: nil)
             }
         }
         await run.reject(row.id)
@@ -173,52 +203,84 @@ import xlocale
     /// so the caller can tell its own change from an edit the user makes while the take publishes (`RewriteSession.follow`).
     @discardableResult func accept(into editor: EditorModel, localCommands: [EditCommand] = [], at date: Date = Date(),
                                    wrap: (() throws -> Void) throws -> Void = { try $0() }) async -> Bool {
-        guard !Task.isCancelled, readyToAccept, let input, let selected else { return false }
-        let version = revision, project = editor.project
+        guard !Task.isCancelled, readyToAccept else { return false }
+        let version = revision, turn = videoRevision, chosenID = selectedID
+        audition.stop()
         accepting = true
         defer { accepting = false }
         do {
-            var candidates: [VoiceLabCandidate] = [], assets: [VoiceLabAsset] = []
-            var voice: VoiceLabVoiceReference?
-            var selectedIndex: Int?
-            for row in rows where row.selectable && (row.fits || row.id == selected.id) &&
-                row.audio?.fit.plan.windowStart == selected.audio?.fit.plan.windowStart &&
-                row.audio?.fit.plan.windowEnd == selected.audio?.fit.plan.windowEnd {
-                // Fit may borrow silence and move a seam. Refuse changed geometry before publishing any asset.
-                guard let plan = row.audio?.fit.plan else { throw VoiceLabProjectError.invalidCandidate }
-                var window = input.window
-                window.start = plan.windowStart; window.end = plan.windowEnd
-                window.startSample = plan.windowStartSample; window.endSample = plan.windowEndSample
-                try editor.validateVoiceLabPlacement(window, localCommands: localCommands)
-                let published: VoiceLabPublishedTake, record: VoiceConsentRecord
-                #if DEBUG
-                if let publishForTests { (published, record) = try await publishForTests(row, input, date) }
-                else { (published, record) = try await run.publishForAcceptance(row, input: input, at: date) }
-                #else
-                (published, record) = try await run.publishForAcceptance(row, input: input, at: date)
-                #endif
-                try Task.checkCancellation()
-                guard version == revision, inputsAreCurrent(), editor.project == project else { return false }
-                let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: input, published: published,
-                    record: record, createdAt: date, videoChoice: row.id == selected.id ? videoChoice : nil)
-                if row.id == selected.id { selectedIndex = candidates.count }
-                candidates.append(candidate)
-                for asset in published.assets where !assets.contains(where: { $0.id == asset.id }) { assets.append(asset) }
-                voice = VoiceLabVoiceReference(id: record.id, provider: record.provider, voiceId: record.voiceId,
-                    consentRecordId: record.id, displayName: record.voiceName, status: .active)
+            let output = try await publishVideoSelection(into: editor, localCommands: localCommands, at: date)
+            let render: PreparedVideoDurationRender?
+            if videoChoice == .retimed {
+                render = try await VideoDurationRenderReadiness.prepare(output.proposed, scope: output.scope, using: prepareDurationRender)
+            } else { render = nil }
+            try Task.checkCancellation()
+            guard version == revision, turn == videoRevision, chosenID == selectedID,
+                  inputsAreCurrent(), reviewedInputsCurrent, editor.project == output.original,
+                  try editor.voiceLabReviewProject(localCommands: localCommands) == output.review else { return false }
+            try withExtendedLifetime(render) {
+                try wrap { try editor.applyVoiceLab(.accept(output.segment, assets: output.assets, voice: output.voice), localCommands: localCommands) }
             }
-            guard version == revision, inputsAreCurrent(), editor.project == project, let voice, let selectedIndex,
-                  let plan = selected.audio?.fit.plan else { return false }
-            let segment = try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: candidates,
-                selected: selectedIndex, input: input, plan: plan)
-            try wrap { try editor.applyVoiceLab(.accept(segment, assets: assets, voice: voice), localCommands: localCommands) }
             return true
         } catch is CancellationError {
         } catch { if version == revision { problem = RewriteSession.refusal(error) } }
         return false
     }
+
+    private func publishVideoSelection(into editor: EditorModel, localCommands: [EditCommand], at date: Date) async throws -> VideoAcceptance {
+        guard let input, let row = selected, row.selectable, let plan = row.audio?.fit.plan,
+              let choice = videoChoice, videoAvailability.allows(choice) else { throw VoiceLabProjectError.videoModeUnsupported }
+        let version = revision, turn = videoRevision, original = editor.project
+        let review = try editor.voiceLabReviewProject(localCommands: localCommands)
+        let scope = original.edits.activeClipId.map(VoiceLabOutputScope.clip) ?? .full
+        var window = input.window
+        window.start = plan.windowStart; window.end = plan.windowEnd
+        window.startSample = plan.windowStartSample; window.endSample = plan.windowEndSample
+        try editor.validateVoiceLabPlacement(window, localCommands: localCommands)
+        let published: VoiceLabPublishedTake, record: VoiceConsentRecord
+        #if DEBUG
+        if let publishForTests { (published, record) = try await publishForTests(row, input, date) }
+        else { (published, record) = try await run.publishForAcceptance(row, input: input, at: date) }
+        #else
+        (published, record) = try await run.publishForAcceptance(row, input: input, at: date)
+        #endif
+        try Task.checkCancellation()
+        guard version == revision, turn == videoRevision, inputsAreCurrent(), reviewedInputsCurrent,
+              editor.project == original, selectedID == row.id else { throw VoiceLabProjectError.staleRenderContract }
+        let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: input, published: published,
+            record: record, createdAt: date, videoChoice: choice)
+        let segment = try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: [candidate], selected: 0, input: input, plan: plan)
+        let voice = VoiceLabVoiceReference(id: record.id, provider: record.provider, voiceId: record.voiceId,
+            consentRecordId: record.id, displayName: record.voiceName, status: .active)
+        let proposed = try VoiceLabEditCommand.accept(segment, assets: published.assets, voice: voice).applying(to: review, outputScope: scope)
+        return VideoAcceptance(original: original, review: review, proposed: proposed, scope: scope,
+            segment: segment, assets: published.assets, voice: voice)
+    }
+
+    func prepareVideoChoice(into editor: EditorModel, localCommands: [EditCommand] = [], at date: Date = Date()) async {
+        guard !accepting, !preparingVideo, reviewedInputsCurrent, inputsAreCurrent(), videoChoice == .retimed,
+              videoAvailability.allows(.retimed), let selectedID else { return }
+        if let prepared = preparedVideoAcceptance, prepared.takeID == selectedID,
+           prepared.acceptance.original == editor.project,
+           (try? editor.voiceLabReviewProject(localCommands: localCommands)) == prepared.acceptance.review { return }
+        let turn = videoRevision
+        preparingVideo = true
+        defer { preparingVideo = false }
+        do {
+            let output = try await publishVideoSelection(into: editor, localCommands: localCommands, at: date)
+            let render = try await VideoDurationRenderReadiness.prepare(output.proposed, scope: output.scope, using: prepareDurationRender)
+            try Task.checkCancellation()
+            guard turn == videoRevision, reviewedInputsCurrent, inputsAreCurrent(), self.selectedID == selectedID,
+                  editor.project == output.original, try editor.voiceLabReviewProject(localCommands: localCommands) == output.review
+            else { throw VoiceLabProjectError.staleRenderContract }
+            preparedVideoAcceptance = PreparedVideoAcceptance(takeID: selectedID, acceptance: output, render: render)
+            problem = ""
+        } catch {
+            if turn == videoRevision { preparedVideoAcceptance = nil; problem = RewriteSession.refusal(error) }
+        }
+    }
     var selected: VoiceLabTakeRow? { rows.first { $0.id == selectedID } }
-    var canGenerate: Bool { !accepting && !preparingQuote && inputsAreCurrent() && selectedVoiceID != nil && selectedModelID != nil && phase != .generating }
+    var canGenerate: Bool { !accepting && !preparingVideo && !preparingQuote && inputsAreCurrent() && selectedVoiceID != nil && selectedModelID != nil && phase != .generating }
     var canExecute: Bool { canGenerate && quote != nil && cost != nil }
     var dispatchIsCurrent: Bool { executionRevision == nil || executionRevision == revision }
     var inputsMatchCurrentSelection: Bool { input?.recordID == selectedVoiceID && input?.modelID == selectedModelID }
@@ -246,10 +308,12 @@ import xlocale
         selectedModelID = id; inputsChanged()
     }
     func inputsChanged(prepareNewQuote: Bool = true) {
+        clearVideoChoice()
         onInputsChanged?()
         let execution = sending
         sending?.cancel(); sending = nil
         reviewedInputsCurrent = false
+        announcement = "These takes no longer match the current inputs. Review the changes before using a take."
         if phase == .generating {
             let retained = selected ?? VoiceLabTakeRunResult(rows: rows, end: .completed).best
             phase = retained.map { $0.fits ? .readyToAccept : .lengthChanged } ?? (rows.isEmpty ? .idle : .nonePassed)
@@ -334,20 +398,25 @@ import xlocale
                 guard self.launchStarted else {
                     self.executionRevision = nil
                     self.phase = self.phaseBeforeLaunch
-                    self.problem = RewriteSession.refusal(VoiceLabError.consentRequired)
-                    self.requestQuote()
+                    self.runFailure = result.failure
+                    self.problem = result.failure.map { TakeFailurePresentation.reason(for: $0) } ?? "Take generation did not start. No failure reason is available."
+                    self.announcement = "No new takes were made. " + self.problem
                     return
                 }
                 self.executionRevision = nil
                 self.review(result)
-                self.requestQuote()
+                if result.best != nil, result.end == .completed || result.end == .earlyStop { self.requestQuote() }
             } catch {
                 guard self.revision == version else { return }
                 if self.approvalDeclined, !self.launchStarted { self.retainDeclinedQuote(); return }
                 if error is CancellationError { self.cancel(); return }
                 self.executionRevision = nil
                 self.phase = Task.isCancelled ? .cancelled : .failed
-                self.problem = Task.isCancelled ? "" : RewriteSession.refusal(error)
+                if let failure = error as? VoiceLabError { self.runFailure = .provider(failure) }
+                else if let failure = error as? VoiceConsentError { self.runFailure = .consent(failure) }
+                else { self.runFailure = nil }
+                self.problem = Task.isCancelled ? "" : self.runFailure.map { TakeFailurePresentation.reason(for: $0) } ?? RewriteSession.refusal(error)
+                self.announcement = Task.isCancelled ? "Take generation stopped." : "Take generation stopped. No take can be used from this review. " + self.problem
             }
         }
     }
@@ -394,51 +463,80 @@ import xlocale
         guard revision == version else { return }
         if rows.isEmpty {
             audition.stop(); bestID = nil; selectedID = nil; videoChoice = nil
+            runFailure = nil; problem = ""
             input = quotedInput; quotedInput = nil
         }
         for row in rows where !self.rows.contains(where: { $0.id == row.id }) && row.selectable {
-            announcement = "Take \(row.index + 1) ready."
+            announcement = row.fits ? "Take \(row.index + 1) fits." : "Take \(row.index + 1) passed checks but needs a timing change."
         }
         self.rows = rows
     }
     func review(_ result: VoiceLabTakeRunResult, input: VoiceLabTakeInput? = nil) {
+        clearVideoChoice()
         launchStarted = false
         if let input { self.input = input }
         reviewedInputsCurrent = true
         rows = result.rows; bestID = result.best?.id; selectedID = nil; videoChoice = nil
+        runFailure = result.failure
+        problem = result.failure.map { TakeFailurePresentation.reason(for: $0) } ?? ""
         guard result.end == .completed || result.end == .earlyStop else {
             phase = result.end == .cancelled || result.end == .invalidated ? .cancelled : .failed
+            let status = result.end == .invalidated ? "These takes are no longer current." : "Take generation stopped."
+            announcement = status + " No take can be used from this review." + (problem.isEmpty ? "" : " " + problem)
             return
         }
-        guard let best = result.best else { phase = .nonePassed; announcement = "These takes didn't sound right. Try different wording or re-record."; return }
+        guard let best = result.best else {
+            phase = .nonePassed
+            announcement = Self.completionAnnouncement(rows: rows, fittedTake: nil)
+            if !problem.isEmpty, !announcement.contains(problem) { announcement += " " + problem }
+            return
+        }
         selectedID = best.id
         phase = best.fits ? .readyToAccept : .lengthChanged
-        announcement = Self.completionAnnouncement(count: rows.count, fittedTake: best.fits ? best.index + 1 : nil,
-                                                  failed: rows.filter { !$0.selectable }.count)
+        announcement = Self.completionAnnouncement(rows: rows, fittedTake: best.fits ? best.index + 1 : nil)
     }
-    static func completionAnnouncement(count: Int, fittedTake: Int?, failed: Int = 0) -> String {
-        let failures = failed == 1 ? "one" : failed == 2 ? "two" : "\(failed)"
-        if let fittedTake {
-            return "Take \(fittedTake) fits." + (failed > 0 ? " \(failures.capitalized) failed the speech check." : "")
+    static func completionAnnouncement(rows: [VoiceLabTakeRow], fittedTake: Int?) -> String {
+        let checked = rows.filter(\.selectable)
+        let fitting = checked.filter(\.fits)
+        var parts: [String] = []
+        if let fittedTake, fitting.contains(where: { $0.index + 1 == fittedTake }) {
+            parts.append("Take \(fittedTake) fits.")
+        } else if !fitting.isEmpty {
+            parts.append("\(countWord(fitting.count)) \(fitting.count == 1 ? "take fits" : "takes fit").")
+        } else if !checked.isEmpty {
+            parts.append("No take fits yet. \(countWord(checked.count)) \(checked.count == 1 ? "take passed" : "takes passed") checks but \(checked.count == 1 ? "needs" : "need") a timing change.")
+        } else {
+            parts.append("No usable takes.")
         }
-        let ready = count == 3 ? "Three takes ready." : count == 1 ? "One take ready." : "Two takes ready."
-        return failed > 0 ? "\(ready.dropLast()), \(failures) failed the speech check." : ready
+        let excluded = rows.filter { !$0.selectable }
+        if !excluded.isEmpty { parts.append("\(countWord(excluded.count)) \(excluded.count == 1 ? "take" : "takes") left out.") }
+        for reason in excluded.compactMap({ TakeFailurePresentation.reason(for: $0) }) where !parts.contains(reason) { parts.append(reason) }
+        return parts.joined(separator: " ")
+    }
+    private static func countWord(_ count: Int) -> String {
+        switch count { case 1: "One"; case 2: "Two"; case 3: "Three"; default: "\(count)" }
     }
     @discardableResult func select(_ id: UUID) -> Bool {
-        guard !accepting, [.lengthChanged, .readyToAccept, .nonePassed].contains(phase),
+        guard !accepting, !preparingVideo, reviewedInputsCurrent, inputsAreCurrent(), [.lengthChanged, .readyToAccept, .nonePassed].contains(phase),
               let row = rows.first(where: { $0.id == id }), row.selectable else { return false }
         if selectedID == id { return true }
         audition.selectionChanged(to: id.uuidString)
-        selectedID = id; videoChoice = nil
+        clearVideoChoice()
+        selectedID = id
         phase = row.fits ? .readyToAccept : .lengthChanged
         return true
     }
     @discardableResult func chooseVideo(_ choice: VoiceLabVideoMode) -> Bool {
-        guard !accepting, phase == .lengthChanged, selected?.selectable == true, choice == .retimed, canRetime else { return false }
+        guard !accepting, !preparingVideo, reviewedInputsCurrent, inputsAreCurrent(),
+              [.lengthChanged, .readyToAccept].contains(phase), selected?.selectable == true,
+              videoAvailability.allows(choice) else { return false }
+        if videoChoice == choice { return true }
+        clearVideoChoice()
         videoChoice = choice; phase = .readyToAccept
         return true
     }
     func cancel() {
+        if preparingVideo { clearVideoChoice() }
         let execution = sending
         sending = nil
         if launchStarted { audition.stop() }
@@ -457,10 +555,12 @@ import xlocale
         requestQuote()
     }
     func invalidate() {
+        clearVideoChoice()
         audition.stop()
         quotePreparation?.cancel(); quotePreparation = nil
         sending?.cancel(); sending = nil; revision += 1
-        quote = nil; cost = nil; rows = []; bestID = nil; selectedID = nil; videoChoice = nil; problem = ""; phase = .idle
+        quote = nil; cost = nil; rows = []; bestID = nil; selectedID = nil; videoChoice = nil; runFailure = nil; problem = ""; phase = .idle
+        announcement = ""
         input = nil; quotedInput = nil; preparingQuote = false
         activeQuote = nil; approvedCost = nil; confirmCost = nil
         enqueueCleanup()

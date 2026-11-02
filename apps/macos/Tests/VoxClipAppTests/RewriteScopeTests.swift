@@ -140,9 +140,13 @@ private final class WorkThreads: Sendable {
         session.configureGeneration(client: ElevenLabsVoiceLab(keys: ScopeTakeKeys(), region: .default),
                                     store: VoiceConsentStore(locations: DataLocations(environment: ["VOXCLIP_DATA_DIR": root.path])), speaker: .unavailable)
         let generation = try #require(session.generation)
+        let sourceRate = editor.project.media.source.audio?.sampleRate ?? 48_000
+        let fallbackStart = Int64(21 * sourceRate)
+        let fallbackEnd = Int64(EditingPrimitives.jsRound(22.4 * Double(sourceRate)))
+        let fade = Int64(EditingPrimitives.jsRound(0.020 * Double(sourceRate)))
         let fallback = VoiceLabWindow(firstWordId: "w20", lastWordId: "w21", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 21, end: 22.4,
-            startSample: 21_000, endSample: 22_400, leftSeam: .init(kind: .gap, time: 21, sample: 21_000, fadeSamples: 20),
-            rightSeam: .init(kind: .gap, time: 22.4, sample: 22_400, fadeSamples: 20))
+            startSample: fallbackStart, endSample: fallbackEnd, leftSeam: .init(kind: .gap, time: 21, sample: fallbackStart, fadeSamples: fade),
+            rightSeam: .init(kind: .gap, time: 22.4, sample: fallbackEnd, fadeSamples: fade))
         let window = session.review?.voiceHunks.first?.window ?? fallback
         let frames = Int64(EditingPrimitives.jsRound((window.end - window.start) * 24_000))
         let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
@@ -153,9 +157,10 @@ private final class WorkThreads: Sendable {
         let qa = VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -20, speakerScore: 0.8), failures: [])
         let row = VoiceLabTakeRow(id: UUID(), index: 0, seed: 0, audio: audio, qa: qa, score: 1, failure: nil)
         let input = VoiceLabTakeInput(text: "new words", modelID: "fixture-model", recordID: "fixture-record", language: "en", seed: 7,
-            contentKey: editor.project.media.source.contentKey, source: [], sourceSampleRate: 1_000, items: editor.words,
+            contentKey: editor.project.media.source.contentKey, source: [], sourceSampleRate: sourceRate, items: editor.words,
             window: window, incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
         generation.review(VoiceLabTakeRunResult(rows: [row], end: .completed), input: input)
+        #expect(generation.chooseVideo(.source))
         return generation
     }
     private func proposal(_ session: RewriteSession) -> ChangeSet? { if case .proposal(let set) = session.task.state { set } else { nil } }

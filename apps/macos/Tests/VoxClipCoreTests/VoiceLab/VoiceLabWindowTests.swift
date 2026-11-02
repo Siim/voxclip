@@ -436,10 +436,10 @@ struct VoiceLabWindowTests {
             let prepared = try VoiceLabRenderContract.prepare(project, scope: .full, labelPosition: .topRight)
             if changed {
                 #expect(prepared.selectedSegmentRecipes.first?.recipe.video.mode == .zoomCover)
-                #expect(throws: VoiceLabProjectError.videoModeUnsupported) {
-                    try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight,
-                                            paidRoot: URL(fileURLWithPath: "/not-opened"), prepared: prepared)
-                }
+                let input = try VoiceLabRenderInput(project: project, scope: .full, labelPosition: .topRight,
+                    paidRoot: URL(fileURLWithPath: "/not-opened"), prepared: prepared)
+                #expect(input.prepared.selectedSegmentRecipes.first?.recipe.video.mode == .zoomCover)
+                #expect(input.prepared.selectedSegmentRecipes.first?.recipe.audio.stretch == 1)
             } else {
                 #expect(synth.sourceEndSample - synth.sourceStartSample == synth.outputEndSample - synth.outputStartSample, "\(variant)")
                 #expect(prepared.selectedSegmentRecipes.first?.recipe.video.mode == .source, "\(variant)")

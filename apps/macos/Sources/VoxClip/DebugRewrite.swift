@@ -664,8 +664,16 @@ extension DebugRewrite {
         noVoice.1.showProposal()
         add("r2-make-voice", noVoice)
         // A take passed: Use Take 1.
-        let ready = scene("r2-use-take") { replacing($0, ["word12": nil, "word30": "fresh"]) }
+        let ready = scene("r2-use-take") { words in
+            var changes: [String: String?] = ["word12": nil,
+                "word30": "This comprehensive demonstration preserves reviewed pronunciation naturally."]
+            for index in 31...37 { changes["word\(index)"] = .some(nil) }
+            return replacing(words, changes)
+        }
         try? DebugRewriteGeneration.install("ready", in: ready.1)
+        if let plan = ready.1.takePlan {
+            for index in plan.phrases.indices { _ = plan.chooseVideo(.source, phrase: index) }
+        }
         ready.1.showProposal()
         add("r2-use-take", ready)
         // Two phrases in your voice (impl-plan item 25): the one-passage line and Apply 1 Free Change.

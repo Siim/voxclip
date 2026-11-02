@@ -98,6 +98,10 @@ struct RewriteChange: Equatable, Sendable {
     private(set) var revision = 0
     private(set) var generation: RewriteGenerationSession?
     var takePlan: ClipTakePlan?
+    var speechContextOffer: RewriteSpeechContextReview?
+    var speechContextReview: RewriteSpeechContextReview?
+    var acceptedSpeechContext: RewriteSpeechContextReview?
+    var speechContextProblem = ""
     var takeQuotePhrase: Int?
     var focusedTakePhrase = 0
     var takeRowsShown = true
@@ -125,6 +129,7 @@ struct RewriteChange: Equatable, Sendable {
             await self?.generationIsCurrent(region: region) ?? false
         }
         generation = RewriteGenerationSession(run: run) { [weak self] in self?.generationIsCurrent(region: region) ?? false }
+        generation?.prepareDurationRender = durationRenderPreparer()
         takeBackend = { [weak self] count, dispatch in
             let runs = (0..<count).map { _ in
                 VoiceLabTakeRun(client: client, store: store, speaker: speaker, storage: storage, dispatchIfCurrent: dispatch) { [weak self] in
@@ -533,6 +538,7 @@ struct RewriteChange: Equatable, Sendable {
         receive(try VoiceLabWordDiff.diff(source: source, newText: text).hunks.map { RewriteChange(hunk: $0) })
     }
     private func invalidate() {
+        speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
         takePlan?.invalidate(); takePlan = nil
         generation?.invalidate(); generation = nil
         revision += 1; sending?.cancel()
@@ -647,7 +653,7 @@ struct RewriteChange: Equatable, Sendable {
                 guard current, takePlan.stillCurrent, self.takePlan === takePlan else { return false }
                 let cuts = pendingFree.filter { $0.kind == .cut }.count
                 let fixes = pendingFree.filter { $0.kind == .fix }.count
-                let used = takePlan.phrases.filter { $0.selected?.fits == true }
+                let used = takePlan.phrases.filter { $0.selected?.row.selectable == true }
                 let first = (pendingFree.compactMap(\.span.first) + output.segments.compactMap(\.replace.firstWordId))
                     .min { (editor.index($0) ?? 0) < (editor.index($1) ?? 0) }
                 try ownEdit { try editor.applyVoiceLab(output.segments, assets: output.assets, voice: output.voice,
@@ -727,6 +733,7 @@ struct RewriteChange: Equatable, Sendable {
     private func move(to next: Project) {
         guard next != project else { return }
         let requote = takePlan != nil
+        speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil; speechContextProblem = ""
         takePlan?.invalidate(); takePlan = nil
         project = next; derive()
         let previous = review

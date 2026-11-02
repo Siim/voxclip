@@ -1,14 +1,88 @@
 import SwiftUI
 import VoxClipCore
 
+enum TakeFailurePresentation {
+    static func reason(for row: VoiceLabTakeRow) -> String? {
+        guard !row.selectable else { return nil }
+        if let failure = row.failure { return reason(for: failure, qa: row.qa?.values) }
+        if let qa = row.qa, !qa.passed { return reason(for: .qa(qa.failures), qa: qa.values) }
+        if row.qa?.passed == true { return "The checked audio is unavailable." }
+        return "The required checks did not complete. No result is available."
+    }
+
+    static func reason(for failure: VoiceLabTakeFailure, qa: VoiceLabQA? = nil) -> String {
+        switch failure {
+        case .qa(let failures):
+            let reasons = failures.map { check in
+                switch check {
+                case .insufficientGeneratedSpeech:
+                    return "Not enough generated speech for the speaker check. It requires at least 3 seconds of voiced speech; this take could not be verified."
+                case .transcript:
+                    return qa?.transcriptMatch?.isFinite == true
+                        ? "The recognized words did not pass the word check."
+                        : "The word check did not complete. No word-match result is available."
+                case .speaker:
+                    return qa?.speakerScore?.isFinite == true
+                        ? "The voice did not pass the speaker-match check."
+                        : "The speaker check did not complete. No speaker-match result is available."
+                case .clipping:
+                    return qa?.peakDbfs?.isFinite == true
+                        ? "The audio did not pass the clipping check."
+                        : "The clipping check did not complete."
+                case .loudness:
+                    return qa?.lufsJumpLu?.isFinite == true
+                        ? "The audio did not pass the loudness check at the joins."
+                        : "The loudness check at the joins did not complete."
+                }
+            }
+            return reasons.isEmpty ? "The required checks did not complete. No result is available." : reasons.joined(separator: " ")
+        case .invalidAudio: return "The take's audio could not be validated."
+        case .invalidAlignment: return "The take's word timing could not be validated."
+        case .consent(.speakerUnavailable): return "The speaker check is unavailable. This take could not be verified."
+        case .consent(.speakerMismatch): return "The speaker verification did not complete successfully. No generated-voice match result is available."
+        case .consent(.invalidRecord): return "The voice consent record could not be verified. Checks may be incomplete."
+        case .consent(.cancelled): return "The request was stopped. Checks may be incomplete."
+        case .consent(let error): return RewriteSession.refusal(error)
+        case .provider(let error):
+            switch error {
+            case .network: return "The provider request failed because of a connection problem. Checks may be incomplete."
+            case .malformedResponse: return "The provider returned an unreadable response. Checks may be incomplete."
+            case .cancelled: return "The request was stopped. Checks may be incomplete."
+            case .invalidAlignment: return "The take's word timing could not be validated."
+            case .invalidAudio: return "The take's audio could not be validated."
+            case .speakerMismatch:
+                return "The speaker verification did not complete successfully. No generated-voice match result is available."
+            case .unauthorized, .subscriptionRequired, .featureUnavailable, .voiceAccessDenied, .modelAccessDenied:
+                return RewriteSession.refusal(error)
+            case .permissionMissing: return "The ElevenLabs key is missing a required permission. Your edits are saved."
+            case .missingKey: return "An ElevenLabs key is required. Your edits are saved."
+            case .quotaExceeded: return "ElevenLabs says this account is out of credit or over its quota. Your edits are saved."
+            case .rateLimited: return "ElevenLabs is rate limiting this request. Nothing is retried automatically."
+            case .providerFailure(let status): return "ElevenLabs could not complete the request (\(status)). Checks may be incomplete."
+            case .unsupportedFormat: return "The audio format is not supported for this request."
+            case .unsupportedModel, .unsupportedEndpoint: return "The selected speech model or operation is not supported."
+            case .responseTooLarge: return "The provider response was too large to process. Checks may be incomplete."
+            case .invalidInput: return "The request inputs could not be validated."
+            case .consentRequired: return "Voice consent could not be verified for this request. Your edits are saved."
+            case .planUnavailable: return "This request is unavailable on the current provider plan."
+            case .noVoiceSlots: return "The ElevenLabs account has no available voice slots."
+            }
+        }
+    }
+
+    static func leftOut(_ row: VoiceLabTakeRow, number: Int) -> String? {
+        reason(for: row).map { "Take \(number): " + $0 + " Left out." }
+    }
+}
+
 extension RewriteSession {
     func playTake(phrase: Int) async {
         guard current, let takePlan, takePlan.stillCurrent else { return }
         editor.transport("k")
         await takePlan.play(phrase: phrase)
     }
-    var takesBusy: Bool { takePlan.map { $0.preparing || $0.generating || $0.publishing } ?? false }
-    var usableTakeCount: Int { takePlan?.phrases.filter { $0.selected?.fits == true }.count ?? 0 }
+    var takesBusy: Bool { takePlan.map { $0.preparing || $0.generating || $0.publishing || $0.preparingVideo } ?? false }
+    var usableTakeCount: Int { takePlan.map { $0.canAccept ? $0.phrases.filter { $0.selected?.row.selectable == true }.count : 0 } ?? 0 }
     var takeSendLine: String {
         if let phrase = takeQuotePhrase { return "Sends only phrase \(phrase + 1) and a short audio check to ElevenLabs with your key. No video." }
         return "Sends the included phrases and a short audio check to ElevenLabs with your key. No video."
@@ -25,7 +99,7 @@ extension RewriteSession {
               let quoteID = plan.approvalID, let cost = plan.cost else { return nil }
         let verb = phrase == nil ? "Make Takes" : "Try Another"
         let title: String = switch cost {
-        case .inline(let amount): amount.isEmpty ? verb : verb + " · " + (amount.hasPrefix("<") ? amount : "≈ " + amount)
+        case .inline: VoiceLabCostPresentation.buttonTitle(verb, kind: cost)
         case .confirm: verb + "…"
         }
         return PanelAction(id: "takeQuote-\(quoteID)", title: title, priced: true) { [weak self, weak plan] in
@@ -78,16 +152,23 @@ extension RewriteSession {
 extension ClipTakePlan.Phrase {
     var takeDetail: String {
         switch status {
-        case .generating(let message), .stopped(let message), .failed(let message): return message
+        case .generating(let message), .stopped(let message): return message
+        case .failed(let message):
+            if message == "These takes didn't sound right. Edit the words or try again." {
+                return "No usable take. Review the reasons below."
+            }
+            return message
         case .waiting: return "Waiting. Nothing sent for this phrase."
         case .ready: break
         }
-        guard let selected, let length = selected.length else { return "Left out until a take fits." }
+        guard let selected, selected.row.selectable, let length = selected.length else {
+            return takes.isEmpty ? "No take selected." : "No usable take selected. Review the reasons below."
+        }
         let duration = String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), length)
         if selected.fits { return "Take \(selected.number) · \(duration) · fits" }
         let difference = length - originalLength
         let delta = String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), abs(difference))
-        return "Take \(selected.number) · \(duration) · \(delta) \(difference < 0 ? "shorter" : "longer"). Edit the words or try another take."
+        return "Take \(selected.number) · \(duration) · \(delta) \(difference < 0 ? "shorter" : "longer"). Choose video duration below."
     }
 }
 
@@ -122,6 +203,7 @@ extension ClipTakePlan.Phrase {
                 Text(session.takeSpendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
             }
             if !generation.problem.isEmpty { Text(generation.problem).foregroundStyle(DesignValues.color("status.warning")) }
+            RewriteSpeechContextReviewView(session: session)
             Button("Review Changes") { session.takeRowsShown = false; session.showProposal() }.buttonStyle(.plain)
         }
         .font(VCType.callout.font())
@@ -134,7 +216,7 @@ extension ClipTakePlan.Phrase {
     private func phraseRow(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top, spacing: 8) {
-                if phrase.selected != nil, !session.takesBusy {
+                if phrase.selected?.row.selectable == true, !session.takesBusy {
                     Button {
                         session.focusedTakePhrase = phrase.id
                         Task { await session.playTake(phrase: phrase.id) }
@@ -142,6 +224,7 @@ extension ClipTakePlan.Phrase {
                         Image(systemName: plan.audition.isPlaying && plan.audition.takeId == phrase.selectedID ? "pause.fill" : "play.fill")
                             .frame(width: 28, height: 28)
                     }.buttonStyle(.plain).accessibilityLabel("\(plan.audition.isPlaying && plan.audition.takeId == phrase.selectedID ? "Pause" : "Play") phrase \(phrase.id + 1)")
+                        .help(phrase.selected?.fits == true ? "Listen to the selected fitting take." : "Listen to the checked take. Its timing must fit before it can be used.")
                 }
                 Text("“" + phrase.text + "”").frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -154,7 +237,8 @@ extension ClipTakePlan.Phrase {
                         }
                         .buttonStyle(.plain).frame(width: 24, height: 24)
                         .background(phrase.selectedID == take.id ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 4))
-                        .accessibilityLabel("Phrase \(phrase.id + 1), take \(take.number)")
+                        .accessibilityLabel("Phrase \(phrase.id + 1), take \(take.number), \(take.fits ? "fits" : "timing change required")")
+                        .help(take.fits ? "Select this checked take. It fits the phrase." : "This take passed checks but does not fit. Changed-duration video is not available in this build.")
                         .accessibilityAddTraits(phrase.selectedID == take.id ? [.isButton, .isSelected] : .isButton)
                     }
                 }
@@ -165,14 +249,17 @@ extension ClipTakePlan.Phrase {
                 Text("Best match").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
             }
             ForEach(phrase.takes.filter { !$0.row.selectable }) { take in
-                Text("Take \(take.number) didn't pass the speech check. Left out.")
-                    .font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning"))
+                if let copy = TakeFailurePresentation.leftOut(take.row, number: take.number) {
+                    Text(copy).font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning"))
+                }
             }
-            if phrase.selected?.fits != true, !phrase.takes.isEmpty {
-                Text("Left out until a take fits. Changed-duration video is not available in this build.")
-                    .font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
-            }
-            if !session.takesBusy, plan.spent.units > 0 {
+            VideoDurationChoiceView(availability: plan.videoAvailability(phrase: phrase.id), selection: phrase.videoChoice,
+                busy: session.takesBusy) { choice in
+                    guard plan.chooseVideo(choice, phrase: phrase.id) else { return }
+                    Task { await plan.prepareVideoChoices() }
+                }
+            if plan.preparingVideo { ProgressView("Preparing video duration…").controlSize(.small) }
+            if !session.takesBusy, plan.spent.units > 0 || session.acceptedSpeechContext?.targetPhraseID == phrase.id {
                 if let action = session.pricedTakeAction(phrase: phrase.id) {
                     Text(session.takeSendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                     PanelButton(action: action, kind: .ghost)
@@ -180,6 +267,10 @@ extension ClipTakePlan.Phrase {
                     Button(phrase.takes.isEmpty ? "Try Again…" : "Try Another…") { session.priceAnotherTake(phrase: phrase.id) }
                         .buttonStyle(.plain).help("Prepare this phrase's price. Nothing is sent until you approve it.")
                 }
+            }
+            if session.canReviewSpeechContext(phrase: phrase) {
+                Button("Use surrounding sentence") { session.reviewSpeechContext(phrase: phrase.id) }
+                    .disabled(session.takesBusy)
             }
         }
         .padding(8).frame(maxWidth: .infinity, alignment: .leading)

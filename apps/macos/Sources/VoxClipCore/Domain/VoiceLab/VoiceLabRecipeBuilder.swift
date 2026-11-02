@@ -11,6 +11,66 @@ public struct VoiceLabPublishedTake: Sendable {
     }
 }
 
+public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
+    public let outputSamples: Int64?
+    public let retimeFactor: Double?
+    public let unchangedUnavailableReason: String?
+    public let changedUnavailableReason: String?
+
+    public init(row: VoiceLabTakeRow, sourceSampleRate: Int) {
+        guard row.selectable, let take = row.audio, sourceSampleRate > 0, take.sampleRate > 0,
+              take.fit.plan.outputFrames > 0, take.fit.plan.windowStartSample >= 0,
+              take.fit.plan.windowEndSample > take.fit.plan.windowStartSample else {
+            outputSamples = nil; retimeFactor = nil
+            unchangedUnavailableReason = "Choose a take that passed all speech checks first."
+            changedUnavailableReason = unchangedUnavailableReason
+            return
+        }
+        let plan = take.fit.plan
+        let duration: Double
+        switch take.fit {
+        case .exact: duration = plan.windowEnd - plan.windowStart
+        case .changedDuration(_, _, let residual): duration = plan.windowEnd - plan.windowStart + residual
+        }
+        let rounded = EditingPrimitives.jsRound(duration * Double(sourceSampleRate))
+        guard plan.windowStart.isFinite, plan.windowStart >= 0, plan.windowEnd.isFinite, plan.windowEnd > plan.windowStart,
+              EditingPrimitives.jsRound(plan.windowStart * Double(sourceSampleRate)) == Double(plan.windowStartSample),
+              EditingPrimitives.jsRound(plan.windowEnd * Double(sourceSampleRate)) == Double(plan.windowEndSample),
+              duration.isFinite, duration > 0,
+              EditingPrimitives.jsRound(duration * Double(take.sampleRate)) == Double(plan.outputFrames),
+              rounded.isFinite, rounded > 0, rounded < Double(Int64.max) else {
+            outputSamples = nil; retimeFactor = nil
+            unchangedUnavailableReason = "The take's duration cannot be mapped safely to the source video."
+            changedUnavailableReason = unchangedUnavailableReason
+            return
+        }
+        let output = Int64(rounded)
+        let source = plan.windowEndSample - plan.windowStartSample
+        outputSamples = output
+        let factor = Double(source) / Double(output)
+        retimeFactor = factor
+        if row.fits && source == output {
+            unchangedUnavailableReason = nil
+        } else if output > source {
+            unchangedUnavailableReason = "This take is longer than the source window. Its pauses cannot be shortened enough without cutting or stretching speech."
+        } else if output < source {
+            unchangedUnavailableReason = "This take is shorter than the source window. The permitted silence and room-tone padding cannot fill the remaining time."
+        } else {
+            unchangedUnavailableReason = "An exact silence-only fit was not verified for this take."
+        }
+        changedUnavailableReason = (0.80...1.25).contains(factor) ? nil :
+            "Matching this take would put source-video speed outside 0.80×–1.25×. Choose another take or re-record the sentence."
+    }
+
+    public func allows(_ choice: VoiceLabVideoMode) -> Bool {
+        switch choice {
+        case .source: unchangedUnavailableReason == nil
+        case .retimed: changedUnavailableReason == nil
+        case .zoomCover, .lipsync: false
+        }
+    }
+}
+
 public enum VoiceLabRecipeBuilder {
     public static func candidate(row: VoiceLabTakeRow, input: VoiceLabTakeInput, published: VoiceLabPublishedTake,
                                  record: VoiceConsentRecord, createdAt: Date, videoChoice: VoiceLabVideoMode?) throws -> VoiceLabCandidate {
@@ -25,18 +85,18 @@ public enum VoiceLabRecipeBuilder {
               let verifiedAt = ISO8601DateFormatter().date(from: record.attestations.acceptedAt),
               verifiedAt <= createdAt else { throw VoiceLabProjectError.qaRejected }
         let plan = take.fit.plan
-        let mode: VoiceLabVideoMode
-        if row.fits { mode = .source }
-        else {
-            guard videoChoice == .retimed else { throw VoiceLabProjectError.videoModeUnsupported }
-            mode = .zoomCover
-        }
+        let options = VoiceLabVideoDurationOptions(row: row, sourceSampleRate: input.sourceSampleRate)
+        guard let videoChoice, options.allows(videoChoice) else { throw VoiceLabProjectError.videoModeUnsupported }
+        let mode: VoiceLabVideoMode = videoChoice == .source ? .source : .zoomCover
         let rate = Double(input.sourceSampleRate)
         let roundedSamples = EditingPrimitives.jsRound(published.outDuration * rate)
         guard input.sourceSampleRate > 0, asset.sampleRate > 0,
               roundedSamples.isFinite, roundedSamples > 0, roundedSamples < Double(Int64.max),
               plan.windowStartSample >= 0, plan.windowEndSample > plan.windowStartSample else { throw VoiceLabProjectError.invalidRange }
         let outputSamples = Int64(roundedSamples)
+        guard outputSamples == options.outputSamples,
+              abs(published.outDuration - Double(plan.outputFrames) / Double(take.sampleRate)) <= 1 / Double(asset.sampleRate)
+        else { throw VoiceLabProjectError.invalidRange }
         let factor = Double(plan.windowEndSample - plan.windowStartSample) / Double(outputSamples)
         guard mode != .zoomCover || (0.80...1.25).contains(factor) else { throw VoiceLabProjectError.videoModeUnsupported }
         func seam(_ edge: VoiceLabSeamPlacement, incoming: Bool) throws -> VoiceLabSeam {
