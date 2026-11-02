@@ -64,6 +64,43 @@ public enum VoiceLabLoudness {
         return try neighbourhoodVoicedRmsDb(Array(samples), sampleRate: sampleRate, window: (window.lowerBound - lower)..<(window.upperBound - lower))
     }
 
+    /// The background level at the window's seams (§8.7 item 3), in dBFS: the RMS pooled over the unvoiced 10 ms frames
+    /// (at or below `VOICED_FRAME`) that touch each seam from outside the window, framed outward from the seam and
+    /// stopping at the first voiced frame or after 0.4 s, the momentary window QA reads there. Nil with fewer than 10
+    /// such frames, as at hard seams in connected speech. `source` must hold 0.4 s beside the window, clamped to the take.
+    public static func seamBackgroundRmsDb(_ source: VoiceLabSourceExcerpt, sampleRate: Int, window: Range<Int>) throws -> Double? {
+        guard sampleRate > 0, window.lowerBound >= 0, window.upperBound <= source.totalFrames else { throw VoiceLabAudioMathError.invalidInput }
+        let size = sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate), limit = sampleCount(momentarySeconds, sampleRate) / size
+        let threshold = VoiceLabPatchConstants.VOICED_FRAME_LEVEL
+        var total = 0.0, frames = 0
+        for outward in [-1, 1] {
+            for index in 0..<limit {
+                let start = outward < 0 ? window.lowerBound - (index + 1) * size : window.upperBound + index * size
+                guard start >= 0, start + size <= source.totalFrames else { break }
+                guard let frame = source.samples(start..<(start + size)) else { throw VoiceLabAudioMathError.invalidInput }
+                var sum = 0.0
+                for sample in frame {
+                    guard sample.isFinite else { throw VoiceLabAudioMathError.invalidInput }
+                    sum += Double(sample) * Double(sample)
+                }
+                if (sum / Double(size)).squareRoot() > threshold { break }
+                total += sum; frames += 1
+            }
+        }
+        guard frames >= 10, total > 0 else { return nil }
+        return 10 * log10(total / Double(frames * size))
+    }
+
+    /// The room-tone loop's static gain (§8.7 item 3): the background at the seams (`seamBackgroundRmsDb`) less the RMS of
+    /// the selected run, clamped to `GAIN_CLAMP`; 0, its natural level, when the seams have no background to match.
+    public static func roomToneGainDb(seamBackgroundRmsDb background: Double?, run: [Float]) throws -> Double {
+        guard let background else { return 0 }
+        guard background.isFinite, !run.isEmpty, run.allSatisfy(\.isFinite) else { throw VoiceLabAudioMathError.invalidInput }
+        let power = run.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(run.count)
+        guard power > 0 else { return 0 }
+        return min(max(background - 10 * log10(power), -gainClampDb), gainClampDb)
+    }
+
     /// `audio.gainDb` for a candidate (§8.7 item 2): the voiced-RMS difference clamped to `GAIN_CLAMP`, then lowered
     /// until the candidate's true peak sits at −1 dBTP. A recipe stores one static gain, so this cap is the only form
     /// the limit can take; nothing limits dynamically and the voice itself is unaltered.

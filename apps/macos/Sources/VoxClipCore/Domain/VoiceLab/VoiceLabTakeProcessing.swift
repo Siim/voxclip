@@ -40,8 +40,15 @@ public enum VoiceLabTakeProcessing {
         let leading = try bridgeTokens(input.window.leftBridgeWordIds), trailing = try bridgeTokens(input.window.rightBridgeWordIds)
         guard Array(tokens.prefix(leading.count)) == leading, Array(tokens.suffix(trailing.count)) == trailing else { throw VoiceLabError.invalidInput }
         let level = try VoiceLabLoudness.neighbourhoodVoicedRmsDb(input.source, sampleRate: rate, window: range)
-        let tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: input.sourceEnvelope,
+        var tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: input.sourceEnvelope,
             sourceSampleRate: Double(rate), totalSamples: Int64(total))
+        // The quietest run of the whole take can sit well under the noise beside the window (a car vlog), and the patch's
+        // pads and pauses would dip; the loop plays at the background level measured at the seams.
+        if let selected = tone {
+            guard let run = input.source.samples(Int(selected.sourceStartSample)..<Int(selected.sourceEndSample)) else { throw VoiceLabError.invalidInput }
+            let background = try VoiceLabLoudness.seamBackgroundRmsDb(input.source, sampleRate: rate, window: range)
+            tone?.gainDb = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: background, run: Array(run))
+        }
         return VoiceLabTakePreflight(sourceLevel: level, roomTone: tone)
     }
     public static func envelope(_ samples: [Float], sampleRate: Int) -> AudioEnvelope {
