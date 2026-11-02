@@ -4,7 +4,10 @@ import VoxClipMedia
 
 extension RewriteSession {
     func refreshCreatedVoice(_ record: VoiceConsentRecord) {
-        guard current, editor.app.voiceLabRewriteEnabled, editor.app.bool("voiceLab.providerConsent.elevenlabs") else { return }
+        let app = editor.app
+        guard current else { return }
+        guard app.voiceLabRewriteEnabled else { return }
+        guard app.bool("voiceLab.providerConsent.elevenlabs") else { return }
         takesTask = Task { [weak self] in
             guard let self, current else { return }
             if let generation { await generation.discover(language: project.transcript?.language ?? "en") }

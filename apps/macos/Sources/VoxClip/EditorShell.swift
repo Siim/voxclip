@@ -932,14 +932,13 @@ struct EditorShellState: Equatable {
         rightToggle.action = #selector(toggleRight)
         export.handler = { [weak self] in self?.model.presentExport() }
         placeTabRow(explorerToggle: nil)
-        observations = [
-            ShellObservation { [weak self] in self?.renderExport() },
-            ShellObservation { [weak self] in self?.renderFindClips() },
-            ShellObservation { [weak self] in self?.followSizes() },
-            ShellObservation { [weak self] in self?.showCuts.render() },
-            ShellObservation { [weak self] in self?.renderSurroundingContext() },
-            ShellObservation { [weak self] in self?.clipBar.render() }
-        ]
+        observations = []
+        observations.append(ShellObservation { [weak self] in self?.renderExport() })
+        observations.append(ShellObservation { [weak self] in self?.renderFindClips() })
+        observations.append(ShellObservation { [weak self] in self?.followSizes() })
+        observations.append(ShellObservation { [weak self] in self?.showCuts.render() })
+        observations.append(ShellObservation { [weak self] in self?.renderSurroundingContext() })
+        observations.append(ShellObservation { [weak self] in self?.clipBar.render() })
     }
 
     func tearDown() {

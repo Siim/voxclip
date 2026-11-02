@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## Hosted compiler guard and HTTP negative control (2 Nov 2026)
+
+- Split new panel expressions, motion initialization, Voice setup guards and shell observation registration; keep typed transcript-fixture timing intermediates. Debug build plus all test targets pass the 300 ms expression warning guard under local Xcode 27. Some cold first-use expression warnings remain; no error or new SDK 27-only API use was found. Hosted Xcode 26 remains required evidence.
+- Restoring synchronous Speech HTTP handlers reproduces loading-thread starvation: the independent-session regression fails at its ten-second task deadline with two issues. Restoring the asynchronous handler passes the same test in 0.009 seconds. The held-handler cancellation, callback-run-loop and stop-delivery assertions remain intact.
+
 ## Deterministic Rewrite fixture envelope (2 Nov 2026)
 
 - The shared headless connector fixture cancels its automatically started cache loader before injecting the synthetic waveform. Previously, suspending once let a cache miss erase that envelope; Rewrite could then enter native cache loading instead of its stub-only text path. The new regression fails with the old fixture and passes with the cancellation guard. Production waveform ownership is unchanged. Send-routing fixtures also supply an in-memory key store explicitly.

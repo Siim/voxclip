@@ -9,6 +9,28 @@ import VoxClipCore
     @State private var choosingFolder = false
 
     var body: some View {
+        panelContent
+        .background(DesignValues.color("bg.window"))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Context demonstration")
+        .accessibilityIdentifier("voxclip.demo")
+        .modifier(EditorPaneFocus(model: model, pane: .panel))
+        .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result, let url = urls.first { session.chooseProject(url) }
+        }
+        .onChange(of: model.projectRevision) { _, _ in session.followEditor() }
+        .onChange(of: model.selectedWordIDs) { _, _ in session.followEditor() }
+        .onChange(of: model.selectedPauseIDs) { _, _ in session.followEditor() }
+        .onChange(of: model.mediaResolved) { _, _ in session.followEditor() }
+        .onChange(of: model.mediaUnreadable) { _, _ in session.followEditor() }
+        .onChange(of: model.exporting) { _, _ in session.followEditor() }
+        .onExitCommand {
+            if session.busy { session.cancel() } else { model.closeContextDemoJob() }
+        }
+        .onDisappear { if session.busy { session.cancel() } }
+    }
+
+    private var panelContent: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -53,24 +75,6 @@ import VoxClipCore
             }
             footer
         }
-        .background(DesignValues.color("bg.window"))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Context demonstration")
-        .accessibilityIdentifier("voxclip.demo")
-        .modifier(EditorPaneFocus(model: model, pane: .panel))
-        .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
-            if case .success(let urls) = result, let url = urls.first { session.chooseProject(url) }
-        }
-        .onChange(of: model.projectRevision) { _, _ in session.followEditor() }
-        .onChange(of: model.selectedWordIDs) { _, _ in session.followEditor() }
-        .onChange(of: model.selectedPauseIDs) { _, _ in session.followEditor() }
-        .onChange(of: model.mediaResolved) { _, _ in session.followEditor() }
-        .onChange(of: model.mediaUnreadable) { _, _ in session.followEditor() }
-        .onChange(of: model.exporting) { _, _ in session.followEditor() }
-        .onExitCommand {
-            if session.busy { session.cancel() } else { model.closeContextDemoJob() }
-        }
-        .onDisappear { if session.busy { session.cancel() } }
     }
 
     private var sourceFields: some View {

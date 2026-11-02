@@ -28,7 +28,7 @@ import AppKit
 
     /// Follows the model; the tab row's observation calls it.
     func render() {
-        let on = model.showsCuts
+        let on: Bool = model.showsCuts
         if (state == .on) != on { state = on ? .on : .off }
         needsDisplay = true
     }
