@@ -10,15 +10,8 @@ public enum VoiceLabShortSpeechMode
     [JsonStringEnumMemberName("unmeasured")] Unmeasured
 }
 
-[JsonConverter(typeof(JsonStringEnumConverter<VoiceLabConsentMethod>))]
-public enum VoiceLabConsentMethod
-{
-    [JsonStringEnumMemberName("recordedStatement")] RecordedStatement,
-    [JsonStringEnumMemberName("projectAttestation")] ProjectAttestation
-}
-
 public sealed record VoiceLabShortSpeechEvidence(VoiceLabShortSpeechMode Mode,
-    [property: JsonPropertyName("recordId")] string RecordId, VoiceLabConsentMethod ConsentMethod, int VoicedFrames, int TakeCount)
+    [property: JsonPropertyName("recordId")] string RecordId, VoiceConsentMethod ConsentMethod, int VoicedFrames, int TakeCount)
 {
     internal bool IsValid => !string.IsNullOrEmpty(RecordId) && Enum.IsDefined(ConsentMethod) && VoicedFrames >= 0 && TakeCount > 0 &&
         (Mode == VoiceLabShortSpeechMode.Pooled ? VoicedFrames >= 48000 && TakeCount >= 2 :

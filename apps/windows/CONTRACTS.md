@@ -1,5 +1,10 @@
 # Windows fixed contracts
 
+### 2026-11-03 — Share the short-speech consent method
+
+- Short-speech evidence uses the existing `VoiceConsentMethod` from the consent-record model. Remove the duplicate `VoiceLabConsentMethod` enum; JSON spellings and recorded-statement/project-attestation validation remain identical. Update constructor, deconstruct and setter signatures in the exact Release Core allowlist and retain all short-speech wire and typed regressions.
+- Integration acceptance is recorded in the Mac integration handoff: native Windows launch must pass alongside both architecture inventories; no UI, provider or speaker-availability behavior changes here.
+
 ### 2026-11-02 — Short-speech recipe reader and render preparation
 
 - **Base and reference.** `track/win-short-speech` starts at `e8bf33be`; it ports the reader/validator contract from Mac `2b3e23d9`, not Mac take generation. No Windows UI/XAML, workflow, package reference, provider or native speaker gate changes.

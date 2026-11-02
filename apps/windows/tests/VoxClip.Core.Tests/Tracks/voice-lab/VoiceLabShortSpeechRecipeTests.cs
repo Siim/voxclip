@@ -96,12 +96,12 @@ public sealed class VoiceLabShortSpeechRecipeTests
         var segment = project.VoiceLab.Segments[0];
         var candidate = segment.Candidates[1];
         var recipe = candidate.Recipe!;
-        var evidence = new VoiceLabShortSpeechEvidence(VoiceLabShortSpeechMode.Unmeasured, "consent-fixture", VoiceLabConsentMethod.RecordedStatement, 16000, 1);
+        var evidence = new VoiceLabShortSpeechEvidence(VoiceLabShortSpeechMode.Unmeasured, "consent-fixture", VoiceConsentMethod.RecordedStatement, 16000, 1);
         evidence = defect switch
         {
             "mismatched-record" => evidence with { RecordId = "other-record" },
             "unknown-mode" => evidence with { Mode = (VoiceLabShortSpeechMode)99 },
-            "unknown-consent-method" => evidence with { ConsentMethod = (VoiceLabConsentMethod)99 },
+            "unknown-consent-method" => evidence with { ConsentMethod = (VoiceConsentMethod)99 },
             "negative-frames" => evidence with { VoicedFrames = -1 },
             "empty-record" => evidence with { RecordId = "" },
             "zero-takes" => evidence with { TakeCount = 0 },
