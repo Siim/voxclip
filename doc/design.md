@@ -482,7 +482,7 @@ Word states (each shown by more than colour):
 | Selected | A `tint.selection` layer at text height (ascender to descender), radius 2; the platform selection does not draw. Windows uses `text.primary` over the 16% accent tint, and Highlight/HighlightText in native High Contrast, including selected cut or accepted AI words. Playback never overrides the selection |
 | Cut | In the open clip each run of removals folds to one 5-epx `fold.dot` in a 13-epx gap glued to the preceding word; a paragraph's leading fold has no preceding word. A filler-only comma folds with it ("include • source"). Show cuts and local expansion show `word.gone` words with a 1-epx grey strike; pauses and the folded comma stay unstruck. Windows expands only the clicked fold and exposes Restore in the same paragraph flow, as one history step. Selected cut words remain visible even when their paragraph is newly realised. Outside-clip words read as said |
 | Pause (detected gap), uncut | When Show Pauses is enabled, use an unfilled mono `1.8 s` duration with a nonbreaking space; Windows maps the 11-pt label to 12 epx. No `‖` marker. The project's `pauseThresholdSeconds` remains unchanged (editing spec: 0.8 s with decoded audio, else 1.0 s, set at import) |
-| Pause, cut | Part of its fold; when expanded, an unstruck mono duration in `word.gone`, without a chip |
+| Pause, cut | Part of its fold; when expanded, an unstruck mono duration in `word.gone`, without a chip (4.54:1 dark, 4.97:1 light on `editor.band`) |
 | Suggested filler | No inline underline in v2; Cut Fillers and the existing accessible actions still find them. Windows retains the "Filler · Delete to cut" tooltip |
 | Low confidence (if the engine reports it) | dashed underline `word.lowConfidence`; off by default (Settings → General) |
 | Corrected | normal text with a 2 pt dot under the first letter (`word.correctionDot`); tooltip "Heard as: {original}" |
@@ -490,7 +490,7 @@ Word states (each shown by more than colour):
 | Clip end | The last covered line ends the band/rule; no `]` text marker |
 | Rewrite passage | Pending inline changes and per-line change bars (§6.3.5); no outlined passage box |
 | AI words (accepted) | AI tint plus the line's waveform glyph, without a chip or underline. While changes are pending, only the glyph remains outside the hunks. Selection and High Contrast keep native text colours |
-| Outside the selected clip | `word.outside`, without folding, strikes, pauses or change markers; gutter timecodes use the outside brush. No opacity reduction |
+| Outside the selected clip | `word.outside` (4.87:1 dark, 5.23:1 light on `bg.surface`), without folding, strikes, pauses or change markers; gutter timecodes use the outside brush. No opacity reduction |
 
 Rewrite (§6.3) adds tracked changes to the transcript; §6.3.5 fixes their treatment and original review ordinals. Windows uses the same v2 grammar on its existing native paragraph architecture. The shell consumes the transcript callbacks before the complete Rewrite flow is accepted; native validation remains a separate gate.
 
