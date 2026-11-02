@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Keep headless Rewrite fixtures independent of asynchronous media-cache loading.
+
 - Bound Mac headless test waits so a stalled operation reports its checkpoint instead of hanging CI.
 
 - Verify Mac caption timeline pixels at both backing scales and system appearances.

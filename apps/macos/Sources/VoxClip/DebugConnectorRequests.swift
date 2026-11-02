@@ -183,6 +183,8 @@ actor ConsentFixtureConnector: LLMConnector {
         }
         let editor = EditorModel(document: VoxClipDocument(project: project), app: app, preview: DemoPreviewEngine())
         editor.mediaResolved = true; editor.refresh()
+        // This fixture owns its envelope. A cache miss must not overwrite it after the next suspension.
+        editor.waveformTask?.cancel()
         editor.waveform = WaveformData(fine: Array(repeating: 0.01, count: 100_000))
         editor.selectedWordIDs = Set(editor.words[3...5].map(\.id))
         return editor

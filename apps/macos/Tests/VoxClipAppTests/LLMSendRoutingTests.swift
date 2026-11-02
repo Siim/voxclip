@@ -47,6 +47,7 @@ import Testing
     private func setUp(_ connector: String, authMethod: String?, baseURL: String? = nil,
                        readiness: ConnectorStatus = .ready) throws -> (AppModel, ConsentFixtureConnector, SheetLog) {
         let app = AppModel(settingsStore: RegressionSettingsStore())
+        app.providerKeyStoreOverride = DirectorFixtureKeys()
         let fake = ConsentFixtureConnector(id: try #require(ConnectorID(rawValue: connector)), readiness: readiness, authMethod: authMethod)
         app.connectorOverride = { _ in fake }
         app.set("llm.connector", .string(connector))

@@ -152,6 +152,15 @@ private actor RefusingKeys: ProviderKeyStore {
     }
     private func texts(_ task: DirectorTask) -> [String] { task.cards.compactMap { if case .text(let text) = $0 { text } else { nil } } }
 
+    @Test func fixtureWaveformSurvivesPendingMediaCacheLoad() async throws {
+        let (app, _) = app("ollama")
+        let editor = try editor(app)
+        defer { editor.close() }
+        let expected = try #require(editor.waveform).fine
+        _ = try await TestDeadline.value(editor.waveformTask, "fixture cache loader")
+        #expect(editor.waveform?.fine == expected)
+    }
+
     // MARK: The model's words
 
     @Test func scopeWordsFollowTheScope() {

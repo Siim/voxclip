@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## Deterministic Rewrite fixture envelope (2 Nov 2026)
+
+- The shared headless connector fixture cancels its automatically started cache loader before injecting the synthetic waveform. Previously, suspending once let a cache miss erase that envelope; Rewrite could then enter native cache loading instead of its stub-only text path. The new regression fails with the old fixture and passes with the cancellation guard. Production waveform ownership is unchanged. Send-routing fixtures also supply an in-memory key store explicitly.
+- Director and send-routing task waits retain their explicit deadlines and original focus, consent, billing and send-count assertions. Hosted SDK 26 is still the acceptance source for the original runner hangs.
+
 ## Bounded headless test synchronization (2 Nov 2026)
 
 - One shared test-support source, linked into all three test targets, bounds continuation gates and readiness polling at ten seconds. Expiry records the originating test location; late releases are idempotent. Rewrite opening/completion in Director and send-routing tests now names and bounds each awaited task, so a missed completion cannot consume the hosted job’s ten-minute limit. No product timeout or suite limit changed.
