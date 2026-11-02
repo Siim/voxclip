@@ -74,6 +74,9 @@ import VoxClipCore
     /// with `force`), styled for the new appearance, then the styles that changed, the caret
     /// and the current paragraph. The DEBUG checks render through here too.
     static func render(_ model: EditorModel, coordinator: Coordinator, force: Bool = false) {
+        let wasUpdating = coordinator.updating
+        coordinator.updating = true
+        defer { coordinator.updating = wasUpdating }
         let content = Coordinator.Content(model: model)
         let appearance = TranscriptAppearance(cutWords: model.cutWordIDs, cutPauses: model.cutPauseIDs, query: model.query, scope: model.scopeBounds, lowConfidence: model.app.bool("general.showLowConfidence"),
                                               activeClipID: model.activeClip?.id, playhead: model.sourceTime, changesPending: content.proposal?.pending ?? false)
@@ -115,11 +118,12 @@ import VoxClipCore
         /// selection's removed ends, so all three are part of it, and so is a proposal's state;
         /// a playhead tick is not.
         struct Content: Equatable {
-            var layout: Int, showsCuts: Bool, showPauses: Bool, textSize: Double, pauseThreshold: Double
+            var layout: Int, showsCuts: Bool, showsSurroundingContext: Bool, showPauses: Bool, textSize: Double, pauseThreshold: Double
             var scope: ClosedRange<Int>?, openEnds: [String], cutWords: Set<String>, cutPauses: Set<String>
             var proposal: TranscriptProposalDisplay?
             @MainActor init(model: EditorModel) {
                 layout = model.transcriptLayoutRevision; showsCuts = model.showsCuts; showPauses = model.showPauses; textSize = model.textSize
+                showsSurroundingContext = model.showsSurroundingContext
                 pauseThreshold = model.project.edits.pauseThresholdSeconds; scope = model.scopeBounds; openEnds = model.openFoldEnds
                 cutWords = model.cutWordIDs; cutPauses = model.cutPauseIDs
                 proposal = model.proposalDisplay

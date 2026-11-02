@@ -105,6 +105,7 @@ import Testing
         #expect(color(renderer, "g0") === DesignValues.nsColor("word.text"), "Full Take: every word is in scope")
         #expect((0..<3).allSatisfy(renderer.isInScope(paragraph:)))
         model.activate(model.project.edits.clips[0])
+        model.showsSurroundingContext = true
         let before = renderer.scopeRestyles
         renderer.update(appearance(model))
         #expect(renderer.scopeRestyles - before == 11, "the eleven words outside the clip")
@@ -112,6 +113,7 @@ import Testing
         #expect(color(renderer, "g6") === DesignValues.nsColor("word.text") && color(renderer, "g9") === DesignValues.nsColor("word.text"))
         #expect(!renderer.isInScope(paragraph: 0) && renderer.isInScope(paragraph: 1) && !renderer.isInScope(paragraph: 2))
         model.activate(model.project.edits.clips[1])
+        model.showsSurroundingContext = true
         let switched = renderer.scopeRestyles
         renderer.update(appearance(model))
         #expect(renderer.scopeRestyles - switched == 7, "the kept clip's four words and the suggestion's three")

@@ -551,7 +551,10 @@ struct TranscriptAppearance: Equatable {
         }
         var result: [TranscriptParagraphContent] = []
         result.reserveCapacity(split.count)
-        for paragraph in split {
+        let visible = model.focusesClip ? scope.map { $0.lowerBound..<($0.upperBound + 1) } : nil
+        for sourceParagraph in split {
+            let paragraph = visible.map { sourceParagraph.clamped(to: $0) } ?? sourceParagraph
+            guard !paragraph.isEmpty else { continue }
             var content = TranscriptParagraphContent(firstWord: paragraph.lowerBound, start: words[paragraph.lowerBound].start)
             var position = paragraph.lowerBound
             /// A cut pause after the word just shown starts a run there.
@@ -593,7 +596,8 @@ struct TranscriptAppearance: Equatable {
                 if let segment = segments[word.id] {
                     if !changesPending { content.pieces.append(.init(kind: .aiMarker, id: "ai:\(segment.id)", text: " ")) }
                     if let replacement = segment.words {
-                        let end = max(position + 1, (wordIndex[segment.replace.lastWordId] ?? position) + 1)
+                        let replacementEnd = max(position + 1, (wordIndex[segment.replace.lastWordId] ?? position) + 1)
+                        let end = visible.map { min($0.upperBound, replacementEnd) } ?? replacementEnd
                         content.pieces.append(.init(kind: .replacement, id: word.id, text: replacement.map(\.text).joined(separator: " "), ids: words[position..<end].map(\.id)))
                         position = end
                         continue

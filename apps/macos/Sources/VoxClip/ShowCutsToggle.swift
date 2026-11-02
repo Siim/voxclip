@@ -79,3 +79,33 @@ import AppKit
     override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill() }
     override var focusRingMaskBounds: NSRect { bounds }
 }
+
+@MainActor final class SurroundingContextToggle: NSButton {
+    private let model: EditorModel
+
+    init(model: EditorModel) {
+        self.model = model
+        super.init(frame: .zero)
+        identifier = NSUserInterfaceItemIdentifier("voxclip.shell.showSurroundingContext")
+        setButtonType(.switch)
+        title = "Show surrounding context"
+        font = VCType.callout.nsFont()
+        controlSize = .small
+        target = self
+        action = #selector(toggle)
+        setAccessibilityLabel(title)
+        toolTip = "Show or hide material outside this clip in the transcript and timeline"
+        render()
+    }
+    required init?(coder: NSCoder) { nil }
+
+    func render() {
+        state = model.showsSurroundingContext ? .on : .off
+        isHidden = model.scopeBounds == nil
+    }
+
+    @objc private func toggle() {
+        model.showsSurroundingContext.toggle()
+        render()
+    }
+}

@@ -302,6 +302,7 @@ extension DebugTranscriptPixels {
         // Clip 2 is the whole fifth paragraph; the playhead sits in the sixth, outside it.
         let muted = try clip("five-2")
         model.activate(muted)
+        model.showsSurroundingContext = true
         model.sourceTime = words[split[5].lowerBound + 3].start
         pane.update()
         pane.scroll(toCharacter: renderer.paragraphs[3].offset)
@@ -364,6 +365,7 @@ extension DebugTranscriptPixels {
         // A suggested clip that starts inside the last paragraph: the band starts at its line and the bar is dashed.
         let suggested = try clip("five-5")
         model.activate(suggested)
+        model.showsSurroundingContext = true
         pane.update()
         pane.scroll(toCharacter: renderer.paragraphs[5].offset)
         if let suggestedTop = text.lineBox(atCharacter: first(of: suggested)), let paragraphTop = text.lineBox(atCharacter: renderer.paragraphs[6].offset), let band = text.backdrop?.band {
@@ -395,9 +397,11 @@ extension DebugTranscriptPixels {
 
         // A tab switch between neighbouring clips restyles only the symmetric difference.
         model.activate(muted)
+        model.showsSurroundingContext = true
         pane.update()
         let switchStart = renderer.scopeRestyles
         model.activate(try clip("five-3"))
+        model.showsSurroundingContext = true
         pane.update()
         let switched = renderer.scopeRestyles - switchStart
         let neighbours = text.map.spans.filter { span in
@@ -408,6 +412,7 @@ extension DebugTranscriptPixels {
 
         // The band follows a width change and a trim.
         model.activate(muted)
+        model.showsSurroundingContext = true
         pane.update()
         pane.scroll(toCharacter: renderer.paragraphs[3].offset)
         let narrowBand = text.backdrop?.band
@@ -763,6 +768,7 @@ extension DebugTranscriptPixels {
         model.document.replaceProject(clipped)
         model.refresh()
         model.activate(model.project.edits.clips[0])
+        model.showsSurroundingContext = true
         pane.update(rebuild: true)
         check("outside the open clip the text shows no folds, markers or pauses (\(displayed(text)[0]))",
               displayed(text)[0] == "So, uh, while you're speaking, it, uh, examines your, uh, app, makes videos, and adds clip in between your speech."
@@ -850,6 +856,7 @@ extension DebugTranscriptPixels {
         defer { model.close() }
         model.textSize = DesignValues.transcriptTextSize; model.mediaResolved = true; model.refresh()
         model.activate(model.project.edits.clips[0])
+        model.showsSurroundingContext = true
         model.proposal = proposal(for: model)
         model.sourceTime = model.words[16].start + 0.05
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))

@@ -296,6 +296,7 @@ import Testing
     @Test func renderingAttributesFollowEveryEdit() throws {
         let model = try editor(showCuts: false); defer { model.close() }
         model.activate(model.project.edits.clips[0])
+        model.showsSurroundingContext = true
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
         #expect(color(renderer, "r12") === DesignValues.nsColor("word.outside") && color(renderer, "r42") === DesignValues.nsColor("word.text"))
@@ -352,6 +353,7 @@ import Testing
         // paragraphs hold a cut outside the clip, so the switch writes the document once.
         let rebuilds = renderer.documentRebuilds
         model.activate(model.project.edits.clips[0])
+        model.showsSurroundingContext = true
         render(model, renderer)
         #expect(renderer.documentRebuilds == rebuilds + 1)
         #expect(text.map.span(id: "r10")?.kind == .text && text.map.span(id: "r10")?.ids == [] && text.map.span(id: "r45")?.kind == .fold)
@@ -365,6 +367,122 @@ import Testing
         // The filler underline and its hint are gone (impl-plan item 11); fillers stay in the rotor.
         func tip(_ id: String) -> String? { text.map.span(id: id).flatMap { text.textStorage?.attribute(.toolTip, at: $0.range.location, effectiveRange: nil) as? String } }
         #expect(tip("r23") == nil && tip("r41") == nil)
+    }
+
+    @Test(arguments: [false, true], [false, true])
+    func clipContextIsHiddenByDefaultAndOneToggleUpdatesBothSurfaces(_ suggested: Bool, _ showCuts: Bool) throws {
+        let model = try editor(showCuts: showCuts, suggested: suggested)
+        defer { model.close() }
+        model.activate(model.project.edits.clips[0])
+        model.selectedWordIDs = ["r42", "r43"]
+        model.sourceTime = model.words[42].start
+        let undo = UndoManager()
+        model.undoManager = undo
+        let original = model.project, steps = model.undoSteps, revision = model.projectRevision
+        let wasEdited = model.document.isDocumentEdited
+        let duration = model.duration, sourceDuration = model.sourceDuration
+        let mapping = (0...20).map { model.timelineSourceTime(duration * Double($0) / 20, on: .edited) }
+        let canvas = TimelineCanvasView(model: model)
+        defer { canvas.tearDown() }
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        #expect(!model.showsSurroundingContext && model.focusesClip)
+        model.selectedWordIDs = ["r42", "r43"]
+        #expect(renderer.paragraphs.map(\.firstWord) == [40])
+        #expect(text.map.span(id: "r39") == nil && text.map.span(id: "r50") == nil)
+        #expect(renderer.caretOffset(atTime: model.words[42].start) == text.map.span(id: "r42")?.range.location)
+        let focused = text.string
+        let focusedSpans = text.map.spans
+        let scope = try #require(model.scopeSourceRange)
+        canvas.renderContent()
+        #expect(canvas.content.overviewRange == scope && canvas.content.clips.map(\.id) == ["fifth"])
+        #expect(canvas.content.displayRange == (showCuts ? scope : 0...duration))
+        #expect(!canvas.audio.state.showsSurroundingContext && !canvas.video.state.showsSurroundingContext)
+        #expect(abs(canvas.overview.time(atX: canvas.overview.x(scope.lowerBound)) - scope.lowerBound) < 1e-9)
+        let toggle = SurroundingContextToggle(model: model)
+        #expect(toggle.state == .off && !toggle.isHidden)
+        #expect(toggle.accessibilityLabel() == "Show surrounding context")
+        toggle.performClick(nil)
+        TranscriptTextView.render(model, coordinator: coordinator)
+        canvas.renderContent()
+        #expect(model.showsSurroundingContext && toggle.state == .on)
+        #expect(renderer.paragraphs.count == 6 && text.map.span(id: "r39") != nil && text.map.span(id: "r50") != nil)
+        #expect(color(renderer, "r39") === DesignValues.nsColor("word.outside"))
+        #expect(canvas.content.overviewRange == 0...sourceDuration)
+        #expect(canvas.audio.state.showsSurroundingContext && canvas.video.state.showsSurroundingContext)
+        #expect(model.showsCuts == showCuts)
+        layOut(text)
+        try expectRenderingAttributes(text, renderer, "context on")
+        toggle.performClick(nil)
+        TranscriptTextView.render(model, coordinator: coordinator)
+        canvas.renderContent()
+        #expect(text.string == focused && text.map.spans == focusedSpans)
+        #expect(canvas.content.overviewRange == scope && !canvas.content.showsSurroundingContext)
+        #expect(Set(renderer.attributes.keys) == Set(text.map.spans.map(\.id)))
+        #expect(model.selectedWordIDs == ["r42", "r43"])
+        TranscriptTextView.select(model: model, in: text)
+        let selectedRange = try #require(text.selectedRanges.first?.rangeValue)
+        #expect(text.map.selected([selectedRange]).map(\.id) == ["r42", "r43"])
+        layOut(text)
+        try expectRenderingAttributes(text, renderer, "context off again")
+        try expectFreshBuild(model, text, renderer)
+        model.toggleShowsCuts()
+        TranscriptTextView.render(model, coordinator: coordinator)
+        canvas.renderContent()
+        #expect(!model.showsSurroundingContext && model.showsCuts != showCuts)
+        #expect(text.map.span(id: "r39") == nil && canvas.content.overviewRange == scope)
+        #expect(model.project == original && model.projectRevision == revision)
+        #expect(model.undoSteps == steps && !undo.canUndo && !undo.canRedo)
+        #expect(model.document.isDocumentEdited == wasEdited)
+        #expect(model.duration == duration && model.sourceDuration == sourceDuration)
+        #expect((0...20).map { model.timelineSourceTime(duration * Double($0) / 20, on: .edited) } == mapping)
+    }
+
+    @Test func focusedSameParagraphBoundariesAndSuggestionSwitchesKeepSourceMappings() throws {
+        let model = try editor(showCuts: false)
+        defer { model.close() }
+        var project = model.project
+        project.edits.clips = [ClipRange(id: "middle", startWordId: "r42", endWordId: "r47"),
+                              ClipRange(id: "suggestion", startWordId: "r12", endWordId: "r16", origin: .ai, selected: false)]
+        project.edits.corrections["r43"] = "corrected"
+        model.document.replaceProject(project); model.refresh()
+        model.activate(model.project.edits.clips[0])
+        let sourceWords = model.words
+        let canvas = TimelineCanvasView(model: model)
+        defer { canvas.tearDown() }
+        let (text, renderer, coordinator) = try pane(model)
+        defer { withExtendedLifetime(coordinator) {} }
+        #expect(renderer.paragraphs.map(\.firstWord) == [42])
+        #expect(renderer.paragraphs.map(\.start) == [sourceWords[42].start])
+        #expect(text.string.contains("corrected") && text.map.span(id: "r45")?.kind == .fold)
+        #expect(text.map.span(id: "r41") == nil && text.map.span(id: "r48") == nil)
+        #expect((42...47).allSatisfy { text.map.span(id: "r\($0)") != nil })
+        model.showsSurroundingContext = true
+        TranscriptTextView.render(model, coordinator: coordinator)
+        canvas.renderContent()
+        #expect(text.map.span(id: "r41") != nil)
+        model.activate(model.project.edits.clips[1])
+        #expect(!model.showsSurroundingContext && model.isSuggestion("suggestion"))
+        TranscriptTextView.render(model, coordinator: coordinator)
+        canvas.renderContent()
+        #expect(renderer.paragraphs.map(\.firstWord) == [12])
+        #expect(text.map.span(id: "r11") == nil && text.map.span(id: "r17") == nil)
+        #expect(text.map.span(id: "r15")?.kind == .fold)
+        #expect(canvas.content.clips.map(\.id) == ["suggestion"] && canvas.content.overviewRange == model.scopeSourceRange)
+        model.showsSurroundingContext = true
+        model.activate(model.project.edits.clips[0])
+        TranscriptTextView.render(model, coordinator: coordinator)
+        canvas.renderContent()
+        #expect(!model.showsSurroundingContext && renderer.paragraphs.map(\.firstWord) == [42])
+        #expect(text.string.contains("corrected") && text.map.span(id: "r12") == nil)
+        model.activate(nil)
+        TranscriptTextView.render(model, coordinator: coordinator)
+        canvas.renderContent()
+        #expect(!model.focusesClip && renderer.paragraphs.count == 6)
+        #expect(canvas.content.overviewRange == 0...model.sourceDuration)
+        #expect(canvas.content.clips.map(\.id) == model.sortedClips.map(\.id))
+        #expect(model.words == sourceWords && model.project.edits.corrections["r43"] == "corrected")
+        try expectFreshBuild(model, text, renderer)
     }
 
     @Test func theRangeMapFindsEverySpanAcrossParagraphsAndAfterAReplacement() {

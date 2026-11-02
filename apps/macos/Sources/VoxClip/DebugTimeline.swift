@@ -81,6 +81,7 @@ import VoxClipCore
         guard model.keptClips.count >= 2 else { throw CocoaError(.coderInvalidValue) }
         let clip = model.keptClips[1]
         model.activate(clip)
+        model.showsSurroundingContext = true
         mark("activated")
         let oldEnd = model.index(clip.endWordId)!
         undo.removeAllActions()
@@ -194,7 +195,7 @@ import VoxClipCore
             canvas.verticalScroller.changed?(1)
             let expected: CGFloat = height == .small ? 20 : height == .medium ? 24 : 28
             results.append(.init(name: "FX \(height.label) height is \(Int(expected)) pt", passed: canvas.motion.frame.height == expected))
-            results.append(.init(name: "FX \(height.label) empty hint reads Director results land here", passed: canvas.headers[3].accessibilityValue() as? String == "Director results land here"))
+            results.append(.init(name: "FX \(height.label) exposes the clip motion edit action", passed: !canvas.headers[3].button.isHidden && canvas.headers[3].action != nil && canvas.headers[3].button.accessibilityLabel() == "Edit clip motion cues"))
             results.append(.init(name: "FX \(height.label) scrolls wholly into the tracks", passed: canvas.motion.frame.minY >= 0 && canvas.motion.frame.maxY <= canvas.trackClip.bounds.height))
             _ = try capture(canvas, name: "v2-timeline-motion-\(height.label.lowercased())", directory: directory)
         }
@@ -570,6 +571,7 @@ import VoxClipCore
         // Source: Show cuts on and the clip open, so the lanes take its removed ranges and
         // In/Out; zoomed about Out, where the take outside it and the cuts inside both show.
         model.activate(clip)
+        model.showsSurroundingContext = true
         // Opening the clip is the gate's own step, not an edit to keep: nothing autosaves it.
         model.document.updateChangeCount(.changeCleared)
         model.showsCuts = true

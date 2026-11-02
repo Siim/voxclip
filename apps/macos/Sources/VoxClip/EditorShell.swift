@@ -817,6 +817,7 @@ struct EditorShellState: Equatable {
     let overflow = ShellIconButton(symbol: "ellipsis", size: 14, identifier: "voxclip.shell.more")
     /// Show cuts at the tab row's end, before ⋯ (notes.md §1; impl-plan V8b).
     let showCuts: ShowCutsToggle
+    let surroundingContext: SurroundingContextToggle
     let export = ShellExportButton()
     let timelineToggle = ShellIconButton(symbol: "rectangle.bottomthird.inset.filled", identifier: "voxclip.shell.toggleTimeline")
     let rightToggle = ShellIconButton(symbol: "sidebar.right", identifier: "voxclip.shell.toggleRight")
@@ -852,6 +853,7 @@ struct EditorShellState: Equatable {
         tabBar = EditorTabBarView(shell: shell, model: model)
         clipBar = ClipBarView(model: model, shell: shell)
         showCuts = ShowCutsToggle(model: model)
+        surroundingContext = SurroundingContextToggle(model: model)
         super.init(vertical: false, identifier: "voxclip.shell.work", dividerToken: "line.edge")
         build()
     }
@@ -935,6 +937,7 @@ struct EditorShellState: Equatable {
             ShellObservation { [weak self] in self?.renderFindClips() },
             ShellObservation { [weak self] in self?.followSizes() },
             ShellObservation { [weak self] in self?.showCuts.render() },
+            ShellObservation { [weak self] in self?.renderSurroundingContext() },
             ShellObservation { [weak self] in self?.clipBar.render() }
         ]
     }
@@ -996,9 +999,16 @@ struct EditorShellState: Equatable {
     func placeTabRow(explorerToggle: NSView?) {
         self.explorerToggle = explorerToggle
         let rightShows = rightItem.map { !$0.isCollapsed } ?? true
-        tabRow.set(leading: [explorerToggle, tabBar].compactMap { $0 }, trailing: rightShows ? [showCuts, overflow] : [showCuts, overflow] + [export, timelineToggle, rightToggle])
+        let contextControls: [NSView] = model.scopeBounds == nil ? [] : [surroundingContext]
+        let controls: [NSView] = contextControls + [showCuts, overflow]
+        tabRow.set(leading: [explorerToggle, tabBar].compactMap { $0 }, trailing: rightShows ? controls : controls + [export, timelineToggle, rightToggle])
         rightTitle.fillsLeading = commandLauncher
         rightTitle.set(leading: rightShows ? [commandLauncher] : [], trailing: rightShows ? [export, timelineToggle, rightToggle] : [])
+    }
+
+    private func renderSurroundingContext() {
+        surroundingContext.render()
+        placeTabRow(explorerToggle: explorerToggle)
     }
 
     private func renderExport() {

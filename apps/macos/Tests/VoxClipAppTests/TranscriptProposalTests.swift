@@ -72,6 +72,25 @@ import Testing
         #expect(!model.hasUnreviewedChanges(clipID: nil) && model.hasUnreviewedChanges(clipID: "hunk-clip"), "the clip's tab keeps its dirty dot")
     }
 
+    @Test func contextTogglePreservesPendingProposalAndItsInsertedMappings() throws {
+        let model = try editor(); defer { model.close() }
+        let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))
+        defer { pane.close() }
+        let original = model.project, steps = model.undoSteps
+        let focused = model.proposalDisplay?.focused
+        let inserted = pane.text.map.spans.filter { $0.kind == .inserted }.map(\.id)
+        #expect(!model.showsSurroundingContext && !inserted.isEmpty)
+        for showsContext in [true, false] {
+            model.showsSurroundingContext = showsContext
+            pane.update()
+            #expect(model.proposalDisplay?.focused == focused)
+            #expect(pane.text.map.spans.filter { $0.kind == .inserted }.map(\.id) == inserted)
+            #expect(pane.text.map.spans.filter { $0.kind == .inserted }.allSatisfy { !$0.selectable && $0.ids.isEmpty })
+            #expect(Set(pane.renderer.attributes.keys) == Set(pane.text.map.spans.map(\.id)))
+            #expect(model.project == original && model.undoSteps == steps)
+        }
+    }
+
     @Test func theKeysWalkKeepAndUndoTheFocusedChange() throws {
         let model = try editor(); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488))

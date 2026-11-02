@@ -11,6 +11,7 @@ import VoxClipCore
         let axis: TimelineAxis
         let scope: String?
         let revision: Int
+        let showsSurroundingContext: Bool
     }
     private enum Drag {
         case overview
@@ -25,7 +26,7 @@ import VoxClipCore
     private var keySelection: Set<String> = []
     var active: Bool { drag != nil }
     var followsPlayhead: Bool { if case .overview? = drag { return true }; return drag == nil }
-    private var current: Context { Context(axis: model.timelineAxis, scope: model.activeClip?.id, revision: model.projectRevision) }
+    private var current: Context { Context(axis: model.timelineAxis, scope: model.activeClip?.id, revision: model.projectRevision, showsSurroundingContext: model.showsSurroundingContext) }
     init(canvas: TimelineCanvasView) { self.canvas = canvas }
 
     func cancel() { drag = nil; context = nil; selection = nil }

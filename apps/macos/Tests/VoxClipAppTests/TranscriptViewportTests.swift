@@ -30,6 +30,8 @@ import Testing
         project.edits.clips = [ClipRange(id: "middle", startWordId: "v\((paragraph - 2) * 20)", endWordId: "v\((paragraph + 3) * 20 - 1)", title: "Middle")]
         let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
         model.activate(model.project.edits.clips[0])
+        // These viewport tests scroll through paragraphs outside the active clip.
+        model.showsSurroundingContext = true
         model.sourceTime = Double(paragraph * 20 + 15) * 0.5 + 0.1
         model.selectedWordIDs = Set((paragraph * 20 + 10...paragraph * 20 + 16).map { "v\($0)" })
         return model

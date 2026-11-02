@@ -177,6 +177,7 @@ private actor TimelineTestSettings: SettingsStore {
     @Test func thePlayheadOffScreenPagesTheViewport() throws {
         let app = try app()
         let model = editor(app, project: try project())
+        model.showsSurroundingContext = true
         defer { model.close() }
         let canvas = TimelineCanvasView(model: model)
         defer { canvas.tearDown() }
@@ -258,6 +259,7 @@ private actor TimelineTestSettings: SettingsStore {
     @Test func aFittedEditedViewFitsAgainWhenTheClipsLengthChanges() throws {
         let app = try app()
         let model = editor(app, project: try project())
+        model.showsSurroundingContext = true
         defer { model.close() }
         let (canvas, window) = windowed(model)
         defer { canvas.tearDown(); window.close() }
@@ -322,6 +324,7 @@ private actor TimelineTestSettings: SettingsStore {
     @Test func thePlayheadAndTheWashStayOffTheTrackHeaders() throws {
         let app = try app()
         let model = editor(app, project: try project())
+        model.showsSurroundingContext = true
         defer { model.close() }
         model.showsCuts = true
         model.sourceTime = 20.4
@@ -412,6 +415,7 @@ private actor TimelineTestSettings: SettingsStore {
     @Test(arguments: [TimelineAxis.edited, .source]) func theLanesDrawNotesSixPixels(_ axis: TimelineAxis) throws {
         let app = try app()
         let model = editor(app, project: try project())
+        model.showsSurroundingContext = true
         defer { model.close() }
         model.showsCuts = axis == .source
         // The playhead inside the clip before the canvas follows it, so neither axis pages.
@@ -565,9 +569,41 @@ private actor TimelineTestSettings: SettingsStore {
     /// notes.md §6, Source: the same zoom on take time; each cut range in the clip is empty
     /// lane with a dashed `timeline.cutOutline`, kept pieces stand where they are and media
     /// outside In/Out shows at 32%.
+    @Test func focusedSourceHidesOutsideAudioAndVideoAndContextRestoresThem() throws {
+        let app = try app(), model = try audioModel(app)
+        defer { model.close(); try? FileManager.default.removeItem(at: app.locations.root) }
+        model.showsCuts = true
+        let (canvas, window) = windowed(model)
+        defer { canvas.tearDown(); window.close() }
+        let scope = try #require(model.scopeSourceRange)
+        let original = model.project
+        for showsContext in [false, true, false] {
+            model.showsSurroundingContext = showsContext
+            canvas.renderContent()
+            canvas.layoutSubtreeIfNeeded()
+            canvas.audio.layer?.displayIfNeeded()
+            canvas.video.layer?.displayIfNeeded()
+            #expect((canvas.audio.drawn.dimmed > 0) == showsContext)
+            #expect((canvas.video.dimmed > 0) == showsContext)
+            #expect(canvas.content.overviewRange == (showsContext ? 0...model.sourceDuration : scope))
+            if !showsContext {
+                #expect(canvas.content.displayRange == scope)
+                canvas.zoom(by: 4)
+                canvas.scroll(to: 0)
+                #expect(abs(canvas.viewport.origin - (scope.lowerBound - 1)) < 1e-9)
+                canvas.scroll(to: 1)
+                // The viewport includes the existing trailing label room beyond the usable lane.
+                let usableEnd = canvas.viewport.visible.upperBound - Double(TimelineMetrics.trailing) / canvas.viewport.ptPerSecond
+                #expect(usableEnd <= scope.upperBound + TimelineViewport.margin + 1e-9)
+            }
+        }
+        #expect(model.project == original && model.undoSteps == 0 && !model.document.isDocumentEdited)
+    }
+
     @Test func sourceA1GapsCoverExactlyTheCutRanges() throws {
         let app = try app()
         let model = try audioModel(app)
+        model.showsSurroundingContext = true
         defer { model.close() }
         model.showsCuts = true
         let (canvas, window) = windowed(model)
@@ -638,6 +674,7 @@ private actor TimelineTestSettings: SettingsStore {
     @Test(arguments: [12.1, 9.1]) func sourceA1DimsFromTheDraggedIn(_ target: Double) throws {
         let app = try app()
         let model = try audioModel(app)
+        model.showsSurroundingContext = true
         defer { model.close() }
         model.showsCuts = true
         let (canvas, window) = windowed(model)
@@ -1484,8 +1521,8 @@ private actor TimelineTestSettings: SettingsStore {
         defer { canvas.tearDown(); window.close() }
         #expect(canvas.headers.count == 4)
         #expect(canvas.headers[3].accessibilityLabel() == "FX Motion")
-        #expect(canvas.headers[3].accessibilityValue() as? String == "Director results land here")
-        #expect(canvas.headers[3].button.isHidden)
+        #expect(canvas.headers[3].button.accessibilityLabel() == "Edit clip motion cues")
+        #expect(!canvas.headers[3].button.isHidden && canvas.headers[3].action != nil)
         let expected: [CGFloat] = [20, 24, 28]
         for (index, height) in TrackHeight.allCases.enumerated() {
             shell.layout.trackHeight = height

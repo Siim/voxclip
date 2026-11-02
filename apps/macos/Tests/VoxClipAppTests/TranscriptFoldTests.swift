@@ -100,6 +100,7 @@ import Testing
         let (text, renderer, coordinator) = try pane(model)
         defer { withExtendedLifetime(coordinator) {} }
         model.activate(model.project.edits.clips[0])
+        model.showsSurroundingContext = true
         render(model, renderer)
         let lines = DebugTranscriptPixels.displayed(text)
         #expect(lines[0] == "So, uh, while you're speaking, it, uh, examines your, uh, app, makes videos, and adds clip in between your speech.")

@@ -31,6 +31,15 @@ extension EditorModel {
     /// How long the axis runs: the scope's output on Edited, the take on Source.
     func timelineLength(on axis: TimelineAxis) -> Double { axis == .edited ? duration : sourceDuration }
 
+    func timelineDisplayRange(on axis: TimelineAxis) -> ClosedRange<Double> {
+        if axis == .source, focusesClip, let scopeSourceRange { return scopeSourceRange }
+        return 0...max(0, timelineLength(on: axis))
+    }
+
+    var timelineOverviewRange: ClosedRange<Double> {
+        focusesClip ? scopeSourceRange ?? 0...max(0, sourceDuration) : 0...max(0, sourceDuration)
+    }
+
     /// The playhead slider's spoken value (design §5.2), on the axis the timeline shows.
     var timelineAccessibilityValue: String {
         let edited = timelineAxis == .edited
@@ -316,6 +325,7 @@ extension EditorModel {
     var timelineOverviewClips: [TimelineOverviewClip] {
         let open = activeClip?.id
         return sortedClips.compactMap { clip in
+            if focusesClip && clip.id != open { return nil }
             guard let lower = index(clip.startWordId), let upper = index(clip.endWordId), lower <= upper,
                   let number = clipNumber(clip.id) else { return nil }
             return TimelineOverviewClip(id: clip.id, source: words[lower].start...max(words[lower].start, words[upper].end), number: number,

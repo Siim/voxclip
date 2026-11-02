@@ -179,6 +179,7 @@ import VoxClipCore
             let before = (restyles: renderer.scopeRestyles, paragraphs: renderer.paragraphReplacements, styles: renderer.rebuildStyles)
             let start = ContinuousClock.now
             model.apply(.setActiveClip(clipId: target), name: "Performance tab")
+            model.showsSurroundingContext = true
             render()
             switchTimes.append(milliseconds(start.duration(to: .now)))
             restyles.append(renderer.scopeRestyles - before.restyles)
