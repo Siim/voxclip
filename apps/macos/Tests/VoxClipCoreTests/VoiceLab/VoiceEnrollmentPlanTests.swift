@@ -43,7 +43,8 @@ struct VoiceEnrollmentPlanTests {
     private var wav: Data { VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 4_000) }
     private func statement() throws -> VoiceConsentStatement {
         let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: FixtureLoader.data("fixtures/voice-lab/consent-record.json"))
-        return .init(language: record.statement.language, text: record.statement.text, nonce: record.statement.nonce)
+        let statement = try #require(record.statement)
+        return .init(language: statement.language, text: statement.text, nonce: statement.nonce)
     }
     private func samples(mismatch: Bool = false) -> [VoiceTrainingSample] {
         (0..<4).map { i in .init(wav: VoiceLabRequestFixtures.wav(rate: 16_000, frames: 240_000, fill: mismatch ? -4_000 : (2_000 + i)),
@@ -102,10 +103,11 @@ struct VoiceEnrollmentPlanTests {
                 #expect(probe.events.withLock { $0.isEmpty })
                 #expect(plan.quote.estimate.usd == plan.quote.verify!.estimate.usd! + plan.quote.create.estimate.usd!)
                 let record = try await service.execute(plan, approved: vector.id != "declined", enabled: vector.id != "disabled", appVersion: "0.1.0")
-                #expect(record.statement.text == (try statement()).text)
-                #expect(record.statement.audioSha256 == VoiceLabFingerprint.bytes(wav))
-                #expect(record.statement.stt.wer == 0)
-                #expect(!record.statement.stt.transcriptionId.isEmpty)
+                let recorded = try #require(record.statement)
+                #expect(recorded.text == (try statement()).text)
+                #expect(recorded.audioSha256 == VoiceLabFingerprint.bytes(wav))
+                #expect(recorded.stt.wer == 0)
+                #expect(!recorded.stt.transcriptionId.isEmpty)
                 #expect(try await store.load(record.id) == record)
                 #expect(try await store.recoverableEnrollments().isEmpty)
                 await #expect(throws: (any Error).self) { try await service.execute(plan, approved: true, enabled: true, appVersion: "0.1.0") }
@@ -283,8 +285,8 @@ struct VoiceEnrollmentPlanTests {
                     await #expect(throws: VoiceLabError.consentRequired) { try await recoveryService.execute(recovered, approved: false, enabled: true, appVersion: "0.1.0") }
                 } else {
                     let record = try await recoveryService.execute(recovered, approved: true, enabled: true, appVersion: "0.1.0")
-                    #expect(record.statement.audioSha256 == VoiceLabFingerprint.bytes(wav))
-                    #expect(record.statement.text == (try statement()).text)
+                    #expect(record.statement?.audioSha256 == VoiceLabFingerprint.bytes(wav))
+                    #expect(record.statement?.text == (try statement()).text)
                     #expect(try await restarted.recoverableEnrollments().isEmpty)
                 }
             }

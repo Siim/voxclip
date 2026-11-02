@@ -369,7 +369,7 @@ private struct AcceptanceTestKeys: KeyProvider {
             storage: .init(projectId: original.id, paidRoot: root, scratchRoot: root.appendingPathComponent("scratch")),
             dispatchIfCurrent: { _, _ in Issue.record("Acceptance must not dispatch a provider request") }, inputsAreCurrent: { true })
         let session = RewriteGenerationSession(run: run)
-        #expect(session.acceptTitle == "Use Take 1")
+        #expect(session.acceptTitle == "Use Take")
         let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),
             trimStartFrame: 2400, trimEndFrame: 19200, windowStart: 2.5, windowEnd: 3.2, windowStartSample: 2500, windowEndSample: 3200,
             outputFrames: 16800, words: try #require(recipe.words))
@@ -397,6 +397,7 @@ private struct AcceptanceTestKeys: KeyProvider {
         #expect(await session.accept(into: model) == false)
         #expect(publications == 0 && model.project == original)
         session.review(VoiceLabTakeRunResult(rows: [row], end: .completed), input: input)
+        #expect(session.chooseVideo(.source))
         #expect(session.acceptTitle == "Use Take 1")
         if outcome == "adjacent-cut" {
             #expect(await session.accept(into: model, localCommands: [.setPauseKeep(seconds: 0.105), .tightenPauses]) == false)

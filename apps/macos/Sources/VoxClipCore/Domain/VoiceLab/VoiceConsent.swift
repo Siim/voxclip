@@ -8,7 +8,7 @@ public enum VoiceConsentError: Error, LocalizedError, Equatable, Sendable {
         switch self {
         case .invalidName: "Enter a name with 1 to 60 Unicode scalars and no control characters."
         case .invalidWords: "The consent word list isn't available."
-        case .attestationsRequired: "Confirm all three statements before recording."
+        case .attestationsRequired: "Confirm all three statements before creating your voice."
         case .statementMismatch: "That didn't match the statement. Read it again, clearly, in one take."
         case .tooManyAttempts: "Three attempts are allowed per 10 minutes. Please try again later."
         case .speakerUnavailable: "The speaker check isn't available yet. Your voice can't be created until it is."
@@ -115,9 +115,9 @@ public struct VoiceStatementMatch: Codable, Sendable, Equatable {
 }
 
 public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
-    package init(schema: String, recordId: String, provider: String, type: String, voiceId: String, voiceName: String, status: Status, createdAt: String, deletedAt: String?, statement: Statement, attestations: Attestations, samples: [Sample], speaker: Speaker, app: App, region: ElevenLabsRegion? = nil, creator: Creator? = nil) {
+    package init(schema: String, recordId: String, provider: String, type: String, voiceId: String, voiceName: String, status: Status, createdAt: String, deletedAt: String?, statement: Statement?, attestations: Attestations, samples: [Sample], speaker: Speaker, app: App, region: ElevenLabsRegion? = nil, creator: Creator? = nil, projectConsent: ProjectConsent? = nil) {
         self.schema = schema; self.recordId = recordId; self.provider = provider; self.type = type; self.voiceId = voiceId; self.voiceName = voiceName; self.status = status; self.createdAt = createdAt; self.deletedAt = deletedAt; self.statement = statement; self.attestations = attestations; self.samples = samples; self.speaker = speaker; self.app = app
-        self.region = region; self.creator = creator
+        self.region = region; self.creator = creator; self.projectConsent = projectConsent
     }
 
     public struct Creator: Codable, Sendable, Equatable {
@@ -129,6 +129,22 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
     }
 
     public enum Status: String, Codable, Sendable { case active, verificationRequired, deleted }
+    public enum ConsentMethod: String, Codable, Sendable { case recordedStatement, projectAttestation }
+    public struct ProjectConsent: Codable, Sendable, Equatable {
+        public static let text = "I confirm this is my own voice and I consent to creating a voice clone."
+        public let language: String
+        public let consentText: String
+        public let audioFile: String
+        public let audioSha256: String
+        private enum CodingKeys: String, CodingKey { case language, consentText = "text", audioFile, audioSha256 }
+        public init(language: String, audioSha256: String) {
+            self.language = language; consentText = Self.text; audioFile = "reference.wav"; self.audioSha256 = audioSha256
+        }
+        package func validate() throws {
+            guard ["en", "et"].contains(language), consentText == Self.text, audioFile == "reference.wav",
+                  VoiceConsentRecord.hashValid(audioSha256) else { throw VoiceConsentError.invalidRecord }
+        }
+    }
     public struct Statement: Codable, Sendable, Equatable {
         package init(language: String, text: String, nonce: [String], audioFile: String, audioSha256: String, stt: VoiceStatementMatch) {
             self.language = language; self.text = text; self.nonce = nonce; self.audioFile = audioFile; self.audioSha256 = audioSha256; self.stt = stt
@@ -186,7 +202,8 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
     public var status: Status
     public let createdAt: String
     public var deletedAt: String?
-    public let statement: Statement
+    public let statement: Statement?
+    public let projectConsent: ProjectConsent?
     public let attestations: Attestations
     public let samples: [Sample]
     public let speaker: Speaker
@@ -194,15 +211,20 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
     public var region: ElevenLabsRegion?
     public var creator: Creator?
     public var recordedRegion: ElevenLabsRegion { creator?.region ?? region ?? .default }
+    public var consentMethod: ConsentMethod { schema == "voxclip-consent/2" ? .projectAttestation : .recordedStatement }
+    public var language: String { statement?.language ?? projectConsent?.language ?? "" }
+    public var referenceAudioFile: String { statement?.audioFile ?? projectConsent?.audioFile ?? "" }
+    public var referenceAudioSHA256: String { statement?.audioSha256 ?? projectConsent?.audioSha256 ?? "" }
     public var id: String { recordId }
-    private enum CodingKeys: String, CodingKey { case schema, recordId, provider, type, voiceId, voiceName, status, createdAt, deletedAt, statement, attestations, samples, speaker, app, region, creator }
+    private enum CodingKeys: String, CodingKey { case schema, recordId, provider, type, voiceId, voiceName, status, createdAt, deletedAt, statement, projectConsent, attestations, samples, speaker, app, region, creator }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(schema, forKey: .schema); try values.encode(recordId, forKey: .recordId)
         try values.encode(provider, forKey: .provider); try values.encode(type, forKey: .type)
         try values.encode(voiceId, forKey: .voiceId); try values.encode(voiceName, forKey: .voiceName)
         try values.encode(status, forKey: .status); try values.encode(createdAt, forKey: .createdAt)
-        try values.encode(deletedAt, forKey: .deletedAt); try values.encode(statement, forKey: .statement)
+        try values.encode(deletedAt, forKey: .deletedAt); try values.encodeIfPresent(statement, forKey: .statement)
+        try values.encodeIfPresent(projectConsent, forKey: .projectConsent)
         try values.encode(attestations, forKey: .attestations); try values.encode(samples, forKey: .samples)
         try values.encode(speaker, forKey: .speaker); try values.encode(app, forKey: .app)
         try values.encodeIfPresent(region, forKey: .region); try values.encodeIfPresent(creator, forKey: .creator)
@@ -211,16 +233,30 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
     public func validate() throws {
         guard creator.map({ $0.keyFingerprint.count == 16 && $0.keyFingerprint.allSatisfy { "0123456789abcdef".contains($0) } }) ?? true,
               creator == nil || region == nil || creator?.region == region else { throw VoiceConsentError.invalidRecord }
-        guard schema == "voxclip-consent/1", UUID(uuidString: recordId) != nil, provider == "elevenlabs", type == "ivc",
+        switch schema {
+        case "voxclip-consent/1":
+            guard let statement, projectConsent == nil,
+                  statement.audioFile == "statement.wav", ["en", "et"].contains(statement.language), !statement.text.isEmpty,
+                  statement.nonce.count == 4, Set(statement.nonce).count == 4, statement.stt.wer.isFinite, (0...0.15).contains(statement.stt.wer),
+                  Self.hashValid(statement.audioSha256) else { throw VoiceConsentError.invalidRecord }
+        case "voxclip-consent/2":
+            guard statement == nil, let projectConsent, samples.first?.sha256 == projectConsent.audioSha256,
+                  samples.allSatisfy({ $0.source == "project" }) else { throw VoiceConsentError.invalidRecord }
+            try projectConsent.validate()
+        default: throw VoiceConsentError.invalidRecord
+        }
+        guard UUID(uuidString: recordId) != nil, provider == "elevenlabs", type == "ivc",
               !voiceId.isEmpty, voiceId.count <= 128, voiceId.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }),
               (1...70).contains(voiceName.unicodeScalars.count), ISO8601DateFormatter().date(from: createdAt) != nil,
               ISO8601DateFormatter().date(from: attestations.acceptedAt) != nil, attestations.complete,
-              statement.audioFile == "statement.wav", ["en", "et"].contains(statement.language), !statement.text.isEmpty,
-              statement.nonce.count == 4, Set(statement.nonce).count == 4, statement.stt.wer.isFinite, (0...0.15).contains(statement.stt.wer),
-              Self.hashValid(statement.audioSha256), !speaker.model.isEmpty, speaker.threshold.isFinite, (0...1).contains(speaker.threshold),
+              !speaker.model.isEmpty, speaker.threshold.isFinite, (0...1).contains(speaker.threshold),
               let embedding = Self.decodeEmbedding(speaker.embedding), !embedding.isEmpty,
               !samples.isEmpty, samples.count <= 24, samples.allSatisfy({ Self.hashValid($0.sha256) && $0.seconds.isFinite && (5...30).contains($0.seconds) && ["project", "readAloud"].contains($0.source) && $0.speakerScore.isFinite && $0.speakerScore >= speaker.threshold && $0.speakerScore <= 1.00001 }),
               app.platform == "macos", !app.version.isEmpty else { throw VoiceConsentError.invalidRecord }
+        if consentMethod == .projectAttestation {
+            let milliseconds = samples.reduce(0) { $0 + Int(($1.seconds * 1_000 + 0.5).rounded(.down)) }
+            guard (30_000...120_000).contains(milliseconds) else { throw VoiceConsentError.invalidRecord }
+        }
         if status == .deleted { guard let deletedAt, ISO8601DateFormatter().date(from: deletedAt) != nil else { throw VoiceConsentError.invalidRecord } }
         else if deletedAt != nil { throw VoiceConsentError.invalidRecord }
     }
@@ -246,6 +282,8 @@ public struct VoiceConsentRecord: Codable, Sendable, Equatable, Identifiable {
 public struct EnrollmentQuote: Codable, Sendable, Equatable {
     public let verify: VoiceLabQuote?
     public let create: VoiceLabQuote
+    private let method: VoiceConsentRecord.ConsentMethod?
+    public var consentMethod: VoiceConsentRecord.ConsentMethod { method ?? .recordedStatement }
     public var id: UUID { create.id }
     public var estimate: CostEstimate {
         guard let verify else { return create.estimate }
@@ -255,16 +293,47 @@ public struct EnrollmentQuote: Codable, Sendable, Equatable {
     }
     private let binding: String
     package init(verify: VoiceLabQuote?, create: VoiceLabQuote, request: VoiceLabCloneRequest, statement: VoiceConsentStatement) throws {
-        self.verify = verify; self.create = create
+        self.verify = verify; self.create = create; method = nil
         binding = try Self.fingerprint(request, statement)
         try validate(request: request, statement: statement)
     }
     public func validate(request: VoiceLabCloneRequest, statement: VoiceConsentStatement) throws {
+        guard consentMethod == .recordedStatement else { throw VoiceLabError.consentRequired }
         if let verify {
             guard verify.operation == .speechToText, verify.region == create.region,
                   verify.languageMode == .explicit(statement.language) else { throw VoiceLabError.consentRequired }
         }
         guard create.operation == .createClone, binding == (try Self.fingerprint(request, statement)) else { throw VoiceLabError.consentRequired }
+    }
+    package init(create: VoiceLabQuote, request: VoiceLabCloneRequest, projectConsent: VoiceConsentRecord.ProjectConsent,
+                 attestations: VoiceConsentRecord.Attestations) throws {
+        verify = nil; self.create = create; method = .projectAttestation
+        binding = try Self.fingerprint(request, projectConsent, attestations)
+        try validate(request: request, projectConsent: projectConsent, attestations: attestations)
+    }
+    public func validate(request: VoiceLabCloneRequest, projectConsent: VoiceConsentRecord.ProjectConsent,
+                         attestations: VoiceConsentRecord.Attestations) throws {
+        guard consentMethod == .projectAttestation, verify == nil, create.operation == .createClone,
+              binding == (try Self.fingerprint(request, projectConsent, attestations)) else { throw VoiceLabError.consentRequired }
+    }
+    private static func fingerprint(_ request: VoiceLabCloneRequest, _ consent: VoiceConsentRecord.ProjectConsent,
+                                    _ attestations: VoiceConsentRecord.Attestations) throws -> String {
+        try consent.validate()
+        guard attestations.complete, ISO8601DateFormatter().date(from: attestations.acceptedAt) != nil,
+              (1...24).contains(request.samples.count), request.samples.allSatisfy({ $0.role == .training }),
+              request.samples.first.map({ VoiceLabFingerprint.bytes($0.wav) }) == consent.audioSha256,
+              request.language == consent.language, let nonce = request.recoveryNonce, UUID(uuidString: nonce) != nil else {
+            throw VoiceLabError.consentRequired
+        }
+        var fields = [VoiceConsentRecord.ConsentMethod.projectAttestation.rawValue,
+                      try VoiceConsentText.displayName(request.displayName), request.language,
+                      String(request.createdAt.timeIntervalSince1970), String(request.removeBackgroundNoise), nonce,
+                      consent.consentText, consent.audioFile, consent.audioSha256,
+                      String(attestations.ownVoice), String(attestations.adult), String(attestations.ownVideosOnly), attestations.acceptedAt]
+        for (index, sample) in request.samples.enumerated() {
+            fields += [String(index), sample.role.rawValue, VoiceLabFingerprint.bytes(sample.wav)]
+        }
+        return VoiceLabFingerprint.fields(fields)
     }
     private static func fingerprint(_ request: VoiceLabCloneRequest, _ statement: VoiceConsentStatement) throws -> String {
         guard request.samples.first?.role == .consentStatement,

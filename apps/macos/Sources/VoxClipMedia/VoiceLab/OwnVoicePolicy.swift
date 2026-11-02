@@ -3,8 +3,9 @@ import VoxClipCore
 
 extension VoiceLabFingerprint {
     static func policy(_ value: OwnVoicePolicy) -> [String] {
-        [value.recordID, value.cloneVoiceID ?? "", String(value.recordActive), String(value.providerConsentGranted),
-         String(value.statementVerified), String(value.speakerMatched)]
+        let legacy = [value.recordID, value.cloneVoiceID ?? "", String(value.recordActive), String(value.providerConsentGranted),
+                      String(value.statementVerified), String(value.speakerMatched)]
+        return value.consentMethod == .recordedStatement ? legacy : legacy + [value.consentMethod.rawValue]
     }
 }
 
@@ -17,23 +18,29 @@ public struct OwnVoicePolicy: Sendable, Equatable {
     public let recordActive: Bool
     public let providerConsentGranted: Bool
     public let statementVerified: Bool
+    public let consentMethod: VoiceConsentRecord.ConsentMethod
     public let speakerMatched: Bool
     public init(recordID: String, cloneVoiceID: String? = nil, recordActive: Bool,
-                providerConsentGranted: Bool, statementVerified: Bool, speakerMatched: Bool) {
+                providerConsentGranted: Bool, statementVerified: Bool, speakerMatched: Bool,
+                consentMethod: VoiceConsentRecord.ConsentMethod = .recordedStatement) {
         self.recordID = recordID; self.cloneVoiceID = cloneVoiceID; self.recordActive = recordActive; self.providerConsentGranted = providerConsentGranted
         self.statementVerified = statementVerified; self.speakerMatched = speakerMatched
+        self.consentMethod = consentMethod
         capability = nil
     }
-    private init(recordID: String, cloneVoiceID: String?, capability: VoiceOperationCapability) {
+    private init(recordID: String, cloneVoiceID: String?, consentMethod: VoiceConsentRecord.ConsentMethod, capability: VoiceOperationCapability) {
         self.recordID = recordID; self.cloneVoiceID = cloneVoiceID; self.capability = capability
-        recordActive = true; providerConsentGranted = true; statementVerified = true; speakerMatched = true
+        self.consentMethod = consentMethod
+        recordActive = true; providerConsentGranted = true; statementVerified = consentMethod == .recordedStatement; speakerMatched = true
     }
     func authorized(for quote: VoiceLabQuote, proof: VoiceSpeakerMatch) throws -> Self {
-        guard proof.recordID == recordID, proof.cloneVoiceID == cloneVoiceID else { throw VoiceLabError.consentRequired }
-        return try Self(recordID: recordID, cloneVoiceID: cloneVoiceID, capability: proof.capability(for: quote))
+        try validate()
+        guard proof.recordID == recordID, proof.cloneVoiceID == cloneVoiceID, proof.consentMethod == consentMethod else { throw VoiceLabError.consentRequired }
+        return try Self(recordID: recordID, cloneVoiceID: cloneVoiceID, consentMethod: consentMethod, capability: proof.capability(for: quote))
     }
     public func validate() throws {
-        guard !recordID.isEmpty, recordActive, providerConsentGranted, statementVerified else { throw VoiceLabError.consentRequired }
+        guard !recordID.isEmpty, recordActive, providerConsentGranted,
+              statementVerified == (consentMethod == .recordedStatement) else { throw VoiceLabError.consentRequired }
         guard speakerMatched else { throw VoiceLabError.speakerMismatch }
     }
 }

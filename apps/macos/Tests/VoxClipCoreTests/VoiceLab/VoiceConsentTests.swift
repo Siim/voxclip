@@ -54,7 +54,8 @@ struct VoiceConsentTests {
     }
     private func statement() throws -> VoiceConsentStatement {
         let record = try fixtureRecord(wav: wav)
-        return .init(language: record.statement.language, text: record.statement.text, nonce: record.statement.nonce)
+        let statement = try #require(record.statement)
+        return .init(language: statement.language, text: statement.text, nonce: statement.nonce)
     }
     private func raw() async throws -> RawTranscript {
         let base = SpeechStubHTTP.register { _ in Issue.record("Response mapping must not use HTTP"); return (500, [:], Data()) }
@@ -489,7 +490,7 @@ struct VoiceConsentTests {
         try await VoiceOperationReconciler(store: restarted, client: retry).reconcile(force: true)
         let deleted = try await restarted.load(record.id)
         #expect(deleted.status == .deleted)
-        #expect(deleted.samples == record.samples && deleted.statement.audioSha256 == record.statement.audioSha256)
+        #expect(deleted.samples == record.samples && deleted.statement?.audioSha256 == record.statement?.audioSha256)
         #expect(try await restarted.operations().filter { $0.kind == .delete && !$0.finished }.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
         try await VoiceOperationReconciler(store: restarted, client: retry).reconcile(force: true)
@@ -1130,9 +1131,9 @@ extension VoiceConsentTests {
         #expect(try await store.operations().isEmpty)
         #expect(try await store.records().isEmpty)
         let audit = try #require(await store.auditTombstone(recordID: record.id))
-        #expect(audit.statementSha256 == record.statement.audioSha256)
+        #expect(audit.statementSha256 == record.statement?.audioSha256)
         #expect(audit.recordingSha256s == record.samples.map(\.sha256))
-        #expect(audit.language == record.statement.language && audit.createdAt == record.createdAt)
+        #expect(audit.language == record.language && audit.createdAt == record.createdAt)
         #expect(audit.acceptedAt == record.attestations.acceptedAt && audit.remoteVoiceID == "fixtureOwnVoice")
         #expect(audit.deletedAt != nil)
         let restarted = storage(root)
@@ -1163,7 +1164,7 @@ extension VoiceConsentTests {
             #expect(FileManager.default.fileExists(atPath: failing.root.appendingPathComponent("\(record.id)/record.json").path))
         } else {
             let audit = try #require(await failing.operation(operation.id).audit)
-            #expect(audit.statementSha256 == record.statement.audioSha256)
+            #expect(audit.statementSha256 == record.statement?.audioSha256)
             #expect(audit.recordingSha256s == record.samples.map(\.sha256))
             let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(audit)) as? [String: Any])
             #expect(Set(object.keys).isSubset(of: ["recordID", "statementSha256", "recordingSha256s", "createdAt", "acceptedAt", "language", "remoteVoiceID", "deletedAt"]))
@@ -1172,7 +1173,7 @@ extension VoiceConsentTests {
         try await VoiceOperationReconciler(store: restarted, client: client).reconcile(force: true)
         #expect(try await restarted.operations().isEmpty)
         let audit = try #require(await restarted.auditTombstone(recordID: record.id))
-        #expect(audit.statementSha256 == record.statement.audioSha256 && audit.recordingSha256s == record.samples.map(\.sha256))
+        #expect(audit.statementSha256 == record.statement?.audioSha256 && audit.recordingSha256s == record.samples.map(\.sha256))
         #expect(audit.remoteVoiceID == record.voiceId && audit.deletedAt != nil)
         #expect(!FileManager.default.fileExists(atPath: restarted.root.appendingPathComponent("\(record.id)/statement.wav").path))
         #expect(remote.value.withLock { !$0.present && $0.posts == 0 })

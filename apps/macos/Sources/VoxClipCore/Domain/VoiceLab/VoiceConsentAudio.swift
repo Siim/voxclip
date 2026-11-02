@@ -48,7 +48,16 @@ public enum VoiceConsentAudio {
     }
 
     public static func pcm16k(_ wav: Data) throws -> [Float] {
-        let format = try validateWAV(wav, maxBytes: 16 * 1_024 * 1_024)
+        try pcm16k(wav, maximumBytes: 16 * 1_024 * 1_024)
+    }
+
+    /// Conversion uploads use the provider's exclusive 50 MB bound. Enrollment keeps its existing limit.
+    public static func conversionPCM16k(_ wav: Data) throws -> [Float] {
+        try pcm16k(wav, maximumBytes: 49_999_999)
+    }
+
+    private static func pcm16k(_ wav: Data, maximumBytes: Int) throws -> [Float] {
+        let format = try validateWAV(wav, maxBytes: maximumBytes)
         func size(_ offset: Int) -> Int {
             Int(wav.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: offset, as: UInt32.self)) })
         }
@@ -92,14 +101,27 @@ public enum VoiceConsentAudio {
             return weights
         }
         let count = samples.count * 16_000 / rate
-        return (0..<count).map { index in
-            let source = index * rate / 16_000
-            let weights = kernels[index % phases]
-            var sum = 0.0
-            for tap in max(-radius, -source)...min(radius, samples.count - 1 - source) {
-                sum += Double(samples[source + tap]) * weights[tap + radius]
+        var output = [Float](repeating: 0, count: count)
+        samples.withUnsafeBufferPointer { input in
+            output.withUnsafeMutableBufferPointer { result in
+                var index = 0
+                while index < count {
+                    let source = index * rate / 16_000
+                    let weights = kernels[index % phases]
+                    let lastTap = min(radius, input.count - 1 - source)
+                    var tap = max(-radius, -source)
+                    var sum = 0.0
+                    weights.withUnsafeBufferPointer { kernel in
+                        while tap <= lastTap {
+                            sum += Double(input[source + tap]) * kernel[tap + radius]
+                            tap += 1
+                        }
+                    }
+                    result[index] = Float(sum)
+                    index += 1
+                }
             }
-            return Float(sum)
         }
+        return output
     }
 }

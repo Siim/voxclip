@@ -51,14 +51,17 @@ public actor VoiceOperationReconciler {
             case (.create, .created):
                 try await store.clearEnrollmentRecovery(recordID: value.recordID)
                 let draft = try? await store.load(value.recordID)
-                let audio = try? await store.statement(recordID: value.recordID)
-                let valid = draft?.status != .deleted && audio.map { VoiceLabFingerprint.bytes($0) == draft?.statement.audioSha256 } == true
+                let audio = try? await store.referenceAudio(recordID: value.recordID)
+                let valid = draft?.status != .deleted && audio.map { VoiceLabFingerprint.bytes($0) == draft?.referenceAudioSHA256 } == true
                 if !valid {
                     value = try await store.transition(value.id, to: .withdrawing, at: now())
                     continue
                 }
                 try await store.saveCreatedRecord(value)
                 value = try await store.transition(value.id, to: .saved, at: now())
+            case (.create, .refused):
+                try await store.discardUnresolvedDraft(value)
+                return
             case (.create, .withdrawing):
                 try await store.clearEnrollmentRecovery(recordID: value.recordID)
                 value = try await store.preserveCreationAudit(value.id)
@@ -138,7 +141,9 @@ public actor VoiceOperationReconciler {
         let client = clients(value.region)
         guard client.region == value.region else { throw VoiceConsentError.invalidRecord }
         let requestID = UUID()
-        let policy = OwnVoicePolicy(recordID: value.recordID, cloneVoiceID: voiceID, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        let method = value.audit?.consentMethod ?? .recordedStatement
+        let policy = OwnVoicePolicy(recordID: value.recordID, cloneVoiceID: voiceID, recordActive: true, providerConsentGranted: true,
+                                    statementVerified: method == .recordedStatement, speakerMatched: true, consentMethod: method)
         let quote = try await client.prepareOperationDeletion(value, requestID: requestID)
         _ = try await client.deleteOwnClone(voiceID: voiceID, policy: policy, requestID: requestID, authorization: .init(quote: quote, approved: true))
     }

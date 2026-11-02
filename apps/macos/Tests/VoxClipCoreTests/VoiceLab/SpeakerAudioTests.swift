@@ -42,6 +42,15 @@ struct SpeakerAudioTests {
         let voice = [Float](repeating: 0.1, count: 48_000)
         #expect(try SpeakerAudio.energySpeech(silence + voice + silence) == voice)
     }
+    @Test(arguments: [Float.nan, .infinity, -.infinity], [0, 24_000, 47_999])
+    func nonfiniteSamplesAreRejectedThroughoutTheAudio(value: Float, index: Int) throws {
+        var samples = [Float](repeating: 0.1, count: SpeakerAudio.windowSize)
+        samples[index] = value
+        #expect(throws: VoiceConsentError.speakerMismatch) { try SpeakerAudio.windows(samples) }
+        #expect(throws: VoiceConsentError.speakerMismatch) { try SpeakerAudio.select(samples, ranges: [0..<160]) }
+        #expect(throws: VoiceConsentError.speakerMismatch) { try SpeakerAudio.energySpeech(samples) }
+        #expect(throws: VoiceConsentError.speakerMismatch) { try SpeakerAudio.features(samples) }
+    }
     @Test func normalizationAndCosineRejectInvalidVectors() throws {
         let unit = try SpeakerAudio.normalized([3, 4])
         #expect(abs(unit[0] - 0.6) < 0.00001)

@@ -87,6 +87,21 @@ import Testing
         for result in results { #expect(result.passed, Comment(rawValue: result.name)) }
     }
 
+    @Test func clipConsentKeepsItsActionInTheCompactPanelWithoutARecordingStep() throws {
+        let app = AppModel(); let session = app.voiceLabSession
+        session.flow.state = .agree; session.trainingSource = .project
+        let host = NSHostingView(rootView: DirectorVoiceSteps(session: session, prepareOnAppear: false))
+        host.frame = CGRect(x: 0, y: 0, width: 324, height: 160)
+        host.layoutSubtreeIfNeeded()
+        let markers = DebugRightColumn.markers(in: host)
+        let action = try #require(markers["voice.use-audio"])
+        let footer = try #require(markers["voice.footer"])
+        #expect(host.bounds.insetBy(dx: -0.5, dy: -0.5).contains(footer))
+        #expect(footer.insetBy(dx: -0.5, dy: -0.5).contains(action))
+        #expect(DebugRightColumn.texts(in: host)["voice.use-audio"] == "Use Clip Audio")
+        #expect(!session.recorder.recording && session.statement == nil && !session.hasStatementRecording)
+    }
+
     @Test func firstUseKeepsTheDownloadLicenceAndActionInsideTheSmallestPanel() throws {
         let app = AppModel(); let session = app.voiceLabSession
         app.speakerModelLibrary.model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry

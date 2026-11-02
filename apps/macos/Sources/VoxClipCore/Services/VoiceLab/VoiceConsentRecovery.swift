@@ -5,7 +5,7 @@ package enum VoiceConsentCheckpoint: String, Sendable, CaseIterable {
     case saveDraft, removeDraft, saveRecord, tombstoneRecord, creationIntent, creationDispatched, creationResult, saveCreation, clearCreation
     case withdrawing, withdrawn, deletionIntent, remoteDeleted, removeStatement, audioRemoved, saveTombstone, clearDeletion
     case retryScheduled, abandoned, saveAudit
-    case enrollmentVerified
+    case enrollmentVerified, creationRefused
 }
 
 /// Durable boundary after Scribe passed and before creation dispatch. Never an authorization to send.
@@ -33,15 +33,34 @@ extension VoiceConsentStore {
     private func validateEnrollmentRecovery(_ value: VoiceEnrollmentRecovery) throws {
         let record = value.record
         try record.validate()
-        let statement = VoiceConsentStatement(language: record.statement.language, text: record.statement.text, nonce: record.statement.nonce)
-        try value.quote.validate(request: value.request, statement: statement)
+        let training: [VoiceLabCloneSample]
+        switch record.consentMethod {
+        case .recordedStatement:
+            guard let recorded = record.statement else { throw VoiceConsentError.invalidRecord }
+            let statement = VoiceConsentStatement(language: recorded.language, text: recorded.text, nonce: recorded.nonce)
+            try value.quote.validate(request: value.request, statement: statement)
+            training = Array(value.request.samples.dropFirst())
+        case .projectAttestation:
+            guard let consent = record.projectConsent else { throw VoiceConsentError.invalidRecord }
+            try value.quote.validate(request: value.request, projectConsent: consent, attestations: record.attestations)
+            training = value.request.samples
+        }
         guard record.voiceId == "pending", value.request.recoveryNonce == record.id,
-              value.request.samples.count == record.samples.count + 1,
-              value.request.samples.first?.wav == (try self.statement(recordID: record.id)),
-              value.request.samples.first.map({ VoiceLabFingerprint.bytes($0.wav) }) == record.statement.audioSha256,
+              training.count == record.samples.count,
+              value.request.samples.first?.wav == (try referenceAudio(recordID: record.id)),
+              value.request.samples.first.map({ VoiceLabFingerprint.bytes($0.wav) }) == record.referenceAudioSHA256,
               value.trainingSeconds.isFinite, (10...120).contains(value.trainingSeconds) else { throw VoiceConsentError.invalidRecord }
-        for (sample, audit) in zip(value.request.samples.dropFirst(), record.samples) {
+        for (sample, audit) in zip(training, record.samples) {
             guard sample.role == .training, VoiceLabFingerprint.bytes(sample.wav) == audit.sha256 else { throw VoiceConsentError.invalidRecord }
+        }
+        if record.consentMethod == .projectAttestation {
+            let milliseconds = record.samples.reduce(0) { $0 + Int(($1.seconds * 1_000 + 0.5).rounded(.down)) }
+            guard (30_000...120_000).contains(milliseconds),
+                  abs(value.trainingSeconds - Double(milliseconds) / 1_000) < 0.001 else { throw VoiceConsentError.invalidRecord }
+            for (sample, audit) in zip(training, record.samples) {
+                let format = try VoiceConsentAudio.validateWAV(sample.wav, maxBytes: 16 * 1_024 * 1_024)
+                guard abs(Double(format.frames) / Double(format.rate) - audit.seconds) < 0.001 else { throw VoiceConsentError.invalidRecord }
+            }
         }
     }
     package func enrollmentRecovery(recordID: String, now: Date = Date()) throws -> VoiceEnrollmentRecovery? {
@@ -73,7 +92,7 @@ extension VoiceConsentStore {
         return try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).compactMap { entry in
             let id = entry.lastPathComponent
             guard UUID(uuidString: id) != nil,
-                  !operations.contains(where: { $0.recordID == id && ($0.wasDispatched || $0.state != .intent) }),
+                  !operations.contains(where: { $0.recordID == id && $0.state != .refused && ($0.wasDispatched || $0.state != .intent) }),
                   try enrollmentRecovery(recordID: id, now: now) != nil else { return nil }
             return id
         }.sorted()
@@ -90,8 +109,27 @@ extension VoiceConsentStore {
 
 public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
     public enum Kind: String, Codable, Sendable { case create, delete }
+    public enum CreationRefusal: String, Codable, Sendable {
+        case subscriptionRequired, featureUnavailable, clonePermissionMissing
+        package init?(error: any Error) {
+            guard let providerError = error as? VoiceLabError else { return nil }
+            switch providerError {
+            case .subscriptionRequired: self = .subscriptionRequired
+            case .featureUnavailable: self = .featureUnavailable
+            case .permissionMissing("create_instant_voice_clone"): self = .clonePermissionMissing
+            default: return nil
+            }
+        }
+        public var error: VoiceLabError {
+            switch self {
+            case .subscriptionRequired: .subscriptionRequired
+            case .featureUnavailable: .featureUnavailable
+            case .clonePermissionMissing: .permissionMissing("create_instant_voice_clone")
+            }
+        }
+    }
     public enum State: String, Codable, Sendable {
-        case intent, dispatched, created, saved, withdrawing, withdrawn
+        case intent, dispatched, refused, created, saved, withdrawing, withdrawn
         case remoteDeleted, audioRemoved, tombstoned, abandoned
     }
     public let id: UUID
@@ -114,7 +152,8 @@ public struct VoiceOperation: Codable, Sendable, Identifiable, Equatable {
     public var recoveryNeedsReview: Bool?
     public var creatorKeyFingerprint: String?
     public var remoteStateUnknown: Bool?
-    public var finished: Bool { [.saved, .withdrawn, .tombstoned, .abandoned].contains(state) }
+    public var creationRefusal: CreationRefusal?
+    public var finished: Bool { [.refused, .saved, .withdrawn, .tombstoned, .abandoned].contains(state) }
     public var needsCreatorRecoveryReview: Bool {
         kind == .create && wasDispatched && remoteVoiceID == nil && creatorKeyFingerprint == nil && !finished
     }
@@ -143,7 +182,7 @@ extension VoiceConsentRecord {
     package func assigningVoice(_ voiceID: String, requiresVerification: Bool) -> Self {
         Self(schema: schema, recordId: recordId, provider: provider, type: type, voiceId: voiceID, voiceName: voiceName,
              status: requiresVerification ? .verificationRequired : .active, createdAt: createdAt, deletedAt: nil,
-             statement: statement, attestations: attestations, samples: samples, speaker: speaker, app: app, region: region, creator: creator)
+             statement: statement, attestations: attestations, samples: samples, speaker: speaker, app: app, region: region, creator: creator, projectConsent: projectConsent)
     }
 }
 
@@ -181,9 +220,11 @@ extension VoiceConsentStore {
         try value.audit?.validate(recordID: value.recordID)
         guard value.audit == nil || value.audit?.remoteVoiceID == value.remoteVoiceID else { throw VoiceConsentError.invalidRecord }
         let allowed: Set<VoiceOperation.State> = value.kind == .create
-            ? [.intent, .dispatched, .created, .saved, .withdrawing, .withdrawn, .abandoned]
+            ? [.intent, .dispatched, .refused, .created, .saved, .withdrawing, .withdrawn, .abandoned]
             : [.intent, .remoteDeleted, .audioRemoved, .tombstoned]
         guard allowed.contains(value.state), ![.created, .saved, .remoteDeleted, .audioRemoved, .tombstoned].contains(value.state) || value.remoteVoiceID != nil else { throw VoiceConsentError.invalidRecord }
+        guard (value.state == .refused) == (value.creationRefusal != nil),
+              value.state != .refused || (value.wasDispatched && value.remoteVoiceID == nil && value.remoteStateUnknown != true && value.nextAttemptAt == nil && !value.failed) else { throw VoiceConsentError.invalidRecord }
         return value
     }
     private func writeOperation(_ value: VoiceOperation, checkpoint step: VoiceConsentCheckpoint) throws {
@@ -218,7 +259,7 @@ extension VoiceConsentStore {
         case (.create, .intent, .dispatched), (.create, .dispatched, .created), (.create, .created, .saved),
              (.create, .withdrawing, .withdrawn), (.create, .dispatched, .abandoned), (.create, .withdrawing, .abandoned),
              (.delete, .intent, .remoteDeleted), (.delete, .remoteDeleted, .audioRemoved), (.delete, .audioRemoved, .tombstoned): permitted = true
-        default: permitted = value.kind == .create && ![.withdrawn, .abandoned].contains(value.state) && state == .withdrawing
+        default: permitted = value.kind == .create && ![.refused, .withdrawn, .abandoned].contains(value.state) && state == .withdrawing
         }
         guard permitted else { throw VoiceConsentError.invalidRecord }
         value.state = state; value.updatedAt = max(date, value.updatedAt); value.failed = false; value.nextAttemptAt = nil
@@ -237,13 +278,23 @@ extension VoiceConsentStore {
         case .audioRemoved: step = .audioRemoved
         case .tombstoned: step = .saveTombstone
         case .abandoned: step = .abandoned
-        case .intent: throw VoiceConsentError.invalidRecord
+        case .intent, .refused: throw VoiceConsentError.invalidRecord
         }
         try writeOperation(value, checkpoint: step)
         return value
     }
+    package func refuseCreation(_ id: UUID, refusal: VoiceOperation.CreationRefusal, at date: Date) throws -> VoiceOperation {
+        var value = try operation(id)
+        guard value.kind == .create, value.state == .dispatched, value.wasDispatched,
+              value.remoteVoiceID == nil, value.remoteStateUnknown != true else { throw VoiceConsentError.invalidRecord }
+        value.state = .refused; value.creationRefusal = refusal
+        value.updatedAt = max(date, value.updatedAt); value.failed = false; value.nextAttemptAt = nil
+        try writeOperation(value, checkpoint: .creationRefused)
+        return value
+    }
     package func scheduleRetry(_ id: UUID, at date: Date) throws {
         var value = try operation(id)
+        guard value.state != .refused else { throw VoiceConsentError.invalidRecord }
         value.attempts += 1; value.failed = true; value.updatedAt = max(date, value.updatedAt)
         let delay = min(3_600.0, 30 * pow(2, Double(min(value.attempts - 1, 7))))
         value.nextAttemptAt = date.addingTimeInterval(delay)
@@ -259,7 +310,7 @@ extension VoiceConsentStore {
         try writeOperation(value, checkpoint: .retryScheduled)
     }
     package func removeOperation(_ value: VoiceOperation) throws {
-        guard value.finished, value.state != .abandoned else { throw VoiceConsentError.invalidRecord }
+        guard value.finished, ![.refused, .abandoned].contains(value.state) else { throw VoiceConsentError.invalidRecord }
         try checkpoint(value.kind == .create ? .clearCreation : .clearDeletion)
         let url = try operationFile(value.id)
         if FileManager.default.fileExists(atPath: url.path) {
@@ -318,11 +369,15 @@ extension VoiceConsentStore {
     }
     package func discardUnresolvedDraft(_ value: VoiceOperation) throws {
         guard value.kind == .create, value.remoteVoiceID == nil else { return }
+        if value.state == .refused,
+           try operations().contains(where: { $0.recordID == value.recordID && !$0.finished }) { return }
         let directory = try directory(value.recordID)
         let url = try file("record.json", in: directory)
         guard FileManager.default.fileExists(atPath: url.path) else { return }
         let draft = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: url))
-        guard draft.id == value.recordID, draft.voiceId == "pending" else { throw VoiceConsentError.invalidRecord }
+        guard draft.id == value.recordID else { throw VoiceConsentError.invalidRecord }
+        if value.state == .refused, draft.voiceId != "pending" { return }
+        guard draft.voiceId == "pending" else { throw VoiceConsentError.invalidRecord }
         try checkpoint(.removeDraft)
         try FileManager.default.removeItem(at: url)
         try synchronizeDirectory(directory)
@@ -415,14 +470,13 @@ extension VoiceConsentStore {
         let value = try operation(requestID)
         guard value.state == .intent, value.recordID == recordID,
               !(try operations()).contains(where: { $0.id != requestID && $0.blocksCreation }),
-              VoiceLabFingerprint.bytes(try statement(recordID: recordID)) == statementHash else { throw VoiceConsentError.invalidRecord }
+              VoiceLabFingerprint.bytes(try referenceAudio(recordID: recordID)) == statementHash else { throw VoiceConsentError.invalidRecord }
         _ = try transition(requestID, to: .dispatched, at: Date())
-        try clearEnrollmentRecovery(recordID: recordID)
     }
     package func validateCreation(recordID: String, requestID: UUID, statementHash: String) throws {
         let value = try operation(requestID)
         guard value.kind == .create, value.state == .dispatched, value.recordID == recordID,
-              VoiceLabFingerprint.bytes(try statement(recordID: recordID)) == statementHash else { throw VoiceConsentError.invalidRecord }
+              VoiceLabFingerprint.bytes(try referenceAudio(recordID: recordID)) == statementHash else { throw VoiceConsentError.invalidRecord }
     }
     func migrateLegacyOperations() throws {
         struct LegacyCreate: Decodable {

@@ -201,6 +201,64 @@ import Synchronization
         #expect(session.operations.count == 1 && session.operations.first?.finished == false)
         session.stopRecovery()
     }
+    @Test(arguments: [false, true])
+    func clipAudioUsesCheckboxConsentAndRequiresASeparatePricedClick(create: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = AppModel(locations: locations(root))
+        app.settings.values["voiceLab.enabled"] = .bool(true)
+        app.speakerModelLibrary.model = try SpeakerModelCatalog(shared: SharedResources.locate()).entry
+        app.speakerModelLibrary.installed = true
+        let store = VoiceConsentStore(locations: locations(root))
+        let session = VoiceLabSession(app: app, store: store)
+        let shared = try SharedResources.locate()
+        let probe = JobEnrollmentProbe(mismatch: false, response: Data())
+        JobEnrollmentHTTP.probe.withLock { $0 = probe }
+        defer { JobEnrollmentHTTP.probe.withLock { $0 = nil }; session.stopRecovery() }
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [JobEnrollmentHTTP.self]
+        let client = ElevenLabsVoiceLab(keys: VoiceLabAppKeys(), session: URLSession(configuration: config), prices: try VoiceLabPriceCatalog.load(shared: shared))
+        session.stageEnrollmentForTests(client: client, speaker: VoiceSpeakerCheck(embedder: JobEnrollmentEmbedder(probe: probe), calibratedThreshold: 0.8))
+        let fixture = VoiceLabTrainingSourceTests()
+        session.openEnrollment(project: .init(project: try fixture.project(bursts: 4, language: "en"), name: "Interview", source: try fixture.take(in: root)))
+        await session.analysis?.value
+        session.flow.state = .agree; session.displayName = "Example"
+        #expect(session.trainingSource == .project && session.agreementActionTitle == "Use Clip Audio")
+        #expect(!session.canContinueEnrollment)
+        session.ownVoice = true; session.adult = true
+        await session.continueVoiceEnrollment()
+        #expect(session.flow.plan == nil && !session.recorder.recording)
+        session.ownVideosOnly = true
+        #expect(session.canContinueEnrollment)
+        await session.continueVoiceEnrollment()
+        let plan = try #require(session.flow.plan)
+        #expect(plan.consentMethod == .projectAttestation && plan.quote.verify == nil)
+        #expect(session.flow.state == .ready && session.canCreate)
+        #expect(session.statement == nil && !session.hasStatementRecording && !session.recorder.recording)
+        #expect(session.creationCopy.contains("checkbox consent") && !session.creationCopy.contains("consent recording"))
+        #expect(session.flow.statementSeconds == 0 && plan.trainingSeconds >= 30)
+        #expect(probe.events.withLock { $0.isEmpty })
+        #expect(FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(session.recordID)/reference.wav").path))
+        #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(session.recordID)/statement.wav").path))
+        if create {
+            await session.createVoice()
+            let record = try #require(session.flow.finishedRecord)
+            #expect(session.flow.state == .finished && record.status == .active)
+            #expect(record.consentMethod == .projectAttestation && record.statement == nil)
+            #expect(record.projectConsent?.consentText == VoiceLabSession.projectConsentCopy)
+            #expect(probe.events.withLock { $0.filter { $0 != "plan" } } == ["create"])
+            await session.createVoice()
+            #expect(probe.events.withLock { $0.filter { $0 != "plan" } } == ["create"])
+        } else {
+            session.changeVoiceAgreement()
+            #expect(session.flow.state == .agree && session.flow.plan == nil && !session.canCreate)
+            await session.createVoice()
+            #expect(probe.events.withLock { $0.isEmpty })
+            await session.cancelEnrollment()
+            #expect(!FileManager.default.fileExists(atPath: store.root.appendingPathComponent("\(plan.recordID)/reference.wav").path))
+        }
+    }
+
     @Test func createdDateUsesTheFixedMonthTable() throws {
         #expect(VoiceLabSettings.createdDate("2026-10-26T12:00:00Z", shared: try SharedResources.locate()) == "26 October 2026")
         #expect(VoiceLabSettings.createdDate("invalid", shared: try SharedResources.locate()) == "Date unavailable")
@@ -219,7 +277,8 @@ import Synchronization
         let shared = try SharedResources.locate()
         let fixture = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-record.json"))
         let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: fixture)
-        let statement = VoiceConsentStatement(language: record.statement.language, text: record.statement.text, nonce: record.statement.nonce)
+        let recordedStatement = try #require(record.statement)
+        let statement = VoiceConsentStatement(language: recordedStatement.language, text: recordedStatement.text, nonce: recordedStatement.nonce)
         let wav = try VoiceTrainingAudio.wav([Float](repeating: 0.1, count: 5 * 16_000), rate: 16_000)
         let response = try Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/consent-scribe.json"))
         let probe = JobEnrollmentProbe(mismatch: mode == "statement-mismatch", localMismatch: mode == "local-mismatch", response: response)
@@ -506,7 +565,7 @@ import Synchronization
 @MainActor struct VoiceLabTrainingSourceTests {
     /// 50 s at 8 kHz: four 8 s bursts of tone 2.5 s apart over a quiet floor.
     private static let bursts: [ClosedRange<Double>] = [1...9, 11.5...19.5, 22...30, 32.5...40.5]
-    private func take(in folder: URL) throws -> URL {
+    fileprivate func take(in folder: URL) throws -> URL {
         let rate = 8_000.0, frames = 50 * 8_000
         let url = folder.appendingPathComponent("take.wav")
         let format = try #require(AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: rate, channels: 1, interleaved: false))
@@ -521,7 +580,7 @@ import Synchronization
         try file.write(from: buffer)
         return url
     }
-    private func project(bursts: Int, language: String = "et", events: Bool = false) throws -> Project {
+    fileprivate func project(bursts: Int, language: String = "et", events: Bool = false) throws -> Project {
         let shared = try SharedResources.locate()
         var project = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/voice-lab/passage-project.voxclip")))
         project.voiceLab = ProjectVoiceLab(segments: [], assets: project.voiceLab.assets)
@@ -610,7 +669,7 @@ import Synchronization
         await session.analysis?.value
         let statement = VoiceConsentStatement(language: "en", text: "Offline statement fixture", nonce: [])
         session.statement = statement
-        let mismatch = "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead."
+        let mismatch = "Some of this project's speech sounds like a different speaker. Record a read-aloud instead."
         await session.creationFailed(VoiceConsentError.speakerMismatch)
         #expect(session.projectMismatch && session.message == mismatch && session.projectAudioLine == "32 s of clear speech found in Interview")
         #expect(!session.projectChoiceEnabled && !session.canCreate)

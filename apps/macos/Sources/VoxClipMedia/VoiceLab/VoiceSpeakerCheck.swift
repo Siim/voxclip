@@ -4,13 +4,15 @@ import VoxClipCore
 struct VoiceSpeakerMatch: Sendable {
     let recordID: String
     let cloneVoiceID: String?
+    let consentMethod: VoiceConsentRecord.ConsentMethod
     private let store: VoiceConsentStore
     private let record: VoiceConsentRecord?
     private let statementHash: String
     private let embedder: any SpeakerEmbedder
-    fileprivate init(recordID: String, cloneVoiceID: String?, store: VoiceConsentStore, record: VoiceConsentRecord?, statementHash: String, embedder: any SpeakerEmbedder) {
+    fileprivate init(recordID: String, cloneVoiceID: String?, store: VoiceConsentStore, record: VoiceConsentRecord?, statementHash: String, embedder: any SpeakerEmbedder, consentMethod: VoiceConsentRecord.ConsentMethod = .recordedStatement) {
         self.recordID = recordID; self.cloneVoiceID = cloneVoiceID; self.store = store; self.record = record
         self.statementHash = statementHash; self.embedder = embedder
+        self.consentMethod = record?.consentMethod ?? consentMethod
     }
     func capability(for quote: VoiceLabQuote) throws -> VoiceOperationCapability {
         if let record {
@@ -33,16 +35,18 @@ struct VoiceSpeakerMatch: Sendable {
 }
 
 public final class VoiceSpeakerCheck: Sendable {
+    enum GeneratedSpeechError: Error { case insufficientSpeech }
+
     func match(store: VoiceConsentStore, recordID: String, speech16k: [Float]) async throws -> VoiceSpeakerMatch {
         let record = try await store.load(recordID)
         try await store.validateUse(record)
-        guard supports(language: record.statement.language), embedder?.modelID == record.speaker.model,
+        guard supports(language: record.language), embedder?.modelID == record.speaker.model,
               threshold == record.speaker.threshold, let owner = VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) else { throw VoiceConsentError.speakerUnavailable }
         let candidate = try await embedding(speech16k)
         guard try Self.cosine(owner, candidate) >= record.speaker.threshold else { throw VoiceConsentError.voiceOwnerMismatch }
         try await store.validateUse(record)
         guard let embedder else { throw VoiceConsentError.speakerUnavailable }
-        return VoiceSpeakerMatch(recordID: record.id, cloneVoiceID: record.voiceId, store: store, record: record, statementHash: record.statement.audioSha256, embedder: embedder)
+        return VoiceSpeakerMatch(recordID: record.id, cloneVoiceID: record.voiceId, store: store, record: record, statementHash: record.referenceAudioSHA256, embedder: embedder)
     }
     func enrollmentMatch(store: VoiceConsentStore, recordID: String, language: String, statement: Data, sample: Data) async throws -> VoiceSpeakerMatch {
         guard supports(language: language), let threshold, let embedder else { throw VoiceConsentError.speakerUnavailable }
@@ -50,6 +54,18 @@ public final class VoiceSpeakerCheck: Sendable {
         let candidate = try await embedding(VoiceConsentAudio.pcm16k(sample))
         guard try Self.cosine(owner, candidate) >= threshold else { throw VoiceConsentError.speakerMismatch }
         return VoiceSpeakerMatch(recordID: recordID, cloneVoiceID: nil, store: store, record: nil, statementHash: VoiceLabFingerprint.bytes(statement), embedder: embedder)
+    }
+    func projectEnrollmentMatch(store: VoiceConsentStore, recordID: String, language: String, samples: [Data]) async throws -> VoiceSpeakerMatch {
+        guard supports(language: language), let threshold, let embedder, let reference = samples.first else { throw VoiceConsentError.speakerUnavailable }
+        guard try await store.referenceAudio(recordID: recordID) == reference else { throw VoiceConsentError.invalidRecord }
+        let owner = try await embedding(VoiceConsentAudio.pcm16k(reference))
+        for sample in samples {
+            let candidate = try await partEmbeddings(VoiceConsentAudio.pcm16k(sample))
+            guard try Self.cosine(owner, candidate.whole) >= threshold,
+                  try candidate.parts.allSatisfy({ try Self.cosine(owner, $0) >= threshold }) else { throw VoiceConsentError.speakerMismatch }
+        }
+        return VoiceSpeakerMatch(recordID: recordID, cloneVoiceID: nil, store: store, record: nil,
+                                 statementHash: VoiceLabFingerprint.bytes(reference), embedder: embedder, consentMethod: .projectAttestation)
     }
     private let production: ONNXSpeakerEmbedder?
     private let calibratedLanguage: String?
@@ -94,11 +110,32 @@ public final class VoiceSpeakerCheck: Sendable {
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
         return try await SpeakerAudio.embedding(pcm16k, using: embedder)
     }
+    func generatedEmbedding(_ samples: [Float], sampleRate: Int) async throws -> [Float] {
+        guard sampleRate == 24_000, samples.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
+        guard samples.count >= sampleRate * 3 else { throw GeneratedSpeechError.insufficientSpeech }
+        guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
+        return try await SpeakerAudio.embedding(VoiceConsentAudio.resample(samples, rate: sampleRate),
+                                                using: GeneratedSpeechEmbedder(base: embedder))
+    }
     public func partEmbeddings(_ pcm16k: [Float]) async throws -> (whole: [Float], parts: [[Float]]) {
         guard available, let embedder else { throw VoiceConsentError.speakerUnavailable }
         return try await SpeakerAudio.partEmbeddings(pcm16k, using: embedder)
     }
     public static func cosine(_ left: [Float], _ right: [Float]) throws -> Double { try SpeakerAudio.cosine(left, right) }
+}
+
+private struct GeneratedSpeechEmbedder: SpeakerEmbedder {
+    let base: any SpeakerEmbedder
+    var modelID: String { base.modelID }
+    var dimension: Int { base.dimension }
+    func validateAvailability() async throws { try await base.validateAvailability() }
+    func embed(_ pcm16k: [Float]) async throws -> [Float] { try await base.embed(pcm16k) }
+    func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] {
+        let voiced = try await base.voicedSamples(pcm16k)
+        guard voiced.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        guard voiced.count >= SpeakerAudio.windowSize else { throw VoiceSpeakerCheck.GeneratedSpeechError.insufficientSpeech }
+        return voiced
+    }
 }
 
 public actor VoiceUseGuard {
@@ -112,10 +149,10 @@ public actor VoiceUseGuard {
         guard !contentKey.isEmpty else { throw VoiceLabError.invalidInput }
         let record = try await store.load(recordID)
         try await store.validateUse(record)
-        guard check.supports(language: record.statement.language), check.embedder?.modelID == record.speaker.model, check.threshold == record.speaker.threshold,
+        guard check.supports(language: record.language), check.embedder?.modelID == record.speaker.model, check.threshold == record.speaker.threshold,
               let owner = VoiceConsentRecord.decodeEmbedding(record.speaker.embedding) else { throw VoiceConsentError.speakerUnavailable }
         let audioHash = speech16k.withUnsafeBytes { VoiceLabFingerprint.bytes(Data($0)) }
-        let key = VoiceLabFingerprint.fields([contentKey, audioHash, String(voiceChanger), recordID, record.speaker.embedding, record.statement.audioSha256])
+        let key = VoiceLabFingerprint.fields([contentKey, audioHash, String(voiceChanger), recordID, record.speaker.embedding, record.referenceAudioSHA256])
         try await check.embedder?.validateAvailability()
         if !cache.contains(key) {
             let maximum = voiceChanger ? 480_000 : 160_000
@@ -127,7 +164,8 @@ public actor VoiceUseGuard {
             if cache.count >= 256 { cache.removeAll() }
             cache.insert(key)
         }
-        return OwnVoicePolicy(recordID: recordID, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        return OwnVoicePolicy(recordID: recordID, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true,
+                              statementVerified: record.consentMethod == .recordedStatement, speakerMatched: true, consentMethod: record.consentMethod)
     }
     public func authorize(quote: VoiceLabQuote, contentKey: String, recordID: String, speech16k: [Float], approved: Bool) async throws -> OwnVoicePolicy {
         guard quote.operation == .textToSpeech else { throw VoiceLabError.consentRequired }
@@ -135,7 +173,7 @@ public actor VoiceUseGuard {
     }
     public func authorizeConversion(quote: VoiceLabQuote, contentKey: String, recordID: String, audio: Data, approved: Bool) async throws -> OwnVoicePolicy {
         guard quote.operation == .voiceChange, quote.guardAudioHash == VoiceLabFingerprint.bytes(audio) else { throw VoiceLabError.consentRequired }
-        return try await authorizeBoundQuote(quote, contentKey: contentKey, recordID: recordID, speech16k: VoiceConsentAudio.pcm16k(audio), approved: approved)
+        return try await authorizeBoundQuote(quote, contentKey: contentKey, recordID: recordID, speech16k: VoiceConsentAudio.conversionPCM16k(audio), approved: approved)
     }
     private func authorizeBoundQuote(_ quote: VoiceLabQuote, contentKey: String, recordID: String, speech16k: [Float], approved: Bool) async throws -> OwnVoicePolicy {
         guard approved, !contentKey.isEmpty else { throw VoiceLabError.consentRequired }
@@ -146,7 +184,7 @@ public actor VoiceUseGuard {
         try await store.validateUse(record)
         try await check.embedder?.validateAvailability()
         let audioHash = speech16k.withUnsafeBytes { VoiceLabFingerprint.bytes(Data($0)) }
-        let key = VoiceLabFingerprint.fields([contentKey, audioHash, recordID, record.speaker.embedding, record.statement.audioSha256, record.voiceId, record.speaker.model, String(record.speaker.threshold)])
+        let key = VoiceLabFingerprint.fields([contentKey, audioHash, recordID, record.speaker.embedding, record.referenceAudioSHA256, record.voiceId, record.speaker.model, String(record.speaker.threshold)])
         let proof: VoiceSpeakerMatch
         if let cached = proofs[key] { proof = cached }
         else {
@@ -155,7 +193,8 @@ public actor VoiceUseGuard {
             proofs[key] = proof
         }
         try await store.validateUse(record)
-        let policy = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)
+        let policy = OwnVoicePolicy(recordID: record.id, cloneVoiceID: record.voiceId, recordActive: true, providerConsentGranted: true,
+                                    statementVerified: record.consentMethod == .recordedStatement, speakerMatched: true, consentMethod: record.consentMethod)
         return try policy.authorized(for: quote, proof: proof)
     }
 }

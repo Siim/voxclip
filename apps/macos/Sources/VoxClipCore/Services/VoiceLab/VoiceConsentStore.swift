@@ -83,25 +83,59 @@ public actor VoiceConsentStore {
         return url
     }
     public func saveStatement(_ wav: Data, recordID: String) throws {
+        try saveReference(wav, recordID: recordID, name: "statement.wav")
+    }
+    public func saveReferenceAudio(_ wav: Data, recordID: String) throws {
+        try saveReference(wav, recordID: recordID, name: "reference.wav")
+    }
+    private func saveReference(_ wav: Data, recordID: String, name: String) throws {
         let format = try VoiceConsentAudio.validateWAV(wav, maxBytes: 16 * 1_024 * 1_024)
         let seconds = Double(format.frames) / Double(format.rate)
         guard (5...30).contains(seconds) else { throw VoiceLabError.invalidAudio }
         let directory = try directory(recordID, create: true)
-        let url = try file("statement.wav", in: directory)
+        let other = try file(name == "statement.wav" ? "reference.wav" : "statement.wav", in: directory)
+        guard !FileManager.default.fileExists(atPath: other.path) else { throw VoiceConsentError.invalidRecord }
+        let url = try file(name, in: directory)
         try writePrivate(wav, to: url)
         liveEnrollments.insert(recordID)
     }
     public func statement(recordID: String) throws -> Data {
+        try readReference(recordID: recordID, name: "statement.wav")
+    }
+    public func referenceAudio(recordID: String) throws -> Data {
         let directory = try directory(recordID)
-        let url = try file("statement.wav", in: directory)
+        let recordFile = try file("record.json", in: directory)
+        if FileManager.default.fileExists(atPath: recordFile.path) {
+            guard (try recordFile.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 256 * 1_024 else { throw VoiceConsentError.invalidRecord }
+            let record = try JSONDecoder().decode(VoiceConsentRecord.self, from: Data(contentsOf: recordFile))
+            try record.validate()
+            guard record.id == recordID else { throw VoiceConsentError.invalidRecord }
+            return try referenceAudio(for: record)
+        }
+        let names = try ["statement.wav", "reference.wav"].filter { name in
+            FileManager.default.fileExists(atPath: try file(name, in: directory).path)
+        }
+        guard names.count == 1 else { throw VoiceConsentError.invalidRecord }
+        return try readReference(recordID: recordID, name: names[0])
+    }
+    private func referenceAudio(for record: VoiceConsentRecord) throws -> Data {
+        let wav = try readReference(recordID: record.id, name: record.referenceAudioFile)
+        guard VoiceLabFingerprint.bytes(wav) == record.referenceAudioSHA256 else { throw VoiceConsentError.invalidRecord }
+        return wav
+    }
+    private func readReference(recordID: String, name: String) throws -> Data {
+        guard ["statement.wav", "reference.wav"].contains(name) else { throw VoiceConsentError.invalidRecord }
+        let directory = try directory(recordID)
+        let url = try file(name, in: directory)
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard (44...(16 * 1_024 * 1_024)).contains(size) else { throw VoiceConsentError.invalidRecord }
         return try Data(contentsOf: url)
     }
     public func save(_ record: VoiceConsentRecord) throws {
         try record.validate()
+        if record.status == .deleted { _ = dispatchGate.revoke(record.id) }
         if record.status != .deleted {
-            guard VoiceLabFingerprint.bytes(try statement(recordID: record.id)) == record.statement.audioSha256 else { throw VoiceConsentError.invalidRecord }
+            _ = try referenceAudio(for: record)
         }
         let directory = try directory(record.id, create: true)
         let url = try file("record.json", in: directory)
@@ -116,7 +150,7 @@ public actor VoiceConsentStore {
         try record.validate()
         guard record.id == id else { throw VoiceConsentError.invalidRecord }
         if try record.status != .deleted && !hasOperation(id) {
-            guard VoiceLabFingerprint.bytes(try statement(recordID: id)) == record.statement.audioSha256 else { throw VoiceConsentError.invalidRecord }
+            _ = try referenceAudio(for: record)
         }
         return record
     }
@@ -145,11 +179,13 @@ public actor VoiceConsentStore {
     #endif
     public func discardStatement(recordID: String) throws {
         let directory = try directory(recordID)
-        let url = try file("statement.wav", in: directory)
         try checkpoint(.removeStatement)
-        if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.removeItem(at: url)
-            try synchronizeDirectory(directory)
+        for name in ["statement.wav", "reference.wav"] {
+            let url = try file(name, in: directory)
+            if FileManager.default.fileExists(atPath: url.path) {
+                try FileManager.default.removeItem(at: url)
+                try synchronizeDirectory(directory)
+            }
         }
     }
 }

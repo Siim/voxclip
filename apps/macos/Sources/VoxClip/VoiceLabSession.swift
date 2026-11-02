@@ -37,13 +37,16 @@ import VoxClipMedia
     static let providerCopy = "Voice Lab sends audio of your voice and the words to speak to ElevenLabs with your key. Under ElevenLabs' terms, ElevenLabs may use uploaded content, including your voice, to improve its services unless you opt out in your ElevenLabs account. Generated audio can be traced to your account."
     static let projectChoice = "Use this project's audio (recommended)"
     static let readAloudChoice = "Record a read-aloud (about 90 s)"
-    static let projectMismatchCopy = "Some of this project's audio doesn't sound like the voice in your consent statement. Record a read-aloud instead."
+    static let projectMismatchCopy = "Some of this project's speech sounds like a different speaker. Record a read-aloud instead."
     static let projectUnreadableCopy = "VoxClip can't read this project's audio. Record a read-aloud instead."
     static let projectGeneratedCopy = "This project's media is labelled AI modified, so it can't train your voice. Record a read-aloud instead."
     /// The Rewrite panel's voice row in a project whose language has no calibrated speaker check (§6.5.2).
     static let languageUnavailableCopy = "Your voice can't be used in this project's language yet. It works in English projects."
     static let noticeCopy = "Your voice clone is created in your ElevenLabs account and stays there. ElevenLabs' terms let it use uploaded content, including your voice, to improve its services; you can opt out of training in your ElevenLabs account, but the opt-out is not retroactive. You can delete the voice at any time from VoxClip or ElevenLabs. ElevenLabs' Prohibited Use Policy applies, including its rules on political content."
     static let recoveryCreationCopy = "Sends your saved statement and training audio to ElevenLabs to finish creation. The statement check is not repeated. No video is sent."
+    static let projectConsentCopy = VoiceConsentRecord.ProjectConsent.text
+    static let projectConsentExplanation = "Your agreement is saved with the selected clip audio. You do not need to record a consent statement. ElevenLabs may ask you to verify the voice after creation."
+    static let projectRecoveryCreationCopy = "Sends your saved clip audio to ElevenLabs to finish creation. Your checkbox consent is already saved. No video is sent."
     var confirmation: Request?
     var records: [VoiceConsentRecord] = []
     var deleting: Set<String> = []
@@ -69,7 +72,7 @@ import VoxClipMedia
     var unsavedRecord: VoiceConsentRecord?
     var recordingTraining = false
     var script = ""
-    /// §6.5: where the training samples come from. The live consent statement is recorded and verified either way.
+    /// Project audio uses explicit checkbox consent; the read-aloud route retains its recorded statement.
     enum TrainingSource: String, Hashable { case project, readAloud }
     /// §6.5.2: the editor's project when the job opened.
     enum ProjectAudio: Equatable {
@@ -125,7 +128,7 @@ import VoxClipMedia
         observeRecordingCompletion()
     }
     @ObservationIgnored private var speakerCheckForTests: VoiceSpeakerCheck?
-    func stageEnrollmentForTests(statement: VoiceConsentStatement, wav: Data, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck? = nil) {
+    func stageEnrollmentForTests(statement: VoiceConsentStatement? = nil, wav: Data? = nil, client: ElevenLabsVoiceLab, speaker: VoiceSpeakerCheck? = nil) {
         self.statement = statement; statementWAV = wav
         self.client = client; region = client.region
         speakerCheckForTests = speaker
@@ -210,7 +213,7 @@ import VoxClipMedia
             startVoiceCreation(keyboard: true, command: command)
         } else if flow.state == .firstUse {
             if flow.keyReady { turnOnVoiceJob() } else { Task { await saveVoiceKey() } }
-        } else if flow.state == .agree { Task { await prepareVoiceStatement() } }
+        } else if flow.state == .agree { Task { await continueVoiceEnrollment() } }
         else if flow.state == .finished, unsavedRecord == nil { returnToRewrite() }
         else if flow.state == .statement, projectMismatch, trainingSource == .project { useReadAloud() }
         else if flow.state == .statement {
@@ -219,7 +222,29 @@ import VoxClipMedia
     }
     func changeVoiceAgreement() {
         guard !busy, !recorder.recording else { return }
-        statement = nil; statementWAV = nil; flow.state = .agree
+        statement = nil; statementWAV = nil; recordingTraining = false; flow.statementSeconds = 0
+        flow.plan = nil; flow.priceAppearedAt = nil; flow.state = .agree
+    }
+    var canContinueEnrollment: Bool {
+        canRecord && pendingCreations.isEmpty && unsavedRecord == nil && (trainingSource != .project || projectAudioUsable && !projectMismatch)
+    }
+    var agreementActionTitle: String { trainingSource == .project ? "Use Clip Audio" : "Read the Statement" }
+    var usesProjectConsent: Bool { flow.plan.map { $0.consentMethod == .projectAttestation } ?? (trainingSource == .project) }
+    var recoveryCopy: String { usesProjectConsent ? Self.projectRecoveryCreationCopy : Self.recoveryCreationCopy }
+    func continueVoiceEnrollment() async {
+        guard canContinueEnrollment else { return }
+        if trainingSource == .project {
+            // Consent is the explicit checkbox agreement. Project speech supplies the audio reference, never a fabricated statement.
+            busy = true
+            do {
+                try await enrollment?.cancel(recordID: recordID)
+                try await store.abandonEnrollment(recordID: recordID)
+                recordID = UUID().uuidString.lowercased()
+                statement = nil; statementWAV = nil; recordingTraining = false; flow.statementSeconds = 0
+                acceptedAt = Date(); busy = false
+                await prepareCreation()
+            } catch { busy = false; message = await errorMessage(error) }
+        } else { await prepareVoiceStatement() }
     }
     func prepareVoiceStatement() async {
         guard canRecord, let shared = app.shared else { return }
@@ -229,7 +254,8 @@ import VoxClipMedia
             var rng = SystemRandomNumberGenerator()
             statement = try VoiceConsentText(shared: shared).statement(name: displayName, language: selected, date: Date(), words: words, rng: &rng)
             script = try String(contentsOf: shared.root.appendingPathComponent("voice-lab/scripts-\(selected).txt"), encoding: .utf8)
-            acceptedAt = Date(); flow.state = .statement; message = nil
+            acceptedAt = Date(); statementWAV = nil; recordingTraining = false; flow.statementSeconds = 0
+            flow.plan = nil; flow.priceAppearedAt = nil; flow.state = .statement; message = nil
         } catch { message = await errorMessage(error) }
     }
     func refreshEnabledState() async {
@@ -450,8 +476,8 @@ import VoxClipMedia
     func prepareCreation() async {
         guard enabled, !busy else { return }
         guard speakerReady else { message = VoiceConsentError.speakerUnavailable.localizedDescription; return }
-        guard !recorder.recording, let statement, let statementWAV,
-              ownVoice, adult, ownVideosOnly, unsavedRecord == nil, pendingCreations.isEmpty else { return }
+        guard !recorder.recording, ownVoice, adult, ownVideosOnly, unsavedRecord == nil, pendingCreations.isEmpty else { return }
+        guard trainingSource == .project || (statement != nil && statementWAV != nil) else { return }
         busy = true; flow.state = .checking; flow.plan = nil; flow.priceAppearedAt = nil
         defer { busy = false }
         message = nil; keptSeconds = nil
@@ -470,11 +496,18 @@ import VoxClipMedia
                 guard case .found(let selection) = projectAudio, let source = trainingProject?.source, let rate = projectRate else { throw VoiceLabError.invalidInput }
                 do { samples = try await VoiceTrainingAudio.projectSamples(source: source, sampleRate: rate, spans: selection.selected) }
                 catch is CancellationError { throw CancellationError() }
-                catch { projectAudio = .unreadable; trainingSource = .readAloud; recordingTraining = true; flow.state = .statement; return }
+                catch { projectAudio = .unreadable; trainingSource = .readAloud; recordingTraining = statementWAV != nil; flow.state = statement == nil ? .agree : .statement; return }
             }
             let attestations = VoiceConsentRecord.Attestations(ownVoice: ownVoice, adult: adult, ownVideosOnly: ownVideosOnly, acceptedAt: acceptedAt)
-            let plan = try await enrollment.preparePlan(recordID: recordID, statement: statement, wav: statementWAV,
-                attestations: attestations, displayName: displayName, samples: samples, enabled: enabled)
+            let plan: VoiceEnrollmentPlan
+            if trainingSource == .project {
+                plan = try await enrollment.prepareProjectPlan(recordID: recordID, language: enrollmentLanguage,
+                    attestations: attestations, displayName: displayName, samples: samples, enabled: enabled)
+            } else {
+                guard let statement, let statementWAV else { throw VoiceLabError.consentRequired }
+                plan = try await enrollment.preparePlan(recordID: recordID, statement: statement, wav: statementWAV,
+                    attestations: attestations, displayName: displayName, samples: samples, enabled: enabled)
+            }
             guard enabled, showEnrollment || flow.owner == nil else { try await enrollment.cancel(recordID: recordID); return }
             await prepareCapWarning(plan)
             flow.plan = plan; keptSeconds = plan.trainingSeconds
@@ -564,11 +597,16 @@ import VoxClipMedia
             let plan = try await enrollment.recoverPlan(recordID: id, enabled: enabled)
             await prepareCapWarning(plan)
             recordID = id; flow.plan = plan; keptSeconds = plan.trainingSeconds
-            let wav = try await store.statement(recordID: id)
-            let format = try ElevenLabsVoiceLab.validateWAV(wav, maxBytes: 16 * 1_024 * 1_024)
-            statementWAV = wav; flow.statementSeconds = Double(format.frames) / Double(format.rate)
+            if plan.consentMethod == .projectAttestation {
+                trainingSource = .project; statement = nil; statementWAV = nil; flow.statementSeconds = 0
+            } else {
+                let wav = try await store.statement(recordID: id)
+                let format = try ElevenLabsVoiceLab.validateWAV(wav, maxBytes: 16 * 1_024 * 1_024)
+                statementWAV = wav; flow.statementSeconds = Double(format.frames) / Double(format.rate)
+            }
             await load(recover: false)
-            flow.state = .ready; flow.priceAppearedAt = Date(); message = "Statement already checked. Only creation remains. Nothing was sent."
+            flow.state = .ready; flow.priceAppearedAt = Date()
+            message = plan.consentMethod == .projectAttestation ? "Your checkbox consent and clip audio are saved. Only creation remains. Nothing was sent." : "Statement already checked. Only creation remains. Nothing was sent."
         } catch { message = await errorMessage(error) }
     }
     /// §6.5.2: project spans that fail the speaker match block with the project copy and offer a read-aloud.
@@ -581,13 +619,16 @@ import VoxClipMedia
     /// spans would fail the same match again.
     func useReadAloud() {
         guard !busy, !recorder.recording else { return }
-        trainingSource = .readAloud; message = nil; flow.plan = nil; recordingTraining = true; flow.state = .statement
+        trainingSource = .readAloud; message = nil; flow.plan = nil; flow.priceAppearedAt = nil
+        recordingTraining = statementWAV != nil; flow.state = statement == nil ? .agree : .statement
     }
     func chooseTrainingSource(_ source: TrainingSource) {
         guard !busy, !recorder.recording, source == .readAloud || projectChoiceEnabled else { return }
-        trainingSource = source; message = nil; flow.plan = nil
+        trainingSource = source; message = nil; flow.plan = nil; flow.priceAppearedAt = nil
         recordingTraining = source == .readAloud && statementWAV != nil
-        if flow.state == .ready { flow.state = .statement }
+        if flow.state == .ready || flow.state == .statement {
+            flow.state = source == .readAloud && statement != nil ? .statement : .agree
+        }
     }
     /// Opens the job with the editor's project as the §6.5 (a) default.
     func openEnrollment() {
@@ -640,10 +681,14 @@ import VoxClipMedia
     }
     var hasStatementRecording: Bool { statementWAV != nil }
     var creationCopy: String {
-        Self.creationCopy(projectName: trainingSource == .project ? projectName : nil, keptSeconds: keptSeconds, cost: creationCost)
+        Self.creationCopy(projectName: trainingSource == .project ? projectName : nil, keptSeconds: keptSeconds, cost: creationCost, attestedProject: usesProjectConsent)
     }
     /// The §6.5.2 create confirmation; project audio names the whole seconds of its spans that passed the speaker match.
-    static func creationCopy(projectName: String?, keptSeconds: Double?, cost: String) -> String {
+    static func creationCopy(projectName: String?, keptSeconds: Double?, cost: String, attestedProject: Bool = false) -> String {
+        if attestedProject, let keptSeconds {
+            let source = projectName.flatMap { $0.isEmpty ? nil : $0 } ?? "your saved clip audio"
+            return "Checks your plan, then sends \(Int(keptSeconds)) s of speech from \(source) to create your own voice, with your checkbox consent. No video is sent. \(cost)"
+        }
         if let projectName, let keptSeconds {
             return "Checks your plan, then sends the consent recording and \(Int(keptSeconds)) s of speech from \(projectName) to create your own voice. No video is sent. \(cost)"
         }
@@ -713,7 +758,9 @@ import VoxClipMedia
             case .noVoiceSlots: return "Your ElevenLabs account has no free voice slots."
             case .missingKey: return "Add your ElevenLabs key in Settings to use it."
             case .permissionMissing(let permission): return "Allow the \(permission) permission for this key on elevenlabs.io."
-            case .invalidAudio: return "Record 5–30 seconds for consent, or 60–90 seconds for the training read-aloud, with clear speech."
+            case .invalidAudio:
+                if trainingSource == .project { return "The project audio needs at least 30 seconds of clear speech from one speaker. Choose another project or record a read-aloud." }
+                return recordingTraining ? "Read aloud for 60–90 seconds with clear speech, then stop the recording." : "Read the complete consent statement in one take, for 5–30 seconds, then stop the recording."
             case .cancelled: return ""
             default: return "ElevenLabs could not complete this action. Your videos and edits are still here. No automatic retry was made."
             }

@@ -35,14 +35,14 @@ public enum SpeakerAudio {
 
     private static func windowEmbeddings(_ pcm16k: [Float], using embedder: any SpeakerEmbedder) async throws -> [[Float]] {
         try await embedder.validateAvailability()
-        guard pcm16k.count >= windowSize, pcm16k.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        guard pcm16k.count >= windowSize, pcm16k.allSatisfy({ $0.isFinite }) else { throw VoiceConsentError.speakerMismatch }
         let voiced = try await embedder.voicedSamples(pcm16k)
         guard voiced.count >= windowSize, (1...16_384).contains(embedder.dimension) else { throw VoiceConsentError.speakerMismatch }
         var embedded: [[Float]] = []
         for window in try windows(voiced) {
             try Task.checkCancellation()
             let result = try await embedder.embed(window)
-            guard result.count == embedder.dimension, result.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+            guard result.count == embedder.dimension, result.allSatisfy({ $0.isFinite }) else { throw VoiceConsentError.speakerMismatch }
             embedded.append(result)
         }
         return embedded
@@ -55,19 +55,19 @@ public enum SpeakerAudio {
     }
 
     public static func windows(_ speech: [Float]) throws -> [[Float]] {
-        guard speech.count >= windowSize, speech.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        guard speech.count >= windowSize, speech.allSatisfy({ $0.isFinite }) else { throw VoiceConsentError.speakerMismatch }
         return stride(from: 0, through: speech.count - windowSize, by: hopSize).map { Array(speech[$0..<($0 + windowSize)]) }
     }
 
     public static func normalized(_ vector: [Float]) throws -> [Float] {
-        guard !vector.isEmpty, vector.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        guard !vector.isEmpty, vector.allSatisfy({ $0.isFinite }) else { throw VoiceConsentError.speakerMismatch }
         let norm = sqrt(vector.reduce(0.0) { $0 + Double($1) * Double($1) })
         guard norm > 0, norm.isFinite else { throw VoiceConsentError.speakerMismatch }
         return vector.map { Float(Double($0) / norm) }
     }
 
     public static func select(_ pcm: [Float], ranges: [Range<Int>]) throws -> [Float] {
-        guard pcm.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        guard pcm.allSatisfy({ $0.isFinite }) else { throw VoiceConsentError.speakerMismatch }
         var result: [Float] = []
         var end = 0
         for range in ranges {
@@ -78,7 +78,7 @@ public enum SpeakerAudio {
     }
 
     public static func energySpeech(_ pcm: [Float]) throws -> [Float] {
-        guard pcm.count >= windowSize, pcm.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        guard pcm.count >= windowSize, pcm.allSatisfy({ $0.isFinite }) else { throw VoiceConsentError.speakerMismatch }
         let gate = pow(10.0, -45.0 / 20.0)
         let ranges = stride(from: 0, through: pcm.count - 160, by: 160).compactMap { start -> Range<Int>? in
             let range = start..<(start + 160)
@@ -89,7 +89,7 @@ public enum SpeakerAudio {
     }
 
     public static func features(_ pcm: [Float]) throws -> [Float] {
-        guard pcm.count == windowSize, pcm.allSatisfy(\.isFinite) else { throw VoiceConsentError.speakerMismatch }
+        guard pcm.count == windowSize, pcm.allSatisfy({ $0.isFinite }) else { throw VoiceConsentError.speakerMismatch }
         let frameCount = 1 + (pcm.count - 400) / 160
         let bank = melBank()
         var output = [Double](repeating: 0, count: frameCount * 80)
