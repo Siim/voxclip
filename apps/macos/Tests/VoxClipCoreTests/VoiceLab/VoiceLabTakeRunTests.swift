@@ -138,14 +138,16 @@ private actor TakeRunEmbedder: SpeakerEmbedder {
     nonisolated let dimension = 2
     let drift: Bool
     let voicedFraction: Double
+    let rejectGeneratedVAD: Bool
     let generatedRawFrames: (@Sendable () -> Int)?
     var calls = 0
     var streams = 0
-    init(drift: Bool, voicedFraction: Double = 1, generatedRawFrames: (@Sendable () -> Int)? = nil) {
-        self.drift = drift; self.voicedFraction = voicedFraction; self.generatedRawFrames = generatedRawFrames
+    init(drift: Bool, voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false, generatedRawFrames: (@Sendable () -> Int)? = nil) {
+        self.drift = drift; self.voicedFraction = voicedFraction; self.rejectGeneratedVAD = rejectGeneratedVAD; self.generatedRawFrames = generatedRawFrames
     }
     func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] {
         streams += 1
+        if rejectGeneratedVAD, streams > 1 { throw VoiceConsentError.speakerMismatch }
         let basis = generatedRawFrames.map { frames in
             let raw = frames()
             return pcm16k.count <= raw ? raw : pcm16k.count
@@ -177,7 +179,7 @@ struct VoiceLabTakeRunTests {
     }
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
-                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", voicedFraction: Double = 1) async throws -> Fixture {
+                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
         let store = VoiceConsentStore(locations: locations)
@@ -254,7 +256,7 @@ struct VoiceLabTakeRunTests {
         let clock = TakeRunClock(); await client.useClock({ clock.now() }, monotonic: { clock.elapsed() })
         let generatedRawFrames: @Sendable () -> Int = { http.value.withLock { Int($0.duration * 16_000) } }
         let rawFrames: (@Sendable () -> Int)? = voicedFraction < 1 ? generatedRawFrames : nil
-        let speakerCheck = VoiceSpeakerCheck(embedder: TakeRunEmbedder(drift: drift, voicedFraction: voicedFraction,
+        let speakerCheck = VoiceSpeakerCheck(embedder: TakeRunEmbedder(drift: drift, voicedFraction: voicedFraction, rejectGeneratedVAD: rejectGeneratedVAD,
             generatedRawFrames: rawFrames), calibratedThreshold: 0.45)
         let storage = VoiceLabTakeStorage(projectId: UUID().uuidString.lowercased(), paidRoot: root.appendingPathComponent("VoiceLab"), scratchRoot: root.appendingPathComponent("scratch"))
         let makeRun: () -> VoiceLabTakeRun = {
@@ -616,6 +618,17 @@ struct VoiceLabTakeRunTests {
         #expect(result.best?.selectable == true && result.best?.fits == false)
         #expect(result.ranked.map(\.index) == [0, 1, 2])
     }
+    @Test func reviewerRejectedGeneratedVADDoesNotBuyScribe() async throws {
+        let fixture = try await fixture(rejectGeneratedVAD: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input, candidates: 1)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first)
+        #expect(row.failure == .qa([.speaker]))
+        #expect(row.qaReceipt == nil && row.acceptedRequestIDs == [quote.takes[0].synthesis.requestID])
+        #expect(fixture.http.value.withLock { $0.qa == 0 })
+    }
+
     @Test func shortSingleTakeGetsWordsAndAcousticChecks() async throws {
         let fixture = try await fixture { $0.duration = 1.4 }
         defer { try? FileManager.default.removeItem(at: fixture.root) }
