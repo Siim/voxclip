@@ -1,5 +1,12 @@
 # Windows fixed contracts
 
+### 2026-11-02 — Timeline geometry ownership at startup
+
+- Diagnostic CI `41513523010` on `e8bf33be` exposes `TimelineView.Draw` in the `stage=xaml` / `System.ArgumentException` / `0x80070057` failure. The drawing path assigned one `RectangleGeometry` to both canvas and handles, then reused native video and seam path geometry across separate visuals. WinUI geometry has one owner.
+- Each clip now receives a separate rectangle. `TimelineMediaGeometry<T>` creates ten path geometries plus a separate video-seam geometry from the same cached immutable marks. The eight-viewport cache and all existing geometry coordinates/rounding remain in place. No shell XAML, consent, media or subscription behavior changed. DEBUG startup frames also retain source line numbers without paths or arguments.
+- Headless ownership tests cover source and edited axes and repeated drawing into the same owner; a source guard protects the two clips. Restoring shared clips fails the guard, and restoring shared path geometry fails both ownership cases. Four exact App Release inventory entries approve the new product geometry builder; no wildcard or checker exemption was added.
+- Local Release UI validation: 1,039 passed, 5 skipped, 0 failed (1,044 total), including all four strict assembly inventories. Release surrogate compilation and the XAML checker pass. Native validation of the fix is pending the next authorized hosted dispatch; UTM remains off. The broader Windows visual/input acceptance gates remain separate.
+
 ### 2026-11-02 — Hosted consolidation results and unresolved native startup
 
 - CI dispatches were capped at three: `41504018036`, `41504488777`, `41508131174`. The final tested code head is `71d9224a`. Final shared-fixture/hygiene and Main 10 fixture jobs pass. Windows Core passes 2,593 cases (2,572 passed, 21 skipped), native Media/CLI passes 1,031 (1,012 passed, 19 skipped), and all ten structured CLI E2E reports validate. Release WinUI x64/ARM64, both strict shipping inventories and both ONNX runtime pin checks pass.

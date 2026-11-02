@@ -134,7 +134,7 @@ public sealed class TimelineView : UserControl
     private double overviewGrab;
     private readonly TextBlock[] headerNames = Enumerable.Range(0, 4).Select(_ => new TextBlock { FontSize = 11 }).ToArray();
     private readonly TextBlock[] headerIds = Enumerable.Range(0, 4).Select(_ => new TextBlock { FontSize = 10, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }).ToArray();
-    private readonly LinkedList<(TimelineMediaTile Tile, PathGeometry[] Geometry)> geometryCache = new();
+    private readonly LinkedList<(TimelineMediaTile Tile, TimelineMediaGeometry<PathGeometry> Geometry)> geometryCache = new();
     private readonly Microsoft.UI.Xaml.Shapes.Path cueBackgrounds = new();
     private readonly double[] overviewBadgeLeft = new double[TimelineRetainedPool<object>.Badges];
     private readonly bool[] overviewBadgeVisible = new bool[TimelineRetainedPool<object>.Badges];
@@ -660,7 +660,9 @@ public sealed class TimelineView : UserControl
         MinHeight = PreferredPanelHeight;
         var heightChanged = preferredHeight != PreferredPanelHeight;
         preferredHeight = PreferredPanelHeight;
-        canvas.Clip = handles.Clip = new RectangleGeometry { Rect = new(0, 0, width, metrics.Height) };
+        // WinUI geometry is single-owner, including identical clips on separate layers.
+        canvas.Clip = new RectangleGeometry { Rect = new(0, 0, width, metrics.Height) };
+        handles.Clip = new RectangleGeometry { Rect = new(0, 0, width, metrics.Height) };
         canvas.Background = Brush("VcTimelineLaneBrush");
         leftDim.Fill = rightDim.Fill = Brush("VcTimelineScopeDimBrush");
         leftDim.Height = rightDim.Height = metrics.EffectsTop + metrics.EffectsHeight - metrics.VideoTop;
@@ -691,7 +693,7 @@ public sealed class TimelineView : UserControl
         var namedPiece = tile.Video.FirstOrDefault(piece => piece.Width >= 60);
         videoName.Visibility = namedPiece.Width >= 60 && metrics.VideoHeight > 0 ? Visibility.Visible : Visibility.Collapsed;
         Canvas.SetLeft(videoName, namedPiece.X + 4); videoName.Width = Math.Max(0, namedPiece.Width - 8);
-        for (var index = 0; index < mediaPaths.Length; index++) mediaPaths[index].Data = data[index];
+        for (var index = 0; index < mediaPaths.Length; index++) mediaPaths[index].Data = data.Paths[index];
         mediaPaths[0].Fill = Brush("VcTimelineAudioPieceBrush");
         mediaPaths[1].Fill = mediaPaths[2].Fill = Brush("VcTimelineWaveBrush"); mediaPaths[1].Opacity = .62;
         mediaPaths[3].Fill = mediaPaths[4].Fill = Brush("VcTimelineGhostWaveBrush");
@@ -699,7 +701,7 @@ public sealed class TimelineView : UserControl
         mediaPaths[6].Fill = Brush("VcTimelineSeamBrush");
         mediaPaths[7].Stroke = mediaPaths[9].Stroke = Brush("VcTimelinePieceBrush"); mediaPaths[7].StrokeThickness = mediaPaths[9].StrokeThickness = 1;
         mediaPaths[8].Fill = Brush("VcTimelineVideoPieceBrush");
-        videoSeams.Data = data[6]; videoSeams.Fill = Brush("VcTimelineSeamBrush");
+        videoSeams.Data = data.VideoSeams; videoSeams.Fill = Brush("VcTimelineSeamBrush");
         scrollThumb.Fill = Brush("VcTimelineScrollerBrush"); Canvas.SetTop(scrollThumb, metrics.Height - 6);
         scrollRange.Visibility = scrollThumb.Visibility = view.Duration + .001 < AxisDuration ? Visibility.Visible : Visibility.Collapsed;
         for (var index = 0; index < scene.Layers.Length; index++)
@@ -722,16 +724,14 @@ public sealed class TimelineView : UserControl
         UpdateViewport();
         if (heightChanged) PreferredPanelHeightChanged?.Invoke(this, preferredHeight);
     }
-    private PathGeometry[] MediaGeometry(TimelineMediaTile tile)
+    private TimelineMediaGeometry<PathGeometry> MediaGeometry(TimelineMediaTile tile)
     {
         for (var node = geometryCache.First; node is not null; node = node.Next)
             if (ReferenceEquals(node.Value.Tile, tile))
             {
                 var result = node.Value.Geometry; geometryCache.Remove(node); geometryCache.AddFirst(node); return result;
             }
-        var video = Geometry(tile.Video, false, true);
-        PathGeometry[] data = [video, Geometry(tile.Peaks, false), Geometry(tile.Core, false), Geometry(tile.GhostPeaks, false),
-            Geometry(tile.GhostCore, false), Geometry(tile.Gaps, false), Geometry(tile.Seams, false), video, video, video];
+        var data = new TimelineMediaGeometry<PathGeometry>(tile, (marks, rounded) => Geometry(marks, false, rounded));
         geometryCache.AddFirst((tile, data));
         if (geometryCache.Count > TimelineTileCache.Capacity) geometryCache.RemoveLast();
         return data;

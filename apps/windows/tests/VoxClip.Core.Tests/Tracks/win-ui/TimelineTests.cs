@@ -189,6 +189,45 @@ public sealed class TimelineTests
         Assert.Empty(silence.Peaks); Assert.Empty(silence.Core);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CachedMediaMarksCreateSingleOwnerGeometryForEveryNativePath(bool edited)
+    {
+        var cache = new TimelineTileCache();
+        var plan = TilePlan();
+        var tile = cache.Get(plan, null, new(0, 10), 1000, edited);
+        var geometry = new TimelineMediaGeometry<OwnedGeometry>(tile, (marks, rounded) => new(marks, rounded));
+        var paths = geometry.Paths.Append(geometry.VideoSeams).ToArray();
+        Assert.Equal(11, paths.Length);
+        for (var index = 0; index < paths.Length; index++)
+        {
+            var owner = new object();
+            paths[index].Attach(owner);
+            paths[index].Attach(owner); // Redrawing into the same retained path is safe.
+        }
+        Assert.Equal(11, paths.Distinct().Count());
+        foreach (var index in new[] { 0, 7, 8, 9 })
+        {
+            Assert.Same(tile.Video, geometry.Paths[index].Marks);
+            Assert.True(geometry.Paths[index].Rounded);
+        }
+        Assert.Same(tile.Seams, geometry.Paths[6].Marks);
+        Assert.Same(tile.Seams, geometry.VideoSeams.Marks);
+        Assert.False(geometry.VideoSeams.Rounded);
+        Assert.Same(tile, cache.Get(plan, null, new(0, 10), 1000, edited));
+    }
+
+    [Fact]
+    public void TimelineLayersDoNotShareTheirNativeClipGeometry()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TimelineView.cs"));
+        Assert.Matches(@"canvas\.Clip\s*=\s*new RectangleGeometry", source);
+        Assert.Matches(@"handles\.Clip\s*=\s*new RectangleGeometry", source);
+        Assert.DoesNotMatch(@"(?:canvas|handles)\.Clip\s*=\s*(?:canvas|handles)\.Clip", source);
+    }
+
     [Fact]
     public void RetainedMediaIncludesRoomToneBetweenWordsAndCachesOnlyEightViewports()
     {
@@ -352,6 +391,19 @@ public sealed class TimelineTests
             foreach (var task in tasks)
                 try { (await task)?.Dispose(); } catch (Exception) { }
             if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    private sealed class OwnedGeometry(TimelineMark[] marks, bool rounded)
+    {
+        internal TimelineMark[] Marks { get; } = marks;
+        internal bool Rounded { get; } = rounded;
+        private object? owner;
+        internal void Attach(object visual)
+        {
+            if (owner is not null && !ReferenceEquals(owner, visual))
+                throw new InvalidOperationException("Native geometry already belongs to another visual.");
+            owner = visual;
         }
     }
 

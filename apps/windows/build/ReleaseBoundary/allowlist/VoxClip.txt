@@ -4330,6 +4330,9 @@ member VoxClip.App.ViewModels.TimelineMark :: method public set_Height(double)
 member VoxClip.App.ViewModels.TimelineMark :: method public set_Width(double)
 member VoxClip.App.ViewModels.TimelineMark :: method public set_X(double)
 member VoxClip.App.ViewModels.TimelineMark :: method public set_Y(double)
+member VoxClip.App.ViewModels.TimelineMediaGeometry`1 :: method internal .ctor(VoxClip.App.ViewModels.TimelineMediaTile,System.Func`3<VoxClip.App.ViewModels.TimelineMark[],bool,!0>)
+member VoxClip.App.ViewModels.TimelineMediaGeometry`1 :: method internal get_Paths()
+member VoxClip.App.ViewModels.TimelineMediaGeometry`1 :: method internal get_VideoSeams()
 member VoxClip.App.ViewModels.TimelineMediaTile :: method private .ctor(VoxClip.App.ViewModels.TimelineMediaTile)
 member VoxClip.App.ViewModels.TimelineMediaTile :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.App.ViewModels.TimelineMediaTile :: method private get_EqualityContract()
@@ -5418,6 +5421,7 @@ type VoxClip.App.ViewModels.TimelineIntervalIndex
 type VoxClip.App.ViewModels.TimelineIntervalIndex+Node
 type VoxClip.App.ViewModels.TimelineLayout
 type VoxClip.App.ViewModels.TimelineMark
+type VoxClip.App.ViewModels.TimelineMediaGeometry`1
 type VoxClip.App.ViewModels.TimelineMediaTile
 type VoxClip.App.ViewModels.TimelineRange
 type VoxClip.App.ViewModels.TimelineRetainedPool`1
