@@ -65,21 +65,11 @@ actor SpeechTestLogger: Redacting {
     }
 }
 
-let speechStubDefaultRunLoopMode: CFRunLoopMode = {
-    #if compiler(>=6.4)
-    .defaultMode
-    #else
-    kCFRunLoopDefaultMode!
-    #endif
-}()
+// These typed Core Foundation names are available before our macOS 26 SDK minimum.
+// Compiler-version checks cannot select an SDK's imported CFRunLoopMode representation.
+let speechStubDefaultRunLoopMode: CFRunLoopMode = .defaultMode
 
-func speechStubSchedulingMode(_ mode: CFRunLoopMode) -> CFString {
-    #if compiler(>=6.4)
-    mode.rawValue
-    #else
-    mode
-    #endif
-}
+func speechStubSchedulingMode(_ mode: CFRunLoopMode) -> CFString { mode.rawValue }
 
 /// Handler work uses immutable request snapshots; client callbacks stay on the loading run loop and stop state is locked.
 final class SpeechStubHTTP: URLProtocol, @unchecked Sendable {

@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## SDK-independent Core Foundation stub mode names (2 Nov 2026)
+
+- Remove the compiler-version fallback around CFRunLoopMode.defaultMode and rawValue. The fallback chose the obsolete kCFRunLoopDefaultMode spelling and treated the typed mode as CFString; compiler versions do not determine the SDK’s imported representation. The supported typed spelling also type-checks with the installed Swift 6.1.2 / macOS 15.5 Command Line Tools, while the old spelling fails as renamed.
+- The complete local Core target passes again: 1,021 tests / 91 suites, with the two deliberate known-issue deadline probes only. This is a test-support compatibility change; HTTP callback threading, cancellation and request behavior stay the same. Three permitted hosted dispatches are exhausted; the final hosted log and a subsequent lead-owned SDK 26 rerun remain required.
+
 ## Xcode 26 actor-callback IR generation workaround (2 Nov 2026)
 
 - Hosted run 41511134762 reaches Xcode 26.6 / Swift 6.3.3 and aborts IR generation in ContextDemoPanel while converting an actor-isolated String callback. The compiler reports SmallVector capacity 4,294,967,298 for the generated reabstraction thunk. This is separate from the excluded Windows privacy-row inventory failure.
