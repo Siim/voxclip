@@ -22,7 +22,9 @@ enum ProjectValidation {
     }
 
     static func validate(_ raw: JSONValue) throws {
-        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions")
+        try ProjectMigrations.checkVersion(raw)
+        let isV4 = try map(raw)["schemaVersion"] == .number(4)
+        let root = try object(raw, required: "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", optional: "title extensions" + (isV4 ? " contextDemo motionCues" : ""))
         if let title = root["title"], case .string = title {} else if root["title"] != nil { try fail("Invalid project title") }
         _ = try object(root["savedBy"], required: "app version platform")
         let media = try object(root["media"], required: "source")
@@ -50,37 +52,70 @@ enum ProjectValidation {
             let result = try object(rawResult, required: "id createdAt provider model preset instructions language inputSha256 clips")
             for clip in try array(result["clips"]) { _ = try object(clip, required: "title reason score startWordId endWordId") }
         }
-        let version = root["schemaVersion"] == .number(3) ? 3 : root["schemaVersion"] == .number(2) ? 2 : 1
-        let voice = try object(root["voiceLab"], required: version == 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments")
+        let version = isV4 ? 4 : root["schemaVersion"] == .number(3) ? 3 : root["schemaVersion"] == .number(2) ? 2 : 1
+        let voice = try object(root["voiceLab"], required: version >= 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments")
         if version == 1 { try require(try array(voice["segments"]).isEmpty, "Version 1 Voice Lab must be empty") }
         if version >= 2 {
             for asset in try array(voice["assets"]) {
                 _ = try object(asset, required: "id kind file sha256 durationSeconds sampleRate createdAt")
             }
             for segment in try array(voice["segments"]) {
-                let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (version == 3 ? " scope" : ""), optional: version == 3 ? "groupId" : "")
+                let item = try object(segment, required: "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (version >= 3 ? " scope" : ""), optional: version >= 3 ? "groupId" : "")
                 _ = try object(item["replace"], required: "start end firstWordId lastWordId")
                 _ = try object(item["audio"], required: "assetId trimStart trimEnd stretch gainDb")
                 if item["text"] != .null { _ = try object(item["text"], required: "original new") }
                 if item["words"] != .null {
                     for word in try array(item["words"]) { _ = try object(word, required: "text start end synthetic") }
                 }
-                _ = try object(item["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (version == 3 ? " region" : ""))
+                _ = try object(item["provenance"], required: "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (version >= 3 ? " region" : ""))
                 _ = try object(item["qa"], required: "transcriptMatch lufsJumpLu peakDbfs speakerScore")
                 for candidate in try array(item["candidates"]) {
-                    let record = try object(candidate, required: "assetId score rejected" + (version == 3 && (try map(candidate))["rejected"] == .null ? " recipe" : ""), optional: version == 3 ? "recipe" : "")
+                    let record = try object(candidate, required: "assetId score rejected" + (version >= 3 && (try map(candidate))["rejected"] == .null ? " recipe" : ""), optional: version >= 3 ? "recipe" : "")
                     if let recipe = record["recipe"] { try validateRenderRecipe(recipe) }
                 }
             }
         }
-        if version == 3 {
+        if version >= 3 {
             let clean = try object(voice["cleanAudio"], required: "mode assetId mix")
             try require(clean["mode"] == .string("off") || clean["mode"] == .string("on"), "Invalid clean-audio mode")
             for value in try array(voice["voices"]) { _ = try object(value, required: "id provider voiceId consentRecordId displayName status") }
             for value in try array(voice["videoAssets"]) { _ = try object(value, required: "id file sha256 durationSeconds frameRate width height") }
         }
         if let extensions = root["extensions"] { _ = try map(extensions) }
+        if let demo = root["contextDemo"] {
+            let document = try ContextDemoCodec.decode(ProjectJSON.encoder().encode(demo))
+            try require(root["id"] == .string(document.projectId) && source["contentKey"] == .string(document.sourceContentKey), "Context demo source binding mismatch")
+        }
+        if let cues = root["motionCues"] { try validateMotionCues(cues) }
         try validateDates(raw)
+    }
+
+    static func validateMotionCues(_ value: JSONValue) throws {
+        func scalar(_ value: JSONValue?) throws -> Double {
+            guard case .number(let number) = value, number.isFinite else { try fail("Invalid motion number") }
+            return number
+        }
+        for value in try array(value) {
+            let cue = try object(value, required: "id clipID sourceStart sourceEnd keyframes")
+            guard case .string(let id) = cue["id"], !id.isEmpty,
+                  case .string(let clipID) = cue["clipID"], !clipID.isEmpty else { try fail("Invalid motion identity") }
+            let start = try scalar(cue["sourceStart"])
+            let end = try scalar(cue["sourceEnd"])
+            try require(start >= 0 && end - start + 1e-9 >= 0.1 && end - start <= 120 + 1e-9, "Invalid motion duration")
+            let frames = try array(cue["keyframes"])
+            try require((2...8).contains(frames.count), "Invalid motion keyframe count")
+            var previous = -Double.infinity
+            for (index, value) in frames.enumerated() {
+                let frame = try object(value, required: "progress scale anchorX anchorY")
+                let progress = try scalar(frame["progress"])
+                try number(progress, max: 1)
+                try number(scalar(frame["scale"]), min: 1, max: 1.35)
+                try number(scalar(frame["anchorX"]), max: 1)
+                try number(scalar(frame["anchorY"]), max: 1)
+                try require(progress > previous && (index != 0 || progress == 0) && (index != frames.count - 1 || progress == 1), "Noncanonical motion keyframes")
+                previous = progress
+            }
+        }
     }
 
     static func validateRenderRecipe(_ value: JSONValue) throws {

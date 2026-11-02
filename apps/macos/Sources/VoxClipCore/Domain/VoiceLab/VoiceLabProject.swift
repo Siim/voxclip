@@ -159,7 +159,7 @@ public enum VoiceLabAssetNaming {
         guard let file = safeFile(projectId: projectId, assetId: assetId, extension: fileExtension) else { throw VoiceLabProjectError.invalidAsset }
         return file
     }
-    static func isSafeProjectID(_ projectId: String) -> Bool {
+    package static func isSafeProjectID(_ projectId: String) -> Bool {
         VoiceLabProject.matches(projectId, "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
     }
     static func safeFile(projectId: String, assetId: String, extension fileExtension: String) -> String? {
@@ -187,7 +187,7 @@ public enum VoiceLabProject {
                   project.voiceLab.cleanAudio == nil, project.voiceLab.voices == nil, project.voiceLab.videoAssets == nil else { throw VoiceLabProjectError.invalidSegment }
             return
         }
-        guard (project.schemaVersion == 2 || project.schemaVersion == 3), let assets = project.voiceLab.assets else { throw VoiceLabProjectError.invalidSegment }
+        guard (2...4).contains(project.schemaVersion), let assets = project.voiceLab.assets else { throw VoiceLabProjectError.invalidSegment }
         if project.schemaVersion == 2 && (project.voiceLab.cleanAudio != nil || project.voiceLab.voices != nil || project.voiceLab.videoAssets != nil || project.voiceLab.segments.contains(where: { $0.scope != nil || $0.groupId != nil || $0.provenance.region != nil || $0.candidates.contains(where: { $0.recipe != nil }) })) { throw VoiceLabProjectError.invalidSegment }
         guard VoiceLabAssetNaming.isSafeProjectID(project.id) else {
             throw VoiceLabProjectError.unsafePath
@@ -238,7 +238,10 @@ public enum VoiceLabProject {
             for candidate in segment.candidates {
                 if let candidateID = candidate.assetId, !assetIDs.contains(candidateID) { throw VoiceLabProjectError.danglingAsset }
                 if let score = candidate.score, (!score.isFinite || score < 0 || score > 1) { throw VoiceLabProjectError.invalidCandidate }
-                if candidate.rejected == nil && (candidate.assetId == nil || candidate.score == nil) { throw VoiceLabProjectError.invalidCandidate }
+                let requiresRank = project.schemaVersion < 3 || segment.kind == .tts
+                if candidate.rejected == nil && (candidate.assetId == nil || (requiresRank && candidate.score == nil)) {
+                    throw VoiceLabProjectError.invalidCandidate
+                }
             }
             let provenance = segment.provenance
             guard matches(provenance.provider, "[a-z0-9-]+"), !provenance.endpoint.isEmpty, !provenance.endpoint.contains("://"),
@@ -272,13 +275,13 @@ public enum VoiceLabProject {
         if enabled.count > 1 {
             for index in 1..<enabled.count where enabled[index].0 < enabled[index - 1].1 { throw VoiceLabProjectError.overlappingReplacement }
         }
-        if project.schemaVersion == 3 { try VoiceLabRenderValidation.validate(project) }
+        if project.schemaVersion >= 3 { try VoiceLabRenderValidation.validate(project) }
     }
 
     /// The only v1/v2 to v3 promotion (§10.1, §10.5); loading and saving never call it. A v2 segment needs explicit review.
     public static func upgradeToV3(_ project: Project) throws -> Project {
         try validate(project)
-        if project.schemaVersion == 3 { return project }
+        if project.schemaVersion >= 3 { return project }
         guard project.voiceLab.segments.isEmpty else { throw VoiceLabProjectError.legacySegmentsNeedReview }
         var result = project
         result.schemaVersion = 3
@@ -297,7 +300,7 @@ public enum VoiceLabProject {
     /// The caller retains its original project on every failure. Assets already present are reconciled by the edit command.
     public static func acceptAll(_ segments: [VoiceLabSegment], assets: [VoiceLabAsset], into project: Project) throws -> Project {
         guard !segments.isEmpty else { throw VoiceLabProjectError.invalidSegment }
-        var result = try project.schemaVersion == 3 ? project : upgradeToV3(project)
+        var result = try upgradeToV3(project)
         guard Set(assets.map(\.id)).count == assets.count,
               assets.allSatisfy({ asset in result.voiceLab.assets?.contains(where: { $0.id == asset.id }) == false }) else { throw VoiceLabProjectError.invalidAsset }
         let ordered = segments.sorted { $0.replace.start < $1.replace.start }
@@ -332,7 +335,7 @@ public enum VoiceLabProject {
     }
     /// Adds an own-voice consent reference (§6.8, §10.5). The project stores only IDs and the trimmed display name.
     public static func addVoiceReference(_ reference: VoiceLabVoiceReference, to project: Project) throws -> Project {
-        guard project.schemaVersion == 3 else { throw VoiceLabProjectError.requiresVersion3 }
+        guard (3...4).contains(project.schemaVersion) else { throw VoiceLabProjectError.requiresVersion3 }
         var voice = reference
         // §6.1: the name counts 1–60 Unicode scalars after trimming whitespace, and the trimmed name is stored.
         voice.displayName = reference.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -351,7 +354,7 @@ public enum VoiceLabProject {
     /// Records provider deletion (§6.10). The reference, segments and paid assets stay; new own-voice accepts are refused.
     public static func markVoiceDeleted(id voiceID: String, in project: Project) throws -> Project {
         // §10.5: only version 3 holds voice references, so versions 1 and 2 report requiresVersion3.
-        guard project.schemaVersion == 3 else { throw VoiceLabProjectError.requiresVersion3 }
+        guard (3...4).contains(project.schemaVersion) else { throw VoiceLabProjectError.requiresVersion3 }
         guard let index = project.voiceLab.voices?.firstIndex(where: { $0.id == voiceID }) else { throw VoiceLabProjectError.missingVoice }
         var result = project
         result.voiceLab.voices?[index].status = .deleted
@@ -378,7 +381,7 @@ public enum VoiceLabProject {
         guard candidates.indices.contains(index), let assetID = candidates[index].assetId, candidates[index].rejected == nil,
               let asset = result.voiceLab.assets?.first(where: { $0.id == assetID }) else { throw VoiceLabProjectError.invalidCandidate }
         result.voiceLab.segments[position].selectedCandidateIndex = index
-        if result.schemaVersion == 3 {
+        if (3...4).contains(result.schemaVersion) {
             guard let recipe = candidates[index].recipe else { throw VoiceLabProjectError.missingRenderPolicy }
             result.voiceLab.segments[position].outDuration = recipe.outDuration
             result.voiceLab.segments[position].audio = recipe.audio

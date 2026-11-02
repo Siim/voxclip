@@ -234,10 +234,27 @@ public struct RenderRequest: Sendable, Equatable {
     public var output: OutputSpec
     public var forPreview: Bool
     public var captionLayout: CaptionLayoutResult?
-    public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false, captionLayout: CaptionLayoutResult? = nil, voiceLab: VoiceLabRenderInput? = nil) {
+    /// Current source identity supplied by the Project/media binding.
+    public var sourceContentKey: String?
+    /// Immutable, scoped silent demo placement plan; never resolved from a path alone.
+    public var contextDemo: ContextDemoRenderInput?
+    /// Canonical data root containing context-demo/<projectId>/<assetId>.mp4.
+    public var contextDemoRoot: URL?
+    public var motionCues: [MotionCue]
+    /// Nil denotes Full Take, which does not apply clip motion cues.
+    public var motionClipID: String?
+    /// Preview follows Reduce Motion; authored export retains its motion.
+    public var reduceMotion: Bool
+    public init(sourceURL: URL, plan: EditPlan, captions: CaptionTrack = CaptionTrack(), style: CaptionStyle? = nil, placement: CaptionPosition? = nil, output: OutputSpec, forPreview: Bool = false, captionLayout: CaptionLayoutResult? = nil, voiceLab: VoiceLabRenderInput? = nil, contextDemo: ContextDemoRenderInput? = nil, contextDemoRoot: URL? = nil, motionCues: [MotionCue] = [], motionClipID: String? = nil, reduceMotion: Bool = false, sourceContentKey: String? = nil) {
         self.sourceURL = sourceURL; self.plan = plan; self.captions = captions; self.style = style; self.placement = placement; self.output = output; self.forPreview = forPreview
         self.captionLayout = captionLayout
         self.voiceLab = voiceLab
+        self.contextDemo = contextDemo
+        self.contextDemoRoot = contextDemoRoot
+        self.motionCues = motionCues
+        self.motionClipID = motionClipID
+        self.reduceMotion = reduceMotion
+        self.sourceContentKey = sourceContentKey
     }
 }
 /// Export selection, never a rewrite of global cuts; architecture §4.9.

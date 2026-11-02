@@ -121,7 +121,10 @@ extension Project {
     public mutating func applyEditing(_ command: EditCommand) throws {
         guard let transcript else { return }
         edits = EditReducer.reduce(try EditState(transcript: transcript, edits: edits), command: command, aiResults: ai.results).projectEdits
-        if case .removeClip(let id) = command { share.captions.removeValue(forKey: id) }
+        if case .removeClip(let id) = command {
+            share.captions.removeValue(forKey: id)
+            motionCues.removeAll { $0.clipID == id }
+        }
     }
 
     public mutating func replaceTranscript(_ replacement: Transcript) {
@@ -130,5 +133,7 @@ extension Project {
         ai = ProjectAI()
         share = ProjectShare()
         voiceLab.segments = [] // New source words invalidate replacement ranges; retain paid assets.
+        motionCues = []
+        contextDemo = nil // This explicit transcript replacement resets narration placement; Undo retains the prior Project.
     }
 }

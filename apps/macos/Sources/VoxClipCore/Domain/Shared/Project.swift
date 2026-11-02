@@ -855,9 +855,11 @@ public struct Project: Codable, Sendable, Equatable {
     public var voiceLab: ProjectVoiceLab
     /// extensions; doc/architecture.md §3; shared/schemas/project.schema.json
     public var extensions: [String: JSONValue]?
+    public var contextDemo: ContextDemoDocument?
+    public var motionCues: [MotionCue]
 
     /// Creates an explicit value without I/O or generated identifiers.
-    public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter, media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil) {
+    public init(format: String = "voxclip-project", schemaVersion: Int = 1, id: String, title: String? = nil, createdAt: Date, modifiedAt: Date, savedBy: ProjectWriter, media: ProjectMedia, transcript: Transcript? = nil, edits: ProjectEdits = ProjectEdits(), captions: CaptionSettings = CaptionSettings(), export: ProjectExport = ProjectExport(), share: ProjectShare = ProjectShare(), ai: ProjectAI = ProjectAI(), voiceLab: ProjectVoiceLab = ProjectVoiceLab(), extensions: [String: JSONValue]? = nil, contextDemo: ContextDemoDocument? = nil, motionCues: [MotionCue] = []) {
         self.format = format
         self.schemaVersion = schemaVersion
         self.id = id
@@ -874,6 +876,8 @@ public struct Project: Codable, Sendable, Equatable {
         self.ai = ai
         self.voiceLab = voiceLab
         self.extensions = extensions
+        self.contextDemo = contextDemo
+        self.motionCues = motionCues
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -893,6 +897,8 @@ public struct Project: Codable, Sendable, Equatable {
         case ai
         case voiceLab
         case extensions
+        case contextDemo
+        case motionCues
     }
 
     public init(from decoder: any Decoder) throws {
@@ -913,9 +919,16 @@ public struct Project: Codable, Sendable, Equatable {
         self.ai = try values.decode(ProjectAI.self, forKey: .ai)
         self.voiceLab = try values.decode(ProjectVoiceLab.self, forKey: .voiceLab)
         self.extensions = try values.decodeIfPresent([String: JSONValue].self, forKey: .extensions) ?? nil
+        self.contextDemo = try values.decodeIfPresent(ContextDemoDocument.self, forKey: .contextDemo)
+        self.motionCues = try values.decodeIfPresent([MotionCue].self, forKey: .motionCues) ?? []
+        guard schemaVersion == 4 || (!values.contains(.contextDemo) && !values.contains(.motionCues)) else {
+            throw ContextDemoError.unsupportedVersion
+        }
+        try ContextDemoProject.validate(self)
     }
 
     public func encode(to encoder: any Encoder) throws {
+        try ContextDemoProject.validate(self)
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(self.format, forKey: .format)
         try values.encode(self.schemaVersion, forKey: .schemaVersion)
@@ -933,6 +946,8 @@ public struct Project: Codable, Sendable, Equatable {
         try values.encode(self.ai, forKey: .ai)
         try values.encode(self.voiceLab, forKey: .voiceLab)
         try values.encodeIfPresent(self.extensions, forKey: .extensions)
+        try values.encodeIfPresent(self.contextDemo, forKey: .contextDemo)
+        if !self.motionCues.isEmpty { try values.encode(self.motionCues, forKey: .motionCues) }
     }
 
 }

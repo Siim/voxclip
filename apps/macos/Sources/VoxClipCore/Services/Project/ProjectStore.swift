@@ -144,6 +144,8 @@ public actor JSONProjectStore: ProjectStore {
             result.media.source.contentKey = key
             result.media.source.video = probe.video
             result.media.source.audio = probe.audio
+            result.contextDemo = nil
+            result.motionCues = []
         }
         return result
     }
