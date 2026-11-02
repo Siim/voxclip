@@ -162,7 +162,7 @@ public sealed class VoiceLabRequestGoldenTests
     }
     private static VoiceLabPreparedAction Prepare(ElevenLabsVoiceLab lab, Call call, Guid id) => call switch
     {
-        CloneCall clone => lab.PrepareClone(clone.Request, CreatePolicy, id),
+        CloneCall clone => lab.PrepareEnrollmentClone(clone.Request, CreatePolicy, id),
         SpeechCall speech => lab.PrepareSynthesis(speech.Text, speech.Model, VoiceLabVoiceChoice.Stock(speech.Voice), speech.Language, speech.Options, id),
         ConversionCall conversion => lab.PrepareConversion(conversion.Audio, conversion.Model, VoiceLabVoiceChoice.Stock(conversion.Voice), conversion.Language,
             conversion.Seed, conversion.CleanAudioOn, id),
@@ -286,7 +286,7 @@ public sealed class VoiceLabRequestGoldenTests
         using var lab = ElevenLabsVoiceLab.ForTesting(new MemoryKeys(Key), handler, ElevenLabsRegion.Default, boundary: Boundary(root));
         await Discover(lab);
         var id = Guid.NewGuid();
-        await lab.CreateOwnCloneAsync(request, CreatePolicy, lab.Approve(lab.PrepareClone(request, CreatePolicy, id), true), TestContext.Current.CancellationToken, id);
+        await lab.CreateOwnCloneAsync(request, CreatePolicy, lab.Approve(lab.PrepareEnrollmentClone(request, CreatePolicy, id), true), TestContext.Current.CancellationToken, id);
         var parts = Parts(Assert.Single(handler.Requests).Body, Boundary(root));
         var description = parts.Single(part => part.Headers[0] == "Content-Disposition: form-data; name=\"description\"");
         Assert.EndsWith(" VoxClip request " + nonce + ".", Encoding.UTF8.GetString(description.Body));
@@ -315,14 +315,14 @@ public sealed class VoiceLabRequestGoldenTests
             var recordId = Guid.NewGuid().ToString("D");
             var wav = clone.Request.Samples.Single(sample => sample.Role == VoiceLabCloneSampleRole.ConsentStatement).Wav;
             store.SaveStatement(wav, recordId);
-            record = record with { RecordId = recordId, VoiceId = "pending", Statement = record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+            record = record with { RecordId = recordId, VoiceId = "pending", Statement = record.Statement! with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
             using var claim = store.ClaimCreation(record, id, ElevenLabsRegion.Default, DateTimeOffset.UtcNow);
             var policy = claim.DispatchPolicy(_ => Task.CompletedTask);
             var keys = new SuspendingKeys();
             using var handler = new PaidRecorder(root["discovery"]!);
             using var client = ElevenLabsVoiceLab.ForTesting(keys, handler, ElevenLabsRegion.Default, boundary: Boundary(root));
             await Discover(client);
-            var quote = client.PrepareClone(clone.Request, policy, id);
+            var quote = client.PrepareEnrollmentClone(clone.Request, policy, id);
             keys.Suspend = true;
             var sending = client.CreateOwnCloneAsync(clone.Request, policy, client.Approve(quote, true), TestContext.Current.CancellationToken, id);
             await keys.Entered.Task;
@@ -347,7 +347,7 @@ public sealed class VoiceLabRequestGoldenTests
         await Discover(lab);
         await ForEachRow(rows, row =>
         {
-            var error = Record.Exception(() => lab.PrepareClone(CloneRequest(row, root["cloneDefaults"]!), CreatePolicy, Guid.NewGuid()));
+            var error = Record.Exception(() => lab.PrepareEnrollmentClone(CloneRequest(row, root["cloneDefaults"]!), CreatePolicy, Guid.NewGuid()));
             Assert.True(row["valid"]!.GetValue<bool>() ? error is null : error is VoiceLabException { Kind: VoiceLabErrorKind.InvalidInput }, error?.ToString());
             return Task.CompletedTask;
         });

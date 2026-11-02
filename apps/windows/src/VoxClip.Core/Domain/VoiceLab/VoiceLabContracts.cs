@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.LLM;
 using VoxClip.Core.Services.Speech;
@@ -36,7 +37,7 @@ public sealed record VoiceLabEstimate(string Provider, VoiceLabOperation Operati
 public enum VoiceLabLanguageModeKind { Explicit, AutoDetected }
 public sealed record VoiceLabLanguageMode(VoiceLabLanguageModeKind Kind, string ExpectedLanguage);
 /// <summary>The exact destination and input the caller reviews before approving a paid action. For a clone, <c>ContentSha256</c>
-/// is the consent statement sample; the prepared action binds every sample.</summary>
+/// is the recorded statement or attested project reference sample; the prepared action binds every sample.</summary>
 public sealed record VoiceLabReview(VoiceLabOperation Operation, Guid RequestId, string Provider,
     ElevenLabsRegion? Region, string Endpoint, string? ModelId, string? VoiceId,
     VoiceLabLanguageMode? LanguageMode, string? ContentSha256, string? ConsentRecordId,
@@ -45,18 +46,31 @@ public sealed record VoiceLabReview(VoiceLabOperation Operation, Guid RequestId,
 /// <summary>Claimed once by the service before dispatch. Construction is reserved to Core.</summary>
 public sealed record VoiceLabPreparedAction
 {
+    [System.Text.Json.Serialization.JsonConstructor]
     internal VoiceLabPreparedAction(Guid token, string fingerprint, DateTimeOffset expiresAt, VoiceLabEstimate estimate, VoiceLabReview review)
     { Token = token; Fingerprint = fingerprint; ExpiresAt = expiresAt; Estimate = estimate; Review = review; }
+    [System.Text.Json.Serialization.JsonInclude]
     internal Guid Token { get; }
+    [System.Text.Json.Serialization.JsonInclude]
     internal string Fingerprint { get; }
+    public Guid Id => Token;
     public DateTimeOffset ExpiresAt { get; }
     public VoiceLabEstimate Estimate { get; }
     public VoiceLabReview Review { get; }
+}
+/// <summary>Tracks a provider's accepted status line even if its response cannot produce a receipt.</summary>
+public sealed class VoiceLabRequestAcceptance
+{
+    private int accepted;
+    public bool Accepted => System.Threading.Volatile.Read(ref accepted) != 0;
+    internal void MarkAccepted() => System.Threading.Interlocked.Exchange(ref accepted, 1);
 }
 public sealed record VoiceLabAuthorization
 {
     internal VoiceLabRunDispatch? RunDispatch { get; init; }
     internal bool IsRunAuthorization { get; init; }
+    /// <summary>Carry a pinned window's authorization through its dispatch boundary.</summary>
+    public VoiceLabAuthorization ForDispatch(VoiceLabRunDispatch dispatch) => this with { RunDispatch = dispatch };
     internal VoiceLabAuthorization(Guid token, string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review)
     { Token = token; Fingerprint = fingerprint; Estimate = estimate; Review = review; }
     internal Guid Token { get; }
@@ -69,13 +83,15 @@ public sealed record VoiceLabAuthorization
 public sealed record OwnVoicePolicy(string RecordId, string? CloneVoiceId, bool RecordActive, bool ProviderConsentGranted,
     bool StatementVerified, bool SpeakerMatched, bool OwnerConfirmed)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] public VoiceConsentMethod ConsentMethod { get; init; }
     internal VoiceDispatchPermit? DispatchPermit { get; init; }
     internal Func<CancellationToken, Task>? ValidateDispatch { get; init; }
     internal VoiceConsentCreator? Creator { get; init; }
     internal long? ModelRevision { get; init; }
     public void Validate(string? selectedVoiceId = null)
     {
-        if (string.IsNullOrWhiteSpace(RecordId) || !RecordActive || !ProviderConsentGranted || !StatementVerified || !OwnerConfirmed ||
+        if (string.IsNullOrWhiteSpace(RecordId) || !RecordActive || !ProviderConsentGranted || !Enum.IsDefined(ConsentMethod) ||
+            ConsentMethod == VoiceConsentMethod.RecordedStatement && !StatementVerified || !OwnerConfirmed ||
             selectedVoiceId is not null && CloneVoiceId != selectedVoiceId)
             throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         if (!SpeakerMatched) throw new VoiceLabException(VoiceLabErrorKind.SpeakerMismatch);

@@ -6,6 +6,7 @@
     <IsPackable>false</IsPackable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+    <DefineConstants>$(DefineConstants);VOXCLIP_ENROLLMENT_TESTS</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/VoxClip.Media/VoxClip.Media.csproj" />
@@ -13,6 +14,8 @@
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <Compile Include="../../src/VoxClip.Media/VoiceLab/VoiceEnrollment.cs" Link="Enrollment/VoiceEnrollment.cs" />
+    <Compile Include="../Support/EnrollmentSpeaker.cs" Link="Enrollment/EnrollmentSpeaker.cs" />
     <Compile Include="../Support/FixtureLoader.cs" Link="Support/FixtureLoader.cs" />
     <Compile Include="../Support/NetworkGuard.cs" Link="Support/NetworkGuard.cs" />
     <Compile Include="../Support/NetworkGuardTests.cs" Link="Support/NetworkGuardTests.cs" />

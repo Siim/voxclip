@@ -243,7 +243,7 @@ public sealed class VoiceLabPricingTests
                 "textToSpeech" => service.PrepareSynthesis(Text(row["text"])!, model, VoiceLabVoiceChoice.Stock("stock123"), "en", new VoiceLabSpeechOptions(7), Guid.NewGuid()),
                 "voiceChange" => service.PrepareConversion(VoiceLabTestCalls.SyntheticWav(row["wav"]!["rate"]!.GetValue<int>(), row["wav"]!["frames"]!.GetValue<int>()),
                     model, VoiceLabVoiceChoice.Stock("stock123"), "en", 7, false, Guid.NewGuid()),
-                "createClone" => service.PrepareClone(VoiceLabTestCalls.CloneRequest(), new OwnVoicePolicy("record-1", null, true, true, true, true, true), Guid.NewGuid()),
+                "createClone" => service.PrepareEnrollmentClone(VoiceLabTestCalls.CloneRequest(), new OwnVoicePolicy("record-1", null, true, true, true, true, true), Guid.NewGuid()),
                 _ => service.PrepareDeletion("own123", new OwnVoicePolicy("record-1", "own123", true, true, true, true, true), Guid.NewGuid())
             };
             var estimate = prepared.Estimate.ToCostEstimate();
@@ -518,7 +518,7 @@ public sealed class VoiceLabPricingTests
         var createPolicy = new OwnVoicePolicy("record-1", null, true, true, true, true, true);
         var ownPolicy = new OwnVoicePolicy("record-1", "own123", true, true, true, true, true);
         var clone = VoiceLabTestCalls.CloneRequest();
-        var cloneQuote = service.PrepareClone(clone, createPolicy);
+        var cloneQuote = service.PrepareEnrollmentClone(clone, createPolicy);
         var deleteQuote = service.PrepareDeletion("own123", ownPolicy);
         var created = await service.CreateOwnCloneAsync(clone, createPolicy, service.Approve(cloneQuote, true), ct);
         var deleted = await service.DeleteOwnCloneAsync("own123", ownPolicy, service.Approve(deleteQuote, true), ct);

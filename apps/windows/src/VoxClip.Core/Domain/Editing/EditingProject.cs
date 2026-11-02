@@ -26,7 +26,9 @@ internal static class EditingProject
         return Clean(project with { Transcript = state.Transcript, Edits = edits,
             Ai = replaced ? new([]) : project.Ai,
             Share = replaced ? new(new Dictionary<string, string>(StringComparer.Ordinal)) : project.Share,
-            VoiceLab = replaced ? project.VoiceLab with { Segments = [] } : project.VoiceLab }, []);
+            VoiceLab = replaced ? project.VoiceLab with { Segments = [] } : project.VoiceLab,
+            ContextDemo = replaced ? null : project.ContextDemo,
+            MotionCues = replaced ? [] : project.MotionCues }, []);
     }
 
     internal static ProjectModel Clean(ProjectModel project, List<string> warnings)
@@ -72,6 +74,7 @@ internal static class EditingProject
             else warnings.Add("Dropped a removed clip's share caption.");
         }
         return project with { Edits = project.Edits with { CutWordIds = words.Where(word => cutWords.Contains(word.Id)).Select(word => word.Id).ToArray(),
-            CutPauseIds = pauses.Where(pause => cutPauses.Contains(pause.Id)).Select(pause => pause.Id).ToArray(), Corrections = corrections, Clips = clips, ActiveClipId = active }, Share = new(share) };
+            CutPauseIds = pauses.Where(pause => cutPauses.Contains(pause.Id)).Select(pause => pause.Id).ToArray(), Corrections = corrections, Clips = clips, ActiveClipId = active }, Share = new(share),
+            MotionCues = project.MotionCues.Where(cue => clipIds.Contains(cue.ClipID)).ToArray() };
     }
 }

@@ -112,8 +112,8 @@ public sealed class VoiceLabEditingTests
             [.. fixture.Published.Assets, .. fixture.Published.Assets], fixture.Voice).ApplyingTo(fixture.Empty));
         var accepted = new VoiceLabEditCommand.Accept(fixture.Segment(), fixture.Published.Assets, fixture.Voice).ApplyingTo(fixture.Empty);
         var next = fixture.Segment() with { Id = "next", Enabled = false };
-        Assert.Single(new VoiceLabEditCommand.Accept(next, [.. fixture.Published.Assets, .. fixture.Published.Assets], fixture.Voice)
-            .ApplyingTo(accepted).VoiceLab.Assets!);
+        Assert.Equal(VoiceLabProjectErrorCode.InvalidAsset, Assert.Throws<VoiceLabProjectException>(() =>
+            new VoiceLabEditCommand.Accept(next, [.. fixture.Published.Assets, .. fixture.Published.Assets], fixture.Voice).ApplyingTo(accepted)).Code);
     }
     [Fact]
     public void CommandsUseExactProjectSnapshotsAndSingleUndoSteps()
@@ -146,7 +146,10 @@ public sealed class VoiceLabEditingTests
         var accepted = new VoiceLabEditCommand.Accept(fixture.Segment(), fixture.Published.Assets, fixture.Voice).ApplyingTo(fixture.Empty);
         Assert.Single(accepted.VoiceLab.Assets!);
         var next = fixture.Segment() with { Id = "next", Enabled = false };
-        Assert.Single(new VoiceLabEditCommand.Accept(next, fixture.Published.Assets, fixture.Voice).ApplyingTo(accepted).VoiceLab.Assets!);
+        var disabled = VoiceLabProject.SetEnabled(accepted, "accepted-test", false);
+        Assert.Single(new VoiceLabEditCommand.Accept(next with { Enabled = true }, fixture.Published.Assets, fixture.Voice).ApplyingTo(disabled).VoiceLab.Assets!);
+        Assert.Equal(VoiceLabProjectErrorCode.InvalidScope, Assert.Throws<VoiceLabProjectException>(() =>
+            new VoiceLabEditCommand.Accept(next, fixture.Published.Assets, fixture.Voice).ApplyingTo(accepted)).Code);
         Assert.Throws<VoiceLabProjectException>(() => new VoiceLabEditCommand.Accept(next, [fixture.Published.Assets[0] with { Sha256 = new string('f', 64) }], fixture.Voice).ApplyingTo(accepted));
         Assert.Throws<VoiceLabProjectException>(() => new VoiceLabEditCommand.Accept(next, [], fixture.Voice with { VoiceId = "different" }).ApplyingTo(accepted));
         Assert.Throws<VoiceLabProjectException>(() => new VoiceLabEditCommand.ChooseCandidate("accepted-test", 10).ApplyingTo(accepted));

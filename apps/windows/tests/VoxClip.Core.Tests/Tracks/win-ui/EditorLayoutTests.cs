@@ -9,36 +9,28 @@ namespace VoxClip.Ui.Tests;
 public sealed class EditorLayoutTests
 {
     [Theory]
-    [InlineData(true, 759, true)]
-    [InlineData(true, 760, false)]
-    [InlineData(false, 600, false)]
-    public void RewriteCompactsOnlyInShortColumns(bool rewrite, double height, bool expected) =>
-        Assert.Equal(expected, EditorLayout.CompactStage(rewrite, height));
-
-    [Theory]
     [InlineData(ExportAspect.Landscape)]
     [InlineData(ExportAspect.Portrait)]
     [InlineData(ExportAspect.Square)]
     [InlineData(ExportAspect.Source)]
-    public void CompactStageFitsItsBoxAndLeavesFullSizedTransportBesideIt(ExportAspect aspect)
+    public void AllExportAspectsShareOneViewerEnvelopeAndOneMountedTransport(ExportAspect aspect)
     {
         foreach (var inner in new[] { 268.0, 316, 356, 528 })
         {
-            var stage = EditorLayout.RewriteStage(inner, aspect, new(1920, 1080), 112);
-            Assert.InRange(stage.Width, 1, 220);
-            Assert.InRange(stage.Height, 1, 124);
-            Assert.True(stage.Width + 112 + 8 <= inner);
-            var full = EditorLayout.Stage(inner, aspect, new(1920, 1080));
-            Assert.Equal(full.Width / full.Height, stage.Width / stage.Height, 8);
+            var viewer = EditorLayout.Viewer(inner);
+            Assert.Equal(inner, viewer.Width);
+            Assert.Equal(9.0 / 16, viewer.Height / viewer.Width, 8);
         }
-        var landscape = EditorLayout.RewriteStage(528, ExportAspect.Landscape, new(1920, 1080), 112);
-        Assert.Equal(220, landscape.Width);
-        Assert.Equal(123.75, landscape.Height);
-        var page = File.ReadAllText(Path.Combine(Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!,
-            "apps/windows/src/VoxClip.App/Pages/EditorPage.xaml.cs"));
-        Assert.Contains("EditorLayout.CompactStage(rewrite is { IsOpen: true }, RightPane.ActualHeight)", page);
-        Assert.Contains("Grid.SetColumn(TransportRow, compact ? 1 : 0)", page);
-        Assert.Contains("EditorLayout.RewriteStage(inner", page);
+        Assert.Contains(aspect, EditorLayout.Frames);
+        var root = Path.Combine(Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!, "apps/windows/src/VoxClip.App");
+        var page = File.ReadAllText(Path.Combine(root, "Pages/EditorPage.Integration.cs"));
+        var pane = File.ReadAllText(Path.Combine(root, "Controls/PreviewPane.cs"));
+        Assert.Contains("PreviewPane.Children.Remove(PreviewStage)", page);
+        Assert.Contains("PreviewPane.Children.Remove(TransportRow)", page);
+        Assert.Contains("viewerHost.Attach(PreviewStage, TransportRow)", page);
+        Assert.Equal(1, page.Split("viewerHost.Attach(", StringSplitOptions.None).Length - 1);
+        Assert.Contains("Height = EditorLayout.Viewer(ActualWidth).Height", pane);
+        Assert.Contains("controls.VerticalAlignment = VerticalAlignment.Bottom", pane);
     }
 
     [Theory]
@@ -87,7 +79,7 @@ public sealed class EditorLayoutTests
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
         var page = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.NativeProbe.cs"));
         var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.FitProbe.cs"));
-        Assert.Contains("(1280, 800, 348", page);
+        Assert.Contains("(1280, 800, 404", page);
         Assert.Contains("(1440, 900, 300", page);
         Assert.Contains("(1440, 900, 560", page);
         Assert.Contains("(760, 600, 300", page);
@@ -121,12 +113,12 @@ public sealed class EditorLayoutTests
     }
 
     // Tokens.xaml: VcSizeRightColumnMin, VcSizeRightColumnMax; Workspace.xaml: VcLayoutTranscriptMinWidth; the splitter is 12.
-    private const double Min = 300, Max = 560, TranscriptMin = 588, Splitter = 12, Pane = 264;
+    private const double Min = 300, Max = 560, TranscriptMin = 588, Splitter = 12, Pane = 224;
 
     [Theory]
-    [InlineData(1440, 388)]
-    [InlineData(1280, 348)]
-    [InlineData(1024, 300)]
+    [InlineData(1440, 444)]
+    [InlineData(1280, 404)]
+    [InlineData(1024, 340)]
     [InlineData(2400, 560)]
     public void RightColumnFollowsTheWindowWidth(double window, double expected) => Assert.Equal(expected, EditorLayout.RightColumnWidth(window, Min, Max));
 
@@ -172,41 +164,25 @@ public sealed class EditorLayoutTests
     [Fact]
     public void AtTheDefaultWidthsTheMeasuresMatchTheBoard()
     {
-        // editor-light.png: the right column is 388 at 1440; editor-1280-light.png: 348, leaving the transcript 1280 − 264 − 12 − 348.
-        Assert.Equal(656, 1280 - Pane - Splitter - EditorLayout.RightColumnWidth(1280, Min, Max));
-        Assert.Equal(776, 1440 - Pane - Splitter - EditorLayout.RightColumnWidth(1440, Min, Max));
+        Assert.Equal(640, 1280 - Pane - Splitter - EditorLayout.RightColumnWidth(1280, Min, Max));
+        Assert.Equal(760, 1440 - Pane - Splitter - EditorLayout.RightColumnWidth(1440, Min, Max));
     }
 
     [Theory]
-    [InlineData(ExportAspect.Landscape, 1920, 1080, 355, 199.6875)]
-    [InlineData(ExportAspect.Portrait, 1920, 1080, 180, 320)]
-    [InlineData(ExportAspect.Square, 1920, 1080, 320, 320)]
-    [InlineData(ExportAspect.Source, 1920, 1080, 355, 199.6875)]
-    [InlineData(ExportAspect.Source, 1080, 1920, 180, 320)]
-    public void TheStageFillsTheColumnOrCentresAtMost320High(ExportAspect aspect, int width, int height, double stageWidth, double stageHeight)
+    [InlineData(355, 199.6875)]
+    [InlineData(300, 168.75)]
+    [InlineData(560, 315)]
+    public void TheViewerFillsItsEnvelopeAtEverySupportedColumnWidth(double width, double height)
     {
-        // A 388 column has 355 inside 16 of padding on each side and the 1 px hairline.
-        var stage = EditorLayout.Stage(355, aspect, new PixelSize(width, height));
-        Assert.Equal(stageWidth, stage.Width, 3);
-        Assert.Equal(stageHeight, stage.Height, 3);
+        Assert.Equal((width, height), EditorLayout.Viewer(width));
     }
 
     [Fact]
-    public void TheStageNeverGrowsPastANarrowColumn()
+    public void InvalidViewerMeasurementsNeverCreateAnUnboundedSurface()
     {
-        Assert.Equal((150.0, 150.0), EditorLayout.Stage(150, ExportAspect.Square, new PixelSize(1920, 1080)));
-        Assert.Equal((0.0, 0.0), EditorLayout.Stage(-20, ExportAspect.Landscape, new PixelSize(1920, 1080)));
-    }
-
-    [Theory]
-    [InlineData(413, 65, 62, 45, 233, 8)]
-    [InlineData(713, 32, 40, 45, 276, 320)]
-    public void StageLeavesTheMeasuredCaptionMinimumReachable(double column, double frame, double transport,
-        double chrome, double captions, double expected)
-    {
-        var stage = EditorLayout.StageHeightBudget(column, frame, transport, chrome, captions);
-        Assert.Equal(expected, stage);
-        Assert.Equal(column, stage + frame + transport + chrome + captions);
+        Assert.Equal((150.0, 84.375), EditorLayout.Viewer(150));
+        foreach (var invalid in new[] { -20.0, double.NaN, double.PositiveInfinity })
+            Assert.Equal((0.0, 0.0), EditorLayout.Viewer(invalid));
     }
 
     [Theory]

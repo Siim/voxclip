@@ -147,7 +147,7 @@ internal sealed class OnboardingDialog : ContentDialog
                     App.OpenSettings("Providers & Keys");
                 }));
             }
-            else body.Children.Add(Ui.Text("Sends transcript text only when you choose an external connector. No audio or video. You can always make clips yourself: select words, press Ctrl+K.", "HelperText"));
+            else body.Children.Add(Ui.Text("Sends transcript text only when you choose an external connector. No audio or video. You can always make clips yourself: select words, press Ctrl+Alt+K.", "HelperText"));
         }
         else
         {

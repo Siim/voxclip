@@ -21,12 +21,12 @@ public sealed class VoiceUseGuard(VoiceConsentStore store, VoiceSpeakerCheck? ch
             ct.ThrowIfCancellationRequested();
             var record = store.Load(recordId);
             store.ValidateUse(record);
-            if (!this.check.Supports(record.Statement.Language) || this.check.ModelId != record.Speaker.Model || this.check.Threshold != record.Speaker.Threshold ||
+            if (!this.check.Supports(record.Language) || this.check.ModelId != record.Speaker.Model || this.check.Threshold != record.Speaker.Threshold ||
                 VoiceConsentRecord.DecodeEmbedding(record.Speaker.Embedding) is not { } owner) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
             this.check.ValidateAvailability();
             var bytes = new byte[samples.Length * 4];
             for (var index = 0; index < samples.Length; index++) BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(index * 4), samples[index]);
-            var key = string.Join("\n", contentKey, recordId, voiceChanger, record.Speaker.Embedding, record.Statement.AudioSha256, VoiceConsentStore.Hash(bytes));
+            var key = string.Join("\n", contentKey, recordId, voiceChanger, record.ConsentMethod, record.Speaker.Embedding, record.ReferenceAudioSha256, VoiceConsentStore.Hash(bytes));
             if (!cache.Contains(key))
             {
                 var candidate = await this.check.EmbeddingAsync(samples.Take(voiceChanger ? 480000 : 160000).ToArray(), ct).ConfigureAwait(false);

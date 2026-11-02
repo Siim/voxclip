@@ -12,7 +12,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
 {
     private sealed record Pending(VoiceLabTakeRunQuote Quote, VoiceLabTakeInput Input, VoiceConsentRecord Record,
         VoiceLabTakePreflight Preflight, VoiceLabSourceExcerpt Source, float[] Speech, long ModelRevision, long Revision, VoiceLabDispatchBinding Binding,
-        VoiceLabDispatchBinding AcceptanceBinding);
+        VoiceLabDispatchBinding AcceptanceBinding, IReadOnlyList<VoiceLabAuthorization>? ApprovedAhead = null);
     private readonly object sync = new();
     private readonly ElevenLabsVoiceLab client;
     private readonly VoiceConsentStore store;
@@ -43,12 +43,13 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         return new(record =>
         {
             speaker.ValidateAvailability();
-            if (!speaker.Supports(record.Statement.Language) || speaker.ModelId != record.Speaker.Model || speaker.Threshold != record.Speaker.Threshold)
+            if (!speaker.Supports(record.Language) || speaker.ModelId != record.Speaker.Model || speaker.Threshold != record.Speaker.Threshold)
                 throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
         }, (record, speech, request, binding, model, ct) => guard.AuthorizeAsync("take:" + VoiceConsentStore.Hash(System.Runtime.InteropServices.MemoryMarshal.AsBytes(speech.AsSpan()).ToArray()),
             record.RecordId, speech, request, true, ct: ct, binding: binding, modelRevision: model),
-            (samples, rate, ct) => speaker.EmbeddingAsync(VoiceConsentAudio.Resample(samples, rate), ct));
+            (samples, rate, ct) => speaker.GeneratedEmbeddingAsync(samples, rate, ct));
     }
+    internal Guid? PreparedSetId { get { lock (sync) return pending?.Quote.Id; } }
     public VoiceLabTakeScratch? Scratch(Guid id) { lock (sync) return scratches.GetValueOrDefault(id); }
     public VoiceLabAsset? PaidAsset(Guid id) { lock (sync) return paidAssets.GetValueOrDefault(id); }
     public async Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default)
@@ -78,7 +79,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             var record = store.Load(snapshot.RecordId);
             store.ValidateUse(record);
             checks.Validate(record);
-            if (snapshot.Language != record.Statement.Language) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
+            if (snapshot.Language != record.Language) throw new VoiceConsentException(VoiceConsentError.SpeakerUnavailable);
             if (!await inputsAreCurrent(ct).ConfigureAwait(false)) throw new VoiceLabRunInvalidatedException();
             Check(version, binding, ct);
             var preflight = VoiceLabTakeProcessing.Preflight(snapshot);
@@ -95,7 +96,8 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             for (var index = 0; index < 3; index++)
             {
                 var options = snapshot.Options(index);
-                var review = new OwnVoicePolicy(record.RecordId, record.VoiceId, true, true, true, true, true);
+                var review = new OwnVoicePolicy(record.RecordId, record.VoiceId, true, true, record.ConsentMethod == VoiceConsentMethod.RecordedStatement, true, true)
+                    { ConsentMethod = record.ConsentMethod };
                 var synthesis = client.PrepareSynthesis(snapshot.Text, snapshot.ModelId, VoiceLabVoiceChoice.Own(record.VoiceId, review), snapshot.Language, options, Guid.NewGuid());
                 try { quotes.Add(new(index, options.Seed, synthesis, client.PrepareQa(snapshot.Language, record.RecordId, Guid.NewGuid()))); }
                 catch { client.DiscardTakeRun(new(id, [new(index, options.Seed, synthesis, synthesis)])); throw; }
@@ -118,11 +120,22 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         }
         finally { lock (sync) preparing = false; }
     }
+    /// <summary>Pins exactly this window's prepared set for a batch approval, without sending anything.</summary>
+    public Task ApproveAsync(VoiceLabTakeRunQuote quote)
+    {
+        lock (sync)
+        {
+            if (preparing || owner.HasValue || pending is not { } value || !ReferenceEquals(value.Quote, quote) || value.ApprovedAhead is not null)
+                throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            pending = value with { ApprovedAhead = client.ApproveTakeRun(quote, true) };
+        }
+        return Task.CompletedTask;
+    }
     public Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeRunQuote quote, bool approved,
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
     {
         if (!approved) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
-        return ExecuteWithDispatchAsync(quote, new(_ => Task.CompletedTask, action => action()), progress, ct);
+        return ExecuteWithDispatchAsync(quote, new((_, _) => Task.CompletedTask, action => action()), progress, ct);
     }
     public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
@@ -156,7 +169,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             lock (sync)
             {
                 Check(value.Revision, value.Binding, token);
-                if (!transportStarted && !client.QuotesAreFresh(quote.Actions)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+                if (!transportStarted && value.ApprovedAhead is null && !client.QuotesAreFresh(quote.Actions)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
                 action();
                 if (!transportStarted)
                 {
@@ -170,11 +183,12 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         try
         {
             await Checkpoint("clock", value, token).ConfigureAwait(false);
-            if (!client.QuotesAreFresh(quote.Actions)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            if (value.ApprovedAhead is null && !client.QuotesAreFresh(quote.Actions)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             await ValidateAsync(value, token).ConfigureAwait(false);
             await Checkpoint("validation", value, token).ConfigureAwait(false);
-            await dispatch.AuthorizeAsync(token).ConfigureAwait(false);
-            var approvals = client.ApproveTakeRun(quote, dispatch);
+            await dispatch.AuthorizeAsync(quote.Takes[0].Synthesis.Review.RequestId, token).ConfigureAwait(false);
+            var approvals = value.ApprovedAhead?.Select(approval => approval.ForDispatch(dispatch)).ToArray()
+                ?? client.ApproveTakeRun(quote, dispatch);
             await Checkpoint("approval", value, token).ConfigureAwait(false);
             await Checkpoint("launch", value, token).ConfigureAwait(false);
             return await PerformAsync(() => value, approvals, progress ?? (_ => Task.CompletedTask),
@@ -190,7 +204,7 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 else client.ReleaseTakeRun(quote);
                 lock (sync)
                 {
-                    if (retainQuote && revision == value.Revision && client.QuotesAreFresh(quote.Actions)) pending = value;
+                    if (retainQuote && revision == value.Revision && client.QuotesAreFresh(quote.Actions)) pending = value with { ApprovedAhead = null };
                     if (owner == execution) { owner = null; running = null; }
                 }
                 cancellation.Dispose();
@@ -207,13 +221,15 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
             VoiceLabAudioResult? generated = null;
             VoiceLabReceipt? qaReceipt = null;
             VoiceLabTakeAudio? audio = null;
+            var synthesisAccepted = new VoiceLabRequestAcceptance();
+            var qaAccepted = new VoiceLabRequestAcceptance();
             try
             {
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var policy = await checks.Authorize(value.Record, value.Speech, take.Synthesis.Review.RequestId, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("authorization", value, ct).ConfigureAwait(false);
                 generated = await client.SynthesizeAsync(value.Input.Text, value.Input.ModelId, VoiceLabVoiceChoice.Own(value.Record.VoiceId, policy),
-                    value.Input.Language, value.Input.Options(take.Index), approvals[take.Index * 2], ct, take.Synthesis.Review.RequestId).ConfigureAwait(false);
+                    value.Input.Language, value.Input.Options(take.Index), approvals[take.Index * 2], ct, take.Synthesis.Review.RequestId, synthesisAccepted).ConfigureAwait(false);
                 await launchCleanup().ConfigureAwait(false);
                 value = current();
                 if (Suspension is { } afterSynthesis) await afterSynthesis("synthesis").ConfigureAwait(false);
@@ -245,13 +261,15 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 float[] vector;
                 try
                 {
-                    if (audio.Trimmed.Length < audio.SampleRate * 3) throw new VoiceConsentException(VoiceConsentError.SpeakerMismatch);
+                    if (audio.Trimmed.Length < audio.SampleRate * 3) throw new VoiceInsufficientGeneratedSpeechException();
                     vector = await checks.Embedding(audio.Trimmed, audio.SampleRate, ct).ConfigureAwait(false);
                 }
-                catch (VoiceConsentException error) when (error.Kind == VoiceConsentError.SpeakerMismatch)
+                catch (Exception error) when (error is VoiceInsufficientGeneratedSpeechException or VoiceConsentException { Kind: VoiceConsentError.SpeakerMismatch })
                 {
-                    var failed = new VoiceLabTakeQaResult(0, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
-                        VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
+                    var failed = error is VoiceInsufficientGeneratedSpeechException
+                        ? new VoiceLabTakeQaResult(null, null, null, null, [VoiceLabTakeQaFailure.InsufficientGeneratedSpeech])
+                        : new VoiceLabTakeQaResult(null, VoiceLabLoudness.LufsJumpLu(audio.Mixed, audio.SampleRate, audio.Seams),
+                            VoiceLabLoudness.SamplePeakDbfs(audio.Mixed), null, [VoiceLabTakeQaFailure.Speaker]);
                     rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, Generated: generated, Quote: take, Audio: audio, Qa: failed));
                     await progress(rows.AsReadOnly()).ConfigureAwait(false);
                     await ValidateAsync(value, ct).ConfigureAwait(false);
@@ -262,14 +280,15 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                 var score = SpeakerAudio.Cosine(ownerVector, vector);
                 var qaPolicy = await checks.Authorize(value.Record, value.Speech, take.Qa.Review.RequestId, value.Binding, value.ModelRevision, ct).ConfigureAwait(false);
                 await Checkpoint("qaAuthorization", value, ct).ConfigureAwait(false);
-                var recognized = await client.TranscribeQaAsync(audio.Mixed, audio.SampleRate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct).ConfigureAwait(false);
+                var recognized = await client.TranscribeQaAsync(audio.Mixed, audio.SampleRate, value.Input.Language, qaPolicy, approvals[take.Index * 2 + 1], ct, qaAccepted).ConfigureAwait(false);
                 qaReceipt = recognized.Receipt;
                 await ValidateAsync(value, ct).ConfigureAwait(false);
                 var lower = audio.PatchStart / (double)audio.SampleRate;
                 var upper = audio.PatchEnd / (double)audio.SampleRate;
                 var inside = recognized.Words.Where(word => (word.Start + word.End) / 2 >= lower && (word.Start + word.End) / 2 < upper).Select(word => word.Text).ToArray();
                 var qa = VoiceLabTakeQuality.Evaluate(value.Input.Text, inside, audio.Mixed, audio.SampleRate, audio.Seams, score, value.Record.Speaker.Threshold);
-                var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start, qa.TranscriptMatch, VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
+                var rank = VoiceLabTakeQuality.Rank(audio.Fit, value.Input.Window.End - value.Input.Window.Start,
+                    qa.TranscriptMatch ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput), VoiceLabLoudness.Flatness(audio.Trimmed, audio.SampleRate));
                 var row = new VoiceLabTakeRow(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated.Receipt, qaReceipt, generated, take, audio, qa, rank);
                 rows.Add(row);
                 lock (sync) { Check(value.Revision, value.Binding, ct); acceptedRows[row.Id] = (row, value); }
@@ -286,10 +305,13 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
                     throw;
                 }
                 value = current();
-                if (error is VoiceLabRunInvalidatedException || ct.IsCancellationRequested) return new(rows.AsReadOnly(), End(error));
-                rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated?.Receipt, qaReceipt, generated, take, audio, Failure: error));
+                HashSet<Guid> accepted = [];
+                if (synthesisAccepted.Accepted) accepted.Add(take.Synthesis.Review.RequestId);
+                if (qaAccepted.Accepted) accepted.Add(take.Qa.Review.RequestId);
+                rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, generated?.Receipt, qaReceipt, generated, take, audio, Failure: error)
+                    { Accepted = System.Collections.Frozen.FrozenSet.ToFrozenSet(accepted) });
                 await progress(rows.AsReadOnly()).ConfigureAwait(false);
-                if (Fatal(error)) return new(rows.AsReadOnly(), End(error));
+                if (Fatal(error) || ct.IsCancellationRequested) return new(rows.AsReadOnly(), End(error));
                 try { await ValidateAsync(value, ct).ConfigureAwait(false); }
                 catch (Exception stopped) { return new(rows.AsReadOnly(), End(stopped)); }
             }
@@ -344,9 +366,10 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         }
         if (quote is not null) client.DiscardTakeRun(quote);
     }
-    public Task CancelAsync() => StopAsync(VoiceLabTakeRunEnd.Cancelled);
+    public Task CancelAsync() => CancelAsync(false);
+    public Task CancelAsync(bool keepingTakes) => StopAsync(VoiceLabTakeRunEnd.Cancelled, keepingTakes);
     public Task InvalidateAsync() => StopAsync(VoiceLabTakeRunEnd.Invalidated);
-    private async Task StopAsync(VoiceLabTakeRunEnd reason)
+    private async Task StopAsync(VoiceLabTakeRunEnd reason, bool keepingTakes = false)
     {
         VoiceLabTakeScratch[] retired;
         VoiceLabTakeRunQuote? quote;
@@ -354,10 +377,19 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
         lock (sync)
         {
             stop = reason; revision++;
-            inputGate.Invalidate();
+            if (!keepingTakes) inputGate.Invalidate();
             cancellation = running;
             quote = pending?.Quote; pending = null;
-            retired = scratches.Values.ToArray(); scratches.Clear(); acceptedRows.Clear();
+            if (keepingTakes)
+            {
+                retired = [];
+                foreach (var key in acceptedRows.Keys.ToArray())
+                {
+                    var row = acceptedRows[key];
+                    acceptedRows[key] = (row.Row, row.Input with { Revision = revision });
+                }
+            }
+            else { retired = scratches.Values.ToArray(); scratches.Clear(); acceptedRows.Clear(); }
         }
         try { cancellation?.Cancel(); }
         catch (ObjectDisposedException) { }
@@ -396,5 +428,5 @@ public sealed class VoiceLabTakeRun : IVoiceLabTakeRunner
     }
     private static bool Fatal(Exception error) => error is VoiceConsentException or VoiceCreatorMismatchException or OperationCanceledException or VoiceLabRunInvalidatedException ||
         error is VoiceLabException { Kind: VoiceLabErrorKind.Unauthorized or VoiceLabErrorKind.PermissionMissing or VoiceLabErrorKind.MissingKey or
-            VoiceLabErrorKind.QuotaExceeded or VoiceLabErrorKind.ConsentRequired or VoiceLabErrorKind.SpeakerMismatch or VoiceLabErrorKind.Cancelled };
+            VoiceLabErrorKind.QuotaExceeded or VoiceLabErrorKind.ConsentRequired or VoiceLabErrorKind.SpeakerMismatch or VoiceLabErrorKind.Cancelled or VoiceLabErrorKind.InvalidAlignment };
 }

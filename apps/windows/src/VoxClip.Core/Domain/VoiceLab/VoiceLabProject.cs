@@ -83,7 +83,7 @@ public static class VoiceLabProject
             Require(project.VoiceLab.Segments.Count == 0 && project.VoiceLab.Assets is null && project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null, VoiceLabProjectErrorCode.InvalidSegment);
             return;
         }
-        Require(project.SchemaVersion is 2 or 3 && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
+        Require(project.SchemaVersion is 2 or 3 or 4 && project.VoiceLab.Assets is not null, VoiceLabProjectErrorCode.InvalidSegment);
         if (project.SchemaVersion == 2) Require(project.VoiceLab.CleanAudio is null && project.VoiceLab.Voices is null && project.VoiceLab.VideoAssets is null &&
             project.VoiceLab.Segments.All(segment => segment.Scope is null && segment.GroupId is null && segment.Provenance.Region is null && segment.Candidates.All(candidate => candidate.Recipe is null)), VoiceLabProjectErrorCode.InvalidSegment);
         Require(VoiceLabAssetNaming.IsSafeProjectId(project.Id), VoiceLabProjectErrorCode.UnsafePath);
@@ -135,7 +135,8 @@ public static class VoiceLabProject
             {
                 if (candidate.AssetId is { } candidateId) Require(assetIds.Contains(candidateId), VoiceLabProjectErrorCode.DanglingAsset);
                 if (candidate.Score is { } score) Require(double.IsFinite(score) && score >= 0 && score <= 1, VoiceLabProjectErrorCode.InvalidCandidate);
-                if (candidate.Rejected is null) Require(candidate.AssetId is not null && candidate.Score is not null, VoiceLabProjectErrorCode.InvalidCandidate);
+                var requiresRank = project.SchemaVersion < 3 || segment.Kind == VoiceLabSegmentKind.Tts;
+                if (candidate.Rejected is null) Require(candidate.AssetId is not null && (!requiresRank || candidate.Score is not null), VoiceLabProjectErrorCode.InvalidCandidate);
             }
             var provenance = segment.Provenance;
             Require(Matches(provenance.Provider, "[a-z0-9-]+") && !string.IsNullOrEmpty(provenance.Endpoint) &&
@@ -166,40 +167,62 @@ public static class VoiceLabProject
         enabled.Sort((left, right) => left.start.CompareTo(right.start));
         for (var i = 1; i < enabled.Count; i++)
             Require(enabled[i].start >= enabled[i - 1].end, VoiceLabProjectErrorCode.OverlappingReplacement);
-        if (project.SchemaVersion == 3) VoiceLabRenderValidation.Validate(project);
+        if (project.SchemaVersion >= 3) VoiceLabRenderValidation.Validate(project);
     }
     /// <summary>The only v1/v2 to v3 promotion (§10.1, §10.5); loading and saving never call it. A v2 segment needs explicit review.</summary>
     public static Project UpgradeToV3(Project project)
     {
         Validate(project);
-        if (project.SchemaVersion == 3) return project;
+        if (project.SchemaVersion >= 3) return project;
         Require(project.VoiceLab.Segments.Count == 0, VoiceLabProjectErrorCode.LegacySegmentsNeedReview);
         var result = project with { SchemaVersion = 3, VoiceLab = new VoiceLabPlaceholder([]) { Assets = project.VoiceLab.Assets ?? [],
             CleanAudio = new(VoiceLabCleanAudioMode.Off, null, null), Voices = [], VideoAssets = [] } };
         Validate(result); return result;
     }
     /// <summary>Appends a reviewed v3 segment; v1 and segment-free v2 projects are upgraded first, so accept never writes v2.</summary>
-    public static Project Accept(Project project, IReadOnlyList<VoiceLabAsset> newAssets, VoiceLabSegment segment)
+    public static Project Accept(Project project, IReadOnlyList<VoiceLabAsset> newAssets, VoiceLabSegment segment) => AcceptAll(project, newAssets, [segment]);
+    /// <summary>Accepts the whole reviewed set atomically. No input snapshot is modified on refusal.</summary>
+    public static Project AcceptAll(Project project, IReadOnlyList<VoiceLabAsset> newAssets, IReadOnlyList<VoiceLabSegment> segments)
     {
-        if (project.SchemaVersion != 3) project = UpgradeToV3(project);
-        Require(segment.Candidates is { Count: > 0 } && segment.SelectedCandidateIndex >= 0 &&
-            segment.SelectedCandidateIndex < segment.Candidates.Count, VoiceLabProjectErrorCode.InvalidCandidate);
+        Require(segments.Count > 0, VoiceLabProjectErrorCode.InvalidSegment);
+        if (project.SchemaVersion < 3) project = UpgradeToV3(project);
         var assets = project.VoiceLab.Assets?.ToList() ?? [];
         Require(newAssets.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() == newAssets.Count &&
             newAssets.All(item => !assets.Any(existing => existing.Id == item.Id)), VoiceLabProjectErrorCode.InvalidAsset);
+        foreach (var segment in segments)
+            Require(segment.Candidates is { Count: > 0 } && segment.SelectedCandidateIndex >= 0 &&
+                segment.SelectedCandidateIndex < segment.Candidates.Count, VoiceLabProjectErrorCode.InvalidCandidate);
+        Require(segments.Select(item => item.Id).Distinct(StringComparer.Ordinal).Count() == segments.Count &&
+            segments.All(segment => !project.VoiceLab.Segments.Any(item => item.Id == segment.Id)), VoiceLabProjectErrorCode.InvalidSegment);
+        var ordered = segments.OrderBy(segment => segment.Replace.Start).ToArray();
+        for (var index = 0; index < ordered.Length; index++)
+        {
+            var segment = ordered[index];
+
+            if (index > 0) Require(segment.Replace.Start >= ordered[index - 1].Replace.End, VoiceLabProjectErrorCode.OverlappingReplacement);
+            foreach (var candidate in segment.Candidates.Where(item => item.Rejected is null))
+                if (candidate.Recipe is { VoiceSource: VoiceLabVoiceSource.Own } recipe)
+                    Require(project.VoiceLab.Voices?.FirstOrDefault(v => v.Id == recipe.VoiceRefId)?.Status == VoiceLabVoiceStatus.Active, VoiceLabProjectErrorCode.ConsentUnverified);
+        }
         assets.AddRange(newAssets);
-        Require(!project.VoiceLab.Segments.Any(item => item.Id == segment.Id), VoiceLabProjectErrorCode.InvalidSegment);
-        // Every unrejected own-voice candidate is a new take, selected or not, so each needs an active consent reference (§6.10, §10.5).
-        foreach (var candidate in segment.Candidates.Where(item => item.Rejected is null))
-            if (candidate.Recipe is { VoiceSource: VoiceLabVoiceSource.Own } recipe)
-                Require(project.VoiceLab.Voices?.FirstOrDefault(v => v.Id == recipe.VoiceRefId)?.Status == VoiceLabVoiceStatus.Active, VoiceLabProjectErrorCode.ConsentUnverified);
-        var result = project with { VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Append(segment).ToArray(), Assets = assets } };
+        var result = project with { VoiceLab = project.VoiceLab with { Segments = project.VoiceLab.Segments.Concat(segments).ToArray(), Assets = assets } };
         Validate(result); return result;
+    }
+    /// <summary>Checks all accepted recipes, including alternatives, in the completed output scope.</summary>
+    public static void Validate(Project project, VoiceLabOutputScope scope, IReadOnlyList<VoiceLabSegment> accepting)
+    {
+        var prepared = VoiceLabRenderContract.Prepare(project, scope, VoiceLabLabelPosition.TopRight);
+        var rendered = prepared.SelectedSegmentRecipes.Select(item => item.SegmentId).ToHashSet(StringComparer.Ordinal);
+        Require(accepting.All(segment => segment.Enabled && rendered.Contains(segment.Id)), VoiceLabProjectErrorCode.InvalidScope);
+        foreach (var segment in accepting)
+            for (var index = 0; index < segment.Candidates.Count; index++)
+                if (index != segment.SelectedCandidateIndex && segment.Candidates[index].Rejected is null)
+                    VoiceLabRenderContract.Prepare(SelectCandidate(project, segment.Id, index), scope, VoiceLabLabelPosition.TopRight);
     }
     /// <summary>Adds an own-voice consent reference (§6.8, §10.5). The project stores only IDs and the trimmed display name.</summary>
     public static Project AddVoiceReference(Project project, VoiceLabVoiceReference reference)
     {
-        Require(project.SchemaVersion == 3, VoiceLabProjectErrorCode.RequiresVersion3);
+        Require(project.SchemaVersion >= 3, VoiceLabProjectErrorCode.RequiresVersion3);
         // §6.1: the name counts 1–60 Unicode scalars after trimming whitespace, and the trimmed name is stored.
         var voice = reference with { DisplayName = reference.DisplayName.Trim() };
         var voices = project.VoiceLab.Voices ?? [];
@@ -215,7 +238,7 @@ public static class VoiceLabProject
     public static Project MarkVoiceDeleted(Project project, string id)
     {
         // §10.5: only version 3 holds voice references, so versions 1 and 2 report RequiresVersion3.
-        Require(project.SchemaVersion == 3, VoiceLabProjectErrorCode.RequiresVersion3);
+        Require(project.SchemaVersion >= 3, VoiceLabProjectErrorCode.RequiresVersion3);
         var voice = project.VoiceLab.Voices?.FirstOrDefault(item => item.Id == id);
         Require(voice is not null, VoiceLabProjectErrorCode.MissingVoice);
         var result = voice!.Status == VoiceLabVoiceStatus.Deleted ? project : project with { VoiceLab = project.VoiceLab with {
@@ -244,7 +267,7 @@ public static class VoiceLabProject
         var assetId = segment!.Candidates[index].AssetId!;
         var asset = project.VoiceLab.Assets?.FirstOrDefault(item => item.Id == assetId);
         Require(asset is not null, VoiceLabProjectErrorCode.DanglingAsset);
-        if (project.SchemaVersion == 3)
+        if (project.SchemaVersion >= 3)
         {
             var recipe = segment.Candidates[index].Recipe ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.MissingRenderPolicy);
             var updated = segment with { SelectedCandidateIndex = index, OutDuration = recipe.OutDuration, Audio = recipe.Audio, Words = recipe.Words,

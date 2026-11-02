@@ -6,9 +6,10 @@ public sealed class VoiceLabConfirmationRequiredException(VoiceLabCostPresentati
     public VoiceLabCostPresentationResult Decision { get; } = decision;
 }
 
-public sealed class VoiceLabRunDispatch(Func<CancellationToken, Task> authorize, Action<Action> start)
+/// <summary>The App’s last cost check names the next paid TTS or QA request. Prelaunch checks name the first TTS request.</summary>
+public sealed class VoiceLabRunDispatch(Func<Guid, CancellationToken, Task> authorize, Action<Action> start)
 {
-    public Task AuthorizeAsync(CancellationToken ct) => authorize(ct);
+    public Task AuthorizeAsync(Guid requestId, CancellationToken ct) => authorize(requestId, ct);
     public Task<T> Start<T>(Func<Task<T>> transport, CancellationToken ct)
     {
         Task<T>? sending = null;

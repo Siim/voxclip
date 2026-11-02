@@ -121,11 +121,12 @@ internal sealed partial class RewritePanel
         RenderTakeButtons(generation);
         if (session.LocalAction is null)
         {
-            apply.Content = generation.AcceptTitle; SetName(apply, generation.AcceptTitle);
+            var title = session.GenerationWindows.Count > 1 ? "Use Reviewed Takes" : generation.AcceptTitle;
+            apply.Content = title; SetName(apply, title);
             AutomationProperties.SetAutomationId(apply, "Rewrite.UseTake");
             apply.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
             apply.Visibility = rows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            apply.IsEnabled = generation.ReadyToAccept && !session.Editor.Busy && !session.Editor.IsReadOnly && !session.Editor.IsLeaving;
+            apply.IsEnabled = session.CanAcceptAll;
         }
         else AutomationProperties.SetAutomationId(apply, "Rewrite.Apply");
     }

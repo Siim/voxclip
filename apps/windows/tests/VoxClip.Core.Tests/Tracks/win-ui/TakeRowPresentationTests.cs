@@ -12,7 +12,7 @@ public sealed class TakeRowPresentationTests
     {
         var plan = new VoiceLabFitPlan([new(VoiceLabFitEditKind.Insert, 0, 19200)], new(0, 0), new(0, 0), 0, 57600, 0, 1.2, 0, 57600, 57600, []);
         VoiceLabFitResult fit = fits ? new VoiceLabFitResult.Exact(plan) : new VoiceLabFitResult.ChangedDuration(plan, 1.4, .2);
-        return new(Guid.NewGuid(), index, 1, Audio: new(48000, [], [], 0, 0, [], 0, null, fit), Qa: new(1, 0, -3, null, []), Score: score);
+        return new(Guid.NewGuid(), index, 1, Audio: new(48000, [], [], 0, 0, [], 0, null, fit), Qa: new(1, 0, -3, .8, []), Score: score);
     }
     [Fact]
     public void RowsUseInvariantMonoDurationCorePauseNotesAndQualifiedActions()
@@ -43,6 +43,27 @@ public sealed class TakeRowPresentationTests
         Assert.Empty(content.PlayName); Assert.Empty(content.RejectName);
         Assert.DoesNotContain("Try Another", content.ToString());
         Assert.Null(TakeRowPresentation.Preselect(new([failed], VoiceLabTakeRunEnd.Completed)));
+    }
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void InterruptedRowsSayStoppedAndKeepTheirAcceptedRequests(int kind)
+    {
+        Exception failure = kind switch
+        {
+            0 => new OperationCanceledException(),
+            1 => new VoiceLabException(VoiceLabErrorKind.Cancelled),
+            _ => new VoxClip.Core.Services.VoiceLab.VoiceLabRunInvalidatedException()
+        };
+        var request = Guid.NewGuid();
+        var row = Row(1) with { Failure = failure, Accepted = new HashSet<Guid> { request } };
+        var content = TakeRowPresentation.From(row, row.Id);
+        Assert.True(row.Stopped); Assert.False(content.Selectable); Assert.False(content.BestMatch);
+        Assert.Equal("Take 2 stopped.", content.FailureText); Assert.Equal("Take 2, stopped", content.AutomationName);
+        Assert.DoesNotContain("speech check", content.ToString());
+        Assert.Empty(content.PlayName); Assert.Empty(content.RejectName);
+        Assert.Contains(request, row.AcceptedRequestIds);
     }
     [Fact]
     public void PreselectionUsesTheExactRankedBestNeverRejectedOrUnfinishedRows()

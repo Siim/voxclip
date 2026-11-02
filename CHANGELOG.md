@@ -42,6 +42,13 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Fix a Mac crash when starting microphone recording for Voice Lab.
 
 - Fix a blank Mac workspace caused by chrome backgrounds painting over neighboring content.
+- Windows preserves project voice consent and v4 context/motion metadata, distinguishes insufficient generated speech from a measured mismatch, and refuses unsupported visual exports while keeping saved edits intact.
+
+- Windows v2 shell now connects scoped inline Rewrite/Hook jobs, transcript review, real caption timeline snapshots and durable local transcription estimates; native Windows acceptance remains pending.
+- Windows gains an Explorer workspace, preview/pinned clip tabs, local one-step Tighten, inline Rename and a Ctrl+K command palette; changing tabs no longer dirties a project or consumes Undo.
+- Windows Core now combines scoped Rewrite, collision-aware phrase placement and atomic take acceptance with the shared v2 transcript and timeline math; paid voice creation remains blocked until native speaker parity is verified.
+- Windows v2 transcript source adds take-time gutters, clip bands, foldable cuts, selection-safe inline rewrite previews and in-flow spelling/change editing; native acceptance remains pending.
+- Windows right-panel export, transcription and Rewrite confirmation now use inline jobs; creating a voice and generating speech remain unavailable pending native speaker / ONNX parity. Native workflow acceptance is still pending.
 
 - Inline transcription, API-key approval and Voice review now share the integrated workspace without extra sheets; quotes track pending corrections, in-flight paid work retains its discard protection, chosen takes survive retries, playback and audition stop each other, and monthly spend updates during review.
 
@@ -82,6 +89,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Mac confirms API-key AI sends and first-use privacy inline below the clip bar. Saving a key makes no request, and every billed retry asks again.
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
 - On Mac, the FX Motion lane exposes accessible controls for adding, editing and removing clip motion cues, alongside saved S/M/L track heights and overlay scrolling.
+- Windows transcript paragraphs now follow speaker changes, sentence endings and bounded 80–150-word breaks, matching the Mac editor on long takes.
+- On Mac, the timeline adds an FX Motion lane with “Director results land here,” matching the saved S/M/L track heights and overlay scrolling.
 - On Mac, drag in the timeline or transcript to select the same words, trim In/Out with one undo step, navigate and select by word or sentence with the keyboard, and adjust the playhead, edges and zoom with VoiceOver. A click near a trim handle leaves the clip unchanged.
 - On Mac the timeline adds video filmstrips and caption cues, caption visibility and preview mute in the track headers, saved S/M/L track heights, zoom buttons and slider, pinch zoom, overlay scrolling, and Maximize. Source view leaves cut video empty, darkens cut parts inside caption cues, and dims media outside In/Out.
 - Import a video and transcribe it with word timestamps: ElevenLabs Scribe with your own key, local Whisper models, or Apple Speech on Mac. If a local model is missing, VoxClip offers to download it.

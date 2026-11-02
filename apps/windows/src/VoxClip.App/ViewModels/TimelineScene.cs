@@ -7,7 +7,7 @@ internal readonly record struct TimelineMark(double X, double Y, double Width, d
 internal sealed class TimelineRetainedPool<T>
 {
     internal const int Layers = 15;
-    internal const int Badges = 64;
+    internal const int Badges = 8;
     internal const int ElementBound = 256;
     internal IReadOnlyList<T> Nodes { get; }
     internal TimelineWindow Viewport { get; private set; }
@@ -24,6 +24,9 @@ internal sealed class TimelineScene
     internal int VisitedWords { get; private set; }
     private IReadOnlyList<TimedWord>? indexedWords;
     private TimelineIntervalIndex intervalIndex = new([]);
+    private readonly Dictionary<string, int> wordIndices = new(StringComparer.Ordinal);
+    private readonly bool[][] flags = Enumerable.Range(0, 4).Select(_ => new bool[Bins]).ToArray();
+    internal TimelineTileCache Tiles { get; } = new();
     internal void Build(EditorViewModel model, EditPlan plan, TimelineWindow window, IReadOnlyList<float> waveform, double width, bool edited)
     {
         BuildVersion++;
@@ -33,7 +36,8 @@ internal sealed class TimelineScene
         double Display(double source) => edited ? plan.MapTime(source) : source;
         double Source(double displayed) => edited ? plan.SourceTime(displayed) : displayed;
         var bins = Math.Clamp((int)Math.Ceiling(width), 1, Bins);
-        var kept = new bool[bins]; var fillers = new bool[bins]; var cuts = new bool[bins]; var pauses = new bool[bins];
+        foreach (var values in flags) Array.Clear(values);
+        var kept = flags[0]; var fillers = flags[1]; var cuts = flags[2]; var pauses = flags[3];
         void Mark(bool[] target, double start, double end)
         {
             var left = Display(start); var right = Display(end);
@@ -47,6 +51,8 @@ internal sealed class TimelineScene
         {
             indexedWords = model.Words;
             intervalIndex = new(indexedWords);
+            wordIndices.Clear();
+            for (var index = 0; index < indexedWords.Count; index++) wordIndices[indexedWords[index].Id] = index;
         }
         intervalIndex.Query(sourceStart, sourceEnd, word =>
         {
@@ -58,13 +64,13 @@ internal sealed class TimelineScene
             }
         });
         VisitedWords = intervalIndex.VisitedWords;
-        if (model.Words.Count == 0) Array.Fill(kept, true);
+        if (model.Words.Count == 0) Array.Fill(kept, true, 0, bins);
         void Runs(bool[] flags, int layer, double top, double height)
         {
             var first = -1;
-            for (var index = 0; index <= flags.Length; index++)
+            for (var index = 0; index <= bins; index++)
             {
-                if (index < flags.Length && flags[index]) { if (first < 0) first = index; continue; }
+                if (index < bins && flags[index]) { if (first < 0) first = index; continue; }
                 if (first < 0) continue;
                 Layers[layer].Add(new(first * width / bins, top, (index - first) * width / bins, height)); first = -1;
             }
@@ -106,10 +112,9 @@ internal sealed class TimelineScene
         }
         if (model.HasSelection) Band(model.SelectionStart, model.SelectionEnd, 8, 9, 1.5);
         Band(model.RewriteStart, model.RewriteEnd, 10, 11, 1);
-        var indices = model.Words.Select((word, index) => (word.Id, Index: index)).ToDictionary(item => item.Id, item => item.Index, StringComparer.Ordinal);
         foreach (var clip in model.Clips)
         {
-            var first = indices.GetValueOrDefault(clip.Clip.StartWordId, -1); var last = indices.GetValueOrDefault(clip.Clip.EndWordId, -1);
+            var first = wordIndices.GetValueOrDefault(clip.Clip.StartWordId, -1); var last = wordIndices.GetValueOrDefault(clip.Clip.EndWordId, -1);
             if (first < 0 || last < first) continue;
             var start = Display(model.Words[first].Start); var end = Display(model.Words[last].End);
             if (end < window.Start || start > window.End) continue;

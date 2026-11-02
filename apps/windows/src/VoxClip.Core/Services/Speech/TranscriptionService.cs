@@ -101,6 +101,7 @@ public sealed class TranscriptionService : ITranscriptionService
                         recoveryEngine.WarnCacheUnavailable();
                 }
                 var fromCache = raw is not null && request.Plan.Engine == TranscriptEngine.Elevenlabs;
+                if (fromCache) request.Observe?.Invoke(new(TranscriptionEvidenceKind.Cached, raw?.ProviderRequestId));
                 if (raw is null)
                 {
                     if (engine is ElevenLabsTranscriber)

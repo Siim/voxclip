@@ -2,6 +2,7 @@
 
 - [Architecture](architecture.md): workspace, module boundaries, media pipelines, CLI, storage, privacy and CI.
 - [Design](design.md): native interface, copy, accessibility, palette and type.
+- [Windows v2 shell](windows-v2-shell.md): Explorer, tabs, command routing, integration hooks and outstanding native acceptance.
 - [Decisions](decisions.md): locked architecture and product decisions.
 - [Implementation plan](plan.md): platform tracks and contracts.
 - [Release](release.md): local signing, draft assets and the Windows redistribution gate.

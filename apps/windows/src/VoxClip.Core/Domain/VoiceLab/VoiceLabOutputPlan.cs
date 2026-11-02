@@ -55,7 +55,9 @@ public sealed record VoiceLabOutputPlan(double SampleRate, long TotalSourceSampl
 
 public static class VoiceLabOutputPlanner
 {
-    public static VoiceLabOutputPlan Build(Project project, VoiceLabOutputScope scope)
+    public static VoiceLabOutputPlan Build(Project project, VoiceLabOutputScope scope) => Build(project, scope, null, null);
+    private sealed record Replacement(string Id, double Start, double End, double OutDuration, VoiceLabAudio? Audio);
+    internal static VoiceLabOutputPlan Build(Project project, VoiceLabOutputScope scope, VoiceLabWindow? window, string? pendingId)
     {
         VoiceLabProject.Validate(project);
         if (project.Transcript is not { } transcript) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
@@ -84,12 +86,24 @@ public static class VoiceLabOutputPlanner
             .OrderBy(segment => segment.Replace.Start).ToArray();
         if (clipRange is { } range && enabled.Any(segment => segment.Replace.Start < range.Start || segment.Replace.End > range.End))
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
-        bool Inside(double start, double end) => enabled.Any(segment => start >= segment.Replace.Start && end <= segment.Replace.End);
+        var replacements = enabled.Select(item => new Replacement(item.Id, item.Replace.Start, item.Replace.End, item.OutDuration, item.Audio)).ToList();
+        if (window is not null && pendingId is not null)
+        {
+            if (!double.IsFinite(window.Start) || !double.IsFinite(window.End) || window.Start < 0 || window.End > duration || window.End <= window.Start)
+                throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidRange);
+            if (clipRange is { } clip && (window.Start < clip.Start || window.End > clip.End))
+                throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
+            if (replacements.Any(item => window.End > item.Start && window.Start < item.End))
+                throw new VoiceLabProjectException(VoiceLabProjectErrorCode.OverlappingReplacement);
+            replacements.Add(new(pendingId, window.Start, window.End, window.End - window.Start, null));
+            replacements.Sort((a, b) => a.Start.CompareTo(b.Start));
+        }
+        bool Inside(double start, double end) => replacements.Any(segment => start >= segment.Start && end <= segment.End);
         var segments = EditingEngine.BuildSegments(state, duration).Where(item =>
             item.Kind is not (EditSegmentKind.Word or EditSegmentKind.Pause) || !Inside(item.Start, item.End)).ToArray();
         var basePlan = EditingEngine.BuildEditPlan(segments, duration, rate, state.PauseKeepSeconds);
-        var synthRanges = enabled.Select(segment => (segment, interval: new MediaInterval(
-            (long)EditingMath.Round(segment.Replace.Start * rate), (long)EditingMath.Round(segment.Replace.End * rate)))).ToArray();
+        var synthRanges = replacements.Select(segment => (segment, interval: new MediaInterval(
+            (long)EditingMath.Round(segment.Start * rate), (long)EditingMath.Round(segment.End * rate)))).ToArray();
         if (synthRanges.Any(pair => pair.interval.EndSample <= pair.interval.StartSample))
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidRange);
         var cuts = basePlan.Cuts.ToList();
@@ -158,7 +172,7 @@ public static class VoiceLabOutputPlanner
                 if (end > start) captions.Add(new(word.Id, state.Corrections.GetValueOrDefault(word.Id, word.Text), start, end));
             }
         }
-        foreach (var (segment, _) in synthRanges.Where(pair => pair.segment.Kind == VoiceLabSegmentKind.Tts))
+        foreach (var segment in enabled.Where(segment => segment.Kind == VoiceLabSegmentKind.Tts))
         {
             var piece = pieces.FirstOrDefault(item => item.SegmentId == segment.Id);
             if (piece is null) continue;

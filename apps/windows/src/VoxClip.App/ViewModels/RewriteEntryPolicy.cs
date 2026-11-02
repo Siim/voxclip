@@ -33,8 +33,7 @@ internal static class RewriteEntryPolicy
     internal static RewriteEntryAction Resolve(RewriteEntry entry, bool enabled, bool betaNoticeAccepted, bool editable, bool selection,
         bool caretBetweenWords, bool internalBuild)
     {
-        if (!VoxClip.Core.Domain.VoiceLab.VoiceLabBeta.IsAvailable(enabled, betaNoticeAccepted, internalBuild) ||
-            entry == RewriteEntry.InsertWords) return RewriteEntryAction.Unavailable;
+        if (entry == RewriteEntry.InsertWords) return RewriteEntryAction.Unavailable;
         if (!editable) return RewriteEntryAction.Unavailable;
         return selection ? RewriteEntryAction.OpenPassage : RewriteEntryAction.Unavailable;
     }

@@ -67,7 +67,7 @@ public sealed class VoiceOperationReconciler
                     try
                     {
                         var record = store.Load(value.RecordId);
-                        valid = record.Status != VoiceConsentStatus.Deleted && VoiceConsentStore.Hash(store.Statement(value.RecordId)) == record.Statement.AudioSha256;
+                        valid = record.Status != VoiceConsentStatus.Deleted && VoiceConsentStore.Hash(store.ReferenceAudio(value.RecordId)) == record.ReferenceAudioSha256;
                     }
                     catch (Exception error) when (error is IOException or VoiceConsentException or System.Text.Json.JsonException) { }
                     if (!valid) store.Transition(id, VoiceOperationState.Withdrawing, clock.GetUtcNow());

@@ -1,9 +1,10 @@
 using System.Text.Json;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Domain.ContextDemo;
 namespace VoxClip.Core.Domain.Shared;
 
-/// <summary>Schema-v1 encoding boundary; architecture §3 and editing §10. Store implementation adds reference cleanup and atomic I/O.</summary>
+/// <summary>Versioned project encoding boundary; architecture §3 and editing §10. Store implementation adds reference cleanup and atomic I/O.</summary>
 public static class ProjectSerialization
 {
     /// <summary>Read a project with source-generated metadata; unknown keys are refused except inside extensions and merge patches.</summary>
@@ -17,10 +18,11 @@ public static class ProjectSerialization
             {
                 if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var number))
                     throw new JsonException("Invalid project schema version.");
-                if (number > 3)
+                if (number > 4)
                     throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
-                if (number == 3) ValidateV3EnumWire(document.RootElement);
+                if (number >= 3) ValidateV3EnumWire(document.RootElement);
             }
+            VoxClip.Core.Services.Project.ProjectValidation.Validate(json, normalizeWordText: true);
             var project = JsonSerializer.Deserialize(json, ProjectJsonContext.Default.Project) ?? throw new JsonException("Missing project.");
             project = project with {
                 Transcript = project.Transcript is { } transcript ? transcript with {
@@ -91,13 +93,15 @@ public static class ProjectSerialization
     public static string Serialize(Project project)
     {
         Validate(project);
-        return JsonSerializer.Serialize(project, ProjectJsonContext.Default.Project) + "\n";
+        var json = JsonSerializer.Serialize(project, ProjectJsonContext.Default.Project) + "\n";
+        VoxClip.Core.Services.Project.ProjectValidation.Validate(json);
+        return json;
     }
-    /// <summary>Validate format, v1 placeholder and immutable word invariants; editing §2.2 and §10.4.</summary>
+    /// <summary>Validate supported format, voice policy, context/motion invariants and immutable word timings.</summary>
     public static void Validate(Project project)
     {
-        if (project.SchemaVersion > 3) throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
-        if (project.Format != "voxclip-project" || project.SchemaVersion is not (1 or 2 or 3))
+        if (project.SchemaVersion > 4) throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
+        if (project.Format != "voxclip-project" || project.SchemaVersion is not (1 or 2 or 3 or 4))
             throw new VoxClipException(VoxClipErrorCode.ProjectUnreadable, "Invalid project format.");
         if (project.Transcript is { } transcript)
         {
@@ -112,5 +116,6 @@ public static class ProjectSerialization
             }
         }
         VoiceLabProject.Validate(project);
+        ContextDemoProject.Validate(project);
     }
 }

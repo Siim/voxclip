@@ -103,7 +103,7 @@ public sealed class RoundFourTests(ITestOutputHelper output)
             var textual = element.Attribute("Content")?.Value ?? element.Attribute("Label")?.Value;
             if (string.IsNullOrEmpty(textual)) Assert.False(string.IsNullOrWhiteSpace(element.Attribute("AutomationProperties.Name")?.Value), element.ToString());
         }
-        Assert.Contains("\"VcCutStrokeBrush\"", File.ReadAllText(Path.Combine(app, "Controls", "TranscriptOverlay.cs")));
+        Assert.Contains("\"VcWordGoneBrush\"", File.ReadAllText(Path.Combine(app, "Controls", "TranscriptOverlay.cs")));
     }
 
     [Fact]

@@ -29,7 +29,7 @@ internal delegate Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> 
 internal delegate Task<(VoiceLabSourceExcerpt Excerpt, AudioEnvelope Envelope)> RewriteSourceDecoder(string source, long frames, int sampleRate,
     VoiceLabWindow window, double? incomingSilence, double? outgoingSilence, IReadOnlyList<TimedWord> items, CancellationToken ct);
 
-internal sealed class RewriteSession : IDisposable
+internal sealed partial class RewriteSession : IDisposable
 {
     private readonly VoiceRewriteService service = new(new LlmCatalog());
     private readonly CancellationTokenSource lifetime = new();
@@ -42,8 +42,13 @@ internal sealed class RewriteSession : IDisposable
     private bool estimateShown;
     private readonly VoiceLabPriceCatalog? prices;
     private readonly string? synthesisModel;
-    private readonly Func<CancellationToken, Task<bool>>? consent;
+    private Func<CancellationToken, Task<bool>>? consent;
     private readonly Func<bool> connectorIsCurrent;
+    private Func<bool> contextIsCurrent = () => true;
+    private bool requireLocalConsent;
+    private CliSignIn? preparedSignIn;
+    private bool BillingCurrent => Connector?.Group != "cli" || preparedSignIn is not null &&
+        preparedSignIn == SignIn((Connector.Connector as LlmConnector)?.CliDetection);
     private string proposalProblem = "";
     private string reviewProblem = "";
     internal EditorViewModel Editor { get; }
@@ -65,16 +70,24 @@ internal sealed class RewriteSession : IDisposable
     internal string ProposalButton => Estimate is null || Connector?.Group == "cli" ? "Rewrite" :
         Connector?.Group == "local" ? "Rewrite · No charge" : VoiceLabCostPresentation.ButtonTitle("Rewrite", null, Estimate);
     internal string EstimateCopy => Estimate?.Text is { Length: > 0 } text ? text : Prepared is null ? "" : "No charge.";
-    internal bool CanPropose => IsOpen && !IsProposing && !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && estimateShown && Prepared is not null;
+    internal bool CanPropose => IsOpen && !IsProposing && !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly &&
+        ReferenceEquals(Project, Editor.Project) && connectorIsCurrent() && contextIsCurrent() && BillingCurrent && estimateShown && Prepared is not null;
+    internal void ConfigureInlineConsent(Func<CancellationToken, Task<bool>> authorize, Func<bool>? contextCurrent = null, bool localConsent = false)
+    { consent = authorize; contextIsCurrent = contextCurrent ?? (() => true); requireLocalConsent = localConsent; }
     internal string Header { get; }
     internal RewriteReview? Review { get; private set; }
-    internal string? LocalAction => Review is { Diff.Hunks.Count: > 0 } review &&
-        review.Diff.Hunks.All(hunk => hunk.Kind != VoiceLabDiffHunkKind.Voice)
-        ? review.Diff.Hunks.Any(hunk => hunk.Kind == VoiceLabDiffHunkKind.TextOnly) ? "Apply Correction" : "Apply Cuts" : null;
+    internal string? LocalAction => IncludedHunks.Count > 0 && IncludedHunks.All(hunk => hunk.Kind != VoiceLabDiffHunkKind.Voice)
+        ? IncludedHunks.Any(hunk => hunk.Kind == VoiceLabDiffHunkKind.TextOnly) ? "Apply Correction" : "Apply Cuts" : null;
     internal string SendLine => Connector?.Group switch
     {
         "apiKey" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your key.",
-        "cli" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words to {Connector.Name} with your sign-in. Counts toward your {Connector.Plan}.",
+        "cli" => $"Sends these {Source.Count(word => word.Kind == WordKind.Word)} words through {Connector.Name} with your sign-in. " +
+            (SignIn((Connector.Connector as LlmConnector)?.CliDetection) switch
+            {
+                CliSignIn.Plan => $"Counts toward your {Connector.Plan}.",
+                CliSignIn.ApiKey => $"Billed to the API key {Connector.Name} is signed in with.",
+                _ => "Check the connector's sign-in method before sending."
+            }),
         "local" => "Runs on this PC. Nothing leaves it.",
         _ => $"Choose a connector in Settings → {SettingsSections.ProvidersAndKeys}."
     };
@@ -85,11 +98,13 @@ internal sealed class RewriteSession : IDisposable
     /// of offering Create Your Voice… or voice discovery.</summary>
     internal bool VoicesUnavailable { get; }
     internal bool GenerationIsCurrent => IsOpen && ReferenceEquals(Project, Editor.Project) && !IsProposing &&
-        !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && connectorIsCurrent();
+        !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && connectorIsCurrent() && contextIsCurrent();
     internal void ConfigureGeneration(RewriteGeneration generation)
     {
-        if (Generation is { } previous) previous.Changed -= GenerationChanged;
-        Generation?.Dispose();
+        generationFactory = null;
+        RetireGenerationWindows();
+        generationWindows.Add(generation);
+        ActiveWindow = 0;
         Generation = generation;
         Editor.SelectionChanged -= GenerationSelectionChanged;
         Editor.SelectionChanged += GenerationSelectionChanged;
@@ -99,19 +114,24 @@ internal sealed class RewriteSession : IDisposable
     private void GenerationChanged(object? sender, EventArgs args) => Changed?.Invoke(this, EventArgs.Empty);
     private void GenerationSelectionChanged(object? sender, EventArgs args)
     {
-        if (Generation is { } generation) _ = generation.SelectionChangedAsync($"source:{Editor.SelectionStart}:{Editor.SelectionEnd}");
+        foreach (var generation in generationWindows.ToArray())
+            _ = generation.SelectionChangedAsync($"source:{Editor.SelectionStart}:{Editor.SelectionEnd}");
     }
-    /// <summary>The take run's input for the one reviewed voice hunk. <paramref name="source"/> reads only the regions the run
+    /// <summary>The take run's input for one reviewed voice window. <paramref name="source"/> reads only the regions the run
     /// needs (<see cref="RewriteSourceRequest"/>), so a source of any length works, as on the Mac.</summary>
     internal async Task<VoiceLabTakeInput?> GenerationInputAsync(string recordId, string modelId, uint seed, bool providerConsent,
-        RewriteSourceReader source, CancellationToken ct)
+        RewriteSourceReader source, CancellationToken ct, int windowIndex = 0)
     {
         if (!GenerationIsCurrent || Review is not { } review || review.Budget.Copy is not null || review.VoiceHunks.Count == 0) return null;
-        if (review.VoiceHunks.Count != 1)
-            throw new RewriteGenerationException("Rewrite one passage at a time. Keep one changed passage, then generate takes.");
-        var hunk = review.VoiceHunks[0];
+        if (review.VoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)
+            throw new RewriteGenerationException("Keep fewer changed passages before generating takes. Your edits are saved.");
+        if (windowIndex < 0 || windowIndex >= review.VoiceHunks.Count) return null;
+        var hunk = review.VoiceHunks[windowIndex];
         if (hunk.Window is not { } window || hunk.PatchText is not { } text)
             throw new RewriteGenerationException(hunk.Refusal ?? "This change can't be placed in this take. Your edits are saved.");
+        var combined = Editor.ProjectWithLocalOperations(Project, LocalOperations());
+        try { VoiceLabRenderContract.ValidatePlacement(combined, Scope, window); }
+        catch (VoiceLabProjectException) { throw new RewriteGenerationException("This change can't blend beside the proposed cuts. Keep more of the surrounding speech or re-record this sentence. Your edits are saved."); }
         var rate = Project.Media.Source.Audio?.SampleRate ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
         var frames = checked((long)Math.Floor(Project.Media.Source.DurationSeconds * rate + 0.5));
         // The fit can borrow this silence, so the decoded source must reach past it.
@@ -127,7 +147,8 @@ internal sealed class RewriteSession : IDisposable
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
         int? insertionAfter = null, VoiceLabPriceCatalog? prices = null, string? synthesisModel = null,
-        Func<CancellationToken, Task<bool>>? consent = null, Func<bool>? connectorIsCurrent = null, Func<string, bool>? speakerCalibrated = null)
+        Func<CancellationToken, Task<bool>>? consent = null, Func<bool>? connectorIsCurrent = null, Func<string, bool>? speakerCalibrated = null,
+        RewriteScope? scope = null)
     {
         Editor = editor;
         Project = editor.Project;
@@ -141,6 +162,12 @@ internal sealed class RewriteSession : IDisposable
         this.synthesisModel = synthesisModel;
         this.consent = consent;
         this.connectorIsCurrent = connectorIsCurrent ?? (() => true);
+        requestedScope = scope;
+        if (scope is not null)
+        {
+            scopePlan = ScopeRewritePlan.Make(Project, scope, "Fix mistakes", Project.Transcript?.Language ?? "en", envelope);
+            Source = scopePlan.Lines.SelectMany(line => line.Items).ToArray();
+        }
         VoicesUnavailable = VoiceLabSession.VoicesUnavailable(Project.Transcript?.Language, speakerCalibrated ?? VoiceLabSession.SpeakerCalibrated);
         NewWords = string.Join(" ", Source.Where(word => word.Kind == WordKind.Word).Select(word => word.Text));
         var start = insertionAfter is { } after ? Transcript[after].End : Source.FirstOrDefault()?.Start ?? 0;
@@ -156,7 +183,7 @@ internal sealed class RewriteSession : IDisposable
         if (!IsOpen) return;
         InvalidateProposal();
         Instruction = text;
-        if (!retainFailure && Generation is { } generation) _ = generation.InputsChangedAsync();
+        if (!retainFailure) InvalidateGenerationInputs();
         Prepared = null;
         Estimate = null;
         estimateShown = false;
@@ -165,24 +192,40 @@ internal sealed class RewriteSession : IDisposable
         try
         {
             if (Connector is null) return;
+            preparedSignIn = SignIn((Connector.Connector as LlmConnector)?.CliDetection);
+            if (Connector.Group == "cli" && preparedSignIn is null)
+            {
+                proposalProblem = "Check the connector's sign-in method before sending a request.";
+                return;
+            }
             var words = Source.Where(word => word.Kind == WordKind.Word).ToArray();
-            if (words.Length == 0 || Envelope is null)
+            if (words.Length == 0 || InsertionAfter is not null)
             {
                 proposalProblem = InsertionAfter is not null ? Refusal(new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InsertionUnsupported))
                     : "Find the original video before rewriting speech. Your edits are saved.";
                 return;
             }
-            var window = VoiceLabWindowPlanner.Place(Project, Scope, Envelope, words[0].Id, words[^1].Id);
-            var silence = VoiceLabWindowPlanner.LendableSilence(Project, Scope, window);
-            var rate = VoiceLabLengthBudget.Rate(Transcript).CharactersPerSecond;
-            var range = VoiceLabLengthBudget.Passage(window, Transcript, silence.Incoming, silence.Outgoing, rate);
+            var targetSeconds = Math.Max(0.01, words[^1].End - words[0].Start);
+            if (requestedScope is not null)
+            {
+                scopePlan = ScopeRewritePlan.Make(Project, requestedScope, string.IsNullOrWhiteSpace(text) ? "Fix mistakes" : text,
+                    Project.Transcript?.Language ?? "en", Envelope);
+                var scopedAction = await patchService.PrepareAsync(scopePlan.Request, Connector.Connector, Connector.Model, lifetime.Token);
+                if (!IsOpen || current != revision) return;
+                Prepared = scopedAction;
+                Estimate = VoiceLabCostPresentation.KindForLlmSend(Connector.Connector.Id, preparedSignIn,
+                    Connector.Connector.Id is ConnectorId.ClaudeCode ? "Anthropic" : Connector.Connector.Id is ConnectorId.Codex ? "OpenAI" : Connector.Name);
+                return;
+            }
             var input = new VoiceRewriteRequest(Guid.NewGuid(), VoiceRewriteScope.Passage, words, text,
-                Editor.State?.Transcript.Language ?? "en", range.TargetSeconds, range.MinChars, range.MaxChars);
+                Editor.State?.Transcript.Language ?? "en", targetSeconds, 1, 5000);
             var action = await service.PrepareAsync(input, Connector.Connector, Connector.Model, lifetime.Token);
             if (!IsOpen || current != revision) return;
             request = input;
             Prepared = action;
-            Estimate = VoiceLabCostPresentation.Kind(action.Estimate.ToCostEstimate(), false, Connector.Name);
+            Estimate = VoiceLabCostPresentation.KindForLlmSend(Connector.Connector.Id,
+                preparedSignIn, Connector.Connector.Id switch
+                { ConnectorId.ClaudeCode => "Anthropic", ConnectorId.Codex => "OpenAI", _ => Connector.Name });
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -190,6 +233,13 @@ internal sealed class RewriteSession : IDisposable
             if (current == revision) proposalProblem = Refusal(exception);
         }
         finally { if (IsOpen && current == revision) Changed?.Invoke(this, EventArgs.Empty); }
+    }
+
+    internal static CliSignIn? SignIn(CliDetectionInfo? detection)
+    {
+        if (detection?.UsesApiKey == true) return CliSignIn.ApiKey;
+        return detection?.AuthMethod?.ToLowerInvariant().Replace('-', '_').Replace('.', '_') is
+            "oauth" or "oauth_token" or "claudeai" or "claude_ai" or "chatgpt" ? CliSignIn.Plan : null;
     }
 
     internal void MarkEstimateShown(VoiceLabPreparedAction action)
@@ -215,13 +265,14 @@ internal sealed class RewriteSession : IDisposable
 
     internal async Task<bool> ProposeAsync(VoiceLabPreparedAction action, bool affirmative)
     {
-        if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action) || request is null || Connector is null) return false;
+        if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action) || request is null && scopePlan is null || Connector is null) return false;
         using var run = Editor.LlmRuns.TryAcquire();
         if (run is null) return false;
         proposalLease = run;
         dispatched = false;
         var current = revision;
         var input = request;
+        var scopedInput = scopePlan;
         sending = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         var cancellation = sending;
         IsProposing = true;
@@ -230,13 +281,29 @@ internal sealed class RewriteSession : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
         try
         {
-            if (Connector.Group != "local" && (consent is null || !await consent(cancellation.Token).WaitAsync(cancellation.Token))) return false;
-            if (!IsOpen || current != revision || cancellation.IsCancellationRequested || !connectorIsCurrent() ||
-                !ReferenceEquals(Project, Editor.Project) || !ReferenceEquals(Prepared, action) || !ReferenceEquals(request, input)) return false;
+            if ((Connector.Group != "local" || requireLocalConsent) && (consent is null || !await consent(cancellation.Token).WaitAsync(cancellation.Token))) return false;
+            if (!IsOpen || current != revision || cancellation.IsCancellationRequested || !connectorIsCurrent() || !contextIsCurrent() || !BillingCurrent ||
+                !ReferenceEquals(Project, Editor.Project) || !ReferenceEquals(Prepared, action) || !ReferenceEquals(request, input) || !ReferenceEquals(scopePlan, scopedInput)) return false;
             dispatched = true;
-            var result = await service.ProposeAsync(input, Connector.Connector, Connector.Model, service.Approve(action, true), cancellation.Token);
+            string resultText;
+            if (scopedInput is not null)
+            {
+                var patch = await patchService.ProposeAsync(scopedInput.Request, Connector.Connector, Connector.Model,
+                    patchService.Approve(action, true), cancellation.Token);
+                if (!IsOpen || revision != current) return false;
+                scopeHunks = ScopeRewriteDiff.Hunks(scopedInput, patch);
+                var edits = patch.Edits.ToDictionary(edit => edit.Line, StringComparer.Ordinal);
+                resultText = string.Join(" ", scopedInput.Lines.Select(line => edits.TryGetValue(line.Label, out var edit)
+                    ? edit.Text : string.Join(" ", line.Items.Where(word => word.Kind == WordKind.Word).Select(word => word.Text))));
+            }
+            else
+            {
+                var result = await service.ProposeAsync(input!, Connector.Connector, Connector.Model, service.Approve(action, true), cancellation.Token);
+                resultText = result.ProposedText;
+            }
             if (!IsOpen || revision != current) return false;
-            NewWords = result.ProposedText;
+            changeStates.Clear();
+            NewWords = resultText;
             RefreshReview();
             ProposalRevision++;
             return true;
@@ -253,7 +320,7 @@ internal sealed class RewriteSession : IDisposable
             if (ReferenceEquals(sending, cancellation)) sending = null;
             cancellation.Dispose();
             IsProposing = false;
-            if (IsOpen && Generation is { } generation) _ = generation.InputsChangedAsync();
+            if (IsOpen) InvalidateGenerationInputs();
             if (IsOpen)
             {
                 Prepared = null;
@@ -267,9 +334,11 @@ internal sealed class RewriteSession : IDisposable
     {
         if (!IsOpen) return;
         InvalidateProposal();
+        scopeHunks = null;
+        changeStates.Clear();
         NewWords = text;
         RefreshReview();
-        if (Generation is { } generation) _ = generation.InputsChangedAsync();
+        InvalidateGenerationInputs();
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -282,6 +351,7 @@ internal sealed class RewriteSession : IDisposable
             Review = null;
             reviewProblem = exception.Code == VoiceLabWordDiffErrorCode.TokenLimit ? VoiceLabPatchBudget.DisabledCopy : Refusal(exception);
         }
+        ReconcileGenerationWindows();
     }
 
     internal bool ApplyLocalChanges()
@@ -293,7 +363,7 @@ internal sealed class RewriteSession : IDisposable
     private IReadOnlyList<EditOperation> LocalOperations()
     {
         List<EditOperation> operations = [];
-        foreach (var hunk in Review?.Diff.Hunks ?? [])
+        foreach (var hunk in IncludedHunks)
         {
             if (hunk.Kind == VoiceLabDiffHunkKind.Cut) operations.Add(new EditOperation.SetWordCuts(hunk.SourceWordIds, true));
             else if (hunk.Kind == VoiceLabDiffHunkKind.TextOnly)
@@ -302,14 +372,19 @@ internal sealed class RewriteSession : IDisposable
         }
         return operations;
     }
-    internal Task<bool> ApplyTakeAsync() => GenerationIsCurrent && Generation is { } generation
-        ? generation.AcceptAsync(Editor, LocalOperations()) : Task.FromResult(false);
+    internal Task<bool> ApplyTakeAsync() => ApplyReviewedWindowsAsync();
 
     private void InvalidateProposal() { revision++; sending?.Cancel(); confirming?.Cancel(); }
     internal void SettingsChanged(bool voiceLabEnabled)
     {
-        if (!voiceLabEnabled || !connectorIsCurrent()) Dispose();
-        else if (Generation is { IsRequestingConsent: false } generation) _ = generation.InputsChangedAsync();
+        if (!connectorIsCurrent() || !contextIsCurrent()) Dispose();
+        else if (!voiceLabEnabled && Generation is not null)
+        {
+            generationFactory = null;
+            RetireGenerationWindows();
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+        else foreach (var generation in generationWindows.Where(window => !window.IsRequestingConsent).ToArray()) _ = generation.InputsChangedAsync();
     }
     private void EditorChanged(object? sender, EventArgs args) => Dispose();
     private void EditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
@@ -340,7 +415,7 @@ internal sealed class RewriteSession : IDisposable
         if (!IsOpen) return;
         IsOpen = false;
         Editor.SelectionChanged -= GenerationSelectionChanged;
-        if (Generation is { } generation) { generation.Changed -= GenerationChanged; generation.Dispose(); }
+        RetireGenerationWindows();
         InvalidateProposal();
         lifetime.Cancel();
         if (!dispatched) Interlocked.Exchange(ref proposalLease, null)?.Dispose();

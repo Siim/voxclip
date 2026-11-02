@@ -243,7 +243,7 @@ try {
             [void](Find-Control $window ('Set up AI' + [char]0x2026))
             Save-Window 'editor-find-clips' $window
             $checks.Add('Find Clips with no connector shows the Set up AI callout under the pane actions without starting a provider')
-            $transcript = Find-Control $window 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.'
+            $transcript = Find-Control $window 'Transcript. Select words to cut. Enter corrects spelling. F2 edits a proposed change. Control Alt K makes a clip.'
             $transcript.SetFocus()
             [VoxClipScreen]::SelectOpeningWords()
             Start-Sleep -Milliseconds 400

@@ -86,8 +86,35 @@ public sealed class ViewModelTests
     {
         var model = Demo();
         Assert.NotEmpty(model.Paragraphs); Assert.Equal(model.Words.Count, model.Paragraphs.Sum(item => item.Count));
-        Assert.All(model.Paragraphs, item => Assert.InRange(item.Count, 1, 100));
+        Assert.All(model.Paragraphs, item => Assert.InRange(item.Count, 1, TranscriptParagraphs.MaximumWords));
     }
+    [Theory]
+    [InlineData("monologue-10000")]
+    [InlineData("sentence-80-and-reset")]
+    [InlineData("later-tie-145")]
+    [InlineData("speaker-and-null-speaker")]
+    public void ParagraphRowsUseSharedTakeBoundaries(string caseId)
+    {
+        using var vectors = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(
+            Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!, "fixtures/v2/paragraphs.json")));
+        var item = vectors.RootElement.GetProperty("cases").EnumerateArray().Single(row => row.GetProperty("id").GetString() == caseId);
+        var words = item.GetProperty("words").EnumerateArray().Select((row, index) => new TimedWord($"w{index}", row[0].GetString()!, WordKind.Word,
+            row[1].GetDouble(), row[2].GetDouble(), null, null, null, row[3].ValueKind == System.Text.Json.JsonValueKind.Null ? null : row[3].GetString(), TimingSource.Native)).ToArray();
+        var source = Fixture();
+        var duration = words[^1].End + 1;
+        var project = source with { Transcript = source.Transcript! with { Words = words, DurationSeconds = duration },
+            Media = new(source.Media.Source with { DurationSeconds = duration }),
+            Edits = source.Edits with { CutWordIds = [], CutPauseIds = [], Corrections = new Dictionary<string, string>(), Clips = [], ActiveClipId = null } };
+        var model = new EditorViewModel(project);
+        var expected = item.GetProperty("expected").EnumerateArray().Select(row => (Start: row[0].GetInt32(), End: row[1].GetInt32())).ToArray();
+        Assert.Equal(expected, model.Paragraphs.Select(row => (Start: row.StartIndex, End: row.StartIndex + row.Count)));
+        Assert.All(model.Paragraphs, row => Assert.Equal(words[row.StartIndex].Speaker, row.Speaker));
+        Assert.All(model.Paragraphs, row => Assert.Equal(EditorViewModel.Timecode(words[row.StartIndex].Start), row.Timecode));
+        // Correcting the displayed sentence must not move the take's source-word boundaries.
+        model.Apply(new EditOperation.Correct(words[0].Id, "changed!"));
+        Assert.Equal(expected, model.Paragraphs.Select(row => (Start: row.StartIndex, End: row.StartIndex + row.Count)));
+    }
+
     [Fact]
     public void SelectionDoesNotSchedulePersistenceOrRecompose()
     {
@@ -341,12 +368,12 @@ public sealed class ViewModelTests
     {
         // Design §11.1: these act from the sidebar pane while an editor is attached; single-letter keys and text shortcuts
         // (Ctrl+A, Ctrl+C, Ctrl+F) stay with the editor.
-        Assert.Equal(["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+K", "Ctrl+R", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"], ShortcutPolicy.PaneGestures);
+        Assert.Equal(["Ctrl+Z", "Ctrl+Y", "Ctrl+Shift+Z", "Ctrl+R", "Ctrl+E", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Shift+U", "Ctrl+Shift+P", "Ctrl+Shift+R", "F1"], ShortcutPolicy.PaneGestures);
         // EditorPage files each accelerator under VirtualKey.ToString() and its modifiers; MainWindow parses the same strings.
         Assert.Equal("Ctrl+Shift+Z", ShortcutPolicy.Gesture("Z", true, true));
         Assert.Equal("Ctrl+E", ShortcutPolicy.Gesture("E", true, false));
         Assert.Equal("F1", ShortcutPolicy.Gesture("F1", false, false));
-        Assert.True(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("K", true, false)));
+        Assert.False(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("K", true, false)));
         Assert.True(ShortcutPolicy.PaneForwards(ShortcutPolicy.Gesture("R", true, true)));
         foreach (var gesture in new[] { "Ctrl+A", "Ctrl+C", "Ctrl+F", "Ctrl+Shift+H", "Delete", "Space", "K", "I", "O", "ctrl+z", "Shift+Z" })
             Assert.False(ShortcutPolicy.PaneForwards(gesture), gesture);
@@ -417,13 +444,13 @@ public sealed class ViewModelTests
     [Theory]
     [InlineData(false, false, false, null, null)]
     [InlineData(false, false, true, null, null)]
-    [InlineData(true, false, false, "VcSelectionTranscriptBrush", "VcTextPrimaryBrush")]
+    [InlineData(true, false, false, "VcTintSelectionBrush", "VcTextPrimaryBrush")]
     [InlineData(true, false, true, "VcSelectionTranscriptBrush", "SystemColorHighlightTextColor")]
-    [InlineData(false, true, false, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
-    [InlineData(false, true, true, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
-    [InlineData(true, true, false, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
-    [InlineData(true, true, true, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
-    public void TranscriptHighlightKeepsSelectionDistinctAndPlayingWins(bool selected, bool playing, bool highContrast,
+    [InlineData(false, true, false, null, null)]
+    [InlineData(false, true, true, null, null)]
+    [InlineData(true, true, false, "VcTintSelectionBrush", "VcTextPrimaryBrush")]
+    [InlineData(true, true, true, "VcSelectionTranscriptBrush", "SystemColorHighlightTextColor")]
+    public void TranscriptSelectionWinsAndPlaybackUsesOnlyACaret(bool selected, bool playing, bool highContrast,
         string? background, string? foreground)
     {
         var highlight = TranscriptWordHighlight.For(selected, playing, highContrast);
@@ -456,30 +483,31 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    public void HighlightOffsetsFollowRenderedUtf16TextIncludingPausesAndCollapsedCuts()
+    public void NativeOffsetsPreserveEmojiCombiningMarksAndRightToLeftWords()
     {
-        var words = new[] { "Tere! ", "asukoht ", "⋯ 2 cut ", "", "👩🏽‍💻 " };
-        string?[] pauses = [null, " ‖ pause 1.2s ", null, null, null];
-        var starts = TranscriptTextRanges.Starts(words, pauses);
-        var rendered = string.Concat(words.Select((word, index) => word + pauses[index]));
-        Assert.Equal(0, starts[0]);
-        Assert.Equal(words[0].Length + words[1].Length + pauses[1]!.Length, starts[2]);
-        for (var index = 0; index < words.Length; index++)
-            Assert.Equal(words[index].TrimEnd(), rendered.Substring(starts[index], words[index].TrimEnd().Length));
-        Assert.Equal(starts[3], starts[4]);
+        string[] words = ["Tere! ", "👩🏽‍💻 ", "é ", "שלום "];
+        var offset = 1;
+        var spans = words.Select((word, index) =>
+        {
+            var span = new TranscriptTextSpan(offset, offset + word.Length, index, index);
+            offset = span.End;
+            return span;
+        }).ToArray();
+        foreach (var span in spans)
+            for (var position = span.Start; position < span.End; position++)
+                Assert.Equal(span.SourceIndex, TranscriptTextRanges.Hit(spans, position)?.SourceIndex);
     }
 
     [Fact]
-    public void HighlightOffsetsIgnoreEmbeddedBadgesAndChipsButIncludeTextMarkers()
+    public void NativeOffsetGapsAndDisplayOnlyAttachmentsNeverSeekAWord()
     {
-        string[] words = ["Tere! ", "👩🏽‍💻 ", "é ", "שלום "];
-        string?[] pauses = [null, " ‖ pause 1.2s ", null, null];
-        int[] after = [0, 1, 1, 0];
-        var starts = TranscriptTextRanges.Starts(words, pauses, after);
-        var rendered = string.Concat(words.Select((word, index) => word + pauses[index] + new string(']', after[index])));
-        for (var index = 0; index < words.Length; index++)
-            Assert.Equal(words[index], rendered.Substring(starts[index], words[index].Length));
-        Assert.Throws<ArgumentException>(() => TranscriptTextRanges.Starts(words, pauses, [1]));
+        TranscriptTextSpan[] spans = [new(1, 7, 0, 0), new(8, 9, -1, -1), new(11, 18, -1, -1, 4), new(20, 25, 3, 3)];
+        Assert.Null(TranscriptTextRanges.Hit(spans, 7));
+        Assert.Equal(-1, TranscriptTextRanges.Hit(spans, 8)?.SourceIndex);
+        Assert.Null(TranscriptTextRanges.Hit(spans, 9));
+        Assert.Equal(4, TranscriptTextRanges.Hit(spans, 14)?.ChangeOrdinal);
+        Assert.Null(TranscriptTextRanges.Hit(spans, 19));
+        Assert.Equal(3, TranscriptTextRanges.Hit(spans, 20)?.SourceIndex);
     }
 
     [Theory]

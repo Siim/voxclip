@@ -180,7 +180,7 @@ public sealed class CacheUpkeepTests
         Assert.Contains("cacheLease.Hold(project.Media.Source.ContentKey);", editor);
         Assert.Contains("cacheLease?.Hold(ViewModel.Project.Media.Source.ContentKey);", editor);
         Assert.Contains("cacheLease?.Dispose();", editor);
-        Assert.Contains("App.Services.CacheKeys.LeaseAsync(source.ContentKey, lifetime.Token);", Source("Controls/TranscriptionDialog.cs"));
+        Assert.Contains("using var entryLease = await App.Services.CacheKeys.LeaseAsync(source.ContentKey, token);", Source("Controls/TranscriptionDialog.cs"));
         Assert.Contains("CacheKeyRegistry.Shared(cacheRoot).LeaseAsync(contentKey, ct)", Source("Services/Thumbnails.cs"));
         Assert.Contains("index.Keys.LeaseAsync(contentKey, ct)", Source("Services/Waveform.cs"));
     }

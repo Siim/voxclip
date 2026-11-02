@@ -49,14 +49,16 @@ public sealed class ProjectStore : IProjectStore
         if (decision is RelinkDecision.NeedsConfirmation or RelinkDecision.Refused) return new(decision, null);
         source = source with { AbsolutePath = Path.GetFullPath(mediaPath) };
         if (decision == RelinkDecision.Different) source = source with { SizeBytes = size, ContentKey = key, Video = probe.Video, Audio = probe.Audio };
-        return new(decision, project with { Media = new(source) });
+        return new(decision, project with { Media = new(source),
+            ContextDemo = decision == RelinkDecision.Different ? null : project.ContextDemo,
+            MotionCues = decision == RelinkDecision.Different ? [] : project.MotionCues });
     }
 
     /// <summary>After consumer confirmation, replace words and clear transcript-dependent project data, editing §10.5.</summary>
     public static ProjectModel ReplaceTranscript(ProjectModel project, TranscriptModel transcript)
         => project with { Transcript = transcript, Edits = new(transcript.Refined ? 0.8 : 1.0, project.Edits.PauseKeepSeconds, [], [],
             new Dictionary<string, string>(StringComparer.Ordinal), [], null), Ai = new([]), Share = new(new Dictionary<string, string>(StringComparer.Ordinal)),
-            VoiceLab = project.VoiceLab with { Segments = [] } };
+            VoiceLab = project.VoiceLab with { Segments = [] }, ContextDemo = null, MotionCues = [] };
 
     /// <inheritdoc />
     public async Task<ProjectOpenResult> LoadAsync(string path, CancellationToken ct)

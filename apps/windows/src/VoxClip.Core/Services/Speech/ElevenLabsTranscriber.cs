@@ -169,6 +169,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
         for (var attempt = 0; attempt < 3; attempt++)
         {
             var paidResponseReceived = false;
+            var dispatchingEvidence = false;
             try
             {
                 using var idle = CancellationTokenSource.CreateLinkedTokenSource(whole.Token);
@@ -198,8 +199,20 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                 file.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
                 multipart.Add(file, "file", "audio.wav");
                 message.Content = multipart;
+                dispatchingEvidence = true;
+                request.Observe?.Invoke(new(TranscriptionEvidenceKind.UploadStarted));
+                dispatchingEvidence = false;
                 reporting.Report(new(TranscriptionStage.Uploading, 0));
                 using var response = await http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, idle.Token).ConfigureAwait(false);
+                string? acceptedId = null;
+                if (response.IsSuccessStatusCode)
+                {
+                    paidResponseReceived = true;
+                    acceptedId = response.Headers.TryGetValues("request-id", out var requestIds) ? requestIds.FirstOrDefault() : null;
+                    dispatchingEvidence = true;
+                    request.Observe?.Invoke(new(TranscriptionEvidenceKind.Accepted, acceptedId));
+                    dispatchingEvidence = false;
+                }
                 log.Write(LogLevel.Info, "transcribe", $"elevenlabs HTTP {(int)response.StatusCode}; attempt {attempt + 1}");
                 if (SpeechTransport.Retryable(response.StatusCode) && attempt < 2)
                 {
@@ -218,12 +231,12 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                 catch (JsonException) { throw UnexpectedResponse(); }
                 using (document)
                 {
-                    paidResponseReceived = true;
                     if (cachePaidResponse is not null && !await SpeechTransport.TryCacheWriteAsync(
                         () => cachePaidResponse(document.RootElement.Clone()), CancellationToken.None).ConfigureAwait(false))
                         WarnCacheUnavailable();
                     var raw = await MapResponseAsync(document.RootElement, request.Plan.Options.Diarize, request.Plan.Language, CancellationToken.None).ConfigureAwait(false);
                     responses.Add(raw, new(document.RootElement.Clone()));
+                    request.Observe?.Invoke(new(TranscriptionEvidenceKind.Completed, raw.ProviderRequestId ?? acceptedId));
                     var requestId = raw.ProviderRequestId is { } identifier && Regex.IsMatch(identifier, "^[A-Za-z0-9_-]{1,128}$", RegexOptions.CultureInvariant)
                         ? identifier : "unavailable";
                     log.Write(LogLevel.Info, "transcribe", FormattableString.Invariant($"elevenlabs scribe_v2; bytes {bytes}; duration {request.Audio.DurationSeconds:F3}; request {requestId}"));
@@ -235,7 +248,7 @@ public sealed class ElevenLabsTranscriber : ITranscriber, IDisposable
                 log.Write(LogLevel.Info, "transcribe", "elevenlabs transcription cancelled.");
                 throw;
             }
-            catch (Exception error) when (!paidResponseReceived && (error is HttpRequestException or IOException or OperationCanceledException) && !ct.IsCancellationRequested)
+            catch (Exception error) when (!paidResponseReceived && !dispatchingEvidence && (error is HttpRequestException or IOException or OperationCanceledException) && !ct.IsCancellationRequested)
             {
                 if (attempt == 2 || whole.IsCancellationRequested)
                     throw new VoxClipException(VoxClipErrorCode.Offline, "You're offline. On-device transcription and editing still work.");

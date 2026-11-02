@@ -36,6 +36,7 @@ public sealed class VoiceLabPreparedRender
     }
     public void Verify(Project project, VoiceLabOutputScope scope, VoiceLabLabelPosition position)
     {
+        VoiceLabRenderContract.RequireWindowsVisualSupport(project);
         if (scope != OutputPlan.Scope || position != Disclosure.Position)
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.StaleRenderContract);
         try
@@ -55,20 +56,49 @@ public sealed class VoiceLabPreparedRender
 }
 public static class VoiceLabRenderContract
 {
+    public static void RequireWindowsVisualSupport(Project project)
+    {
+        if (project.ContextDemo is { Placements.Length: > 0 } || project.MotionCues.Count > 0)
+            throw new VoxClipException(VoxClipErrorCode.ExportFailed,
+                "Windows cannot render or export context-demo placements or motion cues yet. Your media and saved edits are unchanged.");
+    }
+
     public static VoiceLabPreparedRender Prepare(Project project, VoiceLabOutputScope scope, VoiceLabLabelPosition labelPosition)
     {
+        RequireWindowsVisualSupport(project);
         if (!Enum.IsDefined(labelPosition))
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidSegment);
         var plan = VoiceLabOutputPlanner.Build(project, scope);
         if (project.SchemaVersion < 3 && plan.RequiresSyntheticRendering)
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.NeedsVoiceLabUpgrade);
-        if (project.SchemaVersion == 3 && project.VoiceLab.CleanAudio?.Mode == VoiceLabCleanAudioMode.On)
+        if (project.SchemaVersion >= 3 && project.VoiceLab.CleanAudio?.Mode == VoiceLabCleanAudioMode.On)
             throw new VoiceLabProjectException(VoiceLabProjectErrorCode.CleanAudioUnsupported);
+        var selected = SelectedRecipes(project, plan);
+        ValidateSelectedSeams(plan, selected.Select(item => new SeamPiece(item.SegmentId, item.Piece, item.Recipe.Seams)).ToArray());
+        var disclosure = DeriveDisclosure(project, plan, selected, labelPosition);
+        return VoiceLabPreparedRender.Create(plan, selected, disclosure, ProjectSerialization.Serialize(project));
+    }
+    /// <summary>Geometry-only acceptance preflight before a paid takes quote.</summary>
+    public static void ValidatePlacement(Project project, VoiceLabOutputScope scope, VoiceLabWindow window)
+    {
+        var pendingId = "pending-rewrite";
+        while (project.VoiceLab.Segments.Any(item => item.Id == pendingId)) pendingId += "-";
+        var plan = VoiceLabOutputPlanner.Build(project, scope, window, pendingId);
+        if (project.VoiceLab.CleanAudio?.Mode == VoiceLabCleanAudioMode.On) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.CleanAudioUnsupported);
+        var selected = SelectedRecipes(project, plan, pendingId).Select(item => new SeamPiece(item.SegmentId, item.Piece, item.Recipe.Seams)).ToList();
+        var piece = plan.Pieces.FirstOrDefault(item => item.SegmentId == pendingId) ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidScope);
+        VoiceLabSeam Seam(VoiceLabSeamPlacement edge) => edge.FadeSamples < 0 ? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidFadeHandles)
+            : new(edge.Kind, edge.FadeSamples, 0, 0);
+        selected.Add(new(pendingId, piece, new(Seam(window.LeftSeam), Seam(window.RightSeam))));
+        ValidateSelectedSeams(plan, selected);
+    }
+    static List<VoiceLabSelectedRecipe> SelectedRecipes(Project project, VoiceLabOutputPlan plan, string? excluding = null)
+    {
         var selected = new List<VoiceLabSelectedRecipe>();
         for (var index = 0; index < plan.Pieces.Count; index++)
         {
             var piece = plan.Pieces[index];
-            if (piece.Kind != VoiceLabOutputPieceKind.Synth) continue;
+            if (piece.Kind != VoiceLabOutputPieceKind.Synth || piece.SegmentId == excluding) continue;
             var segment = project.VoiceLab.Segments.First(s => s.Id == piece.SegmentId);
             var recipe = segment.Candidates[segment.SelectedCandidateIndex].Recipe ?? throw new VoiceLabProjectException(VoiceLabProjectErrorCode.MissingRenderPolicy);
             if (segment.Kind == VoiceLabSegmentKind.Tts && (!recipe.Provenance.Endpoint.StartsWith("v1/text-to-speech/", StringComparison.Ordinal) ||
@@ -81,11 +111,10 @@ public static class VoiceLabRenderContract
             if (asset.File.EndsWith(".flac", StringComparison.Ordinal)) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.UnsupportedAssetFormat);
             selected.Add(new(segment.Id, piece, recipe));
         }
-        ValidateSelectedSeams(plan, selected);
-        var disclosure = DeriveDisclosure(project, plan, selected, labelPosition);
-        return VoiceLabPreparedRender.Create(plan, selected, disclosure, ProjectSerialization.Serialize(project));
+        return selected;
     }
-    static void ValidateSelectedSeams(VoiceLabOutputPlan plan, IReadOnlyList<VoiceLabSelectedRecipe> selected)
+    private sealed record SeamPiece(string SegmentId, VoiceLabOutputPiece Piece, VoiceLabSeams Seams);
+    static void ValidateSelectedSeams(VoiceLabOutputPlan plan, IReadOnlyList<SeamPiece> selected)
     {
         var windows = new List<(long start, long end)>();
         static void Fail(VoiceLabProjectErrorCode code) => throw new VoiceLabProjectException(code);
@@ -97,16 +126,16 @@ public static class VoiceLabRenderContract
             var piece = item.Piece;
             var before = index > 0 ? plan.Pieces[index-1] : null;
             var after = index+1 < plan.Pieces.Count ? plan.Pieces[index+1] : null;
-            var incoming = item.Recipe.Seams.In; var outgoing = item.Recipe.Seams.Out;
+            var incoming = item.Seams.In; var outgoing = item.Seams.Out;
             if (before is null)
             {
                 if (incoming.Kind != VoiceLabSeamKind.None) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }
             else if (before.Kind == VoiceLabOutputPieceKind.Synth)
             {
-                var prior = selected.FirstOrDefault(s => s.SegmentId == before.SegmentId)?.Recipe;
+                var prior = selected.FirstOrDefault(s => s.SegmentId == before.SegmentId)?.Seams;
                 if (before.SourceEndSample != piece.SourceStartSample || incoming.Kind != VoiceLabSeamKind.SynthToSynth ||
-                    prior?.Seams.Out.Kind != VoiceLabSeamKind.SynthToSynth || prior.Seams.Out.FadeSamples != incoming.FadeSamples)
+                    prior?.Out.Kind != VoiceLabSeamKind.SynthToSynth || prior.Out.FadeSamples != incoming.FadeSamples)
                     Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }
             else if (incoming.Kind is VoiceLabSeamKind.None or VoiceLabSeamKind.SynthToSynth) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
@@ -116,9 +145,9 @@ public static class VoiceLabRenderContract
             }
             else if (after.Kind == VoiceLabOutputPieceKind.Synth)
             {
-                var next = selected.FirstOrDefault(s => s.SegmentId == after.SegmentId)?.Recipe;
+                var next = selected.FirstOrDefault(s => s.SegmentId == after.SegmentId)?.Seams;
                 if (piece.SourceEndSample != after.SourceStartSample || outgoing.Kind != VoiceLabSeamKind.SynthToSynth ||
-                    next?.Seams.In.Kind != VoiceLabSeamKind.SynthToSynth || next.Seams.In.FadeSamples != outgoing.FadeSamples)
+                    next?.In.Kind != VoiceLabSeamKind.SynthToSynth || next.In.FadeSamples != outgoing.FadeSamples)
                     Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
             }
             else if (outgoing.Kind is VoiceLabSeamKind.None or VoiceLabSeamKind.SynthToSynth) Fail(VoiceLabProjectErrorCode.InvalidFadeHandles);
@@ -142,7 +171,7 @@ public static class VoiceLabRenderContract
             var piece = item.Piece;
             var before = index > 0 ? plan.Pieces[index-1] : null;
             var after = index+1 < plan.Pieces.Count ? plan.Pieces[index+1] : null;
-            var incoming = item.Recipe.Seams.In; var outgoing = item.Recipe.Seams.Out;
+            var incoming = item.Seams.In; var outgoing = item.Seams.Out;
             if (incoming.Kind != VoiceLabSeamKind.None)
             {
                 var left = incoming.FadeSamples/2; var right = incoming.FadeSamples-left;

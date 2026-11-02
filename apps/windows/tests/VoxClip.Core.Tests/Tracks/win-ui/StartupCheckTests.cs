@@ -14,11 +14,13 @@ public sealed class StartupCheckTests
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
         var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/RightColumn.cs"));
-        Assert.Equal(2, source.Split("Children.Add(", StringSplitOptions.None).Length - 1);
+        Assert.Equal(1, source.Split("Children.Add(surface)", StringSplitOptions.None).Length - 1);
         Assert.DoesNotContain("Children.Insert(", source);
-        Assert.DoesNotContain("Visibility.Collapsed", source);
-        Assert.Contains("surface.Child = panel", source);
-        Assert.Equal(2, source.Split("surface.Child = captions", StringSplitOptions.None).Length - 1);
+        Assert.Contains("director.Show(rewrite)", source);
+        Assert.Contains("surface.Child = director", source);
+        Assert.Contains("host.surface.Child = next", source);
+        Assert.DoesNotContain("surface.Children", source);
+        Assert.DoesNotContain("captions.Visibility", source);
     }
 
     [Fact]
@@ -66,15 +68,16 @@ public sealed class StartupCheckTests
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
         var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TranscriptView.cs"));
-        var prepared = source[source.IndexOf("private void Prepared(", StringComparison.Ordinal)..source.IndexOf("private FrameworkElement ClipBadge", StringComparison.Ordinal)];
+        var presentation = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TranscriptView.Presentation.cs"));
+        var prepared = presentation[presentation.IndexOf("private void PrepareParagraph(", StringComparison.Ordinal)..presentation.IndexOf("private void DrawParagraph(", StringComparison.Ordinal)];
         Assert.DoesNotContain("RefreshVisuals()", prepared);
-        Assert.Contains("RefreshParagraph(realized[grid])", prepared);
+        Assert.Contains("DrawParagraph(visual)", prepared);
         var layout = source[source.IndexOf("private void ParagraphSizeChanged", StringComparison.Ordinal)..source.IndexOf("public void RefreshVisuals()", StringComparison.Ordinal)];
         Assert.DoesNotContain("foreach (var visual in realized.Values)", layout);
         Assert.Contains("RefreshParagraph(changed)", layout);
         Assert.Contains("visual.LayoutHandler = (_, _) => ParagraphLayoutUpdated(visual)", prepared);
         Assert.Contains("Text.LayoutUpdated -= LayoutHandler", source);
-        var paragraph = source[source.IndexOf("private void RefreshParagraph(", StringComparison.Ordinal)..source.IndexOf("private int Hit(", StringComparison.Ordinal)];
+        var paragraph = presentation[presentation.IndexOf("private void DrawParagraph(", StringComparison.Ordinal)..presentation.IndexOf("private void DrawGutter(", StringComparison.Ordinal)];
         Assert.DoesNotContain("TryEnqueue(RefreshVisuals)", paragraph);
         Assert.Contains("visual.Released", paragraph);
     }
@@ -330,6 +333,10 @@ public sealed class StartupCheckTests
         Assert.Contains("$check.processId -ne $app.Id", script);
         Assert.Contains("IsWindowVisible($windowHandle)", script);
         Assert.Contains("$transcript.Current.IsOffscreen", script);
+        Assert.Contains("::AutomationIdProperty, 'Editor.Transcript'", script);
+        var transcript = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/src/VoxClip.App/Controls/TranscriptView.cs"));
+        Assert.Contains("SetAutomationId(this, \"Editor.Transcript\")", transcript);
+        Assert.Contains("Control Alt K makes a clip.", transcript);
         Assert.Contains("$observed.status = 'ok'", script);
         Assert.Contains("$observed.status -ne 'ok'", script);
         Assert.Contains("OpenInputDesktop", script);

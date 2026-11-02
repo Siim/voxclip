@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using VoxClip.App.ViewModels;
+using VoxClip.App.Services;
 using VoxClip.Core.Domain.VoiceLab;
 using Windows.System;
 
@@ -12,14 +13,25 @@ namespace VoxClip.App.Controls;
 internal sealed partial class RewritePanel : Grid
 {
     private readonly RewriteSession session;
+    private readonly DirectorTask task;
+    private readonly TextBlock taskStatus = Ui.Text("");
+    private readonly TextBlock monthlySpend = Ui.Text("", "HelperText");
     private readonly Func<bool> correctionOpen;
-    private readonly MainWindow? window;
     private readonly TextBox instruction = new() { Header = "What should change?", AcceptsReturn = false, MaxLength = 1000 };
     private readonly TextBox words = new() { AcceptsReturn = false, TextWrapping = TextWrapping.Wrap };
     private readonly Button propose = new() { Content = "Rewrite", HorizontalAlignment = HorizontalAlignment.Right };
     private readonly ProgressRing busy = new() { Width = 16, Height = 16, Visibility = Visibility.Collapsed };
     private readonly TextBlock estimate = Ui.Text("");
     private readonly TextBlock problem = Ui.Text("");
+    private readonly StackPanel confirmation = Ui.Stack(8);
+    private InlineApproval? approval;
+    private ShellTextFocus? textFocus;
+    private bool requestingApproval;
+    private readonly string localServerAddress;
+    private readonly Uri? localServer;
+    private bool remoteLocalAllowed;
+    private bool RemoteLocal => session.Connector?.Group == "local" && localServer is { IsLoopback: false };
+    private string SendLine => RemoteLocal ? $"Sends these {session.Source.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word)} words to {localServer!.Authority}. No audio or video." : session.SendLine;
     private readonly StackPanel review = Ui.Stack(6);
     private readonly TextBlock changeSummary = Ui.Text("");
     private readonly Button apply = new() { HorizontalAlignment = HorizontalAlignment.Right };
@@ -40,15 +52,22 @@ internal sealed partial class RewritePanel : Grid
     private readonly TextBlock nonePassed = Ui.Text(RewriteGeneration.NonePassed);
     private string generationAnnouncement = "";
     internal Control FocusTarget => instruction;
+    internal bool IsSessionOpen => session.IsOpen;
+    internal void CloseForHost() => Close();
     internal bool ReturnFocusOnClose { get; private set; }
     internal event EventHandler? Closed;
 
-    /// <param name="window">The editor's window, whose project Create Your Voice offers as training audio (voice-lab.md §6.5.2).</param>
     internal RewritePanel(RewriteSession session, Func<bool>? correctionOpen = null, MainWindow? window = null)
     {
         this.session = session;
+        session.VoiceConsent = AuthorizeVoiceAsync;
+        task = new(session);
         this.correctionOpen = correctionOpen ?? (() => false);
-        this.window = window;
+        var connectorWire = session.Connector is { } selected ? ProviderWireId(selected.Connector.Id) : null;
+        localServerAddress = connectorWire is null ? "" : App.Services.Get("llm.baseUrl." + connectorWire, "");
+        localServer = Uri.TryCreate(localServerAddress, UriKind.Absolute, out var server) ? server : null;
+        session.ConfigureInlineConsent(token => Task.FromResult(InlinePrivacyGranted()),
+            () => connectorWire is null || App.Services.Get("llm.baseUrl." + connectorWire, "") == localServerAddress, RemoteLocal);
         AutomationProperties.SetAutomationId(instruction, "Rewrite.Instruction");
         AutomationProperties.SetAutomationId(words, "Rewrite.Words");
         AutomationProperties.SetAutomationId(propose, "Rewrite.Propose");
@@ -70,7 +89,7 @@ internal sealed partial class RewritePanel : Grid
             waveform.Children.Add(Themed(new Border { Width = 1.5, Height = height, VerticalAlignment = VerticalAlignment.Center },
                 Border.BackgroundProperty, "VcTextPrimaryBrush"));
         heading.Children.Add(waveform);
-        var title = Ui.Text("Rewrite", "BodyStrongTextBlockStyle");
+        var title = Ui.Text(session.Header, "BodyStrongTextBlockStyle");
         AutomationProperties.SetAutomationId(title, "Rewrite.Header");
         title.FontSize = 13;
         heading.Children.Add(title);
@@ -88,22 +107,26 @@ internal sealed partial class RewritePanel : Grid
         close.Click += (_, _) => Close();
         Grid.SetColumn(close, 3); header.Children.Add(close);
         body.Children.Add(header);
+        body.Children.Add(taskStatus);
         SetName(instruction, "What should change?"); SetName(words, "New words"); SetName(propose, "Rewrite");
         instruction.TextChanged += async (_, _) => { if (!updating) await session.SetInstructionAsync(instruction.Text); };
         words.TextChanged += (_, _) => { if (!updating) session.Edit(words.Text); };
         propose.Click += async (_, _) =>
         {
-            if (session.Prepared is not { } action || !session.CanPropose) return;
-            var approved = true;
-            if (session.Estimate is { Kind: VoiceLabCostPresentationKind.Confirm } confirmation)
-                approved = await session.ConfirmCostAsync(action, token => Ui.ConfirmAsync(XamlRoot, "Rewrite", confirmation.Text, "Continue", token));
-            if (!approved || !session.IsOpen) return;
+            if (requestingApproval || session.Prepared is not { } action || !session.CanPropose) return;
+            requestingApproval = true;
             App.Services.BusyOperations++;
-            try { await session.ProposeAsync(action, approved); }
-            finally { App.Services.BusyOperations--; }
+            try
+            {
+                if (await ApproveProposalAsync(action) && session.IsOpen) await session.ProposeAsync(action, true);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            { if (session.IsOpen) problem.Text = UiError.Message(exception, "Rewrite"); }
+            finally { requestingApproval = false; App.Services.BusyOperations--; }
         };
         body.Children.Add(instruction); body.Children.Add(busy); body.Children.Add(propose);
-        body.Children.Add(Small(session.SendLine)); body.Children.Add(estimate);
+        body.Children.Add(Small(SendLine)); body.Children.Add(estimate);
+        body.Children.Add(confirmation);
         if (session.Connector is null)
         {
             var settings = Ui.Button("Open Settings", () => App.OpenSettings("Providers & Keys"));
@@ -144,16 +167,106 @@ internal sealed partial class RewritePanel : Grid
         session.Changed += Changed;
         Loaded += (_, _) =>
         {
+            textFocus ??= new(this);
             session.Changed -= Changed; session.Changed += Changed;
             Ui.EffectsChanged += EffectsChanged;
+            WorkflowSpendCache.Changed -= SpendChanged; WorkflowSpendCache.Changed += SpendChanged;
             RefreshBrushes();
             instruction.Focus(FocusState.Programmatic);
         };
         ActualThemeChanged += (_, _) => RefreshBrushes();
-        Unloaded += (_, _) => { session.Changed -= Changed; Ui.EffectsChanged -= EffectsChanged; };
+        Unloaded += (_, _) =>
+        {
+            textFocus?.Dispose(); textFocus = null;
+            approval?.Cancel();
+            _ = Ui.RunAsync(generationError, session.StopCandidatesAsync, "Audition");
+            session.Changed -= Changed; Ui.EffectsChanged -= EffectsChanged; WorkflowSpendCache.Changed -= SpendChanged;
+        };
         PreviewKeyDown += Escape;
         Render();
     }
+    private void SpendChanged(object? sender, EventArgs args) => DispatcherQueue.TryEnqueue(() => { if (IsLoaded) RenderGeneration(); });
+
+    private bool InlinePrivacyGranted()
+    {
+        if (session.Connector is not { } connector) return false;
+        if (connector.Group == "local") return !RemoteLocal || remoteLocalAllowed;
+        var entry = ProviderWireId(connector.Connector.Id);
+        return entry is not null && App.Services.Get("llm.cloudConsent." + entry, false);
+    }
+
+    private static string? ProviderWireId(VoxClip.Core.Services.LLM.ConnectorId id) => id switch
+    {
+        VoxClip.Core.Services.LLM.ConnectorId.Anthropic => "anthropic",
+        VoxClip.Core.Services.LLM.ConnectorId.OpenAI => "openai",
+        VoxClip.Core.Services.LLM.ConnectorId.Xai => "xai",
+        VoxClip.Core.Services.LLM.ConnectorId.Gemini => "gemini",
+        VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode => "claude-code",
+        VoxClip.Core.Services.LLM.ConnectorId.Codex => "codex",
+        VoxClip.Core.Services.LLM.ConnectorId.Ollama => "ollama",
+        VoxClip.Core.Services.LLM.ConnectorId.LmStudio => "lmstudio",
+        _ => null
+    };
+
+    private async Task<bool> ApproveProposalAsync(VoiceLabPreparedAction action)
+    {
+        if (session.Connector is not { } connector) return false;
+        var firstUse = !InlinePrivacyGranted();
+        var billed = session.Estimate?.Kind == VoiceLabCostPresentationKind.Confirm;
+        if (!firstUse && !billed) return true;
+        var privacy = RemoteLocal ? "Allow these words to be sent to this server for this Rewrite session. No audio or video." : firstUse ? ConnectorConsent.Text(ConnectorConsentAction.Rewrite, connector.Connector.Id,
+            connector.Name, session.Source.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word),
+            (connector.Connector as VoxClip.Core.Services.LLM.LlmConnector)?.CliDetection) : null;
+        if (firstUse && privacy is null) return false;
+        return await session.ConfirmCostAsync(action, async token =>
+        {
+            var status = await connector.Connector.GetStatusAsync(token);
+            if (!session.CanPropose || !ReferenceEquals(session.Prepared, action))
+            {
+                if (session.IsOpen) await session.SetInstructionAsync(session.Instruction);
+                return false;
+            }
+            var keyAccount = connector.Group == "apiKey" && status is VoxClip.Core.Services.LLM.ConnectorStatus.NeedsKey
+                ? ProviderWireId(connector.Connector.Id) is { } provider ? "llm-api-key-" + provider : null : null;
+            if (status is not VoxClip.Core.Services.LLM.ConnectorStatus.Ready && keyAccount is null) return false;
+            using var pending = new InlineApproval(new(Guid.NewGuid(), action, firstUse ? "Allow this connector" : "Send this Rewrite?",
+                SendLine, string.Join("\n", new[] { privacy, "No audio or video. " + connector.Model + "." + (billed ? " Asks before each send." : ""), session.EstimateCopy }
+                    .Where(text => !string.IsNullOrWhiteSpace(text))), firstUse ? billed ? "Allow and Send" : "Allow and Rewrite" : "Send", billed, PricingPage(connector.Connector.Id)),
+                () => session.CanPropose && ReferenceEquals(session.Prepared, action), token, Environment.TickCount);
+            approval = pending;
+            using var row = new InlineConfirmation(pending, () => RightColumn.RequestSourcePlayback(session.Editor), keyAccount is null ? null : async secret =>
+            {
+                if (!pending.IsPending) return false;
+                await App.Services.Keys.SaveAsync(keyAccount!, secret, token);
+                return pending.IsPending;
+            });
+            confirmation.Children.Clear(); confirmation.Children.Add(row);
+            task.SetApproval(true); taskStatus.Text = task.Snapshot.Status;
+            row.FocusTarget.Focus(FocusState.Programmatic);
+            try
+            {
+                if (!await pending.Completion || !session.CanPropose || !ReferenceEquals(session.Prepared, action)) return false;
+                if (RemoteLocal) remoteLocalAllowed = true;
+                else if (firstUse && ProviderWireId(connector.Connector.Id) is { } wire)
+                    await App.Services.SetAsync("llm.cloudConsent." + wire, true, token);
+                return InlinePrivacyGranted();
+            }
+            finally
+            {
+                if (session.IsOpen && IsLoaded) instruction.Focus(FocusState.Programmatic);
+                if (ReferenceEquals(approval, pending)) { approval = null; confirmation.Children.Clear(); }
+                task.SetApproval(false);
+            }
+        });
+    }
+    private static Uri? PricingPage(VoxClip.Core.Services.LLM.ConnectorId id) => id switch
+    {
+        VoxClip.Core.Services.LLM.ConnectorId.Anthropic or VoxClip.Core.Services.LLM.ConnectorId.ClaudeCode => new("https://www.anthropic.com/pricing"),
+        VoxClip.Core.Services.LLM.ConnectorId.OpenAI or VoxClip.Core.Services.LLM.ConnectorId.Codex => new("https://openai.com/api/pricing/"),
+        VoxClip.Core.Services.LLM.ConnectorId.Gemini => new("https://ai.google.dev/gemini-api/docs/pricing"),
+        VoxClip.Core.Services.LLM.ConnectorId.Xai => new("https://x.ai/api"),
+        _ => null
+    };
 
     private static void SetName(DependencyObject target, string name) => AutomationProperties.SetName(target, name);
 #if DEBUG
@@ -192,6 +305,7 @@ internal sealed partial class RewritePanel : Grid
     {
         if (!session.IsOpen)
         {
+            approval?.Cancel(); task.Dispose();
             if (applyingTake) return;
             Closed?.Invoke(this, EventArgs.Empty); return;
         }
@@ -199,6 +313,8 @@ internal sealed partial class RewritePanel : Grid
     }
     private void Render()
     {
+        if (approval is { IsPending: false } stale) stale.Cancel();
+        taskStatus.Text = task.Snapshot.Status;
         updating = true;
         if (words.Text != session.NewWords) words.Text = session.NewWords;
         updating = false;
@@ -215,16 +331,7 @@ internal sealed partial class RewritePanel : Grid
         estimate.FontSize = 11;
         problem.Text = session.Problem;
         problem.Visibility = session.Problem.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        brushes.RemoveAll(binding => binding.Target is TextBlock label && review.Children.Contains(label));
-        review.Children.Clear();
-        changeSummary.Text = session.Review?.ChangeSummary ?? "";
-        if (session.Review is { } current)
-        {
-            review.Children.Add(new RewriteDiffLine(current));
-            foreach (var hunk in current.VoiceHunks) review.Children.Add(Small(hunk.Meter?.Copy ?? hunk.Refusal ?? ""));
-            if (current.Summary is { } summary) review.Children.Add(Small(summary.Copy));
-            if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));
-        }
+        RenderChangeReview();
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
         RenderGeneration();
         if (IsLoaded)
@@ -233,6 +340,7 @@ internal sealed partial class RewritePanel : Grid
     }
     private void BuildGeneration()
     {
+        BuildWindowPicker();
         AutomationProperties.SetAutomationId(voice, "Rewrite.Voice");
         AutomationProperties.SetAutomationId(speechModel, "Rewrite.SpeechModel");
         AutomationProperties.SetAutomationId(generate, "Rewrite.Generate");
@@ -242,40 +350,44 @@ internal sealed partial class RewritePanel : Grid
         AutomationProperties.SetAutomationId(cancelGeneration, "Rewrite.GenerationCancel");
         var create = Ui.Button("Create Your Voice…", () =>
         {
-            App.OpenSettings("Voice Lab");
-            App.Settings?.ShowCreateVoice(window);
+            problem.Text = VoiceLabCopy.SpeakerUnavailable;
         });
         AutomationProperties.SetAutomationId(create, "Rewrite.CreateVoice");
+        create.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified;
+        discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified;
         noVoice.Children.Add(Small("No voice yet")); noVoice.Children.Add(create);
         // A voice made from here would be bound to English and never listed for this project (voice-lab.md §6.5.2).
         var unavailable = Small(VoiceLabCopy.LanguageUnavailable);
         AutomationProperties.SetAutomationId(unavailable, "Rewrite.LanguageUnavailable");
         SetName(unavailable, VoiceLabCopy.LanguageUnavailable);
         languageUnavailable.Children.Add(unavailable);
-        discover.Click += async (_, _) => { if (session.Generation is { } generation) await generation.DiscoverAsync(); };
+        discover.Click += async (_, _) => await session.DiscoverWindowsAsync();
         voice.SelectionChanged += async (_, _) =>
-        { if (!updating && session.Generation is { } generation) await generation.ChooseVoiceAsync(voice.SelectedValue as string); };
+        { if (!updating) await session.ChooseVoiceForWindowsAsync(voice.SelectedValue as string); };
         speechModel.SelectionChanged += async (_, _) =>
-        { if (!updating && session.Generation is { } generation) await generation.ChooseModelAsync(speechModel.SelectedValue as string); };
+        { if (!updating) await session.ChooseModelForWindowsAsync(speechModel.SelectedValue as string); };
         generate.Click += async (_, _) =>
         {
-            if (session.Generation is not { } generation) return;
+            if (!VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified) return;
             App.Services.BusyOperations++;
-            try { await generation.GenerateAsync((copy, token) => Ui.ConfirmAsync(XamlRoot, "Generate Takes", copy, "Continue", token)); }
+            try { await session.GenerateWindowsAsync(ConfirmVoiceActionAsync, ReadVoiceCapAsync); }
             finally { App.Services.BusyOperations--; }
         };
-        cancelGeneration.Click += async (_, _) => { if (session.Generation is { } generation) await generation.CancelAsync(); };
+        cancelGeneration.Click += async (_, _) => await session.CancelWindowsAsync();
         var settings = Ui.Button("Open Settings", () => App.OpenSettings("Providers & Keys"));
         AutomationProperties.SetAutomationId(settings, "Rewrite.GenerationSettings");
         var retry = new Button { Content = "Retry" };
         AutomationProperties.SetAutomationId(retry, "Rewrite.GenerationRetry");
         retry.Click += async (_, _) =>
         {
-            if (session.Generation is not { } generation) return;
-            await generation.DiscoverAsync();
+            await session.DiscoverWindowsAsync();
         };
         generationError.ActionButton = settings; generationError.Content = retry;
         generationBody.Children.Add(discover); generationBody.Children.Add(voice); generationBody.Children.Add(speechModel);
+        var prerequisite = new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning, Message = VoiceLabCopy.SpeakerUnavailable };
+        AutomationProperties.SetAutomationId(prerequisite, "Rewrite.WindowsPrerequisite");
+        generationBody.Children.Add(prerequisite); generationBody.Children.Add(monthlySpend);
+        if (session.Generation is { } configured) configured.ConfigureSpendObserver(() => WorkflowSpendCache.RefreshAsync(App.Services.Data));
         generationBody.Children.Add(noVoice); generationBody.Children.Add(languageUnavailable);
         generationBody.Children.Add(Ui.Text("Takes", "BodyStrongTextBlockStyle"));
         BuildTakes();
@@ -285,10 +397,23 @@ internal sealed partial class RewritePanel : Grid
     }
     private void RenderGeneration()
     {
+        monthlySpend.Text = WorkflowSpendCache.Monthly is { } total
+            ? "ElevenLabs $" + total.Usd.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + " estimated this month" +
+                (total.UnknownCount > 0 ? " · some charges unpriced" : "") : "ElevenLabs monthly spend unavailable";
         var generation = session.Generation;
         generationBody.Visibility = generation is not null && session.LocalAction is null ? Visibility.Visible : Visibility.Collapsed;
         if (generation is null) return;
         updating = true;
+        windowPicker.Visibility = session.GenerationWindows.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+        if (windowPicker.Items.Count != session.GenerationWindows.Count)
+        {
+            windowPicker.Items.Clear();
+            for (var index = 0; index < session.GenerationWindows.Count; index++) windowPicker.Items.Add($"Passage {index + 1}");
+        }
+        windowPicker.SelectedIndex = session.ActiveWindow;
+        windowPicker.IsEnabled = !session.IsGeneratingBatch;
+        voice.IsEnabled = !session.IsGeneratingBatch;
+        speechModel.IsEnabled = !session.IsGeneratingBatch;
         if (!ReferenceEquals(voice.ItemsSource, generation.Voices)) voice.ItemsSource = generation.Voices;
         if (!ReferenceEquals(speechModel.ItemsSource, generation.Models)) speechModel.ItemsSource = generation.Models;
         voice.SelectedValue = generation.VoiceId; speechModel.SelectedValue = generation.ModelId;
@@ -296,25 +421,28 @@ internal sealed partial class RewritePanel : Grid
         voice.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         speechModel.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         discover.Content = generation.HasDiscovered ? "Refresh voices" : "Choose Voice…";
-        discover.IsEnabled = !generation.IsRunning && !generation.IsPreparing;
+        discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && !session.IsGeneratingBatch && !generation.IsPreparing;
         var unavailable = generation.Voices.Count == 0 && session.VoicesUnavailable;
         discover.Visibility = unavailable ? Visibility.Collapsed : Visibility.Visible;
         noVoice.Visibility = !unavailable && generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         languageUnavailable.Visibility = unavailable ? Visibility.Visible : Visibility.Collapsed;
-        generate.Content = generation.ButtonTitle;
-        generate.IsEnabled = generation.CanExecute;
-        SetName(generate, generation.ButtonName); ToolTipService.SetToolTip(generate, generation.ButtonName);
-        var generating = generation.Phase == RewriteGenerationPhase.Generating;
-        generationProgress.Text = generating ? generation.ProgressCopy : generation.IsPreparing ? "Preparing takes…" : "";
+        var batch = session.PreparedBatch;
+        var title = batch is null ? "Generate Takes" : VoiceLabCostPresentation.ButtonTitle("Generate All Takes", batch.TakeCount, batch.Kind());
+        generate.Content = title;
+        generate.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && session.CanGenerateAll;
+        SetName(generate, title); ToolTipService.SetToolTip(generate, title);
+        var running = session.GenerationWindows.FirstOrDefault(window => window.IsRunning);
+        var generating = running is not null;
+        generationProgress.Text = generating ? running!.ProgressCopy : generation.IsPreparing ? "Preparing takes…" : "";
         generationBusy.IsActive = generating || generation.IsPreparing;
         generationBusy.Visibility = generationBusy.IsActive ? Visibility.Visible : Visibility.Collapsed;
         generationProgress.Visibility = generationBusy.Visibility;
-        cancelGeneration.Visibility = generation.IsRunning ? Visibility.Visible : Visibility.Collapsed;
+        cancelGeneration.Visibility = session.IsGeneratingBatch ? Visibility.Visible : Visibility.Collapsed;
         generationError.Message = generation.Problem;
         generationError.IsOpen = generation.Problem.Length > 0;
         nonePassed.Visibility = generation.Phase == RewriteGenerationPhase.NonePassed ? Visibility.Visible : Visibility.Collapsed;
         RenderTakes(generation);
-        if (generation.Quote is { } quote) DispatcherQueue.TryEnqueue(() => generation.MarkEstimateShown(quote));
+        if (batch is not null) DispatcherQueue.TryEnqueue(() => session.MarkBatchEstimateShown(batch));
         if (IsLoaded && generation.Announcement.Length > 0 && generation.Announcement != generationAnnouncement)
         {
             generationAnnouncement = generation.Announcement;
@@ -352,6 +480,7 @@ internal sealed partial class RewritePanel : Grid
 #endif
     private async void Escape(object sender, KeyRoutedEventArgs args)
     {
+        if (args.Handled || textFocus?.OwnsComposition == true) return;
         if (args.Key == VirtualKey.Enter && !InputState.Down(VirtualKey.Control) && !InputState.Down(VirtualKey.Menu) &&
             !InputState.Down(VirtualKey.Shift) && apply.IsEnabled && ShortcutPolicy.EditorMayHandle(
                 InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen(), false, false, true) &&
@@ -377,7 +506,7 @@ internal sealed partial class RewritePanel : Grid
     {
         if (session.LocalAction is null)
         {
-            if (session.Generation?.ReadyToAccept != true) return;
+            if (!session.CanAcceptAll) return;
             applyingTake = true;
             try { ReturnFocusOnClose = await session.ApplyTakeAsync(); }
             finally { applyingTake = false; }

@@ -16,8 +16,239 @@ using Xunit;
 
 namespace VoxClip.Media.Tests.VoiceLab;
 
-public sealed class VoiceLabTakeRunTests
+public sealed partial class VoiceLabTakeRunTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BatchPinsTheUnionAndDiscardsTheCorrectRemainder(bool fatalSecond)
+    {
+        await using var fixture = new Fixture();
+        await fixture.Client.DiscoverModelsAsync(Token); await fixture.Client.DiscoverVoicesAsync(Token);
+        var (runner, inputs) = fixture.Batch(3);
+        var runs = runner.Runs;
+        try
+        {
+            var batch = await runner.PrepareAsync(inputs, ct: Token);
+            Assert.Empty(fixture.Remote.Seeds);
+            await runner.ApproveAsync(batch); Assert.Empty(fixture.Remote.Seeds);
+            fixture.Remote.Mismatches = fatalSecond ? 0 : 4;
+            var progress = new VoiceLabTakeBatchProgress(batch);
+            var first = await runner.ExecuteAsync(batch, 0, ct: Token);
+            Assert.Equal(fatalSecond ? VoiceLabTakeRunEnd.EarlyStop : VoiceLabTakeRunEnd.Completed, first.End);
+            Assert.Equal(fatalSecond ? 1 : 3, first.Rows.Count); progress.Finish(0, first);
+            fixture.Clock.Advance(600); // Later windows outlive quote TTL under the union's approval.
+            fixture.Remote.MissingAlignment = fatalSecond;
+            var second = await runner.ExecuteAsync(batch, 1, ct: Token);
+            if (fatalSecond)
+            {
+                progress.Finish(1, second);
+                Assert.Equal(VoiceLabTakeRunEnd.Fatal, second.End); Assert.Null(progress.Window);
+                Assert.Equal(3, progress.Sent.Count); Assert.Equal(15, progress.Discarded.Count);
+                Assert.False(fixture.Client.QuotesAreFresh(batch.Windows[2].Quote.Actions));
+                await Assert.ThrowsAsync<VoiceLabException>(() => runner.ExecuteAsync(batch, 2, ct: Token));
+                Assert.Equal(2, fixture.Remote.Seeds.Count); Assert.True(runs[0].Scratch(first.Best!.Id)!.IsValid);
+                Assert.Equal(progress.SentEstimate.Usd, (await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token))!.Usd);
+                return;
+            }
+            Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, second.End); Assert.Equal(2, second.Rows.Count); progress.Finish(1, second);
+            Assert.Equal(2, progress.Window); Assert.Equal(2, progress.Discarded.Count);
+            Assert.False(fixture.Client.QuotesAreFresh(batch.Windows[1].Quote.Actions));
+            var third = await runner.ExecuteAsync(batch, 2, ct: Token);
+            Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, third.End); Assert.Single(third.Rows); progress.Finish(2, third);
+            Assert.Null(progress.Window); Assert.Equal(12, progress.Sent.Count); Assert.Equal(6, progress.Discarded.Count);
+            Assert.Equal(6, fixture.Remote.Seeds.Count); Assert.Equal(6, fixture.Remote.Qa);
+            var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
+            Assert.Equal(progress.SentEstimate.Usd, total!.Usd);
+            var scratch = runs[1].Scratch(second.Best!.Id)!;
+            await runner.DiscardAsync(1); Assert.True(scratch.IsValid);
+            _ = await runs[1].PublishForAcceptanceAsync(second.Best.Id, DateTimeOffset.UnixEpoch, Token);
+        }
+        finally { foreach (var run in runs) await run.CancelAsync(); }
+    }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task BatchApprovalIsAllOrNothingAndFatalAcceptedRepliesAreCounted(bool stale)
+    {
+        await using var fixture = new Fixture();
+        var quote = await fixture.Prepare();
+        var runner = new VoiceLabTakeBatchRun([fixture.Run]);
+        var batch = new VoiceLabTakeBatch([new(fixture.Input, quote)]);
+        if (stale)
+        {
+            fixture.Clock.Advance(300);
+            await Assert.ThrowsAsync<VoiceLabException>(() => runner.ApproveAsync(batch));
+            Assert.False(fixture.Client.QuotesAreFresh(quote.Actions)); Assert.Empty(fixture.Remote.Seeds);
+            await Assert.ThrowsAsync<VoiceLabException>(() => runner.ExecuteAsync(batch, 0, ct: Token));
+            return;
+        }
+        await runner.ApproveAsync(batch);
+        fixture.Remote.MissingAlignment = true;
+        var result = await runner.ExecuteAsync(batch, 0, ct: Token);
+        var progress = new VoiceLabTakeBatchProgress(batch); progress.Finish(0, result);
+        Assert.Equal(VoiceLabTakeRunEnd.Fatal, result.End); Assert.Null(progress.Window);
+        Assert.Null(result.Rows[0].Receipt); Assert.Single(progress.Sent); Assert.Equal(5, progress.Discarded.Count);
+        var total = await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token);
+        Assert.Equal(progress.SentEstimate.Usd, total!.Usd);
+    }
+    [Fact]
+    public async Task EachDispatchNamesItsRequestForAnExactCapCheck()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var (runner, inputs) = fixture.Batch(2);
+        var batch = await runner.PrepareAsync(inputs, ct: Token);
+        await runner.ApproveAsync(batch);
+        var progress = new VoiceLabTakeBatchProgress(batch);
+        var requests = new List<Guid>();
+        var spentAtDispatch = new List<decimal>();
+        var approved = batch.Estimate.Usd!.Value;
+        var dispatch = new VoiceLabRunDispatch(async (request, ct) =>
+        {
+            var spent = (await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, ct))?.Usd ?? 0;
+            requests.Add(request); spentAtDispatch.Add(spent);
+            // Progress advances between windows; the named request removes this window's already-ledgered prefix.
+            Assert.Equal(approved - batch.EstimateOf(progress.Discarded).Usd!.Value,
+                spent + progress.RemainingEstimateFrom(request)!.Usd!.Value);
+        }, action => action());
+        for (var window = 0; window < 2; window++)
+        {
+            var result = await runner.ExecuteAsync(batch, window, dispatch, ct: Token);
+            Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, result.End);
+            progress.Finish(window, result);
+        }
+        var first = batch.Windows[0].Quote.Takes[0];
+        var later = batch.Windows[1].Quote.Takes[0];
+        // One prelaunch check followed by the real TTS and QA checks, all naming the request they authorize.
+        Assert.Equal(new[] { first.Synthesis.Review.RequestId, first.Synthesis.Review.RequestId, first.Qa.Review.RequestId,
+            later.Synthesis.Review.RequestId, later.Synthesis.Review.RequestId, later.Qa.Review.RequestId }, requests);
+        Assert.True(spentAtDispatch[2] + batch.Estimate.Usd > approved, "The whole union would double-count the first TTS.");
+        Assert.Equal(2, fixture.Remote.Seeds.Count); Assert.Equal(2, fixture.Remote.Qa);
+        Assert.Equal(progress.SentEstimate.Usd, (await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token))!.Usd);
+    }
+    [Fact]
+    public async Task BatchApprovalFailureRollsBackEveryPinIncludingAnAlreadyPinnedLaterWindow()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var (runner, inputs) = fixture.Batch(2);
+        var batch = await runner.PrepareAsync(inputs, ct: Token);
+        await runner.Runs[1].ApproveAsync(batch.Windows[1].Quote);
+        await Assert.ThrowsAsync<VoiceLabException>(() => runner.ApproveAsync(batch));
+        foreach (var run in runner.Runs) Assert.Null(run.PreparedSetId);
+        // Check the later run first: a refusal on the first must not clean up a leaked later pin for us.
+        for (var index = 1; index >= 0; index--)
+            await Assert.ThrowsAsync<VoiceLabException>(() => runner.Runs[index].ExecuteAsync(batch.Windows[index].Quote, true, ct: Token));
+        Assert.Empty(fixture.Remote.Seeds); Assert.Equal(0, fixture.Remote.Qa);
+    }
+    [Fact]
+    public async Task BatchPreparationFailureRollsBackThePreparedPrefixAndLaterPin()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var (runner, inputs) = fixture.Batch(2);
+        var batch = await runner.PrepareAsync(inputs, ct: Token);
+        await runner.Runs[1].ApproveAsync(batch.Windows[1].Quote);
+        await Assert.ThrowsAsync<VoiceLabException>(() => runner.PrepareAsync([inputs[0]], ct: Token));
+        await Assert.ThrowsAsync<VoiceLabException>(() => runner.PrepareAsync([inputs[0], inputs[0]], ct: Token));
+        Assert.Equal(batch.Windows[0].Quote.Id, runner.Runs[0].PreparedSetId);
+        Assert.Equal(batch.Windows[1].Quote.Id, runner.Runs[1].PreparedSetId);
+        await Assert.ThrowsAsync<VoiceLabException>(() => runner.PrepareAsync([inputs[0], inputs[1] with { ProviderConsent = false }], ct: Token));
+        foreach (var run in runner.Runs) Assert.Null(run.PreparedSetId);
+        for (var index = 1; index >= 0; index--)
+            await Assert.ThrowsAsync<VoiceLabException>(() => runner.Runs[index].ExecuteAsync(batch.Windows[index].Quote, true, ct: Token));
+        Assert.Empty(fixture.Remote.Seeds); Assert.Equal(0, fixture.Remote.Qa);
+    }
+    [Fact]
+    public async Task DiscardingALaterWindowLeavesTheEarlierWindowApproved()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var (runner, inputs) = fixture.Batch(2);
+        var batch = await runner.PrepareAsync(inputs, ct: Token);
+        await runner.ApproveAsync(batch);
+        await runner.DiscardAsync(1);
+        fixture.Clock.Advance(301);
+        await Assert.ThrowsAsync<VoiceLabException>(() => runner.Runs[1].ExecuteAsync(batch.Windows[1].Quote, true, ct: Token));
+        var first = await runner.ExecuteAsync(batch, 0, ct: Token);
+        Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, first.End);
+        Assert.Single(fixture.Remote.Seeds); Assert.Equal(1, fixture.Remote.Qa);
+    }
+    [Fact]
+    public async Task AThrowingBatchLaunchDiscardsTheCurrentAndLaterPinnedWindows()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var (runner, inputs) = fixture.Batch(2);
+        var batch = await runner.PrepareAsync(inputs, ct: Token);
+        await runner.ApproveAsync(batch);
+        var failure = new InvalidOperationException("Fixture launch refused.");
+        var dispatch = new VoiceLabRunDispatch((_, _) => Task.CompletedTask, _ => throw failure);
+        Assert.Same(failure, await Assert.ThrowsAsync<InvalidOperationException>(() => runner.ExecuteAsync(batch, 0, dispatch, ct: Token)));
+        for (var index = 1; index >= 0; index--)
+        {
+            Assert.Null(runner.Runs[index].PreparedSetId);
+            await Assert.ThrowsAsync<VoiceLabException>(() => runner.Runs[index].ExecuteAsync(batch.Windows[index].Quote, true, ct: Token));
+        }
+        Assert.Empty(fixture.Remote.Seeds); Assert.Equal(0, fixture.Remote.Qa);
+    }
+    [Fact]
+    public async Task ARunApprovesOnlyItsOwnQuoteAndOnlyOnce()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var (runner, inputs) = fixture.Batch(2);
+        var batch = await runner.PrepareAsync(inputs, ct: Token);
+        var run = runner.Runs[0]; var quote = batch.Windows[0].Quote;
+        await Assert.ThrowsAsync<VoiceLabException>(() => run.ApproveAsync(batch.Windows[1].Quote));
+        await run.ApproveAsync(quote);
+        await Assert.ThrowsAsync<VoiceLabException>(() => run.ApproveAsync(quote));
+        await Assert.ThrowsAsync<VoiceLabException>(() => run.ExecuteAsync(quote, false, ct: Token));
+        fixture.Clock.Advance(301);
+        Assert.Equal(VoiceLabTakeRunEnd.EarlyStop, (await run.ExecuteAsync(quote, true, ct: Token)).End);
+        await Assert.ThrowsAsync<VoiceLabException>(() => run.ApproveAsync(quote));
+        await Assert.ThrowsAsync<VoiceLabException>(() => run.ExecuteAsync(quote, true, ct: Token));
+        Assert.Single(fixture.Remote.Seeds); Assert.Equal(1, fixture.Remote.Qa);
+    }
+    [Fact]
+    public async Task StopMidWindowRetainsPaidProgressAndAnEarlierPublishableTake()
+    {
+        await using var fixture = new Fixture();
+        await fixture.Prepare();
+        var (runner, inputs) = fixture.Batch(3);
+        var batch = await runner.PrepareAsync(inputs, ct: Token);
+        await runner.ApproveAsync(batch);
+        var progress = new VoiceLabTakeBatchProgress(batch);
+        var first = await runner.ExecuteAsync(batch, 0, ct: Token);
+        progress.Finish(0, first);
+        var earlier = Assert.Single(first.Rows);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var resume = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        runner.Runs[1].Suspension = async point =>
+        {
+            if (point == "synthesis") { entered.TrySetResult(); await resume.Task; }
+        };
+        var executing = runner.ExecuteAsync(batch, 1, ct: Token);
+        try
+        {
+            await entered.Task.WaitAsync(Token);
+            await runner.DiscardAsync(1);
+        }
+        finally { resume.TrySetResult(); }
+        var stopped = await executing;
+        Assert.Equal(VoiceLabTakeRunEnd.Cancelled, stopped.End);
+        var interrupted = Assert.Single(stopped.Rows);
+        Assert.True(interrupted.Stopped); Assert.False(interrupted.Selectable);
+        Assert.Equal(new[] { batch.Windows[1].Quote.Takes[0].Synthesis.Review.RequestId }, interrupted.AcceptedRequestIds);
+        progress.Finish(1, stopped);
+        Assert.Null(progress.Window); Assert.Equal(3, progress.Sent.Count); Assert.Equal(15, progress.Discarded.Count);
+        await Assert.ThrowsAsync<VoiceLabException>(() => runner.Runs[2].ExecuteAsync(batch.Windows[2].Quote, true, ct: Token));
+        Assert.Equal(2, fixture.Remote.Seeds.Count); Assert.Equal(1, fixture.Remote.Qa);
+        Assert.Equal(progress.SentEstimate.Usd, (await fixture.Ledger.TotalAsync("elevenlabs", DateTimeOffset.UnixEpoch, Token))!.Usd);
+        Assert.True(runner.Runs[0].Scratch(earlier.Id)!.IsValid);
+        _ = await runner.Runs[0].PublishForAcceptanceAsync(earlier.Id, DateTimeOffset.UnixEpoch, Token);
+    }
     [Fact]
     public async Task UnreadableSpendAtTransportKeepsReviewAndExposesPreparationRetry()
     {
@@ -353,12 +584,14 @@ public sealed class VoiceLabTakeRunTests
         internal readonly ElevenLabsVoiceLab Client;
         internal readonly VoiceLabSpendLedger Ledger;
         internal readonly VoiceLabTakeRun Run;
+        internal readonly VoiceLabTakeRunChecks Checks;
         internal readonly VoiceLabTakeInput Input;
         internal readonly float[] Samples;
         internal readonly VoiceConsentRecord Record;
         /// <summary>The source speech each authorization was asked about.</summary>
         internal readonly List<float[]> Speech = [];
         internal bool SpeakerFailure;
+        internal bool InsufficientSpeech;
         internal bool Current = true;
         internal Fixture(Func<VoiceLabTakeInput, VoiceLabTakeInput>? input = null)
         {
@@ -369,11 +602,11 @@ public sealed class VoiceLabTakeRunTests
             var wav = VoiceTrainingAudio.Wav(Enumerable.Range(0, 48000 * 6).Select(index => (float)(0.1 * Math.Sin(2 * Math.PI * 100 * index / 48000))).ToArray());
             Record = JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
             Record = Record with { RecordId = Guid.NewGuid().ToString("D"), Speaker = Record.Speaker with { Embedding = VoiceConsentRecord.EncodeEmbedding([1f, 0f]), Threshold = 0.45 },
-                Statement = Record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+                Statement = Record.Statement! with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
             Store.SaveStatement(wav, Record.RecordId); Store.Save(Record);
             Ledger = new(locations);
             Client = ElevenLabsVoiceLab.ForTesting(Keys, Remote, ElevenLabsRegion.Default, clock: Clock, spend: Ledger);
-            var checks = new VoiceLabTakeRunChecks(_ => { }, (record, speech, request, binding, model, ct) =>
+            var checks = Checks = new VoiceLabTakeRunChecks(_ => { }, (record, speech, request, binding, model, ct) =>
             {
                 ct.ThrowIfCancellationRequested(); Store.ValidateUse(record);
                 lock (Speech) Speech.Add(speech);
@@ -382,7 +615,12 @@ public sealed class VoiceLabTakeRunTests
                     DispatchPermit = new(Store, record.RecordId, request, () => Store.ValidateUse(record), binding),
                     ValidateDispatch = _ => Task.CompletedTask, ModelRevision = model
                 });
-            }, (_, _, ct) => { ct.ThrowIfCancellationRequested(); return Task.FromResult(SpeakerFailure ? new float[] { 0, 1 } : [1f, 0f]); });
+            }, (_, _, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                if (InsufficientSpeech) throw new VoiceInsufficientGeneratedSpeechException();
+                return Task.FromResult(SpeakerFailure ? new float[] { 0, 1 } : [1f, 0f]);
+            });
             Run = new(Client, Store, new(Guid.NewGuid().ToString("D"), Path.Combine(Root, "Paid"), Path.Combine(Root, "scratch")), Gate,
                 _ => Task.FromResult(Current), checks);
             var source = Samples = Enumerable.Range(0, 24000 * 8).Select(index =>
@@ -396,12 +634,34 @@ public sealed class VoiceLabTakeRunTests
                 [Word("before", 0, 1.9), Word("old", 2.1, 5.9), Word("after", 6.1, 6.5), Word("last", 7.1, 7.9)], new HashSet<string>(), window, null, null, false, true);
             if (input is not null) Input = input(Input);
         }
+        private readonly List<VoiceLabTakeRun> batchRuns = [];
+        internal (VoiceLabTakeBatchRun Runner, VoiceLabTakeInput[] Inputs) Batch(int count)
+        {
+            var runs = Enumerable.Range(0, count).Select(index => new VoiceLabTakeRun(Client, Store,
+                new(Guid.NewGuid().ToString("D"), Path.Combine(Root, "Paid"), Path.Combine(Root, "batch" + index)),
+                new VoiceLabDispatchGate(), _ => Task.FromResult(Current), Checks)).ToArray();
+            var samples = Enumerable.Range(0, count).SelectMany(_ => Samples).ToArray();
+            var items = Enumerable.Range(0, count).SelectMany(index => Input.Items.Select(item => item with
+                { Id = item.Id + index, Start = item.Start + index * 8, End = item.End + index * 8 })).ToArray();
+            var inputs = Enumerable.Range(0, count).Select(index =>
+            {
+                var old = Input.Window; long offset = index * 8 * 24000;
+                var window = old with { FirstWordId = "old" + index, LastWordId = "old" + index,
+                    Start = old.Start + index * 8, End = old.End + index * 8, StartSample = old.StartSample + offset, EndSample = old.EndSample + offset,
+                    LeftSeam = old.LeftSeam with { Time = old.LeftSeam.Time + index * 8, Sample = old.LeftSeam.Sample + offset },
+                    RightSeam = old.RightSeam with { Time = old.RightSeam.Time + index * 8, Sample = old.RightSeam.Sample + offset } };
+                return new VoiceLabTakeInput("Hello", Input.ModelId, Input.RecordId, "en", 7, Input.ContentKey,
+                    samples, 24000, items, new HashSet<string>(), window, null, null, false, true);
+            }).ToArray();
+            batchRuns.AddRange(runs);
+            return (new(runs), inputs);
+        }
         internal async Task<VoiceLabTakeRunQuote> Prepare()
         {
             await Client.DiscoverModelsAsync(Token); await Client.DiscoverVoicesAsync(Token);
             return await Run.PrepareAsync(Input, Token);
         }
-        public async ValueTask DisposeAsync() { await Run.CancelAsync(); Client.Dispose(); Remote.Dispose(); Directory.Delete(Root, true); }
+        public async ValueTask DisposeAsync() { foreach (var run in batchRuns) await run.CancelAsync(); await Run.CancelAsync(); Client.Dispose(); Remote.Dispose(); Directory.Delete(Root, true); }
     }
     [Fact]
     public async Task OneApprovalStopsAtFirstPassingExactFitAndLedgersOnlySentQuotes()
@@ -493,13 +753,19 @@ public sealed class VoiceLabTakeRunTests
         Assert.NotEqual(VoiceLabTakeRunEnd.EarlyStop, result.End);
         Assert.Empty((await fixture.Ledger.ReadAsync(Token))!.Months);
     }
-    [Fact]
-    public async Task CompletedPaidResponseSurvivesCancellationBeforeQa()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompletedPaidResponseSurvivesInterruptionBeforeQa(bool invalidated)
     {
         await using var fixture = new Fixture();
-        fixture.Run.Suspension = name => name == "synthesis" ? fixture.Run.CancelAsync() : Task.CompletedTask;
-        var result = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
-        Assert.Equal(VoiceLabTakeRunEnd.Cancelled, result.End);
+        fixture.Run.Suspension = name => name == "synthesis" ? (invalidated ? fixture.Run.InvalidateAsync() : fixture.Run.CancelAsync()) : Task.CompletedTask;
+        var quote = await fixture.Prepare();
+        var result = await fixture.Run.ExecuteAsync(quote, true, ct: Token);
+        Assert.Equal(invalidated ? VoiceLabTakeRunEnd.Invalidated : VoiceLabTakeRunEnd.Cancelled, result.End);
+        var interrupted = Assert.Single(result.Rows);
+        Assert.True(interrupted.Stopped); Assert.False(interrupted.Selectable);
+        Assert.Contains(quote.Takes[0].Synthesis.Review.RequestId, interrupted.AcceptedRequestIds);
         Assert.Single(fixture.Remote.Seeds);
         Assert.Equal(0, fixture.Remote.Qa);
         Assert.Single(Directory.GetFiles(Path.Combine(fixture.Root, "Paid"), "*.wav", SearchOption.AllDirectories));
@@ -806,7 +1072,8 @@ public sealed class VoiceLabTakeRunTests
         await using var fixture = new Fixture();
         fixture.Remote.Duration = seconds; fixture.Remote.MissingAlignment = missing;
         var result = await fixture.Run.ExecuteAsync(await fixture.Prepare(), true, ct: Token);
-        Assert.Equal(3, result.Rows.Count);
+        Assert.Equal(missing ? 1 : 3, result.Rows.Count);
+        Assert.Equal(missing ? VoiceLabTakeRunEnd.Fatal : VoiceLabTakeRunEnd.Completed, result.End);
         if (seconds == 4.5) Assert.All(result.Rows, row => { Assert.True(row.Selectable); Assert.False(row.Fits); });
         else Assert.All(result.Rows, row => Assert.False(row.Selectable));
         if (seconds == 2 || missing) Assert.Equal(0, fixture.Remote.Qa);

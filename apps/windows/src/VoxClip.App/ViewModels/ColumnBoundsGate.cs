@@ -96,7 +96,7 @@ internal static class ColumnBoundsGate
     /// only when they don't fit beside it with the gap, sit together on a second line under it. The time ends at the
     /// trailing edge and nothing leaves the bar, so nothing is shrunk or truncated to fit a 300 column.</summary>
     internal static IReadOnlyList<string> TransportFailures(ColumnRect bar, ColumnRect back, ColumnRect play, ColumnRect forward,
-        ColumnRect? tag, ColumnRect time, bool stacked, double gap, ColumnRect? besideStage = null)
+        ColumnRect? tag, ColumnRect time, bool stacked, double gap)
     {
         var failures = new List<string>();
         foreach (var (id, bounds, size) in new[] { ("TransportBack", back, 32.0), ("TransportPlay", play, 40.0), ("TransportForward", forward, 32.0) })
@@ -111,15 +111,6 @@ internal static class ColumnBoundsGate
         if (back.Right > play.X + 1 || play.Right > forward.X + 1 || Math.Abs(Middle(back) - Middle(play)) > 1 || Math.Abs(Middle(forward) - Middle(play)) > 1)
             failures.Add("Transport: Back, Play and Forward are not one leading line");
         var controlsBottom = Math.Max(play.Bottom, Math.Max(back.Bottom, forward.Bottom));
-        if (besideStage is { } stage)
-        {
-            if (!stage.Measurable || stage.Right + gap > bar.X + 1 || Math.Abs(stage.Y - bar.Y) > 1)
-                failures.Add("Transport: not beside the compact stage");
-            var controlsTop = Math.Min(play.Y, Math.Min(back.Y, forward.Y));
-            if (!stacked || (tag ?? time).Bottom + gap > controlsTop + 1 || tag is { } badge && time.Bottom > badge.Y + 1)
-                failures.Add("Transport: time, tag and controls are not stacked beside the stage");
-            return failures;
-        }
         if (stacked && forward.Right + gap + time.Right - (tag ?? time).X < bar.Right - 1)
             failures.Add("Transport: the tag and time moved under the controls although they fit beside them");
         foreach (var (id, bounds) in parts.Skip(3))

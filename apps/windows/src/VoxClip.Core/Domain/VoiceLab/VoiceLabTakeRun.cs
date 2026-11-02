@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.Transcript;
@@ -48,17 +49,32 @@ public sealed class VoiceLabTakeRunQuote
         Takes = Array.AsReadOnly(takes.ToArray());
         Actions = Array.AsReadOnly(Takes.SelectMany(take => new[] { take.Synthesis, take.Qa }).ToArray());
         ExpiresAt = Actions.Min(action => action.ExpiresAt);
-        var estimates = Actions.Select(action => action.Estimate).ToArray();
-        Estimate = new("elevenlabs", "takeRun", takes.Count, "take", estimates.All(value => value.Usd.HasValue) ? estimates.Sum(value => value.Usd!.Value) : null,
+        Estimate = Total(Actions.Select(action => action.Estimate.ToCostEstimate()), takes.Count);
+    }
+    internal static CostEstimate Total(IEnumerable<CostEstimate> values, int takes)
+    {
+        var estimates = values.ToArray();
+        return new("elevenlabs", "takeRun", takes, "take", estimates.All(value => value.Usd.HasValue) ? estimates.Sum(value => value.Usd!.Value) : null,
             estimates.All(value => value.Credits.HasValue) ? estimates.Sum(value => value.Credits!.Value) : null,
             estimates.All(value => value.Usd.HasValue) ? "bounded-tts-and-scribe" : "unknown");
     }
 }
-public enum VoiceLabTakeQaFailure { Transcript, Clipping, Loudness, Speaker }
-public sealed record VoiceLabTakeQaResult(double TranscriptMatch, double LufsJumpLu, double PeakDbfs, double? SpeakerScore,
+
+[JsonConverter(typeof(JsonStringEnumConverter<VoiceLabTakeQaFailure>))]
+public enum VoiceLabTakeQaFailure
+{
+    [JsonStringEnumMemberName("transcript")] Transcript,
+    [JsonStringEnumMemberName("clipping")] Clipping,
+    [JsonStringEnumMemberName("loudness")] Loudness,
+    [JsonStringEnumMemberName("speaker")] Speaker,
+    [JsonStringEnumMemberName("insufficientGeneratedSpeech")] InsufficientGeneratedSpeech
+}
+public sealed class VoiceInsufficientGeneratedSpeechException() : Exception("The generated audio does not contain enough speech for the calibrated speaker check.");
+public sealed record VoiceLabTakeQaResult(double? TranscriptMatch, double? LufsJumpLu, double? PeakDbfs, double? SpeakerScore,
     IReadOnlyList<VoiceLabTakeQaFailure> Failures)
 {
-    public bool Passed => Failures.Count == 0;
+    public bool Passed => Failures.Count == 0 && TranscriptMatch is { } match && double.IsFinite(match) &&
+        LufsJumpLu is { } jump && double.IsFinite(jump) && PeakDbfs is { } peak && double.IsFinite(peak) && SpeakerScore is { } score && double.IsFinite(score);
 }
 public sealed record VoiceLabQaTranscript(IReadOnlyList<VoiceLabWord> Words, VoiceLabReceipt Receipt);
 public static class VoiceLabTakeQuality
@@ -110,7 +126,14 @@ public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabRece
     VoiceLabAudioResult? Generated = null, VoiceLabTakeQuote? Quote = null, VoiceLabTakeAudio? Audio = null,
     VoiceLabTakeQaResult? Qa = null, double? Score = null, Exception? Failure = null)
 {
+    /// <summary>Accepted status lines, including a paid response that failed before producing a receipt.</summary>
+    public IReadOnlySet<Guid> Accepted { get; init; } = System.Collections.Frozen.FrozenSet<Guid>.Empty;
+    public IReadOnlySet<Guid> AcceptedRequestIds => Accepted.Concat(Receipt is null ? [] : new[] { Receipt.ActionId })
+        .Concat(QaReceipt is null ? [] : new[] { QaReceipt.ActionId }).ToHashSet();
     public string DisplayName => "Take " + (Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    /// <summary>An interrupted take retains paid request IDs without claiming its speech failed QA.</summary>
+    public bool Stopped => Failure is OperationCanceledException or VoxClip.Core.Services.VoiceLab.VoiceLabRunInvalidatedException
+        or VoiceLabException { Kind: VoiceLabErrorKind.Cancelled };
     public bool Selectable => Failure is null && Qa?.Passed == true && Audio is not null;
     public bool Fits => Audio?.Fit is VoiceLabFitResult.Exact;
 }

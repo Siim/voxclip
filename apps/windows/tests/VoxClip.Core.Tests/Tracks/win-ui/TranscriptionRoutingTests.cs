@@ -187,11 +187,11 @@ public sealed class TranscriptionRoutingTests
         var start = dialog.IndexOf("private async Task RunTranscriptionAsync", StringComparison.Ordinal);
         Assert.True(start >= 0);
         var run = dialog[start..];
-        Ordered(run, "var route = local ? await RouteAsync(null) : null;", "if (route is { Plan: null, Detector: null }) { ShowRoute(route); return; }",
-            "if (!local)", "ExtractAudioAsync", "App.Services.DetectLanguageAsync", "App.Services.Transcription.TranscribeAsync");
+        Ordered(run, "var route = local ? await Route(null) : null;", "if (route is { Plan: null, Detector: null }) { ShowRoute(route); return; }",
+            "if (!local)", "ExtractAudioAsync", "App.Services.DetectLanguageAsync", "service.TranscribeAsync");
         // The local engine runs only its routed plan and never falls through to ElevenLabs.
         Ordered(run, "var plan = local ? route?.Plan ?? throw new InvalidOperationException(", ": new TranscriptionPlan(TranscriptEngine.Elevenlabs,",
-            "TranscribeAsync(new(plan,");
+            "var request = new TranscriptionRequest(plan,", "service.TranscribeAsync(request,");
         Assert.DoesNotContain("route?.Plan ?? new TranscriptionPlan(TranscriptEngine.Elevenlabs", run);
         var settings = System.Xml.Linq.XDocument.Load(Path.Combine(AppRoot, "SettingsWindow.xaml"));
         Assert.Contains(settings.Descendants().Select(element => (string?)element.Attribute("Tag")), tag => tag == SettingsSections.LocalModels);
@@ -242,7 +242,7 @@ public sealed class TranscriptionRoutingTests
     {
         var dialog = AppFile("Controls/TranscriptionDialog.cs");
         // Cancel or Esc during a download cancels its own source, not the dialog's lifetime.
-        Ordered(dialog, "Closing += (_, args) =>", "if (!running) return;", "if (downloading is { } download) download.Cancel(); else lifetime.Cancel();",
+        Ordered(dialog, "Closing += (_, args) =>", "if (!running) return;", "if (downloading is { } download) download.Cancel(); else transcribing?.Cancel();",
             "args.Cancel = true;");
         var download = dialog[dialog.IndexOf("private async Task DownloadAsync", StringComparison.Ordinal)..];
         Ordered(download, "CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);", "downloading = cancellation;",
@@ -250,7 +250,7 @@ public sealed class TranscriptionRoutingTests
             "catch (OperationCanceledException) when (cancellation.IsCancellationRequested && !lifetime.IsCancellationRequested) { cancelled = true; }",
             "finally { running = false; downloading = null; }", "ShowSetup();", "if (cancelled) { consentNotice.IsOpen = false; return; }");
         // The licence and consent pages share one notice; it leaves the old page first, so Download works again after Cancel.
-        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(dialog, @"page\.Children\.Add\(DetachedConsentNotice\(\)\)").Count);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(dialog, @"page\.Children\.Add\(DetachedConsentNotice\(\)\)"));
         Assert.DoesNotContain("page.Children.Add(consentNotice)", dialog);
         Assert.Contains("if (consentNotice.Parent is Panel previous) previous.Children.Remove(consentNotice);", dialog);
     }

@@ -251,7 +251,7 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
                 if (revision != version || !snapshot.ProviderConsent || !started && !runner.IsQuoteFresh(expected))
                     throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
             }
-            var dispatch = new VoiceLabRunDispatch(async token =>
+            var dispatch = new VoiceLabRunDispatch(async (_, token) =>
             {
                 while (true)
                 {
@@ -271,7 +271,7 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
                     started = true;
                 }
             });
-            await dispatch.AuthorizeAsync(cancellation.Token).ConfigureAwait(false);
+            await dispatch.AuthorizeAsync(expected.Takes[0].Synthesis.Review.RequestId, cancellation.Token).ConfigureAwait(false);
             var result = await runner.ExecuteWithDispatchAsync(expected, dispatch, progress =>
             {
                 lock (sync)

@@ -1,4 +1,5 @@
 using System.Globalization;
+using SkiaSharp;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Services.Project;
 using VoxClip.Media.Thumbnails;
@@ -12,12 +13,77 @@ namespace VoxClip.App.Services;
 /// candidate is black, an empty <c>.none</c> file records that the caption card stands in. Decodes run off the UI thread,
 /// two at a time, and stop when cancelled. The Windows shell is never asked: it answers MKV and WEBM with a file-type icon.
 /// A cache entry that can't be written is a cache miss, reported to <paramref name="warn"/>, never an unreadable video.</summary>
-internal sealed class Thumbnails(string cacheRoot, Action<string>? warn = null)
+internal sealed class Thumbnails(string cacheRoot, Action<string>? warn = null, Func<string, double, int, CancellationToken, Task<byte[]>>? timelineRead = null)
 {
     /// <summary>Frames cover 480 × 270: a 226 × 127 Home tile at 200% scale.</summary>
     public const int CoverWidth = 480;
     public const int CoverHeight = 270;
     private readonly SemaphoreSlim decodes = new(2);
+    internal const int TimelineWidth = 256;
+    internal const int TimelineHeight = 144;
+
+    internal sealed class FrameLease(string path, IDisposable lease) : IDisposable
+    {
+        internal string Path { get; } = path;
+        private IDisposable? held = lease;
+        public void Dispose() => Interlocked.Exchange(ref held, null)?.Dispose();
+    }
+
+    internal string? TimelinePathFor(string contentKey, double seconds, int rotation) => ValidKey(contentKey) && double.IsFinite(seconds) && seconds >= 0
+        ? Path.Combine(cacheRoot, contentKey, "thumbs", string.Create(CultureInfo.InvariantCulture,
+            $"timeline-{seconds:R}-{((rotation % 360) + 360) % 360}-{TimelineWidth}x{TimelineHeight}.jpg")) : null;
+
+    internal async Task<FrameLease?> GetTimelineAsync(string contentKey, string mediaPath, double seconds, int rotation, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (TimelinePathFor(contentKey, seconds, rotation) is not { } target) return null;
+        await decodes.WaitAsync(ct).ConfigureAwait(false);
+        IDisposable? lease = null;
+        try
+        {
+            lease = await CacheKeyRegistry.Shared(cacheRoot).LeaseAsync(contentKey, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            if (!File.Exists(target))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                var bytes = timelineRead is null ? await ReadTimelineJpeg(mediaPath, seconds, rotation, ct).ConfigureAwait(false)
+                    : await timelineRead(mediaPath, seconds, rotation, ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                var temporary = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
+                {
+                    await File.WriteAllBytesAsync(temporary, bytes, ct).ConfigureAwait(false);
+                    ct.ThrowIfCancellationRequested();
+                    File.Move(temporary, target, true);
+                }
+                finally
+                {
+                    try { File.Delete(temporary); }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+                }
+            }
+            var result = new FrameLease(target, lease);
+            lease = null;
+            return result;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            CacheMiss(exception);
+            return null;
+        }
+        finally { lease?.Dispose(); decodes.Release(); }
+    }
+    private static async Task<byte[]> ReadTimelineJpeg(string mediaPath, double seconds, int rotation, CancellationToken ct)
+    {
+        var pixels = await CurrentFrames.ReadAsync(mediaPath, seconds, rotation,
+            new(TimelineWidth, TimelineHeight), new(TimelineWidth, TimelineHeight), ct, preserveSource: true).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        using var bitmap = new SKBitmap(new SKImageInfo(pixels.Width, pixels.Height, SKColorType.Bgra8888, SKAlphaType.Opaque));
+        System.Runtime.InteropServices.Marshal.Copy(pixels.Pixels.ToArray(), 0, bitmap.GetPixels(), pixels.Stride * pixels.Height);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var jpeg = image.Encode(SKEncodedImageFormat.Jpeg, 75) ?? throw new IOException("Unable to encode a timeline frame.");
+        return jpeg.ToArray();
+    }
 
     /// <summary>The cached poster frame for the source at <paramref name="mediaPath"/>, made on first use from
     /// <paramref name="candidates"/> (see <see cref="PosterFrames.Candidates"/>); null when every candidate is black, the

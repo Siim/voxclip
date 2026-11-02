@@ -56,7 +56,7 @@ public sealed class RewriteTakeReviewTests
         var panel = AppSource("Controls/RewritePanel.cs");
         var takes = AppSource("Controls/RewritePanel.Takes.cs");
         Assert.Contains("Rewrite.UseTake", takes); Assert.Contains("AccentButtonStyle", takes);
-        Assert.Contains("apply.IsEnabled = generation.ReadyToAccept", takes);
+        Assert.Contains("apply.IsEnabled = session.CanAcceptAll", takes);
         Assert.Contains("apply.IsEnabled && ShortcutPolicy.EditorMayHandle", panel);
         Assert.Contains("InputState.IsTextFocus(FocusManager.GetFocusedElement(XamlRoot)), correctionOpen()", panel);
         Assert.Contains("!NativeReturnTarget(FocusManager.GetFocusedElement(XamlRoot) as DependencyObject)", panel);

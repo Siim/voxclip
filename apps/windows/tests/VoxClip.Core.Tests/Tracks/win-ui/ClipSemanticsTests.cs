@@ -236,7 +236,8 @@ public sealed class ClipSemanticsTests
         Assert.False(model.Apply(new EditOperation.SetActiveClip(first)));
         Assert.Equal(["Clip 1 already covers these words."], announced);
         model.Undo();
-        Assert.Equal((second, 2), (model.State!.ActiveClipId, model.Clips.Count));
+        Assert.Equal((first, 1), (model.State!.ActiveClipId, model.Clips.Count));
+        Assert.DoesNotContain(model.Clips, clip => clip.Id == second);
     }
 
     /// <summary>Design §6.2: a manual clip is titled with the first seven words of the selection, as shown.</summary>

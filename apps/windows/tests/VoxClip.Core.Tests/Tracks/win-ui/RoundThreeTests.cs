@@ -221,13 +221,13 @@ public sealed class RoundThreeTests
         Assert.Equal(((char)0x0085).ToString(), model.State!.Corrections[model.Words[0].Id]);
     }
     [Fact]
-    public void TranscriptDecorationStatesAreIndependentAndCutWinsOutsideScope()
+    public void TranscriptDecorationStatesAreIndependentAndOutsideScopeHasNoCutMarker()
     {
         var state = TranscriptWordDecoration.For(true, true, true, true, true, "um");
-        Assert.Equal("VcWordCutBrush", state.Foreground);
+        Assert.Equal("VcWordOutsideBrush", state.Foreground);
         Assert.True(state.Filler && state.LowConfidence && state.Corrected);
         Assert.Contains("Heard as: um", state.Tooltip); Assert.Contains("Filler · Delete to cut", state.Tooltip);
-        Assert.Equal(" ‖ 1.8s ", TranscriptWordDecoration.VisiblePause("pause 1.8s"));
+        Assert.Equal("1.8\u00a0s ", TranscriptWordDecoration.VisiblePause("pause 1.8s"));
         Assert.Equal("pause 1.8 seconds, cut", TranscriptWordDecoration.PauseName("pause 1.8s", true));
         Assert.Equal("Demo project with no video. Changes aren't saved to the fixture.", EditorMediaPresentation.Notice(EditorMediaState.Demo, ""));
     }
@@ -253,14 +253,14 @@ public sealed class RoundThreeTests
     [Fact]
     public void FocusCycleHasTheRequiredOrderAndWrapsBothWays()
     {
-        Assert.Equal(new[] { EditorFocusRegion.Pane, EditorFocusRegion.CommandBar, EditorFocusRegion.Transcript, EditorFocusRegion.Viewer, EditorFocusRegion.Captions, EditorFocusRegion.Timeline }, FocusCycle.Regions(true));
+        Assert.Equal(new[] { EditorFocusRegion.Pane, EditorFocusRegion.Tabs, EditorFocusRegion.CommandBar, EditorFocusRegion.Transcript, EditorFocusRegion.Viewer, EditorFocusRegion.Captions, EditorFocusRegion.Timeline, EditorFocusRegion.Status }, FocusCycle.Regions(true));
         Assert.Equal(new[] { 1, 2, 3, 4, 5, 0 }, FocusCycle.NextIndices(0, 6, false));
         Assert.Equal(new[] { 5, 4, 3, 2, 1, 0 }, FocusCycle.NextIndices(0, 6, true));
         Assert.DoesNotContain(EditorFocusRegion.Viewer, FocusCycle.Regions(false));
         Assert.DoesNotContain(EditorFocusRegion.Captions, FocusCycle.Regions(false));
         Assert.True(ShortcutPolicy.PaneForwards("Ctrl+R"));
         foreach (var key in new[] { "Ctrl+K", "Ctrl+Shift+K", "Ctrl+Shift+I", "Ctrl+Enter", "F2", "Shift+F6", "[ / ]", "P  Preview This Cut" }) Assert.Contains(key, KeyboardHelp.Text(false, false));
-        Assert.DoesNotContain("Ctrl+R  Rewrite", KeyboardHelp.Text(false, false));
+        Assert.Contains("Ctrl+R  Rewrite", KeyboardHelp.Text(false, false));
         Assert.Contains("Ctrl+R  Rewrite", KeyboardHelp.Text(true, true));
     }
 }

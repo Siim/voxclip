@@ -57,8 +57,10 @@ public sealed class ShellViewModelTests
         var editor = WithSuggestion();
         var shell = new ShellViewModel();
         shell.Update(editor, false, [], null);
-        Assert.Equal([SidebarKind.Home, SidebarKind.Separator, SidebarKind.Project, SidebarKind.FullTake, SidebarKind.Clip,
-            SidebarKind.SuggestedHeader, SidebarKind.Suggestion, SidebarKind.Separator, SidebarKind.Action, SidebarKind.Action],
+        Assert.Equal(new[] { SidebarKind.Home, SidebarKind.Separator, SidebarKind.Project, SidebarKind.FullTake, SidebarKind.ClipsHeader, SidebarKind.Clip,
+            SidebarKind.SuggestedHeader, SidebarKind.Suggestion, SidebarKind.OutlineHeader }
+            .Concat(Enumerable.Repeat(SidebarKind.Outline, editor.Paragraphs.Count))
+            .Concat([SidebarKind.Separator, SidebarKind.Action, SidebarKind.Action]),
             shell.Rows.Select(row => row.Kind));
         var kept = shell.Rows.Single(row => row.Kind == SidebarKind.Clip);
         var suggestion = shell.Rows.Single(row => row.Kind == SidebarKind.Suggestion);
@@ -75,7 +77,7 @@ public sealed class ShellViewModelTests
         Assert.Equal("Sõnade kaupa lõikamine", shell.Rows.Single(row => row.Kind == SidebarKind.Project).Title);
         Assert.Equal("voxclip-demo.mp4", shell.Rows.Single(row => row.Kind == SidebarKind.Project).Detail);
         Assert.Equal(["New clip from selection", "Find clips with AI"], shell.Rows.Where(row => row.Kind == SidebarKind.Action).Select(row => row.Title));
-        Assert.Equal(["Ctrl+K", "Ctrl+Shift+K"], shell.Rows.Where(row => row.Kind == SidebarKind.Action).Select(row => row.Detail));
+        Assert.Equal(["Ctrl+Alt+K", "Ctrl+Shift+K"], shell.Rows.Where(row => row.Kind == SidebarKind.Action).Select(row => row.Detail));
     }
 
     [Fact]
@@ -172,15 +174,15 @@ public sealed class ShellViewModelTests
     }
 
     [Fact]
-    public void EmptyRowSitsUnderFullTakeUntilThereIsAClip()
+    public void EmptyRowSitsUnderClipsUntilThereIsAClip()
     {
         var editor = WithSuggestion();
         foreach (var clip in editor.Clips.ToArray()) Assert.True(editor.Remove(clip.Id));
         var shell = new ShellViewModel();
         shell.Update(editor, false, [], null);
         var empty = shell.Rows.Single(row => row.Kind == SidebarKind.Empty);
-        Assert.Equal(SidebarKind.FullTake, shell.Rows[shell.Rows.IndexOf(empty) - 1].Kind);
-        Assert.Equal("No clips yet. Select words and press Ctrl+K.", empty.Title);
+        Assert.Equal(SidebarKind.ClipsHeader, shell.Rows[shell.Rows.IndexOf(empty) - 1].Kind);
+        Assert.Equal("No clips yet. Select words and press Ctrl+Alt+K.", empty.Title);
         shell.Finding = "Claude Code · reading 2:10 of transcript";
         shell.Update(editor, false, [], null);
         Assert.DoesNotContain(shell.Rows, row => row.Kind == SidebarKind.Empty);
@@ -197,7 +199,7 @@ public sealed class ShellViewModelTests
         var editor = WithSuggestion();
         var shell = new ShellViewModel { Finding = "Claude Code · reading 2:10 of transcript" };
         shell.Update(editor, false, [], null);
-        Assert.Equal([SidebarKind.SuggestedHeader, SidebarKind.Suggestion, SidebarKind.Finding, SidebarKind.Separator],
+        Assert.Equal([SidebarKind.SuggestedHeader, SidebarKind.Suggestion, SidebarKind.Finding, SidebarKind.OutlineHeader],
             shell.Rows.SkipWhile(row => row.Kind != SidebarKind.SuggestedHeader).Take(4).Select(row => row.Kind));
         var finding = shell.Rows.Single(row => row.Kind == SidebarKind.Finding);
         Assert.Equal(("Finding clips…", "Claude Code · reading 2:10 of transcript"), (finding.Title, finding.Detail));
@@ -219,7 +221,7 @@ public sealed class ShellViewModelTests
         shell.Update(editor, false, [], null);
         var callout = shell.Rows[^1];
         Assert.Equal((SidebarKind.Callout, "Choose how VoxClip finds clips: your API key, a model on this computer, or an installed CLI.",
-            "You can also select words and press Ctrl+K to make a clip yourself.", "Set up AI…", true),
+            "You can also select words and press Ctrl+Alt+K to make a clip yourself.", "Set up AI…", true),
             (callout.Kind, callout.Title, callout.Detail, callout.Action, callout.HasAction));
         Assert.Equal(SidebarKind.Action, shell.Rows[^2].Kind);
         shell.Callout = ClipCallouts.NotReady(ConnectorId.Codex, "Codex (installed CLI)", new ConnectorStatus.CliMissing(), "Install Codex, then run codex login.", null);
@@ -232,7 +234,7 @@ public sealed class ShellViewModelTests
     }
 
     /// <summary>The connector Find clips and its callout's Retry use comes from the current llm.connector value (AI spec §11
-    /// gate 4); an empty or unknown setting is "Clips: no connector". FindClipsFlyout re-reads the setting before each run, which
+    /// gate 4); an empty or unknown setting is "Clips: no connector". FindClipsJob re-reads the setting before each run, which
     /// only the native walk exercises.</summary>
     [Fact]
     public void ChosenConnectorComesFromTheCurrentSetting()
@@ -310,7 +312,7 @@ public sealed class ShellViewModelTests
         Assert.True(editor.Dismiss(editor.Clips.Single(ShellViewModel.IsSuggestion).Id));
         var shell = new ShellViewModel { NoneFound = "No clips matched. Try another style or describe what you want." };
         shell.Update(editor, false, [], null);
-        Assert.Equal([SidebarKind.Clip, SidebarKind.SuggestedHeader, SidebarKind.NoneFound, SidebarKind.Separator],
+        Assert.Equal([SidebarKind.Clip, SidebarKind.SuggestedHeader, SidebarKind.NoneFound, SidebarKind.OutlineHeader],
             shell.Rows.SkipWhile(row => row.Kind != SidebarKind.Clip).Take(4).Select(row => row.Kind));
         var none = shell.Rows.Single(row => row.Kind == SidebarKind.NoneFound);
         Assert.Equal(("No clips matched. Try another style or describe what you want.", "No clips matched. Try another style or describe what you want."),

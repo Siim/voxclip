@@ -1,0 +1,123 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
+using VoxClip.App.Services;
+using VoxClip.App.ViewModels;
+using VoxClip.Core.Domain.VoiceLab;
+
+namespace VoxClip.App.Controls;
+
+internal sealed partial class RewritePanel
+{
+    private readonly ComboBox windowPicker = new() { Header = "Changed passage", HorizontalAlignment = HorizontalAlignment.Stretch };
+    private RewriteReview? renderedReview;
+    private int renderedFocus = -1;
+    private bool renderedEditable;
+    private readonly HashSet<DependencyObject> reviewElements = [];
+
+    private void BuildWindowPicker()
+    {
+        AutomationProperties.SetAutomationId(windowPicker, "Rewrite.Passage");
+        windowPicker.SelectionChanged += async (_, _) =>
+        {
+            if (!updating) await session.SelectWindowAsync(windowPicker.SelectedIndex);
+        };
+        generationBody.Children.Add(windowPicker);
+    }
+
+    private void RenderChangeReview()
+    {
+        if (ReferenceEquals(renderedReview, session.Review) && renderedFocus == session.FocusedChange && renderedEditable == session.ReviewIsCurrent) return;
+        renderedReview = session.Review;
+        renderedFocus = session.FocusedChange;
+        renderedEditable = session.ReviewIsCurrent;
+        brushes.RemoveAll(binding => reviewElements.Contains(binding.Target));
+        reviewElements.Clear();
+        review.Children.Clear();
+        changeSummary.Text = session.Review?.ChangeSummary ?? "";
+        if (session.Review is not { } current) return;
+        review.Children.Add(new RewriteDiffLine(current));
+        for (var index = 0; index < current.Diff.Hunks.Count; index++)
+        {
+            var ordinal = index + 1;
+            var hunk = current.Diff.Hunks[index];
+            var included = session.ChangeStates.GetValueOrDefault(ordinal) != TranscriptChangeState.Excluded;
+            var row = Ui.Stack(6);
+            AutomationProperties.SetAutomationId(row, "Rewrite.Change" + ordinal);
+            var title = new CheckBox { Content = $"Change {ordinal}" + (session.FocusedChange == ordinal ? " · focused" : ""),
+                IsChecked = included, IsEnabled = session.ReviewIsCurrent };
+            SetName(title, $"Include change {ordinal} of {current.Diff.Hunks.Count}");
+            title.Checked += (_, _) => { if (ReferenceEquals(current, session.Review)) session.SetChangeIncluded(ordinal, true); };
+            title.Unchecked += (_, _) => { if (ReferenceEquals(current, session.Review)) session.SetChangeIncluded(ordinal, false); };
+            row.Children.Add(title);
+            row.Children.Add(Ui.Text(hunk.Kind == VoiceLabDiffHunkKind.Cut ? "Remove these source words" : string.Join(" ", hunk.NewTokens)));
+            if (session.ScopeHunks is { } metadata && index < metadata.Count)
+            {
+                var reason = Small(string.Join(" · ", metadata[index].Reasons));
+                row.Children.Add(reason); reviewElements.Add(reason);
+                if (metadata[index].CheckThis)
+                {
+                    var warning = Small("Check this change against the source.");
+                    row.Children.Add(warning); reviewElements.Add(warning);
+                }
+            }
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var reveal = Ui.Button("Show in transcript", () => session.RevealChange?.Invoke(ordinal));
+            var edit = Ui.Button("Edit", () => session.EditReviewChange?.Invoke(ordinal));
+            SetName(reveal, $"Show change {ordinal} in transcript"); SetName(edit, $"Edit change {ordinal}");
+            edit.IsEnabled = session.ReviewIsCurrent;
+            actions.Children.Add(reveal); actions.Children.Add(edit); row.Children.Add(actions);
+            review.Children.Add(row);
+        }
+        foreach (var hunk in current.VoiceHunks) review.Children.Add(Small(hunk.Meter?.Copy ?? hunk.Refusal ?? ""));
+        if (current.Summary is { } summary) review.Children.Add(Small(summary.Copy));
+        if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));
+        if (current.VoiceHunks.Count > VoiceLabTakeBatch.MaximumWindows)
+            review.Children.Add(Small($"Keep at most {VoiceLabTakeBatch.MaximumWindows} changed passages before generating takes. Your edits are saved."));
+        foreach (var child in review.Children) reviewElements.Add(child);
+    }
+
+    private async Task<bool> ConfirmVoiceActionAsync(object snapshot, string detail, Func<bool> current, CancellationToken token)
+    {
+        if (approval is not null || !current()) return false;
+        using var pending = new InlineApproval(new(Guid.NewGuid(), snapshot, "Generate reviewed takes?", RewriteGeneration.SendLine,
+            detail, "Continue", true), current, token, Environment.TickCount);
+        return await ShowVoiceApprovalAsync(pending);
+    }
+
+    private async Task<bool> AuthorizeVoiceAsync(CancellationToken token)
+    {
+        if (App.Services.Get("voiceLab.providerConsent.elevenlabs", false)) return true;
+        if (approval is not null || !session.GenerationIsCurrent) return false;
+        using var pending = new InlineApproval(new(Guid.NewGuid(), session.Project, "Use ElevenLabs?", RewriteGeneration.SendLine,
+            VoiceLabCopy.ProviderConsent, "Allow", false), () => session.GenerationIsCurrent, token, Environment.TickCount);
+        return await ShowVoiceApprovalAsync(pending);
+    }
+
+    private async Task<bool> ShowVoiceApprovalAsync(InlineApproval pending)
+    {
+        approval = pending;
+        using var row = new InlineConfirmation(pending, () => RightColumn.RequestSourcePlayback(session.Editor));
+        confirmation.Children.Clear(); confirmation.Children.Add(row);
+        task.SetApproval(true); taskStatus.Text = task.Snapshot.Status;
+        row.FocusTarget.Focus(FocusState.Programmatic);
+        try { return await pending.Completion; }
+        finally
+        {
+            if (ReferenceEquals(approval, pending)) { approval = null; confirmation.Children.Clear(); }
+            task.SetApproval(false);
+            if (session.IsOpen && IsLoaded) instruction.Focus(FocusState.Programmatic);
+        }
+    }
+
+    private static async Task<VoiceLabMonthlyCap?> ReadVoiceCapAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        await WorkflowSpendCache.RefreshAsync(App.Services.Data);
+        token.ThrowIfCancellationRequested();
+        var limit = App.Services.Settings.GetVoiceLabMonthlyCap("elevenlabs");
+        if (limit is null) return null;
+        if (WorkflowSpendCache.Monthly is not { } total) throw new RewriteGenerationException("Monthly spend is unavailable. Nothing has been sent.");
+        return new(limit.Value, total.Usd);
+    }
+}

@@ -94,6 +94,31 @@ internal sealed class VoiceLabActionGate
             return Array.AsReadOnly(quotes.Select(quote => new VoiceLabAuthorization(quote.Token, quote.Fingerprint, quote.Estimate, quote.Review) { RunDispatch = dispatch, IsRunAuthorization = true }).ToArray());
         }
     }
+    internal IReadOnlyList<VoiceLabAuthorization> ApproveEnrollment(EnrollmentQuote quote, bool affirmative)
+    {
+        lock (gate)
+        {
+            var quotes = quote.Actions;
+            if (!affirmative || runs.Contains(quote.Id) || !quotes.All(Fresh) || quotes.Any(item => approvedByRun.ContainsKey(item.Token)) ||
+                quote.Create.Review.Operation != VoiceLabOperation.CreateClone || quote.Verify is { Review.Operation: not VoiceLabOperation.SpeechToText })
+                throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
+            runs.Add(quote.Id);
+            foreach (var item in quotes) approvedByRun.Add(item.Token, quote.Id);
+            return quotes.Select(item => new VoiceLabAuthorization(item.Token, item.Fingerprint, item.Estimate, item.Review) { IsRunAuthorization = true }).ToArray();
+        }
+    }
+    internal bool Restore(VoiceLabPreparedAction quote)
+    {
+        lock (gate)
+        {
+            if (Fresh(quote)) return true;
+            var remaining = quote.ExpiresAt - clock.GetUtcNow();
+            if (remaining <= TimeSpan.Zero || remaining > TimeSpan.FromMinutes(5) || pending.Count >= 32) return false;
+            pending[quote.Token] = quote;
+            preparedAt[quote.Token] = clock.GetTimestamp() - (long)((TimeSpan.FromMinutes(5) - remaining).TotalSeconds * clock.TimestampFrequency);
+            return true;
+        }
+    }
     internal Task<T> StartRunAction<T>(VoiceLabAuthorization approval, Func<Task<T>> transport)
     {
         lock (gate)
@@ -131,15 +156,19 @@ internal sealed class VoiceLabActionGate
         claimedRunActions.Remove(token);
     }
 
-    private static string BoundFingerprint(string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review) =>
-        Fingerprint(fingerprint, review.Operation.ToString(), review.RequestId.ToString("D"), review.Provider,
+    internal static string BoundFingerprint(string fingerprint, VoiceLabEstimate estimate, VoiceLabReview review)
+    {
+        string?[] fields = [fingerprint, review.Operation.ToString(), review.RequestId.ToString("D"), review.Provider,
             review.Region?.ToString(), review.Endpoint, review.ModelId, review.VoiceId, review.LanguageMode?.Kind.ToString(),
             review.LanguageMode?.ExpectedLanguage, review.ContentSha256, review.ConsentRecordId, review.DisplayName, review.MimeType,
             review.ConsentPolicy?.RecordId, review.ConsentPolicy?.CloneVoiceId, review.ConsentPolicy?.RecordActive.ToString(),
             review.ConsentPolicy?.ProviderConsentGranted.ToString(), review.ConsentPolicy?.StatementVerified.ToString(),
             review.ConsentPolicy?.SpeakerMatched.ToString(), review.ConsentPolicy?.OwnerConfirmed.ToString(),
             estimate.Units.ToString("R", System.Globalization.CultureInfo.InvariantCulture), estimate.Unit,
-            estimate.Usd?.ToString(System.Globalization.CultureInfo.InvariantCulture), estimate.Credits?.ToString(), estimate.Basis);
+            estimate.Usd?.ToString(System.Globalization.CultureInfo.InvariantCulture), estimate.Credits?.ToString(), estimate.Basis];
+        return Fingerprint(review.ConsentPolicy is { ConsentMethod: not VoiceConsentMethod.RecordedStatement } policy
+            ? [.. fields, policy.ConsentMethod.ToString()] : fields);
+    }
 
     internal static string Fingerprint(params string?[] parts)
     {

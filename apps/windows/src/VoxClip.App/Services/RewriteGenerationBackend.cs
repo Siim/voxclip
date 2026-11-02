@@ -40,7 +40,7 @@ internal sealed class RewriteGenerationBackend : IDisposable
         RequireCurrent(ct);
         var remote = await client.ListOwnClonesAsync(ct);
         RequireCurrent(ct);
-        var voices = store.ActiveVoices().Where(record => record.Statement.Language == language &&
+        var voices = store.ActiveVoices().Where(record => record.Language == language &&
             remote.Any(voice => voice.Id == record.VoiceId && (!voice.RequiresVerification || voice.IsVerified)))
             .Select(record => new RewriteVoice(record.RecordId, VoiceLabel(record.VoiceName, record.CreatedAt))).ToArray();
         return new(voices, models);

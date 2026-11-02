@@ -1,21 +1,23 @@
 namespace VoxClip.App.ViewModels;
 
-/// <summary>Plain UTF-16 offsets for RichTextBlock TextHighlighter ranges.</summary>
+/// <summary>Native TextPointer offset spans, including display-only text and inline gaps.</summary>
 public static class TranscriptTextRanges
 {
-    public static int[] Starts(IReadOnlyList<string> wordRuns, IReadOnlyList<string?> pauseRunsAfter,
-        IReadOnlyList<int>? textAfter = null)
+    internal static TranscriptTextSpan? Hit(IReadOnlyList<TranscriptTextSpan> spans, int offset)
     {
-        if (wordRuns.Count != pauseRunsAfter.Count) throw new ArgumentException("Word and pause counts must match.", nameof(pauseRunsAfter));
-        if (textAfter is not null && textAfter.Count != wordRuns.Count)
-            throw new ArgumentException("Inline and word counts must match.");
-        var starts = new int[wordRuns.Count];
-        var offset = 0;
-        for (var index = 0; index < starts.Length; index++)
+        var low = 0;
+        var high = spans.Count - 1;
+        while (low <= high)
         {
-            starts[index] = offset;
-            offset = checked(offset + wordRuns[index].Length + (pauseRunsAfter[index]?.Length ?? 0) + (textAfter?[index] ?? 0));
+            var middle = low + (high - low) / 2;
+            var span = spans[middle];
+            if (offset < span.Start) high = middle - 1;
+            else if (offset >= span.End) low = middle + 1;
+            else return span;
         }
-        return starts;
+        return null;
     }
+
 }
+
+internal readonly record struct TranscriptTextSpan(int Start, int End, int SourceIndex, int LastSourceIndex, int ChangeOrdinal = 0);

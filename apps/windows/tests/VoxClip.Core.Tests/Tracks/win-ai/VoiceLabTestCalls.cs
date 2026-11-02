@@ -16,8 +16,8 @@ internal static class VoiceLabTestCalls
         service.PrepareConversion(audio, model, voice, language, seed, cleanAudioOn, Guid.NewGuid());
     internal static VoiceLabPreparedAction PrepareDeletion(this ElevenLabsVoiceLab service, string voiceId,
         OwnVoicePolicy policy) => service.PrepareDeletion(voiceId, policy, Guid.NewGuid());
-    internal static VoiceLabPreparedAction PrepareClone(this ElevenLabsVoiceLab service, VoiceLabCloneRequest request,
-        OwnVoicePolicy policy) => service.PrepareClone(request, policy, Guid.NewGuid());
+    internal static VoiceLabPreparedAction PrepareEnrollmentClone(this ElevenLabsVoiceLab service, VoiceLabCloneRequest request,
+        OwnVoicePolicy policy) => service.PrepareEnrollmentClone(request, policy, Guid.NewGuid());
     internal static Task<VoiceLabCloneResult> CreateOwnCloneAsync(this ElevenLabsVoiceLab service, VoiceLabCloneRequest request,
         OwnVoicePolicy policy, VoiceLabAuthorization approval, CancellationToken ct) =>
         service.CreateOwnCloneAsync(request, policy, approval, ct, approval.Review.RequestId);

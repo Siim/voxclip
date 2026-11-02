@@ -17,7 +17,7 @@ public sealed class VoiceConsentMediaTests
     private static CancellationToken Token => TestContext.Current.CancellationToken;
     private sealed class Keys : IKeyProvider
     {
-        public Task<string?> GetKeyAsync(string account, CancellationToken ct) => throw new InvalidOperationException("No network in consent tests.");
+        public Task<string?> GetKeyAsync(string account, CancellationToken ct) => Task.FromResult<string?>("synthetic-consent-key");
     }
     private sealed class Clock : TimeProvider
     {
@@ -36,6 +36,8 @@ public sealed class VoiceConsentMediaTests
     }
     private static float[] Tone(int rate, int seconds) => Enumerable.Range(0, rate * seconds)
         .Select(index => (float)(0.1 * Math.Sin(2 * Math.PI * 440 * index / rate))).ToArray();
+    private static VoiceEnrollment.TestSpeaker TestSpeaker() => new((_, _) => Task.FromResult(new float[] { 1, 0 }),
+        (_, _) => Task.FromResult((new float[] { 1, 0 }, new float[][] { [1, 0] })));
     [Fact]
     public async Task ReviewProbe_KnownUndispatchedFailureKeepsVerifiedStatementForRetry()
     {
@@ -44,7 +46,7 @@ public sealed class VoiceConsentMediaTests
         var wav = VoiceTrainingAudio.Wav(Tone(48000, 6));
         var record = System.Text.Json.JsonSerializer.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/consent-record.json"), VoiceConsentJson.Default.VoiceConsentRecord)!;
         record = record with { RecordId = Guid.NewGuid().ToString("D"), VoiceId = "pending",
-            Statement = record.Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+            Statement = record.Statement! with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
         store.SaveStatement(wav, record.RecordId);
         using var claim = store.ClaimCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, DateTimeOffset.UtcNow);
         var reconciler = new VoiceOperationReconciler(store, _ => throw new InvalidOperationException("No transport allowed"));
@@ -108,7 +110,7 @@ public sealed class VoiceConsentMediaTests
         using var client = new ElevenLabsVoiceLab(new Keys());
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var resume = new TaskCompletionSource<RawTranscript>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var enrollment = new VoiceEnrollment(store, client, (_, _, _) => { entered.SetResult(); return resume.Task; });
+        var enrollment = new VoiceEnrollment(store, client, (_, _, _) => { entered.SetResult(); return resume.Task; }) { SpeakerForTests = TestSpeaker() };
         var id = Guid.NewGuid().ToString("D");
         var statement = new VoiceConsentStatement("en", "statement", ["one", "two", "three", "four"]);
         var wav = VoiceTrainingAudio.Wav(Tone(16000, 6), 16000);
@@ -121,7 +123,7 @@ public sealed class VoiceConsentMediaTests
         cancellation.Cancel();
         resume.SetResult(null!);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => verify);
-        Assert.Equal(VoiceConsentError.SpeakerUnavailable, (await Assert.ThrowsAsync<VoiceConsentException>(() =>
+        Assert.Equal(VoiceLabErrorKind.ConsentRequired, (await Assert.ThrowsAsync<VoiceLabException>(() =>
             enrollment.PrepareAsync(id, "Name", [], true, Token))).Kind);
         enrollment.Cancel(id);
         Assert.False(File.Exists(Path.Combine(store.Root, id, "statement.wav")));
@@ -138,11 +140,12 @@ public sealed class VoiceConsentMediaTests
         {
             calls++;
             throw new VoiceConsentException(VoiceConsentError.StatementMismatch);
-        }, clock: clock);
+        }, clock: clock) { SpeakerForTests = TestSpeaker() };
         var id = Guid.NewGuid().ToString("D");
         var statement = new VoiceConsentStatement("en", "statement", ["one", "two", "three", "four"]);
         var wav = VoiceTrainingAudio.Wav(Tone(16000, 6), 16000);
-        Task Verify() => enrollment.VerifyAsync(id, statement, wav, new(true, true, true, DateTimeOffset.UnixEpoch), true, true, Token);
+        var nextStatement = 0;
+        Task Verify() => enrollment.VerifyAsync(id, statement with { Nonce = ["one", "two", "three", (nextStatement++).ToString()] }, wav, new(true, true, true, DateTimeOffset.UnixEpoch), true, true, Token);
         for (var attempt = 0; attempt < 3; attempt++)
             Assert.Equal(VoiceConsentError.StatementMismatch, (await Assert.ThrowsAsync<VoiceConsentException>(Verify)).Kind);
         Assert.Equal(VoiceConsentError.TooManyAttempts, (await Assert.ThrowsAsync<VoiceConsentException>(Verify)).Kind);

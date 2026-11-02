@@ -4,6 +4,7 @@ using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Project;
 using Xunit;
 
@@ -11,6 +12,59 @@ namespace VoxClip.Ui.Tests;
 
 public sealed class EditorVoiceLabHistoryTests
 {
+    private static (Project Project, VoiceLabSegment[] Segments, VoiceLabAsset[] Assets, VoiceLabVoiceReference Voice) Acceptance(string name)
+    {
+        var vectors = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(Shared, "fixtures/voice-lab/accept-all-cases.json")))!;
+        var input = vectors["inputs"]![name]!;
+        return (ProjectSerialization.Deserialize(input["project"]!.ToJsonString()),
+            input["segments"]!.AsArray().Select(item => System.Text.Json.JsonSerializer.Deserialize(item!.ToJsonString(), ProjectJsonContext.Default.VoiceLabSegment)!).ToArray(),
+            input["assets"]!.AsArray().Select(item => System.Text.Json.JsonSerializer.Deserialize(item!.ToJsonString(), ProjectJsonContext.Default.VoiceLabAsset)!).ToArray(),
+            System.Text.Json.JsonSerializer.Deserialize(input["voice"]!.ToJsonString(), ProjectJsonContext.Default.VoiceLabVoiceReference)!);
+    }
+    [Theory]
+    [InlineData("Rewrite clip 2")]
+    [InlineData("Rewrite 8 words")]
+    [InlineData("Rewrite full take")]
+    public void AcceptAllCutsAndCorrectionsUseOneNamedUndoAndExactRedo(string title)
+    {
+        var input = Acceptance("mixed"); var editor = Editor(input.Project); var before = Canonical(editor.Project);
+        EditOperation[] operations = [new EditOperation.Correct("w3", "Today"), new EditOperation.SetWordCuts(["w2"], true)];
+        Assert.False(editor.ApplyVoiceLab(new VoiceLabEditCommand.AcceptAll(input.Segments, input.Assets, input.Voice)));
+        Assert.False(editor.CanUndo);
+        Assert.False(editor.ApplyVoiceLab([], [], input.Voice, VoiceLabOutputScope.Full, title));
+        Assert.Equal(before, Canonical(editor.Project)); Assert.False(editor.CanUndo);
+        Assert.True(editor.ApplyVoiceLab(input.Segments, input.Assets, input.Voice, VoiceLabOutputScope.Full, title, input.Project, operations), editor.Notice);
+        Assert.Equal(title, editor.UndoActionName); var after = Canonical(editor.Project);
+        Assert.Equal("Today", editor.Project.Edits.Corrections["w3"]); Assert.Contains("w2", editor.Project.Edits.CutWordIds);
+        Assert.Equal(after, Canonical(ProjectSerialization.Deserialize(ProjectSerialization.Serialize(editor.Project))));
+        editor.Undo(); Assert.Equal(before, Canonical(editor.Project)); Assert.False(editor.CanUndo); Assert.Equal(title, editor.RedoActionName);
+        editor.Redo(); Assert.Equal(after, Canonical(editor.Project)); Assert.Equal(title, editor.UndoActionName);
+    }
+    [Fact]
+    public async Task SingleAcceptWithAnAdjacentCutIsRefusedByThePrePaymentRules()
+    {
+        var input = Acceptance("cut-invalidates-seam"); var editor = Editor(input.Project); var before = Canonical(editor.Project);
+        var segment = input.Segments[0]; var recipe = segment.Candidates[0].Recipe!;
+        var window = new VoiceLabWindow(segment.Replace.FirstWordId, segment.Replace.LastWordId, [], [], segment.Replace.Start, segment.Replace.End,
+            recipe.Video.SourceStartSample, recipe.Video.SourceEndSample,
+            new(recipe.Seams.In.Kind, segment.Replace.Start, recipe.Video.SourceStartSample, recipe.Seams.In.FadeSamples),
+            new(recipe.Seams.Out.Kind, segment.Replace.End, recipe.Video.SourceEndSample, recipe.Seams.Out.FadeSamples));
+        Assert.Throws<VoiceLabProjectException>(() => VoiceLabRenderContract.ValidatePlacement(editor.ProjectWithLocalOperations(input.Project, []), VoiceLabOutputScope.Clip("clip-main"), window));
+        using var session = new RewriteSession(editor, 3, 4, new(1000, 0.01, Enumerable.Repeat(0.01f, 700).ToArray()), null);
+        session.Edit("new words");
+        var review = session.Review!;
+        var hunk = review.VoiceHunks[0] with { Window = window, PatchText = "new words" };
+        typeof(RewriteSession).GetProperty("Review", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+            .SetValue(session, review with { VoiceHunks = [hunk], Budget = review.Budget with { Copy = null } });
+        Assert.True(session.GenerationIsCurrent);
+        var reads = 0;
+        var error = await Assert.ThrowsAsync<RewriteGenerationException>(() => session.GenerationInputAsync("fixture", "eleven_v3", 1, true,
+            (request, _) => { reads++; return Task.FromResult((VoiceLabSourceExcerpt.Whole([0f]), new AudioEnvelope(1000, 0.01, []))); }, CancellationToken.None));
+        Assert.Contains("proposed cuts", error.Message); Assert.Equal(0, reads);
+        Assert.Null(session.Generation?.Quote); // The quote, paid run and publication cannot be reached without an input.
+        Assert.False(editor.ApplyVoiceLab(new VoiceLabEditCommand.Accept(segment, input.Assets, input.Voice)));
+        Assert.Equal(before, Canonical(editor.Project)); Assert.False(editor.CanUndo);
+    }
     private static string Shared => Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
     private static Project Fixture() => ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(Shared, "fixtures/voice-lab/passage-render-v3.voxclip")));
     private static byte[] Canonical(Project project) => Encoding.UTF8.GetBytes(ProjectSerialization.Serialize(project));

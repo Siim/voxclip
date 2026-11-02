@@ -235,7 +235,7 @@ public sealed class VoiceLabSessionTests
     public async Task LocalRemovalWritesCoreTombstoneWithoutCreatingAnAccount()
     {
         using var folder = new TestFolder(); var store = new VoiceConsentStore(folder.Locations);
-        var wav = Wave(); var record = Record() with { Statement = Record().Statement with { AudioSha256 = Convert.ToHexStringLower(SHA256.HashData(wav)) } };
+        var wav = Wave(); var record = Record() with { Statement = Record().Statement! with { AudioSha256 = Convert.ToHexStringLower(SHA256.HashData(wav)) } };
         store.SaveStatement(wav, record.RecordId); store.Save(record);
         var backend = Backend(folder, () => true, _ => throw new InvalidOperationException("No remote account allowed"));
         await backend.RemoveLocalAsync(record.RecordId, TestContext.Current.CancellationToken);
@@ -251,7 +251,7 @@ public sealed class VoiceLabSessionTests
         using var folder = new TestFolder(); var clock = new VoiceSessionClock();
         var store = new VoiceConsentStore(folder.Locations, clock);
         var wav = Wave();
-        var record = Record() with { VoiceId = "pending", Statement = Record().Statement with { AudioSha256 = Convert.ToHexStringLower(SHA256.HashData(wav)) } };
+        var record = Record() with { VoiceId = "pending", Statement = Record().Statement! with { AudioSha256 = Convert.ToHexStringLower(SHA256.HashData(wav)) } };
         store.SaveStatement(wav, record.RecordId);
         VoiceOperation operation;
         using (var claim = store.ClaimCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, clock.GetUtcNow()))
@@ -301,7 +301,7 @@ public sealed class VoiceLabSessionTests
     {
         using var folder = new TestFolder(); var clock = new VoiceSessionClock();
         var store = new VoiceConsentStore(folder.Locations, clock); var wav = Wave();
-        var record = Record() with { VoiceId = "pending", Creator = null, Statement = Record().Statement with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
+        var record = Record() with { VoiceId = "pending", Creator = null, Statement = Record().Statement! with { AudioSha256 = VoiceConsentStore.Hash(wav) } };
         store.SaveStatement(wav, record.RecordId);
         VoiceOperation operation;
         using (var claim = store.ClaimCreation(record, Guid.NewGuid(), ElevenLabsRegion.Default, clock.GetUtcNow()))

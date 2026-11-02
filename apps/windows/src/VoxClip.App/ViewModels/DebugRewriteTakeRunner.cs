@@ -64,14 +64,14 @@ internal sealed class DebugRewriteTakeRunner : IVoiceLabTakeRunner, IDisposable
     }
     public Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeRunQuote quote, bool approved,
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default) =>
-        approved ? ExecuteWithDispatchAsync(quote, new(_ => Task.CompletedTask, action => action()), progress, ct)
+        approved ? ExecuteWithDispatchAsync(quote, new((_, _) => Task.CompletedTask, action => action()), progress, ct)
             : Task.FromException<VoiceLabTakeRunResult>(new VoiceLabException(VoiceLabErrorKind.ConsentRequired));
     public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
         Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
     {
         if (!IsQuoteFresh(quote)) throw new VoiceLabException(VoiceLabErrorKind.ConsentRequired);
         if (BeforeTransport is { } pause) await pause(ct);
-        await dispatch.AuthorizeAsync(ct);
+        await dispatch.AuthorizeAsync(quote.Takes[0].Synthesis.Review.RequestId, ct);
         await dispatch.Start(() => { PaidRequests++; return Task.FromResult(true); }, ct);
         if (assets is not null) await assets.InvalidateAsync();
         if (progress is not null) await progress([]);

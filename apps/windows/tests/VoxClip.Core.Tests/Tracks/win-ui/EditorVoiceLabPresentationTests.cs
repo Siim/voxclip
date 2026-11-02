@@ -122,25 +122,21 @@ public sealed class EditorVoiceLabPresentationTests
     }
 
     [Fact]
-    public void ChipAndSyntheticUnderlineMatchTheDesignSourceContract()
+    public void AcceptedSpeechUsesTypedProjectionAndAccessibleAiTint()
     {
-        var transcript = Source("Controls/TranscriptView.cs");
-        var start = transcript.IndexOf("if (speech.StartsSegment)", StringComparison.Ordinal);
-        var chip = transcript[start..transcript.IndexOf("var word = model.Words[index]", start, StringComparison.Ordinal)];
-        Assert.Contains("BorderBrush = Brush(\"VcAccentTextBrush\")", chip);
-        Assert.Contains("BorderThickness = new Thickness(1)", chip);
-        Assert.Contains("CornerRadius = new CornerRadius(4)", chip);
-        Assert.Contains("FontSize = 10", chip);
-        Assert.Contains("FontWeights.SemiBold", chip);
-        Assert.Contains("VcMonoFontFamily", chip);
-        Assert.Contains("VcAccentSoftBrush", chip);
-        Assert.Contains("speech.Text + \" \"", transcript);
-        Assert.Contains("if (!speech.Visible) continue", transcript);
-        Assert.Contains("model.Index(clip.Clip.StartWordId) >= index && model.Index(clip.Clip.StartWordId) <= speech.LastSourceIndex", transcript);
-        Assert.Contains("model.Index(clip.Clip.EndWordId) >= index && model.Index(clip.Clip.EndWordId) <= speech.LastSourceIndex", transcript);
-        Assert.Contains("run.Index <= wordIndex && run.LastIndex >= wordIndex", transcript);
-        Assert.Contains("visual.Runs.Where(run => run.LastIndex >= first && run.Index <= last)", transcript);
-        Assert.Contains("if (ai) Pattern(rect.X, rect.Y + rect.Height - 1, rect.Width, \"VcAccentTextBrush\", 5, 9, 1)", Source("Controls/TranscriptOverlay.cs"));
+        var projection = Source("ViewModels/TranscriptParagraphPresentation.cs");
+        Assert.Contains("if (!presented.Visible) continue", projection);
+        Assert.Contains("presented.LastSourceIndex < clipFirst || index > clipLast", projection);
+        Assert.Contains("!presented.AiModified && cuts.Contains(word.Id)", projection);
+        Assert.Contains("presented.Text + \" \", index, presented.LastSourceIndex", projection);
+        Assert.Contains("presented.AiModified, change", projection);
+        var presentation = Source("Controls/TranscriptView.Presentation.cs");
+        Assert.Contains("!piece.Outside && piece.Ai && proposal.Hunks.Count == 0", presentation);
+        Assert.Contains("!piece.Outside && !piece.Ai && !piece.Removed && piece.Change is null && !selected", presentation);
+        var overlay = Source("Controls/TranscriptOverlay.cs");
+        Assert.Contains("if (ai && !selected && !Ui.HighContrast) Rectangle(behind, rect, \"VcAiTintBrush\", 2, opacity: 0.10f)", overlay);
+        Assert.Contains("TranscriptWordHighlight.For(selected, false, Ui.HighContrast)", overlay);
+        Assert.Contains("selected && Ui.HighContrast ? \"VcAccentOnBrush\" : \"VcWordGoneBrush\"", overlay);
     }
 }
 #endif

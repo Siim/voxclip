@@ -15,19 +15,22 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
 {
     internal static RewriteReview Build(RewriteSession session, VoiceLabPriceCatalog? prices, string? model)
     {
-        var diff = VoiceLabWordDiff.Diff(session.Source, session.NewWords);
-        var budget = VoiceLabPatchBudget.Evaluate(diff, session.Transcript);
-        var voice = diff.Hunks.Where(hunk => hunk.Kind == VoiceLabDiffHunkKind.Voice).ToArray();
+        var diff = session.ReviewDiff();
+        var included = diff.Hunks.Where((_, index) => session.ChangeStates.GetValueOrDefault(index + 1) != TranscriptChangeState.Excluded).ToArray();
+        var budget = VoiceLabPatchBudget.Evaluate(diff with { Hunks = included }, session.Transcript);
+        var voice = included.Where(hunk => hunk.Kind == VoiceLabDiffHunkKind.Voice).ToArray();
         List<RewriteHunkReview> reviews = [];
-        foreach (var hunk in voice)
+        var placements = session.Envelope is null ? [] : VoiceLabWindowPlanner.PlaceAll(session.Project, session.Scope, session.Envelope, included);
+        foreach (var placement in session.Envelope is null
+            ? voice.Select(hunk => (PlacedOrRefused)new PlacedOrRefused.Refused(0, hunk,
+                new VoiceLabWindowRefusal.Geometry(new(VoiceLabGeometryErrorCode.InvalidInput)))).ToArray() : placements)
         {
+            var hunk = placement is PlacedOrRefused.Placed placedHunk ? placedHunk.Hunk : ((PlacedOrRefused.Refused)placement).Hunk;
             try
             {
-                if (session.Envelope is null) throw new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InvalidInput);
-                var window = hunk.SourceWordIds.Count > 0
-                    ? VoiceLabWindowPlanner.Place(session.Project, session.Scope, session.Envelope, hunk.SourceWordIds[0], hunk.SourceWordIds[^1])
-                    : VoiceLabWindowPlanner.Place(session.Project, session.Scope, session.Envelope,
-                        session.Transcript.ElementAtOrDefault(session.InsertionAfter ?? -1)?.Id ?? "");
+                if (placement is PlacedOrRefused.Refused refused)
+                    throw refused.Reason is VoiceLabWindowRefusal.Geometry geometry ? geometry.Error : new VoiceLabGeometryException(VoiceLabGeometryErrorCode.InvalidInput);
+                var window = ((PlacedOrRefused.Placed)placement).Window;
                 var silence = VoiceLabWindowPlanner.LendableSilence(session.Project, session.Scope, window);
                 var newWords = string.Join(" ", hunk.NewTokens);
                 string Text(string id) => session.Transcript.First(word => word.Id == id).Text;
@@ -42,7 +45,7 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
             }
         }
         VoiceLabDiffSummaryResult? summary = reviews.All(review => review.Meter is not null)
-            ? VoiceLabDiffSummary.Make(diff, reviews.Select(review => review.Meter!).ToArray(), prices, model,
+            ? VoiceLabDiffSummary.Make(diff with { Hunks = included }, reviews.Select(review => review.Meter!).ToArray(), prices, model,
                 patchTexts: reviews.Select(review => review.PatchText).ToArray()) : null;
         var runs = DiffRuns(diff, session.Source, session.Transcript, reviews);
         var inserted = diff.Ops.Count(op => op.Kind == VoiceLabDiffOpKind.Insert);

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.ContextDemo;
 
 namespace VoxClip.Core.Services.Project;
 
@@ -17,11 +18,12 @@ internal static class ProjectValidation
         var root = document.RootElement;
         RejectDuplicateKeys(root);
         Require(root.ValueKind == JsonValueKind.Object);
-        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 3)
+        if (root.TryGetProperty("schemaVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var number) && number > 4)
             throw new VoxClipException(VoxClipErrorCode.ProjectTooNew, "This project was saved by a newer VoxClip. Update VoxClip to open it.");
-        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions");
+        var supportsContext = version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var schemaVersion) && schemaVersion == 4;
+        Object(root, "format schemaVersion id createdAt modifiedAt savedBy media transcript edits captions export share ai voiceLab", "title extensions" + (supportsContext ? " contextDemo motionCues" : ""));
         String(root.GetProperty("format"), "voxclip-project");
-        Number(root.GetProperty("schemaVersion"), 1, 3, true);
+        Number(root.GetProperty("schemaVersion"), 1, 4, true);
         String(root.GetProperty("id"), "[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}");
         Timestamp(root.GetProperty("createdAt")); Timestamp(root.GetProperty("modifiedAt"));
         if (root.TryGetProperty("title", out var title)) Text(title, 0, 200);
@@ -82,25 +84,25 @@ internal static class ProjectValidation
         }
         else
         {
-            Object(voice, projectVersion == 3 ? "assets segments cleanAudio voices videoAssets" : "assets segments");
+            Object(voice, projectVersion >= 3 ? "assets segments cleanAudio voices videoAssets" : "assets segments");
             Array(voice.GetProperty("assets"), asset => Object(asset, "id kind file sha256 durationSeconds sampleRate createdAt"));
             Array(voice.GetProperty("segments"), segment =>
             {
-                Object(segment, "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (projectVersion == 3 ? " scope" : ""), projectVersion == 3 ? "groupId" : "");
-                if (projectVersion == 3) { Choice(segment.GetProperty("scope"), "passage", "fullTake"); Choice(segment.GetProperty("kind"), "tts", "voiceChanger"); }
+                Object(segment, "id kind enabled replace outDuration audio text words provenance qa candidates selectedCandidateIndex" + (projectVersion >= 3 ? " scope" : ""), projectVersion >= 3 ? "groupId" : "");
+                if (projectVersion >= 3) { Choice(segment.GetProperty("scope"), "passage", "fullTake"); Choice(segment.GetProperty("kind"), "tts", "voiceChanger"); }
                 Object(segment.GetProperty("replace"), "start end firstWordId lastWordId");
                 Object(segment.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
                 Nullable(segment.GetProperty("text"), text => Object(text, "original new"));
                 Nullable(segment.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
-                Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (projectVersion == 3 ? " region" : ""));
+                Object(segment.GetProperty("provenance"), "provider endpoint model voiceId consentRecordId requestId seed createdAt" + (projectVersion >= 3 ? " region" : ""));
                 Object(segment.GetProperty("qa"), "transcriptMatch lufsJumpLu peakDbfs speakerScore");
                 Array(segment.GetProperty("candidates"), candidate =>
                 {
-                    Object(candidate, "assetId score rejected" + (projectVersion == 3 && candidate.GetProperty("rejected").ValueKind == JsonValueKind.Null ? " recipe" : ""), projectVersion == 3 ? "recipe" : "");
+                    Object(candidate, "assetId score rejected" + (projectVersion >= 3 && candidate.GetProperty("rejected").ValueKind == JsonValueKind.Null ? " recipe" : ""), projectVersion >= 3 ? "recipe" : "");
                     if (candidate.TryGetProperty("recipe", out var recipe)) RenderRecipe(recipe);
                 });
             });
-            if (projectVersion == 3)
+            if (projectVersion >= 3)
             {
                 Object(voice.GetProperty("cleanAudio"), "mode assetId mix");
                 Choice(voice.GetProperty("cleanAudio").GetProperty("mode"), "off", "on");
@@ -108,6 +110,20 @@ internal static class ProjectValidation
                 Array(voice.GetProperty("videoAssets"), item => Object(item, "id file sha256 durationSeconds frameRate width height"));
             }
         }
+        if (root.TryGetProperty("contextDemo", out var demo))
+        {
+            Object(demo, "format version projectId planId revision sourceContentKey narration assets placements");
+            Array(demo.GetProperty("assets"), asset =>
+            {
+                Require(asset.ValueKind == JsonValueKind.Object);
+                var target = asset.GetProperty("target");
+                Object(target, "kind displayName locator");
+                Choice(target.GetProperty("kind"), "desktopApp", "codeProject", "webPage");
+            });
+            var context = ContextDemoCodec.Decode(System.Text.Encoding.UTF8.GetBytes(demo.GetRawText()));
+            Require(context.ProjectId == root.GetProperty("id").GetString() && context.SourceContentKey == source.GetProperty("contentKey").GetString());
+        }
+        if (root.TryGetProperty("motionCues", out var cues)) MotionCue.ValidateWire(cues);
     }
 
     private static void RenderRecipe(JsonElement recipe)

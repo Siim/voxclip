@@ -39,7 +39,7 @@ internal static class StartupDiagnostics
             var frames = new System.Diagnostics.StackTrace(current).GetFrames().Select(frame => frame.GetMethod())
                 .Where(method => method?.DeclaringType?.Namespace?.StartsWith("VoxClip", StringComparison.Ordinal) == true)
                 .Select(method => $"{method!.DeclaringType!.Name}.{method.Name}");
-            Log.Write(LogLevel.Debug, "startup", $"frames={string.Join(",", frames)}");
+            Log.Write(LogLevel.Error, "startup", $"frames={string.Join(",", frames)}");
 #endif
         }
         Write(new("failed", screen, rootLoaded, false, 0, 0));

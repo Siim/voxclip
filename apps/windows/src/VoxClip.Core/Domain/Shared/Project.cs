@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Domain.ContextDemo;
 using TranscriptModel = VoxClip.Core.Domain.Transcript.Transcript;
 namespace VoxClip.Core.Domain.Shared;
 
@@ -18,6 +19,20 @@ public sealed record Project(string Format, int SchemaVersion, string Id, DateTi
     /// <summary>Unknown reverse-DNS fork entries preserved unchanged; editing §10.7.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyDictionary<string, JsonElement>? Extensions { get; init; }
+    /// <summary>Optional source-bound context demonstration, available only in schema v4.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ContextDemoDocument? ContextDemo { get; init; }
+    private IReadOnlyList<MotionCue> motionCues = [];
+    /// <summary>Default-empty motion metadata; empty collections are omitted on the wire.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<MotionCue> MotionCues { get => motionCues; init => motionCues = value; }
+    /// <summary>Serialization projection preserving the absent field shape of legacy projects.</summary>
+    [JsonPropertyName("motionCues"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<MotionCue>? PersistedMotionCues
+    {
+        get => motionCues.Count == 0 ? null : motionCues;
+        init => motionCues = value ?? [];
+    }
 }
 
 /// <summary>Writer identity; runtime release version or schema-valid 0.0.0 fallback. Editing §10.2.</summary>
