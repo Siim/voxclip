@@ -277,18 +277,22 @@ public sealed class InlineCorrectionTests
     {
         var view = AppSource("Controls/TranscriptView.cs");
         Assert.DoesNotContain("IsLightDismissEnabled", view);
-        Ordered(view, "model.CorrectionText = text.Text;", "args.Handled = true;",
-            "if (!model.SaveCorrection(advance: args.Key == Windows.System.VirtualKey.Tab)) return;",
-            "if (model.CorrectionWordId is null) Focus(FocusState.Keyboard);");
-        Ordered(view, "private void OpenCorrectionField(string id)", "text.TextChanged += (_, _) =>", "model.CorrectionText = text.Text;",
-            "model.EndCorrection(keep: false);", "text.LostFocus += (_, _) =>", "model?.EndCorrection();",
-            "root.AddHandler(PointerPressedEvent, CorrectionPress, true);");
+        var editing = AppSource("Controls/TranscriptView.InlineEditing.cs");
+        Assert.DoesNotContain("new Popup", view + editing);
+        Ordered(editing, "text.TextChanged += (_, _) =>", "model.CorrectionText = text.Text;",
+            "text.LostFocus += (_, _) =>", "model?.EndCorrection();");
+        Ordered(editing, "void Commit(bool next)", "model.CorrectionText = entered;",
+            "model?.SaveCorrection(advance: next)", "if (!applied)",
+            "if (model?.CorrectionWordId is null) Focus(FocusState.Keyboard);");
+        Assert.Contains("model.EndCorrection(keep: false);", editing);
+        Assert.Contains("root.AddHandler(PointerPressedEvent, inlinePressHandler, true);", editing);
+        Assert.Contains("root.RemoveHandler(PointerPressedEvent, handler);", editing);
         Assert.Contains("model.CorrectionChanged += CorrectionChanged;", view);
         var page = AppSource("Pages/EditorPage.xaml.cs");
         Assert.Contains("playback.Refreshing(RunAsync(UpdatePreviewAsync, \"Preview\"));", page);
         Ordered(page, "private async Task SeekSourceAsync(double source)", "await playback.EndCorrectionAsync(ViewModel);", "previewStop = null;");
         Ordered(page, "private async Task TogglePlaybackAsync()", "await playback.PausesAsync(ViewModel, () => preview?.Position.IsPlaying == true);",
-            "if (pause) await engine.PauseAsync(lifetime.Token); else await engine.PlayAsync(lifetime.Token);");
+            "if (pause) await preview.PauseAsync(token); else await preview.PlayAsync(token);");
         Assert.DoesNotContain("if (preview.Position.IsPlaying) await preview.PauseAsync", page);
     }
 

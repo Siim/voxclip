@@ -272,7 +272,8 @@ internal sealed class TranscriptionDialog : InlineEditorJob
         Ui.Show(notice, TranscriptionRouting.Installed, InfoBarSeverity.Success);
         var installed = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
         if (closed || model.IsLeaving || lifetime.IsCancellationRequested) return;
-        if (baseline.IsCurrent && install.Continues(TranscriptionModelChoices.InstalledLocal(catalogue, installed).Any(entry => entry.Id == install.ModelId),
+        if (!baseline.IsCurrent) return;
+        if (install.Continues(TranscriptionModelChoices.InstalledLocal(catalogue, installed).Any(entry => entry.Id == install.ModelId),
             engine.SelectedIndex == 0, language.Text, (models.SelectedItem as ComboBoxItem)?.Tag as string))
             await RunTranscriptionAsync();
     }

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.Editing;
 using Windows.System;
@@ -108,6 +109,8 @@ public sealed partial class TranscriptView
     }
 
     private bool inlineWordCorrection;
+    private UIElement? inlinePressRoot;
+    private PointerEventHandler? inlinePressHandler;
 
     private void BeginWordCorrection()
     {
@@ -159,6 +162,7 @@ public sealed partial class TranscriptView
         if (!wordCorrection) CloseInlineEditor(false);
         selectionFlyout.Hide();
         var host = visual.Editor;
+        var expectedProject = model?.Project;
         inlineEditor = host;
         inlineWordCorrection = wordCorrection;
         var text = new TextBox { Header = title, Text = value, TextWrapping = TextWrapping.Wrap, MaxWidth = 680 };
@@ -187,6 +191,8 @@ public sealed partial class TranscriptView
         void Commit(bool next)
         {
             if (composing || compositionEnded || !ReferenceEquals(inlineEditor, host) || !CanEditTranscript) return;
+            if (wordCorrection && model is not null && !ReferenceEquals(expectedProject, model.Project))
+            { model.EndCorrection(keep: false); return; }
             var entered = text.Text;
             if (wordCorrection && model is not null) model.CorrectionText = entered;
             var applied = wordCorrection ? model?.SaveCorrection(advance: next) == true : save(entered);
@@ -221,6 +227,26 @@ public sealed partial class TranscriptView
         host.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = Ui.EffectPolicy.Animations });
         text.Focus(FocusState.Programmatic);
         text.SelectAll();
+        if (wordCorrection && XamlRoot?.Content is UIElement root)
+        {
+            // Register after the opening pointer event has finished bubbling.
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!ReferenceEquals(inlineEditor, host) || inlinePressRoot is not null) return;
+                inlinePressRoot = root;
+                inlinePressHandler = (_, args) =>
+                {
+                    var element = args.OriginalSource as DependencyObject;
+                    while (element is not null)
+                    {
+                        if (ReferenceEquals(element, host)) return;
+                        element = VisualTreeHelper.GetParent(element);
+                    }
+                    model?.EndCorrection();
+                };
+                root.AddHandler(PointerPressedEvent, inlinePressHandler, true);
+            });
+        }
 
         void Add(string label, Action action)
         {
@@ -232,6 +258,10 @@ public sealed partial class TranscriptView
 
     private void CloseInlineEditor(bool focus)
     {
+        if (inlinePressRoot is { } root && inlinePressHandler is { } handler)
+            root.RemoveHandler(PointerPressedEvent, handler);
+        inlinePressRoot = null;
+        inlinePressHandler = null;
         var previous = inlineEditor;
         var word = inlineWordCorrection;
         inlineEditor = null;

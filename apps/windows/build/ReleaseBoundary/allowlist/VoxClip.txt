@@ -1001,6 +1001,9 @@ member VoxClip.App.Controls.TranscriptView :: field private expandedCuts
 member VoxClip.App.Controls.TranscriptView :: field private focusedChange
 member VoxClip.App.Controls.TranscriptView :: field private fontSize
 member VoxClip.App.Controls.TranscriptView :: field private inlineEditor
+member VoxClip.App.Controls.TranscriptView :: field private inlinePressHandler
+member VoxClip.App.Controls.TranscriptView :: field private inlinePressRoot
+member VoxClip.App.Controls.TranscriptView :: field private inlineWordCorrection
 member VoxClip.App.Controls.TranscriptView :: field private model
 member VoxClip.App.Controls.TranscriptView :: field private overview
 member VoxClip.App.Controls.TranscriptView :: field private pausesByIndex
@@ -1051,6 +1054,7 @@ member VoxClip.App.Controls.TranscriptView :: method private CaptureLost(object,
 member VoxClip.App.Controls.TranscriptView :: method private ChangeActions(VoxClip.App.ViewModels.TranscriptProposalHunk)
 member VoxClip.App.Controls.TranscriptView :: method private ClipExtent()
 member VoxClip.App.Controls.TranscriptView :: method private CloseInlineEditor(bool)
+member VoxClip.App.Controls.TranscriptView :: method private CorrectionChanged(object,System.EventArgs)
 member VoxClip.App.Controls.TranscriptView :: method private DetachProposal()
 member VoxClip.App.Controls.TranscriptView :: method private DoubleTappedWord(object,Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs)
 member VoxClip.App.Controls.TranscriptView :: method private DrawGutter(VoxClip.App.Controls.TranscriptView+ParagraphVisual,System.Collections.Generic.IReadOnlyDictionary`2<double,System.ValueTuple`3<Windows.Foundation.Rect,VoxClip.App.ViewModels.TranscriptProposalHunk,bool>>)
@@ -1080,7 +1084,7 @@ member VoxClip.App.Controls.TranscriptView :: method private ScheduleFlyout()
 member VoxClip.App.Controls.TranscriptView :: method private SelectionChanged(object,System.EventArgs)
 member VoxClip.App.Controls.TranscriptView :: method private SelectionKeyDown(object,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs)
 member VoxClip.App.Controls.TranscriptView :: method private SetForeground(Microsoft.UI.Xaml.Documents.Run,string)
-member VoxClip.App.Controls.TranscriptView :: method private ShowInlineEditor(VoxClip.App.Controls.TranscriptView+ParagraphVisual,string,string,string,System.Func`2<string,bool>,System.Action)
+member VoxClip.App.Controls.TranscriptView :: method private ShowInlineEditor(VoxClip.App.Controls.TranscriptView+ParagraphVisual,string,string,string,System.Func`2<string,bool>,System.Action,bool)
 member VoxClip.App.Controls.TranscriptView :: method private ShowSelectionFlyout(bool)
 member VoxClip.App.Controls.TranscriptView :: method private WordContextRequested(object,Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs)
 member VoxClip.App.Controls.TranscriptView :: method private get_CanEditTranscript()

@@ -315,7 +315,10 @@ public sealed class TranscriptionRoutingTests
             "if (install.Continues(TranscriptionModelChoices.InstalledLocal(catalogue, installed).Any(entry => entry.Id == install.ModelId),",
             "engine.SelectedIndex == 0, language.Text, (models.SelectedItem as ComboBoxItem)?.Tag as string))",
             "await RunTranscriptionAsync();");
-        Assert.Contains("if (!App.Services.Get(\"transcription.cloudConsent.elevenlabs\", false)) { ShowCloudConsent(); return; }", dialog);
+        Ordered(dialog, "var authorizedCloud = allowCloud.IsChecked == true;",
+            "if (!local)", "if (!authorizedCloud || approvedPrice is null) return;",
+            "await App.Services.SetAsync(\"transcription.cloudConsent.elevenlabs\", true, token);");
+        Assert.Contains("keySaved && allowCloud.IsChecked == true && price is not null", dialog);
     }
 
     private static void Ordered(string text, params string[] markers)
