@@ -178,6 +178,18 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     public let score: Double?
     public let failure: VoiceLabTakeFailure?
     public let voiceCheck: VoiceLabTakeVoiceCheck
+    /// Passing voice copy depends on the whole row, including its independent words check.
+    public var shortPhraseCopy: String? {
+        switch voiceCheck {
+        case .perTake: return nil
+        case .waiting: return "waiting for the voice check"
+        case .shortSpeech(let evidence):
+            guard evidence.valid else { return nil }
+            if evidence.mode == .unmeasured { return "voice couldn't be measured (under 3 s of speech)" }
+            guard failure == nil, qa?.passed == true, qa?.values.speakerScore?.isFinite == true else { return nil }
+            return "Short phrase · words checked · voice checked across \(evidence.takeCount) takes"
+        }
+    }
     public var selectable: Bool { voiceCheck.complete && failure == nil && qa?.passed == true && audio != nil }
     public var fits: Bool {
         if let audio, case .exact = audio.fit { return true }

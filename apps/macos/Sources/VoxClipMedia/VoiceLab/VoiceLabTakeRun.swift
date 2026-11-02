@@ -173,6 +173,7 @@ public actor VoiceLabTakeRun {
     public func execute(_ quote: VoiceLabTakeRunQuote, approved: Bool,
                         keepingPreviousTakes: Bool = false,
                         shortTakePool: VoiceLabShortTakePool? = nil,
+                        phraseID: Int? = nil,
                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in },
                         started: @escaping @Sendable () async throws -> Void = {}) async throws -> VoiceLabTakeRunResult {
         guard approved, task == nil, runningID == nil, executionOwner == nil, let value = pending, value.quote == quote else { throw VoiceLabError.consentRequired }
@@ -202,7 +203,7 @@ public actor VoiceLabTakeRun {
             throw error
         }
         let pool = shortTakePool ?? VoiceLabShortTakePool()
-        let operation = Task { await self.perform(value, revision: currentRevision, dispatch: dispatch, pool: pool, progress: progress) }
+        let operation = Task { await self.perform(value, revision: currentRevision, dispatch: dispatch, pool: pool, phraseID: phraseID, progress: progress) }
         task = operation; runningID = quote.id
         var result = await withTaskCancellationHandler { await operation.value } onCancel: {
             operation.cancel()
@@ -273,7 +274,7 @@ public actor VoiceLabTakeRun {
         try reservation(expected)
     }
     private func perform(_ value: Pending, revision expected: Int, dispatch: VoiceLabRunDispatch, pool: VoiceLabShortTakePool,
-                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void) async -> VoiceLabTakeRunResult {
+                         phraseID: Int?, progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void) async -> VoiceLabTakeRunResult {
         var rows: [VoiceLabTakeRow] = []
         for take in value.quote.takes {
             do { try await validate(value, revision: expected) }
@@ -320,6 +321,7 @@ public actor VoiceLabTakeRun {
                         score = try VoiceSpeakerCheck.cosine(owner, vector)
                     }
                 } catch VoiceConsentError.speakerMismatch {
+                    await pool.measured(id: take.synthesis.requestID, voiced: [], record: value.record, phrase: phraseID, passed: false)
                     // This take has already failed locally. Do not spend its approved Scribe request.
                     let qa = VoiceLabTakeQAResult(values: VoiceLabQA(), failures: [.speaker])
                     rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
@@ -329,6 +331,10 @@ public actor VoiceLabTakeRun {
                     continue
                 }
                 let short = voiced.count < SpeakerAudio.windowSize
+                if let score {
+                    await pool.measured(id: take.synthesis.requestID, voiced: voiced, record: value.record,
+                                        phrase: phraseID, passed: score >= value.record.speaker.threshold)
+                }
                 try await validate(value, revision: expected)
                 let store = store
                 let capability = VoiceOperationCapability(quote: take.qa, reserve: {
@@ -353,7 +359,7 @@ public actor VoiceLabTakeRun {
                     qaReceipt: qaReceipt, generated: generated, quote: take, voiceCheck: short ? .waiting : .perTake)
                 if short {
                     try await pool.append(row, voiced: voiced, record: value.record, speaker: speaker,
-                                          store: store, current: inputsAreCurrent)
+                                          store: store, phrase: phraseID, current: inputsAreCurrent)
                 }
                 rows.append(row)
                 await progress(rows)

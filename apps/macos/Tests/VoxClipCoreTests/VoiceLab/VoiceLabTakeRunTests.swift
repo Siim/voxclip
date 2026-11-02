@@ -160,6 +160,23 @@ private actor TakeRunEmbedder: SpeakerEmbedder {
     }
 }
 
+private struct ReviewerGroupSpeaker: SpeakerEmbedder {
+    let modelID = "fixture-calibrated"
+    let dimension = 2
+    func voicedSamples(_ samples: [Float]) async throws -> [Float] { samples }
+    func embed(_ samples: [Float]) async throws -> [Float] {
+        samples.first.map { $0 < 0 } == true ? [0, 1] : [1, 0]
+    }
+}
+
+private actor ReviewerCapturingSpeaker: SpeakerEmbedder {
+    nonisolated let modelID = "fixture-calibrated"
+    nonisolated let dimension = 2
+    var windows: [[Float]] = []
+    func voicedSamples(_ samples: [Float]) async throws -> [Float] { samples }
+    func embed(_ samples: [Float]) async throws -> [Float] { windows.append(samples); return [1, 0] }
+}
+
 @Suite("Bounded take run", .serialized, .timeLimit(.minutes(2)))
 struct VoiceLabTakeRunTests {
     private struct Fixture {
@@ -629,6 +646,139 @@ struct VoiceLabTakeRunTests {
         #expect(fixture.http.value.withLock { $0.qa == 0 })
     }
 
+    @Test func reviewerPoolsConsecutiveGroupsAndAttachesTail() async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let record = try await fixture.store.load(fixture.input.recordID)
+        let speaker = VoiceSpeakerCheck(embedder: ReviewerGroupSpeaker(), calibratedThreshold: 0.45)
+        let pool = VoiceLabShortTakePool()
+        var ids: [UUID] = []
+        // Two 1.5 s takes per group; the final 0.5 s tail joins group two.
+        // The negative samples model an off-voice group without any real voice/model.
+        for (index, frames) in [24_000, 24_000, 24_000, 24_000, 8_000].enumerated() {
+            let id = UUID(); ids.append(id)
+            let row = VoiceLabTakeRow(id: id, index: index, seed: 1, voiceCheck: .waiting)
+            let samples = [Float](repeating: index < 2 ? 0.1 : -0.1, count: frames)
+            try await pool.append(row, voiced: samples, record: record, speaker: speaker, store: fixture.store, current: { true })
+        }
+        let rows = await pool.finish()
+        for id in ids.prefix(2) {
+            #expect(rows[id]?.voiceCheck.evidence?.takeCount == 2)
+            #expect(rows[id]?.voiceCheck.evidence?.voicedFrames == 48_000)
+            #expect(rows[id]?.qa?.values.speakerScore == nil)
+            #expect(rows[id]?.failure == nil)
+        }
+        for id in ids.dropFirst(2) {
+            #expect(rows[id]?.voiceCheck.evidence?.takeCount == 3)
+            #expect(rows[id]?.voiceCheck.evidence?.voicedFrames == 56_000)
+            #expect(rows[id]?.failure == .qa([.speaker]))
+        }
+    }
+
+    @Test func reviewerRetryBorrowsPhraseHistoryThenRecentPlanAndStopsAtMinimum() async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let record = try await fixture.store.load(fixture.input.recordID)
+        let session = VoiceLabVoiceCheckSession()
+        let oldRun = UUID()
+        // Other phrases are more recent, but this phrase's newest and older takes come first.
+        let donors: [(Int, Int, Float)] = [(9, 8_000, 0.2), (9, 8_000, 0.3), (1, 32_000, 0.4), (2, 32_000, 0.5)]
+        for (phrase, frames, tag) in donors {
+            await session.remember(.init(id: UUID(), run: oldRun, phrase: phrase, record: record,
+                                         voiced: [Float](repeating: tag, count: frames)))
+        }
+        // A mismatch for a different record must not influence this record.
+        await session.measured(record: "other-record", run: oldRun, passed: false)
+        let embedder = ReviewerCapturingSpeaker()
+        let speaker = VoiceSpeakerCheck(embedder: embedder, calibratedThreshold: 0.45)
+        let pool = VoiceLabShortTakePool(session: session, retryPhrase: 9)
+        let row = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, voiceCheck: .waiting)
+        try await pool.append(row, voiced: [Float](repeating: 0.1, count: 16_000), record: record,
+                              speaker: speaker, store: fixture.store, phrase: 9, current: { true })
+        let checked = await pool.finish()
+        #expect(checked[row.id]?.voiceCheck.evidence?.takeCount == 4)
+        #expect(checked[row.id]?.voiceCheck.evidence?.voicedFrames == 48_000)
+        #expect(checked.count == 1 && checked[row.id]?.failure == nil)
+        let windows = await embedder.windows
+        #expect(windows.count == 1)
+        let expected = [Float](repeating: 0.1, count: 16_000) + [Float](repeating: 0.3, count: 8_000)
+            + [Float](repeating: 0.2, count: 8_000) + [Float](repeating: 0.5, count: 16_000)
+        #expect(windows.first == expected)
+        // Idempotent finalization cannot reuse the retry or add another embedding.
+        #expect(await pool.finish() == checked)
+        #expect(await embedder.windows.count == 1)
+    }
+
+    @Test func reviewerMixedShortAndLongHistoryFollowsGenerationOrder() async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let record = try await fixture.store.load(fixture.input.recordID)
+        let session = VoiceLabVoiceCheckSession()
+        let embedder = ReviewerCapturingSpeaker()
+        let speaker = VoiceSpeakerCheck(embedder: embedder, calibratedThreshold: 0.45)
+        let original = VoiceLabShortTakePool(session: session)
+        let short = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, voiceCheck: .waiting)
+        try await original.append(short, voiced: [Float](repeating: 0.2, count: 8_000), record: record,
+                                  speaker: speaker, store: fixture.store, phrase: 0, current: { true })
+        // This long take is newer than the short one, even though the short verdict is finalized later.
+        await original.measured(id: UUID(), voiced: [Float](repeating: 0.3, count: 48_000), record: record, phrase: 1, passed: true)
+        _ = await original.finish()
+        let retryPool = VoiceLabShortTakePool(session: session, retryPhrase: 2)
+        let retry = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, voiceCheck: .waiting)
+        try await retryPool.append(retry, voiced: [Float](repeating: 0.1, count: 16_000), record: record,
+                                   speaker: speaker, store: fixture.store, phrase: 2, current: { true })
+        let checked = await retryPool.finish()
+        #expect(checked[retry.id]?.voiceCheck.evidence?.takeCount == 2)
+        let expected = [Float](repeating: 0.1, count: 16_000) + [Float](repeating: 0.3, count: 32_000)
+        #expect(await embedder.windows.last == expected)
+    }
+
+    @Test func reviewerMismatchBlocksEarlierUnmeasuredUntilLaterApprovedMeasuredPass() async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let record = try await fixture.store.load(fixture.input.recordID)
+        let session = VoiceLabVoiceCheckSession()
+        let speaker = VoiceSpeakerCheck(embedder: ReviewerGroupSpeaker(), calibratedThreshold: 0.45)
+        let first = VoiceLabShortTakePool(session: session)
+        let row = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, voiceCheck: .waiting)
+        try await first.append(row, voiced: [Float](repeating: 0.1, count: 8_000), record: record,
+                               speaker: speaker, store: fixture.store, current: { true })
+        let initial = await first.finish()
+        #expect(initial[row.id]?.failure == nil)
+        let failedRun = VoiceLabShortTakePool(session: session)
+        await failedRun.measured(id: UUID(), voiced: [], record: record, phrase: 0, passed: false)
+        // A passing check in this failing approval cannot clear its mismatch.
+        await failedRun.measured(id: UUID(), voiced: [], record: record, phrase: 1, passed: true)
+        let blocked = await failedRun.finish()
+        #expect(blocked[row.id]?.failure == .qa([.speaker]))
+        #expect(!(await session.allowsUnmeasured(record: record.id)))
+        let shortRun = VoiceLabShortTakePool(session: session)
+        let later = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, voiceCheck: .waiting)
+        try await shortRun.append(later, voiced: [Float](repeating: 0.1, count: 8_000), record: record,
+                                  speaker: speaker, store: fixture.store, current: { true })
+        let stillBlocked = await shortRun.finish()
+        #expect(stillBlocked[later.id]?.failure == .qa([.speaker]))
+        let passedRun = VoiceLabShortTakePool(session: session)
+        await passedRun.measured(id: UUID(), voiced: [], record: record, phrase: 0, passed: true)
+        let cleared = await passedRun.finish()
+        #expect(cleared[row.id]?.failure == nil && cleared[later.id]?.failure == nil)
+        #expect(await session.allowsUnmeasured(record: record.id))
+    }
+
+    @Test func reviewerHistoryNeverCrossesConsentRecords() async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let record = try await fixture.store.load(fixture.input.recordID)
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
+        object["voiceName"] = "Changed consent snapshot"
+        let other = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: object))
+        let session = VoiceLabVoiceCheckSession()
+        await session.remember(.init(id: UUID(), run: UUID(), phrase: 0, record: other,
+                                     voiced: [Float](repeating: 0.1, count: 48_000)))
+        let earlier = await session.earlier(record: record, phrase: 0, excluding: UUID())
+        #expect(earlier.isEmpty)
+    }
+
     @Test func shortSingleTakeGetsWordsAndAcousticChecks() async throws {
         let fixture = try await fixture { $0.duration = 1.4 }
         defer { try? FileManager.default.removeItem(at: fixture.root) }
@@ -651,7 +801,7 @@ struct VoiceLabTakeRunTests {
             #expect(row.selectable && row.failure == nil && row.qaReceipt != nil)
             #expect(row.qa?.values.transcriptMatch == 1 && row.qa?.values.speakerScore == nil)
             #expect(row.voiceCheck.evidence?.mode == .unmeasured)
-            #expect(row.voiceCheck.shortPhraseCopy == "voice couldn't be measured (under 3 s of speech)")
+            #expect(row.shortPhraseCopy == "voice couldn't be measured (under 3 s of speech)")
             #expect(row.acceptedRequestIDs.count == 2)
         }
         #expect(fixture.http.value.withLock { $0.qa == 3 && $0.seeds.count == 3 })
@@ -701,14 +851,30 @@ struct VoiceLabTakeRunTests {
             }
             let checked = await pool.finish()
             #expect(checked.count == range.count * 3)
-            for row in pending {
-                let result = try #require(checked[row.id])
-                #expect(result.voiceCheck.evidence?.mode == .pooled)
-                #expect(result.voiceCheck.evidence?.takeCount == range.count * 3)
-                // Independent totals: sum of the supplied raw durations × 16,000 × 0.75.
-                #expect(result.voiceCheck.evidence?.voicedFrames == (range.lowerBound == 0 ? 718_080 : 335_040))
-                #expect(result.qa?.values.speakerScore == 1)
-                allRows.append(result)
+            // Durations are exact hundredths; integer arithmetic avoids losing a sample to binary rounding.
+            let frames = range.flatMap { cases[$0].1 }.map { seconds in
+                let centiseconds: Int = Int((seconds * 100).rounded())
+                return centiseconds * 120
+            }
+            #expect(frames.reduce(0, +) == (range.lowerBound == 0 ? 718_080 : 335_040))
+            var groups: [[Int]] = [], pendingIndices: [Int] = []
+            for index in pending.indices {
+                pendingIndices.append(index)
+                if pendingIndices.reduce(0, { $0 + frames[$1] }) >= 48_000 {
+                    groups.append(pendingIndices); pendingIndices = []
+                }
+            }
+            if !pendingIndices.isEmpty { groups[groups.count - 1] += pendingIndices }
+            for group in groups {
+                let groupFrames = group.reduce(0) { $0 + frames[$1] }
+                for index in group {
+                    let result = try #require(checked[pending[index].id])
+                    #expect(result.voiceCheck.evidence?.mode == .pooled)
+                    #expect(result.voiceCheck.evidence?.takeCount == group.count)
+                    #expect(result.voiceCheck.evidence?.voicedFrames == groupFrames)
+                    #expect(result.qa?.values.speakerScore == 1)
+                    allRows.append(result)
+                }
             }
         }
         #expect(allRows.count == 39 && allRows.filter(\.selectable).count == 37)
