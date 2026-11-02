@@ -19,11 +19,16 @@ private struct ClipTakeKeys: KeyProvider {
 private actor ClipTakeSpeaker: SpeakerEmbedder {
     nonisolated let modelID = "fixture-calibrated"
     nonisolated let dimension = 2
+    private var generated = false
     func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] {
-        let fraction = ClipTakeHTTP.state.withLock { $0.voicedFraction }
+        generated = pcm16k.count < 80_000
+        let fraction = generated ? ClipTakeHTTP.state.withLock { $0.voicedFraction } : 1
         return Array(pcm16k.prefix(Int(Double(pcm16k.count) * fraction)))
     }
-    func embed(_ pcm16k: [Float]) async throws -> [Float] { ClipTakeHTTP.state.withLock { $0.failOwner } ? [0, 1] : [1, 0] }
+    func embed(_ pcm16k: [Float]) async throws -> [Float] {
+        let mismatch = ClipTakeHTTP.state.withLock { $0.failOwner || (generated && $0.failGenerated) }
+        return mismatch ? [0, 1] : [1, 0]
+    }
 }
 private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     struct State {
@@ -37,6 +42,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var malformedSynthesis = false
         var malformedQA = false
         var failOwner = false
+        var failGenerated = false
         var amplitudeVariance = 0.0
         var echoQA = false
         var gets = 0
@@ -149,6 +155,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var decoded = 0
         var cap: Decimal?
         var afterPhrase: ((Int) async throws -> Void)?
+        var finishFailure: VoiceLabTakeFailure?
+        var transformFinish: (([UUID: VoiceLabTakeRow]) -> [UUID: VoiceLabTakeRow])?
+        var fatalResult: VoiceLabTakeFailure?
         var beforePhrase: ((Int) async throws -> Void)?
         var beforeQuote: (() async -> Void)?
         var beforePublish: ((Int) async -> Void)?
@@ -285,7 +294,14 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 await progress(rows)
             }
             try await made?.afterPhrase?(phrase)
+            if let failure = made?.fatalResult { return VoiceLabTakeRunResult(rows: result.rows, end: .fatal, failure: failure) }
             return result
+        }
+        backend.finishVoice = { [weak made] in
+            let original = await real.finishVoice()
+            let checked = made?.transformFinish?(original) ?? original
+            guard let failure = made?.finishFailure else { return checked }
+            return checked.mapValues { $0.checkingVoice(.perTake, failure: failure) }
         }
         backend.publish = { [weak made] phrase, row, input, date in
             made?.publishedIDs.append(row.id)
@@ -309,6 +325,144 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     private func sourceAcceptance(_ plan: ClipTakePlan) async throws -> ClipTakePlan.Acceptance {
         try chooseSourceDuration(plan)
         return try await plan.acceptance()
+    }
+
+    @Test func reviewerUnmeasuredNeedsExplicitSelection() async throws {
+        let fixture = try await fixture(indices: [3])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.3 }
+        await fixture.plan.prepare()
+        await fixture.plan.start(approved: true)
+        let row = try #require(fixture.plan.phrases[0].takes.first?.row)
+        #expect(row.selectable && row.voiceCheck.evidence?.mode == .unmeasured)
+        #expect(fixture.plan.phrases[0].selectedID == nil)
+        #expect(fixture.plan.select(take: row.id, phrase: 0))
+    }
+
+    @Test func reviewerRetryCannotBypassFailedPool() async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        // Prepare source consent first; only generated speech is off voice.
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.5 }
+        await fixture.plan.prepare()
+        ClipTakeHTTP.state.withLock { $0.failGenerated = true }
+        await fixture.plan.start(approved: true)
+        #expect(fixture.plan.phrases.allSatisfy { $0.takes.first?.row.failure == .qa([.speaker]) })
+        await fixture.plan.prepareAnother(phrase: 1)
+        await fixture.plan.tryAnother(phrase: 1, approved: true)
+        let retry = try #require(fixture.plan.phrases[1].takes.last?.row)
+        #expect(retry.voiceCheck.evidence?.mode == .pooled)
+        #expect(retry.failure == .qa([.speaker]) && !retry.selectable)
+        #expect(fixture.plan.phrases[1].selectedID == nil)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 4 && $0.qa == 4 })
+        ClipTakeHTTP.state.withLock { $0.failGenerated = false }
+        await fixture.plan.prepareAnother(phrase: 1)
+        await fixture.plan.tryAnother(phrase: 1, approved: true)
+        let recovered = try #require(fixture.plan.phrases[1].takes.last?.row)
+        #expect(recovered.selectable && recovered.qa?.values.speakerScore == 1)
+        #expect(fixture.plan.phrases[1].selectedID == recovered.id)
+    }
+
+    @Test func reviewerFailedLongTakeBlocksUnmeasuredShortInSameRun() async throws {
+        let fixture = try await fixture(indices: [3, 10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        await fixture.plan.prepare()
+        ClipTakeHTTP.state.withLock { $0.failGenerated = true }
+        fixture.afterPhrase = { phrase in
+            if phrase == 0 { ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.2 } }
+        }
+        await fixture.plan.start(approved: true)
+        #expect(fixture.plan.phrases[0].takes.first?.row.failure == .qa([.speaker]))
+        let short = try #require(fixture.plan.phrases[1].takes.first?.row)
+        #expect(short.voiceCheck.evidence?.mode == .unmeasured)
+        #expect(!short.selectable && short.failure == .qa([.speaker]))
+    }
+
+    @Test(arguments: [VoiceLabTakeFailure.consent(.speakerUnavailable), .provider(.quotaExceeded)])
+    func reviewerFinishedPoolNamesConsentOrProviderFailure(failure: VoiceLabTakeFailure) async throws {
+        let fixture = try await fixture(indices: [3])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.3 }
+        fixture.finishFailure = failure
+        await fixture.plan.prepare()
+        await fixture.plan.start(approved: true)
+        #expect(fixture.plan.phrases[0].status == .failed(TakeFailurePresentation.reason(for: failure)))
+    }
+
+    @Test func reviewerFinalizingVoicePreservesSpecificFatalFailure() async throws {
+        let fixture = try await fixture(indices: [3])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.3 }
+        fixture.fatalResult = .provider(.quotaExceeded)
+        await fixture.plan.prepare()
+        await fixture.plan.start(approved: true)
+        #expect(fixture.plan.phrases[0].status == .failed(TakeFailurePresentation.reason(for: .provider(.quotaExceeded))))
+    }
+
+    @Test(arguments: [false, true])
+    func reviewerUnmeasuredRetryCannotReplaceMeasuredOrExplicitSelection(explicit: Bool) async throws {
+        let fixture = try await fixture(indices: [3])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare()
+        await plan.start(approved: true)
+        let original = try #require(plan.phrases[0].selectedID)
+        if explicit { #expect(plan.select(take: original, phrase: 0)) }
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.3 }
+        // Isolate the selection rule from retry borrowing: model a legitimate under-length result
+        // with a higher timing rank than the existing measured take.
+        let evidence = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordId: fixture.record.id,
+            consentMethod: fixture.record.consentMethod, voicedFrames: 16_000, takeCount: 1)
+        fixture.transformFinish = { rows in
+            rows.mapValues { row in
+                let unmeasured = row.checkingVoice(.shortSpeech(evidence))
+                return VoiceLabTakeRow(id: row.id, index: row.index, seed: row.seed, receipt: row.receipt,
+                    audio: row.audio, qa: unmeasured.qa, score: 1_000, failure: row.failure,
+                    qaReceipt: row.qaReceipt, generated: row.generated, quote: row.quote,
+                    accepted: row.acceptedRequestIDs, voiceCheck: unmeasured.voiceCheck)
+            }
+        }
+        await plan.prepareAnother(phrase: 0)
+        await plan.tryAnother(phrase: 0, approved: true)
+        #expect(plan.phrases[0].takes.last?.row.voiceCheck.evidence?.mode == .unmeasured)
+        #expect(plan.phrases[0].selectedID == original && plan.phrases[0].bestMeasured?.id == original)
+    }
+
+    @Test func reviewerExplicitUnmeasuredChoiceSurvivesMeasuredRetry() async throws {
+        let fixture = try await fixture(indices: [3])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.3 }
+        await fixture.plan.prepare()
+        await fixture.plan.start(approved: true)
+        let original = try #require(fixture.plan.phrases[0].takes.first?.id)
+        #expect(fixture.plan.select(take: original, phrase: 0))
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 1 }
+        await fixture.plan.prepareAnother(phrase: 0)
+        await fixture.plan.tryAnother(phrase: 0, approved: true)
+        #expect(fixture.plan.phrases[0].takes.last?.row.qa?.values.speakerScore == 1)
+        #expect(fixture.plan.phrases[0].selectedID == original)
+    }
+
+    @Test func reviewerMismatchBlocksPreviouslySelectedUnmeasuredTake() async throws {
+        let fixture = try await fixture(indices: [3, 10])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.2 }
+        await fixture.plan.prepare()
+        await fixture.plan.start(approved: true)
+        let original = try #require(fixture.plan.phrases[0].takes.first?.id)
+        #expect(fixture.plan.select(take: original, phrase: 0))
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 1; $0.failGenerated = true }
+        await fixture.plan.prepareAnother(phrase: 1)
+        await fixture.plan.tryAnother(phrase: 1, approved: true)
+        let earlier = try #require(fixture.plan.phrases[0].takes.first?.row)
+        #expect(earlier.failure == .qa([.speaker]) && !earlier.selectable)
+        #expect(fixture.plan.phrases[0].selectedID == nil)
+        ClipTakeHTTP.state.withLock { $0.failGenerated = false }
+        await fixture.plan.prepareAnother(phrase: 1)
+        await fixture.plan.tryAnother(phrase: 1, approved: true)
+        #expect(fixture.plan.phrases[0].takes.first?.row.selectable == true)
+        #expect(fixture.plan.phrases[0].status == .ready)
+        #expect(fixture.plan.phrases[0].selectedID == nil)
     }
 
     @Test func firstRunPoolsThreeShortPhrasesThenRetryBuysOneRequest() async throws {
@@ -337,7 +491,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 4 && $0.qa == 4 })
         #expect(plan.phrases[0].selectedID == originals[0] && plan.phrases[2].selectedID == originals[2])
         #expect(plan.phrases[1].takes.count == 2)
-        #expect(plan.phrases[1].takes.last?.row.voiceCheck.evidence?.mode == .unmeasured)
+        #expect(plan.phrases[1].takes.last?.row.voiceCheck.evidence?.mode == .pooled)
+        #expect(plan.phrases[1].takes.last?.row.voiceCheck.evidence?.takeCount == 2)
     }
 
     @Test func stopFinalizesTheCompletedShortPoolWithoutBuyingExtraAudio() async throws {
@@ -352,9 +507,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await fixture.plan.stop()
         await operation.value
         let rows = fixture.plan.phrases[0].takes.map { "\($0.row.failure), \($0.row.qa), \($0.row.voiceCheck)" }
-        let row = try #require(fixture.plan.phrases[0].selected?.row, "\(rows)")
+        let row = try #require(fixture.plan.phrases[0].takes.first?.row, "\(rows)")
+        #expect(fixture.plan.phrases[0].selectedID == nil)
+        #expect(fixture.plan.select(take: row.id, phrase: 0))
         #expect(row.selectable && row.voiceCheck.evidence?.mode == .unmeasured)
-        #expect(row.voiceCheck.shortPhraseCopy == "voice couldn't be measured (under 3 s of speech)")
+        #expect(row.shortPhraseCopy == "voice couldn't be measured (under 3 s of speech)")
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 && $0.qa == 1 })
     }
 

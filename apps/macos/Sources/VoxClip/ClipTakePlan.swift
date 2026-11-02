@@ -4,6 +4,7 @@ import VoxClipCore
 import VoxClipMedia
 
 @MainActor private final class ClipTakeVoicePool {
+    let session = VoiceLabVoiceCheckSession()
     var value = VoiceLabShortTakePool()
 }
 
@@ -30,6 +31,10 @@ import VoxClipMedia
         var videoChoice: VoiceLabVideoMode?
         var estimatedVoicedSeconds: Double?
         var selected: Take? { takes.first { $0.id == selectedID } }
+        var bestMeasured: Take? {
+            takes.filter { $0.row.selectable && $0.row.qa?.values.speakerScore?.isFinite == true }
+                .max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
+        }
         var originalLength: Double { window.end - window.start }
         var lengthDifference: Double? { selected?.length.map { $0 - originalLength } }
         var nextTakeNumber: Int {
@@ -67,15 +72,18 @@ import VoxClipMedia
                 try await VoiceLabTakeBatchRun(runs: indices.map { runs[$0] }).prepare(inputs, candidates: candidates)
             }
             approve = { batch, indices in
-                pool.value = VoiceLabShortTakePool()
+                pool.value = VoiceLabShortTakePool(session: pool.session, retryPhrase: indices.count == 1 ? indices.first : nil)
                 try await VoiceLabTakeBatchRun(runs: indices.map { runs[$0] }).approve(batch)
             }
             execute = { batch, index, phrase, progress in
-                try await runs[phrase].execute(batch.windows[index].quote, approved: true, keepingPreviousTakes: true, shortTakePool: pool.value, progress: progress)
+                try await runs[phrase].execute(batch.windows[index].quote, approved: true, keepingPreviousTakes: true, shortTakePool: pool.value, phraseID: phrase, progress: progress)
             }
             finishVoice = { await pool.value.finish() }
             discard = { for run in runs { await run.cancel(keepingTakes: true) } }
-            invalidate = { for run in runs { await run.invalidate() } }
+            invalidate = {
+                for run in runs { await run.invalidate() }
+                await pool.session.reset()
+            }
             publish = { phrase, row, input, date in try await runs[phrase].publishForAcceptance(row, input: input, at: date) }
             scratch = { phrase, take in await runs[phrase].scratch(for: take) }
             retire = { phrase, take in await runs[phrase].reject(take) }
@@ -93,6 +101,7 @@ import VoxClipMedia
     let audition: VoiceLabAudition
     @ObservationIgnored private var auditionTurn = UUID()
     @ObservationIgnored private var receivedInBatch: Set<UUID> = []
+    @ObservationIgnored private var fatalPhrases: Set<Int> = []
     @ObservationIgnored private(set) var invalidation: Task<Void, Never>?
     @ObservationIgnored private let project: Project
     @ObservationIgnored private let scope: VoiceLabOutputScope
@@ -416,6 +425,7 @@ import VoxClipMedia
                 for (offset, phrase) in batchIndices.enumerated() {
                     try checkCurrent(version)
                     runningPhrase = phrase
+                    fatalPhrases.remove(phrase)
                     phrases[phrase].status = .generating("Phrase \(phrase + 1) of \(phrases.count)…")
                     let remaining = progress?.remainingEstimate ?? batch.estimate
                     try await checkCap(remaining, version: version)
@@ -427,6 +437,7 @@ import VoxClipMedia
                     try progress?.finish(window: offset, result: result)
                     if result.end == .cancelled || result.end == .invalidated { throw CancellationError() }
                     if result.end == .fatal {
+                        fatalPhrases.insert(phrase)
                         phrases[phrase].status = .failed(problem.isEmpty ? Self.failureCopy(result) : problem)
                         break
                     }
@@ -439,7 +450,10 @@ import VoxClipMedia
             } catch {
                 if revision == version {
                     problem = Self.copy(error)
-                    if let phrase = runningPhrase { phrases[phrase].status = .failed(problem) }
+                    if let phrase = runningPhrase {
+                        fatalPhrases.insert(phrase)
+                        phrases[phrase].status = .failed(problem)
+                    }
                 }
             }
             await finishVoiceChecks(batch: batch, version: version)
@@ -578,7 +592,7 @@ import VoxClipMedia
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
         if phrases[phrase].explicitlySelected, phrases[phrase].selected?.row.selectable == true { return }
-        let best = phrases[phrase].takes.filter { $0.row.selectable }.max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
+        let best = phrases[phrase].bestMeasured
         if best?.id != phrases[phrase].selectedID {
             clearPreparedVideo()
             phrases[phrase].videoChoice = nil
@@ -589,13 +603,20 @@ import VoxClipMedia
     private func finishVoiceChecks(batch: VoiceLabTakeBatch, version: Int) async {
         guard let backend else { return }
         let checked = await backend.finishVoice()
-        for phrase in batchIndices {
-            let waiting = phrases[phrase].takes.contains { $0.row.voiceCheck == .waiting }
+        for phrase in phrases.indices {
             let rows = phrases[phrase].takes.compactMap { checked[$0.id] }
             if !rows.isEmpty { await receive(rows, phrase: phrase, batch: batch, version: version) }
             guard (revision == version || stopping), stillCurrent else { continue }
-            if waiting, !phrases[phrase].takes.contains(where: { $0.row.voiceCheck == .waiting }) {
-                phrases[phrase].status = phrases[phrase].selected != nil ? .ready : .failed("These takes didn't sound right. Edit the words or try again.")
+            guard !rows.isEmpty else { continue }
+            // Preserve fatal/provider errors and Stop's specific message even after local checks drain.
+            switch phrases[phrase].status {
+            case .failed where fatalPhrases.contains(phrase): continue
+            case .stopped: continue
+            default: break
+            }
+            if !phrases[phrase].takes.contains(where: { $0.row.voiceCheck == .waiting }) {
+                let available = phrases[phrase].takes.contains { $0.row.selectable }
+                phrases[phrase].status = available ? .ready : .failed(Self.failureCopy(rows))
             }
         }
     }
@@ -695,9 +716,15 @@ import VoxClipMedia
     }
     private static func failureCopy(_ result: VoiceLabTakeRunResult) -> String {
         switch result.failure ?? result.rows.last?.failure {
-        case .consent(let error): RewriteSession.refusal(error)
-        case .provider(let error): RewriteSession.refusal(error)
+        case .consent(let error): TakeFailurePresentation.reason(for: .consent(error))
+        case .provider(let error): TakeFailurePresentation.reason(for: .provider(error))
         default: "These takes didn't sound right. Edit the words or try again."
         }
+    }
+    private static func failureCopy(_ rows: [VoiceLabTakeRow]) -> String {
+        if let failure = rows.compactMap(\.failure).first(where: { failure in
+            switch failure { case .consent, .provider: true; default: false }
+        }) { return TakeFailurePresentation.reason(for: failure) }
+        return "These takes didn't sound right. Edit the words or try again."
     }
 }
