@@ -26,6 +26,35 @@ public struct VoiceLabLengthRange: Sendable, Equatable {
 }
 
 public enum VoiceLabLengthBudget {
+    /// Planning margins, not speaker calibration. Fast provider speech must not look measurable
+    /// just because the source speaker is slow; trims and non-voiced frames are not evidence.
+    public static let providerRateFloor = 20.0
+    public static let generatedVoicedFraction = 0.8
+
+    public static func generatedVoicedSeconds(text: String, rate: Double) throws -> Double {
+        guard rate.isFinite, rate > 0 else { throw VoiceLabLengthBudgetError.invalidInput }
+        let raw = Double(VoiceLabTextLength.length(text)) / max(rate, providerRateFloor)
+        let trimmed = max(0, raw - VoiceLabPatchConstants.TTS_TRIM_LEAD - VoiceLabPatchConstants.TTS_TRIM_TAIL)
+        return trimmed * generatedVoicedFraction
+    }
+
+    /// Reuse genuinely generated alignment evidence once the project has accepted TTS takes.
+    public static func generatedRate(project: Project) throws -> VoiceLabSpeechRate {
+        let candidates = project.voiceLab.segments.compactMap { segment -> VoiceLabRateCandidate? in
+            guard segment.kind == .tts, segment.candidates.indices.contains(segment.selectedCandidateIndex),
+                  segment.candidates[segment.selectedCandidateIndex].rejected == nil,
+                  let recipe = segment.candidates[segment.selectedCandidateIndex].recipe,
+                  let words = recipe.words, let first = words.first, let last = words.last else { return nil }
+            return VoiceLabRateCandidate(text: words.map(\.text).joined(separator: " "), firstCharStart: first.start, lastCharEnd: last.end)
+        }
+        let corrected = (project.transcript?.words ?? []).map { original in
+            var word = original
+            if word.kind == .word { word.text = project.edits.corrections[word.id] ?? word.text }
+            return word
+        }
+        return try rate(transcript: corrected, pauseThresholdSeconds: project.edits.pauseThresholdSeconds, candidates: candidates)
+    }
+
     public static func rate(transcript: [TimedWord], pauseThresholdSeconds: Double = 1,
                             candidates: [VoiceLabRateCandidate] = []) throws -> VoiceLabSpeechRate {
         var length: Int = 0

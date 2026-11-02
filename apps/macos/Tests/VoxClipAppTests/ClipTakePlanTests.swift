@@ -19,7 +19,10 @@ private struct ClipTakeKeys: KeyProvider {
 private actor ClipTakeSpeaker: SpeakerEmbedder {
     nonisolated let modelID = "fixture-calibrated"
     nonisolated let dimension = 2
-    func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] { pcm16k }
+    func voicedSamples(_ pcm16k: [Float]) async throws -> [Float] {
+        let fraction = ClipTakeHTTP.state.withLock { $0.voicedFraction }
+        return Array(pcm16k.prefix(Int(Double(pcm16k.count) * fraction)))
+    }
     func embed(_ pcm16k: [Float]) async throws -> [Float] { ClipTakeHTTP.state.withLock { $0.failOwner } ? [0, 1] : [1, 0] }
 }
 private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
@@ -28,6 +31,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var seeds: [UInt32] = []
         var duration = 0.5
         var speechMargin = 0.05
+        var voicedFraction = 1.0
         var synthesisStatus = 200
         var failQA = false
         var malformedSynthesis = false
@@ -307,13 +311,60 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         return try await plan.acceptance()
     }
 
+    @Test func firstRunPoolsThreeShortPhrasesThenRetryBuysOneRequest() async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.5 }
+        fixture.afterPhrase = { phrase in
+            if phrase < 2 {
+                #expect(plan.phrases[0].takes.allSatisfy { !$0.row.selectable && $0.row.voiceCheck == .waiting })
+            }
+        }
+        await plan.prepare()
+        #expect(plan.estimate?.units == 3)
+        await plan.start(approved: true)
+        let details = plan.phrases.map { phrase in
+            "\(phrase.status): " + phrase.takes.map { "\($0.row.failure), \($0.row.qa), \($0.row.voiceCheck)" }.joined(separator: "; ")
+        }
+        #expect(plan.phrases.allSatisfy { $0.status == .ready && $0.selected?.row.voiceCheck.evidence?.takeCount == 3 }, "\(details)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 3 && $0.qa == 3 })
+        let originals = plan.phrases.map(\.selectedID)
+        fixture.afterPhrase = nil
+        await plan.prepareAnother(phrase: 1)
+        #expect(plan.estimate?.units == 1)
+        await plan.tryAnother(phrase: 1, approved: true)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 4 && $0.qa == 4 })
+        #expect(plan.phrases[0].selectedID == originals[0] && plan.phrases[2].selectedID == originals[2])
+        #expect(plan.phrases[1].takes.count == 2)
+        #expect(plan.phrases[1].takes.last?.row.voiceCheck.evidence?.mode == .unmeasured)
+    }
+
+    @Test func stopFinalizesTheCompletedShortPoolWithoutBuyingExtraAudio() async throws {
+        let fixture = try await fixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let barrier = ClipTakeBarrier()
+        ClipTakeHTTP.state.withLock { $0.voicedFraction = 0.35 }
+        fixture.beforePhrase = { phrase in if phrase == 1 { await barrier.pause() } }
+        await fixture.plan.prepare()
+        let operation = Task { await fixture.plan.start(approved: true) }
+        await barrier.wait()
+        await fixture.plan.stop()
+        await operation.value
+        let rows = fixture.plan.phrases[0].takes.map { "\($0.row.failure), \($0.row.qa), \($0.row.voiceCheck)" }
+        let row = try #require(fixture.plan.phrases[0].selected?.row, "\(rows)")
+        #expect(row.selectable && row.voiceCheck.evidence?.mode == .unmeasured)
+        #expect(row.voiceCheck.shortPhraseCopy == "voice couldn't be measured (under 3 s of speech)")
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 && $0.qa == 1 })
+    }
+
     @Test func threePhrasesQuoteOneSetAndWaitForApprovalThenFit() async throws {
         let fixture = try await fixture(); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
         #expect(plan.phrases.count == 3)
         await plan.prepare()
         #expect(fixture.preparations == 1 && fixture.decoded == 3)
-        #expect(plan.cost != nil && plan.estimate?.units == 9)
+        #expect(plan.cost != nil && plan.estimate?.units == 3)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
         await plan.start(approved: false)
         #expect(fixture.approved == 0)
@@ -414,7 +465,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 held[take.id] = scratch
             }
         }
-        #expect(ClipTakeHTTP.state.withLock { $0.seeds == [7, 10, 11, 12] })
+        #expect(ClipTakeHTTP.state.withLock { $0.seeds == [7, 8, 9, 10] })
         #expect(plan.phrases[0].takes.count == 3)
         #expect(plan.phrases[0].takes.map(\.number).sorted() == [1, 2, 3])
         #expect(plan.phrases[0].takes.contains { $0.id == original })
@@ -481,7 +532,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         ClipTakeHTTP.state.withLock { $0.duration += 2.5; $0.speechMargin = 0.15 }
         await plan.prepare(); await plan.start(approved: true)
         let phrase = plan.phrases[0]
-        #expect(phrase.takes.count == 3)
+        #expect(phrase.takes.count == 1)
         #expect(phrase.selected != nil && phrase.selected?.fits == false,
                 "\(phrase.takes.map { String(describing: $0.row.failure) })")
         #expect((phrase.lengthDifference ?? 0) > 1)
@@ -505,7 +556,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     @Test func singlePhraseUsesTheSamePlanAndCapsBeforeAnyRequest() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         await fixture.plan.prepare()
-        #expect(fixture.plan.estimate?.units == 3)
+        #expect(fixture.plan.estimate?.units == 1)
         fixture.cap = 0
         await fixture.plan.start(approved: true)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
@@ -532,7 +583,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         ClipTakeHTTP.state.withLock { $0.failQA = true }
         await fixture.plan.prepare(); await fixture.plan.start(approved: true)
-        #expect(fixture.plan.phrases[0].selected == nil && fixture.plan.phrases[0].takes.count == 3)
+        #expect(fixture.plan.phrases[0].selected == nil && fixture.plan.phrases[0].takes.count == 1)
         #expect(fixture.plan.phrases[0].status == .failed("These takes didn't sound right. Edit the words or try again."))
         await #expect(throws: ClipTakePlan.Failure.noSelection) { try await fixture.plan.acceptance() }
     }
@@ -544,7 +595,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             $0.malformedSynthesis = !qa && !lost; $0.malformedQA = qa && !lost
         }
         fixture.lostResponseStage = lost ? qa : nil
-        let attempts = qa || lost ? 3 : 1
+        let attempts = 1
         await fixture.plan.prepare()
         let quotes = try #require(fixture.lastBatch?.windows.first?.quote.takes)
         await fixture.plan.start(approved: true)
@@ -946,9 +997,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.isEmpty })
         session.takeQuotePhrase = 0
         let retry = try #require(session.pricedTakeAction(phrase: 0))
-        #expect(retry.title.contains("Try Another") && session.takeSendLine.contains("only phrase 1"))
+        #expect(retry.title.contains("Try another") && session.takeSendLine.contains("only phrase 1"))
         if case .inline(let amount)? = fixture.plan.cost {
-            #expect(retry.title == "Try Another · " + amount)
+            #expect(retry.title == "Try another · " + amount)
             #expect(retry.title.components(separatedBy: "≈").count <= 2)
         } else { Issue.record("This fixture must exercise the inline retry price") }
         retry.perform()

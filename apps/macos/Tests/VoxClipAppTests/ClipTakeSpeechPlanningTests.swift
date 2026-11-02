@@ -31,79 +31,12 @@ import Testing
         return Double(VoiceLabTextLength.length(text)) / rate.charactersPerSecond
     }
 
-    @Test(arguments: ["Development of the flight simulator game", "And yeah, I keep going,", "The next idea is", "to how", "players can collaborate,"])
-    func tinyWindowsRefuseBeforeDecodingOrQuoting(text: String) throws {
+    @Test func casualShortPhraseCanBePlannedWithoutExpandingSource() throws {
         let (project, envelope) = try fixture()
-        let snapshot = project
-        let change = hunk(50...50, text: text)
-        let window = try VoiceLabWindowPlanner.place(project: project, scope: .full, envelope: envelope,
-            firstWordId: "w50", lastWordId: "w50")
-        let silence = try VoiceLabWindowPlanner.lendableSilence(project: project, scope: .full, window: window)
-        let rate = try VoiceLabLengthBudget.rate(transcript: RewriteSession.corrected(project))
-        let meter = try VoiceLabFitMeter.measure(text: text, window: window, incomingSilence: silence.incoming,
-            outgoingSilence: silence.outgoing, rate: rate.charactersPerSecond, newWords: text)
-        var decoded = 0
-        #expect(throws: ClipTakePlan.Failure.insufficientSpeechWindow(phrase: 1, maximumSeconds: meter.upperBoundSeconds)) {
-            _ = try ClipTakePlan(project: project, scope: .full, envelope: envelope, hunks: [change], makeInput: { _ in
-                decoded += 1
-                throw ClipTakePlan.Failure.stale
-            })
-        }
-        #expect(meter.upperBoundSeconds < ClipTakePlan.minimumGeneratedSpeechSeconds)
-        #expect(decoded == 0 && project == snapshot)
-    }
-
-    @Test(arguments: ["Development of the flight simulator game", "And yeah, I keep going,", "The next idea is", "to how", "players can collaborate,"])
-    func longSourceWindowCannotSubstituteForGeneratedSpeech(text: String) throws {
-        let (project, envelope) = try fixture()
-        let window = try VoiceLabWindowPlanner.place(project: project, scope: .full, envelope: envelope,
-            firstWordId: "w50", lastWordId: "w57")
-        #expect(window.end - window.start > ClipTakePlan.minimumGeneratedSpeechSeconds)
-        let estimate = try speechSeconds(text, project: project)
-        #expect(estimate < ClipTakePlan.minimumGeneratedSpeechSeconds)
-        #expect(throws: ClipTakePlan.Failure.insufficientPlannedSpeech(phrase: 1, estimatedSeconds: estimate)) {
-            try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope, hunks: [hunk(50...57, text: text)])
-        }
-    }
-
-    @Test func structuralRefusalDoesNotDependOnWordCountOrTextEstimate() throws {
-        let (project, envelope) = try fixture()
-        let text = String(repeating: "a", count: 100)
-        #expect(try speechSeconds(text, project: project) > ClipTakePlan.minimumGeneratedSpeechSeconds)
-        do {
-            _ = try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope, hunks: [hunk(50...50, text: text)])
-            Issue.record("A subsecond source window must not buy three unsupported takes.")
-        } catch let ClipTakePlan.Failure.insufficientSpeechWindow(phrase, maximumSeconds) {
-            #expect(phrase == 1 && maximumSeconds < ClipTakePlan.minimumGeneratedSpeechSeconds)
-        }
-    }
-
-    @Test func sourceEdgeSilenceCannotMakeAWindowVerifiable() throws {
-        let (project, envelope) = try fixture(duration: 121)
-        let window = try VoiceLabWindowPlanner.place(project: project, scope: .full, envelope: envelope,
-            firstWordId: "w99", lastWordId: "w99")
-        #expect(window.end - window.start > 70 && window.rightSeam.kind == .none)
-        do {
-            _ = try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope,
-                hunks: [hunk(99...99, text: String(repeating: "a", count: 100))])
-            Issue.record("Source-edge silence is not generated speaker evidence.")
-        } catch let ClipTakePlan.Failure.insufficientSpeechWindow(phrase, maximumSeconds) {
-            #expect(phrase == 1 && maximumSeconds < ClipTakePlan.minimumGeneratedSpeechSeconds)
-        }
-    }
-
-    @Test func trimMarginsPunctuationAndWhitespaceDoNotBuySpeakerTime() throws {
-        let (project, envelope) = try fixture()
-        let rate = try VoiceLabLengthBudget.rate(transcript: RewriteSession.corrected(project))
-        let count = Int(ceil(rate.charactersPerSecond * ClipTakePlan.minimumGeneratedSpeechSeconds)) - 1
-        let text = String(repeating: "a", count: count) + String(repeating: ".", count: 200) + "   "
-        let prepared = EditingPrimitives.splitWords(text).joined(separator: " ")
-        let estimate = try speechSeconds(prepared, project: project)
-        #expect(estimate < ClipTakePlan.minimumGeneratedSpeechSeconds)
-        #expect(try VoiceLabLengthBudget.estimate(text: prepared, rate: rate.charactersPerSecond) > ClipTakePlan.minimumGeneratedSpeechSeconds)
-        #expect(throws: ClipTakePlan.Failure.insufficientPlannedSpeech(phrase: 1, estimatedSeconds: estimate)) {
-            try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope, hunks: [hunk(50...57, text: text)])
-        }
+        let change = hunk(50...50, text: "to how.")
+        let planned = try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope, hunks: [change])
+        #expect(planned.count == 1 && planned[0].text == "to how.")
+        #expect(planned[0].indices == [0])
     }
 
     @Test func sufficientlyLongOneTokenKeepsExactTextWindowAndSourceTimings() throws {
@@ -157,42 +90,49 @@ import Testing
         try VoiceLabRenderContract.validatePlacement(final, scope: scope, windows: phrases.map(\.window))
     }
 
-    @Test func entireSetIsCheckedBeforeAnyInputAndExcludedShortChangeIsNotExpanded() throws {
+    @Test(arguments: ["Development of the flight simulator game", "And yeah, I keep going,", "The next idea is", "to how", "players can collaborate,"])
+    func shortPhrasesKeepTheirReviewedWindowAndOfferAnAdvisory(text: String) throws {
         let (project, envelope) = try fixture()
-        let long = hunk(20...27, text: "The players can safely collaborate with each other.")
-        let short = hunk(70...70, text: "to how")
-        var decoded = 0
-        do {
-            _ = try ClipTakePlan(project: project, scope: .full, envelope: envelope, hunks: [long, short], makeInput: { _ in
-                decoded += 1
-                throw ClipTakePlan.Failure.stale
-            })
-            Issue.record("An unsupported second phrase must refuse the complete set before payment.")
-        } catch let ClipTakePlan.Failure.insufficientSpeechWindow(phrase, maximumSeconds) {
-            #expect(phrase == 2 && maximumSeconds < ClipTakePlan.minimumGeneratedSpeechSeconds)
+        let snapshot = project
+        for range in [50...50, 50...57] {
+            let phrases = try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope,
+                hunks: [hunk(range, text: text)])
+            #expect(phrases.count == 1 && phrases[0].text == text)
+            #expect(phrases[0].window.firstWordId == "w50" && phrases[0].window.lastWordId == "w\(range.upperBound)")
+            #expect(try #require(phrases[0].estimatedVoicedSeconds) < ClipTakePlan.minimumGeneratedSpeechSeconds)
         }
-        let remaining = try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope, hunks: [long])
-        #expect(decoded == 0 && remaining.count == 1 && remaining[0].text == long.newTokens.joined(separator: " "))
-        #expect(remaining[0].window.end < (try #require(project.transcript?.words[70].start)))
+        #expect(project == snapshot)
     }
 
-    @Test func missingSpeechRateHasAnExplicitAvailabilityRefusal() throws {
+    @Test func aSetContainingAShortPhraseDoesNotDecodeOrExpandDuringPlanning() throws {
+        let (project, envelope) = try fixture()
+        var decoded = 0
+        let plan = try ClipTakePlan(project: project, scope: .full, envelope: envelope,
+            hunks: [hunk(20...27, text: "The players can safely collaborate with each other."), hunk(70...70, text: "to how")],
+            makeInput: { _ in decoded += 1; throw ClipTakePlan.Failure.stale })
+        #expect(decoded == 0 && plan.phrases.count == 2)
+        #expect(plan.phrases[1].text == "to how" && plan.phrases[1].window.firstWordId == "w70")
+        #expect(plan.phrases[0].window.end < plan.phrases[1].window.start)
+    }
+
+    @Test func missingTranscriptRateUsesTheProviderFloorForAnAdvisory() throws {
         var (project, envelope) = try fixture()
         let window = try VoiceLabWindowPlanner.place(project: project, scope: .full, envelope: envelope,
             firstWordId: "w50", lastWordId: "w57")
-        project.transcript?.words = []
-        let phrase = ClipTakePlan.Phrase(id: 0, indices: [0], text: "unchanged prepared wording", window: window)
-        #expect(throws: ClipTakePlan.Failure.speechEstimateUnavailable) {
-            try ClipTakePlan.validateSpeechAvailability([phrase], project: project, scope: .full)
+        let phrase = ClipTakePlan.Phrase(id: 0, indices: [0], text: "to how", window: window)
+        let untimedCharacters = (project.transcript?.words ?? []).map { original in
+            var word = original; word.text = "."; return word
         }
+        project.transcript?.words = untimedCharacters
+        let estimate = try ClipTakePlan.validateSpeechAvailability([phrase], project: project, scope: .full)
+        #expect(try #require(estimate[0]) < ClipTakePlan.minimumGeneratedSpeechSeconds)
     }
 
-    @Test func availabilityCopyOffersNoFakeWiderScopeOrPaidRetryRemedy() {
-        for failure in [ClipTakePlan.Failure.insufficientSpeechWindow(phrase: 2, maximumSeconds: 0.5),
-                        .insufficientPlannedSpeech(phrase: 2, estimatedSeconds: 2.8), .speechEstimateUnavailable] {
-            let copy = ClipTakePlan.copy(failure)
-            #expect(copy.contains("re-record") && copy.contains("Nothing was sent for takes.") && copy.contains("Your edits are saved."))
-            #expect(!copy.contains("wider scope") && !copy.contains("try again") && !copy.contains("doesn't sound like"))
-        }
+    @Test func sourceEdgeSilenceDoesNotIncreaseTheAdvisory() throws {
+        let (project, envelope) = try fixture(duration: 121)
+        let phrases = try ClipTakePlan.preparePlan(project: project, scope: .full, envelope: envelope,
+            hunks: [hunk(99...99, text: "to how")])
+        #expect(phrases[0].window.end - phrases[0].window.start > 70)
+        #expect(try #require(phrases[0].estimatedVoicedSeconds) < 1)
     }
 }

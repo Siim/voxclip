@@ -9,7 +9,7 @@ struct VoiceLabSpeechContextPlanTests {
         project.voiceLab.segments = []
         project.voiceLab.assets = []
         project.edits = ProjectEdits()
-        let sentence = ["We", "carefully", "explain", "the", "original", "idea", "with", "clear", "useful", "examples."]
+        let sentence = ["We", "thoughtfully", "contextualize", "the", "unmodified", "implementation", "with", "comprehensive", "multidisciplinary", "demonstrations."]
         project.transcript?.words = (0..<120).map { index in
             let start = 0.5 + Double(index) * 0.7
             return TimedWord(id: "w\(index)", text: sentence[index % sentence.count], start: start, end: start + 0.5,
@@ -52,7 +52,7 @@ struct VoiceLabSpeechContextPlanTests {
         let project = try fixture(), snapshot = project
         let plan = try proposal(request(project))
         let phrase = try #require(plan.phrases.first)
-        #expect(phrase.text == "We carefully explain the better idea with clear useful examples.")
+        #expect(phrase.text == "We thoughtfully contextualize the better implementation with comprehensive multidisciplinary demonstrations.")
         #expect(phrase.sourceWords == Array(project.transcript!.words[0...9]))
         #expect(phrase.hunk.sourceWordIds == (0...9).map { "w\($0)" })
         #expect(phrase.hunk.newTokens.joined(separator: " ") == phrase.text)
@@ -82,8 +82,8 @@ struct VoiceLabSpeechContextPlanTests {
         project.edits.corrections["w1"] = "accurately"
         let correction = hunk(7, text: "precise", kind: .textOnly)
         let included = try proposal(request(project, hunks: [hunk(4), correction], selected: [0, 1]))
-        #expect(included.phrases[0].text == "We accurately explain the better idea with precise useful examples.")
-        #expect(included.phrases[0].sourceWords[1].text == "carefully")
+        #expect(included.phrases[0].text == "We accurately contextualize the better implementation with precise multidisciplinary demonstrations.")
+        #expect(included.phrases[0].sourceWords[1].text == "thoughtfully")
         #expect(VoiceLabSpeechContextPlan.propose(request(project, hunks: [hunk(4), correction]), envelope: envelope(project))
                 == .refused(.insufficientSpeech(hunkIndex: 0)))
     }
@@ -136,11 +136,11 @@ struct VoiceLabSpeechContextPlanTests {
 
     @Test func shortSentenceCanGrowByWholeAdjacentSentencesOnly() throws {
         var project = try fixture()
-        project.transcript?.words[1].text = "carefully."
+        project.transcript?.words[1].text = "thoughtfully."
         let plan = try proposal(request(project, hunks: [hunk(0, text: "They")]))
         #expect(plan.phrases[0].sourceWords.map(\.id) == (0...9).map { "w\($0)" })
-        #expect(plan.phrases[0].text.hasPrefix("They carefully. explain"))
-        #expect(plan.phrases[0].text.hasSuffix("examples."))
+        #expect(plan.phrases[0].text.hasPrefix("They thoughtfully. contextualize"))
+        #expect(plan.phrases[0].text.hasSuffix("demonstrations."))
     }
 
     @Test func overlapReturnsMergeReviewInsteadOfDoubleApplying() throws {
@@ -193,24 +193,23 @@ struct VoiceLabSpeechContextPlanTests {
         #expect(VoiceLabSpeechContextPlan.propose(request(project), envelope: envelope(project)) == .refused(.invalidInput))
     }
 
-    @Test func calibratedMinimumRequiresAnActualSourceWordOfMargin() throws {
+    @Test func conservativeVoicedEstimateStillRequiresASourceWordOfMargin() throws {
         for duration in [0.5, 0.49] {
             var project = try fixture()
             project.media.source.durationSeconds = 121
             let originals = try #require(project.transcript).words
             project.transcript?.words = originals.enumerated().map { index, original in
                 var word = original
-                word.text = index == 6 || index % 10 == 9 ? "word." : "word"
-                word.start = Double(index)
-                word.end = word.start + duration
+                word.text = String(repeating: "a", count: 10) + (index == 8 || index % 10 == 9 ? "." : "")
+                word.start = Double(index); word.end = word.start + duration
                 word.rawStart = word.start; word.rawEnd = word.end
                 return word
             }
-            let input = request(project, hunks: [hunk(4, text: "term")], approved: (0...6).map { "w\($0)" })
+            let input = request(project, hunks: [hunk(4, text: String(repeating: "b", count: 10))], approved: (0...8).map { "w\($0)" })
             let outcome = VoiceLabSpeechContextPlan.propose(input, envelope: envelope(project))
             if duration == 0.5 {
-                guard case .reviewRequired(let plan) = outcome else { Issue.record("Expected exact 3.5-second boundary"); continue }
-                #expect(plan.phrases[0].estimatedSpeechSeconds == 3.5)
+                guard case .reviewRequired(let plan) = outcome else { Issue.record("Expected a sentence with conservative voiced margin"); continue }
+                #expect(abs(plan.phrases[0].estimatedSpeechSeconds - 3.528) < 0.000_001)
                 #expect(plan.phrases[0].marginSeconds == 0.5)
             } else {
                 #expect(outcome == .refused(.insufficientSpeech(hunkIndex: 0)))
