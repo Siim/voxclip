@@ -131,7 +131,8 @@ public sealed partial class TranscriptView : UserControl
         UseSystemFocusVisuals = true;
         selectionFlyout = new(this, () => MakeClipRequested?.Invoke(this, EventArgs.Empty), () => model?.CutSelection(),
             () => model?.CutSelection(true), RequestRewrite);
-        AutomationProperties.SetName(this, "Transcript. Select words to cut. Enter corrects spelling. F2 edits a proposed change. Control K makes a clip.");
+        AutomationProperties.SetAutomationId(this, "Editor.Transcript");
+        AutomationProperties.SetName(this, "Transcript. Select words to cut. Enter corrects spelling. F2 edits a proposed change. Control Alt K makes a clip.");
         repeater = new ItemsRepeater
         {
             Layout = new StackLayout { Spacing = 14 },

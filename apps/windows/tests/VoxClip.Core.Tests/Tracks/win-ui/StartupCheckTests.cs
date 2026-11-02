@@ -333,6 +333,10 @@ public sealed class StartupCheckTests
         Assert.Contains("$check.processId -ne $app.Id", script);
         Assert.Contains("IsWindowVisible($windowHandle)", script);
         Assert.Contains("$transcript.Current.IsOffscreen", script);
+        Assert.Contains("::AutomationIdProperty, 'Editor.Transcript'", script);
+        var transcript = File.ReadAllText(Path.Combine(root.FullName, "apps/windows/src/VoxClip.App/Controls/TranscriptView.cs"));
+        Assert.Contains("SetAutomationId(this, \"Editor.Transcript\")", transcript);
+        Assert.Contains("Control Alt K makes a clip.", transcript);
         Assert.Contains("$observed.status = 'ok'", script);
         Assert.Contains("$observed.status -ne 'ok'", script);
         Assert.Contains("OpenInputDesktop", script);

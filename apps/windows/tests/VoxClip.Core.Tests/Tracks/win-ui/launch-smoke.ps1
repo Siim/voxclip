@@ -85,7 +85,13 @@ try {
             $window = [System.Windows.Automation.AutomationElement]::FromHandle($app.MainWindowHandle)
             $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Accept and continue')
             $accept = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
-            if ($accept) { $accept.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); $accepted = $true }
+            if ($accept) {
+                $accept.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+                $accepted = $true
+                # First-use terms precede normal services and the Editor. Keep the
+                # same render budget after that explicit decision, once only.
+                $deadline = [DateTime]::UtcNow.AddSeconds(15)
+            }
         }
         Start-Sleep -Milliseconds 100
     }
@@ -103,7 +109,7 @@ try {
     [void][SmokeDesktop]::GetWindowThreadProcessId($windowHandle, [ref]$foregroundProcess)
     if ($foregroundProcess -ne $app.Id) { throw 'The foreground Editor does not belong to the owned process.' }
     $window = [System.Windows.Automation.AutomationElement]::FromHandle($windowHandle)
-    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, 'Transcript. Select words to cut. Enter corrects spelling. Control K makes a clip.')
+    $condition = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'Editor.Transcript')
     $transcript = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
     if (-not $transcript -or $transcript.Current.IsOffscreen) { throw 'The visible Editor transcript is absent from UIA.' }
     $opens += [ordered]@{ attempt=$attempt; processId=$app.Id; status='ok'; rootLoaded=$check.rootLoaded; rendered=$check.rendered; transcriptVisible=$true }

@@ -184,3 +184,5 @@ edit/history operation must fail the dirty/history tests; allowing disabled
 `ShellCommand.TryExecute` must fail its execution test; ignoring composition must
 fail the IME test; retaining multiple preview tabs must fail replacement tests.
 These negative controls and the tests themselves are authored, not locally run.
+
+The hosted launch smoke identifies the visible transcript by the stable `Editor.Transcript` automation ID. First-use Windows component terms must still be accepted through the actual dialog; that explicit decision starts the existing 15-second Editor rendering budget once. Ordinary opens with accepted terms keep their original budget. Every open still requires a fresh rendered self-check, matching process and foreground ownership, and visible transcript UIA; the ordinary-open run requires five successes.
