@@ -102,6 +102,7 @@ import SwiftUI
     func makeNSView(context: Context) -> InlineGuardedButton { InlineGuardedButton() }
     func updateNSView(_ button: InlineGuardedButton, context: Context) {
         button.title = title; button.accented = accented; button.controlHeight = height
+        button.isEnabled = context.environment.isEnabled
         button.actionHandler = action; button.returnHandler = keyAction; button.spaceHandler = spaceAction
         button.setAccessibilityLabel(title); button.setAccessibilityHelp(help)
         button.invalidateIntrinsicContentSize(); button.needsDisplay = true
@@ -120,13 +121,14 @@ import SwiftUI
         setButtonType(.momentaryPushIn)
     }
     required init?(coder: NSCoder) { nil }
-    @objc private func pressed() { actionHandler() }
-    override var acceptsFirstResponder: Bool { true }
+    @objc private func pressed() { if isEnabled { actionHandler() } }
+    override var acceptsFirstResponder: Bool { isEnabled }
     override var intrinsicContentSize: NSSize {
         let width = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium)]).width
         return NSSize(width: ceil(width) + 18, height: controlHeight)
     }
     override func keyDown(with event: NSEvent) {
+        guard isEnabled else { return }
         if event.keyCode == 36 || event.keyCode == 76 { returnHandler?(event); return }
         if event.keyCode == 49, let spaceHandler { if !event.isARepeat { spaceHandler() }; return }
         super.keyDown(with: event)
@@ -134,13 +136,14 @@ import SwiftUI
     override func draw(_ dirtyRect: NSRect) {
         let rect = bounds.insetBy(dx: 0.5, dy: 0.5)
         let shape = NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5)
-        (accented ? DesignValues.nsColor(isHighlighted ? "tint.pressed" : "tint.default") : DesignValues.nsColor("bg.muted")).setFill(); shape.fill()
-        if !accented { DesignValues.nsColor("line.edge").setStroke(); shape.stroke() }
+        let usesAccent = accented && isEnabled
+        (usesAccent ? DesignValues.nsColor(isHighlighted ? "tint.pressed" : "tint.default") : DesignValues.nsColor("bg.muted")).setFill(); shape.fill()
+        if !usesAccent { DesignValues.nsColor("line.edge").setStroke(); shape.stroke() }
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
-            .foregroundColor: accented ? DesignValues.nsColor("tint.on") : DesignValues.nsColor("text.primary")]
+            .foregroundColor: !isEnabled ? DesignValues.nsColor("text.tertiary") : usesAccent ? DesignValues.nsColor("tint.on") : DesignValues.nsColor("text.primary")]
         let size = (title as NSString).size(withAttributes: attributes)
         (title as NSString).draw(at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2), withAttributes: attributes)
-        if window?.firstResponder === self { DesignValues.nsColor("text.primary").setStroke(); shape.lineWidth = 2; shape.stroke() }
+        if isEnabled && window?.firstResponder === self { DesignValues.nsColor("text.primary").setStroke(); shape.lineWidth = 2; shape.stroke() }
     }
 }

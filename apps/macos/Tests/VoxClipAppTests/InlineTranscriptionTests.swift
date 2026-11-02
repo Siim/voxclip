@@ -156,7 +156,7 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         await opening.value
         #expect(flow.canStart)
     }
-    @Test func missingKeyHasNoPaidPrimaryAndSaveOnlyRevealsIt() async throws {
+    @Test func missingKeyDisablesPaidApprovalAndSavingDoesNotSend() async throws {
         let model = try editor(); defer { model.close() }
         let keys = InlineTranscriptionKeys()
         model.app.providerKeyStoreOverride = keys
@@ -603,9 +603,28 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
                 func buttons(_ view: NSView) -> [InlineGuardedButton] {
                     (view as? InlineGuardedButton).map { [$0] } ?? view.subviews.flatMap(buttons)
                 }
-                let titles = buttons(host).map(\.title)
-                if state == "missing-key" || state == "folded" || state == "running" { #expect(titles.isEmpty, "\(state): \(titles)") }
-                else { #expect(titles.contains(flow.primaryTitle), "\(state): \(titles)") }
+                let primaries = buttons(host), titles = primaries.map(\.title)
+                if state == "folded" || state == "running" { #expect(titles.isEmpty, "\(state): \(titles)") }
+                else {
+                    let primary = try #require(primaries.first { $0.title == flow.primaryTitle }, "\(state): \(titles)")
+                    #expect(primary.isEnabled == flow.canStart, "\(state): primary availability")
+                    if state == "missing-key" {
+                        #expect(!primary.acceptsFirstResponder)
+                        var activations = 0
+                        primary.actionHandler = { activations += 1 }
+                        primary.returnHandler = { _ in activations += 1 }
+                        primary.spaceHandler = { activations += 1 }
+                        primary.performClick(nil)
+                        for code in [UInt16(36), UInt16(49)] {
+                            let event = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+                                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil,
+                                characters: code == 36 ? "\r" : " ", charactersIgnoringModifiers: code == 36 ? "\r" : " ",
+                                isARepeat: false, keyCode: code))
+                            primary.keyDown(with: event)
+                        }
+                        #expect(activations == 0)
+                    }
+                }
                 #expect(host.window == nil)
             }
             model.close()

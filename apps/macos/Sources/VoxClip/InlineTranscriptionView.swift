@@ -145,7 +145,9 @@ import VoxClipCore
                 HStack {
                     SecureField("Paste your ElevenLabs API key", text: $transcription.key).textFieldStyle(.roundedBorder)
                         .focused($keyFocused).onSubmit { Task { await transcription.saveKey() } }
-                    if !transcription.key.isEmpty && !transcription.savingKey { Button("Save Key") { Task { await transcription.saveKey() } } }
+                    Button(transcription.savingKey ? "Saving…" : "Save Key") { Task { await transcription.saveKey() } }
+                        .disabled(transcription.key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || transcription.savingKey)
+                        .accessibilityIdentifier("transcription.saveKey")
                 }
                 Link("Make a restricted key ›", destination: URL(string: "https://elevenlabs.io/app/settings/api-keys")!)
                 Text("Saved in the macOS Keychain. Saving makes no request.").font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary"))
@@ -193,9 +195,9 @@ import VoxClipCore
         }.padding(.leading, 80)
     }
     @ViewBuilder private var buttons: some View {
-        if transcription.canStart {
+        if transcription.canStart || transcription.paid {
             InlinePrimaryButton(title: transcription.primaryTitle, accented: !(transcription.again && !transcription.againConfirmed),
-                help: transcription.again && !transcription.againConfirmed ? transcription.warning : transcription.sendLine,
+                help: transcription.paid && !transcription.hasKey ? "Save your ElevenLabs API key to enable transcription." : transcription.again && !transcription.againConfirmed ? transcription.warning : transcription.sendLine,
                 action: { transcription.activate() }, keyAction: { event in
                     transcription.pressReturn(timestamp: event.timestamp, now: ProcessInfo.processInfo.systemUptime,
                         repeatKey: event.isARepeat, command: event.modifierFlags.contains(.command), focusedPrimary: true)
@@ -203,13 +205,14 @@ import VoxClipCore
                     if transcription.again && !transcription.paid { transcription.activate() }
                     else { model.transport(" ") }
                 })
+                .disabled(!transcription.canStart)
                 .accessibilityIdentifier("transcription.start").auditButtonAction("transcription.start")
         }
         Button(transcription.cancelTitle) { transcription.notNow() }.buttonStyle(.plain).focused($cancelFocused)
             .accessibilityIdentifier("transcription.notNow").auditButtonAction("transcription.notNow")
     }
     private var actionNote: some View {
-        Text(transcription.paid ? !transcription.hasKey ? "Upload and Transcribe appears once the key is saved." : "\(durationLabel(model.sourceDuration)) at \(transcription.rate.map { InlineTranscription.money($0) } ?? "an unknown rate") an hour" : "Free. Nothing leaves this Mac.")
+        Text(transcription.paid ? !transcription.hasKey ? "Paste your ElevenLabs key above, then choose Save Key." : "\(durationLabel(model.sourceDuration)) at \(transcription.rate.map { InlineTranscription.money($0) } ?? "an unknown rate") an hour" : "Free. Nothing leaves this Mac.")
             .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary"))
     }
     private var folded: some View {
