@@ -25,14 +25,14 @@ import VoxClipCore
                             .accessibilityIdentifier("voxclip.voiceChange.discover")
                     }
                     if !session.voices.isEmpty || !session.models.isEmpty {
-                        Picker("Your voice", selection: Binding(get: { session.selectedVoiceID }, set: session.chooseVoice)) {
+                        Picker("Your voice", selection: Binding(get: { session.selectedVoiceID }, set: { session.chooseVoice($0) })) {
                             Text("Choose your voice").tag(Optional<String>.none)
                             ForEach(session.voices, id: \.id) { voice in
                                 Text(voice.voiceName).tag(Optional(voice.id))
                             }
                         }.disabled(session.busy || session.hasPaidWork)
                             .accessibilityIdentifier("voxclip.voiceChange.voice")
-                        Picker("Conversion model", selection: Binding(get: { session.selectedModelID }, set: session.chooseModel)) {
+                        Picker("Conversion model", selection: Binding(get: { session.selectedModelID }, set: { session.chooseModel($0) })) {
                             Text("Choose a model").tag(Optional<String>.none)
                             ForEach(session.models, id: \.id) { model in
                                 Text(model.name).tag(Optional(model.id))

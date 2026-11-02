@@ -61,7 +61,7 @@ import VoxClipCore
                     }
                     if let document = session.document, !document.placements.isEmpty {
                         ContextDemoPlacementList(document: document, selected: session.selectedPlacementID,
-                            select: session.selectPlacement)
+                            select: { session.selectPlacement($0) })
                     }
                     if let message = session.message, !message.isEmpty {
                         Text(message).foregroundStyle(DesignValues.color("text.secondary"))
@@ -88,7 +88,7 @@ import VoxClipCore
             }
             .accessibilityIdentifier("voxclip.demo.targetKind")
             if session.targetKind == .webPage {
-                TextField("https://example.com", text: Binding(get: { session.urlText }, set: session.setURL))
+                TextField("https://example.com", text: Binding(get: { session.urlText }, set: { session.setURL($0) }))
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Demonstration webpage URL")
                     .accessibilityIdentifier("voxclip.demo.url")
@@ -99,14 +99,14 @@ import VoxClipCore
                     .accessibilityIdentifier("voxclip.demo.chooseProject")
                 if let url = session.projectURL { Text(url.path).textSelection(.enabled) }
                 if session.projectURL != nil {
-                    ContextDemoProjectSetupView(launch: session.projectLaunch, usePreviewURL: session.useProjectPreviewURL)
+                    ContextDemoProjectSetupView(launch: session.projectLaunch, usePreviewURL: { session.useProjectPreviewURL($0) })
                 }
             }
             if session.targetKind != .webPage {
                 windowPicker
                 ContextDemoDesktopReviewView(session: session)
             }
-            Stepper(value: Binding(get: { session.captureSeconds }, set: session.setCaptureSeconds), in: 1...30, step: 1) {
+            Stepper(value: Binding(get: { session.captureSeconds }, set: { session.setCaptureSeconds($0) }), in: 1...30, step: 1) {
                 Text("Capture up to \(Int(session.captureSeconds)) seconds")
             }
             .accessibilityIdentifier("voxclip.demo.duration")
@@ -238,10 +238,10 @@ private struct ContextDemoReviewView: View {
                 .foregroundStyle(DesignValues.color("text.secondary"))
         }
     }
-    private func field(_ title: String, value: Double, set: @escaping (Double) -> Void) -> some View {
+    private func field(_ title: String, value: Double, set: @escaping @MainActor @Sendable (Double) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-            TextField(title, value: Binding(get: { value }, set: set), format: .number.precision(.fractionLength(0...3)))
+            TextField(title, value: Binding(get: { value }, set: { set($0) }), format: .number.precision(.fractionLength(0...3)))
                 .textFieldStyle(.roundedBorder).accessibilityLabel(title)
         }
     }
@@ -250,7 +250,7 @@ private struct ContextDemoReviewView: View {
 private struct ContextDemoPlacementList: View {
     let document: ContextDemoDocument
     let selected: String?
-    let select: (String) -> Void
+    let select: @MainActor @Sendable (String) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Placed demonstrations").font(VCType.body.font(.semibold)).accessibilityAddTraits(.isHeader)

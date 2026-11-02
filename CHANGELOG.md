@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Keep Mac demonstration and voice-change controls compatible with the supported compiler.
+
 - Keep offline compiler and consent checks aligned with the integrated Mac implementation.
 
 - Preserve schema v4 when regenerating the Voice Lab project contract.

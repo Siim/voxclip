@@ -3,7 +3,7 @@ import VoxClipCore
 
 @MainActor struct ContextDemoProjectSetupView: View {
     @Bindable var launch: ContextDemoProjectLaunchSession
-    let usePreviewURL: (String) -> Void
+    let usePreviewURL: @MainActor @Sendable (String) -> Void
     @State private var previewURL = ""
 
     var body: some View {
@@ -102,7 +102,7 @@ import VoxClipCore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Allow this page’s standard JavaScript", isOn: Binding(get: { session.allowsPageScripts }, set: session.setAllowsPageScripts))
+            Toggle("Allow this page’s standard JavaScript", isOn: Binding(get: { session.allowsPageScripts }, set: { session.setAllowsPageScripts($0) }))
                 .accessibilityIdentifier("voxclip.demo.web.pageScripts")
             Text(ContextDemoBrowserSession.pageScriptNotice(allowsPageScripts: session.allowsPageScripts))
                 .foregroundStyle(DesignValues.color("text.tertiary"))

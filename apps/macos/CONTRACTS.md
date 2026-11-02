@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## Xcode 26 actor-callback IR generation workaround (2 Nov 2026)
+
+- Hosted run 41511134762 reaches Xcode 26.6 / Swift 6.3.3 and aborts IR generation in ContextDemoPanel while converting an actor-isolated String callback. The compiler reports SmallVector capacity 4,294,967,298 for the generated reabstraction thunk. This is separate from the excluded Windows privacy-row inventory failure.
+- Pass explicit closures to Context Demo and Voice Change bindings/callbacks and retain MainActor/Sendable callback types. No actor checking is disabled, and the setters still call the same session methods. The failing thunk is absent from rebuilt Debug objects. Local build/test-target 300 ms guard and all 739 App tests pass; the final permitted hosted dispatch must verify the workaround on SDK 26.
+
 ## Current compiler and consent source inventories (2 Nov 2026)
 
 - Point the compiler-shape inventory at the extracted shared decoder and its chunk-size helper while still requiring typed integer intermediates and rejecting nested numeric conversions. The rewrite entry must call that decoder.
