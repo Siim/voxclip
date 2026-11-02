@@ -10,7 +10,8 @@ and then 4 in separate replays, merge `qa` into the first segment's first
 candidate's `recipe.qa`, and copy that recipe's `speakerScore` into the segment's
 `qa.speakerScore`. Leave every other value unchanged. `error: null` means read,
 validate, serialize/read again and prepare the full render successfully. Otherwise
-the project reader must report the named Core error. `schemaValid` separately
+the project reader must refuse it. Windows reports the named Core error; Swift
+keeps its native project-unreadable, QA-rejected or invalid-segment taxonomy. `schemaValid` separately
 records JSON Schema acceptance: cross-record identity and render policy require
 runtime checks and cannot be inferred from schema acceptance alone.
 
@@ -24,8 +25,8 @@ evidence must remain renderable without a live provider or active clone.
 Windows `VoiceLabShortSpeechRecipeTests` replays all 27 cases for both project
 versions and adds typed-input shape/render guards. Python
 `tools/schemas/test_short_speech_recipe_schema.py` checks the same 54 schema
-outcomes. A Swift replay is owed after integrating the Mac ADR-R37 implementation;
-this Windows branch's older Mac base has no short-speech evidence model.
+outcomes. Swift `VoiceLabShortSpeechRecipeTests` replays the same 54 accept/refuse outcomes,
+accepted round trips, render preflight and disclosure after ADR-R37 integration.
 
 These vectors do not change Windows take generation, native speaker verification,
 provider requests, disclosure writing or native audio/video rendering capability.
