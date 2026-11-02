@@ -7,9 +7,18 @@ import VoxClipCore
     @Bindable var session: VoiceLabSession
     var model: EditorModel?
     var prepareOnAppear = true
+    var changeVoice: (@MainActor () -> Void)? = nil
     @FocusState private var fieldFocused: Bool
     private var flow: VoiceEnrollmentFlow { session.flow }
     var body: some View {
+        Group {
+            if let model, let changing = model.voiceChange {
+                VoiceChangePanel(session: changing, back: { model.closeVoiceChange() })
+                    .modifier(EditorPaneFocus(model: model, pane: .panel))
+            } else { enrollment }
+        }
+    }
+    private var enrollment: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -24,9 +33,10 @@ import VoxClipCore
                         .columnLayoutEvidence("voice.headline", text: headline)
                     if flow.state == .firstUse { VoiceFirstUseCard(session: session, showsPrimary: false) }
                     else { enrollmentBody }
+                    if flow.state != .finished { voiceChangeEntry }
                     VoiceRecoveryRows(session: session, shared: session.app.shared, inline: true)
                     if !flow.recoveryIDs.isEmpty {
-                        Text("A checked statement is ready to resume. " + VoiceLabSession.recoveryCreationCopy)
+                        Text("A saved voice-creation request is ready to resume. Review its audio and consent before choosing Create My Voice.")
                         ForEach(flow.recoveryIDs, id: \.self) { id in
                             Button("Resume Creation") { Task { await session.recoverVoice(id) } }.disabled(session.busy)
                         }
@@ -71,8 +81,8 @@ import VoxClipCore
         switch flow.state {
         case .firstUse: session.voiceNeedHeadline
         case .agree: "Find your clear speech and agree"
-        case .statement: session.recordingTraining ? "Read this aloud, about 90 s" : (session.recorder.recording ? "Read this aloud, in one take" : "Read the statement aloud")
-        case .checking: "Checking it's you…"
+        case .statement: session.trainingSource == .project ? "Check your clip audio" : (session.recordingTraining ? "Read this aloud, about 90 s" : (session.recorder.recording ? "Read this aloud, in one take" : "Read the statement aloud"))
+        case .checking: session.usesProjectConsent ? "Preparing your clip audio…" : "Checking it's you…"
         case .ready: "Ready to create your voice"
         case .creating: "Creating your voice…"
         case .finished: session.unsavedRecord != nil ? "Voice created · saving needs attention" : (flow.finishedRecord?.status == .verificationRequired ? "Voice created · needs verification" : "Your voice is ready.")
@@ -92,12 +102,22 @@ import VoxClipCore
         if flow.state == .agree {
             Text("AGREE").font(.system(size: 11, weight: .semibold)).foregroundStyle(DesignValues.color("text.tertiary"))
             TextField("Display name", text: $session.displayName).focused($fieldFocused)
-            Toggle("This is my own voice.", isOn: $session.ownVoice)
+            Toggle(VoiceLabSession.projectConsentCopy, isOn: $session.ownVoice).accessibilityIdentifier("voxclip.voice.own-consent")
             Toggle("I am 18 or older.", isOn: $session.adult)
             Toggle("I will use it only on videos of myself.", isOn: $session.ownVideosOnly)
+            if session.trainingSource == .project {
+                Text(VoiceLabSession.projectConsentExplanation).font(.system(size: 11))
+                    .foregroundStyle(DesignValues.color("text.secondary"))
+                    .accessibilityIdentifier("voxclip.voice.clip-consent")
+            }
             Text(VoiceLabSession.noticeCopy).font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary"))
             Link("Terms", destination: URL(string: "https://elevenlabs.io/terms-of-use")!)
             Link("Use policy", destination: URL(string: "https://elevenlabs.io/use-policy")!)
+        } else if flow.state == .statement, session.trainingSource == .project {
+            Text("Your checkbox consent is confirmed. Retry the clip-audio check or choose a read-aloud.")
+                .font(.system(size: 12))
+            Button("Change consent or audio") { session.changeVoiceAgreement() }.disabled(session.busy)
+            Button("Record a Read-Aloud") { session.useReadAloud() }.disabled(session.busy)
         } else if flow.state == .statement {
             Text("You agreed: my own voice · 18 or older · only my videos").font(.system(size: 11))
             Button("Change") { session.changeVoiceAgreement() }.disabled(session.busy || session.recorder.recording)
@@ -124,7 +144,7 @@ import VoxClipCore
                 Button("Retry Own-Voice Check") { Task { await session.prepareCreation() } }.disabled(session.busy)
             }
         } else if flow.state == .checking {
-            ProgressView("Comparing your statement with the training audio on this Mac…")
+            ProgressView(session.usesProjectConsent ? "Checking the selected speech on this Mac…" : "Comparing your statement with the training audio on this Mac…")
             Text("Nothing is sent. A mismatch stops here.").font(.system(size: 11))
         } else if flow.state == .ready || flow.state == .creating {
             creationRows
@@ -141,21 +161,55 @@ import VoxClipCore
                 Button("Remove This Voice", role: .destructive) { Task { await session.cancelEnrollment() } }.disabled(session.busy)
             }
             Text("AI voice stays labelled AI MODIFIED in exports.").font(.system(size: 11))
+            voiceChangeEntry
+        }
+    }
+    @ViewBuilder private var voiceChangeEntry: some View {
+        if session.unsavedRecord == nil,
+           flow.finishedRecord?.status == .active || session.records.contains(where: { $0.status == .active }) {
+            if let changeVoice {
+                Button("Change Voice in This Video", action: changeVoice)
+                    .disabled(session.busy).accessibilityIdentifier("voxclip.voice.changeInVideo")
+            } else if let model {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Change this video's voice").font(.system(size: 12, weight: .medium))
+                    Button("Change Selected Passage Voice") {
+                        if let scope = model.voiceChangeSelection { Task { await model.openVoiceChange(scope: scope) } }
+                    }.disabled(session.busy || model.voiceChangeSelection == nil)
+                        .accessibilityIdentifier("voxclip.voice.changePassage")
+                    Button("Change Full Take Voice") { Task { await model.openVoiceChange(scope: .fullTake) } }
+                        .disabled(session.busy || model.project.edits.activeClipId != nil)
+                        .accessibilityIdentifier("voxclip.voice.changeFullTake")
+                    Text("Choose words for a passage, or open Full Take for the entire source. Nothing is sent until you approve an exact quote.")
+                        .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary"))
+                }
+            }
         }
     }
     @ViewBuilder private var creationRows: some View {
         Text("ONE CLICK DOES THIS").font(.system(size: 11, weight: .semibold))
         Label("Check your ElevenLabs plan", systemImage: flow.state == .creating ? "circle.dotted" : "circle")
-        Label(flow.plan?.verificationPassed == true ? "Statement already checked" : "Check the statement matches what you read", systemImage: flow.plan?.verificationPassed == true ? "checkmark" : "circle")
+        if session.usesProjectConsent {
+            Label("Checkbox consent confirmed", systemImage: "checkmark")
+            Label("Use the selected clip speech", systemImage: "waveform")
+        } else {
+            Label(flow.plan?.verificationPassed == true ? "Statement already checked" : "Check the statement matches what you read", systemImage: flow.plan?.verificationPassed == true ? "checkmark" : "circle")
+        }
         Label("Create your own voice", systemImage: "person.wave.2")
-        if flow.state == .creating { ProgressView("Checking your plan, statement and creating your voice…") }
+        if flow.state == .creating { ProgressView(session.usesProjectConsent ? "Checking your plan and creating your voice…" : "Checking your plan, statement and creating your voice…") }
         else {
-            HStack(spacing: 4) {
-                Text("Statement recorded ·").font(.system(size: 11))
-                Text("\(Int(flow.statementSeconds)) s").font(DesignValues.mono(11))
+            if session.usesProjectConsent {
+                Text("\(Int(flow.plan?.trainingSeconds ?? 0)) s of clip speech · consent saved")
+                    .font(DesignValues.mono(11))
+            } else {
+                HStack(spacing: 4) {
+                    Text("Statement recorded ·").font(.system(size: 11))
+                    Text("\(Int(flow.statementSeconds)) s").font(DesignValues.mono(11))
+                }
+                Button("Play Statement", systemImage: "play.fill") { session.playStatement() }
             }
-            Button("Play Statement", systemImage: "play.fill") { session.playStatement() }
-            Text(flow.plan?.verificationPassed == true ? VoiceLabSession.recoveryCreationCopy : session.creationCopy)
+            Button("Change consent or audio") { session.changeVoiceAgreement() }
+            Text(flow.plan?.verificationPassed == true ? session.recoveryCopy : session.creationCopy)
                 .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
             Text(VoiceLabSession.providerCopy).font(.system(size: 11)).foregroundStyle(DesignValues.color("text.tertiary"))
         }
@@ -169,7 +223,7 @@ import VoxClipCore
             }
         } else if flow.state == .ready {
             VStack(alignment: .leading, spacing: 8) {
-                Text(flow.plan?.verificationPassed == true ? VoiceLabSession.recoveryCreationCopy : "Sends your statement and training audio to ElevenLabs. No video.")
+                Text(session.usesProjectConsent ? "Sends the selected clip audio to ElevenLabs with your consent. No video." : (flow.plan?.verificationPassed == true ? session.recoveryCopy : "Sends your statement and training audio to ElevenLabs. No video."))
                     .font(.system(size: 11)).foregroundStyle(DesignValues.color("text.secondary"))
                 if let warning = flow.capWarning { Text(warning).font(.system(size: 11)).foregroundStyle(DesignValues.color("status.warning")) }
                 Button(session.creationTitle) {
@@ -182,11 +236,15 @@ import VoxClipCore
         } else if flow.state == .finished {
             Button("Back to Rewrite") { session.returnToRewrite() }.disabled(session.unsavedRecord != nil)
         } else if flow.state == .agree {
-            Button("Read the Statement") { Task { await session.prepareVoiceStatement() } }.disabled(!session.canRecord)
+            Button(session.agreementActionTitle) { Task { await session.continueVoiceEnrollment() } }
+                .disabled(!session.canContinueEnrollment).accessibilityIdentifier("voxclip.voice.use-audio")
+                .columnLayoutEvidence("voice.use-audio", text: session.agreementActionTitle)
         } else if session.recorder.recording {
             Button("Stop") { Task { await session.stopRecording() } }
         } else if flow.state == .statement, session.projectMismatch, session.trainingSource == .project {
             Button("Record a Read-Aloud") { session.useReadAloud() }
+        } else if flow.state == .statement, session.trainingSource == .project {
+            Button("Retry Clip Audio Check") { Task { await session.continueVoiceEnrollment() } }.disabled(!session.canContinueEnrollment)
         } else if flow.state == .statement {
             Button(session.recordingTraining ? "Record Read-Aloud" : (session.statement == nil ? "Prepare Statement" : "Record")) {
                 Task { if session.recordingTraining { await session.beginTraining() } else { await session.beginStatement() } }
