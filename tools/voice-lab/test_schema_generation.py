@@ -10,6 +10,14 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ProjectSchemaGenerationTests(unittest.TestCase):
+    def test_short_speech_is_optional_and_uses_record_id_wire_key(self):
+        schema = json.loads((ROOT / 'shared/schemas/project.schema.json').read_bytes())
+        qa = schema['$defs']['voiceLabRenderQA']
+        self.assertNotIn('shortSpeech', qa['required'])
+        evidence = qa['properties']['shortSpeech']
+        self.assertEqual(set(evidence['required']), {'mode', 'recordId', 'consentMethod', 'voicedFrames', 'takeCount'})
+        self.assertNotIn('recordID', evidence['properties'])
+
     def test_render_schema_regeneration_preserves_v4_byte_for_byte(self):
         relative = Path('tools/fixtures/voice-lab/generate_render_schema.py')
         schema_relative = Path('shared/schemas/project.schema.json')

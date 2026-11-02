@@ -34,7 +34,7 @@ import Testing
             region: .default, endpoint: "v1/text-to-speech/fixture/with-timestamps", languageMode: .explicit("en"), fingerprint: "test")
         let receipt = VoiceLabReceipt(provider: "elevenlabs", region: .default, endpoint: quote.endpoint, modelID: input.modelID,
             voiceID: record.voiceId, requestID: quote.requestID, providerRequestID: nil, spendWarning: nil)
-        let evidence = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordID: record.id,
+        let evidence = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordId: record.id,
             consentMethod: record.consentMethod, voicedFrames: 16_800, takeCount: 1)
         var values = stored.qa
         if unmeasured { values.speakerScore = nil }

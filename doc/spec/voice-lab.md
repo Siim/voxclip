@@ -1346,7 +1346,7 @@ For the W3 transcript comparison, assign a Scribe word to the fitted patch when 
    - The shared vectors `shared/fixtures/voice-lab/audio-math-cases.json` pin every rule in §4.4 step 3, §8.6 flatness, §8.7 item 2 and this item; `shared/fixtures/voice-lab/audio-math-README.md` names the case for each.
 4. **Speaker.** A long take or short-take pool scores ≥ τ against the consent embedding. The explicitly recorded own-clone under-length exception above carries no measured score.
 
-QA results are stored with the segment (§10.1). A candidate that fails is not offered. Newly accepted short takes add optional `recipe.qa.shortSpeech` evidence: `mode` (`pooled` or `unmeasured`), `recordID`, `consentMethod`, `voicedFrames` at 16 kHz, and `takeCount`. Pooled evidence requires at least 48,000 frames and a measured passing score. Unmeasured evidence requires fewer than 48,000 frames, own-clone consent, an absent score and `speakerPassed: false`. The evidence binds to the recipe's consent record; ordinary recipes without it retain the measured-score rule. Existing encoded recipes omit the optional field unchanged.
+QA results are stored with the segment (§10.1). A candidate that fails is not offered. Newly accepted short takes add optional `recipe.qa.shortSpeech` evidence: `mode` (`pooled` or `unmeasured`), `recordId`, `consentMethod`, `voicedFrames` at 16 kHz, and `takeCount`. Pooled evidence requires at least 48,000 frames and a measured passing score. Unmeasured evidence requires fewer than 48,000 frames, own-clone consent, an absent score and `speakerPassed: false`. The evidence binds to the recipe's consent record; ordinary recipes without it retain the measured-score rule. Existing encoded recipes omit the optional field unchanged.
 
 ### 8.12 Accept
 

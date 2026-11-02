@@ -4,18 +4,18 @@ import Foundation
 public struct VoiceLabShortSpeechEvidence: Codable, Sendable, Equatable {
     public enum Mode: String, Codable, Sendable { case pooled, unmeasured }
     public let mode: Mode
-    public let recordID: String
+    public let recordId: String
     public let consentMethod: VoiceConsentRecord.ConsentMethod
     public let voicedFrames: Int
     public let takeCount: Int
 
-    package init(mode: Mode, recordID: String, consentMethod: VoiceConsentRecord.ConsentMethod,
+    package init(mode: Mode, recordId: String, consentMethod: VoiceConsentRecord.ConsentMethod,
                  voicedFrames: Int, takeCount: Int) {
-        self.mode = mode; self.recordID = recordID; self.consentMethod = consentMethod
+        self.mode = mode; self.recordId = recordId; self.consentMethod = consentMethod
         self.voicedFrames = voicedFrames; self.takeCount = takeCount
     }
     public var valid: Bool {
-        guard !recordID.isEmpty, voicedFrames >= 0, takeCount > 0 else { return false }
+        guard !recordId.isEmpty, voicedFrames >= 0, takeCount > 0 else { return false }
         switch mode {
         case .pooled: return voicedFrames >= SpeakerAudio.windowSize && takeCount >= 2
         case .unmeasured: return voicedFrames < SpeakerAudio.windowSize && ownClone

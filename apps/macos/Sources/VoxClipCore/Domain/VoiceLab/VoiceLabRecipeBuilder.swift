@@ -84,9 +84,9 @@ public enum VoiceLabRecipeBuilder {
               let verifiedAt = ISO8601DateFormatter().date(from: record.attestations.acceptedAt),
               verifiedAt <= createdAt else { throw VoiceLabProjectError.qaRejected }
         let evidence = row.voiceCheck.evidence
-        let unmeasured = evidence.map { $0.valid && $0.mode == .unmeasured && $0.recordID == record.id && $0.consentMethod == record.consentMethod } == true
+        let unmeasured = evidence.map { $0.valid && $0.mode == .unmeasured && $0.recordId == record.id && $0.consentMethod == record.consentMethod } == true
         let score = checked.values.speakerScore
-        guard evidence.map({ $0.valid && $0.recordID == record.id && $0.consentMethod == record.consentMethod }) ?? true,
+        guard evidence.map({ $0.valid && $0.recordId == record.id && $0.consentMethod == record.consentMethod }) ?? true,
               unmeasured ? score == nil : score.map({ $0.isFinite && $0 >= record.speaker.threshold }) == true
         else { throw VoiceLabProjectError.qaRejected }
         let plan = take.fit.plan

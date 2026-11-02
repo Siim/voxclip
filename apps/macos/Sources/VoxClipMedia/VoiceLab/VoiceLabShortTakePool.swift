@@ -48,7 +48,7 @@ public actor VoiceLabShortTakePool {
                 }
                 let voiced = group.flatMap(\.voiced)
                 let mode: VoiceLabShortSpeechEvidence.Mode = voiced.count >= SpeakerAudio.windowSize ? .pooled : .unmeasured
-                let evidence = VoiceLabShortSpeechEvidence(mode: mode, recordID: first.record.id,
+                let evidence = VoiceLabShortSpeechEvidence(mode: mode, recordId: first.record.id,
                     consentMethod: first.record.consentMethod, voicedFrames: voiced.count, takeCount: group.count)
                 let score: Double?
                 if mode == .pooled {

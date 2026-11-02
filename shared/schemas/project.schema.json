@@ -1804,7 +1804,7 @@
           "additionalProperties": false,
           "required": [
             "mode",
-            "recordID",
+            "recordId",
             "consentMethod",
             "voicedFrames",
             "takeCount"
@@ -1816,7 +1816,7 @@
                 "unmeasured"
               ]
             },
-            "recordID": {
+            "recordId": {
               "type": "string",
               "minLength": 1
             },
