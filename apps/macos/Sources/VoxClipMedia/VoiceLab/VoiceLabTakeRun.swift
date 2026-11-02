@@ -350,7 +350,8 @@ public actor VoiceLabTakeRun {
                 let upper = Double(processed.patchRange.upperBound) / Double(processed.sampleRate)
                 let inside = recognized.words.filter { ($0.start + $0.end) / 2 >= lower && ($0.start + $0.end) / 2 < upper }.map(\.text)
                 let qa = try VoiceLabTakeQuality.evaluate(expected: value.input.text, recognized: inside, mixed: processed.mixed,
-                    sampleRate: processed.sampleRate, seams: processed.seams, speakerScore: score, threshold: value.record.speaker.threshold)
+                    sampleRate: processed.sampleRate, seams: processed.seams, sourceSeamJumps: processed.sourceSeamJumps,
+                    speakerScore: score, threshold: value.record.speaker.threshold)
                 let flatness = try VoiceLabLoudness.flatness(processed.trimmed, sampleRate: processed.sampleRate)
                 let rank = try VoiceLabTakeQuality.rank(fit: processed.fit, windowSeconds: value.input.window.end - value.input.window.start,
                     matchRatio: qa.values.transcriptMatch ?? 0, flatness: flatness)

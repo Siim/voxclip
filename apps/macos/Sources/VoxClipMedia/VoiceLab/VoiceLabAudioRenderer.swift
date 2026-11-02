@@ -54,7 +54,7 @@ enum VoiceLabAudioRenderer {
             mixed.append(try signal(relative))
         }
         mixed.append(contentsOf: trailing)
-        var seams: [Int] = []
+        var seams: [Int] = [], sourceSeams: [Int] = []
         for incoming in [true, false] {
             let placement = incoming ? input.window.leftSeam : input.window.rightSeam
             if placement.kind == .none { continue }
@@ -70,9 +70,12 @@ enum VoiceLabAudioRenderer {
             }
             let blended = incoming ? crossfade(old, generated, n: count) : crossfade(generated, old, n: count)
             for offset in 0..<count { mixed[seam + offset - before] = blended[offset * 2] }
-            seams.append(seam)
+            seams.append(seam); sourceSeams.append(lead + (incoming ? 0 : end - start))
         }
         guard mixed.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
+        // The unedited source over the same lead, window and tail, so QA counts only the step a join adds (§8.11 item 3).
+        guard let original = source.samples((start - lead)..<(end + tail)) else { throw VoiceLabError.invalidAudio }
+        let sourceSeamJumps = try VoiceLabLoudness.seamJumpsLu(Array(original), sampleRate: rate, seamSamples: sourceSeams)
         try reserveDisk(scratchRoot, frames: Int64(mixed.count), additionalBytes: Int64(fitted.wave.pcm.count + 88))
         let operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot)
         let directory = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
@@ -87,7 +90,8 @@ enum VoiceLabAudioRenderer {
             let measured = (0..<readback.frames).map { Float(readback.sample(frame: $0, channel: 0)) }
             guard measured == mixed else { throw VoiceLabError.invalidAudio }
             let audio = VoiceLabTakeAudio(sampleRate: rate, trimmed: analysis.trimmed, mixed: measured,
-                patchRange: lead..<(lead + length), seams: seams, gainDb: analysis.gainDb, roomTone: analysis.roomTone, fit: analysis.fit)
+                patchRange: lead..<(lead + length), seams: seams, gainDb: analysis.gainDb, roomTone: analysis.roomTone, fit: analysis.fit,
+                sourceSeamJumps: sourceSeamJumps)
             return VoiceLabTakeScratch(directory: directory, operation: operation, fitted: fitted, audio: audio)
         } catch { operation.discard(); throw error }
     }

@@ -172,6 +172,22 @@ public enum VoiceLabLoudness {
         try seamJumps(samples, sampleRate: sampleRate, seamSamples: [seamSample])[0]
     }
 
+    /// Every seam's momentary jump (`seamJumpLu`), in order: one K-weighting pass over `samples`.
+    public static func seamJumpsLu(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double] {
+        try seamJumps(samples, sampleRate: sampleRate, seamSamples: seamSamples)
+    }
+
+    /// The take QA's seam value (§8.11 item 3): how far each seam's momentary jump in the mixed audio exceeds the jump of
+    /// the unedited source at the same seam, `max(0, J_mixed − J_source)`, and the largest of them, 0 without a seam. A
+    /// seam sits in a pause or at a word edge, so one 400 ms side holds more speech than the other and the source itself
+    /// jumps there; only the step the join adds is the join's. Both lists come from `seamJumpsLu`, seam by seam.
+    public static func seamExcessLu(mixedJumps: [Double], sourceJumps: [Double]) throws -> Double {
+        guard mixedJumps.count == sourceJumps.count, (mixedJumps + sourceJumps).allSatisfy({ $0.isFinite && $0 >= 0 }) else {
+            throw VoiceLabAudioMathError.invalidInput
+        }
+        return zip(mixedJumps, sourceJumps).map { max(0, $0 - $1) }.max() ?? 0
+    }
+
     /// A recipe's `qa.lufsJumpLu`: the largest jump over its seams that are not `none`, or 0 without such a seam.
     public static func lufsJumpLu(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> Double {
         try seamJumps(samples, sampleRate: sampleRate, seamSamples: seamSamples).max() ?? 0
