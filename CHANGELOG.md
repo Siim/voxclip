@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Preserve schema v4 when regenerating the Voice Lab project contract.
+
 - Split Mac editor setup expressions to keep hosted compiler checks reviewable.
 
 - Keep headless Rewrite fixtures independent of asynchronous media-cache loading.

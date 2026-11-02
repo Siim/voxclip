@@ -6,11 +6,22 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[3]
 path = root / 'shared/schemas/project.schema.json'
 s = json.loads(path.read_text())
-s['title'] = 'VoxClip project file (.voxclip), schemaVersion 1, 2 or 3'
-s['properties']['schemaVersion']['enum'] = [1, 2, 3]
+# Later project versions retain the v3 Voice Lab contract and own additional root fields.
+# Refresh only this generator's definitions; never downgrade their schema or reorder its rules.
+versions = sorted(set(s['properties']['schemaVersion']['enum']) | {1, 2, 3})
+version_title = ', '.join(map(str, versions[:-1])) + ' or ' + str(versions[-1])
+s['title'] = 'VoxClip project file (.voxclip), schemaVersion ' + version_title
+s['properties']['schemaVersion']['enum'] = versions
 s['properties']['voiceLab']['oneOf'] = [{'$ref': '#/$defs/voiceLabV1'}, {'$ref': '#/$defs/voiceLabV2'}, {'$ref': '#/$defs/voiceLabV3'}]
-s['allOf'] = [item for item in s['allOf'] if item.get('if', {}).get('properties', {}).get('schemaVersion', {}).get('const') != 3]
-s['allOf'].append({'if': {'properties': {'schemaVersion': {'const': 3}}}, 'then': {'properties': {'voiceLab': {'$ref': '#/$defs/voiceLabV3'}}}})
+voice_versions = [version for version in versions if version >= 3]
+version_condition = {'const': 3} if voice_versions == [3] else {'enum': voice_versions}
+voice_rule = {'if': {'properties': {'schemaVersion': version_condition}}, 'then': {'properties': {'voiceLab': {'$ref': '#/$defs/voiceLabV3'}}}}
+for index, item in enumerate(s['allOf']):
+    if item.get('then', {}).get('properties', {}).get('voiceLab', {}).get('$ref') == '#/$defs/voiceLabV3':
+        s['allOf'][index] = voice_rule
+        break
+else:
+    s['allOf'].append(voice_rule)
 d = s['$defs']
 string = {'type': 'string', 'minLength': 1}
 idref = {'$ref': '#/$defs/id'}

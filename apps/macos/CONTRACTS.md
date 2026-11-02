@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## Preserve v4 during Voice Lab schema regeneration (2 Nov 2026)
+
+- The existing render-schema generator previously reset the project version enum/title to v3 and appended a duplicate v3 rule. Regeneration now preserves later declared versions and replaces only its own Voice Lab rule in place. The v4 schema and all frozen fixture bytes remain unchanged.
+- A hosted-discovered Python regression regenerates an isolated copy twice and requires byte equality. It passes; all schema examples and the three v4 wire/schema tests pass. The full Voice Lab Python sweep exposed two older source-inventory assertions, tracked separately.
+
 ## Hosted compiler guard and HTTP negative control (2 Nov 2026)
 
 - Split new panel expressions, motion initialization, Voice setup guards and shell observation registration; keep typed transcript-fixture timing intermediates. Debug build plus all test targets pass the 300 ms expression warning guard under local Xcode 27. Some cold first-use expression warnings remain; no error or new SDK 27-only API use was found. Hosted Xcode 26 remains required evidence.
