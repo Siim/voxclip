@@ -16,6 +16,14 @@ final class VoiceMicrophoneSamples: Sendable {
     let state = Mutex(State())
     let maximum: Int
     init(seconds: Int) { maximum = seconds * 48_000 }
+    // AVAudioEngine invokes these on its audio queue. Creating them outside the
+    // main-actor recorder prevents an inherited actor check before their bodies run.
+    func inputTap() -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        { [self] buffer, _ in observeInput(buffer) }
+    }
+    func monoTap() -> @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        { [self] buffer, _ in append(buffer) }
+    }
     func observeInput(_ buffer: AVAudioPCMBuffer) {
         if let channels = buffer.floatChannelData { observeInput(channels, buffer: buffer) }
         else if let channels = buffer.int16ChannelData { observeInput(channels, buffer: buffer) }
@@ -96,8 +104,8 @@ final class VoiceMicrophoneSamples: Sendable {
         engine.connect(mixer, to: engine.mainMixerNode, format: mono)
         engine.mainMixerNode.outputVolume = 0
         let sink = VoiceMicrophoneSamples(seconds: maximumSeconds)
-        input.installTap(onBus: 0, bufferSize: 1_024, format: format) { buffer, _ in sink.observeInput(buffer) }
-        mixer.installTap(onBus: 0, bufferSize: 1_024, format: mono) { buffer, _ in sink.append(buffer) }
+        input.installTap(onBus: 0, bufferSize: 1_024, format: format, block: sink.inputTap())
+        mixer.installTap(onBus: 0, bufferSize: 1_024, format: mono, block: sink.monoTap())
         engine.prepare()
         do { try engine.start() } catch { input.removeTap(onBus: 0); mixer.removeTap(onBus: 0); throw MicrophoneError.unavailable }
         self.engine = engine; self.sink = sink; samples = []; seconds = 0; level = 0; recording = true

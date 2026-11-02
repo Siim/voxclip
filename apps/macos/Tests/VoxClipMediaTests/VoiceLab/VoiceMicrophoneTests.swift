@@ -6,6 +6,52 @@ import Testing
 
 @Suite("Microphone take recovery") @MainActor
 struct VoiceMicrophoneTests {
+    @Test(arguments: [false, true])
+    func audioQueueTapsCaptureSamplesAndIgnoreLateBuffers(discard: Bool) async throws {
+        let recorder = VoiceMicrophoneRecorder(), sink = VoiceMicrophoneSamples(seconds: 30)
+        recorder.simulateTake(samples: [], input: sink, at: .now) {}
+        // Obtain the same callbacks installed by start(), from the main actor,
+        // then invoke them on a worker without touching microphone hardware.
+        let inputTap = sink.inputTap(), monoTap = sink.monoTap()
+        try await Task.detached {
+            let buffer = try Self.tapBuffer([0.25, -0.25, 0.5, -0.5])
+            let time = AVAudioTime(sampleTime: 0, atRate: 48_000)
+            inputTap(buffer, time)
+            monoTap(buffer, time)
+        }.value
+        #expect(sink.state.withLock { $0.samples } == [0.25, -0.25, 0.5, -0.5])
+        #expect(!sink.state.withLock { $0.silent })
+        if discard { recorder.discard() } else { recorder.stop() }
+        #expect(!recorder.recording && recorder.failure == nil)
+        #expect(recorder.samples == (discard ? [] : [0.25, -0.25, 0.5, -0.5]))
+        try await Task.detached {
+            let buffer = try Self.tapBuffer([Float](repeating: 0, count: 96_000))
+            let time = AVAudioTime(sampleTime: 4, atRate: 48_000)
+            inputTap(buffer, time)
+            monoTap(buffer, time)
+        }.value
+        #expect(sink.state.withLock { $0.closed && !$0.silent && $0.samples == [0.25, -0.25, 0.5, -0.5] })
+    }
+    @Test func audioQueueInputTapStillDetectsSilence() async throws {
+        let recorder = VoiceMicrophoneRecorder(), sink = VoiceMicrophoneSamples(seconds: 30)
+        recorder.simulateTake(samples: [0.25], input: sink, at: .now) {}
+        let inputTap = sink.inputTap()
+        try await Task.detached {
+            let buffer = try Self.tapBuffer([Float](repeating: 0, count: 96_000))
+            inputTap(buffer, AVAudioTime(sampleTime: 0, atRate: 48_000))
+        }.value
+        recorder.stop()
+        #expect(!recorder.recording && recorder.failure == .silent && recorder.samples.isEmpty)
+    }
+    private nonisolated static func tapBuffer(_ samples: [Float]) throws -> AVAudioPCMBuffer {
+        #expect(!Thread.isMainThread)
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(samples.count)))
+        buffer.frameLength = AVAudioFrameCount(samples.count)
+        let channel = try #require(buffer.floatChannelData?[0])
+        for (index, sample) in samples.enumerated() { channel[index] = sample }
+        return buffer
+    }
     @Test func stopDetectsSilenceBeforeTheNextMeterTick() throws {
         let recorder = VoiceMicrophoneRecorder(), sink = VoiceMicrophoneSamples(seconds: 30)
         recorder.simulateTake(samples: [0.1], input: sink, at: .now) {}
