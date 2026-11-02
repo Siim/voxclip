@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Windows reads, validates and prepares saved short-speech voice recipes without inventing speaker measurements; short-take generation remains unavailable.
+
 - Windows preserves project voice consent and v4 context/motion metadata, distinguishes insufficient generated speech from a measured mismatch, and refuses unsupported visual exports while keeping saved edits intact.
 
 - Windows v2 shell now connects scoped inline Rewrite/Hook jobs, transcript review, real caption timeline snapshots and durable local transcription estimates; native Windows acceptance remains pending.

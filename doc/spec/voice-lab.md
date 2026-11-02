@@ -1582,6 +1582,27 @@ At launch, before writing paid or fitted audio, Mac recovery deletes only store-
 
 ### 10.5 Version 3 render recipe and preparation (ADR-R26)
 
+**Short-speech reader evidence (2026-11-02, ADR-R37 Mac contract).** Both version 3
+and version 4 recipe QA may carry `shortSpeech`, omitted rather than written as
+null when absent. Its exact keys are `mode`, `recordId`, `consentMethod`,
+`voicedFrames` and `takeCount`. Modes are `pooled` and `unmeasured`; consent
+methods are `recordedStatement` and `projectAttestation`. The record ID is
+nonempty and matches the recipe's provenance consent record and the own-voice
+reference when rendering. Evidence is never valid for a stock voice, including
+on rejected stored candidates. Counts are nonnegative integers, with at least
+one take. Pooled evidence needs at least 48,000 voiced 16 kHz frames and two
+takes; unmeasured evidence has fewer than 48,000 frames.
+
+Own-TTS pooled evidence retains the measured speaker score, passing flag,
+threshold and model requirements. An unmeasured own-TTS recipe instead requires
+a null speaker score, `speakerPassed: false`, a finite threshold in [0, 1] and
+a nonempty speaker model. Word, acoustic, consent, asset and video guards remain
+unchanged; absence of evidence never permits an unmeasured recipe. Stored assets
+remain renderable after voice deletion. Windows reader/validator/render-preparation
+parity does not change `VoiceLabTakeRun`: short-take generation still refuses
+insufficient speech and pooled/unmeasured generation support remains owed.
+The isolated `short-speech-recipe-cases.json` corpus pins this wire contract.
+
 Version 3 adds explicit `voiceLab.cleanAudio`, `voices`, and `videoAssets` and requires every unrejected candidate to carry a complete `recipe`. `cleanAudio` records `off` with null asset and mix, or `on` with an asset and mix; Core reports `cleanAudioUnsupported` for active non-null use until Media implements it. A segment records `scope: passage | fullTake`; a full-take group covers the take without the patch 15%/60-word budget. Candidate recipes record asset trim, fit factor, gain, relative words (every TTS word `synthetic: true`, bridge words included), bounded source and assembled chunk spans with request IDs and seeds, room tone or explicit null, in/out seam policy, tagged video mode, applicable QA, provenance, cost quote and own/stock voice source. `usd: null` means the price was unknown. The source transcript, word times, cuts and reverse-DNS extensions remain unchanged. No v2 segment is promoted automatically; recovery needs explicit future per-segment review.
 
 `VoiceLabRenderContract.prepare(project, scope, labelPosition)` uses `VoiceLabOutputPlanner` as the sole source of ordered pieces, mapping and captions. It returns an immutable selected-recipe snapshot and `VoiceLabDisclosurePlan` for that exact project, scope and position; downstream consumers must call `verify` before using it. Full ignores `activeClipId`; a clip cannot bisect an enabled replacement. Disabled and excluded replacements remain source-renderable. Candidate selection transfers the complete validated candidate recipe into segment fields, and accept/enable/disable/delete remain reversible project transitions that never delete paid assets. New own-voice acceptance requires an active consent reference; a previously accepted asset remains playable after voice deletion because rendering uses its stored consent evidence, not a provider lookup or a new speaker match. A record is evidence of generation/accept review, not speaker verification by itself.
