@@ -50,7 +50,7 @@ private struct LipsyncImportKeys: KeyProvider {
     func key(for provider: String) async throws -> String? { "synthetic-import-fixture-key" }
 }
 
-@Suite("Lip-sync result import transaction", .timeLimit(.minutes(1)))
+@Suite("Lip-sync result import transaction", .timeLimit(.minutes(1)), .offlineFixtures)
 struct LipsyncResultImporterTests {
     private let projectID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
     private func directory() throws -> URL {

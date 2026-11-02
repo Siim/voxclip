@@ -5,7 +5,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite(.serialized)
+@Suite(.serialized, .offlineFixtures)
 struct CaptionParityTests {
     @Test("Every caption layout fixture with bundled CoreText shaping")
     func layouts() async throws {

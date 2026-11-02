@@ -4,7 +4,7 @@ import Testing
 
 /// voice-lab.md §3.1 for LLM sends, as amended by the user's decision of 2026-10-31: replays
 /// shared/fixtures/voice-lab/llm-send-cost-cases.json (rules in llm-send-cost-README.md).
-@Suite struct VoiceLabLLMSendCostTests {
+@Suite(.offlineFixtures) struct VoiceLabLLMSendCostTests {
     private struct Vectors: Decodable {
         struct Expected: Decodable { let kind: String; let text: String }
         struct Case: Decodable {

@@ -81,7 +81,7 @@ func patchRewriteGoldenRequest(_ item: JSONValue, label: String) async throws {
     }
 }
 
-@Suite("Fix with AI patch rewrite")
+@Suite("Fix with AI patch rewrite", .offlineFixtures)
 struct PatchRewriteServiceTests {
     @Test func sharedBehaviourCases() async throws {
         let document = try PatchRewriteFixtures.document()

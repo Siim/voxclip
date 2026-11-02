@@ -11,7 +11,7 @@ import Testing
 /// order with no group headers, two rows at 1280 × 800 and the rest scrolling, then 24 pt
 /// property rows and Fine tune behind a disclosure. Nothing is shown and settings are never
 /// saved, so nothing is written.
-@Suite("Captions job", .serialized)
+@Suite("Captions job", .serialized, .offlineFixtures)
 @MainActor struct CaptionsPanelTests {
     private typealias Metrics = CaptionsPanelMetrics
     /// The "Five questions" fixture, 16:9.

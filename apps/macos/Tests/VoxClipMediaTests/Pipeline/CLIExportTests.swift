@@ -512,7 +512,7 @@ func cliCaptionHarnessRejectsAmbiguousArguments(_ arguments: [String]) throws {
     #expect(!FileManager.default.fileExists(atPath: destination.path))
 }
 
-@Suite(.serialized) struct CLIInterruptTests {
+@Suite(.serialized, .offlineFixtures) struct CLIInterruptTests {
 @Test(.timeLimit(.minutes(5))) func cliInterruptTimingIsAbsentWithoutTestMode() async throws {
     let source = try await NativeMediaFixtures.shared.file("interrupt-aac.mov")
     let directory = try cliDirectory()

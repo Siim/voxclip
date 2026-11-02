@@ -3,7 +3,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite(.serialized)
+@Suite(.serialized, .offlineFixtures)
 struct CaptionOptimizationTests {
     @Test("Word fades preserve per-operation alpha while reusing pre-page-alpha bands")
     func wordFadeBands() async throws {

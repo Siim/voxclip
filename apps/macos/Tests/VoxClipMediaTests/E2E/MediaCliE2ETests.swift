@@ -10,7 +10,7 @@ import XCTest
 @Suite("canonical-cli-e2e", .serialized,
        .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_REQUIRE_E2E"] == "1" ||
                     ProcessInfo.processInfo.environment["VOXCLIP_CLI"] != nil,
-                "Set VOXCLIP_CLI to run the canonical CLI media suite"))
+                "Set VOXCLIP_CLI to run the canonical CLI media suite"), .offlineFixtures)
 struct MediaCliE2ETests {
     static let cases = [
         "e2e-1-chirp-cut-fillers", "e2e-2-tone-joins", "e2e-3-captions-vox-bold",

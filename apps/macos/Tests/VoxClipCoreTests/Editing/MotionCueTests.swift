@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct MotionCueTests {
+@Suite(.offlineFixtures) struct MotionCueTests {
     private func cue(id: String = "motion", clipID: String = "clip", start: Double = 10, end: Double = 14, scale: Double = 1.2) -> MotionCue {
         MotionCue(id: id, clipID: clipID, sourceStart: start, sourceEnd: end,
                   keyframes: [MotionKeyframe(progress: 0), MotionKeyframe(progress: 1, scale: scale, anchorX: 1, anchorY: 0)])

@@ -4,7 +4,7 @@ import Testing
 @testable import VoxClip
 @testable import VoxClipCore
 
-@Suite("Inline connector confirmations", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
+@Suite("Inline connector confirmations", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 @MainActor struct InlineConfirmationTests {
     private func waitForRow(_ confirmation: ConnectorConfirmation) async throws {
         for _ in 0..<10_000 where !confirmation.isPresented { await Task.yield() }

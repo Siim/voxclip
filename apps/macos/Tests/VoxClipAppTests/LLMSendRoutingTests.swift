@@ -16,7 +16,7 @@ import Testing
 /// Every LLM send (Find clips, Rewrite and Settings → Test) asks C8's `kind(forLLMSendTo:signIn:providerName:)` after
 /// the one-time privacy consent (impl-plan VS, lead decision on item 13). Stub connectors only: nothing leaves the Mac,
 /// and the app model never starts, so it saves no settings and sweeps no folders.
-@Suite("LLM send routing", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; only stub connectors are called."))
+@Suite("LLM send routing", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; only stub connectors are called."), .offlineFixtures)
 @MainActor struct LLMSendRoutingTests {
     struct Row: Sendable, CustomTestStringConvertible {
         let name: String

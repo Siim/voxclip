@@ -68,7 +68,7 @@ private func demoCaptureTarget(windowID: UInt32 = 42, processID: Int32 = 123,
         widthPoints: width, heightPoints: height, pixelScale: 1)
 }
 
-@Suite("Native context capture boundary") @MainActor
+@Suite("Native context capture boundary", .offlineFixtures) @MainActor
 struct ContextDemoCaptureTests {
     private let projectID = "11111111-1111-4111-8111-111111111111"
 

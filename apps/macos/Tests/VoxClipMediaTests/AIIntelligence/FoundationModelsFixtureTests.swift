@@ -368,7 +368,7 @@ actor FoundationModelsFixtureProbe {
     }
 }
 
-@Suite struct FoundationModelsFixtureTests {
+@Suite(.offlineFixtures) struct FoundationModelsFixtureTests {
     @Test(FoundationModelsFixtures.enabled("clip-finder-requests"), arguments: FoundationModelsFixtures.arguments("clip-finder-requests"))
     func clipFinderLogicalRequests(_ argument: FoundationModelsFixtures.Argument) async throws {
         try await compare(argument)

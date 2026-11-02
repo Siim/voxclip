@@ -39,7 +39,7 @@ enum CaptionTestFrames {
     }
 }
 
-@Suite(.serialized)
+@Suite(.serialized, .offlineFixtures)
 struct CaptionPipelineTests {
     @Test("M6 resolved styles and M7 layout match engine resolution for every fixture")
     func resolvedFixtures() async throws {

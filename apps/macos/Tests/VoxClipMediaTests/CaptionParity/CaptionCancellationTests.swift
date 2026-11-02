@@ -38,7 +38,7 @@ private final class CaptionShadowCancellation: @unchecked Sendable {
     }
 }
 
-@Suite(.serialized)
+@Suite(.serialized, .offlineFixtures)
 struct CaptionCancellationTests {
     private func compare(_ actual: CaptionRaster, _ expected: CaptionRaster, context: String) {
         var artifacts: URL?

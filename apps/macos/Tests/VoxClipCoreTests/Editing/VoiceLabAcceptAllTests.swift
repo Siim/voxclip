@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct VoiceLabAcceptAllTests {
+@Suite(.offlineFixtures) struct VoiceLabAcceptAllTests {
     struct Vectors: Decodable {
         let inputs: [String: Input]
         let cases: [Case]

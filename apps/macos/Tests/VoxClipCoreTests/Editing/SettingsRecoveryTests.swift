@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct EditingSettingsRecovery {
+@Suite(.offlineFixtures) struct EditingSettingsRecovery {
     @Test(arguments: ["malformed", "invalid", "schema", "missing-schema", "wrong-shape"])
     func damagedSettingsRecoverPersistAndCanBeSaved(_ kind: String) async throws {
         let directory = try EditingPersistence().temporaryDirectory()

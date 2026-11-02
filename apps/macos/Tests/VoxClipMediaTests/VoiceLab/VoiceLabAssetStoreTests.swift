@@ -5,7 +5,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite struct VoiceLabAssetStoreTests {
+@Suite(.offlineFixtures) struct VoiceLabAssetStoreTests {
     private let projectId = "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11"
     private let createdAt = Date(timeIntervalSince1970: 1_793_000_000)
 

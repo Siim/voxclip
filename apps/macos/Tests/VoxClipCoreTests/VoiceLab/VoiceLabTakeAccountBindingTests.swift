@@ -51,7 +51,7 @@ private actor TakeAccountEmbedder: SpeakerEmbedder {
     func embed(_ pcm16k: [Float]) async throws -> [Float] { [1, 0] }
 }
 
-@Suite("Take account binding", .serialized, .timeLimit(.minutes(2)))
+@Suite("Take account binding", .serialized, .timeLimit(.minutes(2)), .offlineFixtures)
 struct VoiceLabTakeAccountBindingTests {
     private struct Fixture {
         let root: URL

@@ -6,7 +6,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite("Apple speech asset safety")
+@Suite("Apple speech asset safety", .offlineFixtures)
 struct AppleSpeechSafetyTests {
     @Test(arguments: [false, true])
     func existingOrNewReservationBothContinueAssetPreparation(_ newlyReserved: Bool) async throws {

@@ -88,7 +88,7 @@ private final class SpeechStubClient: NSObject, URLProtocolClient, Sendable {
     func urlProtocol(_ protocolInstance: URLProtocol, didCancel challenge: URLAuthenticationChallenge) { record("cancelChallenge") }
 }
 
-@Suite("Speech HTTP stub scheduling", .timeLimit(.minutes(1)))
+@Suite("Speech HTTP stub scheduling", .timeLimit(.minutes(1)), .offlineFixtures)
 struct SpeechStubHTTPTests {
     @Test func blockedHandlerDoesNotHoldOtherSessions() async throws {
         let gate = DispatchSemaphore(value: 0)

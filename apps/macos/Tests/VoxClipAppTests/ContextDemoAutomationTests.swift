@@ -20,7 +20,7 @@ import Testing
     func stop() { stops += 1 }
 }
 
-@MainActor @Suite("Context demo bounded browser automation")
+@MainActor @Suite("Context demo bounded browser automation", .offlineFixtures)
 struct ContextDemoAutomationTests {
     private func plan() throws -> ContextDemoWebPlan {
         try .prepare(url: "https://example.test/demo", revision: "r1", actions: [.scroll(verticalPixels: 200), .pause(milliseconds: 100)])

@@ -3,7 +3,7 @@ import Testing
 @testable import VoxClip
 
 /// The v2 tokens (notes.md sections 2 and 3, impl-plan V0): the type scale, the tint and Increase Contrast.
-@Suite("v2 design tokens")
+@Suite("v2 design tokens", .offlineFixtures)
 @MainActor struct DesignTokenTests {
     private func hex(_ color: NSColor?) -> String {
         guard let rgb = color?.usingColorSpace(.sRGB) else { return "none" }

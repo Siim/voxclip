@@ -74,7 +74,7 @@ private final class WorkThreads: Sendable {
 /// and C2's diff, a selection through `VoiceRewriteService`; the free changes as one undo step; R3 and the way back; the
 /// send's confirmation on an API key only; Edit › Rewrite {scope}; the Ask suggestions; and no Voice Lab gate. Stub
 /// connectors and in-memory settings only; the app model never starts.
-@Suite("Rewrite takes a scope", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; only stub connectors are called."))
+@Suite("Rewrite takes a scope", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; only stub connectors are called."), .offlineFixtures)
 @MainActor struct RewriteScopeTests {
     /// An app whose AI is `connector` on the stub, with every sheet answered yes and logged. `locations` gives it its own
     /// data folder, so its log is its own.

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct ContextDemoV4WireTests {
+@Suite(.offlineFixtures) struct ContextDemoV4WireTests {
     private struct Patch: Decodable {
         let path: String
         let value: JSONValue?

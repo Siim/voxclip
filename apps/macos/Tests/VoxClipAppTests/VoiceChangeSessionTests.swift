@@ -206,7 +206,7 @@ private actor VoiceChangeFixtureKeys: KeyProvider {
     }
 }
 
-@Suite("Voice change session safety", .serialized)
+@Suite("Voice change session safety", .serialized, .offlineFixtures)
 @MainActor struct VoiceChangeSessionTests {
     @Test func openingAndChoosingNeverDiscoversQuotesUploadsOrPlays() throws {
         let fake = try VoiceChangeHarness(), session = fake.makeSession()

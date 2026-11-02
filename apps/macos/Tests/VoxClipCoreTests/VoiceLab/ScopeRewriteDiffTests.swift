@@ -5,7 +5,7 @@ import Testing
 /// Shared `scope-rewrite-diff-cases.json` vectors (tools/fixtures/voice-lab/generate_scope_rewrite_diff.py): a clip or Full
 /// take proposal as review hunks (voice-lab.md §8.1 item 1 and §8.2). Only the Swift suite replays them until the C# twin
 /// lands (plan W1).
-@Suite("Scope rewrite diff")
+@Suite("Scope rewrite diff", .offlineFixtures)
 struct ScopeRewriteDiffTests {
     private func document() throws -> JSONValue {
         let document = try JSONDecoder().decode(JSONValue.self, from: FixtureLoader.data("fixtures/voice-lab/scope-rewrite-diff-cases.json"))

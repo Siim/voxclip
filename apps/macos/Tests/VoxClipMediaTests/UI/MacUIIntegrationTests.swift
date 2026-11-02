@@ -6,7 +6,7 @@ import XCTest
 import Darwin
 
 extension HeavyMediaTests {
-@Suite("mac-ui", .serialized) struct MacUIIntegrationTests {
+@Suite("mac-ui", .serialized, .offlineFixtures) struct MacUIIntegrationTests {
     @Test("Real transcription actions enforce first-use consent without opening a window") func transcriptionConsent() throws {
         let directory = try UIProcessHarness.run(mode: "-transcriptionConsentAudit", name: "transcription-consent")
         defer { UIProcessHarness.cleanTemporary(directory) }

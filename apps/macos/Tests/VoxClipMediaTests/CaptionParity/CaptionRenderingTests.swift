@@ -4,7 +4,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite(.serialized)
+@Suite(.serialized, .offlineFixtures)
 struct CaptionRenderingTests {
     @Test("Prepared page protocol preserves later-page palette and seek parity")
     func preparedPage() async throws {

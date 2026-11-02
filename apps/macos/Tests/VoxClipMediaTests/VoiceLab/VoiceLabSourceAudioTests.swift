@@ -6,7 +6,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite struct VoiceLabSourceAudioTests {
+@Suite(.offlineFixtures) struct VoiceLabSourceAudioTests {
     @Test func rewriteSourceRetainsNativeRateAndAbsoluteFrameOrder() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("rewrite.mov")

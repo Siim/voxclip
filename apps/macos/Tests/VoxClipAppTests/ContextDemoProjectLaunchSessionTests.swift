@@ -33,7 +33,7 @@ private actor ContextDemoProjectCommandProbe: ProcessRunner {
     func finishDraining() { release?.resume(); release = nil }
 }
 
-@MainActor @Suite("Context demo project command UI lifecycle", .serialized)
+@MainActor @Suite("Context demo project command UI lifecycle", .serialized, .offlineFixtures)
 struct ContextDemoProjectLaunchSessionTests {
     private func fixture() throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("demo-command-ui-\(UUID())", isDirectory: true).resolvingSymlinksInPath()

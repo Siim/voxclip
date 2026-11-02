@@ -78,7 +78,7 @@ private struct HeldDetector: SpeechLanguageDetector {
 
 /// Background eviction under the cache size limit, leases, Clear cache and Clear everything (architecture §8.2). Sizes
 /// are logical: audio and envelopes are sparse files, so a gigabyte-scale cache takes no disk space.
-@Suite("Cache eviction", .serialized, .timeLimit(.minutes(1)))
+@Suite("Cache eviction", .serialized, .timeLimit(.minutes(1)), .offlineFixtures)
 struct CacheEvictionTests {
     static let gb = CacheEvictionScheduler.bytesPerGB
     static let mb: Int64 = 1_000_000

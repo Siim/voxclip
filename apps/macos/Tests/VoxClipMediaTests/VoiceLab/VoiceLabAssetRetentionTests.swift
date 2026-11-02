@@ -3,7 +3,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite struct VoiceLabAssetRetentionTests {
+@Suite(.offlineFixtures) struct VoiceLabAssetRetentionTests {
     @Test(arguments: ["replacement", "live-instance", "late-reference"])
     func deletionRequiresOwnedIdentityAndNoActiveDocuments(scenario: String) throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

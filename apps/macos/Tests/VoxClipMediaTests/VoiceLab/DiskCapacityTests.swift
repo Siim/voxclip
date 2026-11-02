@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipMedia
 
-@Suite("native-disk-capacity")
+@Suite("native-disk-capacity", .offlineFixtures)
 struct DiskCapacityTests {
     @Test func combinesNeedsOnSameVolumeAndAcceptsLessThanFifteenGiB() throws {
         let temp = URL(fileURLWithPath: "/tmp")

@@ -18,7 +18,7 @@ private actor SignInConnector: LLMConnector {
     func send(_ request: LLMRequest, model: String) throws -> RawCompletion { sends += 1; throw CancellationError() }
 }
 
-@Suite("V11b services", .serialized)
+@Suite("V11b services", .serialized, .offlineFixtures)
 @MainActor struct V11bServicesTests {
     init() { _ = NSApplication.shared }
     @Test func spendUsesOnlyTheLocalMonthAndRetainsUnknownPrices() async throws {

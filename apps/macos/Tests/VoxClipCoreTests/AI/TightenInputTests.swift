@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Tighten input")
+@Suite("Tighten input", .offlineFixtures)
 struct TightenInputTests {
     private func transcript(_ words: [TimedWord]) -> Transcript {
         Transcript(

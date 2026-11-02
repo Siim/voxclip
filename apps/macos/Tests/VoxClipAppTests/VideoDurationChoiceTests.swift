@@ -13,7 +13,7 @@ private struct VideoDurationTestKeys: KeyProvider {
     }
 }
 
-@Suite("Explicit video duration choice", .serialized)
+@Suite("Explicit video duration choice", .serialized, .offlineFixtures)
 @MainActor struct VideoDurationChoiceTests {
     private func source() throws -> Project {
         let shared = try SharedResources.locate()

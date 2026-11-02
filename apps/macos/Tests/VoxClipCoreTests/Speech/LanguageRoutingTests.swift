@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Speech language routing")
+@Suite("Speech language routing", .offlineFixtures)
 struct LanguageRoutingTests {
     private func snapshot(installed: Set<String> = [], apple: [String] = ["en-GB", "de-DE"], key: Bool = false) async throws -> SpeechRoutingSnapshot {
         let catalog = BundledModelCatalog(shared: SharedResources(root: try FixtureLoader.sharedRoot()))

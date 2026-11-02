@@ -3,7 +3,7 @@ import Testing
 @testable import VoxClipCore
 
 /// Serialized so the timing test does not share the CPU with this suite's own vector run.
-@Suite("Voice Lab audio math", .serialized)
+@Suite("Voice Lab audio math", .serialized, .offlineFixtures)
 struct VoiceLabAudioMathTests {
     private static func sine(_ frequency: Double, peakDbfs: Double, count: Int, rate: Int, phase: Double = 0) -> [Float] {
         let amplitude = pow(10, peakDbfs / 20)

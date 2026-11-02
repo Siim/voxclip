@@ -103,7 +103,7 @@ private final class PumpPullCounts: Sendable {
     }
 }
 
-@Suite(.serialized) struct ExportStopTests {
+@Suite(.serialized, .offlineFixtures) struct ExportStopTests {
 @Test(.timeLimit(.minutes(2)), arguments: [0, 1, 2])
 func exportPumpsStopAtSampleBoundaries(_ stoppedPump: Int) async throws {
     let source = try await NativeMediaFixtures.shared.file("interrupt-aac.mov")

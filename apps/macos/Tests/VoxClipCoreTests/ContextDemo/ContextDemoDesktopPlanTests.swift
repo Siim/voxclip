@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import VoxClipCore
 
-@Suite("Ephemeral reviewed desktop plans")
+@Suite("Ephemeral reviewed desktop plans", .offlineFixtures)
 struct ContextDemoDesktopPlanTests {
     private func identity(window: UInt32 = 42, process: Int32 = 123, bundle: String = "com.example.Demo",
                           launch: Double = 1) -> ContextDemoDesktopIdentity {

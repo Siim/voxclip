@@ -3,7 +3,7 @@ import Testing
 
 /// The filler-comma rule (ux/v2 notes.md §5, impl-plan V8b): a comma folds with the filler
 /// after it, never with a pause alone or at a paragraph's end. Display only.
-@Suite("Display punctuation")
+@Suite("Display punctuation", .offlineFixtures)
 struct DisplayPunctuationTests {
     @Test func aCommaFoldsOnlyBeforeAFoldThatRemovesAFillerWithAWordAfterIt() {
         #expect(DisplayPunctuation.foldsComma("include,", foldRemovesFiller: true, wordFollows: true), "include, uh, um, source → include • source")

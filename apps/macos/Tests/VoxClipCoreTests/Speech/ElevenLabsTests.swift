@@ -21,7 +21,7 @@ private actor ApprovalBoundaryKeys: KeyProvider {
     func resumeRead() { continuation?.resume(); continuation = nil }
 }
 
-@Suite("ElevenLabs Scribe v2", .timeLimit(.minutes(1)))
+@Suite("ElevenLabs Scribe v2", .timeLimit(.minutes(1)), .offlineFixtures)
 struct ElevenLabsTests {
     private struct RecordedExpectation: Decodable {
         let schema: String

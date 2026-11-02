@@ -7,7 +7,7 @@ import Synchronization
 @_spi(Testing) @testable import VoxClipMedia
 @testable import VoxClip
 
-@Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
+@Suite("Headless Voice Lab session", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."), .offlineFixtures)
 @MainActor struct VoiceLabSessionTests {
     @Test(arguments: ["back", "switcher", "tab", "close", "disappear"], [false, true])
     func leavingVoiceDiscardsCaptureWithoutAViewObserver(exit: String, training: Bool) async throws {
@@ -575,7 +575,7 @@ import Synchronization
 }
 
 /// voice-lab.md §6.2 and §6.5.2: the training source the sheet offers, headlessly and with no provider request.
-@Suite("Headless Voice Lab training source", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."))
+@Suite("Headless Voice Lab training source", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows or provider requests are opened."), .offlineFixtures)
 @MainActor struct VoiceLabTrainingSourceTests {
     /// 50 s at 8 kHz: four 8 s bursts of tone 2.5 s apart over a quiet floor.
     private static let bursts: [ClosedRange<Double>] = [1...9, 11.5...19.5, 22...30, 32.5...40.5]

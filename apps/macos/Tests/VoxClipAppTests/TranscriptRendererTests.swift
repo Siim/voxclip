@@ -10,7 +10,7 @@ import Testing
 /// finds every span after an edit, and the edited text, spans, styles and rendering
 /// attributes equal a fresh build. DebugTranscriptPerformance times the same paths at
 /// 10,000 words in the profile build.
-@Suite("Incremental transcript renderer", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."))
+@Suite("Incremental transcript renderer", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."), .offlineFixtures)
 @MainActor struct TranscriptRendererTests {
     /// `paragraphs` turns of ten words by six speakers in turn, r0–r59 by default, each its own
     /// paragraph. Every fifth word is cut, r23 and r41 are fillers, a 1.2 s pause follows r14,

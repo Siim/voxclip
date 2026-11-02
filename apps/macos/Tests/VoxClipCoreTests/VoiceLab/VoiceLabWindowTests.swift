@@ -16,7 +16,7 @@ private extension JSONValue {
 }
 
 /// Shared `window-cases.json` vectors (tools/fixtures/voice-lab/generate_window.py) and a v3 round trip.
-@Suite("Voice Lab window geometry")
+@Suite("Voice Lab window geometry", .offlineFixtures)
 struct VoiceLabWindowTests {
     private static let categories = ["window", "handles", "trimHandles", "alignment", "trim", "relativeWords", "roomTone", "lendableSilence",
                                      "propertyCases", "multiSegmentCases"]

@@ -6,7 +6,7 @@ import Testing
 /// importers are counted too. Each one left in the app's sources
 /// is listed here with why it may stay (a system file picker, a Settings page) or the package that replaces it, so a
 /// new one fails until someone decides where it belongs. A replaced one may simply go.
-@Suite("Pop-up inventory")
+@Suite("Pop-up inventory", .offlineFixtures)
 struct PopUpInventoryTests {
     /// Pop-up calls per source file under Sources/VoxClip (each `NSAlert(`, `runModal(` and so on counts, even on one line),
     /// with the reason each may stay for now.

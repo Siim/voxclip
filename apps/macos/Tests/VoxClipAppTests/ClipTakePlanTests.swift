@@ -138,7 +138,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     func finished() { arrived = true; arrival?.resume(); arrival = nil; resume() }
 }
 
-@Suite("Clip take plan", .serialized, .timeLimit(.minutes(2)))
+@Suite("Clip take plan", .serialized, .timeLimit(.minutes(2)), .offlineFixtures)
 @MainActor struct ClipTakePlanTests {
     @MainActor private final class Fixture {
         let root: URL

@@ -122,7 +122,7 @@ private struct LabDiffDocument: Decodable {
     let cases: [LabDiffCase]
 }
 
-@Suite("Voice Lab word diff and patch budget")
+@Suite("Voice Lab word diff and patch budget", .offlineFixtures)
 struct VoiceLabWordDiffTests {
     private static let document = try? JSONDecoder().decode(LabDiffDocument.self, from: FixtureLoader.data("fixtures/voice-lab/word-diff-cases.json"))
 
@@ -314,7 +314,7 @@ private func labWindow(start: Double = 0, end: Double = 2, left: VoiceLabSeamKin
                    rightSeam: VoiceLabSeamPlacement(kind: right, time: end, sample: 0, fadeSamples: 0))
 }
 
-@Suite("Voice Lab length budget and fit meter")
+@Suite("Voice Lab length budget and fit meter", .offlineFixtures)
 struct VoiceLabLengthBudgetTests {
     @Test func generatedPlanningUsesAcceptedAlignmentsAndConservativeSpeechMargins() throws {
         let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))

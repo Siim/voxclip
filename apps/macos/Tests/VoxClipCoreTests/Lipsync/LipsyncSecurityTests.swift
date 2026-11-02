@@ -4,7 +4,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Lip-sync URL and atomic-file policy", .timeLimit(.minutes(1)))
+@Suite("Lip-sync URL and atomic-file policy", .timeLimit(.minutes(1)), .offlineFixtures)
 struct LipsyncSecurityTests {
     @Test(arguments: ["localhost", "127.0.0.1", "169.254.169.254", "[::1]", "fal.media.attacker.test", "fixture-bucket.s3.us-east-1.amazonaws.com.attacker.test"])
     func signedInputsCannotPointAtPrivateOrArbitraryHosts(host: String) throws {

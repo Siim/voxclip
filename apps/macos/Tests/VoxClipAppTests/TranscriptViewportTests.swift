@@ -11,7 +11,7 @@ import Testing
 /// a resize. Nothing here calls the pane's `layout()`, which lays the viewport out itself.
 /// `TranscriptViewportRelay` places them, not a `textViewportLayoutControllerDidLayout(_:)`
 /// override: NSTextView declares that from macOS 27.
-@Suite("Transcript viewport overlays", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
+@Suite("Transcript viewport overlays", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."), .offlineFixtures)
 @MainActor struct TranscriptViewportTests {
     /// Forty paragraphs of twenty words, each its own speaker's turn, so each wraps after
     /// word 13 at the 528 measure and after word 17 at 680 (with overlay scrollers). The open clip spans the two

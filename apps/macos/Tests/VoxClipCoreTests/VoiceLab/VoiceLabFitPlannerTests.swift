@@ -96,7 +96,7 @@ private struct FitExpected: Decodable {
 
 /// The shared fit vectors on this Core: every named and property case, each with the §8.9.2 properties checked again
 /// on the plan this Core returns.
-@Suite("Voice Lab fit planner")
+@Suite("Voice Lab fit planner", .offlineFixtures)
 struct VoiceLabFitPlannerTests {
     private static let document: FitDocument? = try? JSONDecoder().decode(FitDocument.self,
                                                                           from: FixtureLoader.data("fixtures/voice-lab/fit-cases.json"))

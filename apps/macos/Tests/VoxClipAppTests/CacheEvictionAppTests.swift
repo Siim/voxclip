@@ -36,7 +36,7 @@ private actor TemporarySettingsStore: SettingsStore {
 /// setting is lowered, every window's editor leasing its project's key, and the app's other cache holders. Each test
 /// has its own data folder; caches are sparse files, so they take no disk space.
 @Suite("Headless cache size limit", .serialized, .timeLimit(.minutes(1)),
-       .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."))
+       .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."), .offlineFixtures)
 @MainActor struct CacheEvictionAppTests {
     static let mb: Int64 = 1_000_000
     static func key(_ character: Character) -> String { String(repeating: character, count: 64) }

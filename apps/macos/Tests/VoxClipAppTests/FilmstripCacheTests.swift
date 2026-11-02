@@ -38,7 +38,7 @@ private actor FilmstripDecoderProbe {
     }
 }
 
-@Suite("V9 filmstrip", .serialized)
+@Suite("V9 filmstrip", .serialized, .offlineFixtures)
 struct FilmstripCacheTests {
     @Test func scrollingCancelsOldFramesAndKeepsTwoDecoderSlots() async {
         let probe = FilmstripDecoderProbe()

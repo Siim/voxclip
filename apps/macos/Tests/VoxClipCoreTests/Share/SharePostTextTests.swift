@@ -6,7 +6,7 @@ import Testing
 private func nfcScalars(_ text: String) -> [Unicode.Scalar] { Array(EditingPrimitives.nfc(text).unicodeScalars) }
 
 /// Replays shared/fixtures/share/cases.json; doc/publishing.md §2.1 and doc/spec/voice-lab.md §11.3.
-@Suite struct SharePostTextTests {
+@Suite(.offlineFixtures) struct SharePostTextTests {
     struct Fixture: Decodable {
         struct Case: Decodable {
             let name: String

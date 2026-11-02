@@ -65,7 +65,7 @@ private final class LipsyncHTTPFixtureProtocol: URLProtocol {
     }
 }
 
-@Suite("Lip-sync bounded streaming HTTP", .timeLimit(.minutes(1)))
+@Suite("Lip-sync bounded streaming HTTP", .timeLimit(.minutes(1)), .offlineFixtures)
 struct LipsyncHTTPClientTests {
     private var http: URLSessionLipsyncHTTPClient {
         URLSessionLipsyncHTTPClient(configure: { $0.protocolClasses = [LipsyncHTTPFixtureProtocol.self] })

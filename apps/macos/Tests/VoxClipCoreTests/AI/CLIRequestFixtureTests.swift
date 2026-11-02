@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("CLI shared request goldens", .enabled(if: aiSharedFixturesAvailable, aiSharedFixturesSkipReason))
+@Suite("CLI shared request goldens", .enabled(if: aiSharedFixturesAvailable, aiSharedFixturesSkipReason), .offlineFixtures)
 struct CLIRequestFixtureTests {
     @Test(arguments: ["clip-finder-requests", "ai-tighten-requests", "connector-requests"])
     func everyCLIRenderingMatchesGolden(_ file: String) async throws {

@@ -7,7 +7,7 @@ import Testing
 @_spi(Testing) @testable import VoxClipMedia
 
 /// Replays shared/fixtures/voice-lab/pricing-cases.json (voice-lab §3.1 and §3.2, rules in pricing-cases-README.md).
-@Suite("Voice Lab pricing, cost presentation and spend ledger", .timeLimit(.minutes(1)))
+@Suite("Voice Lab pricing, cost presentation and spend ledger", .timeLimit(.minutes(1)), .offlineFixtures)
 struct VoiceLabPricingTests {
     static func catalog() throws -> VoiceLabPriceCatalog {
         try VoiceLabPriceCatalog.load(shared: SharedResources(root: FixtureLoader.sharedRoot()))

@@ -13,7 +13,7 @@ private struct DurationHookKeys: KeyProvider {
     }
 }
 
-@Suite("Production duration hooks", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
+@Suite("Production duration hooks", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 @MainActor struct DurationHookIntegrationTests {
     @MainActor private final class Backend {
         let record: VoiceConsentRecord

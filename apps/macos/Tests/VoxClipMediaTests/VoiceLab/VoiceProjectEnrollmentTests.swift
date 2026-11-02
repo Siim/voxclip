@@ -77,7 +77,7 @@ private final class ProjectEnrollmentHTTP: URLProtocol, @unchecked Sendable {
 
 private enum ProjectEnrollmentInterruption: Error { case beforeCreate }
 
-@Suite("Project-attested own-voice enrollment", .serialized, .timeLimit(.minutes(2)))
+@Suite("Project-attested own-voice enrollment", .serialized, .timeLimit(.minutes(2)), .offlineFixtures)
 struct VoiceProjectEnrollmentTests {
     private func root() throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("project-enrollment-\(UUID())")

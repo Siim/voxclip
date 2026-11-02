@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct EditingProperties {
+@Suite(.offlineFixtures) struct EditingProperties {
     @Test func reducerRejectsUnsavableTextAndClipIDs() throws {
         var project = try EditingPersistence().project("clip-from-long-take")
         project.edits.clips = []

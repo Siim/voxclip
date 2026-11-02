@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct RenderCallerInputsTests {
+@Suite(.offlineFixtures) struct RenderCallerInputsTests {
     private let root = URL(fileURLWithPath: "/tmp/voxclip-render-caller-data", isDirectory: true)
 
     private func project() throws -> Project {

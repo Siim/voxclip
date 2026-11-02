@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Pinned AI environment keys")
+@Suite("Pinned AI environment keys", .offlineFixtures)
 struct LLMEnvironmentKeyProviderTests {
     private let variables: [ConnectorID: String] = [
         .anthropic: "VOXCLIP_ANTHROPIC_API_KEY", .openai: "VOXCLIP_OPENAI_API_KEY",

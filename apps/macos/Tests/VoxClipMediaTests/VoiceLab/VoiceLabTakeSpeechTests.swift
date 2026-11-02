@@ -38,7 +38,7 @@ private actor GeneratedSpeechProbe: SpeakerEmbedder {
     }
 }
 
-@Suite("Generated take speech evidence")
+@Suite("Generated take speech evidence", .offlineFixtures)
 struct VoiceLabTakeSpeechTests {
     private func samples(frames: Int) -> [Float] {
         (0..<frames).map { Float(sin(Double($0) * 0.071) * 0.2) }

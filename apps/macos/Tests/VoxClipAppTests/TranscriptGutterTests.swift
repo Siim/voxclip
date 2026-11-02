@@ -9,7 +9,7 @@ import Testing
 /// paragraphs, out-of-clip styles, the scope restyle, the AI waveform's place at every zoom,
 /// the overview ruler's marks and the Clips rotor. The DEBUG pixel checks
 /// (DebugTranscriptPixels) draw the same pane.
-@Suite("Transcript gutter, band and paragraphs", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."))
+@Suite("Transcript gutter, band and paragraphs", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."), .offlineFixtures)
 @MainActor struct TranscriptGutterTests {
     /// Three speakers' paragraphs of 6, 4 and 5 words, a kept clip over the second paragraph
     /// and a suggested clip that starts inside the third.

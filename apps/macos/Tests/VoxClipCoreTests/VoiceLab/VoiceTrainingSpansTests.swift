@@ -3,7 +3,7 @@ import Testing
 @testable import VoxClipCore
 
 /// voice-lab.md §6.5.1 and §15 test 20: the shared training-span vectors, compared exactly.
-@Suite struct VoiceTrainingSpansTests {
+@Suite(.offlineFixtures) struct VoiceTrainingSpansTests {
     private struct Vectors: Decodable {
         struct Constants: Decodable, Equatable {
             let minConf: Double, maxGapMs: Int, spanMinMs: Int, spanMaxMs: Int

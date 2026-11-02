@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Local server address", .timeLimit(.minutes(1)))
+@Suite("Local server address", .timeLimit(.minutes(1)), .offlineFixtures)
 struct LocalServerAddressTests {
     @Test(arguments: ["", "http://127.0.0.1:11434", "http://127.0.0.1:1234/v1", "http://localhost:11434", "https://LOCALHOST",
                       "http://127.4.5.6:8080", "http://[::1]:11434", "http://[0:0:0:0:0:0:0:1]/"])

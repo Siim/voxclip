@@ -95,7 +95,7 @@ final class RequestRecorder: Sendable {
 }
 
 #if DEBUG
-@Suite("Voice Lab request cases", .timeLimit(.minutes(1)))
+@Suite("Voice Lab request cases", .timeLimit(.minutes(1)), .offlineFixtures)
 struct VoiceLabRequestCaseTests {
     private let key = "synthetic-voice-lab-key"
     private let createPolicy = OwnVoicePolicy(recordID: "record-1", recordActive: true, providerConsentGranted: true, statementVerified: true, speakerMatched: true)

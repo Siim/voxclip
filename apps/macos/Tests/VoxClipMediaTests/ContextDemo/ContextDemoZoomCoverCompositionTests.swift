@@ -96,7 +96,7 @@ private func zoomCoverRequest(project: Project, paidRoot: URL) throws -> RenderR
         output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 2_000_000), voiceLab: input)
 }
 
-@Suite("context-demo-zoom-cover-contract")
+@Suite("context-demo-zoom-cover-contract", .offlineFixtures)
 struct ContextDemoZoomCoverContractTests {
     @Test(arguments: [0.875, 0.56]) func endpointsAndBoundsAreOnTheDeclaredOutputGrid(_ duration: Double) throws {
         let request = try zoomCoverRequest(project: zoomCoverProject(duration: duration), paidRoot: URL(fileURLWithPath: "/unread-paid-root"))
@@ -141,7 +141,7 @@ struct ContextDemoZoomCoverContractTests {
 }
 
 extension HeavyMediaTests {
-@Suite("context-demo-zoom-cover-native", .serialized)
+@Suite("context-demo-zoom-cover-native", .serialized, .offlineFixtures)
 struct ContextDemoZoomCoverNativeTests {
     @Test @MainActor func changedDurationScalesOnlyVideoAndKeepsNaturalGeneratedSpeech() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("zoom-composition-tests-\(UUID().uuidString)")

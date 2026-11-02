@@ -3,7 +3,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite("Exact-window bounded accessibility traversal") @MainActor
+@Suite("Exact-window bounded accessibility traversal", .offlineFixtures) @MainActor
 struct ContextDemoAccessibilityTreeTests {
     private func fixture() -> (ContextDemoAccessibilityDriver, DesktopAutomationAXFake) {
         let boundary = DesktopAutomationAXFake()

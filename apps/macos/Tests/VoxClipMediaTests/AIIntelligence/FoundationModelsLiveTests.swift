@@ -3,7 +3,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite struct FoundationModelsLiveTests {
+@Suite(.offlineFixtures) struct FoundationModelsLiveTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_LIVE_TESTS"] == "1" && ProcessInfo.processInfo.environment["VOXCLIP_LIVE_FM"] == "1",
         "Requires VOXCLIP_LIVE_TESTS=1 and VOXCLIP_LIVE_FM=1"))
     func catalogTestRoundtrip() async throws {

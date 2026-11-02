@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct LocalDirectoryTests {
+@Suite(.offlineFixtures) struct LocalDirectoryTests {
     @Test(arguments: ["/tmp", "/var", "/etc"])
     func systemAliasesOpenTheSameDirectoryAsTheirNativePath(path: String) throws {
         let alias = URL(fileURLWithPath: path, isDirectory: true)

@@ -5,7 +5,7 @@ import Testing
 
 /// The persisted timestamp rule (editing §10.1) against `shared/fixtures/projects/timestamps.json`. The Windows Core
 /// replays the same cases, so both platforms read and write the same text for the same instant.
-@Suite struct TimestampWireRule {
+@Suite(.offlineFixtures) struct TimestampWireRule {
     struct Cases: Decodable {
         struct Text: Decodable { let input: String; let canonical: String }
         struct Rejected: Decodable { let input: String; let reason: String }

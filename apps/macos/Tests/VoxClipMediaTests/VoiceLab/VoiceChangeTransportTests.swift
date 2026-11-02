@@ -5,7 +5,7 @@ import Testing
 @_spi(Testing) @testable import VoxClipCore
 @_spi(Testing) @testable import VoxClipMedia
 
-@Suite("Voice changer transport bridge", .timeLimit(.minutes(1)))
+@Suite("Voice changer transport bridge", .timeLimit(.minutes(1)), .offlineFixtures)
 struct VoiceChangeTransportTests {
     @Test(arguments: [VoiceChangeTestHTTP.Mode.valid, .malformed, .failedBody, .lostBody, .oversized, .denied])
     func acceptanceSurvivesBodyErrors(mode: VoiceChangeTestHTTP.Mode) async throws {

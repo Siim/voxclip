@@ -6,7 +6,7 @@ import Testing
 /// The main menu's key equivalents and tags stay unique as packages add commands (V3b's clip bar, V13's Rewrite, V14's
 /// and V15's Keep flow): each tag names one command, each shortcut one item, apart from the pairs below that act in
 /// different panes and the hidden alternates. The transcript's own change keys (V14) stay off the menu.
-@Suite("Menu shortcuts", .serialized)
+@Suite("Menu shortcuts", .serialized, .offlineFixtures)
 @MainActor struct MenuShortcutTests {
     private struct Shortcut: Hashable, CustomStringConvertible {
         let key: String, modifiers: NSEvent.ModifierFlags.RawValue

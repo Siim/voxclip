@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct RelinkTests {
+@Suite(.offlineFixtures) struct RelinkTests {
     struct Fixture: Decodable {
         struct Case: Decodable {
             let id: String

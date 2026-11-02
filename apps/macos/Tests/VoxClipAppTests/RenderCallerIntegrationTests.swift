@@ -5,7 +5,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClip
 
-@Suite("Render caller integration", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR"))
+@Suite("Render caller integration", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR"), .offlineFixtures)
 @MainActor struct RenderCallerIntegrationTests {
     private func project(origin: ClipOrigin = .manual) throws -> Project {
         let shared = try SharedResources.locate()

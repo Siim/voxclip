@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct VoiceLabRenderContractTests {
+@Suite(.offlineFixtures) struct VoiceLabRenderContractTests {
     @Test func allSharedPostTextCombinationsReplayInBothLanguages() throws {
         struct Share: Decodable { let lines: [String: [String: String]] }
         let share = try JSONDecoder().decode(Share.self, from: FixtureLoader.data("fixtures/share/cases.json"))

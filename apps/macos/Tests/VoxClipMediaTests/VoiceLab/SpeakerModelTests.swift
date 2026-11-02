@@ -4,7 +4,7 @@ import VoxClipCore
 @testable import VoxClipMedia
 
 extension HeavyMediaTests {
-@Suite("Real CPU speaker parity", .serialized)
+@Suite("Real CPU speaker parity", .serialized, .offlineFixtures)
 struct SpeakerModelTests {
     static var modelDirectory: String? { ProcessInfo.processInfo.environment["VOXCLIP_SPEAKER_MODEL_DIR"] }
     @Test(.enabled(if: modelDirectory != nil, "Weights are not committed. Set VOXCLIP_SPEAKER_MODEL_DIR to the verified local model/VAD cache; tests never download."))

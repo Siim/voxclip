@@ -26,7 +26,7 @@ private struct AcceptanceTestKeys: KeyProvider {
     func resume() { release?.resume(); release = nil }
 }
 
-@Suite("Headless Voice Lab acceptance", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
+@Suite("Headless Voice Lab acceptance", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 @MainActor struct VoiceLabAcceptanceTests {
     /// Text Rewrite needs no Voice Lab (impl-plan V13): turning the beta off keeps an open session and its panel, and
     /// stops only its takes.

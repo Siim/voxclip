@@ -3,7 +3,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite(.serialized)
+@Suite(.serialized, .offlineFixtures)
 struct CaptionResourceTests {
     @Test("Missing caption resources report the reinstall error")
     func missingResources() throws {

@@ -57,7 +57,7 @@ private func compositionInput(record: ContextDemoAsset, source: URL, plan: EditP
     return try ContextDemoPlanner.prepare(document: document, project: project, timeline: .legacy(plan), scope: scope)
 }
 
-@Suite("context-demo-composition-contract")
+@Suite("context-demo-composition-contract", .offlineFixtures)
 struct ContextDemoCompositionContractTests {
     @Test func snapshotRejectsTraversalSymlinksAndAlteration() throws {
         let root = try compositionTestDirectory()
@@ -113,7 +113,7 @@ struct ContextDemoCompositionContractTests {
 }
 
 extension HeavyMediaTests {
-@Suite("context-demo-composition-native", .serialized)
+@Suite("context-demo-composition-native", .serialized, .offlineFixtures)
 struct ContextDemoCompositionNativeTests {
     private func capturedVideo(root: URL) async throws -> ContextDemoAsset {
         let source = AVURLAsset(url: try await NativeMediaFixtures.shared.file("counter.mov"))

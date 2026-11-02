@@ -3,7 +3,7 @@ import Testing
 import Darwin
 @testable import VoxClipCore
 
-@Suite("Owned stale scratch") struct ScratchCleanupTests {
+@Suite("Owned stale scratch", .offlineFixtures) struct ScratchCleanupTests {
     private var deadOwner: ScratchCleanup.ProcessOwner { .init(pid: Int32.max, startSeconds: 1, startMicroseconds: 0) }
 
     @Test func legacyExternalPartialsAreNeverDeletedOrRenamed() throws {

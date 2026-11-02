@@ -131,7 +131,7 @@ private actor RefusingKeys: ProviderKeyStore {
 /// its steps and Stop, R1x shows each error with its fix, and the panel's job follows the
 /// task. Stub connectors and in-memory keys only; the app model never starts, so it saves
 /// no settings.
-@Suite("Rewrite job on the Director task", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; only stub connectors are called."))
+@Suite("Rewrite job on the Director task", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; only stub connectors are called."), .offlineFixtures)
 @MainActor struct DirectorTaskTests {
     private func app(_ connector: String?, connectors: [String: StubConnector] = [:], keys: [String: String] = [:]) -> (AppModel, DirectorFixtureKeys) {
         let app = AppModel(settingsStore: RegressionSettingsStore())

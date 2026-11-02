@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite("Speech orchestration", .serialized, .timeLimit(.minutes(1)))
+@Suite("Speech orchestration", .serialized, .timeLimit(.minutes(1)), .offlineFixtures)
 struct TranscriptionServiceTests {
     /// Seven services share one queue: one local and two cloud jobs run together, the others wait,
     /// and each finished job hands its slot to the oldest waiter of its kind; transcription §13.4.

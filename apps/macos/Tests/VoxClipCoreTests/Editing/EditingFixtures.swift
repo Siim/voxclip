@@ -22,7 +22,7 @@ struct FixtureValue {
     static func number(_ value: Double) -> FixtureValue { FixtureValue(.number(value)) }
 }
 
-@Suite struct EditingFixtures {
+@Suite(.offlineFixtures) struct EditingFixtures {
     static func discover() throws -> [URL] {
         let directory = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/editing")
         let enumerator = try #require(FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil))

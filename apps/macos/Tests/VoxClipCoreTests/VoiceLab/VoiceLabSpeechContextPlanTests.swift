@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Generated speech context proposals")
+@Suite("Generated speech context proposals", .offlineFixtures)
 struct VoiceLabSpeechContextPlanTests {
     private func fixture() throws -> Project {
         var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))

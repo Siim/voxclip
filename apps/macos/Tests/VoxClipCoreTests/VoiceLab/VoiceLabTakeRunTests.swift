@@ -177,7 +177,7 @@ private actor ReviewerCapturingSpeaker: SpeakerEmbedder {
     func embed(_ samples: [Float]) async throws -> [Float] { windows.append(samples); return [1, 0] }
 }
 
-@Suite("Bounded take run", .serialized, .timeLimit(.minutes(2)))
+@Suite("Bounded take run", .serialized, .timeLimit(.minutes(2)), .offlineFixtures)
 struct VoiceLabTakeRunTests {
     private struct Fixture {
         let root: URL

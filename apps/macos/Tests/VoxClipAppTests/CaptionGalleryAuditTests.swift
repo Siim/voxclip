@@ -5,7 +5,7 @@ import Synchronization
 import Testing
 @testable import VoxClip
 
-@Suite("Headless gallery audit", .serialized)
+@Suite("Headless gallery audit", .serialized, .offlineFixtures)
 @MainActor struct CaptionGalleryAuditTests {
     @Test func settlementWaitsForAnAppKitLayoutTurn() async throws {
         let observed = Mutex(false)

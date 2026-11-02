@@ -8,7 +8,7 @@ import Testing
 /// The tab row's Show cuts toggle (impl-plan V8b) without a window: its place before ⋯, that
 /// it follows View › Show Cuts, the menu item in a Versions window, and its keyboard focus
 /// ring. Settings are never loaded.
-@Suite("Show cuts toggle", .serialized)
+@Suite("Show cuts toggle", .serialized, .offlineFixtures)
 @MainActor struct ShowCutsToggleTests {
     private func editor(_ app: AppModel) throws -> EditorModel {
         let shared = try SharedResources.locate()

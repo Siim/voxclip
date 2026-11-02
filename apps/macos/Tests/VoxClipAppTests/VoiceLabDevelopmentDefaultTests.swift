@@ -5,7 +5,7 @@ import Testing
 
 /// Development builds read an unset Voice Lab switch and beta notice as on, only for the user's own settings file
 /// (voice-lab §5). These tests never load or save settings.
-@Suite("Voice Lab development defaults", .serialized)
+@Suite("Voice Lab development defaults", .serialized, .offlineFixtures)
 @MainActor struct VoiceLabDevelopmentDefaultTests {
     @Test func unsetKeysReadAsOnInTheAppsOwnDevelopmentSettings() {
         #expect(AppModel.internalBuild)

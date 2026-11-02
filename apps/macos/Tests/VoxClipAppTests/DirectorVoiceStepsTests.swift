@@ -5,7 +5,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClip
 
-@Suite("Inline Voice job", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
+@Suite("Inline Voice job", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 @MainActor struct DirectorVoiceStepsTests {
     private func open() async throws -> (AppModel, EditorModel) {
         let app = AppModel()

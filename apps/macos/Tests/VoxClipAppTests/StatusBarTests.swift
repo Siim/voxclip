@@ -9,7 +9,7 @@ import Testing
 /// running task from the Director task and Find Clips with its elapsed time, the tab's edit summary, the Frame that
 /// opens View › Frame's choices, the export state, VoiceOver's group with values, f1's measurements and the narrow
 /// drop order. Stub connectors only, settings in memory, nothing shown.
-@Suite("Status bar", .serialized)
+@Suite("Status bar", .serialized, .offlineFixtures)
 @MainActor struct StatusBarTests {
     init() { _ = NSApplication.shared }
     private func fiveQuestions() throws -> Project {

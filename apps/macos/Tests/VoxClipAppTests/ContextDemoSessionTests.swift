@@ -60,7 +60,7 @@ import Testing
 }
 
 @MainActor
-@Suite("Context demo session and undo", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
+@Suite("Context demo session and undo", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 struct ContextDemoSessionTests {
     private func open() async throws -> (EditorModel, ContextDemoSession, ContextDemoRecordingProbe, UndoManager) {
         _ = NSApplication.shared
@@ -375,7 +375,7 @@ struct ContextDemoSessionTests {
     }
 }
 @MainActor
-@Suite("Context demo browser/capture lifetime", .serialized)
+@Suite("Context demo browser/capture lifetime", .serialized, .offlineFixtures)
 struct ContextDemoWebCaptureLifetimeTests {
     private func eventually(_ condition: @MainActor () -> Bool) async throws {
         for _ in 0..<1_000 {

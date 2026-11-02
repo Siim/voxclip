@@ -7,7 +7,7 @@ import VoxClipCore
 @testable import VoxClipMedia
 
 extension HeavyMediaTests {
-@Suite("voice-lab-native-composition", .serialized)
+@Suite("voice-lab-native-composition", .serialized, .offlineFixtures)
 struct VoiceLabCompositionTests {
     private func source(in root: URL) async throws -> URL {
         let original = try FixtureLoader.sharedRoot().appendingPathComponent("fixtures/media/joins-tone.mov")

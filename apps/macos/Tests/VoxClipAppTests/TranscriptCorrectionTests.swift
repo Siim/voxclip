@@ -6,7 +6,7 @@ import Testing
 @testable import VoxClip
 
 /// The inline correction field (design §4.2) ends like an inline rename: leaving it keeps valid text, Esc keeps the word.
-@Suite("Headless inline correction", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."))
+@Suite("Headless inline correction", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are opened."), .offlineFixtures)
 @MainActor struct TranscriptCorrectionTests {
     private func editor() throws -> EditorModel {
         let shared = try SharedResources.locate()

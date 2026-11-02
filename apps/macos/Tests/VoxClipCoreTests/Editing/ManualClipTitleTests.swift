@@ -4,7 +4,7 @@ import Testing
 
 /// Replays shared/fixtures/clips/manual-titles.json, a manual clip's title (design §6.2), as VoxClip.Core's
 /// ManualClipTitleTests does.
-@Suite struct ManualClipTitleTests {
+@Suite(.offlineFixtures) struct ManualClipTitleTests {
     struct Fixture: Decodable {
         struct Case: Decodable {
             let id: String

@@ -3,7 +3,7 @@ import Testing
 @testable import VoxClipCore
 @_spi(Testing) @testable import VoxClipMedia
 
-@Suite("Speaker preprocessing and catalogue")
+@Suite("Speaker preprocessing and catalogue", .offlineFixtures)
 struct SpeakerAudioTests {
     @Test func windowsUseThreeSecondsAndHalfOverlap() throws {
         let samples = (0..<96_000).map { Float($0) }

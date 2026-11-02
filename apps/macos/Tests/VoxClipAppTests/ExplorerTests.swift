@@ -5,7 +5,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClip
 
-@Suite("Explorer", .serialized)
+@Suite("Explorer", .serialized, .offlineFixtures)
 @MainActor struct ExplorerTests {
     private func open() async throws -> (WorkspaceShell, EditorModel) {
         _ = NSApplication.shared

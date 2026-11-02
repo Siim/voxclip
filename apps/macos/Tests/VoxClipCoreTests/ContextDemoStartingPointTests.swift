@@ -49,7 +49,7 @@ private actor ContextDemoCancellableCommandProbe: ProcessRunner {
     }
 }
 
-@Suite("Bounded URL and project starting points", .timeLimit(.minutes(1)))
+@Suite("Bounded URL and project starting points", .timeLimit(.minutes(1)), .offlineFixtures)
 struct ContextDemoStartingPointTests {
     private func request(kind: ContextDemoTargetKind = .webPage, locator: String = "https://example.test/demo",
                          actions: [ContextDemoReviewedAction] = []) -> ContextDemoCaptureRequest {

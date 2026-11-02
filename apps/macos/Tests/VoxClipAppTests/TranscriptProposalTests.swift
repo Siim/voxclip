@@ -10,7 +10,7 @@ import Testing
 /// the marker budget, the edit popover's local rediff, and C2's hunks from a canned reply. The
 /// proposal scene (DebugTranscriptPixels.proposal) draws f3's changes offscreen and checks their
 /// pixels and buttons; one test runs it.
-@Suite("Transcript proposal hunks", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
+@Suite("Transcript proposal hunks", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."), .offlineFixtures)
 @MainActor struct TranscriptProposalTests {
     private func fixture() throws -> Project {
         let shared = try SharedResources.locate()

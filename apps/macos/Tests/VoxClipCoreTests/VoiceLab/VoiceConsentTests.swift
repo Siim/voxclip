@@ -34,7 +34,7 @@ private final class OperationClock: Sendable {
 }
 
 // Audio fixture validation is CPU-heavy; keep cases from starving unrelated async suites.
-@Suite("Own-voice consent", .serialized, .timeLimit(.minutes(2)))
+@Suite("Own-voice consent", .serialized, .timeLimit(.minutes(2)), .offlineFixtures)
 struct VoiceConsentTests {
     struct FixedRNG: RandomNumberGenerator {
         var state: UInt64 = 41

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct VoiceLabRecipeBuilderTests {
+@Suite(.offlineFixtures) struct VoiceLabRecipeBuilderTests {
     @Test func shortSpeechEvidenceUsesCanonicalRecordIdKey() throws {
         let evidence = VoiceLabShortSpeechEvidence(mode: .unmeasured, recordId: "own", consentMethod: .recordedStatement,
             voicedFrames: 16_000, takeCount: 1)

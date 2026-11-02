@@ -220,7 +220,7 @@ import VoxClipCore
 }
 
 @MainActor
-@Suite("Desktop review App bridge", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
+@Suite("Desktop review App bridge", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 struct ContextDemoDesktopReviewTests {
     private func open() async throws -> DesktopReviewFixture {
         _ = NSApplication.shared

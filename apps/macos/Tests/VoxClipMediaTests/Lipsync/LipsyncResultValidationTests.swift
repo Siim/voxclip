@@ -4,7 +4,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite("Lip-sync local result validation", .timeLimit(.minutes(1)))
+@Suite("Lip-sync local result validation", .timeLimit(.minutes(1)), .offlineFixtures)
 struct LipsyncResultValidationTests {
     private func directory() throws -> URL {
         let url = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("lipsync-media-\(UUID().uuidString)")

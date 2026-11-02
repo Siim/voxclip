@@ -34,7 +34,7 @@ private actor HookFixtureConnector: LLMConnector {
 /// The clip bar (impl-plan V3b): Tighten as one undo step on the tab's clip, Hook as one click through the send route,
 /// the harness picker that writes `llm.connector` and detects only when its menu opens, the suggestion's Keep and
 /// Dismiss, VoiceOver's names, and the narrow widths. Stub connectors only, settings in memory, nothing shown.
-@Suite("Clip bar", .serialized)
+@Suite("Clip bar", .serialized, .offlineFixtures)
 @MainActor struct ClipBarTests {
     /// `performClick` sends its action through `NSApp`, so every test needs the application, also when it runs alone.
     init() { _ = NSApplication.shared }

@@ -21,7 +21,7 @@ private func sameWord(_ actual: RawWord, _ expected: RawWord) -> Bool {
     return same(actual.start, expected.start) && same(actual.end, expected.end) && same(actual.conf, expected.conf)
 }
 
-@Suite("Speech word assembly")
+@Suite("Speech word assembly", .offlineFixtures)
 struct WordAssemblyTests {
     static let sharedCases: [URL] = {
         guard let directory = try? FixtureLoader.sharedRoot().appendingPathComponent("fixtures/transcription/word-assembly"),

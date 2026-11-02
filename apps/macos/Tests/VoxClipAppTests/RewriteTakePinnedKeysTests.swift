@@ -13,7 +13,7 @@ private final class RewriteTakeKeySource: KeyProvider, Sendable {
     }
 }
 
-@Suite("Rewrite take production key pin")
+@Suite("Rewrite take production key pin", .offlineFixtures)
 struct RewriteTakePinnedKeysTests {
     @Test func sharedProductionProviderRejectsRotationInsteadOfRebinding() async throws {
         let source = RewriteTakeKeySource()

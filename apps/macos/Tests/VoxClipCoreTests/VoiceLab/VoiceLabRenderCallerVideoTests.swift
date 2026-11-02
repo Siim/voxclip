@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct VoiceLabRenderCallerVideoTests {
+@Suite(.offlineFixtures) struct VoiceLabRenderCallerVideoTests {
     private func video(output: Int64 = 800) -> VoiceLabVideoRecipe {
         VoiceLabVideoRecipe(mode: .zoomCover, sourceStartSample: 2_500, sourceEndSample: 3_200,
             outputSamples: output, retimeFactor: 700 / Double(output), zoom: 1.12, faceX: 0.5, faceY: 0.5,

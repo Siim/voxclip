@@ -26,7 +26,7 @@ import Testing
     func menuNeedsUpdate(_ menu: NSMenu) { updates += 1; item.isHidden = false }
 }
 
-@Suite("Command field", .serialized)
+@Suite("Command field", .serialized, .offlineFixtures)
 @MainActor struct CommandPaletteTests {
     init() { _ = NSApplication.shared }
     private func menu(_ target: PaletteTarget) -> NSMenu {

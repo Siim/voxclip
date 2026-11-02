@@ -5,7 +5,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClip
 
-@Suite("Export job", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR"))
+@Suite("Export job", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR"), .offlineFixtures)
 @MainActor struct ExportJobTests {
     private func project() throws -> Project {
         let shared = try SharedResources.locate()

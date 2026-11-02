@@ -9,7 +9,7 @@ import Testing
 /// outside-clip rule, the selection, the caret, opening and restoring a fold, and how a fold
 /// reads. The fold scene (DebugTranscriptPixels.folds) draws the same take offscreen and
 /// checks its pixels; the last test runs it.
-@Suite("Transcript folds, Show cuts, selection and caret", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
+@Suite("Transcript folds, Show cuts, selection and caret", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."), .offlineFixtures)
 @MainActor struct TranscriptFoldTests {
     /// A never-shown window that keeps its first responder, so a correction field stays up without a field editor.
     private final class StillWindow: NSWindow { override func makeFirstResponder(_ responder: NSResponder?) -> Bool { false } }

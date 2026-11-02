@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite("Speech model catalogue and downloads", .timeLimit(.minutes(1)))
+@Suite("Speech model catalogue and downloads", .timeLimit(.minutes(1)), .offlineFixtures)
 struct ModelStoreTests {
     @Test func twiceInterruptedDownloadResumesFromActualPartialSize() async throws {
         let root = try SpeechTestFiles.directory(); defer { try? FileManager.default.removeItem(at: root) }

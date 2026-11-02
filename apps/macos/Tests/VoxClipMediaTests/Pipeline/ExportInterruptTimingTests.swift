@@ -1,7 +1,7 @@
 import Testing
 @testable import VoxClipMedia
 
-@Suite struct ExportInterruptTimingTests {
+@Suite(.offlineFixtures) struct ExportInterruptTimingTests {
     @Test func mediaTimingRecordsNothingWithoutExplicitOptIn() {
         #expect(ExportInterruptTiming.testOnly == nil)
         ExportInterruptTiming.testOnly?.mark(.handler)

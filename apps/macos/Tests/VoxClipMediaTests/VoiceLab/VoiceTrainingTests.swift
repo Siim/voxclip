@@ -5,7 +5,7 @@ import VoxClipCore
 @testable import VoxClipMedia
 
 extension HeavyMediaTests {
-@Suite("Own-voice training audio", .timeLimit(.minutes(2)))
+@Suite("Own-voice training audio", .timeLimit(.minutes(2)), .offlineFixtures)
 struct VoiceTrainingTests {
     private func speech(seconds: Int, amplitude: Double = 0.2) -> [Float] {
         (0..<(seconds * 48_000)).map { index in

@@ -31,7 +31,7 @@ private final class CaptionTileLatch: @unchecked Sendable {
 
 /// Page-sample gallery tiles through the real CoreText renderer (captions §15.2–15.3, design §6.1): the Core
 /// sample both Cores replay. The Mac's v2 tiles draw a fixed phrase as caption cards instead (impl-plan V5).
-@Suite(.serialized)
+@Suite(.serialized, .offlineFixtures)
 struct CaptionGalleryTileTests {
     /// The shared interview take, the transcript of the Mac UI scenes ("So um, today we ship uh the clipper. Thanks").
     private static func interview() throws -> Project {

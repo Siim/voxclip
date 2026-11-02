@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Tighten validation")
+@Suite("Tighten validation", .offlineFixtures)
 struct TightenValidationTests {
     private var normativeSource: TightenTestSource {
         TightenTestSource(["So,", "um,", "we", "we", "went", "to", "the", "uh", "the", "store."], startingAt: 40)

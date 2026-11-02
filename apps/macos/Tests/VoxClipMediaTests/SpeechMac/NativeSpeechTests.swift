@@ -5,7 +5,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite("Native speech adapters", .serialized)
+@Suite("Native speech adapters", .serialized, .offlineFixtures)
 struct NativeSpeechTests {
     @Test func whisperSplitUTF8AndGroupedTiming() throws {
         let pieces = [WhisperTokenPiece(bytes: Data([0x20, 0xc3]), start: 0.1, end: 0.2, confidence: 0.9), WhisperTokenPiece(bytes: Data([0xb5]), start: 0.2, end: 0.3, confidence: 0.8), WhisperTokenPiece(bytes: Data("htu".utf8), start: 0.3, end: 0.4, confidence: 1), WhisperTokenPiece(bytes: Data(" maailm".utf8), start: 0.7, end: 1, confidence: 0.9)]

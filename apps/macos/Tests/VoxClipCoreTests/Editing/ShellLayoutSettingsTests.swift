@@ -5,7 +5,7 @@ import Testing
 /// The Mac shell's dragged sizes (impl-plan V1a, item 18): `ui.layout.*` keys that are
 /// known, validated and have no shared default. The pre-v2 right-column width stays a
 /// known key; the app retires it at launch (WorkspaceLayoutTests).
-@Suite struct ShellLayoutSettings {
+@Suite(.offlineFixtures) struct ShellLayoutSettings {
     @Test func layoutSizesAreKnownAndValidated() throws {
         for key in ["ui.layout.explorerWidth", "ui.layout.rightWidth", "ui.layout.timelineHeight"] {
             #expect(SettingsDocument.isKnownKey(key))

@@ -71,7 +71,7 @@ import WebKit
 }
 
 @MainActor
-@Suite("Context demo reviewed web action flow", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
+@Suite("Context demo reviewed web action flow", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 struct ContextDemoWebActionFlowTests {
     private func open() async throws -> (EditorModel, ContextDemoSession, ContextDemoWebFlowProbe) {
         _ = NSApplication.shared
@@ -259,7 +259,7 @@ struct ContextDemoWebActionFlowTests {
     }
 }
 
-@MainActor @Suite("Context demo browser delegate and script contract", .serialized)
+@MainActor @Suite("Context demo browser delegate and script contract", .serialized, .offlineFixtures)
 struct ContextDemoBrowserDelegateContractTests {
     @Test func optionalPolicyAndPermissionMethodsHaveObjectiveCDelegateSelectors() {
         let session = ContextDemoBrowserSession()

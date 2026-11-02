@@ -6,7 +6,7 @@ import Testing
 @testable import VoxClipMedia
 @testable import VoxClip
 
-@Suite("Voice change scope and atomic editor acceptance", .serialized)
+@Suite("Voice change scope and atomic editor acceptance", .serialized, .offlineFixtures)
 @MainActor struct VoiceChangeEditorTests {
     private func fixture() throws -> Project {
         let shared = try SharedResources.locate()

@@ -43,7 +43,7 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
     func release() { released = true; continuation?.resume(); continuation = nil }
 }
 
-@Suite("Inline Transcribe", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
+@Suite("Inline Transcribe", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 @MainActor struct InlineTranscriptionTests {
     @Test(arguments: ["missing", "unreadable", "relink", "version", "duration"])
     func integratedMediaGuardsRefuseTranscriptionAndKeepCurrentProject(reason: String) async throws {

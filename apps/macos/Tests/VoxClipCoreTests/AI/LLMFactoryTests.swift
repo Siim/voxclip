@@ -21,7 +21,7 @@ private actor FactoryProcesses: ProcessRunner {
     }
 }
 
-@Suite("M8 catalog and connector factory")
+@Suite("M8 catalog and connector factory", .offlineFixtures)
 struct LLMFactoryTests {
     @Test func loadWrapsCatalogInitializer() throws {
         let shared = try SharedResources(root: FixtureLoader.sharedRoot())

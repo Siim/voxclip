@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct VoiceLabUpgradeTests {
+@Suite(.offlineFixtures) struct VoiceLabUpgradeTests {
     private func project(_ path: String) throws -> Project { try JSONProjectStore.decode(FixtureLoader.data(path)) }
     private func extendedV1() throws -> Project {
         var v1 = try project("fixtures/projects/interview-take.voxclip")

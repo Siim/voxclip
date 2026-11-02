@@ -4,7 +4,7 @@ import Testing
 
 /// voice-lab.md §8.6 with several hunks, §2.6 and §3.1 (design delta §6 T1): replays
 /// shared/fixtures/voice-lab/take-batch-cases.json (rules in take-batch-cases-README.md).
-@Suite("Take batch vectors")
+@Suite("Take batch vectors", .offlineFixtures)
 struct VoiceLabTakeBatchTests {
     private struct Vectors: Decodable {
         struct Amount: Decodable { let usd: String?; let credits: Int? }

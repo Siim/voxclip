@@ -134,7 +134,7 @@ func voiceRewriteGoldenRequest(_ item: JSONValue, label: String) async throws {
     }
 }
 
-@Suite("Voice rewrite length budget")
+@Suite("Voice rewrite length budget", .offlineFixtures)
 struct VoiceRewriteBudgetTests {
     @Test func sharedTextLengthCases() throws {
         let cases = try #require(VoiceRewriteBudgetFixtures.document("text-length-cases.json")["cases"] as? [[String: Any]])

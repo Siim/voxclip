@@ -136,7 +136,7 @@ func verifyVoiceCallerAudio(_ output: URL, expected: VoiceLabOutputPlan) async t
 }
 
 extension HeavyMediaTests {
-@Suite("voice-lab-callers", .serialized)
+@Suite("voice-lab-callers", .serialized, .offlineFixtures)
 struct VoiceLabCallerTests {
     @Test(.timeLimit(.minutes(3)), arguments: ["full", "clip", "off", "dormant-cuts", "source-only"])
     func cliExportsReviewedRecipe(_ route: String) async throws {

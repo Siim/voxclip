@@ -3,7 +3,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClip
 
-@Suite("Clip take speech planning")
+@Suite("Clip take speech planning", .offlineFixtures)
 @MainActor struct ClipTakeSpeechPlanningTests {
     private func fixture(duration: Double = 51) throws -> (Project, AudioEnvelope) {
         let shared = try SharedResources.locate()

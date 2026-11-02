@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct ContextDemoPersistenceTests {
+@Suite(.offlineFixtures) struct ContextDemoPersistenceTests {
     private func project(_ path: String = "fixtures/projects/interview-take.voxclip") throws -> Project {
         try JSONProjectStore.decode(FixtureLoader.data(path))
     }

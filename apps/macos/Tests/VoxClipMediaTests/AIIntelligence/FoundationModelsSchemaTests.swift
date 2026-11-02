@@ -4,7 +4,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite struct FoundationModelsSchemaTests {
+@Suite(.offlineFixtures) struct FoundationModelsSchemaTests {
     @Test(arguments: ["clip-finder", "ai-tighten"]) func sharedSchemasBuildWithoutModelCalls(_ prompt: String) throws {
         let output = try FixtureLoader.decode(FoundationModelsTestResources.Prompt.self, at: "prompts/\(prompt).json").output
         let schema = try FoundationModelsSchema.make(output.schema, name: output.name, clipBudget: 3)

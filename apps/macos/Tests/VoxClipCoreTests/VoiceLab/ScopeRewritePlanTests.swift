@@ -5,7 +5,7 @@ import Testing
 /// Shared `scope-rewrite-plan-cases.json` vectors (tools/fixtures/voice-lab/generate_scope_rewrite.py): the Fix with AI request
 /// for a clip or Full take (voice-lab.md §8.1 item 1), its lines and their §8.9.1 ranges. Only the Swift suite replays them
 /// until the C# twin lands (plan W1).
-@Suite("Scope rewrite plan")
+@Suite("Scope rewrite plan", .offlineFixtures)
 struct ScopeRewritePlanTests {
     /// The passage fixture's take is the template every vector's take starts from.
     private static let passage = try? JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))

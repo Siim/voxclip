@@ -29,7 +29,7 @@ private struct ContinuityCase: Decodable {
     let expected: Expected
 }
 
-@Suite struct VoiceLabContinuityTests {
+@Suite(.offlineFixtures) struct VoiceLabContinuityTests {
     @Test func sharedContinuityVectorsUseProductionPlacement() throws {
         let data = try FixtureLoader.data("fixtures/voice-lab/continuity-cases.json")
         let document = try JSONDecoder().decode(ContinuityDocument.self, from: data)

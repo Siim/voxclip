@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite(.serialized) struct EditingPerformance {
+@Suite(.serialized, .offlineFixtures) struct EditingPerformance {
     @Test func bulkOperationsResolveActiveClipOnce() throws {
         let words = (0..<10_000).map { position in
             TimedWord(id: "word-\(position)", text: "um", start: Double(position) * 2, end: Double(position) * 2 + 0.3)

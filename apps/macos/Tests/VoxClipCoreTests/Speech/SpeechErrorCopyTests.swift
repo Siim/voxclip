@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Speech error copy", .timeLimit(.minutes(1)))
+@Suite("Speech error copy", .timeLimit(.minutes(1)), .offlineFixtures)
 struct SpeechErrorCopyTests {
     @Test(arguments: [
         (VoxClipError.modelMissing("Whisper Small English", size: "59.24 MB"), "Download the Whisper Small English model (59.24 MB) to transcribe on this Mac."),

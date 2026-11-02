@@ -4,7 +4,7 @@ import VoxClipCore
 import whisper
 @testable import VoxClipMedia
 
-@Suite("Whisper byte and diagnostic safety", .serialized)
+@Suite("Whisper byte and diagnostic safety", .serialized, .offlineFixtures)
 struct WhisperSafetyTests {
     @Test func strayContinuationDoesNotSwallowLaterWords() {
         let pieces = [Data(" Hello".utf8), Data([0x80]), Data(" world".utf8), Data(" again".utf8)].enumerated().map {

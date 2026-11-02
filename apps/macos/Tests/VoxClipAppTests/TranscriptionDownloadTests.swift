@@ -22,7 +22,7 @@ private actor InlineModelDownloader: ModelDownloader {
     }
 }
 
-@Suite("Headless inline model download", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil))
+@Suite("Headless inline model download", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil), .offlineFixtures)
 @MainActor struct TranscriptionDownloadTests {
     private func turbo() async throws -> ModelDescriptor {
         try await BundledModelCatalog(shared: SharedResources.locate()).model(id: "whisper-large-v3-turbo-q5_0")

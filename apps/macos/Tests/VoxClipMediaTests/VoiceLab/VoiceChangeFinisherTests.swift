@@ -88,7 +88,7 @@ private struct VoiceChangeFinishFixture {
     func paidBytes() throws -> [Data] { try outputs.map { try Data(contentsOf: paidRoot.appendingPathComponent($0.asset.file)) } }
 }
 
-@Suite("Voice changer local canonical finisher", .timeLimit(.minutes(2)))
+@Suite("Voice changer local canonical finisher", .timeLimit(.minutes(2)), .offlineFixtures)
 struct VoiceChangeFinisherTests {
     @Test(arguments: [false, true])
     func realRecipesRoundTripAndAuditionMatchesMeasuredMix(passage: Bool) async throws {

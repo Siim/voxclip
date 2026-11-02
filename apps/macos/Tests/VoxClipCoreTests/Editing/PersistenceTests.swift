@@ -16,7 +16,7 @@ private actor SettingsDebounceClock {
     func advance(_ index: Int) { waiters.removeValue(forKey: index)?.resume() }
 }
 
-@Suite struct EditingPersistence {
+@Suite(.offlineFixtures) struct EditingPersistence {
     struct WriterVersionCase: Decodable, Sendable {
         let runtime: String?
         let writer: String

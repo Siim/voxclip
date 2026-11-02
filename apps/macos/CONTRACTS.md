@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+## Bound headless fixture suite competition (3 Nov 2026)
+
+- Hosted `41537569844` at `323b0cdf` passes all Windows gates, but Core checkpoint tasks resume about 46 seconds after starting despite ten-second deadlines; App repeats routing/readiness timeouts that pass in the local serial replay. Media’s fake-capture checkpoint also expires while other suites run. Per-suite case serialization and 1 ms polling alone do not prevent unrelated suites from monopolizing the limited executor.
+- Headless Core/App/Media suites now opt into `.offlineFixtures`, a nonrecursive Swift Testing scope that admits one independent suite at a time per test process. This scope starts outside each test case’s existing time limit; ten-second checkpoints and all assertions remain. Cases within the admitted suite retain their existing `.serialized` traits or parallel execution, and explicitly concurrent request/cancellation tasks still run concurrently. Nested suites inherit task-local ownership to avoid reacquisition. Error and queued-cancellation regressions verify the lane is released.
+- New headless suites must include `.offlineFixtures`; no workflow or product code changes. Native windows, performance measurements under a quiet optimized host, and provider/model acceptance remain separate. The final authorized dispatch must verify this configuration before a bundle is accepted.
+
 ## Restore reviewed integration fixes (3 Nov 2026)
 
 - Integration run `41529063688` passes Windows native Media/CLI, both Release architectures, strict inventories and DEBUG launch (demo plus five ordinary opens). Shared/hygiene and Main 10 pass. Mac Core reports six HTTP-stub checkpoint timeouts; App reports an export-start checkpoint timeout. The failed run was cancelled after Windows completed to retrieve its Mac log; later Mac gates and aggregate CLI parity were not accepted.

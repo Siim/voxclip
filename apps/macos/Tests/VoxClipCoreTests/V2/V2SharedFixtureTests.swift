@@ -3,7 +3,7 @@ import Testing
 @testable import VoxClipCore
 
 /// WC1's independent, byte-exact reference. No epsilon comparisons: both Cores replay the same values.
-@Suite("v2 Core shared vectors") struct V2SharedFixtureTests {
+@Suite("v2 Core shared vectors", .offlineFixtures) struct V2SharedFixtureTests {
     private func number(_ value: Any) -> Double {
         if let name = value as? String {
             switch name { case "NaN": return .nan; case "Infinity": return .infinity; default: return -.infinity }

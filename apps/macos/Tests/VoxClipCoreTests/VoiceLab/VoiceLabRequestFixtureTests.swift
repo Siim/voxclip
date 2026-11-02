@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-@Suite("Voice Lab WAV fixture encoding", .timeLimit(.minutes(1)))
+@Suite("Voice Lab WAV fixture encoding", .timeLimit(.minutes(1)), .offlineFixtures)
 struct VoiceLabRequestFixtureTests {
     @Test(arguments: [0, 0x1234, -1, -32_768, 65_537, -65_537])
     func constantPCMPreservesExactBytes(fill: Int) {

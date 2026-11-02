@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Project-audio consent")
+@Suite("Project-audio consent", .offlineFixtures)
 struct VoiceProjectConsentTests {
     private let now = Date(timeIntervalSince1970: 1_793_275_200)
 

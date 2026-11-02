@@ -14,7 +14,7 @@ private struct ShortSpeechRecipeDocument: Decodable {
     let cases: [ShortSpeechRecipeCase]
 }
 
-@Suite("Shared short-speech recipe evidence")
+@Suite("Shared short-speech recipe evidence", .offlineFixtures)
 struct VoiceLabShortSpeechRecipeTests {
     private static let document = try? FixtureLoader.decode(ShortSpeechRecipeDocument.self,
         at: "fixtures/voice-lab/short-speech-recipe-cases.json")

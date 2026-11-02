@@ -4,7 +4,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite("Context capture private asset lifecycle")
+@Suite("Context capture private asset lifecycle", .offlineFixtures)
 struct ContextDemoCaptureFileTests {
     private let projectID = "11111111-1111-4111-8111-111111111111"
     private let bytes = Data([0, 0, 0, 24] + Array("ftypmp42".utf8) + [0, 0, 0, 0])

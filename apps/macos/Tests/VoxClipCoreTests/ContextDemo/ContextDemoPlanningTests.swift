@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct ContextDemoPlanningTests {
+@Suite(.offlineFixtures) struct ContextDemoPlanningTests {
     private let projectID = "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11"
     private let sourceKey = String(repeating: "a", count: 64)
 

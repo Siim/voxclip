@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite struct VoiceLabVideoDurationChoiceTests {
+@Suite(.offlineFixtures) struct VoiceLabVideoDurationChoiceTests {
     private func row(sourceSamples: Int64 = 4_000, outputSamples: Int64 = 4_000, sourceRate: Int = 1_000,
                      exact: Bool = true, passed: Bool = true) -> VoiceLabTakeRow {
         let duration = Double(outputSamples) / Double(sourceRate)

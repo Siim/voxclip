@@ -5,7 +5,7 @@ import Testing
 @testable import VoxClip
 
 /// The Export job's optional share text for videos with accepted AI audio (voice-lab.md §11.3–11.4).
-@Suite("Headless share disclosure", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; nothing is shared or opened."))
+@Suite("Headless share disclosure", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; nothing is shared or opened."), .offlineFixtures)
 @MainActor struct ShareDisclosureJobTests {
     private let line = "Some words in this video were re-voiced with an AI copy of my own voice."
     private func editor(_ change: (inout Project) -> Void = { _ in }) throws -> EditorModel {

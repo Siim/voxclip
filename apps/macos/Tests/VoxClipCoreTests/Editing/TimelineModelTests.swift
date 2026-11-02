@@ -4,7 +4,7 @@ import Testing
 
 /// The v2 timeline's media-free rules (ux/v2 notes.md §2 and §6, impl-plan V7a): the pieces a
 /// scope plays, the ruler's ticks and labels, Resolve's timecode and the overview's rows.
-@Suite struct TimelineModelTests {
+@Suite(.offlineFixtures) struct TimelineModelTests {
     // MARK: Pieces
 
     @Test func legacyPlanPiecesButtInOutputOrder() {

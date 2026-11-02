@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite("CLI native process lifecycle", .serialized, .timeLimit(.minutes(1)))
+@Suite("CLI native process lifecycle", .serialized, .timeLimit(.minutes(1)), .offlineFixtures)
 struct CLIProcessRunnerTests {
     /// The escaped holder outlives any runner delay, so finding it alive with the pipe still open
     /// when the run ends proves the runner did not wait for it; no wall-clock bound is involved.

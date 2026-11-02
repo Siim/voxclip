@@ -10,7 +10,7 @@ import Testing
 /// transcript, Keep All as one step, Apply, ⌘Z of the last Keep, Voice Lab's Turn on, takes that stay with their phrase,
 /// phrases that can't be made, the list's keys, Ask again and Make Takes' problem. Each scene is a real reply to Rewrite
 /// clip 1 (`DebugRewrite.proposalScenes`); nothing is sent.
-@Suite("Rewrite change list", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."))
+@Suite("Rewrite change list", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR for app-model tests; no windows are shown."), .offlineFixtures)
 @MainActor struct ChangeListTests {
     private func scenes() throws -> (AppModel, [DirectorScene]) {
         let app = AppModel(settingsStore: RegressionSettingsStore())

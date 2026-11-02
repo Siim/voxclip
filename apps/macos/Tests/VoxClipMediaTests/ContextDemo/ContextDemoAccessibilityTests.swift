@@ -3,7 +3,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite("Desktop automation recording and approval boundary") @MainActor
+@Suite("Desktop automation recording and approval boundary", .offlineFixtures) @MainActor
 struct ContextDemoAccessibilityTests {
     @Test func constructionNeverQueriesAccessibilityOrStartsActions() throws {
         let fixture = try DesktopAutomationFixture()

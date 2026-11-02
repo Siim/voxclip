@@ -86,3 +86,53 @@ enum TestDeadline {
         return try completion.value.withLock { try $0!.get() }
     }
 }
+
+/// Bound competition between independent fixture-heavy suites. Waiting for the lane
+/// happens at suite scope, before each case's existing deadline starts. Tests within
+/// the suite keep their own parallelization traits and explicit concurrent tasks.
+actor OfflineFixtureLane {
+    private var occupied = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    var waitingCount: Int { waiters.count }
+
+    func enter() async {
+        if occupied { await withCheckedContinuation { waiters.append($0) } }
+        else { occupied = true }
+    }
+    func leave() {
+        if waiters.isEmpty { occupied = false }
+        else { waiters.removeFirst().resume() }
+    }
+    func withPermit(_ operation: @Sendable () async throws -> Void) async throws {
+        await enter()
+        do {
+            try Task.checkCancellation()
+            try await operation()
+            leave()
+        } catch {
+            leave()
+            throw error
+        }
+    }
+}
+
+private enum OfflineFixtureOwnership {
+    @TaskLocal static var held = false
+}
+
+/// Nonrecursive suite scope also avoids holding a lane per parameterized case.
+struct OfflineFixtureSuite: SuiteTrait, TestScoping {
+    private static let lane = OfflineFixtureLane()
+    var isRecursive: Bool { false }
+    func provideScope(for test: Test, testCase: Test.Case?,
+                      performing operation: @Sendable () async throws -> Void) async throws {
+        // Nested suites inherit ownership from their parent and must not reacquire it.
+        if OfflineFixtureOwnership.held { return try await operation() }
+        try await Self.lane.withPermit {
+            try await OfflineFixtureOwnership.$held.withValue(true) { try await operation() }
+        }
+    }
+}
+extension Trait where Self == OfflineFixtureSuite {
+    static var offlineFixtures: Self { Self() }
+}

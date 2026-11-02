@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Conversion consent audio bounds")
+@Suite("Conversion consent audio bounds", .offlineFixtures)
 struct ConversionConsentAudioTests {
     private func metadataWAV() -> Data {
         var wav = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 48_000)

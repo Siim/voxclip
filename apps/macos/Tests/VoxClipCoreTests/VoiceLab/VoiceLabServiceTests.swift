@@ -6,7 +6,7 @@ import Testing
 @_spi(Testing) @testable import VoxClipMedia
 
 // Audio fixture validation is CPU-heavy; keep cases from starving unrelated async suites.
-@Suite("Voice Lab offline service", .serialized, .timeLimit(.minutes(1)))
+@Suite("Voice Lab offline service", .serialized, .timeLimit(.minutes(1)), .offlineFixtures)
 struct VoiceLabServiceTests {
     private let key = "synthetic-voice-lab-key"
     private let speech = VoiceLabSpeechOptions(seed: 7)
@@ -715,7 +715,7 @@ private actor RewriteStub: LLMConnector {
     }
 }
 
-@Suite("Voice rewrite review")
+@Suite("Voice rewrite review", .offlineFixtures)
 struct VoiceRewriteServiceTests {
     private let speech = VoiceLabSpeechOptions(seed: 7)
 

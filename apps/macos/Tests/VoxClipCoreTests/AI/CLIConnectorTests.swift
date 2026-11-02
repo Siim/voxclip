@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("CLI connector safety and recorded outputs")
+@Suite("CLI connector safety and recorded outputs", .offlineFixtures)
 struct CLIConnectorTests {
     @Test(arguments: ["Logged in using an API key", "Logged in using ChatGPT", "Logged in with an unknown method"])
     func detectedCodexBillingMethodNeverDefaultsToPlan(_ text: String) async throws {

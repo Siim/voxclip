@@ -38,7 +38,7 @@ private struct EnrollmentEmbedder: SpeakerEmbedder {
 }
 private enum EnrollmentCrash: Error { case afterVerify }
 
-@Suite("C7 enrollment plan", .serialized, .timeLimit(.minutes(2)))
+@Suite("C7 enrollment plan", .serialized, .timeLimit(.minutes(2)), .offlineFixtures)
 struct VoiceEnrollmentPlanTests {
     private static let statementWav = VoiceLabRequestFixtures.wav(rate: 16_000, frames: 80_000, fill: 4_000)
     private static let matchingSamples = makeSamples(mismatch: false)

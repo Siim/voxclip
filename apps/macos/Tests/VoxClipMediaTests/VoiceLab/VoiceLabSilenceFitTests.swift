@@ -105,7 +105,7 @@ struct FittedAssetVector: Decodable {
 }
 
 extension HeavyMediaTests {
-@Suite("Fitted take assets", .serialized) struct VoiceLabSilenceFitTests {
+@Suite("Fitted take assets", .serialized, .offlineFixtures) struct VoiceLabSilenceFitTests {
     private let projectId = "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11"
     @Test(arguments: [false, true]) func scratchSeamsAreCentredEqualPowerAndHaveExactLengths(hard: Bool) throws {
         let vector = try #require(FittedAssetVector.load().first { $0.name == "balanced-edits" })

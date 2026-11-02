@@ -17,7 +17,7 @@ private final class FullScreenStandIn: NSWindow {
 
 /// The v2 shell's AppKit tree without a visible window (impl-plan V1a and V1b). Nothing is
 /// shown, and settings are never loaded, so nothing is written.
-@Suite("v2 shell controllers", .serialized)
+@Suite("v2 shell controllers", .serialized, .offlineFixtures)
 @MainActor struct EditorShellTests {
     private func project() throws -> Project {
         let shared = try SharedResources.locate()

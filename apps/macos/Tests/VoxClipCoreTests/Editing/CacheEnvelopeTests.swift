@@ -16,7 +16,7 @@ private struct RecordingExtractor: AudioExtractor {
     }
 }
 
-@Suite struct CacheEnvelopeTests {
+@Suite(.offlineFixtures) struct CacheEnvelopeTests {
     func locations() throws -> DataLocations {
         let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("../../../.build/cache-envelope-tests/\(UUID().uuidString)").standardizedFileURL

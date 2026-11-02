@@ -9,7 +9,7 @@ import Testing
 /// and no document change, Undo that keeps the tab, the Rewrite session that belongs to
 /// its tab, ⌘W's rule, a Versions window and the tab bar's VoiceOver roles. Nothing is
 /// shown and settings are never loaded, so nothing is written.
-@Suite("Editor tabs", .serialized)
+@Suite("Editor tabs", .serialized, .offlineFixtures)
 @MainActor struct EditorTabsTests {
     /// The "Five questions" fixture: four kept clips (five-1…five-4) and one suggestion (five-5).
     private func project() throws -> Project {

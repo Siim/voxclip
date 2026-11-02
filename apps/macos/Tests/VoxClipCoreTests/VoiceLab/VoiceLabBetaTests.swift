@@ -1,7 +1,7 @@
 import Testing
 import VoxClipCore
 
-@Suite struct VoiceLabBetaTests {
+@Suite(.offlineFixtures) struct VoiceLabBetaTests {
     @Test(arguments: 0..<8)
     func enabledNoticeAndBuildMatrix(bits: Int) {
         let enabled = bits & 1 != 0, notice = bits & 2 != 0, internalBuild = bits & 4 != 0

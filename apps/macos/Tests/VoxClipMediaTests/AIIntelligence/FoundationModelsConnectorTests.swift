@@ -77,7 +77,7 @@ actor FoundationModelsTestProbe {
     func wait(_ duration: Duration) { waits.append(duration) }
 }
 
-@Suite struct FoundationModelsConnectorTests {
+@Suite(.offlineFixtures) struct FoundationModelsConnectorTests {
     @Test(arguments: [false, true])
     func invalidCatalogAvailabilityNeverCallsApple(disabled: Bool) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("VoxClip-Apple-auth-" + UUID().uuidString)

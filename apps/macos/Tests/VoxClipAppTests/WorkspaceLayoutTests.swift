@@ -18,7 +18,7 @@ private actor LaunchSettings: SettingsStore {
 /// The v2 shell's layout (ux/v2 notes.md §1, impl-plan V1a, V1b, item 18 and §3.5). Settings stay in
 /// memory, except for the launch, which uses a temporary data folder and a settings store
 /// that keeps its saves in memory.
-@Suite("v2 shell layout")
+@Suite("v2 shell layout", .offlineFixtures)
 @MainActor struct WorkspaceLayoutTests {
     @Test func theRightColumnFollowsTheV2Formula() {
         #expect(VCTokens.sizeSidebarIdeal == 224 && VCTokens.sizeRightColumnIdeal == 404)

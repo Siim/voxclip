@@ -12,7 +12,7 @@ private actor MotionCueTestSettings: SettingsStore {
     func flush() async throws {}
 }
 
-@Suite("Motion cue editor", .serialized)
+@Suite("Motion cue editor", .serialized, .offlineFixtures)
 @MainActor struct MotionCueEditorTests {
     init() { _ = NSApplication.shared }
 

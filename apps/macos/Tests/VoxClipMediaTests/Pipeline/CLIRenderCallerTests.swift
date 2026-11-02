@@ -3,7 +3,7 @@ import Testing
 import VoxClipCore
 @testable import voxclip_cli
 
-@Suite struct CLIRenderCallerTests {
+@Suite(.offlineFixtures) struct CLIRenderCallerTests {
     private func project() throws -> Project {
         var project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
         project.schemaVersion = 4

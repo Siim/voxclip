@@ -6,7 +6,7 @@ import Testing
 @testable import VoxClipMedia
 @testable import VoxClip
 
-@Suite("Explicit Rewrite speech context review", .serialized)
+@Suite("Explicit Rewrite speech context review", .serialized, .offlineFixtures)
 @MainActor struct RewriteSpeechContextReviewTests {
     private struct Fixture {
         let project: Project

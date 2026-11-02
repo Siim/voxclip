@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Consent band-limited resampling")
+@Suite("Consent band-limited resampling", .offlineFixtures)
 struct VoiceConsentAudioTests {
     @Test func nativeRateIsUnchanged() {
         let samples: [Float] = [0, 0.1, -0.3, 0.7, 0]

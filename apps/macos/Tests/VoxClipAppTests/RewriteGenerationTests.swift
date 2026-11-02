@@ -37,7 +37,7 @@ private final class GenerationDispatchCount: Sendable {
     func start() { value.withLock { $0 += 1 } }
 }
 
-@Suite("Headless Rewrite generation", .serialized)
+@Suite("Headless Rewrite generation", .serialized, .offlineFixtures)
 @MainActor struct RewriteGenerationTests {
     @Test func sourceAudioRefusalsSayWhatWentWrong() {
         #expect(RewriteSession.refusal(VoiceLabSourceAudioError.unreadable) == "The audio cannot be read. Check that the file is still available. Your edits are saved.")

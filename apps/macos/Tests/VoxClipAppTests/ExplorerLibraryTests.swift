@@ -5,7 +5,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClip
 
-@Suite("Explorer library", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR"))
+@Suite("Explorer library", .serialized, .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use an isolated VOXCLIP_DATA_DIR"), .offlineFixtures)
 @MainActor struct ExplorerLibraryTests {
     private func project() throws -> Project {
         let shared = try SharedResources.locate()

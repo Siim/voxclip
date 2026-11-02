@@ -4,7 +4,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite(.serialized, .httpStubs, .timeLimit(.minutes(1)))
+@Suite(.serialized, .httpStubs, .timeLimit(.minutes(1)), .offlineFixtures)
 struct HTTPConnectorTests {}
 
 struct HTTPReply: Sendable {

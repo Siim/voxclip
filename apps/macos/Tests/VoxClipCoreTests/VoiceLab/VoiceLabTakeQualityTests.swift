@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Take ranking and QA vectors")
+@Suite("Take ranking and QA vectors", .offlineFixtures)
 struct VoiceLabTakeQualityTests {
     private struct Cases: Decodable {
         struct Rank: Decodable { let id: String; let window: Double; let residual: Double; let match: Double; let flatness: Double; let score: Double }

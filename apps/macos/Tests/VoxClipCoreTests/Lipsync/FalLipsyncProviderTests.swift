@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import VoxClipCore
 
-@Suite("Fal lip-sync bounded jobs", .timeLimit(.minutes(1)))
+@Suite("Fal lip-sync bounded jobs", .timeLimit(.minutes(1)), .offlineFixtures)
 struct FalLipsyncProviderTests {
     private typealias Fixtures = LipsyncProviderFixtures
 

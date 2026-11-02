@@ -10,7 +10,7 @@ import Testing
 /// the column's width with the frame fitted in it, the panel header and its job switcher,
 /// and the hover transport only with the timeline hidden. Nothing is shown and settings
 /// are never loaded, so nothing is written.
-@Suite("Right column: viewer and panel host", .serialized)
+@Suite("Right column: viewer and panel host", .serialized, .offlineFixtures)
 @MainActor struct PanelHostTests {
     /// The "Five questions" fixture: four kept clips (five-1…five-4) and one suggestion (five-5), 16:9.
     private func project() throws -> Project {

@@ -5,7 +5,7 @@ import Testing
 /// The display paragraph rule (impl-plan item 22): speaker changes, the 1.5 s gap after a
 /// sentence end, the sentence end after 80 words, and the forced break by 150 words before
 /// the word after the widest gap among words 120–150, the later gap on a tie.
-@Suite struct TranscriptParagraphsTests {
+@Suite(.offlineFixtures) struct TranscriptParagraphsTests {
     /// `count` words 0.25 s long, 0.25 s apart, by one speaker, none ending a sentence. Times
     /// are multiples of 1/8 s, exact in binary, so equal gaps tie exactly.
     private func monologue(_ count: Int, speaker: String? = "a") -> [TimedWord] {

@@ -3,7 +3,7 @@ import Synchronization
 import Testing
 @testable import VoxClipCore
 
-@Suite("Speech progress trailing delivery")
+@Suite("Speech progress trailing delivery", .offlineFixtures)
 struct SpeechProgressTests {
     @Test func runtimeVersionUsesOnlyMajorAndMinor() {
         let version = ProcessInfo.processInfo.operatingSystemVersion

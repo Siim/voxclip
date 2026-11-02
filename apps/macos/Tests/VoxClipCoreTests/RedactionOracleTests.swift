@@ -13,7 +13,7 @@ struct OracleSecret: Sendable {
 /// line for line. The corpus is ASCII apart from line breaks, U+212A and U+017F, and .NET's IgnoreCase does not fold
 /// U+017F. Each suite checks main's own engine for its platform and the other engine's port only approximately: this
 /// suite runs main Mac exactly. Windows Core runs the same corpus, oracles and allowlist in .NET (RedactionOracleTests.cs).
-@Suite("Redaction oracle corpus")
+@Suite("Redaction oracle corpus", .offlineFixtures)
 struct RedactionOracleTests {
     static let fields = ["authorization", "x-api-key", "xi-api-key", "x-goog-api-key", "api-key", "api_key", "apikey", "access-token",
                          "access_token", "refresh-token", "refresh_token", "client-secret", "client_secret", "password", "secret", "token"]

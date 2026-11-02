@@ -16,7 +16,7 @@ private actor TimelineTestSettings: SettingsStore {
 /// The v2 timeline's app side (impl-plan V7a): the viewport, the lanes following the model
 /// without redrawing on a playhead tick, Show cuts as a view setting and the model-owned
 /// waveform. No window is shown; each test has its own data folder.
-@Suite("v2 timeline", .serialized)
+@Suite("v2 timeline", .serialized, .offlineFixtures)
 @MainActor struct TimelineCanvasTests {
     private func app() throws -> AppModel {
         let parent = ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) } ?? FileManager.default.temporaryDirectory

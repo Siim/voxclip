@@ -3,7 +3,7 @@ import Testing
 import VoxClipCore
 @testable import voxclip_cli
 
-@Suite("Find-clips CLI output parity")
+@Suite("Find-clips CLI output parity", .offlineFixtures)
 struct CLIFindClipsTests {
     @Test(arguments: [false, true])
     func resultMatchesSharedExpectedOutput(emptyClips: Bool) throws {

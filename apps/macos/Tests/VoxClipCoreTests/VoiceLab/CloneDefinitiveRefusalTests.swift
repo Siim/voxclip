@@ -95,7 +95,7 @@ private final class CloneRefusalHTTP: URLProtocol, @unchecked Sendable {
 
 private enum CloneRefusalInterruption: Error { case persistence }
 
-@Suite("Definitive clone endpoint refusals", .serialized, .timeLimit(.minutes(2)))
+@Suite("Definitive clone endpoint refusals", .serialized, .timeLimit(.minutes(2)), .offlineFixtures)
 struct CloneDefinitiveRefusalTests {
     private func client(_ probe: CloneRefusalProbe) throws -> ElevenLabsVoiceLab {
         let identifier = UUID().uuidString

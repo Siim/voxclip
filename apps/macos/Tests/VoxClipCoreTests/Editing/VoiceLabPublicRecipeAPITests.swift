@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import VoxClipCore
 
-@Suite struct VoiceLabPublicRecipeAPITests {
+@Suite(.offlineFixtures) struct VoiceLabPublicRecipeAPITests {
     @Test func externalCallerCanConstructCompleteV3Recipe() {
         let assetId = "new-voice-take"
         let createdAt = Date(timeIntervalSince1970: 1_700_000_000)

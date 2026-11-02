@@ -4,7 +4,7 @@ import Foundation
 import Testing
 @testable import VoxClipMedia
 
-@Suite("Microphone take recovery") @MainActor
+@Suite("Microphone take recovery", .offlineFixtures) @MainActor
 struct VoiceMicrophoneTests {
     @Test(arguments: [false, true])
     func audioQueueTapsCaptureSamplesAndIgnoreLateBuffers(discard: Bool) async throws {

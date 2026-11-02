@@ -5,7 +5,7 @@ import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
-@Suite struct VoiceLabAssetTests {
+@Suite(.offlineFixtures) struct VoiceLabAssetTests {
     private func project() throws -> Project {
         try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-project.voxclip"))
     }

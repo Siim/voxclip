@@ -3,7 +3,7 @@ import Testing
 
 /// The app-wide speech job queue on private gates; transcription §13.4. Each step waits for a
 /// queue state, never for a clock.
-@Suite("Speech job queue", .timeLimit(.minutes(1)))
+@Suite("Speech job queue", .timeLimit(.minutes(1)), .offlineFixtures)
 struct SpeechJobGateTests {
     @Test func releasedSlotGoesToTheOldestWaiterBeforeALaterCaller() async throws {
         let gate = SpeechJobGate()

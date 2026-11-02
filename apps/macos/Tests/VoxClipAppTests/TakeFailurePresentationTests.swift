@@ -3,7 +3,7 @@ import Testing
 @testable import VoxClipCore
 @testable import VoxClip
 
-@Suite("Take failure presentation")
+@Suite("Take failure presentation", .offlineFixtures)
 @MainActor struct TakeFailurePresentationTests {
     private func row(_ failure: VoiceLabTakeFailure? = nil, values: VoiceLabQA? = nil,
                      failures: [VoiceLabTakeQAFailure] = [], audio: VoiceLabTakeAudio? = nil) -> VoiceLabTakeRow {

@@ -4,7 +4,7 @@ import Testing
 
 /// A take run reads only regions of a long source (voice-lab.md §8.7); the preflight must read the same level and
 /// room tone from them as from the whole track.
-@Suite struct VoiceLabSourceExcerptTests {
+@Suite(.offlineFixtures) struct VoiceLabSourceExcerptTests {
     private let rate = 8_000
     /// 30 s of tone with a quiet stretch at 24.9–26 s; the words leave a gap only at 25.0–25.8 s.
     private func source() -> [Float] {
