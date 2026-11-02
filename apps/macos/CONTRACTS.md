@@ -1,5 +1,13 @@
 # macOS implementation contracts
 
+## Integration 3 — pinned takes, Motion, Explorer and main (2 Nov 2026)
+
+- Merge exact inputs in order: takes `2b3e23d9`, Motion `2b02f503`, Explorer `e8bf33be`, and main `564f2ffe`. Preserve lead Mac source/tests during Explorer integration, adding only its independent shared v2 fixture replay and contract text. Keep the inline Motion draft lifecycle and the short-phrase measured/unmeasured selection rules.
+- Reconcile shared consent/v4 schemas and corpus without replacing either feature. Keep the version-preserving render-schema generator with short-speech evidence. Document Windows consent service compatibility, unavailable short-speech measurement and closed native-speaker gate separately from the Mac pooled policy. Keep platform-specific transcript treatments explicit.
+- Main's lip-sync availability flag remains false: fal.ai/sync.so keys and cap rows stay hidden while approved-provider services remain intact. Keep the inline Voice first-use host, lead teardown regressions and main's narrower beta notice/settings tests. Main's correction selection fix retains v2 selection/scope refreshes.
+- Windows main's correction model and playback sequencing are integrated into Explorer's existing inline transcript host; no legacy correction popup is restored. Valid focus loss saves, invalid Return/Tab retains the draft, valid Tab opens the next word, and Escape cancels. Keep v2 transport routing plus guarded local model-download continuation. Exact Release inventories and hosted/native verification remain mandatory.
+- Validation and hosted results are recorded in the integration handoff. Native recording/listening, VoiceOver, real-window focus and Windows launch acceptance remain separate gates. Do not launch over the user's running app. Windows launch smoke is an explicit lead-owned exception for this package; skip the final Release bundle if it is the only remaining red job.
+
 ## Split the Rewrite field scope fallback (2 Nov 2026)
 
 - Replace AskField’s optional chain plus nil-coalescing constructor with an explicit session branch and a separate Full Take fallback. Placeholder text, scope choice and send behavior are unchanged. This addresses the lead’s 302–312 ms expression-check observation at RewriteSuggestions.swift:86.
