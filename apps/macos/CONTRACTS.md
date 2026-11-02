@@ -2,6 +2,8 @@
 
 ### 2026-11-02 — Windows consent/context compatibility handoff
 
+- Final hosted shared fixtures, native Windows tests and both Release architectures pass, but Windows launch smoke still fails with an XAML `ArgumentException` (`0x80070057`). Mac test targets also inherit stale `DirectorTaskTests.swift:84/105` references to `quote`/`canPropose`. See the newest Windows contract entry; full native acceptance and cross-platform parity remain open after three CI dispatches.
+
 - Windows consolidation commits project-attestation `/2`, insufficient generated-speech QA, strict v4 context/motion persistence and guarded App/CLI callers. It updates existing implementations without leaving duplicates; no source files were deleted in this consolidation. Local Release Core, portable Media/CLI and UI tests, typecheck and the four-assembly release precheck pass; native Windows acceptance remains owed.
 - The next integration must reconcile `doc/spec/voice-lab.md`, the consent/project/context schemas and the new consent/context fixtures with the concurrent Mac changes. Windows preserves legacy formats, refuses unsupported visual composition, and keeps native speaker parity disabled. Full Windows details and current test counts are in `apps/windows/CONTRACTS.md` and `doc/windows-project-consent.md`.
 

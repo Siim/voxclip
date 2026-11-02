@@ -1,5 +1,12 @@
 # Windows fixed contracts
 
+### 2026-11-02 — Hosted consolidation results and unresolved native startup
+
+- CI dispatches were capped at three: `41504018036`, `41504488777`, `41508131174`. The final tested code head is `71d9224a`. Final shared-fixture/hygiene and Main 10 fixture jobs pass. Windows Core passes 2,593 cases (2,572 passed, 21 skipped), native Media/CLI passes 1,031 (1,012 passed, 19 skipped), and all ten structured CLI E2E reports validate. Release WinUI x64/ARM64, both strict shipping inventories and both ONNX runtime pin checks pass.
+- **Open blocker:** final DEBUG launch smoke reports `stage=xaml`, `System.ArgumentException`, HRESULT `0x80070057`; no loaded/rendered Editor was observed. This is not native acceptance. The first-use budget and stable transcript-ID repairs did not clear that failure. Existing DEBUG startup logging now emits only VoxClip method-name frames at Error so the default log preserves the failing call site; no exception arguments or extra user data are logged. This diagnostic-only follow-up has local Debug typecheck validation and still needs another authorized native/hosted run.
+- Mac Swift test targets fail to compile because inherited `DirectorTaskTests.swift:84/105` reference removed `RewriteSession.quote`/`canPropose`; no Mac functional source/tests were changed in this range. Reconcile them with the lead's Mac implementation before interpreting the separate known runtime failures. Full workflow and cross-platform parity are not green.
+- The next integrator must reconcile every shared/doc path in the implementation report, keep the idempotent v4 schema generator and current contrast assertions, and investigate native startup before calling the Windows shell finished. The Windows VM stayed off; no paid/live provider call or model download was made.
+
 ### 2026-11-02 — Committed consent and v4 Windows consolidation
 
 - Pushed the four existing shell/integration commits through `22be8ab8` before consolidating the 64 pending status paths. Project-attestation `/2`, generated-speech support refusal, v4 context/motion persistence and caller regressions are now committed as feature changes. The exact Core/Media Release inventories follow the inspected assemblies; no wildcard or forbidden-code exemption was added.

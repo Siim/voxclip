@@ -1,6 +1,6 @@
 # Windows project-consent compatibility
 
-Continuation of integrated Windows commit `22be8ab836578256abb8dd480e0cf22c71ed4f02`, November 2, 2026. Parent portable validation now covers the integrated `/2` and v4 changes. No native Windows execution or paid voice creation is claimed.
+Continuation of integrated Windows commit `22be8ab836578256abb8dd480e0cf22c71ed4f02`, November 2, 2026. Parent portable validation now covers the integrated `/2` and v4 changes. Hosted Windows Core/Media tests and both Release architecture builds now pass; the hosted Editor launch smoke still fails. Paid voice creation and full native acceptance are not claimed.
 
 ## Record and service API
 
@@ -26,4 +26,4 @@ The committed integration includes the shared `/1`–`/2` exclusive schema, gene
 
 Focused classes: Core `VoiceProjectConsentTests`, `VoiceConsentTests`, `VoiceLabRequestGoldenTests`, `VoiceLabTakeRunTests`; Media `VoiceEnrollmentPlanTests` (including the project partial), `VoiceLabTakeRunTests` (including generated-support partial), `VoiceConsentMediaTests`. Parent validation used cached assets, isolated data, `VOXCLIP_NO_KEYCHAIN=1`, `nice -n 10`, two build workers and the direct xUnit runner with two threads. Media excluded `RequiresFFmpeg` and `RequiresWindows` traits. Failed logs remain retained beside final logs under `/tmp/voxclip-feature-integration-20261102/`. No assertion or calibration threshold was relaxed and no extra native or paid capability was enabled.
 
-Native speaker availability stays false. Windows x64/ARM64 compile, ONNX/VAD parity and private DACL/path acceptance remain unverified. The inline project-consent checkbox UI is not enabled by this service patch. Mac clip-context preferences and unrelated UI changes are not imported. No calibration relaxation, insertion, retime, fit, export, payment or disclosure bypass is added.
+Native speaker availability stays false. Hosted CI run `41508131174` passes Windows x64/ARM64 compilation, strict shipping inventories, ONNX runtime pin checks and native Core/Media tests. Its Editor launch smoke fails with an XAML `System.ArgumentException` (`0x80070057`); startup and full interactive acceptance remain open. ONNX/VAD speaker parity and complete private-path acceptance remain unverified. The inline project-consent checkbox UI is not enabled by this service patch. Mac clip-context preferences and unrelated UI changes are not imported. No calibration relaxation, insertion, retime, fit, export, payment or disclosure bypass is added.
