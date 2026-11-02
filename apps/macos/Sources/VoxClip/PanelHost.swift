@@ -7,7 +7,7 @@ import VoxClipCore
 
 /// A job of the right column's one panel (notes.md §7).
 enum PanelJob: String, CaseIterable, Sendable {
-    case captions, rewrite, voice, takes, director, demo, export
+    case captions, rewrite, voice, takes, director, demo, motion, export
 
     var title: String {
         switch self {
@@ -18,6 +18,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         case .takes: "Takes"
         case .director: "Director"
         case .demo: "Context demo"
+        case .motion: "Motion"
         }
     }
     /// The switcher's glyph, in the mockup's order: captions, pencil, waveform, chat.
@@ -30,6 +31,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         case .takes: "square.stack"
         case .director: "bubble.left"
         case .demo: "record.circle"
+        case .motion: "viewfinder"
         }
     }
 
@@ -43,6 +45,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         if (model.hasVoiceJob || model.currentVoiceFeedback != nil), !jobs.contains(.voice) { jobs.append(.voice) }
         if model.exportJob.isOpen { jobs.append(.export) }
         if model.capabilities.writable || model.contextDemoDocument != nil || model.contextDemoSession != nil { jobs.append(.demo) }
+        if model.motionCueEditing != nil { jobs.append(.motion) }
         return jobs
     }
 }
@@ -107,6 +110,7 @@ extension WorkspaceShell {
         if current == .voice, job != .voice { model.app.voiceLabSession.leaveVoiceControls(owner: model) }
         if job == .export, current != .export { exportReturnJob = current }
         if current == .demo, job != .demo { model.contextDemoSession?.cancel() }
+        if current == .motion, job != .motion { model.motionCueEditing = nil }
         if job == .demo, model.contextDemoSession == nil || model.contextDemoSession?.phase == .closed {
             model.contextDemoSession = ContextDemoSession(model: model)
         }
@@ -160,6 +164,7 @@ extension WorkspaceShell {
                 else if job == .voice, let feedback = model.currentVoiceFeedback { VoiceRewriteDone(model: model, feedback: feedback) }
                 else if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
                 else if job == .demo, let session = model.contextDemoSession { ContextDemoPanel(session: session, model: model) }
+                else if job == .motion, let editing = model.motionCueEditing { MotionCuePanel(model: model, editing: editing, shell: shell) }
                 else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

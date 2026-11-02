@@ -32,7 +32,9 @@ Placement, trim, move, replace, removal and motion edits replace one Project sna
 
 ## Motion
 
-Motion cues belong to a clip and half-open original source interval. Canonical wire requires 2–8 strictly increasing keyframes, first progress 0 and last progress 1, scale 1–1.35 and normalized anchors 0–1. Cue duration is 0.1–120 seconds, at most 64 cues per clip. The FX lane opens native controls for adding, editing and deleting cues. Draft changes do not mutate the project until committed.
+Motion cues belong to a clip and half-open original source interval. Canonical wire requires 2–8 strictly increasing keyframes, first progress 0 and last progress 1, scale 1–1.35 and normalized anchors 0–1. Cue duration is 0.1–120 seconds, at most 64 cues per clip. The FX button or a cue opens the Motion job in the existing right panel, alongside Captions, Rewrite and Export. Its property controls scroll above a pinned Apply/Cancel footer. Draft changes do not mutate the project until Apply, which creates one Undo step. Escape or Cancel discards unapplied changes and returns to the previous available job. Leaving the job or changing clips discards its draft. No motion popover or separate editor window remains.
+
+The Context demo job's code-project folder chooser remains a system folder picker. Its separately approved browser window remains the exact window/process capture target, rather than an editor: review, setup, trim and placement stay inline. Both presentations are recorded with these reasons in the Mac pop-up inventory.
 
 The renderer evaluates source time from the output timeline, then the authored cue's source-relative progress. Retained cuts can produce a jump at a seam; retimed output keeps the original source progress. Defensive evaluation uses the earliest source start, then ID, and applies the first cue without compounding transforms. Full Take has no active clip and applies no clip motion. Preview respects Reduce Motion by returning identity; export applies authored motion.
 

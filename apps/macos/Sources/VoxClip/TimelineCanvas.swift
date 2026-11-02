@@ -150,13 +150,15 @@ struct TimelineContent: Equatable {
     private let inElement = TimelineSliderElement()
     private let outElement = TimelineSliderElement()
     private let selectionElement = TimelineSelectionElement()
-    private var motionCuePopover: MotionCuePopover?
 
     init(model: EditorModel, shell: WorkspaceShell? = nil) {
         self.model = model
         self.shell = shell
         zoomStep = model.timelineZoomStep
-        super.init(frame: NSRect(x: 0, y: 0, width: 1056, height: TimelineMetrics.height))
+        let initialWidth: CGFloat = 1056
+        let initialHeight: CGFloat = TimelineMetrics.height
+        let initialSize: NSSize = NSSize(width: initialWidth, height: initialHeight)
+        super.init(frame: NSRect(origin: .zero, size: initialSize))
         wantsLayer = true
         layerContentsRedrawPolicy = .never
         identifier = NSUserInterfaceItemIdentifier("voxclip.timeline.canvas")
@@ -213,8 +215,6 @@ struct TimelineContent: Equatable {
         observations = []
         interaction.cancel()
         video.cancelLoads()
-        motionCuePopover?.close()
-        motionCuePopover = nil
     }
 
     override var isFlipped: Bool { true }
@@ -404,11 +404,8 @@ struct TimelineContent: Equatable {
         interaction.mouseDown(event)
     }
 
-    private func openMotionCue(id: String? = nil) {
-        motionCuePopover?.close()
-        let panel = MotionCuePopover(model: model, cueID: id)
-        motionCuePopover = panel
-        panel.show(relativeTo: headers[3].button)
+    func openMotionCue(id: String? = nil) {
+        model.openMotionCueJob(id: id, in: shell ?? model.app.shell)
     }
     override func mouseDragged(with event: NSEvent) { interaction.mouseDragged(event) }
     override func mouseUp(with event: NSEvent) { interaction.mouseUp(event) }

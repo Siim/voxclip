@@ -338,7 +338,7 @@ import Testing
     @Test func theHeaderNamesTheJobAndTheOpenTab() async throws {
         let (shell, editor) = try await openShell()
         defer { editor.close() }
-        #expect(PanelJob.allCases.map(\.title) == ["Captions", "Rewrite", "Voice", "Takes", "Director", "Context demo", "Export"])
+        #expect(PanelJob.allCases.map(\.title) == ["Captions", "Rewrite", "Voice", "Takes", "Director", "Context demo", "Motion", "Export"])
         let found = markers(PanelHeader(model: editor, shell: shell, job: .captions).frame(width: 404), size: CGSize(width: 404, height: 30))
         #expect(found["panel.header"]?.size == CGSize(width: 404, height: 30))
         #expect(found["panel.job.captions"]?.size == CGSize(width: 26, height: 22))

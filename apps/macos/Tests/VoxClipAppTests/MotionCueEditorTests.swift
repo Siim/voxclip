@@ -210,9 +210,155 @@ private actor MotionCueTestSettings: SettingsStore {
         #expect(!canvas.headers[3].button.isHidden)
         #expect(canvas.headers[3].button.accessibilityLabel() == "Edit clip motion cues")
         #expect(canvas.motion.state.cues == model.timelineMotionCues(on: model.timelineAxis))
-        let popover = MotionCuePopover(model: model, cueID: cues.first?.id)
-        #expect(popover.popover.contentViewController is NSHostingController<MotionCuePanel>)
-        #expect(popover.popover.animates == !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        canvas.openMotionCue(id: cues.first?.id)
+        #expect(model.app.shell.panelJob(for: model) == .motion)
+        #expect(model.motionCueEditing?.draft.original == cues.first)
+    }
+
+    private func settle(_ host: NSView, until done: () -> Bool) async -> Bool {
+        for _ in 0..<500 {
+            host.layoutSubtreeIfNeeded()
+            if done() { return true }
+            await Task.yield()
+        }
+        return done()
+    }
+
+    @Test func fxButtonOpensTheMotionJobInTheExistingHostWithoutEditing() async throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        let before = model.project, steps = model.undoSteps
+        let canvas = TimelineCanvasView(model: model, shell: shell)
+        defer { canvas.tearDown() }
+        canvas.headers[3].button.performClick(nil)
+        let editing = try #require(model.motionCueEditing)
+        #expect(shell.panelJob(for: model) == .motion)
+        #expect(editing.returnJob == .captions)
+        let host = NSHostingView(rootView: PanelHost(model: model, shell: shell, width: 404, height: 522).environment(model.app))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 522)
+        #expect(await settle(host) { DebugRightColumn.texts(in: host)["panel.title"] == "Motion" })
+        #expect(DebugRightColumn.texts(in: host)["panel.context"] == "Clip 1")
+        #expect(DebugRightColumn.markers(in: host)["motion.footer"] != nil)
+        #expect(model.project == before && model.undoSteps == steps)
+        #expect(model.focusedPane == .panel)
+    }
+
+    @Test func inlineDraftEditsApplyAsOneUndoStepAndCancelDoesNotUndoSavedWork() throws {
+        let model = try editor(); defer { model.close() }
+        let value = try draft(model)
+        #expect(model.applyMotionCue(value))
+        let before = model.project
+        let shell = WorkspaceShell(app: model.app)
+        let undo = UndoManager(); undo.groupsByEvent = false
+        model.undoManager = undo
+        let steps = model.undoSteps
+        #expect(model.openMotionCueJob(id: value.id, in: shell))
+        let editing = try #require(model.motionCueEditing)
+        editing.draft.sourceEnd = 13.5
+        editing.setFrameValue(.scale, to: 1.25)
+        editing.setFrameValue(.anchorX, to: 0.8)
+        editing.setFrameValue(.anchorY, to: 0.2)
+        editing.addKeyframe()
+        #expect(editing.draft.keyframes.count == value.keyframes.count + 1)
+        let changed = editing.draft.cue
+        #expect(model.project == before && model.undoSteps == steps && !undo.canUndo)
+        grouped(undo) { #expect(editing.apply(model: model)) }
+        #expect(model.project.motionCues == [changed])
+        #expect(model.undoSteps == steps + 1 && undo.undoActionName == "Change Motion Cue")
+        #expect(model.project.media == before.media && model.project.transcript == before.transcript)
+        editing.draft.sourceEnd = 14
+        model.closeMotionCueJob(in: shell)
+        #expect(model.motionCueEditing == nil && shell.panelJob(for: model) == .captions)
+        #expect(model.project.motionCues == [changed] && model.undoSteps == steps + 1)
+        #expect(!editing.apply(model: model))
+        undo.undo()
+        #expect(model.project.motionCues == before.motionCues && !undo.canUndo)
+        undo.redo()
+        #expect(model.project.motionCues == [changed])
+    }
+
+    @Test(arguments: [false, true])
+    func escapeFromTheInlineHostDiscardsTheDraftAndReturnsToThePreviousJob(fromField: Bool) async throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        model.exportJob.isOpen = true
+        shell.choosePanelJob(.export, for: model)
+        shell.exportReturnJob = .demo
+        let before = model.project, steps = model.undoSteps
+        let host = NSHostingView(rootView: PanelHost(model: model, shell: shell, width: 404, height: 522).environment(model.app))
+        host.frame = CGRect(x: 0, y: 0, width: 404, height: 522)
+        let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close() }
+        #expect(model.openMotionCueJob(in: shell))
+        let editing = try #require(model.motionCueEditing)
+        editing.draft.sourceStart = 11
+        editing.draft.sourceEnd = 13
+        editing.setFrameValue(.scale, to: 1.3)
+        #expect(await settle(host) { DebugRightColumn.texts(in: host)["panel.title"] == "Motion" })
+        #expect(await settle(host) { DebugRightColumn.texts(in: host)["motion.keyboard"] == "focused" })
+        #expect(window.firstResponder === host)
+        if fromField {
+            func field(in view: NSView) -> NSTextField? {
+                if let field = view as? NSTextField, field.isEditable { return field }
+                for child in view.subviews { if let found = field(in: child) { return found } }
+                return nil
+            }
+            let input = try #require(field(in: host))
+            #expect(window.makeFirstResponder(input))
+            #expect((window.firstResponder as? NSTextView)?.isFieldEditor == true)
+        }
+        #expect(!window.isVisible && window.attachedSheet == nil)
+        _ = window.firstResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil)
+        #expect(await settle(host) { model.motionCueEditing == nil })
+        #expect(shell.panelJob(for: model) == .export)
+        #expect(shell.exportReturnJob == .demo)
+        #expect(model.project == before && model.undoSteps == steps)
+        #expect(model.focusedPane == .timeline)
+        #expect(!editing.apply(model: model))
+    }
+
+    @Test(arguments: [CGSize(width: 324, height: 322), CGSize(width: 404, height: 522)])
+    func inlineMotionKeepsItsFooterAndAScrollingBody(size: CGSize) async throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        #expect(model.openMotionCueJob(in: shell))
+        let host = NSHostingView(rootView: PanelHost(model: model, shell: shell, width: size.width, height: size.height).environment(model.app))
+        host.frame = CGRect(origin: .zero, size: size)
+        #expect(await settle(host) { DebugRightColumn.markers(in: host)["motion.footer"] != nil })
+        let markers = DebugRightColumn.markers(in: host)
+        let footer = try #require(markers["motion.footer"])
+        let body = try #require(markers["panel.body"])
+        let primary = try #require(markers["motion.apply"])
+        #expect(footer.minX >= body.minX && footer.maxX <= body.maxX + 0.5)
+        #expect(footer.maxY <= body.maxY + 0.5 && footer.minY >= body.minY)
+        #expect(primary.height == 28)
+        let scroll = try #require(DebugRightColumn.scrollViews(in: host).first)
+        #expect(scroll.contentView.bounds.height >= 24)
+    }
+
+    @Test func leavingMotionOrChangingClipDiscardsTheDraftAndUnavailableScopesDoNotOpen() throws {
+        let model = try editor(); defer { model.close() }
+        let shell = WorkspaceShell(app: model.app)
+        let before = model.project, steps = model.undoSteps
+        #expect(model.openMotionCueJob(in: shell))
+        let editing = try #require(model.motionCueEditing)
+        editing.setFrameValue(.scale, to: 1.3)
+        shell.choosePanelJob(.captions, for: model)
+        #expect(model.motionCueEditing == nil && !editing.apply(model: model))
+        #expect(model.project == before && model.undoSteps == steps)
+        #expect(model.openMotionCueJob(in: shell))
+        #expect(model.setScope("other-clip"))
+        #expect(model.motionCueEditing == nil && shell.panelJob(for: model) == .captions)
+        #expect(model.openMotionCueJob(in: shell))
+        #expect(model.motionCueEditing?.draft.clipID == "other-clip")
+        #expect(model.setScope(nil))
+        #expect(!model.openMotionCueJob(in: shell) && model.motionCueEditing == nil)
+        #expect(model.setScope("motion-clip"))
+        model.document.versionForTesting = true
+        #expect(!model.openMotionCueJob(in: shell) && model.motionCueEditing == nil)
+        #expect(model.undoSteps == steps && model.project.motionCues.isEmpty)
     }
 }
 #endif
