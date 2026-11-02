@@ -14,6 +14,10 @@ internal sealed class TranscriptOverlay : IDisposable
     private readonly Compositor compositor;
     private readonly ShapeVisual behind;
     private readonly ShapeVisual above;
+#if DEBUG
+    private CompositionSpriteShape? caretShape;
+    internal Rect? DebugCaretBounds { get; private set; }
+#endif
     private EventHandler<object>? pendingDraw;
     private bool retriedLayout;
     private readonly VoxClip.App.ViewModels.TranscriptGeometryCache<Inline, Rect> bounds = new();
@@ -37,7 +41,7 @@ internal sealed class TranscriptOverlay : IDisposable
     }
 #if DEBUG
     internal void DebugClearAbove() => above.Shapes.Clear();
-    internal void DebugClearBehind() => behind.Shapes.Clear();
+    internal void DebugClearCaret() { if (caretShape is not null) above.Shapes.Remove(caretShape); }
     internal IReadOnlyList<Rect> DebugCached(Inline inline) => Cached(inline);
     internal object DebugDiagnostics => new { owner.ActualWidth, owner.ActualHeight, Scale = owner.XamlRoot?.RasterizationScale,
         BehindSize = behind.Size, AboveSize = above.Size, BehindShapes = behind.Shapes.Count, AboveShapes = above.Shapes.Count,
@@ -48,6 +52,7 @@ internal sealed class TranscriptOverlay : IDisposable
         return bounds.Get(inline, inline is not Run { Text.Length: 0 }, Bounds);
     }
     internal void Measure(Inline inline) => _ = Cached(inline);
+    internal IReadOnlyList<Rect> Rectangles(Inline inline) => Cached(inline);
 
     internal TranscriptOverlay(FrameworkElement owner, FrameworkElement background, FrameworkElement foreground)
     {
@@ -61,11 +66,14 @@ internal sealed class TranscriptOverlay : IDisposable
 
     internal void Clear(double width, double height)
     {
+#if DEBUG
+        caretShape = null; DebugCaretBounds = null;
+#endif
         bounds.BeginDraw();
         behind.Shapes.Clear();
         above.Shapes.Clear();
-        behind.Size = above.Size = new((float)width + 4, (float)height + 8);
-        behind.Offset = above.Offset = new(-2, -4, 0);
+        behind.Size = above.Size = new((float)width + 168, (float)height + 16);
+        behind.Offset = above.Offset = new(-82, -8, 0);
     }
 
     internal void Word(Run run, bool cut, bool filler, bool lowConfidence, bool corrected, bool ai, bool selected, bool playing, bool rewrite)
@@ -74,21 +82,19 @@ internal sealed class TranscriptOverlay : IDisposable
         var firstRectangle = true;
         foreach (var rect in Cached(run))
         {
-            if (rewrite) Rectangle(behind, new(rect.X - 2, rect.Y, rect.Width + 4, rect.Height), "VcAccentSoftBrush", 4, "VcAccentTextBrush", 1);
-            if (selected && !playing && !rewrite) Rectangle(behind, rect, "VcSelectionTranscriptBrush");
-            if (playing) Rectangle(behind, new(rect.X - 2, rect.Y, rect.Width + 4, rect.Height), "VcWordPlayingBackgroundBrush", 4);
-            if (cut) Rectangle(above, new(rect.X, rect.Y + rect.Height * 0.52, rect.Width, 1.5), "VcCutStrokeBrush");
-            if (filler) Pattern(rect.X, rect.Y + rect.Height - 2, rect.Width, "VcWordFillerBrush", 2, 4);
+            if (ai && !selected && !Ui.HighContrast) Rectangle(behind, rect, "VcAiTintBrush", 2, opacity: 0.10f);
+            if (VoxClip.App.ViewModels.TranscriptWordHighlight.For(selected, false, Ui.HighContrast) is { } selection)
+                Rectangle(behind, rect, selection.BackgroundBrush, 2);
+            if (cut) Rectangle(above, new(rect.X, rect.Y + rect.Height * 0.52, rect.Width, 1), selected && Ui.HighContrast ? "VcAccentOnBrush" : "VcWordGoneBrush");
             if (lowConfidence) Pattern(rect.X, rect.Y + rect.Height + 1, rect.Width, "VcWordLowConfidenceBrush", 4, 7);
             if (corrected && firstRectangle) Rectangle(above, new(rect.X + 1, rect.Y + rect.Height + 4, 2, 2), "VcWordCorrectionDotBrush", 1);
-            if (ai) Pattern(rect.X, rect.Y + rect.Height - 1, rect.Width, "VcAccentTextBrush", 5, 9, 1);
             firstRectangle = false;
         }
     }
 
     internal void Strike(Inline inline)
     {
-        foreach (var rect in Cached(inline)) Rectangle(above, new(rect.X, rect.Y + rect.Height * 0.52, rect.Width, 1.5), "VcCutStrokeBrush");
+        foreach (var rect in Cached(inline)) Rectangle(above, new(rect.X, rect.Y + rect.Height * 0.52, rect.Width, 1), "VcWordGoneBrush");
     }
     internal void Diff(Run run, VoxClip.App.ViewModels.RewriteDiffKind kind)
     {
@@ -96,20 +102,40 @@ internal sealed class TranscriptOverlay : IDisposable
             switch (kind)
             {
                 case VoxClip.App.ViewModels.RewriteDiffKind.Removed:
-                    Rectangle(above, new(rect.X, rect.Y + rect.Height * 0.52, rect.Width, 1.5), "VcCutStrokeBrush"); break;
+                    Rectangle(above, new(rect.X, rect.Y + rect.Height * 0.52, rect.Width, 1), "VcWordGoneBrush"); break;
                 case VoxClip.App.ViewModels.RewriteDiffKind.Inserted:
-                    Rectangle(above, new(rect.X, rect.Y + rect.Height - 1, rect.Width, 1.5), "VcAccentTextBrush"); break;
+                    if (!Ui.HighContrast) Rectangle(behind, rect, "VcChangeAddBrush", 2, opacity: 0.19f); break;
                 case VoxClip.App.ViewModels.RewriteDiffKind.Bridge:
-                    Pattern(rect.X, rect.Y + rect.Height - 1, rect.Width, "VcAccentTextBrush", 4, 7, 1); break;
+                    break;
             }
     }
 
     internal void Clip(double top, double bottom, bool selected, bool suggested, double gutter)
     {
-        var key = selected ? "VcAccentTextBrush" : "VcLineStrongBrush";
+        var key = "VcClipLabelBrush";
         if (!suggested) Rectangle(above, new(gutter, top, 2, Math.Max(1, bottom - top)), key);
         else for (var vertical = top; vertical < bottom; vertical += 8)
             Rectangle(above, new(gutter, vertical, 2, Math.Min(4, bottom - vertical)), key);
+    }
+
+    internal void Band(double top, double bottom, double width, bool rtl) => Rectangle(behind, new(rtl ? -44 : -80, top - 8, width + 124, bottom - top + 16), "VcEditorBandBrush");
+
+    internal void ChangeBar(Rect rect, bool focused, bool excluded = false)
+    {
+        if (excluded) Pattern(rect.X, rect.Bottom - 1, rect.Width, "VcTextTertiaryBrush", 1, 3, 1);
+        Rectangle(above, new(owner.FlowDirection == FlowDirection.RightToLeft ? owner.ActualWidth + 11 : -14, rect.Y, 3, rect.Height), "VcChangeAddBrush", 1.5, opacity: focused ? 1 : 0.5f);
+    }
+
+    internal void Caret(Run run, bool after, bool selected)
+    {
+        var pointer = after ? run.ContentEnd : run.ContentStart;
+        var rect = pointer.GetCharacterRect(after ? LogicalDirection.Backward : LogicalDirection.Forward);
+        var left = owner.FlowDirection == FlowDirection.RightToLeft && !after ? rect.Right : rect.X;
+        var caret = new Rect(left, rect.Y, 2, rect.Height);
+        var shape = Rectangle(above, caret, selected && Ui.HighContrast ? "VcAccentOnBrush" : "VcAccentTextBrush");
+#if DEBUG
+        caretShape = shape; DebugCaretBounds = caret;
+#endif
     }
 
     private void Pattern(double left, double top, double width, string key, double dash, double period, double thickness = 2)
@@ -118,21 +144,24 @@ internal sealed class TranscriptOverlay : IDisposable
             Rectangle(above, new(left + horizontal, top, Math.Min(dash, width - horizontal), thickness), key);
     }
 
-    private void Rectangle(ShapeVisual visual, Rect rect, string fill, double radius = 0, string? stroke = null, double thickness = 0)
+    private CompositionSpriteShape? Rectangle(ShapeVisual visual, Rect rect, string fill, double radius = 0, string? stroke = null, double thickness = 0, float opacity = 1)
     {
-        if (rect.Width <= 0 || rect.Height <= 0 || !double.IsFinite(rect.X + rect.Y + rect.Width + rect.Height)) return;
+        if (rect.Width <= 0 || rect.Height <= 0 || !double.IsFinite(rect.X + rect.Y + rect.Width + rect.Height)) return null;
         var geometry = compositor.CreateRoundedRectangleGeometry();
-        geometry.Offset = new((float)rect.X + 2, (float)rect.Y + 4);
+        geometry.Offset = new((float)rect.X + 82, (float)rect.Y + 8);
         geometry.Size = new((float)rect.Width, (float)rect.Height);
         geometry.CornerRadius = new((float)radius);
         var shape = compositor.CreateSpriteShape(geometry);
-        shape.FillBrush = compositor.CreateColorBrush(((SolidColorBrush)Ui.ThemeBrush(owner, fill)).Color);
+        var color = ((SolidColorBrush)Ui.ThemeBrush(owner, fill)).Color;
+        color.A = (byte)Math.Round(color.A * opacity);
+        shape.FillBrush = compositor.CreateColorBrush(color);
         if (stroke is not null)
         {
             shape.StrokeBrush = compositor.CreateColorBrush(((SolidColorBrush)Ui.ThemeBrush(owner, stroke)).Color);
             shape.StrokeThickness = (float)thickness;
         }
         visual.Shapes.Add(shape);
+        return shape;
     }
 
     internal static IReadOnlyList<Rect> Bounds(Inline inline)

@@ -9,6 +9,9 @@ namespace VoxClip.App.ViewModels;
 internal sealed record RewriteTakeAccess(VoiceLabAudition Audition, Func<Guid, VoiceLabTakeScratch?> Scratch,
     Func<Guid, Task> Reject, Func<Guid, DateTimeOffset, CancellationToken, Task<(VoiceLabPublishedTake Take, VoiceConsentRecord Consent)>> Publish);
 
+internal sealed record RewriteAcceptance(VoiceLabSegment Segment, IReadOnlyList<VoiceLabAsset> Assets,
+    VoiceLabVoiceReference Voice, Func<bool> IsCurrent);
+
 internal sealed partial class RewriteGeneration
 {
     private readonly HashSet<Guid> rejected = [];
@@ -19,8 +22,11 @@ internal sealed partial class RewriteGeneration
     private bool accepting;
     private bool runStarted;
     private long selectionRevision;
+    private Guid? explicitSelection;
     private long outputRevision;
     private VoiceLabTakeRunEnd? reviewEnd;
+    private PreviewTransportCoordinator? transport;
+    internal void ConfigureTransport(PreviewTransportCoordinator? coordinator) => transport = coordinator;
     internal Guid? BestTakeId { get; private set; }
     internal VoiceLabTakeRow? Selected => Rows.FirstOrDefault(row => row.Id == SelectedTakeId);
     internal VoiceLabVideoMode? VideoChoice { get; private set; }
@@ -43,6 +49,11 @@ internal sealed partial class RewriteGeneration
         if (preview is not null) await preview.PauseAsync(ct);
     }
     internal Task PendingSelectionChange { get; private set; } = Task.CompletedTask;
+    internal async Task StopForSourceAsync()
+    {
+        selectionRevision++;
+        if (takes is not null) await takes.Audition.StopAsync();
+    }
     internal Task SelectionChangedAsync(string selection) => PendingSelectionChange = takes?.Audition.SelectionChangedAsync(selection) ?? Task.CompletedTask;
     internal async Task ConfigureTakesAsync(RewriteTakeAccess access)
     {
@@ -78,7 +89,8 @@ internal sealed partial class RewriteGeneration
         reviewEnd = result.End;
         VideoChoice = null;
         BestTakeId = TakeRowPresentation.Preselect(result, rejected);
-        core.SelectTake(BestTakeId);
+        var retained = explicitSelection is { } chosen && Rows.Any(row => row.Id == chosen && row.Selectable) ? explicitSelection : null;
+        core.SelectTake(retained ?? BestTakeId);
         Phase = result.End switch
         {
             VoiceLabTakeRunEnd.Cancelled or VoiceLabTakeRunEnd.Invalidated => RewriteGenerationPhase.Cancelled,
@@ -93,11 +105,11 @@ internal sealed partial class RewriteGeneration
     {
         if (closed || accepting || IsRunning || !current() || reviewEnd is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop) ||
             Rows.FirstOrDefault(row => row.Id == id) is not { Selectable: true }) return false;
-        if (SelectedTakeId == id) return true;
+        if (SelectedTakeId == id) { explicitSelection = id; return true; }
         var version = ++selectionRevision;
         if (takes is not null) await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Any(row => row.Id == id)) return false;
-        core.SelectTake(id); VideoChoice = null; Phase = ReviewPhase(); Notify();
+        explicitSelection = id; core.SelectTake(id); VideoChoice = null; Phase = ReviewPhase(); Notify();
         return true;
     }
     internal async Task PlayTakeAsync(Guid id)
@@ -113,7 +125,16 @@ internal sealed partial class RewriteGeneration
             if (closed || version != selectionRevision || SelectedTakeId != id || !current()) return;
             outputChecked = true;
             if (takes.Audition.Snapshot.CanPlay && takes.Scratch(id) is { IsValid: true } scratch)
-                await takes.Audition.PlayAsync(scratch, id, id.ToString("D"), lifetime.Token);
+            {
+                Task Start(CancellationToken token)
+                {
+                    token.ThrowIfCancellationRequested();
+                    return !closed && !accepting && !IsRunning && current() && SelectedTakeId == id && scratch.IsValid
+                        ? takes.Audition.PlayAsync(scratch, id, id.ToString("D"), token) : Task.CompletedTask;
+                }
+                if (transport is null) await Start(lifetime.Token);
+                else await transport.CandidateAsync(Start, lifetime.Token);
+            }
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is not OutOfMemoryException) { if (!closed) Problem = RewriteSession.Refusal(error); }
@@ -132,7 +153,7 @@ internal sealed partial class RewriteGeneration
         if (closed) return;
         rejected.Add(id);
         BestTakeId = TakeRowPresentation.Preselect(new(Rows, reviewEnd ?? VoiceLabTakeRunEnd.Invalidated), rejected);
-        if (SelectedTakeId == id) { core.SelectTake(BestTakeId); VideoChoice = null; }
+        if (SelectedTakeId == id) { explicitSelection = null; core.SelectTake(BestTakeId); VideoChoice = null; }
         Phase = ReviewPhase();
         Announcement = Selected is { } next ? $"Rejected Take {row.Index + 1}. Take {next.Index + 1} selected." : TakeRowPresentation.NonePassed;
         Notify();
@@ -145,8 +166,22 @@ internal sealed partial class RewriteGeneration
     }
     internal async Task<bool> AcceptAsync(EditorViewModel editor, IReadOnlyList<Core.Domain.Editing.EditOperation>? localOperations = null)
     {
-        if (!ReadyToAccept || takes is null || ReviewedInput is not { } input || Selected is not { } selected) return false;
-        var version = revision; var project = editor.Project; var selection = selectionRevision;
+        var project = editor.Project;
+        var prepared = await PrepareAcceptanceAsync(editor, project, localOperations);
+        if (prepared is null || !prepared.IsCurrent()) return false;
+        var scope = project.Edits.ActiveClipId is { } clipId ? VoiceLabOutputScope.Clip(clipId) : VoiceLabOutputScope.Full;
+        var action = project.Edits.ActiveClipId is { } id ? $"Rewrite clip {editor.Clips.First(clip => clip.Id == id).Number}" : "Rewrite full take";
+        return editor.ApplyVoiceLab([prepared.Segment], prepared.Assets, prepared.Voice, scope, action, project, localOperations);
+    }
+
+    internal async Task<RewriteAcceptance?> PrepareAcceptanceAsync(EditorViewModel editor, Core.Domain.Shared.Project project,
+        IReadOnlyList<Core.Domain.Editing.EditOperation>? localOperations = null)
+    {
+        if (!ReadyToAccept || takes is null || ReviewedInput is not { } input || Selected is not { } selected ||
+            !ReferenceEquals(project, editor.Project)) return null;
+        var version = revision; var selection = selectionRevision;
+        bool Current() => !closed && revision == version && selectionRevision == selection && current() &&
+            ReferenceEquals(project, editor.Project) && ReferenceEquals(ReviewedInput, input) && SelectedTakeId == selected.Id;
         accepting = true; Notify();
         try
         {
@@ -165,7 +200,7 @@ internal sealed partial class RewriteGeneration
                 row.Audio.Fit.Plan.WindowEndSample == selected.Audio.Fit.Plan.WindowEndSample))
             {
                 var (published, record) = await takes.Publish(row.Id, date, lifetime.Token);
-                if (closed || revision != version || selectionRevision != selection || !current() || !ReferenceEquals(project, editor.Project)) return false;
+                if (!Current()) return null;
                 var candidate = VoiceLabRecipeBuilder.Candidate(row, input, published, record, date, row.Id == selected.Id ? VideoChoice : null);
                 if (row.Id == selected.Id) selectedIndex = candidates.Count;
                 candidates.Add(candidate);
@@ -176,13 +211,13 @@ internal sealed partial class RewriteGeneration
                 }
                 voice = new(record.RecordId, record.Provider, record.VoiceId!, record.RecordId, record.VoiceName, VoiceLabVoiceStatus.Active);
             }
-            if (closed || revision != version || selectionRevision != selection || !current() || selectedIndex is null || voice is null) return false;
+            if (!Current() || selectedIndex is null || voice is null) return null;
             var segment = VoiceLabRecipeBuilder.Segment(Guid.NewGuid().ToString("D"), candidates, selectedIndex.Value, input, selected.Audio!.Fit.Plan);
-            return editor.ApplyVoiceLab(new VoiceLabEditCommand.Accept(segment, assets, voice), project, localOperations);
+            return new(segment, assets, voice, Current);
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is not OutOfMemoryException) { if (!closed && revision == version) { Problem = RewriteSession.Refusal(error); Announcement = Problem; } }
         finally { accepting = false; Notify(); }
-        return false;
+        return null;
     }
 }

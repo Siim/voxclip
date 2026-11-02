@@ -24,6 +24,10 @@ internal sealed class TimelineFrame
     internal int PointerWord { get; private set; }
     internal double PlayheadLeft { get; private set; }
     internal double HeadLeft { get; private set; }
+    internal double Source { get; private set; }
+    internal bool PlayheadVisible { get; private set; }
+    internal bool StartVisible { get; private set; }
+    internal bool EndVisible { get; private set; }
     internal TimelineRange Playhead { get; private set; }
     internal TimelineRange Start { get; private set; }
     internal TimelineRange End { get; private set; }
@@ -55,11 +59,14 @@ internal sealed class TimelineFrame
         BracketScale = 1;
         BracketTranslation = 0;
         HasTrim = bounds is not null;
+        StartVisible = EndVisible = false;
         TrimEnabled = trimEnabled;
         if (bounds is { } range)
         {
             var left = Math.Clamp(view.X(Display(range.Start), width), 0, width);
             var right = Math.Clamp(view.X(Display(range.End), width), 0, width);
+            StartVisible = Display(range.Start) >= view.Start && Display(range.Start) <= view.End;
+            EndVisible = Display(range.End) >= view.Start && Display(range.End) <= view.End;
             if (pending && scene.Layers[12].Count > 0 && scene.Layers[12][0] is { Width: > 0 } original)
             {
                 var start = rendered.X(Display(range.Start), width);
@@ -70,8 +77,8 @@ internal sealed class TimelineFrame
             LeftDim = left;
             RightDim = width - right;
             RightEdge = right;
-            StartLeft = left - 12;
-            EndLeft = right - 12;
+            StartLeft = left - 16;
+            EndLeft = right - 16;
         }
         Start = viewport.Trim(true, First, Last);
         End = viewport.Trim(false, First, Last);
@@ -80,9 +87,11 @@ internal sealed class TimelineFrame
 
     internal void ComputePlayhead(TimelineViewportState viewport, EditPlan plan, TimelineWindow view, double width, double source, bool edited)
     {
+        Source = source;
         Playhead = viewport.Playhead(plan, view, source, edited);
         var playhead = view.X(edited ? plan.MapTime(source) : source, width);
+        PlayheadVisible = playhead >= 0 && playhead <= width;
         PlayheadLeft = Math.Clamp(playhead - 1, 0, Math.Max(0, width - 2));
-        HeadLeft = Math.Clamp(playhead - 6, 0, Math.Max(0, width - 12));
+        HeadLeft = Math.Clamp(playhead - 5.25, 0, Math.Max(0, width - 10.5));
     }
 }

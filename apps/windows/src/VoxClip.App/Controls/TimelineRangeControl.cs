@@ -15,6 +15,7 @@ internal sealed class TimelineRangeControl : ContentControl
     internal Action<double>? Set { get; set; }
     private double reported = double.NaN;
     private TimelineRange? previous;
+    private bool? previousReadOnly;
     internal TimelineRangeControl(string name)
     {
         IsTabStop = true;
@@ -28,11 +29,14 @@ internal sealed class TimelineRangeControl : ContentControl
     internal void Refresh()
     {
         var range = Read();
-        if (previous == range) return;
+        var readOnly = !IsEnabled || Set is null;
+        if (previous == range && previousReadOnly == readOnly) return;
         if (AutomationPeer.ListenerExists(AutomationEvents.PropertyChanged) && FrameworkElementAutomationPeer.FromElement(this) is { } peer)
         {
             if (previous?.Text != range.Text) peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.HelpTextProperty, previous?.Text ?? "", range.Text);
             if (range.Value != reported) peer.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.ValueProperty, double.IsNaN(reported) ? range.Value : reported, range.Value);
+            if (previousReadOnly is { } wasReadOnly && wasReadOnly != readOnly)
+                peer.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.IsReadOnlyProperty, wasReadOnly, readOnly);
             if (previous is { } old)
             {
                 if (old.Minimum != range.Minimum) peer.RaisePropertyChangedEvent(RangeValuePatternIdentifiers.MinimumProperty, old.Minimum, range.Minimum);
@@ -42,6 +46,7 @@ internal sealed class TimelineRangeControl : ContentControl
         }
         reported = range.Value;
         previous = range;
+        previousReadOnly = readOnly;
     }
     protected override AutomationPeer OnCreateAutomationPeer() => new RangePeer(this);
     private sealed class RangePeer(TimelineRangeControl owner) : FrameworkElementAutomationPeer(owner), IRangeValueProvider, IValueProvider
@@ -50,7 +55,7 @@ internal sealed class TimelineRangeControl : ContentControl
         protected override string GetClassNameCore() => "VoxClipTimelineRange";
         protected override string GetHelpTextCore() => owner.Read().Text;
         protected override object GetPatternCore(PatternInterface pattern) => pattern is PatternInterface.RangeValue or PatternInterface.Value ? this : base.GetPatternCore(pattern);
-        public bool IsReadOnly => !owner.IsEnabled;
+        public bool IsReadOnly => !owner.IsEnabled || owner.Set is null;
         public double LargeChange => Math.Max(SmallChange, (Maximum - Minimum) / 10);
         public double SmallChange => owner.Read().SmallChange;
         public double Maximum => owner.Read().Maximum;

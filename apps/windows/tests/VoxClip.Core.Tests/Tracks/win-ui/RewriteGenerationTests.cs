@@ -25,9 +25,10 @@ public sealed class RewriteGenerationTests
         Assert.Contains("Severity = InfoBarSeverity.Error, IsClosable = false", panel);
         Assert.Contains("generationError.ActionButton = settings; generationError.Content = retry", panel);
         Assert.Contains("generation.MarkEstimateShown(quote)", panel);
-        Assert.Contains("Ui.ConfirmAsync(XamlRoot, \"Generate Takes\", copy, \"Continue\", token)", panel);
-        // The sheet offers this editor's project, not the first window's (voice-lab.md §6.5.2).
-        Assert.Contains("App.Settings?.ShowCreateVoice(window)", panel);
+        Assert.DoesNotContain("Ui.ConfirmAsync", panel);
+        Assert.DoesNotContain("App.Settings?.ShowCreateVoice(window)", panel);
+        Assert.Contains("VoiceSpeakerCheck.WindowsNativeParityVerified && session.CanGenerateAll", panel);
+        Assert.Contains("VoiceLabCopy.SpeakerUnavailable", panel);
         Assert.Contains("new RewritePanel(rewrite, () => Transcript.CorrectionOpen, owner)", Source("Pages/EditorPage.xaml.cs"));
         Assert.Contains("Ui.Button(\"Create Your Voice…\", () =>", panel);
         Assert.DoesNotContain("(2 min)", panel);
@@ -307,9 +308,10 @@ public sealed class RewriteGenerationTests
     public void ProviderIdentityChangesRestartDiscoveryWithoutReadingKeyBytes()
     {
         var page = Source("Pages/EditorPage.xaml.cs");
-        Assert.Contains("var rediscover = previous.HasStartedDiscovery", page);
-        Assert.Contains("if (rediscover) _ = RediscoverRewriteAsync(session, previous, session.Generation!)", page);
-        Assert.Contains("await previous.Cleanup", page);
+        Assert.Contains("var rediscover = session.GenerationWindows.Any(window => window.HasStartedDiscovery)", page);
+        Assert.Contains("if (rediscover) _ = RediscoverRewriteAsync(session, session.GenerationWindows.ToArray())", page);
+        Assert.Contains("await session.GenerationCleanup", page);
+        Assert.Contains("session.GenerationWindows.SequenceEqual(windows)) await session.DiscoverWindowsAsync()", page);
         Assert.Contains("keyChanges.Renamed += KeyChanged", page);
         Assert.Contains("keyChanges?.Dispose()", page);
         Assert.Contains("generation!.DiscoveryInputsChangedAsync()", page);
@@ -399,8 +401,9 @@ public sealed class RewriteGenerationTests
     [Fact]
     public async Task RenderingAfterExpiryPreparesAndReenablesTheDisplayedButtonWithoutDispatch()
     {
-        Assert.Contains("generate.Content = generation.ButtonTitle", Source("Controls/RewritePanel.cs"));
-        Assert.Contains("generate.IsEnabled = generation.CanExecute", Source("Controls/RewritePanel.cs"));
+        Assert.Contains("generate.Content = title", Source("Controls/RewritePanel.cs"));
+        Assert.Contains("batch.TakeCount, batch.Kind()", Source("Controls/RewritePanel.cs"));
+        Assert.Contains("generate.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && session.CanGenerateAll", Source("Controls/RewritePanel.cs"));
         await using var test = new Harness(); await test.ReadyAsync();
         var expired = test.Generation.Quote!;
         var finish = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -670,9 +673,15 @@ public sealed class RewriteGenerationTests
         using var multiple = new RewriteSession(Editor(), 10, 18, Envelope(), null);
         multiple.Edit("Sunday word11 word12 word13 word14 word15 word16 word17 five");
         Assert.Equal(2, multiple.Review!.VoiceHunks.Count);
-        var error = await Assert.ThrowsAsync<RewriteGenerationException>(() => multiple.GenerationInputAsync("voice", "model", 1, true,
-            (_, _) => throw new InvalidOperationException("Must refuse before decoding."), CancellationToken.None));
-        Assert.Equal("Rewrite one passage at a time. Keep one changed passage, then generate takes.", error.Message);
+        for (var index = 0; index < multiple.Review.VoiceHunks.Count; index++)
+        {
+            RewriteSourceRequest? decoded = null;
+            var inputForWindow = await multiple.GenerationInputAsync("voice", "model", 1, true,
+                (value, _) => { decoded = value; return Task.FromResult(read); }, TestContext.Current.CancellationToken, index);
+            Assert.NotNull(inputForWindow); Assert.NotNull(decoded);
+            Assert.Equal(multiple.Review.VoiceHunks[index].Window, decoded.Window);
+            Assert.Equal(multiple.Review.VoiceHunks[index].PatchText, inputForWindow.Text);
+        }
     }
     private static EditorViewModel Editor(double pauseAfterWord12 = 0)
     {

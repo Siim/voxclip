@@ -6,10 +6,13 @@ using VoxClip.Core.Domain.Captions;
 using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Services.Models;
 using VoxClip.Core.Services.Project;
+using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.VoiceLab;
+using System.ComponentModel;
 
 namespace VoxClip.App.Controls;
 
-internal sealed class TranscriptionDialog : ContentDialog
+internal sealed class TranscriptionDialog : InlineEditorJob
 {
     private readonly EditorViewModel model;
     private readonly ComboBox engine = Ui.Choice("Engine", ["Local Whisper · on this computer", "ElevenLabs · sends the audio track"]);
@@ -20,7 +23,14 @@ internal sealed class TranscriptionDialog : ContentDialog
     private readonly ProgressBar progress = new() { Visibility = Visibility.Collapsed };
     private readonly InfoBar consentNotice = Ui.Notice();
     private readonly ScrollViewer setupContent;
-    private bool confirmingCloud;
+    private readonly EditorWorkflowSnapshot baseline;
+    private readonly CheckBox remember = new() { Content = "Remember language for new imports" };
+    private readonly CheckBox allowCloud = new() { Content = "Allow this audio to be sent to ElevenLabs with my key" };
+    private readonly TextBlock spend = Ui.Text("", "HelperText");
+    private decimal? price;
+    private bool keySaved;
+    private int inputRevision;
+    private CancellationTokenSource? transcribing;
     /// <summary>The model whose licence page is showing in place of the setup, after the notice's Download.</summary>
     private TranscriptionModel? confirmingDownload;
     private IReadOnlyList<TranscriptionModel> catalogue = [];
@@ -30,21 +40,30 @@ internal sealed class TranscriptionDialog : ContentDialog
     private readonly TextBlock cloudKeyStatus = Ui.Text("Checking ElevenLabs key…", "HelperText");
     private readonly PasswordBox cloudKey = new() { Header = "ElevenLabs API key", PasswordRevealMode = PasswordRevealMode.Hidden, PlaceholderText = "Paste a key to save for your Windows account" };
     private readonly CancellationTokenSource lifetime = new();
+    private readonly InlineJobLifetime workers = new();
+    private bool stopped;
     /// <summary>The model download running from the licence page; Cancel or Esc stops only it and returns to the setup.</summary>
     private CancellationTokenSource? downloading;
     private readonly string? projectPath;
     private bool running;
+    private bool preparing;
 
-    internal TranscriptionDialog(MainWindow owner, EditorViewModel model)
+    internal TranscriptionDialog(MainWindow owner, EditorViewModel model) : base(model)
     {
+        JobLabel = "Transcribe";
+        baseline = new(model);
         this.model = model; projectPath = owner.ProjectPath; Title = model.HasTranscript ? "Transcribe again" : "Transcribe video";
         PrimaryButtonText = "Transcribe"; CloseButtonText = "Not now";
         engine.SelectedIndex = App.Services.Get("transcription.engineMode", "local") == "elevenlabs" ? 1 : 0;
         var savedLanguage = App.Services.Get("transcription.language", "auto");
         language.Text = savedLanguage == "auto" ? "" : savedLanguage;
-        var body = Ui.Stack(16); body.MinWidth = 400;
+        var body = Ui.Stack(16);
         body.Children.Add(Ui.Text("Choose how to transcribe. There is no automatic cloud fallback."));
+        if (model.HasTranscript)
+            body.Children.Add(Ui.Text($"This replaces the transcript and removes {model.Summary.CutWordCount + model.Summary.CutPauseCount} cuts, {model.Project.Edits.Corrections.Count} corrections, {model.Clips.Count} clips and the AI suggestions."));
         body.Children.Add(engine); body.Children.Add(flow); body.Children.Add(models); body.Children.Add(language);
+        body.Children.Add(remember); body.Children.Add(allowCloud); body.Children.Add(spend);
+        allowCloud.IsChecked = App.Services.Get("transcription.cloudConsent.elevenlabs", false);
         cloudKeyRow.Children.Add(cloudKeyStatus); cloudKeyRow.Children.Add(cloudKey);
         var saveCloudKey = Ui.Button("Save key", () => _ = Ui.RunAsync(notice, SaveCloudKeyAsync, "Save key"));
         saveCloudKey.IsEnabled = false;
@@ -54,7 +73,11 @@ internal sealed class TranscriptionDialog : ContentDialog
         body.Children.Add(Ui.Button("Manage local models…", () => App.OpenSettings(SettingsSections.LocalModels))); body.Children.Add(progress); body.Children.Add(notice);
         setupContent = new ScrollViewer { Content = body, MaxHeight = 600 };
         Content = setupContent;
-        engine.SelectionChanged += (_, _) => UpdateEngine();
+        engine.SelectionChanged += (_, _) => InputsChanged();
+        language.TextChanged += (_, _) => InputsChanged();
+        models.SelectionChanged += (_, _) => InputsChanged();
+        allowCloud.Checked += (_, _) => InputsChanged();
+        allowCloud.Unchecked += (_, _) => InputsChanged();
         UpdateEngine();
         // Automatic routes each take by its language (transcription §11.2); an installed model can still be chosen by hand.
         models.Items.Add(new ComboBoxItem { Content = TranscriptionRouting.Automatic });
@@ -63,7 +86,11 @@ internal sealed class TranscriptionDialog : ContentDialog
         void ModelsChanged(object? sender, EventArgs args) { if (!closed) _ = Ui.RunAsync(notice, async () => await LoadModelsAsync(), "Local models"); }
         Opened += async (_, _) => await Ui.RunAsync(notice, async () =>
         {
+            using var worker = workers.Enter();
             App.Services.ModelsChanged += ModelsChanged;
+            TranscriptionSpendState.Shared.Changed += SpendChanged;
+            model.Changed += ProjectChanged; model.PropertyChanged += ProjectPropertyChanged;
+            SpendChanged(this, EventArgs.Empty);
             await RefreshCloudKeyAsync();
             if (await LoadModelsAsync() == 0 && engine.SelectedIndex == 0 && CheckLocalRuntime())
             {
@@ -72,6 +99,8 @@ internal sealed class TranscriptionDialog : ContentDialog
                 if (route.Plan is null && route.Detector is null) ShowRoute(route);
             }
             CheckLocalRuntime();
+            if (!model.HasTranscript && engine.SelectedIndex == 0 && !running && baseline.IsCurrent &&
+                (await RouteAsync(null)) is { } installed && (installed.Plan is not null || installed.Detector is not null)) await RunTranscriptionAsync();
         }, "Local models");
         PrimaryButtonClick += Transcribe;
         // Cancel on the licence page goes back to the setup; while a download runs it cancels only the download, which then
@@ -80,14 +109,64 @@ internal sealed class TranscriptionDialog : ContentDialog
         Closing += (_, args) =>
         {
             if (!running) return;
-            if (downloading is { } download) download.Cancel(); else lifetime.Cancel();
+            if (downloading is { } download) download.Cancel(); else transcribing?.Cancel();
             args.Cancel = true;
         };
-        Closed += (_, _) => { closed = true; App.Services.ModelsChanged -= ModelsChanged; lifetime.Cancel(); lifetime.Dispose(); };
+        Abandoned += (_, _) => { Stop(); Hide(); };
+        Closed += (_, _) =>
+        {
+            closed = true; Stop();
+            App.Services.ModelsChanged -= ModelsChanged; TranscriptionSpendState.Shared.Changed -= SpendChanged;
+            model.Changed -= ProjectChanged; model.PropertyChanged -= ProjectPropertyChanged;
+        };
+    }
+    private void Stop()
+    {
+        if (stopped) return;
+        stopped = true;
+        lifetime.Cancel(); downloading?.Cancel(); transcribing?.Cancel(); workers.Retire();
+        _ = DisposeAfterDrainAsync();
+    }
+    private async Task DisposeAfterDrainAsync() { await workers.Drained; lifetime.Dispose(); }
+    private void ProjectChanged(object? sender, EventArgs args) { if (!baseline.IsCurrent) { Stop(); Hide(); } }
+    private void ProjectPropertyChanged(object? sender, PropertyChangedEventArgs args) => ProjectChanged(sender, EventArgs.Empty);
+    private void SpendChanged(object? sender, EventArgs args)
+    {
+        void Refresh() { if (!closed) spend.Text = TranscriptionSpendState.Shared.Copy(DateOnly.FromDateTime(DateTime.Now)); }
+        if (DispatcherQueue.HasThreadAccess) Refresh();
+        else DispatcherQueue.TryEnqueue(Refresh);
+    }
+    private void InputsChanged()
+    {
+        inputRevision++; ResetApprovalFreshness();
+        if (running) transcribing?.Cancel();
+        UpdateEngine();
+    }
+    private void UpdateApproval()
+    {
+        var cloud = engine.SelectedIndex == 1;
+        PrimaryButtonVisible = true;
+        RequiresExplicitApproval = cloud || model.HasTranscript || confirmingDownload is not null;
+        allowCloud.Visibility = cloud ? Visibility.Visible : Visibility.Collapsed;
+        if (cloud)
+        {
+            try
+            {
+                price = VoiceLabPricing.Estimate(VoiceLabPricedOperation.ElevenLabsSpeechToText, "scribe_v2",
+                    baseline.Project.Media.Source.DurationSeconds, 1, null, VoiceLabPrices.Load()).Usd;
+                PrimaryButtonText = price is { } amount ? "Upload and Transcribe · " + VoiceLabCostPresentation.Format(amount) : "Price unavailable";
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            { price = null; PrimaryButtonText = "Price unavailable"; }
+        }
+        else if (confirmingDownload is null) PrimaryButtonText = model.HasTranscript ? "Transcribe Again" : "Transcribe";
+        IsPrimaryButtonEnabled = !running && !closed && baseline.IsCurrent &&
+            (cloud ? keySaved && allowCloud.IsChecked == true && price is not null : App.Services.LocalRuntime.IsSupported);
     }
     /// <summary>List Automatic, then the installed local models by name, keeping the current choice; returns how many are installed.</summary>
     private async Task<int> LoadModelsAsync()
     {
+        using var worker = workers.Enter();
         catalogue = await App.Services.Models.GetModelsAsync(lifetime.Token);
         var installed = await App.Services.Downloads.ListInstalledAsync(lifetime.Token);
         if (closed) return 0;
@@ -127,9 +206,9 @@ internal sealed class TranscriptionDialog : ContentDialog
         if (running || closed) return;
         confirmingDownload = download;
         Title = ModelDownloadCopy.Title(download);
-        PrimaryButtonText = "Download"; CloseButtonText = "Cancel";
-        DefaultButton = ContentDialogButton.Primary;
-        var page = Ui.Stack(16); page.MinWidth = 400; page.MaxWidth = 480;
+        PrimaryButtonText = "Download and Transcribe"; CloseButtonText = "Cancel";
+        RequiresExplicitApproval = true; ResetApprovalFreshness();
+        var page = Ui.Stack(16);
         page.Children.Add(Ui.Text(ModelDownloadCopy.Body(download, DownloadDependencies(download))));
         if (ModelDownloadCopy.SourcePage(download) is { } source) page.Children.Add(new HyperlinkButton { Content = "Open source page", NavigateUri = source });
         consentNotice.IsOpen = false;
@@ -152,10 +231,12 @@ internal sealed class TranscriptionDialog : ContentDialog
         PrimaryButtonText = "Transcribe"; CloseButtonText = "Not now";
         Content = setupContent;
         IsPrimaryButtonEnabled = !running && !lifetime.IsCancellationRequested && (engine.SelectedIndex != 0 || App.Services.LocalRuntime.IsSupported);
+        UpdateApproval();
     }
     private async Task DownloadAsync(TranscriptionModel download)
     {
         if (running || closed || model.IsLeaving) return;
+        using var worker = workers.Enter();
         var approved = ModelDownloadCopy.Body(download, DownloadDependencies(download));
         Task<bool> Confirm(TranscriptionModel candidate, IReadOnlyList<TranscriptionModel> dependencies, CancellationToken _) =>
             candidate.Id == download.Id && ModelDownloadCopy.Body(candidate, dependencies) == approved ? Task.FromResult(true)
@@ -180,6 +261,7 @@ internal sealed class TranscriptionDialog : ContentDialog
         if (cancelled) { consentNotice.IsOpen = false; return; }
         ClearRoute();
         Ui.Show(notice, TranscriptionRouting.Installed, InfoBarSeverity.Success);
+        if (engine.SelectedIndex == 0 && baseline.IsCurrent) await RunTranscriptionAsync();
     }
     private void UpdateEngine()
     {
@@ -190,6 +272,7 @@ internal sealed class TranscriptionDialog : ContentDialog
             ? "ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent."
             : "Audio stays on this computer. No key or account is needed.";
         CheckLocalRuntime();
+        UpdateApproval();
     }
     private bool CheckLocalRuntime()
     {
@@ -213,12 +296,16 @@ internal sealed class TranscriptionDialog : ContentDialog
     }
     private async Task RefreshCloudKeyAsync()
     {
+        using var worker = workers.Enter();
         var saved = await App.Services.Keys.GetKeyAsync("elevenlabs-api-key", lifetime.Token) is not null;
+        keySaved = saved;
         cloudKeyStatus.Text = saved ? "Key saved for your Windows account." : "Add an ElevenLabs key here before uploading this take.";
         cloudKey.PlaceholderText = saved ? "Saved for your Windows account; paste to replace" : "Paste an API key";
+        UpdateApproval();
     }
     private async Task SaveCloudKeyAsync()
     {
+        using var worker = workers.Enter();
         var secret = cloudKey.Password;
         cloudKey.Password = "";
         if (string.IsNullOrWhiteSpace(secret)) return;
@@ -226,7 +313,7 @@ internal sealed class TranscriptionDialog : ContentDialog
         await RefreshCloudKeyAsync();
         Ui.Show(notice, "Key saved securely. Audio is sent only after you confirm and choose Transcribe.");
     }
-    private async void Transcribe(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    private async void Transcribe(object? sender, InlineJobAction args)
     {
         args.Cancel = true;
         if (startingTranscription || closed || model.IsLeaving) return;
@@ -237,93 +324,100 @@ internal sealed class TranscriptionDialog : ContentDialog
             {
                 await Ui.RunAsync(consentNotice, () => DownloadAsync(download), "Model download");
             }
-            else if (confirmingCloud)
-            {
-                IsPrimaryButtonEnabled = false;
-                var token = lifetime.Token;
-                await Ui.RunAsync(consentNotice, async () =>
-                {
-                    await App.Services.SetAsync("transcription.cloudConsent.elevenlabs", true, token);
-                    if (closed || model.IsLeaving || token.IsCancellationRequested) return;
-                    confirmingCloud = false;
-                    Title = model.HasTranscript ? "Transcribe again" : "Transcribe video";
-                    PrimaryButtonText = "Transcribe"; CloseButtonText = "Not now";
-                    Content = setupContent;
-                    await RunTranscriptionAsync();
-                }, "Save consent");
-            }
             else await RunTranscriptionAsync();
         }
         finally
         {
             startingTranscription = false;
-            if (!closed && !running) IsPrimaryButtonEnabled = !lifetime.IsCancellationRequested && (engine.SelectedIndex != 0 || App.Services.LocalRuntime.IsSupported);
+            if (!closed && !running) UpdateApproval();
         }
-    }
-    private void ShowCloudConsent()
-    {
-        confirmingCloud = true;
-        Title = "Transcribe with ElevenLabs?";
-        PrimaryButtonText = "Continue"; CloseButtonText = "Cancel";
-        DefaultButton = ContentDialogButton.Primary;
-        var page = Ui.Stack(16); page.MinWidth = 400; page.MaxWidth = 480;
-        page.Children.Add(Ui.Text("ElevenLabs Scribe uploads this take's audio track with your key. ElevenLabs stores it under its terms and may use it to improve its services unless you opt out in your ElevenLabs account. No video is sent."));
-        consentNotice.IsOpen = false;
-        page.Children.Add(DetachedConsentNotice());
-        Content = new ScrollViewer { Content = page, MaxHeight = 600 };
     }
     private async Task RunTranscriptionAsync()
     {
-        if (running || closed || model.IsLeaving) return;
+        if (running || preparing || closed || model.Busy || !baseline.IsCurrent || lifetime.IsCancellationRequested) return;
+        using var worker = workers.Enter();
+        preparing = true;
+        var version = inputRevision;
+        var local = engine.SelectedIndex == 0;
+        var requestedLanguage = language.Text.Trim().ToLowerInvariant();
+        var selectedModel = (models.SelectedItem as ComboBoxItem)?.Tag as string;
+        var rememberLanguage = remember.IsChecked == true;
+        var approvedPrice = price;
+        var authorizedCloud = allowCloud.IsChecked == true;
+        var service = App.Services.Transcription;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        var token = cancellation.Token;
+        transcribing = cancellation;
+        var jobId = Guid.NewGuid();
+        var approvedDay = DateOnly.FromDateTime(DateTime.Now);
+        var uploadMayHaveStarted = 0;
+        var spentPending = false;
+        void RequireCurrent()
+        {
+            token.ThrowIfCancellationRequested();
+            baseline.RequireCurrent();
+            if (version != inputRevision || !ReferenceEquals(service, App.Services.Transcription)) throw new OperationCanceledException(token);
+        }
+        async Task<LocalTranscriptionRoute> Route(Func<string, CancellationToken, Task<(string Language, double Probability)>>? detect) =>
+            await TranscriptionRouting.RouteAsync(App.Services.Models as ModelCatalog ?? new ModelCatalog(), App.Services.Downloads,
+                selectedModel, requestedLanguage, TranscriptionRouting.InstalledMemoryBytes, false, detect, token);
+        try
+        {
         await Ui.RunAsync(notice, async () =>
         {
             ClearRoute();
             if (!CheckLocalRuntime()) return;
-            var local = engine.SelectedIndex == 0;
-            var requestedLanguage = language.Text.Trim().ToLowerInvariant();
-            // Route before any audio work, so a missing model or language is asked for at once (transcription §11.2).
-            var route = local ? await RouteAsync(null) : null;
-            if (closed || model.IsLeaving) return;
+            RequireCurrent();
+            var route = local ? await Route(null) : null;
+            RequireCurrent();
             if (route is { Plan: null, Detector: null }) { ShowRoute(route); return; }
             if (!local)
             {
-                if (await App.Services.Keys.GetKeyAsync("elevenlabs-api-key", lifetime.Token) is null) { Ui.Show(notice, "Add an ElevenLabs key here before uploading this take."); cloudKey.Focus(FocusState.Programmatic); return; }
-                if (!App.Services.Get("transcription.cloudConsent.elevenlabs", false)) { ShowCloudConsent(); return; }
+                if (!authorizedCloud || approvedPrice is null) return;
+                if (await App.Services.Keys.GetKeyAsync("elevenlabs-api-key", token) is null) { keySaved = false; UpdateApproval(); return; }
+                RequireCurrent();
+                if (!App.Services.Get("transcription.cloudConsent.elevenlabs", false))
+                    await App.Services.SetAsync("transcription.cloudConsent.elevenlabs", true, token);
             }
-            if (model.IsLeaving) return;
+            RequireCurrent();
+            if (rememberLanguage) await App.Services.SetAsync("transcription.language", requestedLanguage.Length == 0 ? "auto" : requestedLanguage, token);
+            RequireCurrent();
             running = true; model.Busy = true; App.Services.BusyOperations++; IsPrimaryButtonEnabled = false; progress.Visibility = Visibility.Visible;
-            // Home tiles in any window show this run's stage and can cancel it, as "Not now" does (design §5.4.4 d).
-            void Cancel() { if (running) lifetime.Cancel(); }
+            CloseButtonText = "Cancel";
+            void Cancel() { if (running) cancellation.Cancel(); }
             var announcements = new TranscriptionAnnouncements();
             void Report(MediaTranscriptionStage step, double? fraction)
             {
+                if (closed || version != inputRevision || !baseline.IsCurrent) return;
                 if (projectPath is not null && running) TranscriptionActivity.Report(projectPath, step, fraction, Cancel);
-                if (announcements.Update(step, fraction, engine.SelectedIndex != 0) is { } text) Ui.Announce(notice, text, "transcription");
+                if (announcements.Update(step, fraction, !local) is { } text) Ui.Announce(notice, text, "transcription");
             }
             Report(MediaTranscriptionStage.ReadingVideo, null);
             Ui.Show(notice, TranscriptionProgressCopy.ReadingVideo);
             try
             {
-                var source = model.Project.Media.Source;
-                // From extraction to the transcript, eviction leaves this source's cache entry alone (architecture §8.2).
-                using var entryLease = await App.Services.CacheKeys.LeaseAsync(source.ContentKey, lifetime.Token);
-                App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "transcribe", "dialog stage=probe");
-                await App.Services.Log.FlushAsync(CancellationToken.None);
-                var media = await App.Services.Probe.ProbeAsync(source.AbsolutePath, lifetime.Token);
+                var source = baseline.Project.Media.Source;
+                using var sourceRead = new FileStream(source.AbsolutePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var entryLease = await App.Services.CacheKeys.LeaseAsync(source.ContentKey, token);
+                var media = await App.Services.Probe.ProbeAsync(source.AbsolutePath, token);
+                RequireCurrent();
+                if (media.Audio is null || Math.Abs(media.DurationSeconds - source.DurationSeconds) > 0.05 ||
+                    await App.Services.Projects.ComputeContentKeyAsync(source.AbsolutePath, null, token) != source.ContentKey)
+                    throw new InvalidOperationException("This video changed or has no audio. Find the original video before transcribing. Your edits are saved.");
+                RequireCurrent();
                 Report(MediaTranscriptionStage.ExtractingAudio, null);
                 Ui.Show(notice, TranscriptionProgressCopy.ExtractingAudio);
-                var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, lifetime.Token);
-                App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Info, "transcribe", "dialog stage=audio-ready");
-                await App.Services.Log.FlushAsync(CancellationToken.None);
+                var audio = await App.Services.Cache.ExtractAudioAsync(App.Services.Audio, media, source.ContentKey, null, token);
+                RequireCurrent();
                 if (route is { Detector: not null })
                 {
                     // Auto with a multilingual model: detect the language, then route it to its model (transcription §9.8).
                     Report(MediaTranscriptionStage.Transcribing, null);
                     progress.IsIndeterminate = true;
                     Ui.Show(notice, TranscriptionRouting.Detecting);
-                    route = await RouteAsync((detector, token) => App.Services.DetectLanguageAsync(
-                        new(new(TranscriptEngine.Whispercpp, detector, new LanguageChoice.Auto(), new()), audio.Audio, source.ContentKey), token));
-                    if (closed || model.IsLeaving) return;
+                    route = await Route((detector, detectToken) => App.Services.DetectLanguageAsync(
+                        new(new(TranscriptEngine.Whispercpp, detector, new LanguageChoice.Auto(), new()), audio.Audio, source.ContentKey), detectToken));
+                    RequireCurrent();
                     if (route.Plan is null) { ShowRoute(route); return; }
                 }
                 // The local engine only ever runs its routed plan; it never falls through to the cloud (no automatic fallback).
@@ -331,27 +425,59 @@ internal sealed class TranscriptionDialog : ContentDialog
                     : new TranscriptionPlan(TranscriptEngine.Elevenlabs, null,
                         requestedLanguage.Length == 0 || requestedLanguage == "auto" ? new LanguageChoice.Auto() : new LanguageChoice.Forced(requestedLanguage), new());
                 var cloud = !local;
-                var transcript = await App.Services.Transcription.TranscribeAsync(new(plan, audio.Audio, source.ContentKey), new Progress<TranscriptionProgress>(value =>
+                if (cloud && approvedPrice is { } amount) { TranscriptionSpendState.Shared.Begin(jobId, amount); spentPending = true; }
+                var request = new TranscriptionRequest(plan, audio.Audio, source.ContentKey)
                 {
+                    Observe = cloud && approvedPrice is { } capturedEstimate ? evidence =>
+                    {
+                        if (evidence.Kind == TranscriptionEvidenceKind.UploadStarted) Interlocked.Exchange(ref uploadMayHaveStarted, 1);
+                        TranscriptionSpendState.Shared.Observe(jobId, approvedDay, capturedEstimate, evidence);
+                    } : null
+                };
+                var transcript = await service.TranscribeAsync(request, new WorkflowProgress<TranscriptionProgress>(value =>
+                {
+                    if (cloud && value.Stage == TranscriptionStage.Uploading) Interlocked.Exchange(ref uploadMayHaveStarted, 1);
+                }, value =>
+                {
+                    if (closed || version != inputRevision || !baseline.IsCurrent) return;
                     progress.IsIndeterminate = value.Fraction is null; progress.Value = (value.Fraction ?? 0) * 100;
                     Ui.Show(notice, TranscriptionProgressCopy.Label(value.Stage, value.Fraction, cloud));
+                    if (cloud) flow.Text = Volatile.Read(ref uploadMayHaveStarted) != 0
+                        ? "ElevenLabs may still bill audio already received. Your video is still here."
+                        : "Nothing has been sent yet. Cancel now and nothing is billed.";
                     Report(value.Stage == TranscriptionStage.Aligning ? MediaTranscriptionStage.Aligning : MediaTranscriptionStage.Transcribing, value.Fraction);
-                }), lifetime.Token);
-                if (model.IsLeaving) return;
+                }, action => DispatcherQueue.TryEnqueue(() => action())), token);
+                if (cloud && approvedPrice is { } paid)
+                    TranscriptionSpendState.Shared.Completed(jobId, approvedDay, paid, transcript.FromCache);
+                RequireCurrent();
                 model.SetTranscript(transcript);
+                if (!closed) Hide();
+            }
+            catch (OperationCanceledException)
+            {
+                if (!closed) Ui.Show(notice, local ? "Transcription cancelled. Your media and edits are safe." :
+                    "Transcription cancelled. ElevenLabs may still bill audio already received. Your media and edits are safe.");
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
+                if (exception is VoxClip.Core.Domain.Shared.VoxClipException { Code: VoxClip.Core.Domain.Shared.VoxClipErrorCode.KeyRejected or VoxClip.Core.Domain.Shared.VoxClipErrorCode.KeyPermissionMissing }) keySaved = false;
                 App.Services.Log.Write(VoxClip.Core.Services.Logging.LogLevel.Error, "transcribe",
                     $"dialog failed type={exception.GetType().Name} hresult={exception.HResult}");
                 throw;
             }
             finally
             {
-                running = false; model.Busy = false; App.Services.BusyOperations--; IsPrimaryButtonEnabled = !lifetime.IsCancellationRequested; progress.Visibility = Visibility.Collapsed;
+                running = false; model.Busy = false; App.Services.BusyOperations--; progress.Visibility = Visibility.Collapsed; CloseButtonText = "Not now";
                 if (projectPath is not null) TranscriptionActivity.End(projectPath);
             }
-            Hide();
         }, "Transcription");
+        }
+        finally
+        {
+            if (spentPending) TranscriptionSpendState.Shared.End(jobId, Volatile.Read(ref uploadMayHaveStarted) != 0);
+            preparing = false;
+            if (ReferenceEquals(transcribing, cancellation)) transcribing = null;
+            if (!closed) UpdateApproval();
+        }
     }
 }

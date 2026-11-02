@@ -17,8 +17,9 @@ internal sealed class RewriteOpening
         this.editor = editor;
         project = editor.Project;
         revision = editor.RewriteSelectionRevision;
-        First = editor.SelectionStart;
-        Last = editor.SelectionEnd;
+        var active = editor.Clips.FirstOrDefault(clip => clip.Id == project.Edits.ActiveClipId);
+        First = editor.HasSelection ? editor.SelectionStart : active is null ? 0 : editor.Index(active.Clip.StartWordId);
+        Last = editor.HasSelection ? editor.SelectionEnd : active is null ? editor.Words.Count - 1 : editor.Index(active.Clip.EndWordId);
         InsertionAfter = insertionAfter;
     }
 }

@@ -4,8 +4,11 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Windows v2 shell now connects scoped inline Rewrite/Hook jobs, transcript review, real caption timeline snapshots and durable local transcription estimates; native Windows acceptance remains pending.
 - Windows gains an Explorer workspace, preview/pinned clip tabs, local one-step Tighten, inline Rename and a Ctrl+K command palette; changing tabs no longer dirties a project or consumes Undo.
 - Windows Core now combines scoped Rewrite, collision-aware phrase placement and atomic take acceptance with the shared v2 transcript and timeline math; paid voice creation remains blocked until native speaker parity is verified.
+- Windows v2 transcript source adds take-time gutters, clip bands, foldable cuts, selection-safe inline rewrite previews and in-flow spelling/change editing; native acceptance remains pending.
+- Windows right-panel export, transcription and Rewrite confirmation now use inline jobs; creating a voice and generating speech remain unavailable pending native speaker / ONNX parity. Native workflow acceptance is still pending.
 
 - Inline transcription, API-key approval and Voice review now share the integrated workspace without extra sheets; quotes track pending corrections, in-flight paid work retains its discard protection, chosen takes survive retries, playback and audition stop each other, and monthly spend updates during review.
 

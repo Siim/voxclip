@@ -10,16 +10,17 @@ using Windows.System;
 
 namespace VoxClip.App.Controls;
 
-/// <summary>Find clips (design §6.2): one flyout, anchored to the control that opened it, holding the connector line with
-/// Change…, the preset, the instructions and the disclosure footnote. Finding closes the flyout; the sidebar then shows
-/// "Finding clips…" under Suggested with Cancel, a run that finds nothing says so under Suggested, and a missing
-/// connector or a failure shows as a callout under the sidebar actions with §13's copy. Results arrive as suggestions in
-/// one undo step. Without a transcript Find clips is disabled (design §7.1).</summary>
-internal sealed class FindClipsFlyout
+internal sealed class FindClipsJob
 {
     private readonly EditorViewModel model;
     private readonly CancellationToken ct;
-    private readonly Flyout flyout = new() { Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft };
+    private readonly StackPanel body = Ui.Stack(12);
+    private readonly StackPanel confirmation = Ui.Stack(8);
+    private InlineFindJob? host;
+    private InlineApproval? approval;
+    private bool retired;
+    private long inputRevision;
+    private long presentationRevision;
     private readonly TextBlock connector = Ui.Text("");
     private readonly HyperlinkButton change = new() { Content = "Change…", Padding = new(6, 0, 6, 0), Height = 32 };
     private readonly ComboBox preset = Ui.Choice("Preset", ["Best moments", "Hooks", "One per topic", "Quotes", "Custom"]);
@@ -35,7 +36,7 @@ internal sealed class FindClipsFlyout
     private bool starting;
     private FrameworkElement? anchor;
 
-    internal FindClipsFlyout(EditorViewModel model, CancellationToken ct)
+    internal FindClipsJob(EditorViewModel model, CancellationToken ct)
     {
         this.model = model; this.ct = ct;
         model.PropertyChanged += BusyChanged;
@@ -47,10 +48,16 @@ internal sealed class FindClipsFlyout
         line.Children.Add(change);
         AutomationProperties.SetName(change, "Change connector");
         AutomationProperties.SetName(busy, "AI request in progress");
-        change.Click += (_, _) => { flyout.Hide(); App.OpenSettings("Providers & Keys"); };
-        preset.SelectionChanged += (_, _) => instructions.Header = preset.SelectedIndex == 4 ? "Describe the clips you want" : "Anything specific? (optional)";
+        change.Click += (_, _) => { host?.RequestClose(); App.OpenSettings("Providers & Keys"); };
+        preset.SelectionChanged += (_, _) =>
+        {
+            instructions.Header = preset.SelectedIndex == 4 ? "Describe the clips you want" : "Anything specific? (optional)";
+            InputsChanged();
+        };
+        instructions.TextChanged += (_, _) => InputsChanged();
         instructions.KeyDown += (_, args) =>
         {
+            if (host?.OwnsComposition == true || args.Handled || args.KeyStatus.WasKeyDown) return;
             if (args.Key != VirtualKey.Enter) return;
             args.Handled = true;
             _ = FindAsync();
@@ -58,12 +65,7 @@ internal sealed class FindClipsFlyout
         problem.Foreground = Ui.ThemeBrush(problem, "VcStatusWarningBrush");
         problem.Visibility = Visibility.Collapsed;
         find.Click += (_, _) => _ = FindAsync();
-        var body = Ui.Stack(12);
-        body.Width = 340;
-        foreach (var child in new UIElement[] { title, line, preset, instructions, footnote, problem, busy, find }) body.Children.Add(child);
-        flyout.Content = body;
-        flyout.Opened += (_, _) => { Ui.EffectsChanged += EffectsChanged; instructions.Focus(FocusState.Programmatic); };
-        flyout.Closed += (_, _) => { Ui.EffectsChanged -= EffectsChanged; anchor?.Focus(FocusState.Programmatic); };
+        foreach (var child in new UIElement[] { title, line, preset, instructions, footnote, problem, busy, find, confirmation }) body.Children.Add(child);
     }
 
     /// <summary>The connector line while a search runs: "{connector} · reading {m:ss} of transcript"; null otherwise.</summary>
@@ -79,13 +81,20 @@ internal sealed class FindClipsFlyout
     /// <summary>A Find clips action ended in a callout; the window makes it visible from the control that asked.</summary>
     internal event EventHandler<FrameworkElement?>? CalloutShown;
 
-    /// <summary>Open the flyout at <paramref name="target"/>; with no connector chosen, the callout under the sidebar actions
-    /// replaces it (design §6.2).</summary>
-    internal async Task ShowAsync(FrameworkElement target)
+    /// <summary>Mount the inline job requested by <paramref name="target"/>. Missing connectors use the existing sidebar callout.</summary>
+    internal async Task ShowAsync(FrameworkElement target, bool hooks = false)
     {
         if (Running is not null || model.Busy || model.IsLeaving || !model.HasTranscript) return;
         anchor = target;
+        if (hooks) preset.SelectedIndex = 1;
+        host?.RequestClose();
+        host?.ReleaseBody();
+        var presentation = ++presentationRevision;
+        host = new(model, body, Cancel);
+        await host.ShowAsync();
+        if (presentation != presentationRevision) return;
         entry = await ChosenAsync();
+        if (presentation != presentationRevision) return;
         if (entry is not { } chosen)
         {
             Show(ClipCallouts.NoConnector);
@@ -93,30 +102,37 @@ internal sealed class FindClipsFlyout
         }
         Set(null);
         connector.Text = $"{chosen.ShortName} · checking…";
-        footnote.Text = chosen.Group == "local" ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
+        var address = App.Services.Get("llm.baseUrl." + chosen.WireId, "");
+        footnote.Text = chosen.Group == "local" && Uri.TryCreate(address, UriKind.Absolute, out var server) && !server.IsLoopback
+            ? $"Sends transcript text with word numbers to {server.Authority}. No audio or video."
+            : chosen.Group == "local" ? "Runs on this PC. Nothing leaves it." : "Sends transcript text with word numbers. No audio or video.";
         problem.Visibility = Visibility.Collapsed;
-        Ui.ApplyFlyoutEffects(flyout, target);
-        flyout.ShowAt(target);
+        instructions.Focus(FocusState.Programmatic);
         try
         {
             var status = await ProviderCatalog.ProbeAsync(chosen, App.Services.Connector(chosen.Id), ct);
+            if (presentation != presentationRevision || App.Services.Get("llm.connector", "") != chosen.WireId) return;
             connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(status)}";
         }
         catch (OperationCanceledException) { }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(new ConnectorStatus.Unavailable(exception.GetType().Name))}"; }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            if (presentation == presentationRevision) connector.Text = $"{chosen.ShortName} · {ProviderCatalog.ShortStatus(new ConnectorStatus.Unavailable(exception.GetType().Name))}";
+        }
     }
 
     /// <summary>Run the last search again from the callout's Retry.</summary>
     internal Task RetryAsync() => FindAsync();
-    internal void Cancel() => search?.Cancel();
-    internal void Close() { model.PropertyChanged -= BusyChanged; Ui.EffectsChanged -= EffectsChanged; flyout.Hide(); Cancel(); }
+    private void InputsChanged() { inputRevision++; approval?.Cancel(); search?.Cancel(); }
+    internal void Cancel() { presentationRevision++; approval?.Cancel(); search?.Cancel(); }
+    internal void Close() { retired = true; model.PropertyChanged -= BusyChanged; host?.RequestClose(); Cancel(); }
     private void BusyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs args)
     {
         find.IsEnabled = !model.Busy && !model.IsLeaving;
+        if (approval is { IsPending: false } stale) stale.Cancel();
         busy.IsActive = model.LlmRuns.IsBusy;
         busy.Visibility = busy.IsActive ? Visibility.Visible : Visibility.Collapsed;
     }
-    private void EffectsChanged(object? sender, EventArgs args) => anchor?.DispatcherQueue.TryEnqueue(() => { if (anchor is not null) Ui.ApplyFlyoutEffects(flyout, anchor); });
     internal void Dismiss() => Set(null);
 #if DEBUG
     /// <summary>The shell probe shows the "Finding clips…" row without a connector.</summary>
@@ -137,19 +153,17 @@ internal sealed class FindClipsFlyout
         starting = true;
         try
         {
-            // Find and the callout's Retry run with the connector chosen now, not when the flyout last opened: Settings may
+            // Find and the callout's Retry run with the connector chosen now, not when the job last opened: Settings may
             // have changed or cleared it since (AI spec §11 gate 4).
             try { entry = await ChosenAsync(); }
             catch (OperationCanceledException) { return; }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
-                flyout.Hide();
                 Fail(exception);
                 return;
             }
             if (entry is not { } chosen)
             {
-                flyout.Hide();
                 Show(ClipCallouts.NoConnector);
                 return;
             }
@@ -168,31 +182,43 @@ internal sealed class FindClipsFlyout
     private async Task FindWithAsync(ProviderEntry chosen)
     {
         Func<CancellationToken, Task<bool>> authorize;
+        if (model.State is not { } state || model.IsReadOnly) return;
+        var captured = model.Project;
+        var inputs = inputRevision;
+        var presentation = presentationRevision;
+        var chosenModel = App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel);
+        var address = App.Services.Get("llm.baseUrl." + chosen.WireId, "");
+        var snap = App.Services.Get("llm.clips.snapToLines", true);
+        var selectedPreset = (ClipPreset)Math.Max(0, preset.SelectedIndex);
+        var instruction = instructions.Text;
+        LlmConnector? requestConnector = null;
+        CliSignIn? requestSignIn = null;
+        bool Current() => !retired && !model.IsLeaving && !model.IsReadOnly && ReferenceEquals(captured, model.Project) &&
+            inputs == inputRevision && presentation == presentationRevision && App.Services.Get("llm.connector", "") == chosen.WireId &&
+            App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel) == chosenModel &&
+            App.Services.Get("llm.baseUrl." + chosen.WireId, "") == address && App.Services.Get("llm.clips.snapToLines", true) == snap &&
+            (!chosen.Cli || requestConnector is not null && RewriteSession.SignIn(requestConnector.CliDetection) == requestSignIn);
         try
         {
-            // The connector's preflight (AI spec §4): a connector that isn't ready explains itself under the actions.
             var selectedConnector = App.Services.Connector(chosen.Id);
+            requestConnector = selectedConnector;
             var status = await ProviderCatalog.ProbeAsync(chosen, selectedConnector, ct);
-            if (model.IsLeaving) return;
+            requestSignIn = RewriteSession.SignIn(selectedConnector.CliDetection);
+            if (!Current()) return;
             if (status is not ConnectorStatus.Ready)
             {
-                flyout.Hide();
                 Show(ClipCallouts.NotReady(chosen.Id, chosen.Label, status, CliHint(chosen, "installHint"), CliHint(chosen, "signInHint")));
                 return;
             }
-            var root = anchor?.XamlRoot ?? flyout.XamlRoot;
-            authorize = token => ProviderCatalog.ConsentAsync(chosen, root, ConnectorConsentAction.FindClips,
-                model.Words.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word), selectedConnector, status, token);
+            authorize = token => ApproveSendAsync(chosen, selectedConnector, captured, Current, token);
         }
         catch (OperationCanceledException) { return; }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            flyout.Hide();
             Fail(exception);
             return;
         }
-        flyout.Hide();
-        if (model.State is not { } state) return;
+        if (!Current()) return;
         search?.Dispose();
         search = CancellationTokenSource.CreateLinkedTokenSource(ct);
         App.Services.BusyOperations++;
@@ -202,25 +228,70 @@ internal sealed class FindClipsFlyout
         Announcement?.Invoke(this, "Finding clips");
         try
         {
-            var request = new ClipFinderRequest(state.Transcript.Words, state.Corrections, state.CutWordIds, (ClipPreset)Math.Max(0, preset.SelectedIndex),
-                instructions.Text, state.Transcript.Language, chosen.Id, App.Services.Get("llm.model." + chosen.WireId, chosen.DefaultModel),
-                Snap: App.Services.Get("llm.clips.snapToLines", true));
+            var request = new ClipFinderRequest(state.Transcript.Words, state.Corrections, state.CutWordIds, selectedPreset,
+                instruction, state.Transcript.Language, chosen.Id, chosenModel, Snap: snap);
             var result = await ConnectorPreflight.FindAsync(App.Services.ClipFinder, request, authorize, search.Token);
-            if (result is null || model.IsLeaving) return;
-            var added = model.AddAiResult(result);
+            if (result is null || !Current()) return;
             // None found reads the prompt file's message (design §13), under Suggested.
-            if (result.Clips.Count == 0) NoneFound = await ProviderCatalog.ClipMessageAsync("noResults", ct) ?? ClipAnnouncements.NoResults;
+            var noneFound = result.Clips.Count == 0 ? await ProviderCatalog.ClipMessageAsync("noResults", search.Token) ?? ClipAnnouncements.NoResults : null;
+            if (!Current()) return;
+            var added = model.AddAiResult(result);
+            NoneFound = noneFound;
             Announcement?.Invoke(this, ClipAnnouncements.Found(result.Clips.Count, NoneFound));
             if (added.Count > 0) Found?.Invoke(this, added[0]);
         }
         catch (OperationCanceledException) { }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { Fail(exception); }
+        catch (Exception exception) when (exception is not OutOfMemoryException) { if (Current()) Fail(exception); }
         finally
         {
             App.Services.BusyOperations--;
             Running = null;
             Changed?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    private async Task<bool> ApproveSendAsync(ProviderEntry chosen, LlmConnector selected, object snapshot, Func<bool> current, CancellationToken token)
+    {
+        if (!current()) return false;
+        var signIn = RewriteSession.SignIn(selected.CliDetection);
+        if (chosen.Cli && signIn is null) { Problem("Check the connector's sign-in method before sending."); return false; }
+        var privacy = chosen.Cloud || chosen.Cli;
+        var address = App.Services.Get("llm.baseUrl." + chosen.WireId, "");
+        var remote = chosen.Group == "local" && Uri.TryCreate(address, UriKind.Absolute, out var server) && !server.IsLoopback ? server : null;
+        var firstUse = remote is not null || privacy && !App.Services.Get("llm.cloudConsent." + chosen.WireId, false);
+        var billing = VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentation.KindForLlmSend(chosen.Id, signIn,
+            chosen.Cli ? chosen.Id == ConnectorId.ClaudeCode ? "Anthropic" : "OpenAI" : chosen.ShortName);
+        var paid = billing.Kind == VoxClip.Core.Domain.VoiceLab.VoiceLabCostPresentationKind.Confirm;
+        if (!firstUse && !paid) return current();
+        var disclosure = ConnectorConsent.Text(ConnectorConsentAction.FindClips, chosen.Id, chosen.Label,
+            model.Words.Count(word => word.Kind == VoxClip.Core.Domain.Shared.WordKind.Word), selected.CliDetection);
+        if (privacy && disclosure is null) return false;
+        using var pending = new InlineApproval(new(Guid.NewGuid(), snapshot, "Find clips with this connector?",
+            remote is not null ? $"Sends transcript text with word numbers to {remote.Authority}. No audio or video." : disclosure ?? "Runs on this PC. Nothing leaves it.",
+            billing.Text, firstUse ? "Allow and Find" : "Send", paid), current, token, Environment.TickCount);
+        approval = pending;
+        using var row = new InlineConfirmation(pending, () => RightColumn.RequestSourcePlayback(model));
+        confirmation.Children.Clear(); confirmation.Children.Add(row); row.FocusTarget.Focus(FocusState.Programmatic);
+        try
+        {
+            if (!await pending.Completion || !current() || signIn != RewriteSession.SignIn(selected.CliDetection)) return false;
+            if (firstUse && remote is null) await App.Services.SetAsync("llm.cloudConsent." + chosen.WireId, true, token);
+            return current();
+        }
+        finally { if (ReferenceEquals(approval, pending)) { approval = null; confirmation.Children.Clear(); } }
+    }
+
+    private sealed class InlineFindJob : InlineEditorJob
+    {
+        internal InlineFindJob(EditorViewModel model, StackPanel content, Action cancel) : base(model)
+        {
+            JobLabel = "Find clips"; Title = "Find clips in this take";
+            Content = new ScrollViewer { Content = content, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+            PrimaryButtonVisible = false; CloseButtonText = "Close";
+            CloseButtonClick += (_, _) => cancel();
+            Abandoned += (_, _) => cancel();
+        }
+        internal void ReleaseBody() { if (Content is ScrollViewer scroll) scroll.Content = null; Content = null; }
     }
 
     private static string? CliHint(ProviderEntry chosen, string key) =>

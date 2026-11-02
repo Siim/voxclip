@@ -29,32 +29,12 @@ public static class EditorLayout
     public static bool TranscriptFits(double pageWidth, double splitter, double rightColumn, double transcriptMin) =>
         pageWidth - splitter - rightColumn >= transcriptMin;
 
-    /// <summary>The stage in a column of this inner width: 16:9 and landscape originals fill it; 9:16, 1:1 and portrait or
-    /// square originals are centred, at most 320 high and never wider than the column.</summary>
-    public static (double Width, double Height) Stage(double inner, ExportAspect aspect, PixelSize source)
+    /// <summary>The v2 viewer keeps a 16:9 envelope while the compositor letterboxes the actual export aspect inside it.</summary>
+    public static (double Width, double Height) Viewer(double inner)
     {
-        var ratio = aspect switch
-        {
-            ExportAspect.Portrait => 16.0 / 9,
-            ExportAspect.Square => 1,
-            ExportAspect.Landscape => 9.0 / 16,
-            _ => source.Width > 0 && source.Height > 0 ? (double)source.Height / source.Width : 9.0 / 16,
-        };
-        var width = Math.Max(0, ratio < 1 ? inner : Math.Min(inner, 320 / ratio));
-        return (width, width * ratio);
+        var width = double.IsFinite(inner) ? Math.Max(0, inner) : 0;
+        return (width, width * 9 / 16);
     }
-
-    public static bool CompactStage(bool rewriteOpen, double columnHeight) => rewriteOpen && columnHeight < 760;
-
-    public static (double Width, double Height) RewriteStage(double inner, ExportAspect aspect, PixelSize source, double transportWidth)
-    {
-        var stage = Stage(Math.Min(220, Math.Max(1, inner - transportWidth - 8)), aspect, source);
-        var scale = Math.Min(1, 124 / stage.Height);
-        return (stage.Width * scale, stage.Height * scale);
-    }
-
-    public static double StageHeightBudget(double columnHeight, double frameHeight, double transportHeight,
-        double chromeHeight, double captionsHeight) => Math.Max(1, columnHeight - frameHeight - transportHeight - chromeHeight - captionsHeight);
 
     public static double CaptionHeaderViewport(double availableForCaptions, double fixedContentHeight, double measuredHeaderHeight) =>
         Math.Clamp(availableForCaptions - fixedContentHeight, 56, Math.Max(56, measuredHeaderHeight));

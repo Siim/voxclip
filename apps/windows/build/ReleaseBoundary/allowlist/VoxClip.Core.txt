@@ -4766,6 +4766,26 @@ member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: field public Sente
 member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: method public EndsSentence(string)
 member VoxClip.Core.Domain.Transcript.TranscriptParagraphs :: method public Split(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.Transcript.TranscriptPostProcessor :: method public Process(VoxClip.Core.Domain.Transcript.RawTranscript,double,VoxClip.Core.Domain.Transcript.AudioEnvelope,string,System.DateTimeOffset)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method private .ctor(VoxClip.Core.Domain.Transcript.TranscriptionEvidence)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method private get_EqualityContract()
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public .ctor(VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind,string)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public Deconstruct(VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind&,string&)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public Equals(VoxClip.Core.Domain.Transcript.TranscriptionEvidence)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public Equals(object)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public GetHashCode()
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public ToString()
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public get_Kind()
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public get_RequestId()
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public op_Equality(VoxClip.Core.Domain.Transcript.TranscriptionEvidence,VoxClip.Core.Domain.Transcript.TranscriptionEvidence)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public op_Inequality(VoxClip.Core.Domain.Transcript.TranscriptionEvidence,VoxClip.Core.Domain.Transcript.TranscriptionEvidence)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public set_Kind(VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidence :: method public set_RequestId(string)
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind :: field public Accepted
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind :: field public Cached
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind :: field public Completed
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind :: field public UploadStarted
+member VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind :: field public value__
 member VoxClip.Core.Domain.Transcript.TranscriptionOptions :: method private .ctor(VoxClip.Core.Domain.Transcript.TranscriptionOptions)
 member VoxClip.Core.Domain.Transcript.TranscriptionOptions :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.Transcript.TranscriptionOptions :: method private get_EqualityContract()
@@ -4828,11 +4848,13 @@ member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public GetH
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public ToString()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public get_Audio()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public get_ContentKey()
+member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public get_Observe()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public get_Plan()
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public op_Equality(VoxClip.Core.Domain.Transcript.TranscriptionRequest,VoxClip.Core.Domain.Transcript.TranscriptionRequest)
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public op_Inequality(VoxClip.Core.Domain.Transcript.TranscriptionRequest,VoxClip.Core.Domain.Transcript.TranscriptionRequest)
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public set_Audio(VoxClip.Core.Domain.Transcript.ExtractedAudio)
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public set_ContentKey(string)
+member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public set_Observe(System.Action`1<VoxClip.Core.Domain.Transcript.TranscriptionEvidence>)
 member VoxClip.Core.Domain.Transcript.TranscriptionRequest :: method public set_Plan(VoxClip.Core.Domain.Transcript.TranscriptionPlan)
 member VoxClip.Core.Domain.Transcript.TranscriptionStage :: field public Aligning
 member VoxClip.Core.Domain.Transcript.TranscriptionStage :: field public Preparing
@@ -11496,6 +11518,8 @@ type VoxClip.Core.Domain.Transcript.TranscriptEngine
 type VoxClip.Core.Domain.Transcript.TranscriptJsonContext
 type VoxClip.Core.Domain.Transcript.TranscriptParagraphs
 type VoxClip.Core.Domain.Transcript.TranscriptPostProcessor
+type VoxClip.Core.Domain.Transcript.TranscriptionEvidence
+type VoxClip.Core.Domain.Transcript.TranscriptionEvidenceKind
 type VoxClip.Core.Domain.Transcript.TranscriptionOptions
 type VoxClip.Core.Domain.Transcript.TranscriptionPlan
 type VoxClip.Core.Domain.Transcript.TranscriptionProgress

@@ -20,6 +20,7 @@ namespace VoxClip.App.Controls;
 internal sealed class CaptionsPanel : UserControl
 {
     private readonly EditorViewModel model;
+    internal EditorViewModel Editor => model;
     private readonly CancellationToken ct;
     private readonly Func<string?> mediaPath;
     private bool readingFrame;

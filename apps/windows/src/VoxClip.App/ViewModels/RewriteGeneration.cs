@@ -23,6 +23,8 @@ internal sealed partial class RewriteGeneration : IDisposable
     private ITimer? quoteExpiry;
     private VoiceLabTakeRunQuote? timedQuote;
     private readonly CancellationTokenSource lifetime = new();
+    private readonly InlineJobLifetime workers = new();
+    private Func<Task>? spendObserver;
     private CancellationTokenSource? updating;
     private CancellationTokenSource? executing;
     private CancellationTokenSource? discoveringInputs;
@@ -48,11 +50,13 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal bool HasStartedDiscovery { get; private set; }
     internal bool IsRequestingConsent { get; private set; }
     internal VoiceLabTakeRunQuote? Quote => core.PendingQuote;
+    internal VoiceLabTakeBatch.Window? PreparedWindow => Quote is { } quote && pendingInput is { } input ? new(input, quote) : null;
     internal VoiceLabCostPresentationResult? Cost => core.Cost;
     internal IReadOnlyList<VoiceLabTakeRow> Rows => core.Rows.Where(row => !rejected.Contains(row.Id)).ToArray();
     internal Guid? SelectedTakeId => core.SelectedTakeId;
     internal Guid? AuditionedTakeId => core.AuditionedTakeId;
     internal VoiceLabTakeInput? ReviewedInput { get; private set; }
+    internal VoiceLabTakeRunResult? LastRunResult => runner.Result;
     internal bool ReviewedInputsCurrent { get; private set; }
     internal bool CanExecute => !closed && current() && !accepting && !IsRunning && !IsPreparing && !discovering &&
         Quote is { } quote && ReferenceEquals(quote, shownQuote) && Cost is not null;
@@ -72,6 +76,8 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal string ProgressCopy => $"Generating take {Math.Min(3, Rows.Count + 1)} of 3…";
     internal Task PendingUpdate { get; private set; } = Task.CompletedTask;
     internal Task Cleanup { get; private set; } = Task.CompletedTask;
+    internal Task DeferredCleanup { get; private set; } = Task.CompletedTask;
+    internal void ConfigureSpendObserver(Func<Task> observer) => spendObserver = observer;
     internal event EventHandler? Changed;
 
     internal RewriteGeneration(IVoiceLabTakeRunner takeRunner,
@@ -84,7 +90,7 @@ internal sealed partial class RewriteGeneration : IDisposable
         this.current = current; this.onUi = onUi ?? (action => { action(); return Task.CompletedTask; });
         this.release = release ?? (() => (takeRunner as IDisposable)?.Dispose());
         clock = timeProvider ?? TimeProvider.System;
-        runner = new(takeRunner, ProgressAsync);
+        runner = new(takeRunner, ProgressAsync, () => spendObserver?.Invoke() ?? Task.CompletedTask);
         core = new(runner) { ReadMonthlyCapAsync = readMonthlyCap };
     }
 
@@ -107,6 +113,7 @@ internal sealed partial class RewriteGeneration : IDisposable
     private async Task DiscoverCurrentAsync()
     {
         if (closed || discovering || !current()) return;
+        using var worker = workers.Enter();
         discovering = true;
         Problem = ""; Announcement = "";
         Notify();
@@ -161,7 +168,7 @@ internal sealed partial class RewriteGeneration : IDisposable
         runner.InvalidatePreparation();
         shownQuote = null; revision++;
         pendingInput = null;
-        if (!preserveReview) ReviewedInputsCurrent = false;
+        if (!preserveReview) { ReviewedInputsCurrent = false; explicitSelection = null; }
         Problem = ""; Announcement = "";
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
         updating = cancellation;
@@ -172,6 +179,7 @@ internal sealed partial class RewriteGeneration : IDisposable
     }
     private async Task PrepareAsync(long version, CancellationTokenSource cancellation)
     {
+        using var worker = workers.Enter();
         try
         {
             await core.CancelAsync();
@@ -197,9 +205,12 @@ internal sealed partial class RewriteGeneration : IDisposable
         if (closed || IsPreparing || !ReferenceEquals(Quote, quote) || ReferenceEquals(shownQuote, quote)) return;
         shownQuote = quote; Notify();
     }
-    internal async Task GenerateAsync(Func<string, CancellationToken, Task<bool>> confirm)
+    internal async Task GenerateAsync(Func<string, CancellationToken, Task<bool>> confirm,
+        VoiceLabTakeRunQuote? expectedQuote = null, bool autoplay = true)
     {
         if (closed || accepting || IsRunning || IsPreparing || !current()) return;
+        using var worker = workers.Enter();
+        if (expectedQuote is not null && !ReferenceEquals(Quote, expectedQuote)) return;
         if (Quote is null) { await InputsChangedAsync(preserveReview: true); return; }
         if (!CanExecute) return;
         var version = revision;
@@ -249,7 +260,7 @@ internal sealed partial class RewriteGeneration : IDisposable
             if (ReferenceEquals(executing, cancellation)) executing = null;
             cancellation.Dispose(); TrackQuoteExpiry(); Notify();
         }
-        if (!closed && takes is not null && BestTakeId is { } best && autoplayed.Add(best)) await PlayTakeAsync(best);
+        if (autoplay && !closed && takes is not null && SelectedTakeId is { } selected && autoplayed.Add(selected)) await PlayTakeAsync(selected);
     }
     private void TrackQuoteExpiry()
     {
@@ -343,10 +354,21 @@ internal sealed partial class RewriteGeneration : IDisposable
         if (closed) return;
         StopQuoteExpiry();
         closed = true; revision++; Cancel(updating); Cancel(executing); Cancel(discoveringInputs); lifetime.Cancel(); shownQuote = null;
+        workers.Retire();
         Cleanup = RetireAsync();
     }
     private async Task RetireAsync()
     {
+        if (!await workers.DrainAsync(TimeSpan.FromSeconds(2)))
+        {
+            DeferredCleanup = RetireAfterDrainAsync();
+            return;
+        }
+        await RetireAfterDrainAsync();
+    }
+    private async Task RetireAfterDrainAsync()
+    {
+        await workers.Drained;
         try
         {
             if (takes is not null)
@@ -360,7 +382,7 @@ internal sealed partial class RewriteGeneration : IDisposable
         }
         finally { release?.Invoke(); lifetime.Dispose(); }
     }
-    private sealed class ObservedRunner(IVoiceLabTakeRunner inner, Func<Task> changed) : IVoiceLabTakeRunner
+    private sealed class ObservedRunner(IVoiceLabTakeRunner inner, Func<Task> changed, Func<Task> refreshSpend) : IVoiceLabTakeRunner
     {
         internal VoiceLabTakeRunResult? Result { get; private set; }
         public Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default) => inner.PrepareAsync(input, ct);
@@ -370,14 +392,21 @@ internal sealed partial class RewriteGeneration : IDisposable
         public bool IsQuoteFresh(VoiceLabTakeRunQuote quote) => inner.IsQuoteFresh(quote);
         public Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => inner.RefreshMonthlyCapAsync(cap, ct);
         public Task<decimal?> ReadMonthlySpendAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => inner.ReadMonthlySpendAsync(cap, ct);
-        public Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeRunQuote quote, bool approved, Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default) =>
-            inner.ExecuteAsync(quote, approved, progress, ct);
+        public async Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeRunQuote quote, bool approved, Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
+        {
+            try { return await inner.ExecuteAsync(quote, approved, progress, ct); }
+            finally { await refreshSpend(); }
+        }
         public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
             Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)
         {
             Result = null;
-            return Result = await inner.ExecuteWithDispatchAsync(quote, dispatch, async rows =>
-                { if (progress is not null) await progress(rows); await changed(); }, ct);
+            try
+            {
+                return Result = await inner.ExecuteWithDispatchAsync(quote, dispatch, async rows =>
+                    { await refreshSpend(); if (progress is not null) await progress(rows); await changed(); }, ct);
+            }
+            finally { await refreshSpend(); }
         }
     }
 }

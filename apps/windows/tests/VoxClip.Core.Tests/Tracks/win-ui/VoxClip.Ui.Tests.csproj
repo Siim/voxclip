@@ -26,6 +26,8 @@
     <Compile Include="RoundFourTests.cs" />
     <Compile Include="RoundFiveTests.cs" />
     <Compile Include="RewritePanelTests.cs" />
+    <Compile Include="InlineWorkflowTests.cs" />
+    <Compile Include="IntegratedRewriteTests.cs" />
     <Compile Include="RewriteGenerationTests.cs" />
     <Compile Include="VoiceLabReleaseBoundaryTests.cs" />
     <Compile Include="ReleaseAssemblyInspectionTests.cs" />
@@ -75,6 +77,7 @@
     <Compile Include="LocalRuntimeGuardTests.cs" />
     <Compile Include="NativeCaptionHitContractTests.cs" />
     <Compile Include="TranscriptionRoutingTests.cs" />
+    <Compile Include="TranscriptV2Tests.cs" />
     <Compile Include="ShareDisclosureTests.cs" />
     <Compile Include="CaptionUndoTests.cs" />
     <Compile Include="WindowsSettingsCopyTests.cs" />

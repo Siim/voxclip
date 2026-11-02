@@ -38,6 +38,7 @@ internal static class TranscriptNativeProbe
         model.Apply(new EditOperation.CutSelection([model.Words[1].Id, model.Words[2].Id, model.Words[5].Id]));
         model.Select(3); model.SourceTime = model.Words[4].Start;
         transcript.Attach(model);
+        transcript.SetDisplay(true, true);
         host.Children.Add(rasterRoot);
         try
         {
@@ -51,7 +52,8 @@ internal static class TranscriptNativeProbe
             var cut = Bounds(transcript, 2);
             var outside = Bounds(transcript, 0);
             var selected = Bounds(transcript, 3);
-            var playing = Bounds(transcript, 4);
+            var caret = transcript.DebugPlayheadBounds ?? throw new InvalidOperationException("Native source playhead caret was not realized.");
+            Require(Math.Abs(caret.Width - 2) <= 0.01, "source playhead is not two epx wide");
             var bitmap = new RenderTargetBitmap();
             await bitmap.RenderAsync(rasterRoot);
             var pixels = (await bitmap.GetPixelsAsync()).ToArray();
@@ -66,41 +68,37 @@ internal static class TranscriptNativeProbe
                     (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, pixels);
                 await encoder.FlushAsync();
             }
-            var selectionColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcSelectionTranscriptBrush")).Color;
-            var playingColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcWordPlayingBackgroundBrush")).Color;
-            Require(selectionColor != playingColor, "selection and playing fill tokens are equal");
+            var selectionColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, Ui.HighContrast ? "VcSelectionTranscriptBrush" : "VcTintSelectionBrush")).Color;
+            selectionColor = Composite(selectionColor, ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcBgSurfaceBrush")).Color);
+            var caretColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcAccentTextBrush")).Color;
+            Require(selectionColor != caretColor, "selection fill and source playhead tokens are equal");
             Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, new(cut.X, cut.Y + cut.Height * 0.52 - 1, cut.Width, 3),
-                ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcCutStrokeBrush")).Color), "cut strike pixels do not match cut.stroke within three levels");
-            Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, outside, ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcTextSecondaryBrush")).Color),
-                "out-of-scope glyph pixels do not match text.secondary");
+                ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcWordGoneBrush")).Color), "cut strike pixels do not match cut.stroke within three levels");
+            Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, outside, ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcWordOutsideBrush")).Color),
+                "out-of-scope glyph pixels do not match word.outside");
             Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, selected, selectionColor), "selection fill pixels do not match selection.transcript");
-            Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, playing, playingColor), "playing fill pixels do not match word.playing.background");
+            Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, caret, caretColor), "source playhead pixels do not match accent.text");
             if (Ui.HighContrast)
             {
                 var system = new UISettings();
                 var highlight = system.UIElementColor(UIElementType.Highlight);
-                var windowText = system.UIElementColor(UIElementType.WindowText);
+
                 Require(SameColor(selectionColor, highlight), $"contrast-mode selection.transcript {selectionColor} is not the live Highlight {highlight}");
-                Require(SameColor(playingColor, windowText), $"contrast-mode word.playing.background {playingColor} is not the live WindowText {windowText}");
+                Require(SameColor(caretColor, highlight), $"contrast-mode source playhead {caretColor} is not the live Highlight {highlight}");
                 Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, selected, system.UIElementColor(UIElementType.HighlightText)),
                     "selected glyph pixels do not match the live HighlightText");
-                Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, playing, system.UIElementColor(UIElementType.Window)),
-                    "playing glyph pixels do not match the live Window colour");
             }
             foreach (var filler in new[] { 1, 5 })
             {
                 var area = Bounds(transcript, filler);
                 Require(Contains(pixels, bitmap.PixelWidth, bitmap.PixelHeight, new(area.X, area.Y + area.Height * 0.52 - 1, area.Width, 3),
-                    ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcCutStrokeBrush")).Color), $"{model.Words[filler].Text} has no cut.stroke strike");
+                    ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcWordGoneBrush")).Color), $"{model.Words[filler].Text} has no cut.stroke strike");
             }
-            // Isolate Composition paint: cut glyphs and strikes share GrayText in HC,
-            // and unhighlighted glyphs share WindowText with the playing fill.
-            // Neither glyph ink may satisfy a decoration assertion.
             transcript.DebugHideGlyphs(retainDecorations: true);
             await NextFrameAsync();
             await bitmap.RenderAsync(rasterRoot);
             var decorationPixels = (await bitmap.GetPixelsAsync()).ToArray();
-            var strikeColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcCutStrokeBrush")).Color;
+            var strikeColor = ((SolidColorBrush)Ui.ThemeBrush(transcript, "VcWordGoneBrush")).Color;
             void CheckStrikes(byte[] sample)
             {
                 foreach (var index in new[] { 1, 2, 5 })
@@ -111,10 +109,10 @@ internal static class TranscriptNativeProbe
                         $"Isolated cut strike is absent for {model.Words[index].Text}");
                 }
             }
-            void CheckPlaying(byte[] sample) => Require(Contains(sample, bitmap.PixelWidth, bitmap.PixelHeight, playing, playingColor),
-                "Isolated playing fill is absent");
+            void CheckCaret(byte[] sample) => Require(Contains(sample, bitmap.PixelWidth, bitmap.PixelHeight, caret, caretColor),
+                "Isolated source playhead caret is absent");
             CheckStrikes(decorationPixels);
-            CheckPlaying(decorationPixels);
+            CheckCaret(decorationPixels);
             foreach (var strikeMutation in new[] { true, false })
             {
                 // Deliberately break the actual painted visual, then require the
@@ -124,28 +122,34 @@ internal static class TranscriptNativeProbe
                 await bitmap.RenderAsync(rasterRoot);
                 var broken = (await bitmap.GetPixelsAsync()).ToArray();
                 var rejected = false;
-                try { if (strikeMutation) CheckStrikes(broken); else CheckPlaying(broken); }
+                try { if (strikeMutation) CheckStrikes(broken); else CheckCaret(broken); }
                 catch (InvalidOperationException) { rejected = true; }
-                Require(rejected, "Decoration assertion accepted deliberately missing " + (strikeMutation ? "strike" : "playing fill"));
+                Require(rejected, "Decoration assertion accepted deliberately missing " + (strikeMutation ? "strike" : "source playhead caret"));
                 transcript.DebugEndGlyph();
                 await NextFrameAsync();
                 transcript.DebugHideGlyphs(retainDecorations: true);
                 await NextFrameAsync();
                 await bitmap.RenderAsync(rasterRoot);
                 var restored = (await bitmap.GetPixelsAsync()).ToArray();
-                CheckStrikes(restored); CheckPlaying(restored);
-                checks.Add($"{Name(theme)} isolated {(strikeMutation ? "cut strike" : "playing fill")}: missing-paint mutation rejected; restored paint passes");
+                CheckStrikes(restored); CheckCaret(restored);
+                checks.Add($"{Name(theme)} isolated {(strikeMutation ? "cut strike" : "source playhead caret")}: missing-paint mutation rejected; restored paint passes");
             }
             transcript.DebugEndGlyph();
             checks.Add(Ui.HighContrast
-                ? $"High Contrast {Ui.HighContrastScheme} realized transcript raster: cut strike including um, and uh, out-of-scope glyph, Highlight selection and WindowText playing fills with their text matching the live system colours"
-                : $"{theme} realized transcript raster: cut strike including um, and uh, out-of-scope glyph, distinct selection/playing fills and badge-aware highlight offsets");
+                ? $"High Contrast {Ui.HighContrastScheme} realized transcript raster: cut strike including um, and uh, out-of-scope glyph, Highlight selection and source caret matching the live system colours"
+                : $"{theme} realized transcript raster: cut strike including um, and uh, out-of-scope glyph, distinct selection and two-epx source caret at the realized word bounds");
             if (!Ui.HighContrast) await TranscriptAlignmentProbe.RunAsync(transcript, rasterRoot, model, checks);
         }
         finally { transcript.Detach(); host.Children.Remove(rasterRoot); }
     }
     private static Rect Bounds(TranscriptView transcript, int index) => transcript.DebugWordBounds(index)
         ?? throw new InvalidOperationException("Native transcript word was not realized.");
+    private static Windows.UI.Color Composite(Windows.UI.Color foreground, Windows.UI.Color background)
+    {
+        var alpha = foreground.A / 255.0;
+        return Windows.UI.Color.FromArgb(255, (byte)Math.Round(foreground.R * alpha + background.R * (1 - alpha)),
+            (byte)Math.Round(foreground.G * alpha + background.G * (1 - alpha)), (byte)Math.Round(foreground.B * alpha + background.B * (1 - alpha)));
+    }
     private static bool SameColor(Windows.UI.Color left, Windows.UI.Color right) => left.R == right.R && left.G == right.G && left.B == right.B;
     private static bool Contains(byte[] pixels, int width, int height, Rect area, Windows.UI.Color color)
     {

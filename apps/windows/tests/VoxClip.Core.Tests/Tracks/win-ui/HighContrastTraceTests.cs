@@ -12,7 +12,7 @@ public sealed class HighContrastTraceTests
         var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TranscriptView.cs"));
         Assert.Contains("ActualThemeChanged += (_, _) => RebuildThemeVisuals()", source);
         Assert.Contains("DispatcherQueue.TryEnqueue(RebuildThemeVisuals)", source);
-        Assert.Contains("repeater.ItemsSource = model?.Paragraphs", source);
+        Assert.Contains("RebuildRealized()", source);
     }
 
     [Fact]

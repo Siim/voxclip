@@ -121,7 +121,7 @@ internal sealed class SelectionFlyout
     {
         restoreFocus = false;
         flyout.AreOpenCloseAnimationsEnabled = Ui.EffectPolicy.Animations;
-        ToolTipService.SetToolTip(make, existingClip ?? "Make clip (Ctrl+K)");
+        ToolTipService.SetToolTip(make, existingClip ?? "Make clip (Ctrl+Alt+K)");
         cut.IsEnabled = make.IsEnabled = editable;
         restore.IsEnabled = editable && canRestore;
         rewrite.Visibility = separator.Visibility = voiceLab ? Visibility.Visible : Visibility.Collapsed;

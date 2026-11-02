@@ -48,7 +48,25 @@ public sealed record TranscriptionPlan(TranscriptEngine Engine, string? Model, L
 /// <summary>16kHz mono PCM16 extraction result; transcription §4.</summary>
 public sealed record ExtractedAudio(string Wav16kPath, long SampleCount, double DurationSeconds, double TimelineStart, int AudioTrackIndex);
 /// <summary>Cancelable adapter request; transcription §3.3.</summary>
-public sealed record TranscriptionRequest(TranscriptionPlan Plan, ExtractedAudio Audio, string ContentKey);
+public sealed record TranscriptionRequest(TranscriptionPlan Plan, ExtractedAudio Audio, string ContentKey)
+{
+    /// <summary>Request-local billing evidence, delivered synchronously before UI retirement checks.</summary>
+    public Action<TranscriptionEvidence>? Observe { get; init; }
+}
+/// <summary>Actual cache/transport evidence, not an assertion that a displayed estimate was billed.</summary>
+public enum TranscriptionEvidenceKind
+{
+    /// <summary>A paid response was reused without another upload.</summary>
+    Cached,
+    /// <summary>The transport is about to send an explicitly approved upload.</summary>
+    UploadStarted,
+    /// <summary>The provider returned a successful response.</summary>
+    Accepted,
+    /// <summary>The accepted provider response was parsed.</summary>
+    Completed
+}
+/// <summary>Provider identity is null until a real accepted response supplies it.</summary>
+public sealed record TranscriptionEvidence(TranscriptionEvidenceKind Kind, string? RequestId = null);
 /// <summary>Progress phases; transcription §13.</summary>
 public enum TranscriptionStage
 {

@@ -3,7 +3,9 @@
 WV1–WV3 use native WinUI controls: `TitleBar`, `TabView`, a virtualizing `ListView`
 Explorer, `CommandBar`, and an inline command palette. The existing transcript,
 timeline, preview, caption and Rewrite controls remain mounted. This source patch
-has static validation only; compilation and native acceptance remain required.
+passes its current portable checks; native Windows acceptance remains required.
+See [integrated workflows](windows-v2-workflows.md) for the current
+production hookups and the external integrated report for exact run evidence.
 
 ## Layout and navigation
 
@@ -20,8 +22,8 @@ has static validation only; compilation and native acceptance remain required.
   existing 300–560 epx limits. The current splitter preference and forced-viewer
   fit/source-video guards remain in force. No settings schema changes.
 - The clip bar has a 34 epx minimum, not a fixed clipping height. Native controls
-  grow for their font and text scale. The timeline host reserves 216 epx; its
-  existing child is retained pending the timeline owner's integration. Status is
+  grow for their font and text scale. The timeline host uses the mounted timeline's
+  `PreferredPanelHeight`, including its persisted track size. Status is
   a full-width, minimum 24 epx row. Hiding the timeline retains viewer transport.
 - Below 1000 epx, a wide-to-compact resize hides Explorer; Ctrl+B restores it.
   The existing viewer collapse/forced-show policy protects transcript space.
@@ -44,7 +46,9 @@ flush, without turning scope-only or read-only navigation into a new write.
 
 Ctrl+K opens commands, including current unavailable commands with their reasons.
 The command's predicate runs again immediately before execution. Make clip moves
-to Ctrl+Alt+K. It cannot mutate the project hidden behind Home. Ctrl+Alt+C toggles
+to Ctrl+Alt+K. Ctrl+R opens free-text Rewrite independently of the Voice Lab flag;
+native voice generation retains its separate capability gate. Commands cannot
+mutate the project hidden behind Home. Ctrl+Alt+C toggles
 Show cuts, Ctrl+J toggles timeline, and Ctrl+B toggles Explorer. The legacy
 Ctrl+Shift+H alias remains for existing users. F1 / Ctrl+/ show keyboard help
 inside the same inline palette rather than opening a dialog.
@@ -65,8 +69,8 @@ palette dismisses it, not the active clip. Rename is inline, validates the exist
 Tighten invokes the existing scoped Cut Fillers and Tighten Pauses operations as
 one Undo step. No connector is called by Tighten, palette opening or filtering.
 No production Insert Words route is registered. This patch adds no confirmation,
-export, transcription, consent or paid-action popups; inherited workflow surfaces
-are not copied or replaced in this lane.
+export, transcription, consent or paid-action popups. The integrated workflow
+surfaces occupy the single inline right-column host.
 
 ## Integration interfaces
 
@@ -90,29 +94,28 @@ Use these interfaces on the window's UI thread. Snapshot identity remains exact;
 use the explicit `ClipId` to build a scope rather than assuming its stored
 `Snapshot.Edits.ActiveClipId` is the requested inactive Export/Hook target.
 
-Without bindings, the existing selection Rewrite, Find Clips and Export APIs
-remain functional. Scoped Ask selects the requested words and populates the
-existing Rewrite panel's `FocusTarget` TextBox; that panel remains responsible for
-preparing and approving requests. The legacy adapter retains the existing Voice
-Lab gate. The integrated free-text Rewrite owner must supply its actual
-availability through bindings. Hook stays truthfully disabled until the real
-Hooks job is bound; it is not mislabeled generic Find Clips or an invented send.
+`EditorPage.InitializeIntegratedEditor` installs production bindings. Ask opens
+the existing Rewrite panel with the real selected/clip/full-take scope and
+instruction. Free-text proposal does not require Voice Lab or a decoded audio
+envelope. Hook opens the existing Hooks preset of the full-take Find Clips job;
+both use the actual connector and inline privacy/payment approvals. Export
+retains its explicit target and original read-only/media guards. A missing
+binding remains disabled rather than fabricating a successful job.
 
 `ConfigureTimelineShell(Action<bool>?)` connects the sole shell Show cuts state to
 the timeline owner's axis API. It immediately publishes the current value and
-updates after either keyboard or clip-bar changes. Without it the existing
-timeline's own Edited/Source behavior is preserved; this lane does not alter
-TimelineView/Scene/Layout/Viewport/Thumbnails. Paragraph and transcript decoration
-ownership similarly stays with WC1/transcript. Child owners also need to update
-the inherited `SelectionFlyout.cs` and `OnboardingDialog.cs` Make clip hints from
-Ctrl+K to Ctrl+Alt+K; their paths are intentionally untouched here.
+updates after keyboard, clip-bar, transcript or timeline changes. The timeline
+uses real preview caption snapshots and source/editor time mapping. There is one
+viewer and transport. The inherited SelectionFlyout and Onboarding Make clip
+hints now use Ctrl+Alt+K.
 
 ## Validation to run after integration
 
-No local build, test, restore, native launch, VM, provider, credential, download or
-CI action was run for this patch. Do not publish it as validated from static
-checks. Use isolated data with live providers/downloads disabled. From the repo
-root, the parent should run these when its single build slot is available:
+Portable validation is incomplete and cannot establish native correctness. No
+native launch, VM, live provider, credential, download or CI action is authorized.
+Use isolated data with live providers/downloads disabled. Only the current build
+slot owner may run these, serially with `nice -n 10`, at most two MSBuild jobs and
+at least 15 GiB free before each build:
 
 ```sh
 export VOXCLIP_SHARED_DIR="$PWD/shared"
@@ -121,11 +124,22 @@ export VOXCLIP_NO_KEYCHAIN=1
 export VOXCLIP_LIVE_TESTS=0
 export VOXCLIP_TEST_DOWNLOAD=0
 cd apps/windows
-dotnet test --project tests/VoxClip.Core.Tests/Tracks/win-ui/VoxClip.Ui.Tests.csproj -c Release
-dotnet test --project tests/VoxClip.Core.Tests -c Release
-dotnet test --project tests/VoxClip.Media.Tests -c Release --filter "Category!=RequiresFFmpeg&Category!=RequiresWindows"
-dotnet build tests/VoxClip.App.TypeCheck -c Release -m:1
+build_serial() {
+  available_kib=$(df -k . | awk 'NR==2 {print $4}')
+  test "$available_kib" -ge 15728640 || return 70
+  nice -n 10 dotnet build "$@" --no-restore -m:2 -p:UseSharedCompilation=false
+}
+build_serial VoxClip.CrossPlatform.slnf -c Release
+build_serial tests/VoxClip.Core.Tests/Tracks/win-ui/VoxClip.Ui.Tests.csproj -c Release -p:RestoreSources="$HOME/.nuget/packages" -p:NuGetAudit=false
+nice -n 10 dotnet tests/VoxClip.Core.Tests/Tracks/win-ui/.artifacts/bin/Release/net10.0/VoxClip.Ui.Tests.dll -maxThreads 2 -parallelMode none -noColor
+nice -n 10 dotnet tests/VoxClip.Core.Tests/bin/Release/net10.0/VoxClip.Core.Tests.dll -filterVSTest 'Category!=RequiresWindows' -maxThreads 2 -parallelMode none -noColor
+nice -n 10 dotnet tests/VoxClip.Media.Tests/bin/Release/net10.0/VoxClip.Media.Tests.dll -filterVSTest 'Category!=RequiresFFmpeg&Category!=RequiresWindows' -maxThreads 2 -parallelMode none -noColor
 ```
+
+Only existing package caches were used. A missing assets file needs an offline
+restore with `--source "$HOME/.nuget/packages" --disable-parallel -m:2
+-p:NuGetAudit=false`, never a package/model download. The Release UI target also
+builds the Release App TypeCheck surrogate and CLI for strict inventory checks.
 
 On the appropriate Windows hosts, both native builds are mandatory:
 
@@ -135,11 +149,11 @@ dotnet build src\VoxClip.App -c Release -r win-x64 -p:Platform=x64 -m:1
 dotnet build src\VoxClip.App -c Release -r win-arm64 -p:Platform=ARM64 -m:1
 ```
 
-Run the existing shell/native fit harness after both child integrations; retain
+Run the existing shell/native fit harness against the integrated source; retain
 all bounds, clipping, required-peer, transport and source guards. The shell probe
-now checks the clip bar against its native desired height and its timeline host
-against 216 epx, with the existing 4 epx tolerance; it does not assert that the
-old timeline child has been ported. No screenshot or native success is implied.
+checks the clip bar against its native desired height and its timeline host
+against `Timeline.PreferredPanelHeight`, with the existing 4 epx tolerance.
+No screenshot or native success is implied.
 
 Required manual acceptance on x64 and ARM64:
 

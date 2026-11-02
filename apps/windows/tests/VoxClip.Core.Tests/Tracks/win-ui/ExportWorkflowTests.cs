@@ -51,7 +51,7 @@ public sealed class ExportWorkflowTests
             model.Select(2); model.CutSelection();
             Assert.Equal(ClipExportState.ChangedSinceExport, model.ExportStatus(clip).State);
             var shell = new ShellViewModel(); shell.Update(model, false, [], null);
-            Assert.Equal(76, shell.Rows.Single(row => row.ClipId == clip).RowHeight);
+            Assert.Equal(52, shell.Rows.Single(row => row.ClipId == clip).RowHeight);
             model.Undo(); Assert.Equal(ClipExportState.Exported, model.ExportStatus(clip).State);
             model.SetExportActivity(target, ClipExportState.Exporting, 0.42);
             Assert.Equal("Exporting 42%", model.ExportStatus(clip).Label);

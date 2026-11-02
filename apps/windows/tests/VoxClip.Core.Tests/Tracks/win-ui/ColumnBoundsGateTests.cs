@@ -28,18 +28,17 @@ public sealed class ColumnBoundsGateTests
     }
 
     [Fact]
-    public void CompactTransportChecksTimeTagAndTargetsBesideTheStage()
+    public void ViewerOverlayKeepsTargetsAndMetadataInsideOneEnvelope()
     {
-        var bar = new ColumnRect(228, 0, 112, 100);
-        var back = new ColumnRect(228, 56, 32, 32);
-        var play = new ColumnRect(264, 52, 40, 40);
-        var forward = new ColumnRect(308, 56, 32, 32);
-        var time = new ColumnRect(228, 0, 112, 20);
-        var tag = new ColumnRect(228, 24, 90, 20);
-        var stage = new ColumnRect(0, 0, 220, 124);
-        Assert.Empty(ColumnBoundsGate.TransportFailures(bar, back, play, forward, tag, time, true, 4, stage));
-        Assert.NotEmpty(ColumnBoundsGate.TransportFailures(bar, back, play, forward, tag, time, false, 4, stage));
-        Assert.NotEmpty(ColumnBoundsGate.TransportFailures(bar, back, play, forward, tag, time, true, 4, stage with { X = 40 }));
+        var bar = new ColumnRect(0, 0, 300, 40);
+        var back = new ColumnRect(0, 4, 32, 32);
+        var play = new ColumnRect(36, 0, 40, 40);
+        var forward = new ColumnRect(80, 4, 32, 32);
+        var time = new ColumnRect(210, 10, 90, 20);
+        var tag = new ColumnRect(120, 10, 82, 20);
+        Assert.Empty(ColumnBoundsGate.TransportFailures(bar, back, play, forward, tag, time, false, 4));
+        Assert.NotEmpty(ColumnBoundsGate.TransportFailures(bar, back, play with { Width = 32 }, forward, tag, time, false, 4));
+        Assert.NotEmpty(ColumnBoundsGate.TransportFailures(bar, back, play, forward, tag, time with { X = 225 }, false, 4));
     }
 
     [Theory]

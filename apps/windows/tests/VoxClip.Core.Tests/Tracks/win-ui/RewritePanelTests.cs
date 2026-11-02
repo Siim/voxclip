@@ -16,7 +16,6 @@ public sealed class RewritePanelTests
     [InlineData("edit")]
     [InlineData("readonly")]
     [InlineData("leaving")]
-    [InlineData("settings")]
     [InlineData("connector")]
     [InlineData("close")]
     public void EveryClosePathHandsPanelFocusOffBeforeRemoval(string path)
@@ -31,7 +30,6 @@ public sealed class RewritePanelTests
             case "edit": editor.Apply(new EditOperation.Correct("w10", "changed")); break;
             case "readonly": editor.SetMediaUnavailable(true); break;
             case "leaving": editor.BeginLeaving(); break;
-            case "settings": session.SettingsChanged(false); break;
             case "connector": current = false; session.SettingsChanged(true); break;
             default: session.Dispose(); break;
         }
@@ -64,8 +62,12 @@ public sealed class RewritePanelTests
         Assert.False(await pending);
         waiting.SetResult(true);
         Assert.DoesNotContain("send", fake.Calls);
-        Assert.Contains("session.ConfirmCostAsync(action, token => Ui.ConfirmAsync", AppSource("Controls", "RewritePanel.cs"));
-        Assert.Contains("DefaultButton = ContentDialogButton.Close", AppSource("Controls", "Ui.cs"));
+        var panel = AppSource("Controls", "RewritePanel.cs");
+        Assert.Contains("session.ConfirmCostAsync(action, async token =>", panel);
+        Assert.Contains("using var pending = new InlineApproval", panel);
+        Assert.Contains("ReferenceEquals(session.Prepared, action)", panel);
+        Assert.DoesNotContain("Ui.ConfirmAsync", panel);
+        Assert.Contains("private readonly Button cancel = new() { Content = \"Cancel\" }", AppSource("Controls", "InlineConfirmation.cs"));
     }
 
     [Fact]
@@ -222,12 +224,13 @@ public sealed class RewritePanelTests
         Assert.Contains("VirtualKey.Escape", panel);
         Assert.Contains("ReturnFocusOnClose = true", panel);
         Assert.Contains("if (!session.ApplyLocalChanges()) ReturnFocusOnClose = false", panel);
-        Assert.Contains("rewrite?.FocusTarget ?? captions.FocusTarget", column);
+        Assert.Contains("ReferenceEquals(surface.Child, director) ? director.FocusTarget : null", column);
+        Assert.Contains("FocusManager.FindFirstFocusableElement(this)", AppSource("Controls", "DirectorPanel.cs"));
         Assert.Contains("EditorFocusRegion.Captions: if (rightContent", page);
         Assert.Contains("panel.ReturnFocusOnClose", page);
         Assert.Contains("FocusTranscript()", page);
 #if DEBUG
-        Assert.Contains("session.Generation?.ReadyToAccept", panel);
+        Assert.Contains("session.CanAcceptAll", panel);
 #endif
         Assert.Contains("Content = \"Generate Takes\"", panel);
     }
@@ -471,7 +474,8 @@ public sealed class RewritePanelTests
         Assert.True(session.IsOpen);
         Assert.Single(fake.Calls, call => call == "send");
         session.SettingsChanged(false);
-        Assert.False(session.IsOpen);
+        Assert.True(session.IsOpen);
+        Assert.Null(session.Generation);
     }
 
     [Theory]
@@ -486,6 +490,14 @@ public sealed class RewritePanelTests
         using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(fake, "chosen", "Test", group, ""),
             consent: _ => { Assert.Empty(fake.Calls); asked++; return Task.FromResult(granted); });
         await session.SetInstructionAsync("Plainly");
+        if (group == "cli")
+        {
+            Assert.Null(session.Prepared);
+            Assert.Contains("Check the connector's sign-in method", session.Problem);
+            Assert.Equal(0, asked);
+            Assert.Empty(fake.Calls);
+            return;
+        }
         var action = session.Prepared!;
         session.MarkEstimateShown(action);
         Assert.Equal(granted, await session.ProposeAsync(action, true));
@@ -598,7 +610,7 @@ public sealed class RewritePanelTests
         AssertFindEntries(editor, true, false);
         using var next = editor.LlmRuns.TryAcquire();
         Assert.NotNull(next);
-        var source = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", "Controls", "FindClipsFlyout.cs");
+        var source = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App", "Controls", "FindClipsJob.cs");
         var find = File.ReadAllText(source);
         Assert.Contains("using var run = model.LlmRuns.TryAcquire()", find);
         Assert.True(find.IndexOf("model.LlmRuns.TryAcquire()", StringComparison.Ordinal) < find.IndexOf("await ChosenAsync()", find.IndexOf("private async Task FindAsync()", StringComparison.Ordinal), StringComparison.Ordinal));
@@ -618,7 +630,7 @@ public sealed class RewritePanelTests
         var page = File.ReadAllText(Path.Combine(app, "Pages/EditorPage.xaml.cs"));
         Assert.Contains("FindClipsCommand.IsEnabled = ViewModel.CanFindClips", page);
         Assert.Contains("FindClipsBusy.IsActive = ViewModel.LlmRuns.IsBusy", page);
-        Assert.Contains("RewriteCommand.IsEnabled = App.Services.VoiceLabEnabled && Transcript.CanRewrite", page);
+        Assert.Contains("RewriteCommand.IsEnabled = ShellJobAvailable(ShellJob.Rewrite)", page);
         Assert.Contains("IsActive=\"{x:Bind IsLlmBusy, Mode=OneWay}\"", File.ReadAllText(Path.Combine(app, "MainWindow.xaml")));
     }
 
@@ -628,7 +640,7 @@ public sealed class RewritePanelTests
         var editor = Editor();
         var fake = new RecordingConnector();
         var dialog = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test", "cli", ""), consent: _ => dialog.Task);
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), new(fake, "chosen", "Test", "apiKey", ""), consent: _ => dialog.Task);
         await session.SetInstructionAsync("Plainly");
         var action = session.Prepared!;
         session.MarkEstimateShown(action);
@@ -750,7 +762,7 @@ public sealed class RewritePanelTests
         else Assert.Equal(-1, editor.RewriteStart);
         var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");
         Assert.Contains("opening == rewriteOpenRevision && passage.IsCurrent", File.ReadAllText(Path.Combine(app, "Pages", "EditorPage.xaml.cs")));
-        Assert.Contains("model?.RewriteCaretChanged()", File.ReadAllText(Path.Combine(app, "Controls", "TranscriptView.cs")));
+        Assert.Contains("model?.RewriteCaretChanged()", File.ReadAllText(Path.Combine(app, "Controls", "TranscriptView.InlineEditing.cs")));
     }
 
     [Fact]
@@ -851,10 +863,10 @@ public sealed class RewritePanelTests
     }
 
     [Fact]
-    public void DisabledVoiceLabOffersNoRewriteEntryAndInsertionRemainsUnavailable()
+    public void TextRewriteRemainsAvailableWithoutVoiceLabAndInsertionRemainsUnavailable()
     {
         foreach (var entry in Enum.GetValues<RewriteEntry>())
-            Assert.Equal(RewriteEntryAction.Unavailable,
+            Assert.Equal(entry == RewriteEntry.InsertWords ? RewriteEntryAction.Unavailable : RewriteEntryAction.OpenPassage,
                 RewriteEntryPolicy.Resolve(entry, false, true, true, true, true, true));
         Assert.Equal(RewriteEntryAction.Unavailable, RewriteEntryPolicy.Resolve(RewriteEntry.InsertWords, true, true, true, true, false, true));
         Assert.True(RewriteEntryPolicy.BetweenWords([Word(0, "one"), Word(1, "two")], 0));
@@ -879,7 +891,8 @@ public sealed class RewritePanelTests
         }
         using var video = new RewriteSession(Editor(), 10, 12, null, new(new RecordingConnector(), "chosen", "Test", "local", ""));
         await video.SetInstructionAsync("Plainly");
-        Assert.Equal("Find the original video before rewriting speech. Your edits are saved.", video.Problem);
+        Assert.Equal("", video.Problem);
+        Assert.NotNull(video.Prepared);
     }
 }
 #endif

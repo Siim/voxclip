@@ -234,7 +234,7 @@ public sealed class ShellViewModelTests
     }
 
     /// <summary>The connector Find clips and its callout's Retry use comes from the current llm.connector value (AI spec §11
-    /// gate 4); an empty or unknown setting is "Clips: no connector". FindClipsFlyout re-reads the setting before each run, which
+    /// gate 4); an empty or unknown setting is "Clips: no connector". FindClipsJob re-reads the setting before each run, which
     /// only the native walk exercises.</summary>
     [Fact]
     public void ChosenConnectorComesFromTheCurrentSetting()
@@ -312,7 +312,7 @@ public sealed class ShellViewModelTests
         Assert.True(editor.Dismiss(editor.Clips.Single(ShellViewModel.IsSuggestion).Id));
         var shell = new ShellViewModel { NoneFound = "No clips matched. Try another style or describe what you want." };
         shell.Update(editor, false, [], null);
-        Assert.Equal([SidebarKind.Clip, SidebarKind.SuggestedHeader, SidebarKind.NoneFound, SidebarKind.Separator],
+        Assert.Equal([SidebarKind.Clip, SidebarKind.SuggestedHeader, SidebarKind.NoneFound, SidebarKind.OutlineHeader],
             shell.Rows.SkipWhile(row => row.Kind != SidebarKind.Clip).Take(4).Select(row => row.Kind));
         var none = shell.Rows.Single(row => row.Kind == SidebarKind.NoneFound);
         Assert.Equal(("No clips matched. Try another style or describe what you want.", "No clips matched. Try another style or describe what you want."),

@@ -25,6 +25,9 @@ public sealed partial class EditorPage
         var origin = new NativeGateInput.NativePoint();
         NativeRequire(NativeGateInput.ClientToScreen(WinRT.Interop.WindowNative.GetWindowHandle(window), ref origin), "No client origin.");
         var scale = XamlRoot.RasterizationScale;
+        var hover = PreviewStage.TransformToVisual(root).TransformPoint(new(PreviewStage.ActualWidth / 2, PreviewStage.ActualHeight / 2));
+        NativeRequire(NativeGateInput.SetCursorPos(origin.X + (int)(hover.X * scale), origin.Y + (int)(hover.Y * scale)), "Viewer hover could not expose its transport.");
+        await DebugSettleColumnAsync();
         var offset = RightPane.TransformToVisual(root).TransformPoint(default);
         var column = new Rect(origin.X + offset.X * scale, origin.Y + offset.Y * scale, RightPane.ActualWidth * scale, RightPane.ActualHeight * scale);
         var client = new Rect(origin.X, origin.Y, root.ActualWidth * scale, root.ActualHeight * scale);
@@ -237,8 +240,7 @@ public sealed partial class EditorPage
             Forward = InBar(PreviewForward), Tag = AiModified.Visibility == Visibility.Visible ? InBar(AiModified) : (ColumnRect?)null, Time = InBar(TransportTime)
         };
         failures.AddRange(ColumnBoundsGate.TransportFailures(transport.Bar, transport.Back, transport.Play, transport.Forward, transport.Tag,
-            transport.Time, TransportRow.Stacked, TransportRow.Gap,
-            Grid.GetColumn(TransportRow) == 1 ? InBar(PreviewStage) : null));
+            transport.Time, TransportRow.Stacked, TransportRow.Gap));
         try
         {
             var peers = Observe("initial");

@@ -45,7 +45,7 @@ public sealed partial class EditorPage
                 if (item.Item3 is 300 or 560) RightColumn.Width = new(item.Item3);
                 await Task.Delay(100);
                 UpdateLayout();
-                NativeRequire(Math.Abs(ClipBarHost.ActualHeight - Math.Max(Commands.DesiredSize.Height, ExportHost.DesiredSize.Height)) <= 4 && Math.Abs(TimelineHost.ActualHeight - 216) <= 4,
+                NativeRequire(Math.Abs(ClipBarHost.ActualHeight - Math.Max(Commands.DesiredSize.Height, ExportHost.DesiredSize.Height)) <= 4 && Math.Abs(TimelineHost.ActualHeight - Timeline.PreferredPanelHeight) <= 4,
                     "Native command row/timeline differ from the mockups by more than 4 epx.");
                 var expectedRight = item.Item3;
                 if (expectedRight > 0)
@@ -231,8 +231,10 @@ public sealed partial class EditorPage
                                 "rewrite-r11-" + name + "-" + width + "-" + windowWidth + "x" + windowHeight, ColumnFitState.Rewrite);
                             panel.DebugValidateTakeRows();
                         });
-                        NativeRequire(Grid.GetColumn(TransportRow) == (RightPane.ActualHeight < 760 ? 1 : 0),
-                            "Rewrite compact transport does not follow the actual column height.");
+                        NativeRequire(viewerHost is not null && ReferenceEquals(TransportRow.Parent, viewerHost) &&
+                            Grid.GetColumn(TransportRow) == 0 && Grid.GetRow(TransportRow) == 0 &&
+                            Math.Abs(viewerHost.ActualHeight - viewerHost.ActualWidth * 9 / 16) <= 4,
+                            "Rewrite transport left its single 16:9 viewer host or exceeded the 4 epx envelope.");
                     }
                 }
             }
@@ -248,7 +250,7 @@ public sealed partial class EditorPage
             rewrite.Review.Runs.Any(run => run.Text == "[unlabeled speech]" && run.Kind == RewriteDiffKind.Removed),
             "Native Rewrite did not show both absorbed labels in its Core diff.");
         var focus = new List<string>();
-        for (var index = 0; index < 6; index++)
+        for (var index = 0; index < FocusCycle.Regions(true).Count; index++)
         {
             NativeGateInput.Key(0x75);
             await Task.Delay(80);
@@ -283,9 +285,9 @@ public sealed partial class EditorPage
             await App.Services.SetAsync("voiceLab.enabled", enabled, CancellationToken.None);
         }
     }
-    private static async Task NativeWaitAsync(Func<bool> ready, string failure)
+    private static async Task NativeWaitAsync(Func<bool> ready, string failure, TimeSpan? timeout = null)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        var deadline = DateTime.UtcNow.Add(timeout ?? TimeSpan.FromSeconds(5));
         while (!ready())
         {
             NativeRequire(DateTime.UtcNow < deadline, failure);
@@ -313,20 +315,31 @@ public sealed partial class EditorPage
             NativeRequire(FindClipsCommand.IsEnabled && !FindClipsBusy.IsActive, "Find Clips did not recover after " + owner + " released its lease.");
         }
         using var cancellation = new CancellationTokenSource();
-        var pending = Ui.ConfirmAsync(XamlRoot, "Use this connector?", "Native cancellation probe. No connector or request is created.", "Continue", cancellation.Token);
+        using var pending = new InlineApproval(new(Guid.NewGuid(), ViewModel.Project, "Use this connector?",
+            "Native cancellation probe. No connector or request is created.", "", "Continue", false),
+            () => !disposed && !ViewModel.IsLeaving, cancellation.Token, Environment.TickCount);
+        using var confirmation = new InlineConfirmation(pending, () => Controls.RightColumn.RequestSourcePlayback(ViewModel));
+        var job = new NativeApprovalJob(ViewModel, confirmation, pending);
+        await job.ShowAsync();
         await Task.Delay(150);
-        var dialog = VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).SelectMany(popup =>
-            new[] { popup.Child }.Concat(NativeDescendants(popup.Child))).OfType<ContentDialog>().Single(item => item.Title as string == "Use this connector?");
-        var closed = false;
-        dialog.Closed += (_, _) => closed = true;
+        NativeRequire(NativeDescendants(window.Content).OfType<InlineConfirmation>().Contains(confirmation), "The real inline approval was not mounted.");
         await NativeImageAsync(window, output, "consent-pending");
         cancellation.Cancel();
-        try { await pending.WaitAsync(TimeSpan.FromSeconds(2)); }
-        catch (OperationCanceledException) { }
-        var dismissal = System.Diagnostics.Stopwatch.StartNew();
-        while (!closed && dismissal.Elapsed < TimeSpan.FromSeconds(2)) await Task.Delay(25);
-        NativeRequire(closed, "Cancelled native consent did not raise Closed within two seconds.");
-        checks.Add("realized command-bar/sidebar busy rings and disabled Find Clips/Rewrite in both lease directions; real consent ContentDialog cancels and dismisses within two seconds without discovery or send");
+        NativeRequire(!await pending.Completion.WaitAsync(TimeSpan.FromSeconds(2)), "Cancelled inline consent was approved.");
+        NativeRequire(job.RequestClose(), "Cancelled inline consent refused to close.");
+        await NativeWaitAsync(() => !NativeDescendants(window.Content).OfType<InlineConfirmation>().Contains(confirmation),
+            "Cancelled inline consent remained mounted after two seconds.", TimeSpan.FromSeconds(2));
+        checks.Add("realized command-bar/sidebar busy rings and disabled Find Clips/Rewrite in both lease directions; mounted inline consent cancels and dismisses within two seconds without discovery or send");
+    }
+    private sealed class NativeApprovalJob : InlineEditorJob
+    {
+        internal NativeApprovalJob(EditorViewModel editor, InlineConfirmation confirmation, InlineApproval approval) : base(editor)
+        {
+            JobLabel = "Consent"; Title = "Use this connector?"; Content = confirmation;
+            PrimaryButtonVisible = false; CloseButtonText = "Cancel";
+            CloseButtonClick += (_, _) => approval.Cancel();
+            Abandoned += (_, _) => approval.Cancel();
+        }
     }
     private static IEnumerable<DependencyObject> NativeDescendants(DependencyObject root)
     {

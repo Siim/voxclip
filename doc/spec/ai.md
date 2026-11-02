@@ -324,7 +324,7 @@ Your previous reply was not valid JSON for the required schema ({reason}). Reply
 
 ### 4.8 First-use consent per cloud connector
 
-Mac v2 uses one inline confirmation row under the clip bar, pushing the transcript down (v5 f22–f22d). Settings → Test uses the same row inside Settings. No editor sheet presents connector consent or an API-key send. Windows keeps its existing native confirmation until its v2 port.
+Mac v2 uses one inline confirmation row under the clip bar, pushing the transcript down (v5 f22–f22d). Settings → Test uses the same row inside Settings. No editor sheet presents connector consent or an API-key send. Windows Rewrite uses an inline first-use / per-send row inside its right-panel job, with the same event-time Return guard. Its other shell and Find clips confirmation routes still need their separate v2 hookup; see `doc/windows-v2-workflows.md` for that ownership boundary. A remote local-server Rewrite names and pins its server and asks for privacy approval for the session; it never claims the text stays on this PC.
 
 Readiness is checked when the user starts an action, before consent. Detection is not a request: the catalogue version/help/sign-in commands and a key-presence check may run then. Unknown CLI sign-in methods neither send nor ask. Local models on this computer and Apple on-device need no privacy consent; a local server on another computer names its host and asks once.
 

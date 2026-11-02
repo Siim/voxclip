@@ -13,6 +13,26 @@ internal readonly record struct TimelineWindow(double Start, double End)
 
 internal static class TimelineLayout
 {
+    internal const double HeaderWidth = 112;
+    internal const double ToolbarHeight = 32;
+    internal const double OverviewHeight = 24;
+    internal const double RulerHeight = 22;
+    internal static TimelineTrackGeometry Tracks(int size, bool video, bool captions, bool effects) => new(size, video, captions, effects);
+    internal static TimelineWindow Clamp(TimelineWindow window, double duration)
+    {
+        duration = double.IsFinite(duration) ? Math.Max(.001, duration) : .001;
+        var length = double.IsFinite(window.Duration) ? Math.Clamp(window.Duration, Math.Min(.1, duration), duration) : duration;
+        var start = double.IsFinite(window.Start) ? Math.Clamp(window.Start, 0, duration - length) : 0;
+        return new(start, start + length);
+    }
+    internal static TimelineWindow Zoom(TimelineWindow window, double duration, double factor, double anchor)
+    {
+        if (!double.IsFinite(factor) || factor <= 0) return Clamp(window, duration);
+        anchor = Math.Clamp(double.IsFinite(anchor) ? anchor : .5, 0, 1);
+        var length = window.Duration / factor;
+        var start = window.Start + window.Duration * anchor - length * anchor;
+        return Clamp(new(start, start + length), duration);
+    }
     internal const double TrackTop = 25;
     internal const double BracketTop = TrackTop - 15;
     internal const double BadgeTop = BracketTop - 9;
@@ -33,6 +53,22 @@ internal static class TimelineLayout
     }
     internal static int HatchPeriod(bool pause) => pause ? 9 : 6;
     internal static double CutOpacity(bool pause) => pause ? 0.1 : 0.16;
+    internal static string FitWords(string text, double width, Func<string, double> measure)
+    {
+        if (width < 24) return "";
+        width = Math.Max(0, width - 8);
+        if (measure(text) <= width) return text;
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var best = "";
+        for (var count = 1; count <= words.Length; count++)
+        {
+            var candidate = string.Join(" ", words, 0, count);
+            if (measure(candidate) > width) break;
+            if (measure(candidate + " …") <= width) best = candidate + " …";
+            else if (count == 1 && best.Length == 0) best = candidate;
+        }
+        return best;
+    }
     internal static int WordAt(IReadOnlyList<TimedWord> words, double source)
     {
         var low = 0;
@@ -66,6 +102,7 @@ internal static class TimelineLayout
         ? (Math.Clamp(target, 0, last), last) : (first, Math.Clamp(target, first, Math.Max(first, count - 1)));
     internal static bool CommitTrim(EditorViewModel model, string clipId, int first, int last)
     {
+        if (model.IsReadOnly || model.Busy || first < 0 || last < first || last >= model.Words.Count) return false;
         var clip = model.Clips.FirstOrDefault(clip => clip.Id == clipId);
         if (clip is null || first == model.Index(clip.Clip.StartWordId) && last == model.Index(clip.Clip.EndWordId)) return false;
         return model.ApplyBatch([new EditOperation.UpdateClip(clipId, first, last)]);
@@ -76,5 +113,31 @@ internal static class TimelineLayout
     {
         var seconds = Math.Max(0, (int)Math.Round(time));
         return seconds < 60 ? $"{seconds} seconds" : $"{seconds / 60} {(seconds < 120 ? "minute" : "minutes")} {seconds % 60:00}";
+    }
+}
+
+internal readonly record struct TimelineTrackGeometry
+{
+    internal double VideoTop { get; }
+    internal double AudioTop { get; }
+    internal double CaptionTop { get; }
+    internal double EffectsTop { get; }
+    internal double VideoHeight { get; }
+    internal double AudioHeight { get; }
+    internal double CaptionHeight { get; }
+    internal double EffectsHeight { get; }
+    internal double Height { get; }
+    internal TimelineTrackGeometry(int size, bool video, bool captions, bool effects)
+    {
+        size = Math.Clamp(size, 0, 2);
+        VideoHeight = video ? size switch { 0 => 28, 2 => 52, _ => 36 } : 0;
+        AudioHeight = size switch { 0 => 32, 2 => 64, _ => 44 };
+        CaptionHeight = captions ? size switch { 0 => 20, 2 => 28, _ => 24 } : 0;
+        EffectsHeight = effects ? size switch { 0 => 20, 2 => 28, _ => 24 } : 0;
+        VideoTop = TimelineLayout.OverviewHeight + TimelineLayout.RulerHeight + 1;
+        AudioTop = VideoTop + (video ? VideoHeight + 1 : 0);
+        CaptionTop = AudioTop + AudioHeight + 1;
+        EffectsTop = CaptionTop + (captions ? CaptionHeight + 1 : 0);
+        Height = EffectsTop + EffectsHeight + 10;
     }
 }

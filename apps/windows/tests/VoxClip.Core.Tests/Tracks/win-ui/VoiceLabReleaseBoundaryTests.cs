@@ -43,11 +43,11 @@ public sealed class VoiceLabReleaseBoundaryTests
         foreach (var entry in Enum.GetValues<RewriteEntry>())
             foreach (var editable in new[] { false, true })
                 foreach (var selected in new[] { false, true })
-                    Assert.Equal(available && editable && selected && entry != RewriteEntry.InsertWords
+                    Assert.Equal(editable && selected && entry != RewriteEntry.InsertWords
                             ? RewriteEntryAction.OpenPassage : RewriteEntryAction.Unavailable,
                         RewriteEntryPolicy.Resolve(entry, enabled, accepted, editable, selected, true, internalBuild));
         Assert.Equal(Expected(enabled, accepted, RewriteEntryPolicy.InternalBuild), RewriteEntryPolicy.Available(enabled, accepted));
-        Assert.Equal(RewriteEntryPolicy.Available(enabled, accepted), KeyboardHelp.Text(enabled, accepted).Contains("Ctrl+R  Rewrite", StringComparison.Ordinal));
+        Assert.Contains("Ctrl+R  Rewrite", KeyboardHelp.Text(enabled, accepted));
     }
 
     [Theory]
@@ -116,20 +116,24 @@ public sealed class VoiceLabReleaseBoundaryTests
     public void RealEntriesAndPanelCheckTheGateBeforeAnyProviderOrKeyAccess()
     {
         var page = ReleaseSource(Source("Pages/EditorPage.xaml.cs"));
-        Assert.Contains("RewriteCommand.Visibility = App.Services.VoiceLabEnabled", page);
-        Assert.Contains("RewriteCommand.IsEnabled = App.Services.VoiceLabEnabled && Transcript.CanRewrite", page);
+        Assert.Contains("RewriteCommand.Visibility = Visibility.Visible", page);
+        Assert.Contains("RewriteCommand.IsEnabled = ShellJobAvailable(ShellJob.Rewrite)", page);
+        Assert.Contains("RewriteCommand.IsEnabled = ShellEditable && ViewModel.HasTranscript", page);
         Assert.Contains("rewrite?.SettingsChanged(App.Services.VoiceLabEnabled)", page);
-        Assert.Contains("connectorIsCurrent: () => App.Services.VoiceLabEnabled", page);
+        Assert.Contains("connectorIsCurrent: () => App.Services.Get(\"llm.connector\", \"\") == connectorWireId", page);
         var opening = page[page.IndexOf("private async Task OpenRewriteAsync", StringComparison.Ordinal)..page.IndexOf("private static async Task RediscoverRewriteAsync", StringComparison.Ordinal)];
-        Assert.True(opening.IndexOf("if (!App.Services.VoiceLabEnabled", StringComparison.Ordinal) < opening.IndexOf("ProviderCatalog.ReadAsync", StringComparison.Ordinal));
+        Assert.DoesNotContain("if (!App.Services.VoiceLabEnabled", opening);
+        Assert.Contains("if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(rewrite)", opening);
         Assert.Equal(3, opening.Split("if (!CurrentOpening()) return;", StringSplitOptions.None).Length - 1);
         Assert.Contains("ConfigureRewriteGeneration(rewrite)", opening);
         Assert.DoesNotContain("TurnOnAsync", opening);
+        Assert.DoesNotContain("ProviderCatalog.ConsentAsync", opening);
+        Assert.Contains("session.ConfigureInlineConsent", Source("Controls/RewritePanel.cs"));
         var transcript = ReleaseSource(Source("Controls/TranscriptView.cs"));
-        Assert.Contains("if (!App.Services.VoiceLabEnabled || model is null) return", transcript);
-        Assert.Contains("cut, App.Services.VoiceLabEnabled, CanRewrite", transcript);
-        Assert.Contains("if (App.Services.VoiceLabEnabled)", transcript);
-        Assert.Contains("App.Services.Get(\"voiceLab.betaNoticeAccepted\", false)", transcript);
+        Assert.Contains("RewriteRequested is not null && model is { IsReadOnly: false, Busy: false, IsLeaving: false, HasSelection: true }", transcript);
+        Assert.Contains("cut, RewriteRequested is not null, CanRewrite", transcript);
+        Assert.DoesNotContain("Insert Words…", transcript);
+        Assert.DoesNotContain("voiceLab.betaNoticeAccepted", transcript);
         Assert.Contains("KeyboardHelp.Text(", Source("MainWindow.xaml.cs"));
         Assert.Contains("RewriteEntryPolicy.Available", Source("Services/AppServices.cs"));
         var backend = ReleaseSource(Source("Services/RewriteGenerationBackend.cs"));

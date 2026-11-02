@@ -444,13 +444,13 @@ public sealed class ViewModelTests
     [Theory]
     [InlineData(false, false, false, null, null)]
     [InlineData(false, false, true, null, null)]
-    [InlineData(true, false, false, "VcSelectionTranscriptBrush", "VcTextPrimaryBrush")]
+    [InlineData(true, false, false, "VcTintSelectionBrush", "VcTextPrimaryBrush")]
     [InlineData(true, false, true, "VcSelectionTranscriptBrush", "SystemColorHighlightTextColor")]
-    [InlineData(false, true, false, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
-    [InlineData(false, true, true, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
-    [InlineData(true, true, false, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
-    [InlineData(true, true, true, "VcWordPlayingBackgroundBrush", "VcWordPlayingForegroundBrush")]
-    public void TranscriptHighlightKeepsSelectionDistinctAndPlayingWins(bool selected, bool playing, bool highContrast,
+    [InlineData(false, true, false, null, null)]
+    [InlineData(false, true, true, null, null)]
+    [InlineData(true, true, false, "VcTintSelectionBrush", "VcTextPrimaryBrush")]
+    [InlineData(true, true, true, "VcSelectionTranscriptBrush", "SystemColorHighlightTextColor")]
+    public void TranscriptSelectionWinsAndPlaybackUsesOnlyACaret(bool selected, bool playing, bool highContrast,
         string? background, string? foreground)
     {
         var highlight = TranscriptWordHighlight.For(selected, playing, highContrast);
@@ -483,30 +483,31 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    public void HighlightOffsetsFollowRenderedUtf16TextIncludingPausesAndCollapsedCuts()
+    public void NativeOffsetsPreserveEmojiCombiningMarksAndRightToLeftWords()
     {
-        var words = new[] { "Tere! ", "asukoht ", "⋯ 2 cut ", "", "👩🏽‍💻 " };
-        string?[] pauses = [null, " ‖ pause 1.2s ", null, null, null];
-        var starts = TranscriptTextRanges.Starts(words, pauses);
-        var rendered = string.Concat(words.Select((word, index) => word + pauses[index]));
-        Assert.Equal(0, starts[0]);
-        Assert.Equal(words[0].Length + words[1].Length + pauses[1]!.Length, starts[2]);
-        for (var index = 0; index < words.Length; index++)
-            Assert.Equal(words[index].TrimEnd(), rendered.Substring(starts[index], words[index].TrimEnd().Length));
-        Assert.Equal(starts[3], starts[4]);
+        string[] words = ["Tere! ", "👩🏽‍💻 ", "é ", "שלום "];
+        var offset = 1;
+        var spans = words.Select((word, index) =>
+        {
+            var span = new TranscriptTextSpan(offset, offset + word.Length, index, index);
+            offset = span.End;
+            return span;
+        }).ToArray();
+        foreach (var span in spans)
+            for (var position = span.Start; position < span.End; position++)
+                Assert.Equal(span.SourceIndex, TranscriptTextRanges.Hit(spans, position)?.SourceIndex);
     }
 
     [Fact]
-    public void HighlightOffsetsIgnoreEmbeddedBadgesAndChipsButIncludeTextMarkers()
+    public void NativeOffsetGapsAndDisplayOnlyAttachmentsNeverSeekAWord()
     {
-        string[] words = ["Tere! ", "👩🏽‍💻 ", "é ", "שלום "];
-        string?[] pauses = [null, " ‖ pause 1.2s ", null, null];
-        int[] after = [0, 1, 1, 0];
-        var starts = TranscriptTextRanges.Starts(words, pauses, after);
-        var rendered = string.Concat(words.Select((word, index) => word + pauses[index] + new string(']', after[index])));
-        for (var index = 0; index < words.Length; index++)
-            Assert.Equal(words[index], rendered.Substring(starts[index], words[index].Length));
-        Assert.Throws<ArgumentException>(() => TranscriptTextRanges.Starts(words, pauses, [1]));
+        TranscriptTextSpan[] spans = [new(1, 7, 0, 0), new(8, 9, -1, -1), new(11, 18, -1, -1, 4), new(20, 25, 3, 3)];
+        Assert.Null(TranscriptTextRanges.Hit(spans, 7));
+        Assert.Equal(-1, TranscriptTextRanges.Hit(spans, 8)?.SourceIndex);
+        Assert.Null(TranscriptTextRanges.Hit(spans, 9));
+        Assert.Equal(4, TranscriptTextRanges.Hit(spans, 14)?.ChangeOrdinal);
+        Assert.Null(TranscriptTextRanges.Hit(spans, 19));
+        Assert.Equal(3, TranscriptTextRanges.Hit(spans, 20)?.SourceIndex);
     }
 
     [Theory]

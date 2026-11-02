@@ -423,7 +423,7 @@ public sealed class VoiceLabSettingsTests
         var mac = File.ReadAllText(Path.Combine(root, "apps", "macos", "Sources", "VoxClip", "VoiceLabSettings.swift"));
         Assert.Contains(VoiceLabCopy.KeyGuidance, mac); Assert.Contains(VoiceLabCopy.KeyPermissions, mac);
         Assert.Contains("Ctrl+R  Rewrite", KeyboardHelp.Text(true, true));
-        Assert.DoesNotContain("Ctrl+R", KeyboardHelp.Text(false, false));
+        Assert.Contains("Ctrl+R  Rewrite", KeyboardHelp.Text(false, false));
     }
 
     [Fact]
@@ -449,7 +449,8 @@ public sealed class VoiceLabSettingsTests
     {
         var editor = AppSource(Path.Combine("Pages", "EditorPage.xaml.cs"));
         Assert.DoesNotContain("VoiceLabDialogs.TurnOnAsync", editor);
-        Assert.Contains("if (!App.Services.VoiceLabEnabled)", editor);
+        Assert.Contains("if (App.Services.VoiceLabEnabled) ConfigureRewriteGeneration(rewrite)", editor);
+        Assert.Contains("session.GenerationIsCurrent && App.Services.VoiceLabEnabled", editor);
         Assert.DoesNotContain("Title = \"Turn on Voice Lab\"", editor);
         Assert.DoesNotContain("EnablementCopy", AppSource(Path.Combine("ViewModels", "RewriteEntryPolicy.cs")));
         var app = Path.Combine(Path.GetDirectoryName(Shared)!, "apps", "windows", "src", "VoxClip.App");

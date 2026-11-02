@@ -58,24 +58,27 @@ public sealed class ConnectorPreflightTests
     }
 
     [Fact]
-    public void ElevenLabsUsesOneFirstUseDialogAndPersistsOnlyOnContinue()
+    public void ElevenLabsRequiresInlinePrivacyAndPriceApprovalBeforeAudioAndKeepsTheActionDiscoverable()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
         var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TranscriptionDialog.cs"));
         Assert.DoesNotContain("cloudConsent.IsChecked", source);
-        Assert.Contains("Title = \"Transcribe with ElevenLabs?\"", source);
-        Assert.Contains("PrimaryButtonText = \"Continue\"; CloseButtonText = \"Cancel\"", source);
-        var handler = source[source.IndexOf("private async void Transcribe", StringComparison.Ordinal)..source.IndexOf("private void ShowCloudConsent", StringComparison.Ordinal)];
-        Assert.Contains("if (confirmingCloud)", handler);
+        Assert.Contains("PrimaryButtonVisible = true", source);
+        Assert.Contains("cloud ? keySaved && allowCloud.IsChecked == true && price is not null", source);
+        Assert.Contains("Upload and Transcribe · ", source);
+        Assert.Contains("RequiresExplicitApproval = cloud || model.HasTranscript", source);
+        var handler = source[source.IndexOf("private async void Transcribe", StringComparison.Ordinal)..source.IndexOf("private async Task RunTranscriptionAsync", StringComparison.Ordinal)];
         Assert.Contains("if (startingTranscription || closed || model.IsLeaving) return", handler);
-        var save = handler.IndexOf("SetAsync(\"transcription.cloudConsent.elevenlabs\", true", StringComparison.Ordinal);
-        var run = handler.IndexOf("await RunTranscriptionAsync()", StringComparison.Ordinal);
-        Assert.True(save >= 0 && run > save);
+        Assert.Contains("await RunTranscriptionAsync()", handler);
         var workflow = source[source.IndexOf("private async Task RunTranscriptionAsync", StringComparison.Ordinal)..];
         var consent = workflow.IndexOf("Get(\"transcription.cloudConsent.elevenlabs\", false)", StringComparison.Ordinal);
         var audio = workflow.IndexOf("ExtractAudioAsync", StringComparison.Ordinal);
         Assert.True(consent >= 0 && audio > consent);
-        Assert.Contains("ShowCloudConsent(); return;", workflow);
+        Assert.Contains("if (!authorizedCloud || approvedPrice is null) return", workflow);
+        var approve = workflow.IndexOf("if (!authorizedCloud || approvedPrice is null)", StringComparison.Ordinal);
+        var save = workflow.IndexOf("SetAsync(\"transcription.cloudConsent.elevenlabs\", true", StringComparison.Ordinal);
+        Assert.True(approve >= 0 && save > approve && audio > save);
+        Assert.DoesNotContain("ShowCloudConsent", source);
         Assert.DoesNotContain("new ContentDialog", source);
     }
 
@@ -168,15 +171,19 @@ public sealed class ConnectorPreflightTests
     public void OpeningRetryAndAllThreeRequestsUseExplicitDetectionAndConsentRoutes()
     {
         var root = Path.Combine(Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!, "apps/windows/src/VoxClip.App");
-        var find = File.ReadAllText(Path.Combine(root, "Controls/FindClipsFlyout.cs"));
+        var find = File.ReadAllText(Path.Combine(root, "Controls/FindClipsJob.cs"));
         Assert.Equal(2, find.Split("ProviderCatalog.ProbeAsync").Length - 1);
         Assert.Contains("internal Task RetryAsync() => FindAsync()", find);
         Assert.Contains("ConnectorConsentAction.FindClips", find);
-        Assert.Contains("Snap: App.Services.Get(\"llm.clips.snapToLines\", true)", find);
+        Assert.Contains("var snap = App.Services.Get(\"llm.clips.snapToLines\", true)", find);
+        Assert.Contains("Snap: snap", find);
+        Assert.Contains("App.Services.Get(\"llm.clips.snapToLines\", true) == snap", find);
         var rewrite = File.ReadAllText(Path.Combine(root, "Pages/EditorPage.xaml.cs"));
-        Assert.Contains("ConnectorConsentAction.Rewrite", rewrite);
+        var panel = File.ReadAllText(Path.Combine(root, "Controls/RewritePanel.cs"));
+        Assert.Contains("ConnectorConsentAction.Rewrite", panel);
         Assert.Contains("if (entry is not null) await ProviderCatalog.ProbeAsync", rewrite);
-        Assert.Contains("selectedConnector!, await ProviderCatalog.ProbeAsync(entry, selectedConnector!, token), token)", rewrite);
+        Assert.DoesNotContain("ProviderCatalog.ConsentAsync", rewrite);
+        Assert.Contains("var status = await connector.Connector.GetStatusAsync(token)", panel);
         var settings = File.ReadAllText(Path.Combine(root, "SettingsWindow.xaml.cs"));
         Assert.Contains("ConnectorConsentAction.Test", settings);
         Assert.Contains("pageGeneration++", settings);
@@ -200,7 +207,7 @@ public sealed class ConnectorPreflightTests
             .Where(path => !path.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
             .Where(path => File.ReadAllText(path).Contains("ProviderCatalog.ProbeAsync", StringComparison.Ordinal))
             .Select(path => Path.GetRelativePath(root, path).Replace('\\', '/')).Order().ToArray();
-        Assert.Equal(new[] { "Controls/FindClipsFlyout.cs", "Pages/EditorPage.xaml.cs", "Pages/HomePage.xaml.cs", "SettingsWindow.xaml.cs" }, callers);
+        Assert.Equal(new[] { "Controls/FindClipsJob.cs", "Pages/EditorPage.xaml.cs", "Pages/HomePage.xaml.cs", "SettingsWindow.xaml.cs" }, callers);
     }
 }
 #endif

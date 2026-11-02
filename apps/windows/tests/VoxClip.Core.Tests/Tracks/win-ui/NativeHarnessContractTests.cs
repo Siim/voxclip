@@ -12,10 +12,11 @@ public sealed class NativeHarnessContractTests
         var probe = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Services/TranscriptNativeProbe.cs"));
         Assert.Contains("DebugHideGlyphs(retainDecorations: true)", probe);
         Assert.Contains("CheckStrikes(decorationPixels)", probe);
-        Assert.Contains("CheckPlaying(decorationPixels)", probe);
+        Assert.Contains("CheckCaret(decorationPixels)", probe);
         Assert.Contains("DebugRemovePaint(strikeMutation)", probe);
         Assert.Contains("Require(rejected,", probe);
-        Assert.Contains("CheckStrikes(restored); CheckPlaying(restored)", probe);
+        Assert.Contains("CheckStrikes(restored); CheckCaret(restored)", probe);
+        Assert.Contains("Math.Abs(caret.Width - 2) <= 0.01", probe);
         var transcript = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/TranscriptView.cs"));
         Assert.Contains("if (!retainDecorations) visual.Overlay.DebugClearAbove()", transcript);
     }
@@ -53,7 +54,8 @@ public sealed class NativeHarnessContractTests
         Assert.DoesNotContain("MaxHeight = 300", captions);
         var editor = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Pages/EditorPage.xaml.cs"));
         Assert.Contains("captions.FitChanged += (_, _) => SizeStage()", editor);
-        Assert.Contains("captions?.MinimumContentHeight ?? 160", editor);
+        var column = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/RightColumn.cs"));
+        Assert.Contains("captions.ConstrainHeight(surface.ActualHeight)", column);
     }
 
     [Fact]

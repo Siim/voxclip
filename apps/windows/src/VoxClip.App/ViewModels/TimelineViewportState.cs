@@ -15,6 +15,12 @@ internal sealed class TimelineViewportState
     private string[] editedSpeech = [];
     private EditPlan? speechPlan;
     private int speechCuts = -1;
+    private int speechFrameRate;
+    private string[] clocks = [];
+    private string[] clockPrefixes = [];
+    private string[] sourceClocks = [];
+    private readonly string[] frameLabels = Enumerable.Range(0, 240).Select(frame => frame.ToString("D2", System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+    internal int FrameRate { get; private set; } = 30;
     internal ClipRow? ActiveClip { get; private set; }
     internal int First { get; private set; }
     internal int Last { get; private set; }
@@ -23,6 +29,8 @@ internal sealed class TimelineViewportState
 
     internal void Reset(EditorViewModel model)
     {
+        var rate = model.Project.Media.Source.Video?.FrameRate ?? 30;
+        FrameRate = double.IsFinite(rate) ? (int)Math.Clamp(Math.Round(rate), 1, 240) : 30;
         if (!ReferenceEquals(words, model.Words))
         {
             words = model.Words;
@@ -59,7 +67,6 @@ internal sealed class TimelineViewportState
     internal TimelineRange Playhead(EditPlan plan, TimelineWindow window, double source, bool edited)
     {
         var value = edited ? plan.MapTime(source) : source;
-        var total = edited ? plan.Duration : plan.TotalSamples / plan.SampleRate;
         Prepare(plan);
         var speech = edited ? editedSpeech : sourceSpeech;
         var playheadText = speech[Math.Clamp((int)Math.Round(value), 0, speech.Length - 1)];
@@ -69,9 +76,10 @@ internal sealed class TimelineViewportState
     }
     internal void Prepare(EditPlan plan)
     {
-        if (ReferenceEquals(speechPlan, plan) && speechCuts == cuts) return;
+        if (ReferenceEquals(speechPlan, plan) && speechCuts == cuts && speechFrameRate == FrameRate) return;
         speechPlan = plan;
         speechCuts = cuts;
+        speechFrameRate = FrameRate;
         string[] Speech(double duration, bool edited)
         {
             var values = new string[(int)Math.Ceiling(duration) + 1];
@@ -80,7 +88,19 @@ internal sealed class TimelineViewportState
         }
         sourceSpeech = Speech(plan.TotalSamples / (double)plan.SampleRate, false);
         editedSpeech = Speech(plan.Duration, true);
+        var duration = Math.Max(plan.Duration, plan.TotalSamples / plan.SampleRate);
+        clocks = new string[(int)Math.Ceiling(duration) + 1]; sourceClocks = new string[clocks.Length]; clockPrefixes = new string[clocks.Length];
+        for (var second = 0; second < clocks.Length; second++)
+        {
+            var parts = SMPTETimecode.Format(second, FrameRate);
+            clockPrefixes[second] = parts.DimPrefix; clocks[second] = parts.Value[..^2]; sourceClocks[second] = "src " + parts.DimPrefix + parts.Value[..^2];
+        }
     }
+    private int ClockIndex(double seconds) => (int)Math.Clamp(SMPTETimecode.Frame(seconds, FrameRate) / FrameRate, 0, clocks.Length - 1);
+    internal string Clock(double seconds) => clocks.Length == 0 ? "00:00:00:" : clocks[ClockIndex(seconds)];
+    internal string DimClock(double seconds) => clockPrefixes.Length == 0 ? "" : clockPrefixes[ClockIndex(seconds)];
+    internal string Frames(double seconds) => frameLabels[SMPTETimecode.Frame(seconds, FrameRate) % FrameRate];
+    internal string SourceClock(double seconds) => sourceClocks.Length == 0 ? "" : sourceClocks[ClockIndex(seconds)];
     internal int PointerWord(double source) => words.Count == 0 ? -1 : TimelineLayout.WordAt(words, source);
     internal int WordCount => words.Count;
 }
