@@ -7,7 +7,7 @@ import VoxClipCore
 
 /// A job of the right column's one panel (notes.md §7).
 enum PanelJob: String, CaseIterable, Sendable {
-    case captions, rewrite, voice, takes, director, export
+    case captions, rewrite, voice, takes, director, demo, export
 
     var title: String {
         switch self {
@@ -17,6 +17,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         case .voice: "Voice"
         case .takes: "Takes"
         case .director: "Director"
+        case .demo: "Context demo"
         }
     }
     /// The switcher's glyph, in the mockup's order: captions, pencil, waveform, chat.
@@ -28,6 +29,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         case .voice: "waveform"
         case .takes: "square.stack"
         case .director: "bubble.left"
+        case .demo: "record.circle"
         }
     }
 
@@ -40,6 +42,7 @@ enum PanelJob: String, CaseIterable, Sendable {
         if let task = model.panelTask { jobs.append(task.job) }
         if (model.hasVoiceJob || model.currentVoiceFeedback != nil), !jobs.contains(.voice) { jobs.append(.voice) }
         if model.exportJob.isOpen { jobs.append(.export) }
+        if model.capabilities.writable || model.contextDemoDocument != nil || model.contextDemoSession != nil { jobs.append(.demo) }
         return jobs
     }
 }
@@ -59,7 +62,7 @@ extension EditorModel {
         guard let rewrite, rewrite.task.state != .running || rewrite.sendApproved else { return nil }
         return rewrite.task
     }
-    var hasVoiceJob: Bool { app.voiceLabSession.showEnrollment && app.voiceLabSession.flow.owner === self }
+    var hasVoiceJob: Bool { voiceChange != nil || (app.voiceLabSession.showEnrollment && app.voiceLabSession.flow.owner === self) }
     func openVoiceJob() {
         guard capabilities.ai else { return }
         let session = app.voiceLabSession
@@ -103,6 +106,10 @@ extension WorkspaceShell {
         let current = panelJob(for: model)
         if current == .voice, job != .voice { model.app.voiceLabSession.leaveVoiceControls(owner: model) }
         if job == .export, current != .export { exportReturnJob = current }
+        if current == .demo, job != .demo { model.contextDemoSession?.cancel() }
+        if job == .demo, model.contextDemoSession == nil || model.contextDemoSession?.phase == .closed {
+            model.contextDemoSession = ContextDemoSession(model: model)
+        }
         let task = model.openRewrite?.task
         panelChoice = PanelJobChoice(job: job, task: task, turn: task?.turn ?? 0, voiceTurn: model.app.voiceLabSession.flow.turn)
     }
@@ -152,6 +159,7 @@ extension WorkspaceShell {
                 else if job == .voice, model.hasVoiceJob { DirectorVoiceSteps(session: model.app.voiceLabSession, model: model) }
                 else if job == .voice, let feedback = model.currentVoiceFeedback { VoiceRewriteDone(model: model, feedback: feedback) }
                 else if job == .export { ExportJobView(model: model).modifier(EditorPaneFocus(model: model, pane: .panel)) }
+                else if job == .demo, let session = model.contextDemoSession { ContextDemoPanel(session: session, model: model) }
                 else { CaptionsSection(model: model, fineTune: fineTune, width: width).modifier(EditorPaneFocus(model: model, pane: .panel)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

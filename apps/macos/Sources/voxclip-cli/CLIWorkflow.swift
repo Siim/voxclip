@@ -95,6 +95,14 @@ enum CLIWorkflow {
                                   duration: source.durationSeconds, sampleRate: rate)
     }
 
+    static func renderRequest(project: Project, source: URL, plan: EditPlan, style: CaptionStyle?, output: OutputSpec,
+                              voiceLab: VoiceLabRenderInput?, dataRoot: URL) throws -> RenderRequest {
+        try RenderCallerInputs.prepare(RenderRequest(sourceURL: source, plan: plan, style: style,
+            placement: project.captions.positionByAspect[project.export.aspect.rawValue] ?? project.captions.position,
+            output: output, voiceLab: voiceLab), project: project, clipID: project.edits.activeClipId,
+            dataRoot: dataRoot, isCancelled: { Task.isCancelled })
+    }
+
     static func style(_ id: String) throws -> CaptionStyle? {
         if id == "off" { return nil }
         guard !id.contains("/"), !id.contains(".."), !id.contains("\\") else { throw ValidationError("Invalid caption style ID") }
@@ -247,9 +255,10 @@ enum CLIWorkflow {
         try Task.checkCancellation()
         let output = try OutputSpec.resolved(source: probe, aspect: aspect, quality: quality, fps: options.fps.flatMap(Double.init))
         let activeClip = effectiveState.flatMap { state in state.clips.first { $0.id == state.activeClipId } }
+        let request = try renderRequest(project: project, source: source, plan: plan, style: style,
+            output: output, voiceLab: voiceLab, dataRoot: DataLocations().root)
         let render: RenderRequest
-        switch try await captions(.export(RenderRequest(sourceURL: source, plan: plan, style: style,
-            placement: project.captions.positionByAspect[aspect.rawValue] ?? project.captions.position, output: output, voiceLab: voiceLab),
+        switch try await captions(.export(request,
             state: effectiveState, activeClip: activeClip, overrides: project.captions.overrides, language: project.transcript?.language)) {
         case .export(let prepared): render = prepared
         case .render: throw VoxClipError.exportFailed("Invalid caption operation")

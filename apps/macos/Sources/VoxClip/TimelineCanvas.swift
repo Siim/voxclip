@@ -93,6 +93,9 @@ struct TimelineContent: Equatable {
     /// The axis's length: the scope's output on Edited, the take on Source.
     var length = 0.0
     var takeLength = 0.0
+    var displayRange: ClosedRange<Double> = 0...0
+    var overviewRange: ClosedRange<Double> = 0...0
+    var showsSurroundingContext = true
     /// The open clip, or nil on Full Take.
     var scope: String?
     /// The open clip in take time.
@@ -104,6 +107,7 @@ struct TimelineContent: Equatable {
     /// The proposal's pending changes on the axis (V14, V15).
     var changes: [ClosedRange<Double>] = []
     var cues: [TimelineCue] = []
+    var motionCues: [TimelineMotionCue] = []
     var clips: [TimelineOverviewClip] = []
     /// The scope's pieces and the take's waveform, for A1, and on Source the cut ranges in it.
     var pieces = TimelinePieces([])
@@ -146,6 +150,7 @@ struct TimelineContent: Equatable {
     private let inElement = TimelineSliderElement()
     private let outElement = TimelineSliderElement()
     private let selectionElement = TimelineSelectionElement()
+    private var motionCuePopover: MotionCuePopover?
 
     init(model: EditorModel, shell: WorkspaceShell? = nil) {
         self.model = model
@@ -168,6 +173,7 @@ struct TimelineContent: Equatable {
             guard let model else { return }
             model.setCaptionsEnabled(model.project.captions.styleId == "off")
         }
+        headers[3].action = { [weak self] in self?.openMotionCue() }
         addSubview(overlay)
         addSubview(horizontalScroller); addSubview(verticalScroller)
         horizontalScroller.changed = { [weak self] fraction in self?.scroll(to: fraction) }
@@ -207,6 +213,8 @@ struct TimelineContent: Equatable {
         observations = []
         interaction.cancel()
         video.cancelLoads()
+        motionCuePopover?.close()
+        motionCuePopover = nil
     }
 
     override var isFlipped: Bool { true }
@@ -268,6 +276,9 @@ struct TimelineContent: Equatable {
         next.axis = axis
         next.length = model.timelineLength(on: axis)
         next.takeLength = model.sourceDuration
+        next.displayRange = model.timelineDisplayRange(on: axis)
+        next.overviewRange = model.timelineOverviewRange
+        next.showsSurroundingContext = !model.focusesClip
         next.scope = model.scopeBounds == nil ? nil : model.activeClip?.id
         next.scopeSource = model.scopeSourceRange
         next.inOut = model.timelineInOut(on: axis)
@@ -279,11 +290,13 @@ struct TimelineContent: Equatable {
         next.removed = axis == .source ? model.timelineRemovedRanges(next.pieces) : []
         next.words = next.waveform == nil ? model.timelineKeptWords : []
         next.cues = model.timelineCaptionCues(on: axis, removed: next.removed)
+        next.motionCues = model.timelineMotionCues(on: axis)
         video.setSource(model.timelineFilmstripSource)
         video.mediaName = model.timelineMediaName
         let previous = content
         content = next
-        if !rendered || next.scope != previous.scope || next.takeLength != previous.takeLength {
+        if !rendered || next.scope != previous.scope || next.takeLength != previous.takeLength
+            || next.showsSurroundingContext != previous.showsSurroundingContext {
             rendered = true
             fitted = true
             viewport = fittedViewport(for: next)
@@ -291,6 +304,8 @@ struct TimelineContent: Equatable {
             viewport = fittedViewport(for: next)
         } else if next.axis != previous.axis {
             viewport = viewport.switched(to: next.axis, start: next.axis == .source ? next.scopeSource?.lowerBound ?? 0 : 0)
+        } else if next.displayRange != previous.displayRange, !next.showsSurroundingContext {
+            viewport = fitted ? fittedViewport(for: next) : viewport.panned(by: 0, within: next.displayRange)
         }
         apply()
     }
@@ -304,6 +319,9 @@ struct TimelineContent: Equatable {
     /// The viewport that fits the scope: its output on Edited; on Source the same zoom,
     /// from a second before the clip.
     private func fittedViewport(for content: TimelineContent) -> TimelineViewport {
+        if content.axis == .source, !content.showsSurroundingContext {
+            return TimelineViewport.fitting(content.displayRange, width: laneWidth, axis: .source)
+        }
         let edited = TimelineViewport.fitting(0...max(1, model.duration), width: laneWidth, axis: .edited)
         guard content.axis == .source else { return edited }
         return edited.switched(to: .source, start: content.scopeSource?.lowerBound ?? 0)
@@ -313,7 +331,8 @@ struct TimelineContent: Equatable {
     func followPlayhead() {
         playheadEdited = model.playhead
         playheadSource = model.sourceTime
-        let paged = viewport.showing(playheadTime)
+        let shownTime = content.showsSurroundingContext ? playheadTime : playheadTime.clamped(to: content.displayRange)
+        let paged = viewport.showing(shownTime)
         // A scrub or a trim keeps the view under the pointer; an overview drag pages it.
         if paged != viewport, interaction.followsPlayhead {
             viewport = paged
@@ -341,18 +360,25 @@ struct TimelineContent: Equatable {
             let upper = model.timelineSourceTime(min(content.length, visible.upperBound), on: .edited)
             window = lower...max(lower, upper)
         }
-        overview.state = TimelineOverviewLane.State(clips: content.clips, takeLength: content.takeLength, window: window,
-                                                    takeLabel: durationLabel(content.takeLength))
+        let overviewRange = content.overviewRange
+        let windowLower = window.lowerBound.clamped(to: overviewRange)
+        let windowUpper = window.upperBound.clamped(to: overviewRange)
+        overview.state = TimelineOverviewLane.State(clips: content.clips, takeLength: content.takeLength,
+                                                    sourceRange: overviewRange, window: windowLower...max(windowLower, windowUpper),
+                                                    takeLabel: durationLabel(overviewRange.upperBound - overviewRange.lowerBound))
         ruler.state = TimelineRulerLane.State(viewport: viewport, inOut: shownInOut, selection: interaction.selection ?? content.selection, changes: content.changes)
         bed.state = TimelineTrackBed.State(width: Double(bounds.width))
         // On Source A1 dims outside the In/Out the ruler shows, the dragged edge included.
         audio.state = TimelineAudioLane.State(viewport: viewport, pieces: content.pieces, waveform: content.waveform, removed: content.removed,
                                               words: content.words, inOut: content.axis == .source ? shownInOut : nil,
-                                              clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength)
+                                              clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength,
+                                              showsSurroundingContext: content.showsSurroundingContext)
         video.state = VideoLane.State(viewport: viewport, pieces: content.pieces, inOut: content.axis == .source ? shownInOut : nil,
-                                      clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength)
+                                      clip: content.axis == .source ? content.inOut : nil, takeLength: content.takeLength,
+                                      showsSurroundingContext: content.showsSurroundingContext)
         video.requestFrames()
         captions.state = CaptionLane.State(viewport: viewport, cues: content.cues, inOut: content.axis == .source ? shownInOut : nil)
+        motion.state = MotionLane.State(viewport: viewport, cues: content.motionCues, hasClip: content.scope != nil)
         updateScrollers()
         onZoom?(zoomValue)
         let top = TimelineMetrics.tracks.first?.y ?? TimelineMetrics.ruler.maxY
@@ -369,7 +395,21 @@ struct TimelineContent: Equatable {
 
     // MARK: Pointer and keys
 
-    override func mouseDown(with event: NSEvent) { interaction.mouseDown(event) }
+    override func mouseDown(with event: NSEvent) {
+        let point = motion.convert(event.locationInWindow, from: nil)
+        if motion.bounds.contains(point), point.x >= headerWidth {
+            openMotionCue(id: motion.cueID(at: point))
+            return
+        }
+        interaction.mouseDown(event)
+    }
+
+    private func openMotionCue(id: String? = nil) {
+        motionCuePopover?.close()
+        let panel = MotionCuePopover(model: model, cueID: id)
+        motionCuePopover = panel
+        panel.show(relativeTo: headers[3].button)
+    }
     override func mouseDragged(with event: NSEvent) { interaction.mouseDragged(event) }
     override func mouseUp(with event: NSEvent) { interaction.mouseUp(event) }
 
@@ -379,7 +419,10 @@ struct TimelineContent: Equatable {
     var verticalMaximum: Double {
         max(0, Double(TimelineMetrics.rows(trackHeight).last!.maxY - TimelineMetrics.ruler.maxY) - trackClip.bounds.height)
     }
-    var zoomMinimum: Double { TimelineViewport.fitting(0...max(1, model.duration), width: laneWidth, axis: content.axis).ptPerSecond }
+    var zoomMinimum: Double {
+        let range = content.axis == .source && !content.showsSurroundingContext ? content.displayRange : 0...max(1, model.duration)
+        return TimelineViewport.fitting(range, width: laneWidth, axis: content.axis).ptPerSecond
+    }
     var zoomMaximum: Double { max(300, zoomMinimum * 8) }
     var zoomValue: Double { log(max(zoomMinimum, viewport.ptPerSecond) / zoomMinimum) / log(zoomMaximum / zoomMinimum) }
     func setZoom(_ value: Double) { zoom(by: zoomMinimum * pow(zoomMaximum / zoomMinimum, value.clamped(to: 0...1)) / viewport.ptPerSecond) }
@@ -390,26 +433,27 @@ struct TimelineContent: Equatable {
         let time = viewport.time(atX: x)
         viewport.ptPerSecond = (viewport.ptPerSecond * factor).clamped(to: zoomMinimum...zoomMaximum)
         viewport.origin = time - x / viewport.ptPerSecond
-        viewport = viewport.panned(by: 0, within: 0...max(content.length, 1))
+        viewport = viewport.panned(by: 0, within: content.displayRange)
         fitted = false
         apply()
     }
     func pan(by points: Double) {
-        let next = viewport.panned(by: points, within: 0...max(content.length, 1))
+        let next = viewport.panned(by: points, within: content.displayRange)
         guard next != viewport else { return }
         interaction.cancel()
         fitted = false; viewport = next; apply()
     }
     func scroll(to fraction: Double) {
-        let span = max(0, content.length + 2 - viewport.width / viewport.ptPerSecond)
-        let origin = -1 + fraction.clamped(to: 0...1) * span
+        let length = content.displayRange.upperBound - content.displayRange.lowerBound
+        let span = max(0, length + 2 - viewport.width / viewport.ptPerSecond)
+        let origin = content.displayRange.lowerBound - 1 + fraction.clamped(to: 0...1) * span
         pan(by: (origin - viewport.origin) * viewport.ptPerSecond)
     }
     private func updateScrollers() {
-        let total = max(1, content.length + 2)
+        let total = max(1, content.displayRange.upperBound - content.displayRange.lowerBound + 2)
         let visible = viewport.width / viewport.ptPerSecond
         horizontalScroller.frame = NSRect(x: headerWidth + 4, y: bounds.height - 8, width: max(0, bounds.width - headerWidth - 12), height: 8)
-        horizontalScroller.update(portion: visible / total, fraction: (viewport.origin + 1) / max(1e-9, total - visible))
+        horizontalScroller.update(portion: visible / total, fraction: (viewport.origin - content.displayRange.lowerBound + 1) / max(1e-9, total - visible))
         verticalScroller.frame = NSRect(x: bounds.width - 8, y: TimelineMetrics.ruler.maxY, width: 8, height: trackClip.bounds.height)
         verticalScroller.update(portion: trackClip.bounds.height / max(1, trackClip.bounds.height + verticalMaximum), fraction: verticalOffset / max(1, verticalMaximum))
     }
@@ -596,6 +640,7 @@ struct TimelineOverviewLabel: Equatable {
     struct State: Equatable {
         var clips: [TimelineOverviewClip] = []
         var takeLength = 0.0
+        var sourceRange: ClosedRange<Double>?
         /// The viewport in take time.
         var window: ClosedRange<Double>?
         var takeLabel = ""
@@ -612,10 +657,13 @@ struct TimelineOverviewLabel: Equatable {
     static let labelFont = VCType.mini.nsMono()
 
     private var laneWidth: CGFloat { max(1, bounds.width - headerWidth - TimelineMetrics.trailing) }
+    private var range: ClosedRange<Double> { state.sourceRange ?? 0...max(0, state.takeLength) }
     func x(_ time: Double) -> CGFloat {
-        headerWidth + CGFloat(time / max(0.001, state.takeLength)) * laneWidth
+        headerWidth + CGFloat((time - range.lowerBound) / max(0.001, range.upperBound - range.lowerBound)) * laneWidth
     }
-    func time(atX x: CGFloat) -> Double { Double((x - headerWidth) / laneWidth) * state.takeLength }
+    func time(atX x: CGFloat) -> Double {
+        (range.lowerBound + Double((x - headerWidth) / laneWidth) * (range.upperBound - range.lowerBound)).clamped(to: range)
+    }
     override func setFrameSize(_ newSize: NSSize) {
         let changed = newSize.width != frame.width
         super.setFrameSize(newSize)
@@ -779,6 +827,7 @@ struct TimelineOverviewLabel: Equatable {
         /// drag of In or Out past it shows the take it adds as kept media.
         var clip: ClosedRange<Double>?
         var takeLength = 0.0
+        var showsSurroundingContext = true
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
 
@@ -869,7 +918,7 @@ struct TimelineOverviewLabel: Equatable {
         var before: Range<Double>?, after: Range<Double>?
         if let inOut = state.inOut {
             var outside = paint()
-            for range in [inView(0, inOut.lowerBound), inView(inOut.upperBound, state.takeLength)].compactMap({ $0 }) {
+            for range in state.showsSurroundingContext ? [inView(0, inOut.lowerBound), inView(inOut.upperBound, state.takeLength)].compactMap({ $0 }) : [] {
                 outside.piece(x(range.lowerBound), x(range.upperBound))
                 columns(range, offset: 0, into: &outside)
             }
@@ -1202,18 +1251,44 @@ struct TimelineOverviewLabel: Equatable {
     }
 }
 
-/// FX's empty state (V9b, notes.md §6 and v3 f10–f14). Director will own its
-/// word-anchored results later; there is no disabled or decorative action to press.
 @MainActor final class MotionLane: TimelineLane {
-    static let emptyHint = "Director results land here"
+    struct State: Equatable {
+        var viewport = TimelineViewport(axis: .edited, ptPerSecond: 20, origin: -1, width: 944)
+        var cues: [TimelineMotionCue] = []
+        var hasClip = false
+    }
+    var state = State() { didSet { if state != oldValue { invalidate() } } }
+    static let emptyHint = "Add motion with FX +"
     private static let hintFont = NSFont.systemFont(ofSize: 11)
+
+    func cueID(at point: NSPoint) -> String? {
+        let time = state.viewport.time(atX: point.x - headerWidth)
+        return state.cues.first(where: { $0.range.contains(time) })?.id
+    }
+
     override func drawLane(in context: CGContext) {
         let lane = CGRect(x: headerWidth, y: 0, width: max(0, bounds.width - headerWidth), height: bounds.height)
         context.setFillColor(DesignValues.nsColor("timeline.lane").cgColor)
         context.fill(lane)
         context.saveGState(); context.clip(to: lane)
         let font = Self.hintFont
-        Self.draw(Self.emptyHint, font: font, color: DesignValues.nsColor("text.disabled"), x: headerWidth + 10, baseline: bounds.midY + font.xHeight / 2)
+        if state.cues.isEmpty {
+            Self.draw(state.hasClip ? Self.emptyHint : "Open a clip to add motion", font: font, color: DesignValues.nsColor("text.disabled"), x: headerWidth + 10, baseline: bounds.midY + font.xHeight / 2)
+        }
+        let visible = state.viewport.visible
+        for cue in state.cues where cue.range.upperBound > visible.lowerBound && cue.range.lowerBound < visible.upperBound {
+            let lower = headerWidth + state.viewport.x(cue.range.lowerBound)
+            let upper = headerWidth + state.viewport.x(cue.range.upperBound)
+            let rect = CGRect(x: lower, y: 2, width: max(1, upper - lower - 1), height: max(1, bounds.height - 4))
+            let path = CGPath(roundedRect: rect, cornerWidth: 2, cornerHeight: 2, transform: nil)
+            context.setFillColor(DesignValues.nsColor("timeline.cue").cgColor)
+            context.addPath(path); context.fillPath()
+            context.saveGState(); context.clip(to: rect)
+            if rect.width > 44 {
+                Self.draw("Pan & Zoom", font: font, color: DesignValues.nsColor("timeline.cueText"), x: lower + 4, baseline: bounds.midY + font.xHeight / 2)
+            }
+            context.restoreGState()
+        }
         context.restoreGState()
     }
 }
@@ -1248,7 +1323,7 @@ enum TrackHeight: String, CaseIterable {
         button.target = self; button.action = #selector(press)
         button.imagePosition = .imageOnly
         button.setAccessibilityIdentifier("voxclip.timeline.header.\(id)")
-        button.isHidden = id == "V1" || id == "FX"
+        button.isHidden = id == "V1"
         addSubview(button)
         update(on: true, enabled: true)
     }
@@ -1258,11 +1333,15 @@ enum TrackHeight: String, CaseIterable {
     func update(on: Bool, enabled: Bool) {
         self.on = on
         button.isEnabled = enabled
-        let symbol = trackID == "CC" ? (on ? "eye" : "eye.slash") : (on ? "speaker.wave.1" : "speaker.slash")
+        let symbol = trackID == "FX" ? "plus" : trackID == "CC" ? (on ? "eye" : "eye.slash") : (on ? "speaker.wave.1" : "speaker.slash")
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 12, weight: .regular))
         button.contentTintColor = DesignValues.nsColor("text.tertiary")
         button.setAccessibilityLabel("\(trackID) \(name), \(trackID == "CC" ? (on ? "shown" : "hidden") : (on ? "audible" : "muted"))")
         button.toolTip = trackID == "CC" ? (on ? "Hide captions" : "Show captions") : (on ? "Mute preview" : "Unmute preview")
+        if trackID == "FX" {
+            button.setAccessibilityLabel("Edit clip motion cues")
+            button.toolTip = "Add or edit clip motion cues"
+        }
         needsDisplay = true
     }
     override func layout() { super.layout(); button.frame = NSRect(x: bounds.width - 24, y: (bounds.height - 22) / 2, width: 22, height: 22) }
@@ -1275,9 +1354,9 @@ enum TrackHeight: String, CaseIterable {
             TimelineLane.draw(name, font: nameFont, color: DesignValues.nsColor("text.tertiary"), x: trackID == "CC" ? 29 : 34, baseline: bounds.midY + nameFont.xHeight / 2)
         }
     }
-    override func isAccessibilityElement() -> Bool { trackID == "V1" || trackID == "FX" }
+    override func isAccessibilityElement() -> Bool { trackID == "V1" }
     override func accessibilityLabel() -> String? { "\(trackID) \(name)" }
-    override func accessibilityValue() -> Any? { trackID == "FX" ? MotionLane.emptyHint : nil }
+    override func accessibilityValue() -> Any? { nil }
     override func accessibilityRole() -> NSAccessibility.Role? { .group }
 }
 
@@ -1334,6 +1413,7 @@ enum TrackHeight: String, CaseIterable {
         var inOut: ClosedRange<Double>?
         var clip: ClosedRange<Double>?
         var takeLength = 0.0
+        var showsSurroundingContext = true
     }
     var state = State() { didSet { if state != oldValue { invalidate() } } }
     var mediaName = "" { didSet { if mediaName != oldValue { invalidate() } } }
@@ -1395,8 +1475,8 @@ enum TrackHeight: String, CaseIterable {
         }
         result = grouped
         if axis == .source, let io = state.inOut {
-            if io.lowerBound > 0 { result.append(Span(axis: 0..<io.lowerBound, source: 0..<io.lowerBound, opacity: 0.32)) }
-            if io.upperBound < state.takeLength { result.append(Span(axis: io.upperBound..<state.takeLength, source: io.upperBound..<state.takeLength, opacity: 0.32)) }
+            if state.showsSurroundingContext, io.lowerBound > 0 { result.append(Span(axis: 0..<io.lowerBound, source: 0..<io.lowerBound, opacity: 0.32)) }
+            if state.showsSurroundingContext, io.upperBound < state.takeLength { result.append(Span(axis: io.upperBound..<state.takeLength, source: io.upperBound..<state.takeLength, opacity: 0.32)) }
             if let clip = state.clip {
                 if io.lowerBound < clip.lowerBound { result.append(Span(axis: io.lowerBound..<clip.lowerBound, source: io.lowerBound..<clip.lowerBound)) }
                 if io.upperBound > clip.upperBound { result.append(Span(axis: clip.upperBound..<io.upperBound, source: clip.upperBound..<io.upperBound)) }

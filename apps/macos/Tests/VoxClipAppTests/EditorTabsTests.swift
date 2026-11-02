@@ -496,11 +496,17 @@ import Testing
         #expect(editor.focusedPane == .tabs && window.firstResponder === active)
         // Show cuts sits at the row's end, before ⋯ (V8b), and the tabs keep their drag gap after them.
         #expect(work.showCuts.superview === work.tabRow && !work.showCuts.isHidden)
-        #expect(work.tabRow.trailing.prefix(2).elementsEqual([work.showCuts, work.overflow], by: ===))
+        #expect(work.tabRow.trailing.prefix(3).elementsEqual([work.surroundingContext, work.showCuts, work.overflow], by: ===))
         work.tabRow.layoutSubtreeIfNeeded()
         bar.layoutSubtreeIfNeeded()
         let ends = bar.order.compactMap { bar.items[$0]?.frame.maxX }
-        #expect(work.showCuts.frame.minX >= bar.frame.maxX && ends.count == 2 && ends.allSatisfy { $0 <= bar.bounds.width - EditorTabMetrics.dragGap + 0.5 })
+        #expect(work.surroundingContext.frame.minX >= bar.frame.maxX && work.showCuts.frame.minX >= work.surroundingContext.frame.maxX)
+        #expect(ends.count == 2)
+        if bar.overflowing {
+            #expect(!bar.overflowButton.isHidden && bar.overflowButton.frame.maxX <= bar.tabRoom + 0.5)
+        } else {
+            #expect(ends.allSatisfy { $0 <= bar.tabRoom + 0.5 })
+        }
     }
 }
 

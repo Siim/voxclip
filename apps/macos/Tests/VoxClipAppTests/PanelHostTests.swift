@@ -299,7 +299,7 @@ import Testing
         editor.undoManager = undo
         editor.app.settings.values["voiceLab.enabled"] = .bool(true)
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
-        #expect(PanelJob.available(in: editor) == [.captions] && shell.panelJob(for: editor) == .captions)
+        #expect(PanelJob.available(in: editor) == [.captions, .demo] && shell.panelJob(for: editor) == .captions)
         // Rewrite can't be picked while no session can show it.
         shell.choosePanelJob(.rewrite, for: editor)
         #expect(shell.panelJob(for: editor) == .captions)
@@ -308,14 +308,14 @@ import Testing
         let lower = try #require(editor.activeClip.flatMap { editor.index($0.startWordId) })
         let session = RewriteSession(editor: editor, scope: .selection(lower...(lower + 2)), envelope: nil, connector: nil)
         editor.rewrite = session
-        #expect(PanelJob.available(in: editor) == [.captions, .rewrite] && shell.panelJob(for: editor) == .rewrite)
+        #expect(PanelJob.available(in: editor) == [.captions, .rewrite, .demo] && shell.panelJob(for: editor) == .rewrite)
         // The switcher shows Captions beside the open session, with no undo step and no document change.
         shell.choosePanelJob(.captions, for: editor)
         #expect(shell.panelJob(for: editor) == .captions && session.isOpen)
         #expect(!undo.canUndo && !editor.document.isDocumentEdited && !editor.document.hasUnautosavedChanges)
         // The pick holds across a tab switch and back.
         shell.selection = .clip("five-2")
-        #expect(PanelJob.available(in: editor) == [.captions] && shell.panelJob(for: editor) == .captions)
+        #expect(PanelJob.available(in: editor) == [.captions, .demo] && shell.panelJob(for: editor) == .captions)
         shell.selectTab(.clip("five-1"))
         #expect(editor.rewrite === session && shell.panelJob(for: editor) == .captions)
         shell.choosePanelJob(.rewrite, for: editor)
@@ -329,7 +329,7 @@ import Testing
         #expect(shell.panelJob(for: editor) == .rewrite)
         // Text Rewrite needs no Voice Lab (impl-plan V13): with it off the job stays.
         editor.app.settings.values["voiceLab.enabled"] = .bool(false)
-        #expect(PanelJob.available(in: editor) == [.captions, .rewrite] && shell.panelJob(for: editor) == .rewrite)
+        #expect(PanelJob.available(in: editor) == [.captions, .rewrite, .demo] && shell.panelJob(for: editor) == .rewrite)
         #expect(!undo.canUndo && !editor.document.isDocumentEdited)
     }
 
@@ -338,11 +338,13 @@ import Testing
     @Test func theHeaderNamesTheJobAndTheOpenTab() async throws {
         let (shell, editor) = try await openShell()
         defer { editor.close() }
-        #expect(PanelJob.allCases.map(\.title) == ["Captions", "Rewrite", "Voice", "Takes", "Director", "Export"])
+        #expect(PanelJob.allCases.map(\.title) == ["Captions", "Rewrite", "Voice", "Takes", "Director", "Context demo", "Export"])
         let found = markers(PanelHeader(model: editor, shell: shell, job: .captions).frame(width: 404), size: CGSize(width: 404, height: 30))
         #expect(found["panel.header"]?.size == CGSize(width: 404, height: 30))
         #expect(found["panel.job.captions"]?.size == CGSize(width: 26, height: 22))
-        #expect(found["panel.job.captions"].map { abs($0.maxX - 398) <= 0.5 } == true)
+        #expect(found["panel.job.captions"].map { abs($0.maxX - 371) <= 0.5 } == true)
+        #expect(found["panel.job.demo"]?.size == CGSize(width: 26, height: 22))
+        #expect(found["panel.job.demo"].map { abs($0.maxX - 398) <= 0.5 } == true)
 
         let size = CGSize(width: 404, height: 522)
         let host = NSHostingView(rootView: PanelHost(model: editor, shell: shell, width: size.width, height: size.height))

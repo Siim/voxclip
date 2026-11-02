@@ -285,7 +285,7 @@ import Testing
         defer { window.contentView = nil; window.close() }
         controller.export.performClick(nil)
         #expect(shell.panelJob(for: editor) == .export && editor.exportJob.requestedIDs == ["five-1"] && shell.viewerShown)
-        #expect(PanelJob.available(in: editor) == [.captions, .rewrite, .export] && window.attachedSheet == nil)
+        #expect(PanelJob.available(in: editor) == [.captions, .rewrite, .export, .demo] && window.attachedSheet == nil)
         editor.finishExportJob()
         #expect(shell.panelJob(for: editor) == .rewrite && !editor.exportJob.isOpen)
         let failed = ExportRecord(projectID: editor.project.id, targetID: "five-2", exportedAt: Date(timeIntervalSince1970: 1),

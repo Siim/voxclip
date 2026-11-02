@@ -54,9 +54,11 @@ public struct RenderGraph {
     public let frameDuration: CMTime
     /// Keeps paid snapshots and staged CAF alive through every player/reader callback.
     public let voiceLabLease: VoiceLabRenderLease?
-    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime, voiceLabLease: VoiceLabRenderLease? = nil) {
+    public let contextDemoLease: ContextDemoCompositionLease?
+    public init(composition: AVMutableComposition, videoTrack: AVMutableCompositionTrack, audioTrack: AVMutableCompositionTrack?, videoComposition: AVVideoComposition, audioMix: AVAudioMix?, renderSize: CGSize, frameDuration: CMTime, voiceLabLease: VoiceLabRenderLease? = nil, contextDemoLease: ContextDemoCompositionLease? = nil) {
         self.composition = composition; self.videoTrack = videoTrack; self.audioTrack = audioTrack; self.videoComposition = videoComposition; self.audioMix = audioMix; self.renderSize = renderSize; self.frameDuration = frameDuration
         self.voiceLabLease = voiceLabLease
+        self.contextDemoLease = contextDemoLease
     }
 }
 
@@ -80,6 +82,7 @@ public struct CompositionBuilder: Sendable {
         let voicePlan = request.voiceLab?.prepared.outputPlan
         let synthetic = voicePlan?.requiresSyntheticRendering == true
         try VoiceLabRenderPreflight.validate(request)
+        try ContextDemoCompositionRoute.validate(request)
         guard synthetic || (plan.outputSamples > 0 && !plan.kept.isEmpty) else { throw VoxClipError.everythingCut }
         guard synthetic || (plan.totalSamples >= 0 && plan.sampleRate.isFinite && plan.sampleRate > 0 && plan.sampleRate <= Double(Int32.max) &&
               plan.sampleRate.rounded() == plan.sampleRate &&
@@ -97,6 +100,7 @@ public struct CompositionBuilder: Sendable {
               request.output.fps.rounded() == request.output.fps, request.output.videoBitrate > 0 else {
             throw VoxClipError.exportFailed("Invalid output dimensions or frame rate")
         }
+        let videoSpans = try CompositionVideoSpan.build(request)
         let asset = AVURLAsset(url: request.sourceURL)
         guard let sourceVideo = try await asset.loadTracks(withMediaType: .video).first else { throw VoxClipError.decodeFailed("No video track") }
         let (transform, videoRange, nominalRate) = try await sourceVideo.load(.preferredTransform, .timeRange, .nominalFrameRate)
@@ -105,12 +109,14 @@ public struct CompositionBuilder: Sendable {
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { throw VoxClipError.exportFailed("Cannot create video track") }
         let audio = sourceAudio == nil ? nil : composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
         let rate = Int32(synthetic ? voicePlan!.sampleRate : plan.sampleRate)
-        let ranges: [(Int64, Int64)] = synthetic ? voicePlan!.pieces.map { ($0.sourceStartSample, $0.sourceEndSample) } :
-            plan.kept.map { ($0.startSample, $0.endSample) }
-        var cursor = CMTime.zero
-        for (start, end) in ranges {
+        for span in videoSpans {
             try Task.checkCancellation()
-            let range = CMTimeRange(start: CMTime(value: start, timescale: rate), end: CMTime(value: end, timescale: rate))
+            let range = span.source
+            let cursor = span.output.start
+            let scaled = range.duration != span.output.duration
+            guard (!scaled && span.zoom == 1) || (range.start >= videoRange.start && range.end <= videoRange.end) else {
+                throw VoxClipError.decodeFailed("Retimed source video does not cover its replacement window")
+            }
             let overlap = CMTimeRangeGetIntersection(range, otherRange: videoRange)
             if overlap.isValid, !overlap.isEmpty {
                 try video.insertTimeRange(overlap, of: sourceVideo, at: cursor + overlap.start - range.start)
@@ -124,9 +130,11 @@ public struct CompositionBuilder: Sendable {
                 try video.insertTimeRange(lastFrame, of: sourceVideo, at: insertion)
                 video.scaleTimeRange(CMTimeRange(start: insertion, duration: frameDuration), toDuration: tailDuration)
             }
+            if scaled { video.scaleTimeRange(CMTimeRange(start: cursor, duration: range.duration), toDuration: span.output.duration) }
             if !synthetic, let audio, let sourceAudio { try audio.insertTimeRange(range, of: sourceAudio, at: cursor) }
-            cursor = cursor + range.duration
         }
+        let duration = CMTime(value: request.timeline.outputSamples, timescale: rate)
+        let demos = try await ContextDemoCompositionRoute.insert(request, into: composition, scratchRoot: scratchRoot)
         var lease: VoiceLabRenderLease?
         if synthetic {
             guard sourceAudio != nil, let audio, let voicePlan else { throw VoxClipError.noAudioTrack }
@@ -136,8 +144,9 @@ public struct CompositionBuilder: Sendable {
             try audio.insertTimeRange(CMTimeRange(start: .zero, duration: CMTime(value: voicePlan.outputSamples, timescale: rate)),
                                       of: mixedTrack, at: .zero)
         }
-        let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: cursor,
-                                                        orientation: MediaSupport.orientation(transform))
+        let videoComposition = try makeVideoComposition(request, trackID: video.trackID, duration: duration,
+            orientation: MediaSupport.orientation(transform), videoSpans: videoSpans,
+            demoLayers: demos.layers, contextDemoLease: demos.lease)
         let size = videoComposition.renderSize
         let frameDuration = videoComposition.frameDuration
         var mix: AVAudioMix?
@@ -149,11 +158,14 @@ public struct CompositionBuilder: Sendable {
             mix = audioMix
         }
         return RenderGraph(composition: composition, videoTrack: video, audioTrack: audio, videoComposition: videoComposition,
-                           audioMix: mix, renderSize: size, frameDuration: frameDuration, voiceLabLease: lease)
+                           audioMix: mix, renderSize: size, frameDuration: frameDuration, voiceLabLease: lease,
+                           contextDemoLease: demos.lease)
     }
 
     func makeVideoComposition(_ request: RenderRequest, trackID: CMPersistentTrackID, duration: CMTime,
-                              orientation: CGImagePropertyOrientation) throws -> AVVideoComposition {
+                              orientation: CGImagePropertyOrientation, videoSpans: [CompositionVideoSpan] = [],
+                              demoLayers: [CompositionDemoLayer] = [],
+                              contextDemoLease: ContextDemoCompositionLease? = nil) throws -> AVVideoComposition {
         let size = CGSize(width: request.output.size.width, height: request.output.size.height)
         guard size.width >= 2, size.height >= 2, max(size.width, size.height) <= 1920,
               request.output.fps.isFinite, request.output.fps >= 1, request.output.fps <= 60 else {
@@ -173,12 +185,27 @@ public struct CompositionBuilder: Sendable {
                 width: request.output.size.width, height: request.output.size.height, fontURL: font,
                 captionBlocks: blocks)
         } else { disclosure = nil }
-        let instruction = RenderInstruction(timeRange: CMTimeRange(start: .zero, duration: duration), sourceTrackID: trackID,
-            request: request, orientation: orientation, rasterizer: needsRasterizer ? try sharedRasterizer.get() : nil,
-            legacyRasterizer: rasterizer, disclosure: disclosure)
+        let captionRasterizer = needsRasterizer ? try sharedRasterizer.get() : nil
+        let framingSpans = videoSpans.filter { $0.zoom > 1 }
+        let boundaries = ([CMTime.zero, duration] + framingSpans.flatMap { [$0.output.start, $0.output.end] } +
+            demoLayers.flatMap { [$0.output.start, $0.output.end] }).sorted().reduce(into: [CMTime]()) { result, time in
+                if result.last != time { result.append(time) }
+            }
+        var spanIndex = 0, layerIndex = 0
+        let instructions = zip(boundaries, boundaries.dropFirst()).map { start, end in
+            while spanIndex < framingSpans.count && framingSpans[spanIndex].output.end <= start { spanIndex += 1 }
+            while layerIndex < demoLayers.count && demoLayers[layerIndex].output.end <= start { layerIndex += 1 }
+            let span = spanIndex < framingSpans.count && framingSpans[spanIndex].output.start <= start ? framingSpans[spanIndex] : nil
+            let layer = layerIndex < demoLayers.count && demoLayers[layerIndex].output.start <= start ? demoLayers[layerIndex] : nil
+            return RenderInstruction(timeRange: CMTimeRange(start: start, end: end), sourceTrackID: trackID,
+                request: request, orientation: orientation, rasterizer: captionRasterizer,
+                legacyRasterizer: rasterizer, disclosure: disclosure, demoLayer: layer,
+                contextDemoLease: contextDemoLease, videoZoom: span?.zoom ?? 1,
+                videoAnchorX: span?.anchorX ?? 0.5, videoAnchorY: span?.anchorY ?? 0.5)
+        }
         let config = AVVideoComposition.Configuration(colorPrimaries: AVVideoColorPrimaries_ITU_R_709_2,
             colorTransferFunction: AVVideoTransferFunction_ITU_R_709_2, colorYCbCrMatrix: AVVideoYCbCrMatrix_ITU_R_709_2,
-            customVideoCompositorClass: FrameCompositor.self, frameDuration: frameDuration, instructions: [instruction], renderSize: size)
+            customVideoCompositorClass: FrameCompositor.self, frameDuration: frameDuration, instructions: instructions, renderSize: size)
         return AVVideoComposition(configuration: config)
     }
 }

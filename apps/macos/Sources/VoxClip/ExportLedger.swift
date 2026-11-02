@@ -125,6 +125,8 @@ struct ExportRecord: Codable, Equatable {
         let captions: Captions
         let output: OutputSpec
         let voiceLab: VoiceInput?
+        let contextDemo: ContextDemoDocument?
+        let motionCues: [MotionCue]?
     }
 
     static func output(_ project: Project) -> OutputSpec {
@@ -192,7 +194,11 @@ struct ExportRecord: Codable, Equatable {
         let source = Source(duration: duration, orientedSize: oriented, rotationDegrees: media.video?.rotationDegrees,
             frameRate: media.video?.frameRate, sampleRate: media.audio?.sampleRate, channels: media.audio?.channels)
         let input = Input(contentKey: media.contentKey, source: source, plan: plan, words: captionsOn ? words : nil,
-            language: captionsOn ? project.transcript?.language : nil, captions: captions, output: output, voiceLab: voice)
+            language: captionsOn ? project.transcript?.language : nil, captions: captions, output: output, voiceLab: voice,
+            contextDemo: project.contextDemo, motionCues: clip.flatMap { selected in
+                let cues = project.motionCues.filter { $0.clipID == selected.id }
+                return cues.isEmpty ? nil : cues
+            })
         let encoder = ProjectJSON.encoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(input)

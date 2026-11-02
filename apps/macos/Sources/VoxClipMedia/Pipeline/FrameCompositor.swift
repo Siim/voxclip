@@ -15,7 +15,6 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
     private let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
     private let videoColorSpace = CGColorSpace(name: CGColorSpace.itur_709)!
     private var pending: [UUID: (AVAsynchronousVideoCompositionRequest, Task<Void, Never>, CVPixelBuffer)] = [:]
-    private var lastSource: (RenderInstruction, Double, CIImage)?
 
     public var sourcePixelBufferAttributes: [String: any Sendable]? {
         [kCVPixelBufferPixelFormatTypeKey as String: [kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange, kCVPixelFormatType_32BGRA],
@@ -31,7 +30,7 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
         super.init()
     }
     public func renderContextChanged(_ newRenderContext: AVVideoCompositionRenderContext) {
-        renderQueue.async { self.lastSource = nil }
+        renderQueue.async { self.context.clearCaches() }
     }
 
     public func startRequest(_ request: AVAsynchronousVideoCompositionRequest) {
@@ -64,22 +63,32 @@ public final class FrameCompositor: NSObject, AVVideoCompositing, @unchecked Sen
                 request.finish(with: VoxClipError.decodeFailed("Cannot allocate video frame")); return
             }
             let size = request.renderContext.size
-            var image: CIImage
-            if let source = request.sourceFrame(byTrackID: instruction.sourceTrackID) {
-                image = CIImage(cvPixelBuffer: source).oriented(instruction.orientation)
-                lastSource = (instruction, request.compositionTime.seconds, image)
-            } else if let previous = lastSource, previous.0 === instruction, previous.1 <= request.compositionTime.seconds {
-                image = previous.2
-            } else { image = CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: size)) }
-            let crop = Self.centerCrop(source: image.extent, output: size)
-            image = image.clampedToExtent().transformed(by: CGAffineTransform(translationX: -crop.minX, y: -crop.minY))
-            if instruction.request.forPreview {
-                image = image.transformed(by: CGAffineTransform(scaleX: size.width / crop.width, y: size.height / crop.height))
-            } else {
-                image = image.applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: size.height / crop.height,
-                                                                                    kCIInputAspectRatioKey: (size.width / crop.width) / (size.height / crop.height)])
+            guard let source = request.sourceFrame(byTrackID: instruction.sourceTrackID) else {
+                request.finish(with: VoxClipError.decodeFailed("Missing source video frame")); return
             }
-            image = image.cropped(to: CGRect(origin: .zero, size: size))
+            var image = CIImage(cvPixelBuffer: source).oriented(instruction.orientation)
+            var crop = Self.centerCrop(source: image.extent, output: size)
+            if instruction.videoZoom > 1 {
+                crop = CompositionFrameGeometry.faceCrop(in: image.extent, aspectCrop: crop, scale: instruction.videoZoom,
+                    faceX: instruction.videoAnchorX, faceY: instruction.videoAnchorY)
+            }
+            image = CompositionFrameGeometry.fill(image, crop: crop, output: size)
+            if let layer = instruction.demoLayer {
+                guard let demo = request.sourceFrame(byTrackID: layer.trackID) else {
+                    request.finish(with: VoxClipError.decodeFailed("Missing context-demo video frame")); return
+                }
+                let captured = CIImage(cvPixelBuffer: demo).oriented(layer.orientation)
+                image = CompositionFrameGeometry.fill(captured,
+                    crop: Self.centerCrop(source: captured.extent, output: size), output: size)
+            }
+            let motion = MotionCue.transform(atSourceTime: instruction.request.timeline.sourceTime(request.compositionTime.seconds),
+                clipID: instruction.request.motionClipID, cues: instruction.request.motionCues,
+                reduceMotion: instruction.request.forPreview && instruction.request.reduceMotion)
+            if motion != .identity {
+                let motionCrop = CompositionFrameGeometry.crop(in: CGRect(origin: .zero, size: size),
+                    scale: motion.scale, anchorX: motion.anchorX, anchorY: motion.anchorY)
+                image = CompositionFrameGeometry.fill(image, crop: motionCrop, output: size)
+            }
             context.render(image, to: output, bounds: CGRect(origin: .zero, size: size), colorSpace: nil)
             CVBufferSetAttachment(output, kCVImageBufferCGColorSpaceKey, videoColorSpace, .shouldPropagate)
             CVBufferSetAttachment(output, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
@@ -174,22 +183,33 @@ public final class RenderInstruction: NSObject, AVVideoCompositionInstructionPro
     public let request: RenderRequest
     public let enablePostProcessing = false
     public let containsTweening = true
-    public var requiredSourceTrackIDs: [NSValue]? { [NSNumber(value: sourceTrackID)] }
+    public var requiredSourceTrackIDs: [NSValue]? {
+        ([sourceTrackID] + (demoLayer.map { [$0.trackID] } ?? [])).map { NSNumber(value: $0) }
+    }
     public let passthroughTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid
     let orientation: CGImagePropertyOrientation
     let rasterizer: CoreTextCaptionRasterizer?
     let legacyRasterizer: (any CaptionRasterizer)?
     let disclosure: VoiceLabDisclosureOverlay?
+    let demoLayer: CompositionDemoLayer?
+    let contextDemoLease: ContextDemoCompositionLease?
+    let videoZoom: Double
+    let videoAnchorX: Double
+    let videoAnchorY: Double
 
     public convenience init(timeRange: CMTimeRange, sourceTrackID: CMPersistentTrackID, request: RenderRequest) {
         self.init(timeRange: timeRange, sourceTrackID: sourceTrackID, request: request, orientation: .up, rasterizer: nil)
     }
     init(timeRange: CMTimeRange, sourceTrackID: CMPersistentTrackID, request: RenderRequest,
          orientation: CGImagePropertyOrientation, rasterizer: CoreTextCaptionRasterizer?,
-         legacyRasterizer: (any CaptionRasterizer)? = nil, disclosure: VoiceLabDisclosureOverlay? = nil) {
+         legacyRasterizer: (any CaptionRasterizer)? = nil, disclosure: VoiceLabDisclosureOverlay? = nil,
+         demoLayer: CompositionDemoLayer? = nil, contextDemoLease: ContextDemoCompositionLease? = nil,
+         videoZoom: Double = 1, videoAnchorX: Double = 0.5, videoAnchorY: Double = 0.5) {
         self.timeRange = timeRange; self.sourceTrackID = sourceTrackID; self.request = request
         self.orientation = orientation; self.rasterizer = rasterizer; self.legacyRasterizer = legacyRasterizer
-        self.disclosure = disclosure; super.init()
+        self.disclosure = disclosure; self.demoLayer = demoLayer; self.contextDemoLease = contextDemoLease
+        self.videoZoom = videoZoom; self.videoAnchorX = videoAnchorX; self.videoAnchorY = videoAnchorY
+        super.init()
     }
 
     func page(at time: Double) -> CaptionPage? {

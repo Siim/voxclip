@@ -64,8 +64,7 @@ final class LeasedPlayerItem: AVPlayerItem {
         guard let old = self.request else { try await load(request); return }
         revision &+= 1
         let current = revision
-        if old.timeline == request.timeline && old.voiceLab == request.voiceLab && old.sourceURL == request.sourceURL,
-           let item = player.currentItem {
+        if let item = player.currentItem, canReuseComposition(old, request, item: item) {
             if let lastCaptionUpdate {
                 let remaining = Duration.milliseconds(34) - lastCaptionUpdate.duration(to: .now)
                 if remaining > .zero { try await Task.sleep(for: remaining) }
@@ -74,7 +73,8 @@ final class LeasedPlayerItem: AVPlayerItem {
                   let instruction = item.videoComposition?.instructions.first as? RenderInstruction else { return }
             var preview = request; preview.forPreview = true
             item.videoComposition = try builder.makeVideoComposition(preview, trackID: instruction.sourceTrackID,
-                duration: instruction.timeRange.duration, orientation: instruction.orientation)
+                duration: CMTime(value: request.timeline.outputSamples, timescale: Int32(request.timeline.sampleRate)),
+                orientation: instruction.orientation)
             self.request = preview
             lastCaptionUpdate = .now
             return
@@ -87,6 +87,19 @@ final class LeasedPlayerItem: AVPlayerItem {
         try await seek(to: request.timeline.mapTime(sourceTime), exact: true)
         guard current == revision else { return }
         if rate != 0 { player.rate = rate; isPlaying = true }
+    }
+
+    /// Caption-only updates may reuse an ordinary source composition. Layered and
+    /// synthetic compositions retain prepared tracks, framing spans and leases.
+    private func canReuseComposition(_ old: RenderRequest, _ next: RenderRequest, item: AVPlayerItem) -> Bool {
+        guard old.contextDemo == nil, next.contextDemo == nil,
+              old.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true,
+              next.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true,
+              let leased = item as? LeasedPlayerItem, leased.renderGraph.contextDemoLease == nil else { return false }
+        return old.sourceURL == next.sourceURL && old.sourceContentKey == next.sourceContentKey &&
+            old.timeline == next.timeline && old.voiceLab == next.voiceLab && old.output == next.output &&
+            old.motionCues == next.motionCues && old.motionClipID == next.motionClipID &&
+            old.reduceMotion == next.reduceMotion
     }
 
     public func seek(to editedTime: Double, exact: Bool) async throws {

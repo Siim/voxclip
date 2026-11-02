@@ -190,11 +190,13 @@ public actor AVExporter: Exporter {
             throw VoxClipError.exportFailed("Export outputs overlap")
         }
         if let input = job.render.voiceLab { try Self.preventPaidOverwrite(input, paths: allPaths) }
+        try Self.preventDemoOverwrite(job.render, paths: allPaths)
         for extra in extras {
             try ExportSafety.validateDestination(extra.destination)
             _ = try ExportSafety.partialURL(for: extra.destination)
         }
         try VoiceLabRenderPreflight.validate(job.render)
+        try ContextDemoCompositionRoute.validate(job.render)
         guard job.render.timeline.outputSamples > 0 else { throw VoxClipError.everythingCut }
         let plannedWAVBytes = try plannedEditedAudioURL.map { _ in
             try PCMFile.plannedBytes(frames: job.render.timeline.outputSamples, channels: 2, bits: 32)
@@ -242,7 +244,10 @@ public actor AVExporter: Exporter {
         let outputNeeds = preflight.outputNeeds
         progress(ExportProgress(phase: .preparing, fraction: 0))
         let graph = try await builder.build(job.render)
-        defer { withExtendedLifetime(graph.voiceLabLease) {} }
+        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease)) {} }
+        guard Self.canUseSourceOnlyVideo(job.render) || graph.videoComposition.customVideoCompositorClass != nil else {
+            throw VoxClipError.exportFailed("This export requires the shared frame compositor")
+        }
         try DiskCapacity.check(outputNeeds, provider: capacityProvider)
         try Task.checkCancellation()
         let scratch = try ScratchCleanup.createExportDirectory(in: destination.deletingLastPathComponent(), registry: cleanupRegistry)
@@ -265,12 +270,15 @@ public actor AVExporter: Exporter {
         let output = job.render.output
         let timeRange = CMTimeRange(start: .zero, duration: CMTime(value: job.render.timeline.outputSamples, timescale: Int32(job.render.timeline.sampleRate)))
         guard let videoComposition = graph.composition.copy() as? AVComposition,
-              let videoTrack = videoComposition.track(withTrackID: graph.videoTrack.trackID) else {
+              videoComposition.track(withTrackID: graph.videoTrack.trackID) != nil else {
             throw VoxClipError.decodeFailed("Cannot copy export video composition")
         }
+        // Composition tracks are already materialized and stay on the export actor.
+        let videoTracks = videoComposition.tracks(withMediaType: .video)
+        guard !videoTracks.isEmpty else { throw VoxClipError.decodeFailed("Export has no video tracks") }
         let videoReader = try AVAssetReader(asset: videoComposition)
         videoReader.timeRange = timeRange
-        let videoOutput = AVAssetReaderVideoCompositionOutput(videoTracks: [videoTrack], videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
+        let videoOutput = AVAssetReaderVideoCompositionOutput(videoTracks: videoTracks, videoSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA])
         videoOutput.videoComposition = graph.videoComposition
         videoOutput.alwaysCopiesSampleData = false
         let videoProvider = videoReader.outputProvider(for: videoOutput)
@@ -421,6 +429,29 @@ public actor AVExporter: Exporter {
             if let failure = error as? VoxClipError, failure.requiresExportRecovery { throw failure }
             if error is CancellationError || Task.isCancelled { throw CancellationError() }
             throw ExportSafety.failure(error, destination: destination)
+        }
+    }
+
+    package nonisolated static func canUseSourceOnlyVideo(_ request: RenderRequest) -> Bool {
+        request.voiceLab?.prepared.outputPlan.requiresSyntheticRendering != true &&
+        request.contextDemo?.placements.isEmpty != false &&
+        !request.motionCues.contains(where: { $0.clipID == request.motionClipID && $0.isValid }) &&
+        request.style == nil && request.captionLayout == nil && request.captions.words.isEmpty && request.captions.pages.isEmpty
+    }
+
+    private nonisolated static func preventDemoOverwrite(_ request: RenderRequest, paths: [URL]) throws {
+        guard request.contextDemo != nil else { return }
+        guard let root = request.contextDemoRoot else {
+            if request.contextDemo?.placements.isEmpty == false { throw ContextDemoCompositionError.unsafePath }
+            return
+        }
+        guard root.isFileURL else { throw ContextDemoCompositionError.unsafePath }
+        let protected = root.appendingPathComponent("context-demo", isDirectory: true).standardizedFileURL.resolvingSymlinksInPath().path
+        guard paths.allSatisfy({ path in
+            let resolved = path.standardizedFileURL.resolvingSymlinksInPath().path
+            return resolved != protected && !resolved.hasPrefix(protected + "/")
+        }) else {
+            throw VoxClipError.exportFailed("The export must not overwrite a context-demo recording")
         }
     }
 
@@ -602,6 +633,7 @@ public actor AVExporter: Exporter {
         if let input = request.voiceLab {
             try Self.preventPaidOverwrite(input, paths: [destination, URL(fileURLWithPath: destination.path + ".partial")])
         }
+        try Self.preventDemoOverwrite(request, paths: [destination, URL(fileURLWithPath: destination.path + ".partial")])
         let synthetic = request.voiceLab?.prepared.outputPlan.requiresSyntheticRendering == true
         guard request.timeline.outputSamples >= 0 else { throw VoxClipError.diskFull(destination.path) }
         let bytes = try PCMFile.plannedBytes(frames: request.timeline.outputSamples, channels: 2, bits: 32)
@@ -613,7 +645,7 @@ public actor AVExporter: Exporter {
         }
         try DiskCapacity.check(needs, provider: capacityProvider)
         let graph = try await builder.build(request)
-        defer { withExtendedLifetime(graph.voiceLabLease) {} }
+        defer { withExtendedLifetime((graph.voiceLabLease, graph.contextDemoLease)) {} }
         guard let track = graph.audioTrack else { throw VoxClipError.noAudioTrack }
         let reader = try AVAssetReader(asset: graph.composition)
         let output = AVAssetReaderAudioMixOutput(audioTracks: [track], audioSettings: MediaSupport.pcm(rate: request.timeline.sampleRate, channels: 2))

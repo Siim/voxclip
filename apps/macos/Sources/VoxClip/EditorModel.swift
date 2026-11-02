@@ -8,6 +8,7 @@ struct EditorRenderSnapshot {
     let project: Project
     let state: EditState?
     let plan: EditPlan?
+    var reduceMotion: Bool = false
 }
 
 @MainActor @Observable public final class EditorModel {
@@ -39,6 +40,8 @@ struct EditorRenderSnapshot {
     /// removals is one fold and the timeline shows the scope's output with every cut closed
     /// (Edited). Off by default. A view setting: no undo step and no document change (impl-plan §3.3).
     var showsCuts = false
+    var showsSurroundingContext = false
+    var focusesClip: Bool { scopeBounds != nil && !showsSurroundingContext }
     /// Show Pauses: the lengths of uncut pauses in the open clip. An opt-in, off by default.
     var showPauses = false
     /// The A1 track header's speaker (impl-plan V9, item 9): the preview plays without sound.
@@ -72,6 +75,8 @@ struct EditorRenderSnapshot {
     let sendConfirmation = ConnectorConfirmation()
     var connectorSendVerb = "Rewrite"
     @ObservationIgnored lazy var transcription = InlineTranscription(model: self)
+    var contextDemoSession: ContextDemoSession?
+    var voiceChange: VoiceChangeSession?
     var correctionID: String?
     var correctionText = ""
     /// The open Rewrite session, on whichever tab it belongs to. The right column reads
@@ -400,6 +405,8 @@ struct EditorRenderSnapshot {
     @ObservationIgnored private var renderedEdits: ProjectEdits?
     @ObservationIgnored private var renderedMedia: ProjectMedia?
     @ObservationIgnored private var renderedVoiceLab: ProjectVoiceLab?
+    @ObservationIgnored private var renderedContextDemo: ContextDemoDocument?
+    @ObservationIgnored private var renderedMotionCues: [MotionCue] = []
     @ObservationIgnored private(set) var fillerCandidateIDs: Set<String> = []
     @ObservationIgnored private var planningSegments: [EditSegment]?
     @ObservationIgnored private var planningWordIndex: [String: Int] = [:]
@@ -436,7 +443,7 @@ struct EditorRenderSnapshot {
     }
     /// Set by the shell's leave boundary: edits freeze, and late results cannot
     /// change a project that is leaving.
-    var isLeaving = false { didSet { if isLeaving { app.voiceLabSession.leaveVoiceControls(owner: self); transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) } } }
+    var isLeaving = false { didSet { if isLeaving { app.voiceLabSession.leaveVoiceControls(owner: self); contextDemoSession?.close(); contextDemoSession = nil; voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }; transcription.close(); sendConfirmation.cancel(); closeRewrite(returnFocus: false) } } }
     /// Called when a refresh finds a different active clip, for example after Undo.
     @ObservationIgnored var onActiveClipChange: ((String?) -> Void)?
     /// Called when a refresh finds the clips changed: made, kept, dismissed, removed, or back after Undo. The tabs follow it.
@@ -595,6 +602,8 @@ struct EditorRenderSnapshot {
     }
     func close() {
         app.voiceLabSession.leaveVoiceControls(owner: self)
+        contextDemoSession?.close(); contextDemoSession = nil
+        voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }
         voiceRewriteToastTask?.cancel()
         cancelMediaRelink()
         transcription.close()
@@ -608,6 +617,8 @@ struct EditorRenderSnapshot {
     }
     func reloadFromDocument(previousProjectID: String) {
         app.voiceLabSession.leaveVoiceControls(owner: self)
+        contextDemoSession?.close(); contextDemoSession = nil
+        voiceChange?.cancel(); if voiceChange?.close() == true { voiceChange = nil }
         cancelMediaRelink()
         sendConfirmation.cancel()
         transcription.close()
@@ -645,7 +656,7 @@ struct EditorRenderSnapshot {
         let edits = project.edits
         let transcriptChanged = renderedTranscript != project.transcript
         let editChanged = renderedEdits != edits
-        guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedEdits == nil else { return }
+        guard transcriptChanged || editChanged || renderedMedia != project.media || renderedVoiceLab != project.voiceLab || renderedContextDemo != project.contextDemo || renderedMotionCues != project.motionCues || renderedEdits == nil else { return }
         let clipsChanged = renderedEdits?.clips != edits.clips
         if transcribed != (project.transcript != nil) { transcribed = project.transcript != nil }
         projectRevision += 1
@@ -714,9 +725,11 @@ struct EditorRenderSnapshot {
         }
         renderedTranscript = project.transcript; renderedEdits = edits; renderedMedia = project.media
         renderedVoiceLab = project.voiceLab
+        renderedContextDemo = project.contextDemo; renderedMotionCues = project.motionCues
         transcriptRevision += 1
         followWaveformKey()
         if edits.activeClipId != renderedActiveClipID {
+            showsSurroundingContext = false
             captionPages = []
             renderedActiveClipID = edits.activeClipId
             onActiveClipChange?(edits.activeClipId)
@@ -929,6 +942,7 @@ struct EditorRenderSnapshot {
         guard let changed = history?.state else { return }
         guard changed != state || next != project else { return }
         next.edits = changed.projectEdits
+        if case .removeClip(let id) = command { next.motionCues.removeAll { $0.clipID == id } }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         // Only the scope changed: a tab switch, not an edit (impl-plan item 16).
@@ -949,6 +963,11 @@ struct EditorRenderSnapshot {
         for command in commands { history?.apply(command, aiResults: next.ai.results) }
         guard let changed = history?.state, changed != state else { return false }
         next.edits = changed.projectEdits
+        let removedClips = Set(commands.compactMap { command -> String? in
+            if case .removeClip(let id) = command { return id }
+            return nil
+        })
+        next.motionCues.removeAll { removedClips.contains($0.clipID) }
         let clipIDs = Set(changed.clips.map(\.id))
         next.share.captions = next.share.captions.filter { $0.key == "full" || clipIDs.contains($0.key) }
         if onlyScopeDiffers(next) { return setScope(next.edits.activeClipId) }
@@ -1276,7 +1295,7 @@ struct EditorRenderSnapshot {
         NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
     }
     func renderSnapshot() -> EditorRenderSnapshot {
-        EditorRenderSnapshot(project: project, state: editState(), plan: plan)
+        EditorRenderSnapshot(project: project, state: editState(), plan: plan, reduceMotion: EditorAccessibilityPolicy.system.reduceMotion)
     }
     func renderRequest(target: ExportTarget? = nil, snapshot: EditorRenderSnapshot? = nil, labelPosition: VoiceLabLabelPosition? = nil) async throws -> RenderRequest {
         let snapshot = snapshot ?? renderSnapshot()
@@ -1301,14 +1320,20 @@ struct EditorRenderSnapshot {
         if target != nil || voiceLab != nil, let state, let segments {
             plan = try buildEditPlan(segments, duration: project.media.source.durationSeconds, sampleRate: Double(project.media.source.audio?.sampleRate ?? 48_000), pauseKeepSeconds: state.pauseKeepSeconds)
         }
+        if state == nil, project.contextDemo != nil, case .legacy(let canonical) = try RenderCallerInputs.timeline(project: project) {
+            plan = canonical
+        }
         guard let plan else { throw VoxClipError.exportFailed("Could not build the edit plan") }
         guard (voiceLab?.prepared.outputPlan.outputSamples ?? plan.outputSamples) > 0 else { throw VoxClipError.everythingCut }
         let output = ExportFingerprint.output(project)
         let layout = try await buildCaptions(segments: segments, plan: plan, output: output, forPreview: target == nil,
                                             project: project, voiceLab: voiceLab?.prepared.outputPlan)
         try Task.checkCancellation()
-        return RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),
+        if target == nil, snapshot.project != self.project || isLeaving { throw CancellationError() }
+        let request = RenderRequest(sourceURL: URL(fileURLWithPath: project.media.source.absolutePath), plan: plan, captions: layout?.track ?? CaptionTrack(),
             output: output, forPreview: target == nil, captionLayout: layout, voiceLab: voiceLab)
+        return try RenderCallerInputs.prepare(request, project: project, clipID: clip?.id, dataRoot: app.locations.root,
+            reduceMotion: snapshot.reduceMotion, isCancelled: { Task.isCancelled })
     }
     func buildCaptions(segments: [EditSegment]?, plan: EditPlan, output: OutputSpec, forPreview: Bool,
                        project: Project, voiceLab: VoiceLabOutputPlan?) async throws -> CaptionLayoutResult? {
@@ -1332,18 +1357,19 @@ struct EditorRenderSnapshot {
         guard mediaResolved else { return }
         previewRevision &+= 1
         let revision = previewRevision
+        let snapshot = renderSnapshot()
         do {
-            let request = try await renderRequest()
-            guard revision == previewRevision, !Task.isCancelled else { return }
+            let request = try await renderRequest(snapshot: snapshot)
+            guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             captionPages = request.captionLayout?.pages.map(\.page) ?? []
             if load { try await preview.load(request) } else { try await preview.update(request) }
-            guard revision == previewRevision, !Task.isCancelled else { return }
+            guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             previewError = nil
         } catch is CancellationError {} catch {
-            guard revision == previewRevision, !Task.isCancelled else { return }
+            guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             preview.close(); isPlaying = false; previewStop = nil
             let message = await app.safeError(error)
-            guard revision == previewRevision, !Task.isCancelled else { return }
+            guard revision == previewRevision, snapshot.project == project, !isLeaving, !Task.isCancelled else { return }
             previewError = message
         }
     }

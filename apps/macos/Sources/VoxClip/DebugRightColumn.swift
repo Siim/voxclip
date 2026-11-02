@@ -274,7 +274,7 @@ import VoxClipMedia
         var results: [DebugUISuite.Result] = measurements.flatMap { measurement -> [DebugUISuite.Result] in
             let name = "right column \(measurement.variant) at \(measurement.width)"
             let rewriting = measurement.variant.hasPrefix("rewrite")
-            let expectedJobs = measurement.variant.hasPrefix("rewrite-takes-") ? ["captions", "voice"] : rewriting ? ["captions", "rewrite"] : ["captions"]
+            let expectedJobs = measurement.variant.hasPrefix("rewrite-takes-") ? ["captions", "voice", "demo"] : rewriting ? ["captions", "rewrite", "demo"] : ["captions", "demo"]
             let expected = ViewerSection.stageSize(ratio: ratio(measurement.variant, fixture: fixture), in: CGSize(width: measurement.width, height: ViewerSection.boxHeight(forWidth: measurement.width)))
             return [
                 .init(name: "\(name): minimum \(measurement.minimumWidth), proposed \(measurement.proposedWidth)", passed: measurement.minimumWidth <= measurement.width + 0.5 && measurement.proposedWidth <= measurement.width + 0.5),
