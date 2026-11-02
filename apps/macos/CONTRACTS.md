@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## Hosted caption pixel portability (2 Nov 2026)
+
+- Caption lane tests render explicitly at 1× and 2× in Aqua and Dark Aqua. Expected swatches use the captured view’s appearance, and fill probes avoid antialiased rounded edges. The one-point seam, cut wash and outside-scope alpha assertions remain exact.
+- Negative control: forcing Aqua with the old dark-only swatches reproduces all five hosted assertions (10 issues across both scales). Native window acceptance is unchanged.
+
 ## Integrated feature validation (2 Nov 2026)
 
 - The integrated dirty `v2-rewrite` source now passes final default-parallel Core (1,018 tests / 90 suites), App (738 / 58), broad Media (480 / 52), and separate caption fixture/gallery (7 / 2) runs. Existing opt-in skips remain explicit. Native synthetic demo preview/export, scoped narration, zoom cover, conversion finishing and audition are verified without live recording or paid providers. No global test serialization, deadline inflation, fixture regeneration or calibrated-threshold relaxation was introduced.
