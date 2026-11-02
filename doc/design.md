@@ -1035,7 +1035,7 @@ The sidebar list is the clip range layer (editing §2.5 and §10.6), presented a
 
 ### 6.3 Rewrite (clip-first) and your voice
 
-0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice and re-voice rewritten words; Windows re-voice is not available until voice creation is. Change Voice and lip sync are later (M3+).
+0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice, re-voice rewritten words and change the voice of a passage or full take; Windows re-voice is not available until voice creation is. Lip sync is later (M3+).
 
 The 0.1.0 entry points are **Rewrite…** on selections and in the Edit menu (the Windows editor's ⋯ menu), and **Create Your Voice…** in Settings → Voice Lab and Rewrite. Windows marks voice creation unavailable at both entry points. **Insert Words…** is also later (M3+). Unsupported video choices stay disabled and cannot be accepted or exported. Settings shows only ElevenLabs keys and monthly caps; the stored fal.ai/sync.so keys and caps remain intact for M3+.
 

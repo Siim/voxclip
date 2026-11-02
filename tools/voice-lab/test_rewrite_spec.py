@@ -65,7 +65,7 @@ class RewriteSpecTests(unittest.TestCase):
         cls.ai = read('doc/spec/ai.md')
 
     def test_release_scope_is_identical_in_all_three_documents(self):
-        scope = '0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice and re-voice rewritten words; Windows re-voice is not available until voice creation is. Change Voice and lip sync are later (M3+).'
+        scope = '0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice, re-voice rewritten words and change the voice of a passage or full take; Windows re-voice is not available until voice creation is. Lip sync is later (M3+).'
         for text in [read('CHANGELOG.md'), section(self.design, '### 6.3'), section(self.voice_lab, '## 5.')]:
             self.assertIn(scope, text)
             self.assertNotIn('Phase 0', text)
