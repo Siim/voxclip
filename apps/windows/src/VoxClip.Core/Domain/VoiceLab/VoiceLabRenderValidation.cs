@@ -187,9 +187,17 @@ public static class VoiceLabRenderValidation
                 recipe.Provenance.VoiceId == voice.VoiceId && recipe.Provenance.Provider == voice.Provider &&
                 recipe.ConsentVerifiedAt is { } verified && verified <= recipe.Provenance.CreatedAt, VoiceLabProjectErrorCode.ConsentUnverified);
             if (segment.Kind == VoiceLabSegmentKind.Tts)
-                Require(qa.SpeakerScore is { } score && qa.SpeakerThreshold is { } threshold &&
-                    double.IsFinite(score) && double.IsFinite(threshold) && score is >= 0 and <= 1 && threshold is >= 0 and <= 1 &&
-                    qa.SpeakerModel?.Length > 0 && qa.SpeakerPassed == true && score >= threshold, VoiceLabProjectErrorCode.QaRejected);
+            {
+                if (qa.ShortSpeech is { Mode: VoiceLabShortSpeechMode.Unmeasured } evidence)
+                    Require(evidence.IsValid && evidence.RecordId == voice!.ConsentRecordId && qa.SpeakerScore is null && qa.SpeakerPassed == false &&
+                        qa.SpeakerThreshold is { } unmeasuredThreshold && double.IsFinite(unmeasuredThreshold) && unmeasuredThreshold is >= 0 and <= 1 &&
+                        qa.SpeakerModel?.Length > 0, VoiceLabProjectErrorCode.QaRejected);
+                else
+                    Require((qa.ShortSpeech is not { } measured || measured.IsValid && measured.RecordId == voice!.ConsentRecordId) &&
+                        qa.SpeakerScore is { } score && qa.SpeakerThreshold is { } threshold &&
+                        double.IsFinite(score) && double.IsFinite(threshold) && score is >= 0 and <= 1 && threshold is >= 0 and <= 1 &&
+                        qa.SpeakerModel?.Length > 0 && qa.SpeakerPassed == true && score >= threshold, VoiceLabProjectErrorCode.QaRejected);
+            }
         }
         else Require(recipe.VoiceRefId is null && recipe.ConsentVerifiedAt is null && recipe.Provenance.ConsentRecordId is null, VoiceLabProjectErrorCode.InvalidSegment);
     }
@@ -216,6 +224,9 @@ public static class VoiceLabRenderValidation
             video.WindowStartSample is null or >= 0 && video.WindowEndSample is null or >= 0 && video.SyncMode is null or "remap", VoiceLabProjectErrorCode.InvalidSegment);
         Require(qa.TranscriptTokens is null or >= 0 && Unit(qa.TranscriptMatch) && double.IsFinite(qa.LufsJumpLu) && double.IsFinite(qa.PeakDbfs) &&
             Unit(qa.SpeakerScore) && Unit(qa.SpeakerThreshold) && qa.SpeakerModel is null or { Length: > 0 }, VoiceLabProjectErrorCode.InvalidSegment);
+        if (qa.ShortSpeech is { } evidence)
+            Require(evidence.IsValid && evidence.RecordId == provenance.ConsentRecordId && recipe.VoiceSource == VoiceLabVoiceSource.Own,
+                VoiceLabProjectErrorCode.InvalidSegment);
         Require(provenance.Provider is not null && VoiceLabProject.Matches(provenance.Provider, "[a-z0-9-]+") &&
             !string.IsNullOrEmpty(provenance.Endpoint) && !string.IsNullOrEmpty(provenance.Model) && !string.IsNullOrEmpty(provenance.VoiceId) &&
             (provenance.ConsentRecordId is null || Id(provenance.ConsentRecordId)) && (provenance.RequestId is null || Id(provenance.RequestId)) &&

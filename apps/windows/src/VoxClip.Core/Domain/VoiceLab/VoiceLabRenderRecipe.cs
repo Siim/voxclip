@@ -26,7 +26,8 @@ public sealed record VoiceLabVideoRecipe(VoiceLabVideoMode Mode, long SourceStar
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceLabVoiceSource>))]
 public enum VoiceLabVoiceSource { [JsonStringEnumMemberName("own")] Own, [JsonStringEnumMemberName("stock")] Stock }
 public sealed record VoiceLabRenderQa(int? TranscriptTokens, bool? TranscriptExact, double? TranscriptMatch, double LufsJumpLu,
-    double PeakDbfs, double? SpeakerScore, double? SpeakerThreshold, string? SpeakerModel, bool? SpeakerPassed);
+    double PeakDbfs, double? SpeakerScore, double? SpeakerThreshold, string? SpeakerModel, bool? SpeakerPassed,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceLabShortSpeechEvidence? ShortSpeech = null);
 public sealed record VoiceLabCost(string QuoteId, double? Usd);
 public sealed record VoiceLabRenderRecipe(VoiceLabAudio Audio, IReadOnlyList<VoiceLabWord>? Words, double OutDuration, uint Seed, IReadOnlyList<VoiceLabChunk> Chunks,
     VoiceLabRoomTone? RoomTone, VoiceLabSeams Seams, VoiceLabVideoRecipe Video, VoiceLabRenderQa Qa,
