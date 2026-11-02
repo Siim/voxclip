@@ -26,16 +26,16 @@ private actor VoiceChangeFixtureKeys: KeyProvider {
 
 @MainActor private final class VoiceChangeBarrier {
     private var arrived = false
-    private var arrival: CheckedContinuation<Void, Never>?
-    private var release: CheckedContinuation<Void, Never>?
+    private var arrival: TestContinuation<Void>?
+    private var release: TestContinuation<Void>?
     func pause() async {
-        await withCheckedContinuation { continuation in
+        await withTestDeadline { continuation in
             release = continuation; arrived = true; arrival?.resume(); arrival = nil
         }
     }
     func wait() async {
         if arrived { return }
-        await withCheckedContinuation { arrival = $0 }
+        await withTestDeadline { arrival = $0 }
     }
     func resume() { release?.resume(); release = nil }
 }
@@ -342,7 +342,7 @@ private actor VoiceChangeFixtureKeys: KeyProvider {
         #expect(observed != nil)
         let held = try #require(observed)
         held.cancel(); barrier.resume()
-        while held.busy { await Task.yield() }
+        await TestDeadline.until { !held.busy }
         #expect(held.unpublished.count == 1 && held.acceptedRequestIDs.count == 1)
         #expect(VoiceChangeSession.recoverable(for: fake.snapshot.project).contains { $0 === held })
         fake.failPreservation = false; held.retrySaving()

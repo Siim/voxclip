@@ -11,6 +11,36 @@
 - **Deleted/replaced.** Removed the three unconditional short-speech/estimate refusal cases, their failure copy and the error-only surrounding-sentence offer callback. Replaced the speaker-before-Scribe short refusal, the initial three-candidate quote, and tests asserting that short phrases must be blocked. The legacy `insufficientGeneratedSpeech` enum remains solely for existing fixture/row compatibility. No duplicate view or backup implementation was introduced.
 - **Verification.** Three baseline regressions failed before implementation: short take skipped Scribe/remained unselectable, `to how.` planning refused, and three phrases quoted nine candidates. The synthetic replay uses all 13 supplied texts and exact raw durations, with stub VAD retaining roughly 75% of each raw duration: 39 words/acoustic checks, 37 passing pooled takes, and two `fight simulator` transcript-only failures. Pool mismatch, standalone 1.4-second take, Stop, fresh retry pools, one-request retries, exact copy, both consent methods and persistence/schema checks are covered. Full Core: **1,022 tests / 90 suites pass** with default parallelism (final raw-duration replay run: 53.231 s). Full App: **738 tests / 58 suites pass** with default parallelism (125.672 s). Focused Media: **172 tests / 17 suites pass** (97.347 s), including native voice render/export; the two real ONNX/model-cache checks are explicitly skipped. All Swift builds used this worktree's one `.build`, `nice -n 10`, two jobs and the 300 ms type-check diagnostic; no new macOS 27 API was introduced.
 - **Owed and next package.** No CI dispatch. Real-window/VoiceOver/listening and hosted SDK 26 acceptance remain separate gates; sampled console idle was 94, 16 and 10 s, outside the required 300–380 s launch window. Windows has not adopted the new optional evidence or under-length render exception; its strict reader may refuse these newly accepted recipes, so joint release still needs that platform work. Frozen shared fixture key sets were not edited. Do not turn an absent speaker score into a passed measurement or reuse another run's generated pool.
+## Current compiler and consent source inventories (2 Nov 2026)
+
+- Point the compiler-shape inventory at the extracted shared decoder and its chunk-size helper while still requiring typed integer intermediates and rejecting nested numeric conversions. The rewrite entry must call that decoder.
+- Follow the own-voice checkbox through the shared project-consent constant and require its full cloning-consent text, adult and own-video attestations. Recorded-statement privacy and microphone failure checks remain enforced. All 47 Voice Lab Python checks pass; schemas and regenerated fixtures have zero drift. No policy or consent text changes.
+
+## Preserve v4 during Voice Lab schema regeneration (2 Nov 2026)
+
+- The existing render-schema generator previously reset the project version enum/title to v3 and appended a duplicate v3 rule. Regeneration now preserves later declared versions and replaces only its own Voice Lab rule in place. The v4 schema and all frozen fixture bytes remain unchanged.
+- A hosted-discovered Python regression regenerates an isolated copy twice and requires byte equality. It passes; all schema examples and the three v4 wire/schema tests pass. The full Voice Lab Python sweep exposed two older source-inventory assertions, tracked separately.
+
+## Hosted compiler guard and HTTP negative control (2 Nov 2026)
+
+- Split new panel expressions, motion initialization, Voice setup guards and shell observation registration; keep typed transcript-fixture timing intermediates. Debug build plus all test targets pass the 300 ms expression warning guard under local Xcode 27. Some cold first-use expression warnings remain; no error or new SDK 27-only API use was found. Hosted Xcode 26 remains required evidence.
+- Restoring synchronous Speech HTTP handlers reproduces loading-thread starvation: the independent-session regression fails at its ten-second task deadline with two issues. Restoring the asynchronous handler passes the same test in 0.009 seconds. The held-handler cancellation, callback-run-loop and stop-delivery assertions remain intact.
+
+## Deterministic Rewrite fixture envelope (2 Nov 2026)
+
+- The shared headless connector fixture cancels its automatically started cache loader before injecting the synthetic waveform. Previously, suspending once let a cache miss erase that envelope; Rewrite could then enter native cache loading instead of its stub-only text path. The new regression fails with the old fixture and passes with the cancellation guard. Production waveform ownership is unchanged. Send-routing fixtures also supply an in-memory key store explicitly.
+- Director and send-routing task waits retain their explicit deadlines and original focus, consent, billing and send-count assertions. Hosted SDK 26 is still the acceptance source for the original runner hangs.
+
+## Bounded headless test synchronization (2 Nov 2026)
+
+- One shared test-support source, linked into all three test targets, bounds continuation gates and readiness polling at ten seconds. Expiry records the originating test location; late releases are idempotent. Rewrite opening/completion in Director and send-routing tests now names and bounds each awaited task, so a missed completion cannot consume the hosted job’s ten-minute limit. No product timeout or suite limit changed.
+- The full test-tree wait inventory also covers cache leases, transcription starts, export queue starts, Voice Change drain, lip-sync arrivals, take dispatch and native stop checkpoints. Blocking HTTP/reader test gates have explicit deadlines. Finite byte/sample loops, root-terminated fixture walks and subprocesses deliberately killed by bounded runner tests remain distinct from synchronization waits. Native fixture waits inherit their existing 120-second generation limit.
+- Focused verification: 34 App tests across the Director and send-routing suites pass, plus eight Core tests across HTTP scheduling and deadline support. Two known-issue negative controls prove missing conditions/completions report failures; late completion is safe. Broader parallel and SDK 26 acceptance follow in the consolidation report.
+
+## Hosted caption pixel portability (2 Nov 2026)
+
+- Caption lane tests render explicitly at 1× and 2× in Aqua and Dark Aqua. Expected swatches use the captured view’s appearance, and fill probes avoid antialiased rounded edges. The one-point seam, cut wash and outside-scope alpha assertions remain exact.
+- Negative control: forcing Aqua with the old dark-only swatches reproduces all five hosted assertions (10 issues across both scales). Native window acceptance is unchanged.
 
 ## Integrated feature validation (2 Nov 2026)
 

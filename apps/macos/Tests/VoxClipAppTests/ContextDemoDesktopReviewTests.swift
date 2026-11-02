@@ -81,14 +81,14 @@ import VoxClipCore
     var enumerations = 0
     var onBegin: (() -> Void)?
     var holdEnumeration = false
-    var enumerationRelease: CheckedContinuation<Void, Never>?
+    var enumerationRelease: TestContinuation<Void>?
     var output: URL?
 
     init(events: DesktopReviewEvents) { self.events = events }
     func availability() -> ContextDemoCaptureAvailability { .available }
     func windows() async throws -> [ContextDemoCaptureTarget] {
         enumerations += 1
-        if holdEnumeration { await withCheckedContinuation { enumerationRelease = $0 } }
+        if holdEnumeration { await withTestDeadline { enumerationRelease = $0 } }
         return candidates
     }
     func begin(window: ContextDemoCaptureTarget, output: URL, width: Int, height: Int) async throws {
@@ -120,7 +120,7 @@ import VoxClipCore
     var captures: [ContextDemoCaptureRequest] = []
     var current: (@MainActor () -> ContextDemoDesktopCurrent?)?
     var holdResult = false
-    var resultRelease: CheckedContinuation<Void, Never>?
+    var resultRelease: TestContinuation<Void>?
     var result: ContextDemoCaptureResult?
 
     init(service: ContextDemoAccessibilityService, events: DesktopReviewEvents) {
@@ -142,7 +142,7 @@ import VoxClipCore
         let result = try await service.record(plan: plan, approval: approval, reviewedCapture: reviewedCapture,
             capture: capture, current: current)
         self.result = result
-        if holdResult { await withCheckedContinuation { resultRelease = $0 } }
+        if holdResult { await withTestDeadline { resultRelease = $0 } }
         events.values.append("service-drained")
         return result
     }

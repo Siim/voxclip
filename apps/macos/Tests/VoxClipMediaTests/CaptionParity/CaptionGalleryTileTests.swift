@@ -7,10 +7,10 @@ import VoxClipCore
 private final class CaptionTileLatch: @unchecked Sendable {
     private let lock = NSLock()
     private var opened = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [TestContinuation<Void>] = []
 
     func wait() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        await withTestDeadline { (continuation: TestContinuation<Void>) in
             let ready = lock.withLock { () -> Bool in
                 if !opened { waiters.append(continuation) }
                 return opened
@@ -20,7 +20,7 @@ private final class CaptionTileLatch: @unchecked Sendable {
     }
 
     func open() {
-        let ready = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
+        let ready = lock.withLock { () -> [TestContinuation<Void>] in
             opened = true
             defer { waiters = [] }
             return waiters

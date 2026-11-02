@@ -541,7 +541,6 @@ struct VoiceLabServiceTests {
             case "/v2/voices": return SpeechStubHTTP.Reply(status: 200, headers: [:], body: voices)
             default:
                 sends.withLock { $0 += 1 }
-                Thread.sleep(forTimeInterval: 0.03)
                 let code = outcome.withLock { $0 }
                 if code == -1 { return SpeechStubHTTP.Reply(status: 200, headers: [:], body: Data(), failure: .networkConnectionLost) }
                 return SpeechStubHTTP.Reply(status: code, headers: [:], body: code == 200 ? self.timing("Hi", audio: audio) : Data("busy".utf8))

@@ -43,7 +43,7 @@ actor NativeMediaFixtures {
 
     /// The task's value, or an error as soon as the caller is cancelled or `limit` passes. The task
     /// is not awaited after that, so a stalled AVFoundation call cannot hold every waiting test.
-    static func value<Value: Sendable>(of task: Task<Value, any Error>, within limit: Duration? = nil) async throws -> Value {
+    static func value<Value: Sendable>(of task: Task<Value, any Error>, within limit: Duration? = generationLimit) async throws -> Value {
         let waiter = Waiter<Value>()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in

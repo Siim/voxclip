@@ -129,7 +129,7 @@ struct TranscriptionServiceTests {
         request.plan = TranscriptionPlan(engine: .whispercpp, language: .forced("en"))
         let value = request
         let job = Task { try await service.transcribe(value, using: engine, envelope: nil) }
-        while await activity.local == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        await TestDeadline.until { await activity.local > 0 }
         let clock = ContinuousClock.now
         job.cancel()
         do { _ = try await job.value; Issue.record("Expected cancellation") }
@@ -155,7 +155,7 @@ struct TranscriptionServiceTests {
         let stream = await service.progress()
         let events = Task { for await event in stream { await log.append(event) } }
         let job = Task { try await service.transcribe(value, using: engine, envelope: nil) }
-        while await activity.local == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        await TestDeadline.until { await activity.local > 0 }
         do { _ = try await service.transcribe(value, using: engine, envelope: nil); Issue.record("Expected overlapping-job rejection") }
         catch let error as VoxClipError { #expect(error.code == .transcriptionFailed) }
         let result = try await job.value
@@ -230,7 +230,7 @@ private actor SpeechJobActivity {
     /// Jobs that reached an engine, and the ones still inside, oldest first.
     var started: [Int] = []
     var running: [Int] = []
-    private var held: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var held: [Int: TestContinuation<Void>] = [:]
     /// Records the start; a held job then stays in its engine until `finish(_:)`, or until the
     /// suite time limit cancels the test, so a scheduling bug fails the test instead of hanging it.
     func start(_ engine: TranscriptEngine, language: LanguageChoice, job: Int, hold: Bool) async {
@@ -241,7 +241,7 @@ private actor SpeechJobActivity {
         else { local += 1; maximumLocal = max(maximumLocal, local) }
         guard hold else { return }
         await withTaskCancellationHandler {
-            await withCheckedContinuation { held[job] = $0 }
+            await withTestDeadline { held[job] = $0 }
         } onCancel: {
             Task { await self.finish(job) }
         }
@@ -256,7 +256,7 @@ private actor SpeechJobActivity {
 /// The progress a job's stream delivered, in order; `until(_:)` returns once a report of that stage has arrived.
 private actor ProgressLog {
     private(set) var values: [TranscriptionProgress] = []
-    private var waiters: [(stage: TranscriptionStage, continuation: CheckedContinuation<Void, Never>)] = []
+    private var waiters: [(stage: TranscriptionStage, continuation: TestContinuation<Void>)] = []
     func append(_ value: TranscriptionProgress) {
         values.append(value)
         let arrived = waiters.filter { $0.stage == value.stage }
@@ -265,7 +265,7 @@ private actor ProgressLog {
     }
     func until(_ stage: TranscriptionStage) async {
         if values.contains(where: { $0.stage == stage }) { return }
-        await withCheckedContinuation { waiters.append((stage, $0)) }
+        await withTestDeadline { waiters.append((stage, $0)) }
     }
 }
 

@@ -304,7 +304,7 @@ struct VoiceLabPricingTests {
                 group.addTask {
                     // A barrier: no writer starts until every writer is running.
                     shared.arrived.withLock { $0 += 1 }
-                    while shared.arrived.withLock({ $0 }) < writers { await Task.yield() }
+                    await TestDeadline.until { shared.arrived.withLock { $0 } >= writers }
                     for _ in 0..<count {
                         if let warning = await ledger.record(estimate, at: at) { shared.warnings.withLock { $0.append(warning) } }
                     }

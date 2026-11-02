@@ -5,11 +5,11 @@ import VoxClipCore
 
 private actor GatedExporter: Exporter {
     private(set) var started: [String] = []
-    private var pending: [CheckedContinuation<Void, Never>] = []
+    private var pending: [TestContinuation<Void>] = []
 
     func export(_ job: ExportJob, progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
         started.append(job.outputURL.lastPathComponent)
-        await withCheckedContinuation { pending.append($0) }
+        await withTestDeadline { pending.append($0) }
         return ExportResult(outputURL: job.outputURL, durationSeconds: 1, width: 320, height: 180,
             fps: 30, frames: 30, audioSampleRate: 48000, audioSamples: 48000,
             videoCodec: "h264", encoder: "test", elapsedSeconds: 0)
@@ -25,7 +25,7 @@ extension HeavyMediaTests {
     let render = RenderRequest(sourceURL: URL(fileURLWithPath: "/unused.mov"), plan: EditPlan(sampleRate: 48000, totalSamples: 48000, kept: [MediaInterval(startSample: 0, endSample: 48000)]),
         output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 2_000_000))
     let first = Task { try await queue.export(ExportJob(render: render, outputURL: URL(fileURLWithPath: "/first.mp4"))) { _ in } }
-    while await exporter.started.isEmpty { try await Task.sleep(for: .milliseconds(1)) }
+    await TestDeadline.until { await !exporter.started.isEmpty }
     let cancelled = Task { try await queue.export(ExportJob(render: render, outputURL: URL(fileURLWithPath: "/cancelled.mp4"))) { _ in } }
     try await Task.sleep(for: .milliseconds(20))
     cancelled.cancel()
@@ -35,7 +35,7 @@ extension HeavyMediaTests {
     #expect(await exporter.started == ["first.mp4"])
     await exporter.finish()
     _ = try await first.value
-    while await exporter.started.count < 2 { try await Task.sleep(for: .milliseconds(1)) }
+    await TestDeadline.until { await exporter.started.count >= 2 }
     #expect(await exporter.started == ["first.mp4", "last.mp4"])
     await exporter.finish()
     _ = try await last.value

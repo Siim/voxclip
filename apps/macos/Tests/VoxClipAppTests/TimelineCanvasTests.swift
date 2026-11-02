@@ -70,14 +70,31 @@ private actor TimelineTestSettings: SettingsStore {
     @MainActor private struct Pixels {
         let bitmap: NSBitmapImageRep
         let scale: CGFloat
-        init(_ view: NSView) throws {
-            bitmap = try DebugTimeline.sRGBBitmap(of: view)
+        let appearance: NSAppearance.Name
+        init(_ view: NSView, backingScale: CGFloat? = nil) throws {
+            appearance = view.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) ?? .darkAqua
+            if let backingScale {
+                view.layoutSubtreeIfNeeded()
+                let cached = try #require(NSBitmapImageRep(bitmapDataPlanes: nil,
+                    pixelsWide: Int(view.bounds.width * backingScale), pixelsHigh: Int(view.bounds.height * backingScale),
+                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+                cached.size = view.bounds.size
+                view.cacheDisplay(in: view.bounds, to: cached)
+                let image = try #require(cached.cgImage)
+                let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+                let context = try #require(CGContext(data: nil, width: image.width, height: image.height,
+                    bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                bitmap = NSBitmapImageRep(cgImage: try #require(context.makeImage()))
+            } else { bitmap = try DebugTimeline.sRGBBitmap(of: view) }
             scale = CGFloat(bitmap.pixelsWide) / view.bounds.width
         }
         func at(_ x: CGFloat, _ y: CGFloat) -> [Double] { DebugTimeline.pixel(bitmap, x: Int(x * scale), y: Int(y * scale)) }
         // Expected colours go through the same drawing and read-back, so colour management treats both alike.
         func shows(_ x: CGFloat, _ y: CGFloat, _ token: String, alpha: CGFloat = 1, over ground: String? = nil) throws -> Bool {
-            let actual = at(x, y), expected = try DebugTimeline.swatch(token, alpha: alpha, over: ground)
+            let actual = at(x, y), expected = try DebugTimeline.swatch(token, alpha: alpha, over: ground, appearance: appearance)
             return actual.count == 3 && zip(actual, expected).allSatisfy { abs($0 - $1) < 3.0 / 255 }
         }
         /// Whether a 1 pt line centred on `x` shows `token` at `y`, over what `ground`, the same
@@ -85,7 +102,7 @@ private actor TimelineTestSettings: SettingsStore {
         /// as on the hosted runner, a line off the pixel grid covers two columns in part: each
         /// holds the token over the ground, the larger part at least half, one column's worth in all.
         func showsLine(_ x: CGFloat, _ y: CGFloat, _ token: String, ground: Pixels) throws -> Bool {
-            let ink = try DebugTimeline.swatch(token)
+            let ink = try DebugTimeline.swatch(token, appearance: appearance)
             let row = Int(y * scale)
             let left: CGFloat = (x - 0.5) * scale, right: CGFloat = (x + 0.5) * scale
             var total: Double = 0, most: Double = 0
@@ -996,20 +1013,21 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(canvas.captions.frame.maxY <= canvas.trackClip.bounds.height)
     }
 
-    @Test func captionLaneFitsWholeWordsAndLeavesAOnePointSeam() throws {
+    @Test(arguments: [CGFloat(1), 2], [NSAppearance.Name.aqua, .darkAqua]) func captionLaneFitsWholeWordsAndLeavesAOnePointSeam(backingScale: CGFloat, appearance: NSAppearance.Name) throws {
         let lane = CaptionLane(frame: NSRect(x: 0, y: 0, width: 500, height: 24))
         lane.state = .init(viewport: .init(axis: .edited, ptPerSecond: 30, origin: 0, width: 388), cues: [
             TimelineCue(range: 0..<2, text: "And one cool feature"),
             TimelineCue(range: 2..<4, text: "we added today"),
             TimelineCue(range: 4..<4.7, text: "So")
         ])
-        let pixels = try Pixels(lane)
+        lane.appearance = NSAppearance(named: appearance)
+        let pixels = try Pixels(lane, backingScale: backingScale)
         #expect(lane.blocks.count == 3)
         #expect(lane.blocks[1].minX - lane.blocks[0].maxX == 1)
         #expect(lane.textBlocks.allSatisfy { $0 >= 24 })
         #expect(lane.textBlocks.count == 2 && lane.ellipses == 2)
         #expect(try pixels.shows(171.5, 12, "timeline.lane"))
-        #expect(try pixels.shows(169, 3, "timeline.cue"))
+        #expect(try pixels.shows(lane.blocks[0].midX, 3 + 1 / pixels.scale, "timeline.cue"))
         for height in [20.0, 28] {
             lane.setFrameSize(NSSize(width: 500, height: height))
             _ = try Pixels(lane)
@@ -1020,15 +1038,16 @@ private actor TimelineTestSettings: SettingsStore {
         #expect(empty.blocks.isEmpty)
     }
 
-    @Test func sourceCaptionSpansDarkenOnlyTheCutInsideThem() throws {
+    @Test(arguments: [CGFloat(1), 2], [NSAppearance.Name.aqua, .darkAqua]) func sourceCaptionSpansDarkenOnlyTheCutInsideThem(backingScale: CGFloat, appearance: NSAppearance.Name) throws {
         let lane = CaptionLane(frame: NSRect(x: 0, y: 0, width: 500, height: 24))
         lane.state = .init(viewport: .init(axis: .source, ptPerSecond: 30, origin: 10, width: 388), cues: [TimelineCue(range: 10..<15, text: "And one cool", cuts: [12..<13])])
-        let pixels = try Pixels(lane)
+        lane.appearance = NSAppearance(named: appearance)
+        let pixels = try Pixels(lane, backingScale: backingScale)
         #expect(lane.blocks.count == 1)
         #expect(try pixels.shows(160, 4, "timeline.cue"))
         #expect(try pixels.shows(185, 4, "timeline.lane", alpha: 0.42, over: "timeline.cue"))
         lane.state.inOut = 11...14
-        let dimmed = try Pixels(lane)
+        let dimmed = try Pixels(lane, backingScale: backingScale)
         #expect(try dimmed.shows(127, 4, "timeline.cue", alpha: 0.32, over: "timeline.lane"))
     }
 

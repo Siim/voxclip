@@ -28,7 +28,11 @@ class EnrollmentUITests(unittest.TestCase):
         self.assertIn('VoiceLabGate.canCheckOwnVoice(speakerAvailable: app.speakerModelLibrary.installed,', session)
         self.assertIn('var canRecord: Bool { enabled && speakerReady', session)
         self.assertIn('message = failure.localizedDescription; recorder.discard(); trainingReady = false', session)
-        for agreement in ['This is my own voice.', 'I am 18 or older.', 'I will use it only on videos of myself.']:
+        self.assertIn('Toggle(VoiceLabSession.projectConsentCopy, isOn: $session.ownVoice)', job)
+        self.assertIn('static let projectConsentCopy = VoiceConsentRecord.ProjectConsent.text', session)
+        consent = (ROOT / 'apps/macos/Sources/VoxClipCore/Domain/VoiceLab/VoiceConsent.swift').read_text()
+        self.assertIn('I confirm this is my own voice and I consent to creating a voice clone.', consent)
+        for agreement in ['I am 18 or older.', 'I will use it only on videos of myself.']:
             self.assertIn(f'Toggle("{agreement}"', job)
 
     def test_headphones_caption_precedes_recording_and_is_not_announced_during_it(self):

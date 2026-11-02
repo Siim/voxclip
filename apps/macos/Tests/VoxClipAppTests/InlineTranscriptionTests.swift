@@ -11,13 +11,13 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
     var saves = 0
     private var pauseRead = false
     var readIsWaiting = false
-    private var continuation: CheckedContinuation<Void, Never>?
+    private var continuation: TestContinuation<Void>?
     func pauseNextRead() { pauseRead = true }
     func resumeRead() { continuation?.resume(); continuation = nil }
     func hasKey(for provider: String) async -> Bool {
         if pauseRead {
             pauseRead = false; readIsWaiting = true
-            await withCheckedContinuation { continuation = $0 }
+            await withTestDeadline { continuation = $0 }
         }
         return keyed
     }
@@ -27,18 +27,18 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
 @MainActor private final class InlineRunBarrier {
     private var entered = false
     private var released = false
-    private var continuation: CheckedContinuation<Void, Never>?
-    private var observer: CheckedContinuation<Void, Never>?
+    private var continuation: TestContinuation<Void>?
+    private var observer: TestContinuation<Void>?
     func suspend() async {
         guard !released else { return }
-        await withCheckedContinuation { continuation in
+        await withTestDeadline { continuation in
             self.continuation = continuation; entered = true
             observer?.resume(); observer = nil
         }
     }
     func waitUntilEntered() async {
         guard !entered else { return }
-        await withCheckedContinuation { observer = $0 }
+        await withTestDeadline { observer = $0 }
     }
     func release() { released = true; continuation?.resume(); continuation = nil }
 }
@@ -341,7 +341,7 @@ private actor InlineTranscriptionKeys: ProviderKeyStore {
         await flow.open(again: true)
         flow.runOverride = { _ in
             if fails { throw VoxClipError.offline }
-            while !Task.isCancelled { await Task.yield() }
+            await TestDeadline.until { Task.isCancelled }
             throw CancellationError()
         }
         flow.activate()

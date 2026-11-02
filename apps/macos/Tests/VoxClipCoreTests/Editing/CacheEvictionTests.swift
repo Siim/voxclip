@@ -5,35 +5,35 @@ import Testing
 /// A sleep that returns only when the test wakes it, recording what it was asked for.
 private actor ManualSleep {
     private(set) var requests: [Duration] = []
-    private var sleeper: CheckedContinuation<Void, Never>?
-    private var arrival: CheckedContinuation<Void, Never>?
+    private var sleeper: TestContinuation<Void>?
+    private var arrival: TestContinuation<Void>?
     func sleep(_ duration: Duration) async {
         requests.append(duration)
         arrival?.resume(); arrival = nil
-        await withCheckedContinuation { sleeper = $0 }
+        await withTestDeadline { sleeper = $0 }
     }
     /// Returns once something sleeps.
     func asleep() async {
         guard sleeper == nil else { return }
-        await withCheckedContinuation { arrival = $0 }
+        await withTestDeadline { arrival = $0 }
     }
     func wake() { sleeper?.resume(); sleeper = nil }
 }
 
 /// Holds whatever calls `hold()` until the test opens it.
 private actor HoldGate {
-    private var held: CheckedContinuation<Void, Never>?
-    private var arrival: CheckedContinuation<Void, Never>?
+    private var held: TestContinuation<Void>?
+    private var arrival: TestContinuation<Void>?
     private var opened = false
     func hold() async {
         guard !opened else { return }
         arrival?.resume(); arrival = nil
-        await withCheckedContinuation { held = $0 }
+        await withTestDeadline { held = $0 }
     }
     /// Returns once something is held.
     func reached() async {
         guard held == nil else { return }
-        await withCheckedContinuation { arrival = $0 }
+        await withTestDeadline { arrival = $0 }
     }
     func open() { opened = true; held?.resume(); held = nil }
 }
@@ -142,9 +142,9 @@ struct CacheEvictionTests {
     static func contents(_ url: URL) -> [String] { ((try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []).sorted() }
     static let stripped = ["envelope-10ms.f32", "meta.json"]
 
-    /// Yields until `condition` holds; the suite time limit ends a test that never gets there.
+    /// Yields until the condition holds, recording a failure at the explicit deadline.
     static func until(_ condition: () -> Bool) async {
-        while !condition() { await Task.yield() }
+        await TestDeadline.until { condition() }
     }
 
     @Test func theLaunchPassWaitsThirtySeconds() async throws {

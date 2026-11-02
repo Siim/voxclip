@@ -162,7 +162,7 @@ import Testing
         editor.setAspect(.landscape)
         shell.choose(.clip("five-2")); editor.presentExport()
         editor.beginExport(targets: [.clip("five-2")], folder: folder)
-        while await exporter.jobs.isEmpty { await Task.yield() }
+        await TestDeadline.until { await !exporter.jobs.isEmpty }
         let row = try #require(ExportsListModel(project: editor.project, records: [try record(editor.project, aspect: .portrait)]).rows.first)
         editor.presentExport(row)
         #expect(editor.exporting && editor.exportJob.requestedIDs == ["five-2"] && editor.project.export.aspect == .landscape)

@@ -120,14 +120,14 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
 
 @MainActor private final class ClipTakeBarrier {
     var arrived = false
-    private var arrival: CheckedContinuation<Void, Never>?
-    private var release: CheckedContinuation<Void, Never>?
+    private var arrival: TestContinuation<Void>?
+    private var release: TestContinuation<Void>?
     func pause() async {
         await withTaskCancellationHandler {
-            await withCheckedContinuation { release = $0; arrived = true; arrival?.resume(); arrival = nil }
+            await withTestDeadline { release = $0; arrived = true; arrival?.resume(); arrival = nil }
         } onCancel: { Task { @MainActor in self.resume() } }
     }
-    func wait() async { if !arrived { await withCheckedContinuation { arrival = $0 } } }
+    func wait() async { if !arrived { await withTestDeadline { arrival = $0 } } }
     func resume() { release?.resume(); release = nil }
     func finished() { arrived = true; arrival?.resume(); arrival = nil; resume() }
 }

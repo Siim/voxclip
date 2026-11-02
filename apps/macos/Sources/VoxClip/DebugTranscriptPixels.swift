@@ -446,7 +446,12 @@ extension DebugTranscriptPixels {
 
         // A 400-word monologue lays out in paragraphs of at most 150 words.
         var long = model.project
-        long.transcript?.words = (0..<400).map { TimedWord(id: "mono-\($0)", text: $0 % 97 == 96 ? "word." : "word", start: Double($0) * 0.4, end: Double($0) * 0.4 + 0.3, speaker: "solo") }
+        long.transcript?.words = (0..<400).map { index in
+            let start: Double = Double(index) * 0.4
+            let end: Double = start + 0.3
+            let text: String = index % 97 == 96 ? "word." : "word"
+            return TimedWord(id: "mono-\(index)", text: text, start: start, end: end, speaker: "solo")
+        }
         long.edits = ProjectEdits()
         model.document.replaceProject(long)
         model.refresh()

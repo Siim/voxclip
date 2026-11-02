@@ -1,4 +1,5 @@
 import Foundation
+import Testing
 import VoxClipCore
 @testable import VoxClipMedia
 
@@ -101,10 +102,8 @@ func desktopAutomationControl(role: String = "AXButton", identifier: String = "s
             if repeatStartCallback { onStarted() }
         }
         if !returnImmediately {
-            while !finished && !cancelled {
-                try Task.checkCancellation()
-                await Task.yield()
-            }
+            await TestDeadline.until { finished || cancelled || Task.isCancelled }
+            try Task.checkCancellation()
         }
         if cancelled && !returnAfterCancel { throw CancellationError() }
         beforeReturn?()

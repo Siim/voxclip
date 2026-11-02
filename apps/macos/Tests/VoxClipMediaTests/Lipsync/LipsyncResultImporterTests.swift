@@ -5,13 +5,13 @@ import Testing
 
 private actor LipsyncImportBarrier {
     private var entered = false
-    private var waiter: CheckedContinuation<Void, Never>?
-    private var arrival: CheckedContinuation<Void, Never>?
+    private var waiter: TestContinuation<Void>?
+    private var arrival: TestContinuation<Void>?
     func block() async {
         entered = true; arrival?.resume(); arrival = nil
-        await withCheckedContinuation { waiter = $0 }
+        await withTestDeadline { waiter = $0 }
     }
-    func waitUntilEntered() async { if !entered { await withCheckedContinuation { arrival = $0 } } }
+    func waitUntilEntered() async { if !entered { await withTestDeadline { arrival = $0 } } }
     func release() { waiter?.resume(); waiter = nil }
 }
 

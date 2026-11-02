@@ -16,8 +16,8 @@ private actor ScopeStub: LLMConnector {
     private let authMethod: String?
     private let hold: Bool
     private let reply: @Sendable ([RewriteFixtureReply.Line]) -> [Edit]
-    private var waiting: CheckedContinuation<Void, Never>?
-    private var arrivals: [CheckedContinuation<Void, Never>] = []
+    private var waiting: TestContinuation<Void>?
+    private var arrivals: [TestContinuation<Void>] = []
     private(set) var requests: [LLMRequest] = []
     init(id: ConnectorID = .ollama, authMethod: String? = nil, hold: Bool = false,
          reply: @escaping @Sendable ([RewriteFixtureReply.Line]) -> [Edit] = ScopeStub.cutFirstWord) {
@@ -33,12 +33,12 @@ private actor ScopeStub: LLMConnector {
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         requests.append(request)
-        if hold { await withCheckedContinuation { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
+        if hold { await withTestDeadline { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
         let text = request.tag == "patch-rewrite" ? RewriteFixtureReply.patch(reply(RewriteFixtureReply.lines(of: request))) : "{\"rewrite\":\"A clearer passage\"}"
         return RawCompletion(text: text, model: model, stop: .complete)
     }
     /// Returns once a send waits for `release()`; a release before that would leave the send waiting for good.
-    func untilWaiting() async { if waiting == nil { await withCheckedContinuation { arrivals.append($0) } } }
+    func untilWaiting() async { if waiting == nil { await withTestDeadline { arrivals.append($0) } } }
     func release() { waiting?.resume(); waiting = nil }
 }
 
@@ -50,10 +50,10 @@ private struct ScopeTakeKeys: KeyProvider {
 /// Holds a take's publication until the test lets it go.
 @MainActor private final class PublicationHold {
     private var reached = false
-    private var arrival: CheckedContinuation<Void, Never>?
-    private var release: CheckedContinuation<Void, Never>?
-    func pause() async { await withCheckedContinuation { release = $0; reached = true; arrival?.resume(); arrival = nil } }
-    func wait() async { if !reached { await withCheckedContinuation { arrival = $0 } } }
+    private var arrival: TestContinuation<Void>?
+    private var release: TestContinuation<Void>?
+    func pause() async { await withTestDeadline { release = $0; reached = true; arrival?.resume(); arrival = nil } }
+    func wait() async { if !reached { await withTestDeadline { arrival = $0 } } }
     func resume() { release?.resume(); release = nil }
 }
 

@@ -306,7 +306,7 @@ private func cliNativeTree(in directory: URL) throws -> URL {
 /// Waits for a child to write `url`; the suite time limit ends a test whose child never starts, so
 /// a slow start on a loaded runner is not a failure.
 private func cliWaitForFile(_ url: URL) async throws {
-    while (try? Data(contentsOf: url))?.isEmpty ?? true { try await Task.sleep(for: .milliseconds(10)) }
+    await TestDeadline.until { !((try? Data(contentsOf: url))?.isEmpty ?? true) }
 }
 
 private func cliReadPID(_ url: URL) throws -> Int32 {

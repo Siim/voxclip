@@ -172,7 +172,7 @@ private func checkCancellationOfBlockedPull(_ blockedPump: Int, decodeAfterStop:
     let block: @Sendable (Int) -> Void = { pump in
         if pump == blockedPump {
             blocked.withLock { $0 = true }
-            gate.wait()
+            #expect(gate.wait(timeout: .now() + 10) == .success, "The held reader must be released before its deadline")
         }
     }
     let exporter = AVExporter(appendCheck: { _, _ in #expect(stoppedAt.withLock { $0 } == nil) },

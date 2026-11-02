@@ -10,13 +10,12 @@ import VoxClipCore
     var changeVoice: (@MainActor () -> Void)? = nil
     @FocusState private var fieldFocused: Bool
     private var flow: VoiceEnrollmentFlow { session.flow }
-    var body: some View {
-        Group {
-            if let model, let changing = model.voiceChange {
-                VoiceChangePanel(session: changing, back: { model.closeVoiceChange() })
-                    .modifier(EditorPaneFocus(model: model, pane: .panel))
-            } else { enrollment }
-        }
+    var body: some View { Group { currentVoiceStep } }
+    @ViewBuilder private var currentVoiceStep: some View {
+        if let model, let changing = model.voiceChange {
+            VoiceChangePanel(session: changing, back: { model.closeVoiceChange() })
+                .modifier(EditorPaneFocus(model: model, pane: .panel))
+        } else { enrollment }
     }
     private var enrollment: some View {
         VStack(spacing: 0) {

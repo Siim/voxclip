@@ -7,12 +7,12 @@ import VoxClipCore
 /// A decoder that stays in flight until cancelled. Continuations make cancellation and
 /// the two-slot bound deterministic, with no sleeps or live media/provider requests.
 private actor FilmstripDecoderProbe {
-    private var pending: [Int64: CheckedContinuation<CGImage?, Never>] = [:]
+    private var pending: [Int64: TestContinuation<CGImage?>] = [:]
     private var starts = 0
     private var automaticImage: CGImage?
     private(set) var cancellations: Set<Int64> = []
     private(set) var offMain = true
-    private var waiters: [(Int, CheckedContinuation<Void, Never>)] = []
+    private var waiters: [(Int, TestContinuation<Void>)] = []
     func decode(_ frame: Int64) async -> CGImage? {
         starts += 1
         offMain = offMain && !Thread.isMainThread
@@ -20,7 +20,7 @@ private actor FilmstripDecoderProbe {
         ready.forEach { $0.1.resume() }
         if let automaticImage { return automaticImage }
         return await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
+            await withTestDeadline(returning: Optional<CGImage>.none) { continuation in
                 if Task.isCancelled { continuation.resume(returning: nil) }
                 else { pending[frame] = continuation }
             }
@@ -34,7 +34,7 @@ private actor FilmstripDecoderProbe {
     private func cancel(_ frame: Int64) { cancellations.insert(frame); pending.removeValue(forKey: frame)?.resume(returning: nil) }
     func waitForStarts(_ count: Int) async {
         if starts >= count { return }
-        await withCheckedContinuation { waiters.append((count, $0)) }
+        await withTestDeadline { waiters.append((count, $0)) }
     }
 }
 

@@ -32,19 +32,20 @@ private actor ContextDemoCommandProbe: ProcessRunner {
 
 private actor ContextDemoCancellableCommandProbe: ProcessRunner {
     private var began = false
-    private var arrival: CheckedContinuation<Void, Never>?
+    private var arrival: TestContinuation<Void>?
 
     func run(_ request: ProcessRequest) async throws -> ProcessResult {
         began = true
         arrival?.resume()
         arrival = nil
-        try await Task.sleep(for: .seconds(3600))
+        await TestDeadline.until { Task.isCancelled }
+        try Task.checkCancellation()
         return ProcessResult(exitCode: 0, stdout: Data(), stderr: Data())
     }
 
     func waitUntilRunning() async {
         if began { return }
-        await withCheckedContinuation { arrival = $0 }
+        await withTestDeadline { arrival = $0 }
     }
 }
 

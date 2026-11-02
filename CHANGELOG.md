@@ -5,6 +5,17 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Short phrases in casual speech can now be re-voiced, with words checked per take and voice checked across the run. Start with one priced take per phrase; approve another only when needed.
+- Keep offline compiler and consent checks aligned with the integrated Mac implementation.
+
+- Preserve schema v4 when regenerating the Voice Lab project contract.
+
+- Split Mac editor setup expressions to keep hosted compiler checks reviewable.
+
+- Keep headless Rewrite fixtures independent of asynchronous media-cache loading.
+
+- Bound Mac headless test waits so a stalled operation reports its checkpoint instead of hanging CI.
+
+- Verify Mac caption timeline pixels at both backing scales and system appearances.
 
 - Record and place silent context demos from a reviewed app window, webpage or code project in the Mac editor, with source-bound saving and Undo.
 - Edit clip pan and zoom cues in the Mac FX Motion lane, with reduced-motion preview and matching export framing.

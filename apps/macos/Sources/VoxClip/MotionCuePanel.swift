@@ -14,7 +14,12 @@ struct MotionCuePanel: View {
     init(model: EditorModel, cueID: String? = nil, close: @escaping () -> Void) {
         self.model = model
         self.close = close
-        let initial = model.motionCueDraft(id: cueID) ?? MotionCueDraft(cue: MotionCue(id: "", clipID: "", sourceStart: 0, sourceEnd: 0))
+        let initial: MotionCueDraft
+        if let existing = model.motionCueDraft(id: cueID) { initial = existing }
+        else {
+            let empty = MotionCue(id: "", clipID: "", sourceStart: 0, sourceEnd: 0)
+            initial = MotionCueDraft(cue: empty)
+        }
         _draft = State(initialValue: initial)
         _selectedCueID = State(initialValue: initial.original?.id ?? "")
     }

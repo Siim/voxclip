@@ -8,17 +8,17 @@ import Testing
 /// A sleep that returns only when the test wakes it, recording what it was asked for.
 private actor LaunchSleep {
     private(set) var requests: [Duration] = []
-    private var sleeper: CheckedContinuation<Void, Never>?
-    private var arrival: CheckedContinuation<Void, Never>?
+    private var sleeper: TestContinuation<Void>?
+    private var arrival: TestContinuation<Void>?
     func sleep(_ duration: Duration) async {
         requests.append(duration)
         arrival?.resume(); arrival = nil
-        await withCheckedContinuation { sleeper = $0 }
+        await withTestDeadline { sleeper = $0 }
     }
     /// Returns once something sleeps.
     func asleep() async {
         guard sleeper == nil else { return }
-        await withCheckedContinuation { arrival = $0 }
+        await withTestDeadline { arrival = $0 }
     }
     func wake() { sleeper?.resume(); sleeper = nil }
 }
@@ -258,7 +258,7 @@ private actor TemporarySettingsStore: SettingsStore {
         let poster = Task.detached {
             await ThumbnailCache().frame(of: missing, contentKey: key, at: 0, scope: 0...1, filling: CGSize(width: 16, height: 9), cache: cache)
         }
-        while keys.waitingLeases < 2 { await Task.yield() }
+        await TestDeadline.until { keys.waitingLeases >= 2 }
         #expect(keys.leasedKeys == [key])
         keys.endClaim()
         _ = await waveform.value
