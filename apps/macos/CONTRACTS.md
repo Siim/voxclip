@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## Current compiler and consent source inventories (2 Nov 2026)
+
+- Point the compiler-shape inventory at the extracted shared decoder and its chunk-size helper while still requiring typed integer intermediates and rejecting nested numeric conversions. The rewrite entry must call that decoder.
+- Follow the own-voice checkbox through the shared project-consent constant and require its full cloning-consent text, adult and own-video attestations. Recorded-statement privacy and microphone failure checks remain enforced. All 47 Voice Lab Python checks pass; schemas and regenerated fixtures have zero drift. No policy or consent text changes.
+
 ## Preserve v4 during Voice Lab schema regeneration (2 Nov 2026)
 
 - The existing render-schema generator previously reset the project version enum/title to v3 and appended a duplicate v3 rule. Regeneration now preserves later declared versions and replaces only its own Voice Lab rule in place. The v4 schema and all frozen fixture bytes remain unchanged.
