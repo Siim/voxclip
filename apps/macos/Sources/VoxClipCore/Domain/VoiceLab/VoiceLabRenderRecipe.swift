@@ -141,13 +141,15 @@ public struct VoiceLabRenderQA: Codable, Sendable, Equatable {
     public var speakerThreshold: Double?
     public var speakerModel: String?
     public var speakerPassed: Bool?
+    public var shortSpeech: VoiceLabShortSpeechEvidence?
     public init(transcriptTokens: Int?, transcriptExact: Bool?, transcriptMatch: Double?, lufsJumpLu: Double,
-                peakDbfs: Double, speakerScore: Double?, speakerThreshold: Double?, speakerModel: String?, speakerPassed: Bool?) {
+                peakDbfs: Double, speakerScore: Double?, speakerThreshold: Double?, speakerModel: String?, speakerPassed: Bool?, shortSpeech: VoiceLabShortSpeechEvidence? = nil) {
         self.transcriptTokens = transcriptTokens; self.transcriptExact = transcriptExact; self.transcriptMatch = transcriptMatch
         self.lufsJumpLu = lufsJumpLu; self.peakDbfs = peakDbfs; self.speakerScore = speakerScore
+        self.shortSpeech = shortSpeech
         self.speakerThreshold = speakerThreshold; self.speakerModel = speakerModel; self.speakerPassed = speakerPassed
     }
-    private enum CodingKeys: String, CodingKey { case transcriptTokens, transcriptExact, transcriptMatch, lufsJumpLu, peakDbfs, speakerScore, speakerThreshold, speakerModel, speakerPassed }
+    private enum CodingKeys: String, CodingKey { case transcriptTokens, transcriptExact, transcriptMatch, lufsJumpLu, peakDbfs, speakerScore, speakerThreshold, speakerModel, speakerPassed, shortSpeech }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(transcriptTokens, forKey: .transcriptTokens)
@@ -159,6 +161,7 @@ public struct VoiceLabRenderQA: Codable, Sendable, Equatable {
         try values.encode(speakerThreshold, forKey: .speakerThreshold)
         try values.encode(speakerModel, forKey: .speakerModel)
         try values.encode(speakerPassed, forKey: .speakerPassed)
+        try values.encodeIfPresent(shortSpeech, forKey: .shortSpeech)
     }
 }
 public struct VoiceLabCost: Codable, Sendable, Equatable {

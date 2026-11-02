@@ -93,6 +93,10 @@ public enum VoiceLabRenderValidation {
               video.syncMode.map({ $0 == "remap" }) ?? true else { throw VoiceLabProjectError.invalidSegment }
         guard (qa.transcriptTokens ?? 0) >= 0, unit(qa.transcriptMatch), qa.lufsJumpLu.isFinite, qa.peakDbfs.isFinite,
               unit(qa.speakerScore), unit(qa.speakerThreshold), qa.speakerModel?.isEmpty != true else { throw VoiceLabProjectError.invalidSegment }
+        if let evidence = qa.shortSpeech {
+            guard evidence.valid, evidence.recordId == provenance.consentRecordId,
+                  recipe.voiceSource == .own else { throw VoiceLabProjectError.invalidSegment }
+        }
         guard provenance.provider.range(of: "\\A[a-z0-9-]+\\z", options: .regularExpression) != nil,
               !provenance.endpoint.isEmpty, !provenance.model.isEmpty, !provenance.voiceId.isEmpty,
               provenance.consentRecordId.map(validID) ?? true, provenance.requestId.map(validID) ?? true, provenance.region?.isEmpty == false,
@@ -219,9 +223,17 @@ public enum VoiceLabRenderValidation {
                   recipe.provenance.voiceId == voice.voiceId, recipe.provenance.provider == voice.provider,
                   let verified = recipe.consentVerifiedAt, verified <= recipe.provenance.createdAt else { throw VoiceLabProjectError.consentUnverified }
             if segment.kind == .tts {
-                guard let score = qa.speakerScore, let threshold = qa.speakerThreshold,
-                      score.isFinite, threshold.isFinite, (0...1).contains(score), (0...1).contains(threshold),
-                      qa.speakerModel?.isEmpty == false, qa.speakerPassed == true, score >= threshold else { throw VoiceLabProjectError.qaRejected }
+                if let evidence = qa.shortSpeech, evidence.mode == .unmeasured {
+                    guard evidence.valid, evidence.recordId == voice.consentRecordId,
+                          qa.speakerScore == nil, qa.speakerPassed == false,
+                          qa.speakerThreshold.map({ $0.isFinite && (0...1).contains($0) }) == true,
+                          qa.speakerModel?.isEmpty == false else { throw VoiceLabProjectError.qaRejected }
+                } else {
+                    guard qa.shortSpeech.map({ $0.valid && $0.recordId == voice.consentRecordId }) ?? true,
+                          let score = qa.speakerScore, let threshold = qa.speakerThreshold,
+                          score.isFinite, threshold.isFinite, (0...1).contains(score), (0...1).contains(threshold),
+                          qa.speakerModel?.isEmpty == false, qa.speakerPassed == true, score >= threshold else { throw VoiceLabProjectError.qaRejected }
+                }
             }
         } else if recipe.voiceRefId != nil || recipe.consentVerifiedAt != nil || recipe.provenance.consentRecordId != nil { throw VoiceLabProjectError.invalidSegment }
     }

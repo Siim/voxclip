@@ -10,6 +10,9 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 - Keep Mac demonstration and voice-change controls compatible with the supported compiler.
 
+- Keep short-phrase retries tied to earlier voice checks, require explicit selection of unmeasured takes, and show each phrase's check result once.
+
+- Short phrases in casual speech can now be re-voiced, with words checked per take and voice checked in small groups. Start with one priced take per phrase; approve another only when needed.
 - Keep offline compiler and consent checks aligned with the integrated Mac implementation.
 
 - Preserve schema v4 when regenerating the Voice Lab project contract.
@@ -27,7 +30,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Change a selection or full take into your saved voice on Mac, with a separate price approval, measured audio checks and explicit audition.
 - Review a complete sentence when a rewritten phrase is too short for the calibrated speech check, then approve a fresh exact-text quote.
 - Choose source duration or a verified take's natural duration for each rewritten passage; video adapts while generated audio remains unstretched.
-- Report insufficient generated speech accurately and refuse clearly undersized takes before payment. Definitive clone-plan or permission refusals allow a freshly approved retry.
+- Report unavailable voice measurements accurately. Definitive clone-plan or permission refusals allow a freshly approved retry.
 
 - Create your own Mac voice from existing clip speech with checkbox consent, without recording an extra consent statement.
 

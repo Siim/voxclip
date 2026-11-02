@@ -48,13 +48,13 @@ struct VoiceLabTakeSpeechTests {
     }
 
     @Test(arguments: [32_640, 57_600, 59_520, 71_040, 71_999])
-    func shortGeneratedAudioNeverReachesVADOrEmbedding(frames: Int) async throws {
-        let probe = GeneratedSpeechProbe(availabilityError: .speakerUnavailable)
+    func shortGeneratedAudioReachesVADButNotEmbedding(frames: Int) async throws {
+        let probe = GeneratedSpeechProbe()
         await #expect(throws: VoiceSpeakerCheck.GeneratedSpeechError.insufficientSpeech) {
             try await check(probe).generatedEmbedding(samples(frames: frames), sampleRate: 24_000)
         }
-        #expect(await probe.validations == 0)
-        #expect(await probe.voicedInputs.isEmpty)
+        #expect(await probe.validations == 1)
+        #expect(await probe.voicedInputs.count == 1)
         #expect(await probe.embeddedWindows.isEmpty)
     }
 
@@ -66,7 +66,7 @@ struct VoiceLabTakeSpeechTests {
         let actual = try await check(probe).generatedEmbedding(generated, sampleRate: 24_000)
         let expected = try await check(canonical).embedding(resampled)
         #expect(actual == expected)
-        #expect(await probe.validations == 1)
+        #expect(await probe.validations == 2)
         #expect(await probe.voicedInputs == [resampled])
         let actualWindows = await probe.embeddedWindows
         let canonicalWindows = await canonical.embeddedWindows

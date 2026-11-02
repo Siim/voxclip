@@ -148,7 +148,7 @@ public struct VoiceLabSpeechContextPlan: Sendable, Equatable {
         guard reservedIndices == Set(otherVoice) else { throw Failure.invalidInput }
         let project = reviewedProject(request)
         let corrected = correctedWords(project)
-        let rate = try VoiceLabLengthBudget.rate(transcript: corrected).charactersPerSecond
+        let rate = max(try VoiceLabLengthBudget.generatedRate(project: project).charactersPerSecond, VoiceLabLengthBudget.providerRateFloor)
         let pauses = try detectPauses(words, thresholdSeconds: project.edits.pauseThresholdSeconds)
         let breaks = Set(pauses.map(\.afterIndex))
         let cutPauses = pauses.filter { project.edits.cutPauseIds.contains($0.id) }
@@ -195,7 +195,7 @@ public struct VoiceLabSpeechContextPlan: Sendable, Equatable {
                 let sourceSeconds = source.reduce(0.0) { $0 + $1.end - $1.start }
                 let sourceCharacters = corrected[candidate].reduce(0) { $0 + VoiceLabTextLength.length($1.text) }
                 let conservativeRate = max(rate, Double(sourceCharacters) / sourceSeconds)
-                let estimate = Double(VoiceLabTextLength.length(text)) / conservativeRate
+                let estimate = try VoiceLabLengthBudget.generatedVoicedSeconds(text: text, rate: conservativeRate)
                 let margin = source.map { $0.end - $0.start }.max() ?? 0
                 guard estimate.isFinite, margin > 0, estimate >= minimumGeneratedSpeechSeconds + margin else { continue }
                 let window: VoiceLabWindow

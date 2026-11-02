@@ -115,7 +115,6 @@ extension RewriteSession {
             } else { await plan.prepare() }
         } catch {
             generation.fail(ClipTakePlan.copy(error))
-            offerSpeechContext(for: error)
         }
     }
     func currentGenerationCap() async throws -> VoiceLabMonthlyCap? {

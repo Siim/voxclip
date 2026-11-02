@@ -107,7 +107,7 @@ extension RewriteSession {
         let expanding = placements[targetPhraseID].indices.map { selected[$0] }
         if let existing = takePlan {
             guard existing.stillCurrent, existing.phrases.count == placements.count,
-                  existing.phrases[targetPhraseID].selected == nil,
+                  (existing.phrases[targetPhraseID].selected == nil || existing.phrases[targetPhraseID].selected?.row.voiceCheck.evidence?.mode == .unmeasured),
                   zip(existing.phrases, placements).allSatisfy({ $0.indices == $1.indices &&
                       $0.text.utf8.elementsEqual($1.text.utf8) && $0.window == $1.window }) else {
                 throw RewriteSpeechContextReview.Failure.unsupported
@@ -122,24 +122,12 @@ extension RewriteSession {
             contentKey: final.media.source.contentKey, maximumRequestCharacters: min(5_000, limit))
     }
 
-    func offerSpeechContext(for error: any Error) {
-        let phrase: Int
-        switch error {
-        case ClipTakePlan.Failure.insufficientSpeechWindow(let number, _),
-             ClipTakePlan.Failure.insufficientPlannedSpeech(let number, _): phrase = number - 1
-        default: return
-        }
-        do {
-            guard let envelope else { return }
-            let request = try speechContextRequest(targetPhraseID: phrase)
-            speechContextOffer = try .propose(request: request, envelope: envelope, targetPhraseID: phrase,
-                selectedOriginalIndices: request.selectedHunkIndices)
-            speechContextProblem = ""
-        } catch { speechContextProblem = RewriteSpeechContextReview.copy(error) }
-    }
-
     func canReviewSpeechContext(phrase: ClipTakePlan.Phrase) -> Bool {
-        acceptedSpeechContext == nil && phrase.selected == nil && phrase.takes.contains { take in
+        guard acceptedSpeechContext == nil,
+              phrase.selected == nil || phrase.selected?.row.voiceCheck.evidence?.mode == .unmeasured else { return false }
+        if phrase.estimatedVoicedSeconds.map({ $0 < ClipTakePlan.minimumGeneratedSpeechSeconds }) == true { return true }
+        return phrase.takes.contains { take in
+            if take.row.voiceCheck.evidence?.mode == .unmeasured { return true }
             if case .qa(let failures) = take.row.failure, failures.contains(.insufficientGeneratedSpeech) { return true }
             return take.row.qa?.failures.contains(.insufficientGeneratedSpeech) == true
         }

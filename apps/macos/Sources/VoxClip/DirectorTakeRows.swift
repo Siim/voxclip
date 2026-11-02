@@ -2,8 +2,24 @@ import SwiftUI
 import VoxClipCore
 
 enum TakeFailurePresentation {
+    static func shortSpeechSummary(_ rows: [VoiceLabTakeRow], selected: UUID?) -> [String] {
+        let selectedRow = rows.first { $0.id == selected && $0.selectable && $0.voiceCheck.evidence != nil }
+        let measured = rows.last { $0.selectable && $0.voiceCheck.evidence?.mode == .pooled }
+        let available = rows.last { $0.selectable && $0.voiceCheck.evidence != nil }
+        let display = selectedRow ?? measured ?? available ?? rows.last { $0.voiceCheck.evidence != nil }
+        guard let row = display, let copy = row.shortPhraseCopy else { return [] }
+        if row.voiceCheck.evidence?.mode == .unmeasured, row.selectable {
+            return [copy, "Selectable for your own clone."]
+        }
+        return [copy]
+    }
+
     static func reason(for row: VoiceLabTakeRow) -> String? {
         guard !row.selectable else { return nil }
+        if row.voiceCheck == .waiting { return nil }
+        if row.voiceCheck.evidence?.mode == .unmeasured, row.qa?.failures.contains(.speaker) == true {
+            return "A previous voice check for this voice failed. Try another take to check it again."
+        }
         if let failure = row.failure { return reason(for: failure, qa: row.qa?.values) }
         if let qa = row.qa, !qa.passed { return reason(for: .qa(qa.failures), qa: qa.values) }
         if row.qa?.passed == true { return "The checked audio is unavailable." }
@@ -71,7 +87,8 @@ enum TakeFailurePresentation {
     }
 
     static func leftOut(_ row: VoiceLabTakeRow, number: Int) -> String? {
-        reason(for: row).map { "Take \(number): " + $0 + " Left out." }
+        if row.voiceCheck == .waiting { return "Take \(number) · waiting for the voice check" }
+        return reason(for: row).map { "Take \(number): " + $0 + " Left out." }
     }
 }
 
@@ -97,7 +114,7 @@ extension RewriteSession {
     func pricedTakeAction(phrase: Int? = nil) -> PanelAction? {
         guard let plan = takePlan, plan.stillCurrent, !takesBusy, takeQuotePhrase == phrase,
               let quoteID = plan.approvalID, let cost = plan.cost else { return nil }
-        let verb = phrase == nil ? "Make Takes" : "Try Another"
+        let verb = phrase == nil ? "Make Takes" : "Try another"
         let title: String = switch cost {
         case .inline: VoiceLabCostPresentation.buttonTitle(verb, kind: cost)
         case .confirm: verb + "…"
@@ -244,9 +261,12 @@ extension ClipTakePlan.Phrase {
                 }
                 Text(phrase.takeDetail).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
             }
-            if phrase.takes.filter({ $0.row.selectable }).count > 1,
-               phrase.selectedID == phrase.takes.filter({ $0.row.selectable }).max(by: { ($0.row.score ?? 0) < ($1.row.score ?? 0) })?.id {
+            if let best = phrase.bestMeasured, phrase.takes.filter({ $0.row.selectable }).count > 1,
+               phrase.selectedID == best.id {
                 Text("Best match").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
+            }
+            ForEach(TakeFailurePresentation.shortSpeechSummary(phrase.takes.map(\.row), selected: phrase.selectedID), id: \.self) { copy in
+                Text(copy).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
             }
             ForEach(phrase.takes.filter { !$0.row.selectable }) { take in
                 if let copy = TakeFailurePresentation.leftOut(take.row, number: take.number) {
@@ -264,7 +284,7 @@ extension ClipTakePlan.Phrase {
                     Text(session.takeSendLine).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                     PanelButton(action: action, kind: .ghost)
                 } else {
-                    Button(phrase.takes.isEmpty ? "Try Again…" : "Try Another…") { session.priceAnotherTake(phrase: phrase.id) }
+                    Button(phrase.takes.isEmpty ? "Try Again…" : "Try another…") { session.priceAnotherTake(phrase: phrase.id) }
                         .buttonStyle(.plain).help("Prepare this phrase's price. Nothing is sent until you approve it.")
                 }
             }

@@ -110,8 +110,8 @@ public enum VoiceLabTakeQuality {
         return 2 * Double(previous.last ?? 0) / Double(expected.count + recognized.count)
     }
     public static func evaluate(expected: String, recognized: [String], mixed: [Float], sampleRate: Int,
-                                seams: [Int], speakerScore: Double, threshold: Double) throws -> VoiceLabTakeQAResult {
-        guard speakerScore.isFinite, (-1...1).contains(speakerScore), threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
+                                seams: [Int], speakerScore: Double?, threshold: Double) throws -> VoiceLabTakeQAResult {
+        guard speakerScore.map({ $0.isFinite && (-1...1).contains($0) }) ?? true, threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
         let expectedTokens = tokens(expected)
         let recognizedTokens = recognized.flatMap(tokens)
         let ratio = try transcriptRatio(expected: expectedTokens, recognized: recognizedTokens)
@@ -123,7 +123,7 @@ public enum VoiceLabTakeQuality {
         if expectedTokens.count <= 5 ? !exact : ratio < 0.9 { failures.append(.transcript) }
         if peak >= 0 { failures.append(.clipping) }
         if jump > 2 { failures.append(.loudness) }
-        if speakerScore < threshold { failures.append(.speaker) }
+        if let speakerScore, speakerScore < threshold { failures.append(.speaker) }
         return VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: ratio, lufsJumpLu: jump, peakDbfs: peak, speakerScore: speakerScore), failures: failures)
     }
     public static func rank(fit: VoiceLabFitResult, windowSeconds window: Double, matchRatio: Double, flatness: Double) throws -> Double {
@@ -177,7 +177,20 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     public let qa: VoiceLabTakeQAResult?
     public let score: Double?
     public let failure: VoiceLabTakeFailure?
-    public var selectable: Bool { failure == nil && qa?.passed == true && audio != nil }
+    public let voiceCheck: VoiceLabTakeVoiceCheck
+    /// Passing voice copy depends on the whole row, including its independent words check.
+    public var shortPhraseCopy: String? {
+        switch voiceCheck {
+        case .perTake: return nil
+        case .waiting: return "waiting for the voice check"
+        case .shortSpeech(let evidence):
+            guard evidence.valid else { return nil }
+            if evidence.mode == .unmeasured { return "voice couldn't be measured (under 3 s of speech)" }
+            guard failure == nil, qa?.passed == true, qa?.values.speakerScore?.isFinite == true else { return nil }
+            return "Short phrase · words checked · voice checked across \(evidence.takeCount) takes"
+        }
+    }
+    public var selectable: Bool { voiceCheck.complete && failure == nil && qa?.passed == true && audio != nil }
     public var fits: Bool {
         if let audio, case .exact = audio.fit { return true }
         return false
@@ -185,13 +198,34 @@ public struct VoiceLabTakeRow: Sendable, Equatable, Identifiable {
     package init(id: UUID, index: Int, seed: UInt32, receipt: VoiceLabReceipt? = nil, audio: VoiceLabTakeAudio? = nil,
                  qa: VoiceLabTakeQAResult? = nil, score: Double? = nil, failure: VoiceLabTakeFailure? = nil,
                  qaReceipt: VoiceLabReceipt? = nil, generated: VoiceLabAudioResult? = nil, quote: VoiceLabTakeQuote? = nil,
-                 accepted: Set<UUID> = []) {
+                 accepted: Set<UUID> = [], voiceCheck: VoiceLabTakeVoiceCheck = .perTake) {
+        self.voiceCheck = voiceCheck
         self.id = id; self.index = index; self.seed = seed; self.receipt = receipt; self.audio = audio
         self.qa = qa; self.score = score; self.failure = failure
         self.qaReceipt = qaReceipt; self.generated = generated; self.quote = quote
         acceptedRequestIDs = accepted.union([receipt?.requestID, qaReceipt?.requestID].compactMap { $0 })
     }
 }
+extension VoiceLabTakeRow {
+    package func checkingVoice(_ check: VoiceLabTakeVoiceCheck, score: Double? = nil,
+                               failure voiceFailure: VoiceLabTakeFailure? = nil) -> Self {
+        var values = qa?.values ?? VoiceLabQA()
+        values.speakerScore = score
+        var failures = qa?.failures ?? []
+        if case .qa(let additional) = voiceFailure {
+            for item in additional where !failures.contains(item) { failures.append(item) }
+        }
+        let checked = qa.map { _ in VoiceLabTakeQAResult(values: values, failures: failures) }
+        let failure: VoiceLabTakeFailure? = voiceFailure.flatMap { item in
+            if case .qa = item { return nil }
+            return item
+        } ?? (failures.isEmpty ? self.failure : .qa(failures))
+        return Self(id: id, index: index, seed: seed, receipt: receipt, audio: audio, qa: checked,
+                    score: self.score, failure: failure, qaReceipt: qaReceipt, generated: generated,
+                    quote: quote, accepted: acceptedRequestIDs, voiceCheck: check)
+    }
+}
+
 public enum VoiceLabTakeRunEnd: String, Sendable, Equatable { case completed, earlyStop, cancelled, invalidated, fatal }
 public struct VoiceLabTakeRunResult: Sendable, Equatable {
     public let rows: [VoiceLabTakeRow]

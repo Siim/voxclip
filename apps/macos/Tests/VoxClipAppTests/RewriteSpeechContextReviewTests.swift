@@ -115,7 +115,7 @@ import Testing
         project.media.source.durationSeconds = 113
         project.transcript?.durationSeconds = 113
         project.media.source.audio?.sampleRate = 24_000
-        let sentence = ["We", "carefully", "explain", "the", "original", "idea", "with", "clear", "useful", "examples."]
+        let sentence = ["We", "thoughtfully", "contextualize", "the", "unmodified", "implementation", "with", "comprehensive", "multidisciplinary", "demonstrations."]
         project.transcript?.words = (0..<160).map { index in
             let start = 0.5 + Double(index) * 0.7
             return TimedWord(id: "w\(index)", text: sentence[index % 10], start: start, end: start + 0.5,
@@ -198,17 +198,17 @@ import Testing
         #expect(editor.project == original && editor.undoSteps == 0 && !undo.canUndo)
     }
 
-    @Test func originalShortGuardStillRunsBeforeAnyQuote() throws {
+    @Test func shortPhraseCanStayShortBeforeAnyQuote() throws {
         let fixture = try fixture(), fake = Fake(record: fixture.record)
-        #expect(throws: ClipTakePlan.Failure.self) {
-            try plan(fixture, hunks: [hunk(4...4, text: ["better"])], fake: fake)
-        }
+        let plan = try plan(fixture, hunks: [hunk(4...4, text: ["better"])], fake: fake)
+        #expect(plan.phrases.count == 1 && plan.phrases[0].text == "better")
+        #expect(plan.phrases[0].estimatedVoicedSeconds.map { $0 < 3 } == true)
         #expect(fake.quoted.isEmpty && fake.executed.isEmpty)
     }
 
     @Test func expandedQuoteIsExactOnlyTargetsTheRequestedSlotAndNeedsPaidApproval() async throws {
         let fixture = try fixture(), fake = Fake(record: fixture.record)
-        let sibling = hunk(20...29, text: ["We", "carefully", "explain", "the", "different", "idea", "with", "clear", "useful", "examples."])
+        let sibling = hunk(20...29, text: ["We", "thoughtfully", "contextualize", "the", "different", "implementation", "with", "comprehensive", "multidisciplinary", "demonstrations."])
         let all = [hunk(114...114, text: [], kind: .cut), hunk(4...4, text: ["better"]), sibling]
         let request = try request(fixture, hunks: all, selected: [1, 2], target: 1)
         let review = try review(request, fixture: fixture)
@@ -297,8 +297,8 @@ import Testing
 
     @Test func replacingFailedSlotDiscardsShortApprovalPreservesOtherTakeAndUndo() async throws {
         let fixture = try fixture(), fake = Fake(record: fixture.record)
-        let target = hunk(2...7, text: ["accurately", "explain", "this", "significantly", "better", "approach"])
-        let sibling = hunk(20...29, text: ["We", "carefully", "explain", "the", "different", "idea", "with", "clear", "useful", "examples."])
+        let target = hunk(2...7, text: ["accurately", "contextualize", "this", "significantly", "better", "approach"])
+        let sibling = hunk(20...29, text: ["We", "thoughtfully", "contextualize", "the", "different", "implementation", "with", "comprehensive", "multidisciplinary", "demonstrations."])
         let request = try request(fixture, hunks: [target, sibling], selected: [0, 1], target: 0)
         let review = try review(request, fixture: fixture)
         let plan = try plan(fixture, hunks: [target, sibling], fake: fake)

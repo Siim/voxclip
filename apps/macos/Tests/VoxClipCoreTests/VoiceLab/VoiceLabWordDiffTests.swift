@@ -316,6 +316,20 @@ private func labWindow(start: Double = 0, end: Double = 2, left: VoiceLabSeamKin
 
 @Suite("Voice Lab length budget and fit meter")
 struct VoiceLabLengthBudgetTests {
+    @Test func generatedPlanningUsesAcceptedAlignmentsAndConservativeSpeechMargins() throws {
+        let project = try JSONProjectStore.decode(FixtureLoader.data("fixtures/voice-lab/passage-render-v3.voxclip"))
+        let rate = try VoiceLabLengthBudget.generatedRate(project: project)
+        #expect(rate.source == .candidates)
+        #expect(rate.charactersPerSecond.isFinite && rate.charactersPerSecond > 0)
+        let slow = try VoiceLabLengthBudget.generatedVoicedSeconds(text: "to how.", rate: 4)
+        let floor = try VoiceLabLengthBudget.generatedVoicedSeconds(text: "to how.", rate: 20)
+        let fast = try VoiceLabLengthBudget.generatedVoicedSeconds(text: "to how.", rate: 40)
+        #expect(slow == floor && fast < floor && floor < 0.25)
+        #expect(throws: VoiceLabLengthBudgetError.invalidInput) {
+            try VoiceLabLengthBudget.generatedVoicedSeconds(text: "to how.", rate: .nan)
+        }
+    }
+
     private static let document = try? JSONDecoder().decode(LabLengthDocument.self, from: FixtureLoader.data("fixtures/voice-lab/length-budget-cases.json"))
 
     @Test func fixtureCount() throws {

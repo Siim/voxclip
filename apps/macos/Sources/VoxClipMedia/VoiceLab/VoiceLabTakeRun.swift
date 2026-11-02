@@ -172,6 +172,8 @@ public actor VoiceLabTakeRun {
     }
     public func execute(_ quote: VoiceLabTakeRunQuote, approved: Bool,
                         keepingPreviousTakes: Bool = false,
+                        shortTakePool: VoiceLabShortTakePool? = nil,
+                        phraseID: Int? = nil,
                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void = { _ in },
                         started: @escaping @Sendable () async throws -> Void = {}) async throws -> VoiceLabTakeRunResult {
         guard approved, task == nil, runningID == nil, executionOwner == nil, let value = pending, value.quote == quote else { throw VoiceLabError.consentRequired }
@@ -200,10 +202,16 @@ public actor VoiceLabTakeRun {
             await release(owner: owner, quote: quote, retaining: revision == currentRevision ? value : nil)
             throw error
         }
-        let operation = Task { await self.perform(value, revision: currentRevision, dispatch: dispatch, progress: progress) }
+        let pool = shortTakePool ?? VoiceLabShortTakePool()
+        let operation = Task { await self.perform(value, revision: currentRevision, dispatch: dispatch, pool: pool, phraseID: phraseID, progress: progress) }
         task = operation; runningID = quote.id
-        let result = await withTaskCancellationHandler { await operation.value } onCancel: {
+        var result = await withTaskCancellationHandler { await operation.value } onCancel: {
             operation.cancel()
+        }
+        if shortTakePool == nil {
+            let checked = await pool.finish()
+            result = VoiceLabTakeRunResult(rows: result.rows.map { checked[$0.id] ?? $0 }, end: result.end, failure: result.failure)
+            if !checked.isEmpty { await progress(result.rows) }
         }
         await release(owner: owner, quote: quote, retaining: !dispatch.started && revision == currentRevision ? value : nil)
         return result
@@ -265,8 +273,8 @@ public actor VoiceLabTakeRun {
         #endif
         try reservation(expected)
     }
-    private func perform(_ value: Pending, revision expected: Int, dispatch: VoiceLabRunDispatch,
-                         progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void) async -> VoiceLabTakeRunResult {
+    private func perform(_ value: Pending, revision expected: Int, dispatch: VoiceLabRunDispatch, pool: VoiceLabShortTakePool,
+                         phraseID: Int?, progress: @escaping @Sendable ([VoiceLabTakeRow]) async -> Void) async -> VoiceLabTakeRunResult {
         var rows: [VoiceLabTakeRow] = []
         for take in value.quote.takes {
             do { try await validate(value, revision: expected) }
@@ -303,32 +311,30 @@ public actor VoiceLabTakeRun {
                 scratches[take.synthesis.requestID] = scratch
                 let processed = scratch.audio
                 audio = processed
-                let vector: [Float]
+                var voiced: [Float] = []
+                var score: Double?
                 do {
-                    vector = try await speaker.generatedEmbedding(processed.trimmed, sampleRate: processed.sampleRate)
-                }
-                catch {
-                    let reason: VoiceLabTakeQAFailure
-                    let values: VoiceLabQA
-                    switch error {
-                    case VoiceSpeakerCheck.GeneratedSpeechError.insufficientSpeech:
-                        reason = .insufficientGeneratedSpeech
-                        values = VoiceLabQA()
-                    case VoiceConsentError.speakerMismatch:
-                        reason = .speaker
-                        let peak = try VoiceLabLoudness.samplePeakDbfs(processed.mixed)
-                        let jump = try VoiceLabLoudness.lufsJumpLu(processed.mixed, sampleRate: processed.sampleRate, seamSamples: processed.seams)
-                        values = VoiceLabQA(lufsJumpLu: jump, peakDbfs: peak)
-                    default: throw error
+                    voiced = try await speaker.generatedVoicedSamples(processed.trimmed, sampleRate: processed.sampleRate)
+                    if voiced.count >= SpeakerAudio.windowSize {
+                        guard let owner = VoiceConsentRecord.decodeEmbedding(value.record.speaker.embedding) else { throw VoiceConsentError.invalidRecord }
+                        let vector = try await speaker.generatedVoicedEmbedding(voiced)
+                        score = try VoiceSpeakerCheck.cosine(owner, vector)
                     }
-                    let qa = VoiceLabTakeQAResult(values: values, failures: [reason])
-                    rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed, receipt: receipt,
-                        audio: processed, qa: qa, failure: .qa([reason]), generated: generated, quote: take))
+                } catch VoiceConsentError.speakerMismatch {
+                    await pool.measured(id: take.synthesis.requestID, voiced: [], record: value.record, phrase: phraseID, passed: false)
+                    // This take has already failed locally. Do not spend its approved Scribe request.
+                    let qa = VoiceLabTakeQAResult(values: VoiceLabQA(), failures: [.speaker])
+                    rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed,
+                        receipt: receipt, audio: processed, qa: qa, failure: .qa([.speaker]),
+                        generated: generated, quote: take))
                     await progress(rows)
                     continue
                 }
-                guard let owner = VoiceConsentRecord.decodeEmbedding(value.record.speaker.embedding) else { throw VoiceConsentError.invalidRecord }
-                let score = try VoiceSpeakerCheck.cosine(owner, vector)
+                let short = voiced.count < SpeakerAudio.windowSize
+                if let score {
+                    await pool.measured(id: take.synthesis.requestID, voiced: voiced, record: value.record,
+                                        phrase: phraseID, passed: score >= value.record.speaker.threshold)
+                }
                 try await validate(value, revision: expected)
                 let store = store
                 let capability = VoiceOperationCapability(quote: take.qa, reserve: {
@@ -348,13 +354,18 @@ public actor VoiceLabTakeRun {
                 let flatness = try VoiceLabLoudness.flatness(processed.trimmed, sampleRate: processed.sampleRate)
                 let rank = try VoiceLabTakeQuality.rank(fit: processed.fit, windowSeconds: value.input.window.end - value.input.window.start,
                     matchRatio: qa.values.transcriptMatch ?? 0, flatness: flatness)
-                rows.append(VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed, receipt: receipt,
+                let row = VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed, receipt: receipt,
                     audio: processed, qa: qa, score: rank, failure: qa.passed ? nil : .qa(qa.failures),
-                    qaReceipt: qaReceipt, generated: generated, quote: take))
+                    qaReceipt: qaReceipt, generated: generated, quote: take, voiceCheck: short ? .waiting : .perTake)
+                if short {
+                    try await pool.append(row, voiced: voiced, record: value.record, speaker: speaker,
+                                          store: store, phrase: phraseID, current: inputsAreCurrent)
+                }
+                rows.append(row)
                 await progress(rows)
                 do { try await validate(value, revision: expected) }
                 catch { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
-                if qa.passed, case .exact = processed.fit { return VoiceLabTakeRunResult(rows: rows, end: .earlyStop) }
+                if !short, qa.passed, case .exact = processed.fit { return VoiceLabTakeRunResult(rows: rows, end: .earlyStop) }
             } catch {
                 guard dispatch.started else { return VoiceLabTakeRunResult(rows: rows, end: end(error), failure: failure(error)) }
                 // A request the provider accepted is in the spend ledger even when its reply failed and left no receipt.

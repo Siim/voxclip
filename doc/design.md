@@ -1425,7 +1425,7 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 **T1. Approval.** It is the R2 primary.
 
 - On Mac, discovering a consented voice opens the Voice job in the existing panel host. Voice/model pickers, phrase rows and Review Changes share that job; Review Takes returns without another host. Preparing a price sends no synthesis or QA. The priced Make Takes click approves the displayed complete-set quote, not a later replacement. High or unknown estimates ask inline, with Keep Working as the safe primary and the confirmed action labelled as billed to the key. ElevenLabs' first-use privacy consent is inline too and cannot start paid takes.
-- One approval covers every included phrase's bounded take set (up to `CANDIDATES` = 3 each) and its Scribe QA, as one summed cap (voice-lab.md §8.6).
+- One approval covers every included phrase's bounded take set (one candidate per phrase on the first run; at most three visible slots after separately approved retries) and its Scribe QA, as one summed cap (voice-lab.md §8.6).
 - The use-time guard (voice-lab.md §6.9) runs first, on device, and is cached per (contentKey, recordId).
 - If the guard fails:
   - a danger callout, "This doesn't sound like the voice owner. Voice Lab is only for your own videos.";
@@ -1435,9 +1435,11 @@ The project-audio analysis (`VoiceTrainingSpans.select` with `preferRange` set t
 **T2. Generating.**
 
 - Headline: a spinner and "Making takes… phrase {i} of {z}", with **Stop**.
-- Rows fill as takes arrive. Generation for a phrase stops at the first take that fits.
+- Rows fill as takes arrive. The first run makes one take per phrase. Short takes say “waiting for the voice check” until the completed run or Stop finishes the pooled check; waiting rows cannot be selected.
 - Mac rows retain every failed take and the engine's status, including “Phrase 2 of 3…” and “Take N stopped.” Stop cancels and drains price preparation or generation, retains completed takes, and never starts a replacement quote. A stopped phrase is retried independently; finished phrases are not regenerated.
 - Announce "Phrase {i} fits."
+
+Once per phrase, passing short takes use the inline f12 grammar: `Short phrase · words checked · voice checked across 3 takes`, using the actual pooled count. An under-length pool says `voice couldn't be measured (under 3 s of speech)` and explains that selection is allowed for the user's own clone. This is an unavailable measurement, never a failed speech comparison. Wrong words and measured speaker mismatches retain their distinct failure reasons, without the passing-voice summary. A measured mismatch blocks the own-clone unmeasured exception for that record until a later approved run passes a measured check. Unmeasured takes require the user's explicit click; automatic selection prefers measured passing takes and preserves valid explicit selections. Finalizing voice checks preserves specific fatal-error text and names consent/provider failures truthfully. `Use surrounding sentence` remains an optional inline review, available from the advisory estimate before payment as well as after an unmeasured take. No expansion or extra synthesis happens automatically. See [ADR-R37](adr/R37-short-phrase-voice-check.md).
 
 **T3. Ready.**
 
