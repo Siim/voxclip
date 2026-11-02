@@ -155,7 +155,7 @@ extension NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let fill else { return }
         DesignValues.nsColor(fill).setFill()
-        dirtyRect.fill()
+        bounds.fill()
     }
 }
 
@@ -218,7 +218,7 @@ extension NSView {
     }
     override func draw(_ dirtyRect: NSRect) {
         DesignValues.nsColor(fill).setFill()
-        dirtyRect.fill()
+        bounds.fill()
         guard bottomLine else { return }
         DesignValues.nsColor("line.default").setFill()
         NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
@@ -468,7 +468,7 @@ extension NSView {
     }
     override func draw(_ dirtyRect: NSRect) {
         DesignValues.nsColor("bg.window").setFill()
-        dirtyRect.fill()
+        bounds.fill()
     }
 }
 
@@ -484,7 +484,7 @@ extension NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func draw(_ dirtyRect: NSRect) {
         DesignValues.nsColor(token).setFill()
-        dirtyRect.fill()
+        bounds.fill()
     }
 }
 

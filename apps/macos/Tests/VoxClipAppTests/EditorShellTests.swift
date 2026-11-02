@@ -80,6 +80,50 @@ private final class FullScreenStandIn: NSWindow {
         NotificationCenter.default.post(name: NSSplitView.didResizeSubviewsNotification, object: split.divider)
     }
 
+    @Test(arguments: ["stack", "band", "overlay", "rule", "status", "clip"])
+    func chromeBackgroundPreservesPixelsOutsideItsBounds(_ kind: String) throws {
+        _ = NSApplication.shared
+        let view: NSView
+        var editorModel: EditorModel?
+        switch kind {
+        case "stack": view = ShellStackView(fill: "bg.window")
+        case "band": view = ShellBand(fill: "bg.window", bottomLine: true, movesWindow: false, region: "paint-test")
+        case "overlay": view = ShellRightOverlay()
+        case "rule": view = ShellRule(token: "line.strong")
+        case "clip":
+            let app = AppModel()
+            let model = try editor(app)
+            editorModel = model
+            view = ClipBarView(model: model, shell: WorkspaceShell(app: app))
+        default: view = StatusBarView(shell: WorkspaceShell(app: AppModel()))
+        }
+        defer {
+            (view as? StatusBarView)?.tearDown()
+            (view as? ClipBarView)?.tearDown()
+            editorModel?.close()
+        }
+        view.setFrameSize(NSSize(width: 80, height: 24))
+        let bitmap = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 160, pixelsHigh: 100,
+                                                  bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                                  colorSpaceName: .deviceRGB, bytesPerRow: 640, bitsPerPixel: 32))
+        let context = try #require(NSGraphicsContext(bitmapImageRep: bitmap))
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = context
+        NSColor.magenta.setFill()
+        NSRect(x: 0, y: 0, width: 160, height: 100).fill()
+        context.cgContext.translateBy(x: 40, y: 40)
+        view.draw(NSRect(x: -40, y: -40, width: 160, height: 100))
+        context.cgContext.flush()
+        let outsidePoints = [(x: 0, y: 0), (x: 159, y: 99), (x: 80, y: 10), (x: 10, y: 50)]
+        for point in outsidePoints {
+            let color = try #require(bitmap.colorAt(x: point.x, y: point.y)?.usingColorSpace(.sRGB))
+            #expect(color.redComponent > 0.99 && color.greenComponent < 0.01 && color.blueComponent > 0.99)
+        }
+        let inside = try #require(bitmap.colorAt(x: 80, y: 50)?.usingColorSpace(.sRGB))
+        #expect(!(inside.redComponent > 0.99 && inside.greenComponent < 0.01 && inside.blueComponent > 0.99))
+    }
+
     /// The cancel button clears the field and sends only its action, no text change.
     @Test func clearingHomeSearchWithItsCancelButtonClearsTheQuery() throws {
         _ = NSApplication.shared

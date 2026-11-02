@@ -263,7 +263,7 @@ enum ClipBarMetrics {
 
     override func draw(_ dirtyRect: NSRect) {
         DesignValues.nsColor("bg.surface").setFill()
-        dirtyRect.fill()
+        bounds.fill()
         DesignValues.nsColor("line.default").setFill()
         NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
     }

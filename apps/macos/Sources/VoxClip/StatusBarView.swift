@@ -557,7 +557,7 @@ enum StatusBarMetrics {
 
     override func draw(_ dirtyRect: NSRect) {
         DesignValues.nsColor("bg.statusBar").setFill()
-        dirtyRect.fill()
+        bounds.fill()
         DesignValues.nsColor("line.default").setFill()
         NSRect(x: 0, y: 0, width: bounds.width, height: 1).fill()
     }
