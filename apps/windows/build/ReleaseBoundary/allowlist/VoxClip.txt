@@ -1467,6 +1467,7 @@ member VoxClip.App.Pages.EditorPage :: field private pauseBreath
 member VoxClip.App.Pages.EditorPage :: field private pendingSave
 member VoxClip.App.Pages.EditorPage :: field private pendingStandIn
 member VoxClip.App.Pages.EditorPage :: field private pendingWaveform
+member VoxClip.App.Pages.EditorPage :: field private playback
 member VoxClip.App.Pages.EditorPage :: field private presenter
 member VoxClip.App.Pages.EditorPage :: field private preview
 member VoxClip.App.Pages.EditorPage :: field private previewChanges
@@ -2763,6 +2764,7 @@ member VoxClip.App.ViewModels.EditorTabs :: method public get_ActiveClipId()
 member VoxClip.App.ViewModels.EditorTabs :: method public get_Items()
 member VoxClip.App.ViewModels.EditorViewModel :: field private Announcement
 member VoxClip.App.ViewModels.EditorViewModel :: field private Changed
+member VoxClip.App.ViewModels.EditorViewModel :: field private CorrectionChanged
 member VoxClip.App.ViewModels.EditorViewModel :: field private ExportStatesChanged
 member VoxClip.App.ViewModels.EditorViewModel :: field private SaveRequested
 member VoxClip.App.ViewModels.EditorViewModel :: field private SelectionChanged
@@ -2802,6 +2804,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method internal ProjectWithLoca
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RequireLegacyRendering(VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ResumeEditing()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal RewriteCaretChanged()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal SavableCorrection(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ScopedProject(VoxClip.Core.Domain.Editing.EditState)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetExportActivity(VoxClip.Core.Domain.Shared.ExportTarget,VoxClip.App.ViewModels.ClipExportState,System.Nullable`1<double>)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal SetExportRecords(System.Collections.Generic.IReadOnlyList`1<VoxClip.App.ViewModels.ExportRecord>)
@@ -2832,6 +2835,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method private ScopeKeepsWords(
 member VoxClip.App.ViewModels.EditorViewModel :: method private SyncProject()
 member VoxClip.App.ViewModels.EditorViewModel :: method private UpdateSummaryLine(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private WordStates(int,bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method private set_CorrectionWordId(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_FullTakeDuration(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_IsReadOnly(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method private set_IsRelinking(bool)
@@ -2849,13 +2853,14 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public Apply(VoxClip.Cor
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyBatch(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Domain.Editing.EditOperation>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyVoiceLab(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabSegment>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAsset>,VoxClip.Core.Domain.VoiceLab.VoiceLabVoiceReference,VoxClip.Core.Domain.VoiceLab.VoiceLabOutputScope,string,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ApplyVoiceLab(VoxClip.Core.Domain.VoiceLab.VoiceLabEditCommand,VoxClip.Core.Domain.Shared.Project,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Editing.EditOperation>)
+member VoxClip.App.ViewModels.EditorViewModel :: method public BeginCorrection()
 member VoxClip.App.ViewModels.EditorViewModel :: method public ClipTitleProblem(string)
-member VoxClip.App.ViewModels.EditorViewModel :: method public Correct(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public CutSelection(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public CycleClip(int)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Dismiss(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public DisplayText(VoxClip.Core.Domain.Shared.TimedWord)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Duration(double)
+member VoxClip.App.ViewModels.EditorViewModel :: method public EndCorrection(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public ExportBlocked(bool,bool,string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Index(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Keep(string)
@@ -2867,6 +2872,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public Redo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public RelinkAsync(VoxClip.Core.Services.Project.IProjectStore,string,System.Func`1<System.Threading.Tasks.Task`1<string>>,System.Func`2<string,System.Threading.Tasks.Task`1<VoxClip.Core.Domain.Shared.MediaInfo>>,System.Func`1<System.Threading.Tasks.Task`1<bool>>,System.Threading.CancellationToken)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Remove(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Rename(string,string)
+member VoxClip.App.ViewModels.EditorViewModel :: method public SaveCorrection(bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Select(int,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SelectSentence(int,bool)
 member VoxClip.App.ViewModels.EditorViewModel :: method public SelectionAnnouncement(bool)
@@ -2885,6 +2891,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public Timecode(double)
 member VoxClip.App.ViewModels.EditorViewModel :: method public Undo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_Announcement(System.EventHandler`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_Changed(System.EventHandler)
+member VoxClip.App.ViewModels.EditorViewModel :: method public add_CorrectionChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_SaveRequested(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public add_SelectionChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Busy()
@@ -2894,6 +2901,8 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanPreviewCut
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanRedo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_CanUndo()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Clips()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_CorrectionText()
+member VoxClip.App.ViewModels.EditorViewModel :: method public get_CorrectionWordId()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_FillerLabel()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_FullTakeDuration()
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_HasSelection()
@@ -2925,9 +2934,11 @@ member VoxClip.App.ViewModels.EditorViewModel :: method public get_UndoActionNam
 member VoxClip.App.ViewModels.EditorViewModel :: method public get_Words()
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_Announcement(System.EventHandler`1<string>)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_Changed(System.EventHandler)
+member VoxClip.App.ViewModels.EditorViewModel :: method public remove_CorrectionChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_SaveRequested(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public remove_SelectionChanged(System.EventHandler)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_Busy(bool)
+member VoxClip.App.ViewModels.EditorViewModel :: method public set_CorrectionText(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_Notice(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method public set_SourceTime(double)
 member VoxClip.App.ViewModels.EditorViewModel+History :: method private .ctor(VoxClip.App.ViewModels.EditorViewModel+History)
@@ -3178,6 +3189,8 @@ member VoxClip.App.ViewModels.LeaveResult :: field public Proceed
 member VoxClip.App.ViewModels.LeaveResult :: field public ShowEditor
 member VoxClip.App.ViewModels.LeaveResult :: field public Stay
 member VoxClip.App.ViewModels.LeaveResult :: field public value__
+member VoxClip.App.ViewModels.LipSyncAvailability :: field internal Shipped
+member VoxClip.App.ViewModels.LipSyncAvailability :: method internal get_SettingsProviders()
 member VoxClip.App.ViewModels.LocalModelRowState :: method internal Finish(bool)
 member VoxClip.App.ViewModels.LocalModelRowState :: method internal Follow(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Services.Models.InstalledModel>,string)
 member VoxClip.App.ViewModels.LocalModelRowState :: method internal ProgressName(string)
@@ -3259,6 +3272,12 @@ member VoxClip.App.ViewModels.PendingProjectSave :: method internal get_Retained
 member VoxClip.App.ViewModels.PendingProjectSave :: method public .ctor(VoxClip.Core.Domain.Shared.Project,System.Action`1<VoxClip.Core.Domain.Shared.Project>)
 member VoxClip.App.ViewModels.PlaybackPresentation :: method internal Hint(bool)
 member VoxClip.App.ViewModels.PlaybackPresentation :: method internal Name(bool)
+member VoxClip.App.ViewModels.PlaybackToggle :: field private refresh
+member VoxClip.App.ViewModels.PlaybackToggle :: method internal EndCorrectionAsync(VoxClip.App.ViewModels.EditorViewModel)
+member VoxClip.App.ViewModels.PlaybackToggle :: method internal PausesAsync(VoxClip.App.ViewModels.EditorViewModel,System.Func`1<bool>)
+member VoxClip.App.ViewModels.PlaybackToggle :: method internal Refreshing(System.Threading.Tasks.Task)
+member VoxClip.App.ViewModels.PlaybackToggle :: method private SettleAsync()
+member VoxClip.App.ViewModels.PlaybackToggle :: method public .ctor()
 member VoxClip.App.ViewModels.PreviewClockLabel :: method public Format(double,double)
 member VoxClip.App.ViewModels.PreviewClockLabel :: method public Parts(double,double)
 member VoxClip.App.ViewModels.PreviewTransportCoordinator :: field private lifetime
@@ -4730,6 +4749,26 @@ member VoxClip.App.ViewModels.TranscriptionAnnouncements :: field private stage
 member VoxClip.App.ViewModels.TranscriptionAnnouncements :: method internal Update(VoxClip.Core.Domain.Captions.MediaTranscriptionStage,System.Nullable`1<double>,bool)
 member VoxClip.App.ViewModels.TranscriptionAnnouncements :: method public .ctor()
 member VoxClip.App.ViewModels.TranscriptionModelChoices :: method internal InstalledLocal(System.Collections.Generic.IEnumerable`1<VoxClip.Core.Services.Models.TranscriptionModel>,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Services.Models.InstalledModel>)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method internal Continues(bool,bool,string,string)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method private .ctor(VoxClip.App.ViewModels.TranscriptionModelInstall)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method private get_EqualityContract()
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public .ctor(string,bool,string,string)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public Deconstruct(string&,bool&,string&,string&)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public Equals(VoxClip.App.ViewModels.TranscriptionModelInstall)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public Equals(object)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public GetHashCode()
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public ToString()
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public get_Language()
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public get_Local()
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public get_ModelChoice()
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public get_ModelId()
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public op_Equality(VoxClip.App.ViewModels.TranscriptionModelInstall,VoxClip.App.ViewModels.TranscriptionModelInstall)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public op_Inequality(VoxClip.App.ViewModels.TranscriptionModelInstall,VoxClip.App.ViewModels.TranscriptionModelInstall)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public set_Language(string)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public set_Local(bool)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public set_ModelChoice(string)
+member VoxClip.App.ViewModels.TranscriptionModelInstall :: method public set_ModelId(string)
 member VoxClip.App.ViewModels.TranscriptionProgressCopy :: field internal ExtractingAudio
 member VoxClip.App.ViewModels.TranscriptionProgressCopy :: field internal ReadingVideo
 member VoxClip.App.ViewModels.TranscriptionProgressCopy :: method internal Label(VoxClip.Core.Domain.Transcript.TranscriptionStage,System.Nullable`1<double>,bool)
@@ -5352,6 +5391,7 @@ type VoxClip.App.ViewModels.InlineJobLifetime+Worker
 type VoxClip.App.ViewModels.KeyboardHelp
 type VoxClip.App.ViewModels.LatestTileRender
 type VoxClip.App.ViewModels.LeaveResult
+type VoxClip.App.ViewModels.LipSyncAvailability
 type VoxClip.App.ViewModels.LocalModelRowState
 type VoxClip.App.ViewModels.LocalRuntimeGuard
 type VoxClip.App.ViewModels.LocalTranscriptionRoute
@@ -5359,6 +5399,7 @@ type VoxClip.App.ViewModels.MediaTile
 type VoxClip.App.ViewModels.OpenProjectCacheLease
 type VoxClip.App.ViewModels.PendingProjectSave
 type VoxClip.App.ViewModels.PlaybackPresentation
+type VoxClip.App.ViewModels.PlaybackToggle
 type VoxClip.App.ViewModels.PreviewClockLabel
 type VoxClip.App.ViewModels.PreviewTransportCoordinator
 type VoxClip.App.ViewModels.ProjectLeaveBoundary
@@ -5445,6 +5486,7 @@ type VoxClip.App.ViewModels.TranscriptWordDecoration
 type VoxClip.App.ViewModels.TranscriptWordHighlight
 type VoxClip.App.ViewModels.TranscriptionAnnouncements
 type VoxClip.App.ViewModels.TranscriptionModelChoices
+type VoxClip.App.ViewModels.TranscriptionModelInstall
 type VoxClip.App.ViewModels.TranscriptionProgressCopy
 type VoxClip.App.ViewModels.TranscriptionRouting
 type VoxClip.App.ViewModels.TranscriptionSpendState

@@ -55,6 +55,20 @@ import Synchronization
         #expect(session.flow.statementSeconds == 5 && session.flow.plan == nil)
     }
 
+    @Test func betaNoticeDescribesOnlyTheShippedFeatures() {
+        #expect(VoiceLabSession.betaCopy == "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key.")
+    }
+
+    @Test func unshippedLipSyncProvidersHaveNoKeyOrMonthlyCapRows() throws {
+        #expect(!LipSyncAvailability.shipped)
+        #expect(LipSyncAvailability.settingsProviders.map(\.id) == ["elevenlabs"])
+        let shared = try SharedResources.locate()
+        let source = try String(contentsOf: shared.root.deletingLastPathComponent().appendingPathComponent("apps/macos/Sources/VoxClip/VoiceLabSettings.swift"), encoding: .utf8)
+        #expect(source.components(separatedBy: "ForEach(LipSyncAvailability.settingsProviders, id: \\.id)").count == 3)
+        #expect(source.contains("VoiceLabKeyRow(provider: provider.id, label: provider.label, app: app)"))
+        #expect(source.contains("VoiceLabCapField(provider: provider.id, label: provider.label, app: app)"))
+    }
+
     @Test(arguments: [2, 3], [false, true]) func recoveryOperationAccessibilityIdentifiesEachVoiceAndAction(count: Int, sharedSuffix: Bool) throws {
         let shared = try SharedResources.locate()
         let date = try #require(ISO8601DateFormatter().date(from: "2026-10-30T12:00:00Z"))

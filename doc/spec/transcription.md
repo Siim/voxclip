@@ -1053,6 +1053,8 @@ Estonian takes often contain English terms. Always force `et` on the TalTech mod
 
 **Mac v2 override (v5 §8):** show choices inline. A free installed engine starts without the choice block; English's default is Apple Speech. Choices remain editable during model downloads; completion uses the current ready free choice. Switching to ElevenLabs always waits for a new priced click, even with stored privacy consent. Remember persists only the language. Download and Transcribe accepts the displayed publisher terms inline, with no second dialog. Windows retains the prompts described below until ported.
 
+On Windows, a model download started in the transcription dialog disables engine, language and model choices until it finishes. After success, continue only when that model is installed and verified and the engine is still local with the same language and model choice Download was clicked for. Cancellation, failure or changed choices return to setup. A completed download never starts an ElevenLabs upload; that requires a click and first-use consent.
+
 - If a routed engine fails with `transcriptionLanguageUnsupported`, offer the next candidate from 11.2 as a button. Never switch engines silently, and never upload without a click (`doc/architecture.md` §10.1 rule 6).
 - Prompt copy (`doc/design.md` §13):
   - Download: "Download the {model} model ({size}) to transcribe on this {Mac/PC}." [Download] [Use ElevenLabs instead]. The second button appears only when a key exists.

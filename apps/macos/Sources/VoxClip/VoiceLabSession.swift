@@ -33,7 +33,7 @@ import VoxClipMedia
         }
         var defaultIsCancel: Bool { switch self { case .delete, .removeLocal, .stopLooking: true; default: false } }
     }
-    static let betaCopy = "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
+    static let betaCopy = "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key."
     static let providerCopy = "Voice Lab sends audio of your voice and the words to speak to ElevenLabs with your key. Under ElevenLabs' terms, ElevenLabs may use uploaded content, including your voice, to improve its services unless you opt out in your ElevenLabs account. Generated audio can be traced to your account."
     static let projectChoice = "Use this project's audio (recommended)"
     static let readAloudChoice = "Record a read-aloud (about 90 s)"

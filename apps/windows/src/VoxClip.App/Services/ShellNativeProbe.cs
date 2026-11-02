@@ -138,7 +138,7 @@ internal static class ShellNativeProbe
             replaced.ViewModel.SetMediaUnavailable(false);
             await using (new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.None))
             {
-                replaced.ViewModel.Select(2); replaced.ViewModel.Correct("probe-drop");
+                replaced.ViewModel.Select(2); replaced.ViewModel.BeginCorrection(); replaced.ViewModel.CorrectionText = "probe-drop"; replaced.ViewModel.EndCorrection();
                 await window.OpenDroppedAsync(third);
             }
             Require(ReferenceEquals(window.DebugEditor, replaced) && window.ProjectPath == second, "a failed save let the drop replace the project");

@@ -356,6 +356,7 @@ internal sealed partial class RewritePanel : Grid
         create.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified;
         discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified;
         noVoice.Children.Add(Small("No voice yet")); noVoice.Children.Add(create);
+        noVoice.Children.Add(Small("Creating your voice isn't available on Windows yet."));
         // A voice made from here would be bound to English and never listed for this project (voice-lab.md §6.5.2).
         var unavailable = Small(VoiceLabCopy.LanguageUnavailable);
         AutomationProperties.SetAutomationId(unavailable, "Rewrite.LanguageUnavailable");

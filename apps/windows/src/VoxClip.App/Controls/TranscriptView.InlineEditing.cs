@@ -107,23 +107,29 @@ public sealed partial class TranscriptView
         restore.Focus(FocusState.Programmatic);
     }
 
+    private bool inlineWordCorrection;
+
     private void BeginWordCorrection()
     {
         selectionFlyout.Hide();
-        if (!CanEditTranscript || model is null || !model.HasSelection) return;
-        var index = model.SelectionStart;
-        var id = model.Words[index].Id;
-        var expectedProject = model.Project;
+        if (!CanEditTranscript || model is null || !model.HasSelection || model.PresentedWord(model.SelectionStart).AiModified) return;
+        CloseInlineEditor(false);
+        model.BeginCorrection();
+    }
+
+    private void CorrectionChanged(object? sender, EventArgs args)
+    {
+        if (model?.CorrectionWordId is not { } id)
+        {
+            if (inlineWordCorrection) CloseInlineEditor(false);
+            return;
+        }
+        var index = model.Index(id);
         RevealWord(index);
         var visual = realized.Values.FirstOrDefault(value => value.Runs.Any(run => run.Index <= index && run.LastIndex >= index));
-        if (visual is null || model.PresentedWord(index).AiModified) return;
-        ShowInlineEditor(visual, "Correct spelling", model.DisplayText(model.Words[index]),
-            "Changes captions only. Enter saves. Esc cancels.", value =>
-            {
-                if (model is null || !CanEditTranscript || !ReferenceEquals(expectedProject, model.Project)) return false;
-                if (value == model.DisplayText(model.Words[index])) return true;
-                return model.Apply(new EditOperation.Correct(id, value));
-            });
+        if (visual is null || !IsLoaded) { model.EndCorrection(keep: false); return; }
+        ShowInlineEditor(visual, "Correct spelling", model.CorrectionText,
+            "Changes captions only. Enter saves. Esc cancels.", _ => false, wordCorrection: true);
     }
 
     internal void EditProposalChange(int ordinal)
@@ -148,16 +154,26 @@ public sealed partial class TranscriptView
             ExcludeChangeRequested is null ? null : () => ExcludeChangeRequested?.Invoke(hunk.Ordinal));
     }
 
-    private void ShowInlineEditor(ParagraphVisual visual, string title, string value, string hint, Func<string, bool> save, Action? reject = null)
+    private void ShowInlineEditor(ParagraphVisual visual, string title, string value, string hint, Func<string, bool> save, Action? reject = null, bool wordCorrection = false)
     {
-        CloseInlineEditor(false);
+        if (!wordCorrection) CloseInlineEditor(false);
         selectionFlyout.Hide();
         var host = visual.Editor;
         inlineEditor = host;
+        inlineWordCorrection = wordCorrection;
         var text = new TextBox { Header = title, Text = value, TextWrapping = TextWrapping.Wrap, MaxWidth = 680 };
         model?.RewriteCaretChanged();
         text.SelectionChanged += (_, _) => model?.RewriteCaretChanged();
         AutomationProperties.SetName(text, title);
+        if (wordCorrection)
+        {
+            text.TextChanged += (_, _) => { if (ReferenceEquals(inlineEditor, host) && model is not null) model.CorrectionText = text.Text; };
+            text.LostFocus += (_, _) =>
+            {
+                if (ReferenceEquals(inlineEditor, host) && text.ContextFlyout is not { IsOpen: true } && text.SelectionFlyout is not { IsOpen: true })
+                    model?.EndCorrection();
+            };
+        }
         var status = new TextBlock { Text = hint, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
         var composing = false;
         var compositionEnded = false;
@@ -172,10 +188,17 @@ public sealed partial class TranscriptView
         {
             if (composing || compositionEnded || !ReferenceEquals(inlineEditor, host) || !CanEditTranscript) return;
             var entered = text.Text;
-            if (!save(entered))
+            if (wordCorrection && model is not null) model.CorrectionText = entered;
+            var applied = wordCorrection ? model?.SaveCorrection(advance: next) == true : save(entered);
+            if (!applied)
             {
                 status.Text = "The edit was not applied. Your media and edits are safe.";
                 Announce(status.Text);
+                return;
+            }
+            if (wordCorrection)
+            {
+                if (model?.CorrectionWordId is null) Focus(FocusState.Keyboard);
                 return;
             }
             CloseInlineEditor(false);
@@ -209,8 +232,12 @@ public sealed partial class TranscriptView
 
     private void CloseInlineEditor(bool focus)
     {
-        inlineEditor?.Children.Clear();
+        var previous = inlineEditor;
+        var word = inlineWordCorrection;
         inlineEditor = null;
+        inlineWordCorrection = false;
+        if (word) model?.EndCorrection(keep: false);
+        previous?.Children.Clear();
         if (focus && IsLoaded) Focus(FocusState.Keyboard);
     }
 }

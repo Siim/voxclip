@@ -3,7 +3,7 @@
 Status:
 
 - **§4 Clean audio**: normative for M2.
-- **§5 to §12 Voice Lab beta**: the Mac beta includes passage Rewrite, clip-audio checkbox consent, scoped voice changing, explicit sentence-context review and per-passage duration choices. The Mac and Windows Core service foundation is described in §2.6. Windows voice creation still waits for the native speaker check (§6.6). Lip-sync provider jobs and local result validation are implemented as services; the editor workflow and lip-sync render route remain unavailable. Native, real-voice, provider and release gates remain open.
+- **§5 to §12 Voice Lab beta**: the Mac beta includes passage Rewrite, clip-audio checkbox consent, scoped voice changing, explicit sentence-context review and per-passage duration choices. The Mac and Windows Core service foundation is described in §2.6. Windows voice creation still waits for the native speaker check (§6.6). Lip-sync provider jobs and local result validation are implemented as services; the editor workflow and lip-sync render route remain unavailable. Native, real-voice, provider and release gates remain open. Unapproved lip-sync settings providers stay hidden in 0.1.0 through the shipped-availability flag.
 - **§13**: later capabilities and integration limits.
 
 Voice Lab is every VoxClip feature that sends the user's voice to an AI service and gets new audio or video back. It is separate from transcription (`doc/spec/transcription.md`) and from AI tighten (`doc/spec/ai.md` §12). AI tighten only proposes cuts, never makes synthetic media, and never reuses anything defined here.
@@ -406,17 +406,20 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 
 ---
 
-## 5. M3 beta: gate and settings
+## 5. Voice Lab beta: 0.1.0 gate and settings
+
+0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice and re-voice rewritten words; Windows re-voice is not available until voice creation is. Change Voice and lip sync are later (M3+).
 
 - Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default in release builds; development builds turn it on (below). On Mac, turning it on opens the inline Voice first-use card; Windows retains its one-time presentation:
-  - "Voice Lab can clone your own voice, change your voice and re-voice a few words. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key and, for lip sync, your fal.ai or sync.so key."
+  - "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key."
   - Buttons [Turn on] and [Cancel].
 - **Rewrite** (the scope bar, the sidebar row's Rewrite, the selection bar and the menus; `doc/design.md` §6.3) does not need Voice Lab. It proposes cuts, text fixes and phrases in your voice. Cuts and fixes apply with Voice Lab off. Phrases in your voice, making your voice, takes, **Insert Words…**, **Change Voice…** and lip sync need `voiceLab.enabled` and `voiceLab.betaNoticeAccepted`. With Voice Lab off, voice changes stay visible but excluded, with "Needs Voice Lab (beta)", and the panel offers **Turn On Voice Lab…**, which opens the inline Voice job on Mac (the one-time presentation on Windows).
 - Your voice is made inside Rewrite (§6.5.2). Settings → Voice Lab lists and deletes voices; it no longer creates them.
+- Windows appends "Creating your voice isn't available on Windows yet." to the beta notice. Unshipped lip-sync keys and monthly-cap rows stay hidden on both platforms; saved values are preserved.
 - Settings → Voice Lab also shows:
-  - the ElevenLabs, fal.ai and sync.so key rows (§2);
+  - the ElevenLabs key row (§2); fal.ai and sync.so key rows and monthly caps are hidden in 0.1.0 behind one lip-sync availability constant per platform. Stored keys and settings are preserved for M3+;
   - **My voices**: the consent records, with their voice name, creation date, ElevenLabs voice id, and [Delete voice];
-  - the spend cap (§3.1) and the label position (§11.2);
+  - the ElevenLabs spend cap (§3.1) and the label position (§11.2);
   - Content Credentials (C2PA) for Clean-audio-only exports, on or off (§11.7; exports that need disclosure always carry a machine-readable mark);
   - storage.
 - None of these features may block the core loop: import, cut, captions, clips, export.
@@ -1993,7 +1996,7 @@ Unit tests run in both suites (`VoxClipCoreTests`, `VoxClip.Core.Tests`), with s
 Manual QA with real keys runs locally, never in CI:
 
 - one Clean audio run on a 3 min take;
-- one own-voice clone with the full consent flow in English and in Estonian;
+- one own-voice clone with the full consent flow in English; the Estonian consent flow is not applicable until Estonian has a calibrated speaker check. The et-v1 Riigikogu calibration failed: 89% same-speaker pass against the required 95%;
 - one own-voice clone from an Estonian project's audio with an English statement;
 - three patches (a replace, an insert, a bridged replace);
 - one voice-changer preview;

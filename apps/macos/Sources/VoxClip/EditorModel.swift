@@ -22,10 +22,9 @@ struct EditorRenderSnapshot {
         didSet {
             guard selectedWordIDs != oldValue else { return }
             rewriteOpenTask?.cancel()
-            // Selecting other words ends an open inline correction, as a click elsewhere ends an inline rename.
-            if let id = correctionID, !selectedWordIDs.contains(id) { endCorrection() }
-            updateSelectionEnds()
-            refreshPendingSendScope()
+            // Changing the selection ends an open inline correction, as a click elsewhere ends an inline rename.
+            if correctionID != nil { endCorrection() }
+            updateSelectionEnds(); refreshPendingSendScope()
         }
     }
     var selectedPauseIDs: Set<String> = [] { didSet { if selectedPauseIDs != oldValue { rewriteOpenTask?.cancel(); updateSelectionEnds(); refreshPendingSendScope() } } }
@@ -1172,7 +1171,8 @@ struct EditorRenderSnapshot {
     func saveCorrection(advance: Bool = false) {
         guard let id = correctionID else { return }
         let text = correctionText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !text.contains("\n"), text.unicodeScalars.count <= EditingLimits.maxCorrectionScalars else { return }
+        guard !text.isEmpty, !correctionText.unicodeScalars.contains(where: { [0x0A, 0x0D, 0x2028, 0x2029].contains($0.value) }),
+              text.unicodeScalars.count <= EditingLimits.maxCorrectionScalars else { return }
         apply(.correct(id: id, text: text), name: "Correct spelling")
         correctionID = nil
         if advance, let position = index(id), position + 1 < words.count { selectedWordIDs = [words[position + 1].id]; beginCorrection() }

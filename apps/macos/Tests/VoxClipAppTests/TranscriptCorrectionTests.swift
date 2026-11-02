@@ -29,6 +29,14 @@ import Testing
         #expect(model.selectedWordIDs == ["w5"])
     }
 
+    @Test func extendingTheSelectionSavesTheOpenCorrection() throws {
+        let model = try editor(); defer { model.close() }
+        try correcting(model, "w3", text: "Today")
+        model.selectedWordIDs = ["w3", "w5"]
+        #expect(model.correctionID == nil)
+        #expect(model.project.edits.corrections["w3"] == "Today")
+    }
+
     @Test func playSavesTheOpenCorrectionAndPlays() throws {
         let model = try editor(); defer { model.close() }
         try correcting(model, "w3", text: "Today")
@@ -60,6 +68,36 @@ import Testing
         model.transport(" ")
         #expect(model.correctionID == nil && model.isPlaying)
         #expect(model.project.edits.corrections["w5"] == nil)
+    }
+
+    @Test(arguments: ["Today\n", "\rToday", "to\u{2028}day", "to\u{2029}day", String(repeating: "a", count: EditingLimits.maxCorrectionScalars + 1)])
+    func unsavableDraftIsDroppedOnFocusLoss(_ draft: String) throws {
+        let model = try editor(); defer { model.close() }
+        try correcting(model, "w3", text: draft)
+        model.endCorrection()
+        #expect(model.correctionID == nil)
+        #expect(model.project.edits.corrections["w3"] == nil)
+    }
+
+    @Test(arguments: ["", String(repeating: "a", count: EditingLimits.maxCorrectionScalars + 1)], [false, true])
+    func returnAndTabKeepUnsavableDraftsOpen(draft: String, advance: Bool) throws {
+        let model = try editor(); defer { model.close() }
+        try correcting(model, "w3", text: draft)
+        model.saveCorrection(advance: advance)
+        #expect(model.correctionID == "w3")
+        #expect(model.correctionText == draft)
+        #expect(model.selectedWordIDs == ["w3"])
+        #expect(model.project.edits.corrections["w3"] == nil)
+    }
+
+    @Test func tabSavesAndOpensTheNextWord() throws {
+        let model = try editor(); defer { model.close() }
+        try correcting(model, "w3", text: "Today")
+        model.saveCorrection(advance: true)
+        #expect(model.project.edits.corrections["w3"] == "Today")
+        #expect(model.correctionID == "w4")
+        #expect(model.selectedWordIDs == ["w4"])
+        #expect(model.correctionText == "we")
     }
 
     @Test func focusLeavingTheFieldSavesTheTypedTextAndRemovesTheField() throws {

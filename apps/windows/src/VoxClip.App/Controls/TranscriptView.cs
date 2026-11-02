@@ -155,7 +155,7 @@ public sealed partial class TranscriptView : UserControl
         KeyUp += (_, args) => { if (args.Key is Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right or Windows.System.VirtualKey.Home or Windows.System.VirtualKey.End) ScheduleFlyout(); };
         ActualThemeChanged += (_, _) => RebuildThemeVisuals();
         Loaded += (_, _) => { Ui.EffectsChanged += EffectsChanged; RefreshVisuals(); if (pendingReveal >= 0) RevealWord(pendingReveal); };
-        Unloaded += (_, _) => { Ui.EffectsChanged -= EffectsChanged; CloseInlineEditor(false); selectionFlyout.Hide(); };
+        Unloaded += (_, _) => { Ui.EffectsChanged -= EffectsChanged; model?.EndCorrection(); CloseInlineEditor(false); selectionFlyout.Hide(); };
     }
     private void EffectsChanged(object? sender, EventArgs args)
     {
@@ -233,7 +233,8 @@ public sealed partial class TranscriptView : UserControl
     public void Attach(EditorViewModel viewModel)
     {
         fontSize = Math.Clamp(App.Services.Get("general.transcriptTextSize", DefaultFontSize), 13, 28);
-        if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= SelectionChanged; model.Announcement -= Announce; }
+        model?.EndCorrection();
+        if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= SelectionChanged; model.Announcement -= Announce; model.CorrectionChanged -= CorrectionChanged; }
         CloseInlineEditor(false);
         DetachProposal();
         KeepChangeRequested = null; ExcludeChangeRequested = null; EditChangeRequested = null;
@@ -241,6 +242,7 @@ public sealed partial class TranscriptView : UserControl
         model.Changed += ModelChanged;
         model.SelectionChanged += SelectionChanged;
         model.Announcement += Announce;
+        model.CorrectionChanged += CorrectionChanged;
         expandedCuts.Clear();
         presentationState = null;
         presentationProject = null;
@@ -248,7 +250,8 @@ public sealed partial class TranscriptView : UserControl
     }
     public void Detach()
     {
-        if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= SelectionChanged; model.Announcement -= Announce; }
+        model?.EndCorrection();
+        if (model is not null) { model.Changed -= ModelChanged; model.SelectionChanged -= SelectionChanged; model.Announcement -= Announce; model.CorrectionChanged -= CorrectionChanged; }
         CloseInlineEditor(false);
         DetachProposal();
         KeepChangeRequested = null; ExcludeChangeRequested = null; EditChangeRequested = null;

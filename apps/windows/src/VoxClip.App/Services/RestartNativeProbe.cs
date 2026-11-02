@@ -48,10 +48,10 @@ internal static class RestartNativeProbe
             var secondModel = second.DebugEditor!.ViewModel;
             firstModel.Select(0); firstModel.Select(1, true);
             Require(firstModel.MakeClip() is not null, "first accepted clip");
-            firstModel.Select(0); firstModel.Correct("native-r6");
+            firstModel.Select(0); firstModel.BeginCorrection(); firstModel.CorrectionText = "native-r6"; firstModel.EndCorrection();
             secondModel.Select(2); secondModel.Select(3, true);
             Require(secondModel.MakeClip() is not null, "second accepted clip");
-            secondModel.Select(2); secondModel.Correct("second-r6");
+            secondModel.Select(2); secondModel.BeginCorrection(); secondModel.CorrectionText = "second-r6"; secondModel.EndCorrection();
             checks.Add("two rendered project windows accepted clip and word edits");
 
             await App.Services.SetAsync("transcription.language", "auto");

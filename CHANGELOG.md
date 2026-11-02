@@ -87,6 +87,10 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Mac: inline approvals reject delayed early Return events; transcription preserves post-approval edits and keeps cancelled-upload estimates isolated from later runs.
 - Mac: Transcribe now runs inline in the transcript, with editable model downloads, Apple Speech first for English, priced ElevenLabs approval on every run, and inline Transcribe Again.
 - Mac confirms API-key AI sends and first-use privacy inline below the clip bar. Saving a key makes no request, and every billed retry asks again.
+- Save valid inline spelling corrections when leaving the field on both platforms.
+- Continue Windows local transcription after a confirmed model download.
+- Voice Lab's beta notice describes the features in this release; Windows explains that voice creation is unavailable.
+- Hide unused lip-sync keys and monthly caps in Settings while preserving their stored values.
 - First release of VoxClip for Mac (Apple silicon, macOS 26 or later) and Windows (x64 and Arm64, Windows 10 2004 or later).
 - On Mac, the FX Motion lane exposes accessible controls for adding, editing and removing clip motion cues, alongside saved S/M/L track heights and overlay scrolling.
 - Windows transcript paragraphs now follow speaker changes, sentence endings and bounded 80–150-word breaks, matching the Mac editor on long takes.
@@ -99,13 +103,15 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Burn captions in 19 styles and export MP4 at the source size, 16:9, 9:16 or 1:1, with an optional SRT file.
 - Share after export: show the file, copy a caption, or open X or LinkedIn with your text.
 - Save and reopen projects. A command-line tool, voxclip-cli, is included.
-- Rewrite a clip, the full take or a few words with the AI you choose, from the bar above the transcript. The changes show in the transcript, and you can edit or leave out each one before anything is applied. Cuts and text fixes work without Voice Lab.
+- 0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice and re-voice rewritten words; Windows re-voice is not available until voice creation is. Change Voice and lip sync are later (M3+).
 - Rewrite starts at once when it costs you nothing extra: Claude Code or Codex signed in on your plan, a local model, or Apple's on-device model. With an API key, VoxClip asks before every send.
 - Find Clips and the Test button in AI settings follow the same rule on Mac: they start at once when they cost you nothing extra, and ask before every send on an API key or on Claude Code or Codex signed in with one. The privacy notice still appears once for each AI, before its first send, and cancelling either one leaves everything as it was.
 - Voice Lab (beta, off until you turn it on): say the new words in your own cloned voice with your ElevenLabs key. Each paid step shows its cost and asks first.
 - Voice Lab's rewrite planner places several phrases in source order, merges colliding voice windows only when their seams and patch budget remain safe, and explains which change cannot be voiced separately.
 - Voice Lab's rewrite planner respects deletions in the same review when searching for safe voice seams, without re-voicing words marked for removal.
 - Make your voice from the clip you are rewriting with explicit checkbox consent, or use the read-aloud route with a live consent statement. A speaker check on your computer runs before anything is sent, and a separate priced approval creates the voice. Nothing is created if a check fails.
+- On Mac, Voice Lab can re-voice rewritten words with your ElevenLabs key. Each paid step shows its cost and asks first.
+- On Mac, make your voice from training audio or a 90-second read-aloud. You always record a short consent statement live. A speaker check on your computer runs before anything is sent, then one click checks your statement and creates the voice. Nothing is created if a check fails.
 - The speaker check is calibrated for English only, so your voice works in English projects in this release.
 - Every export that contains generated speech is marked AI MODIFIED on screen, and the mark is also embedded in the file's metadata and a provenance sidecar. You can move the label but not turn it off.
 - Share text for such an export ends with a line saying it contains AI-modified speech, and VoxClip asks before you share without it.

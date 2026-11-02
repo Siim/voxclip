@@ -155,6 +155,8 @@ public sealed class EditorViewModel : ObservableObject
     internal void BeginLeaving()
     {
         CaptionDrag.Cancel();
+        // Leaving takes the focus from an open correction: save its typed text before the project is saved (design §4.2).
+        EndCorrection();
         isLeaving = true;
         OnPropertyChanged(nameof(CanFindClips));
         Notice = "Saving this project before leaving. Editing is paused.";
@@ -254,11 +256,14 @@ public sealed class EditorViewModel : ObservableObject
     public void Select(int index, bool extend = false)
     {
         if (Words.Count == 0) return;
+        var previousSelection = (SelectionStart, SelectionEnd);
         index = Math.Clamp(index, 0, Words.Count - 1);
         if (!extend || selectionAnchor < 0) selectionAnchor = index;
         selectionEnd = index;
         RewriteSelectionRevision++;
         SourceTime = Words[index].Start;
+        // Changing the selection ends an open inline correction, as a click elsewhere ends an inline rename (design §4.2).
+        if (CorrectionWordId is not null && previousSelection != (SelectionStart, SelectionEnd)) EndCorrection();
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(SelectionText));
         SelectionChanged?.Invoke(this, EventArgs.Empty);
@@ -382,9 +387,62 @@ public sealed class EditorViewModel : ObservableObject
         Apply(restore ? new EditOperation.RestoreSelection(ids) : new EditOperation.CutSelection(ids));
     }
 
-    public void Correct(string value)
+    /// <summary>The word whose inline correction field is open (design §4.2), or null.</summary>
+    public string? CorrectionWordId { get; private set; }
+    /// <summary>The text typed into the open correction field. The field reports every change, so a correction that ends
+    /// in the model (a selection change, a transport action, leaving) saves what the user typed.</summary>
+    public string CorrectionText { get; set; } = "";
+    /// <summary>The inline correction opened or ended.</summary>
+    public event EventHandler? CorrectionChanged;
+
+    /// <summary>Open the inline correction on the first selected word, ending any other one first, with the word's text.</summary>
+    public bool BeginCorrection()
     {
-        if (HasSelection) Apply(new EditOperation.Correct(Words[SelectionStart].Id, value));
+        EndCorrection();
+        if (!HasSelection || isLeaving || IsReadOnly || state is null) return false;
+        var word = Words[SelectionStart];
+        CorrectionWordId = word.Id;
+        CorrectionText = DisplayText(word);
+        CorrectionChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    /// <summary>Return saves valid text; Tab also opens the next word. Invalid drafts stay open, with their text.</summary>
+    public bool SaveCorrection(bool advance = false)
+    {
+        if (CorrectionWordId is null || SavableCorrection(CorrectionText) is null) return false;
+        var previous = SelectionEnd;
+        EndCorrection();
+        if (advance)
+        {
+            Select(previous + 1);
+            if (SelectionEnd != previous) BeginCorrection();
+        }
+        return true;
+    }
+
+    /// <summary>End the inline correction the way an inline rename ends (design §4.2). Focus leaving the field, a
+    /// click elsewhere, a selection change and any transport action keep the typed text when it can be saved; Esc
+    /// (<paramref name="keep"/> false), or text that can't be saved, keeps the word's text. Returns whether one was open.</summary>
+    public bool EndCorrection(bool keep = true)
+    {
+        if (CorrectionWordId is not { } id) return false;
+        // Cleared first: closing the field moves focus, and the end that focus loss reports must find nothing open.
+        CorrectionWordId = null;
+        var text = CorrectionText;
+        CorrectionText = "";
+        CorrectionChanged?.Invoke(this, EventArgs.Empty);
+        if (keep && SavableCorrection(text) is not null) Apply(new EditOperation.Correct(id, text));
+        return true;
+    }
+
+    /// <summary>The trimmed correction, or null when it can't be saved: empty, with a line break, or longer than
+    /// <see cref="EditingLimits.MaxCorrectionCodePoints"/> (project.schema.json).</summary>
+    internal static string? SavableCorrection(string text)
+    {
+        var value = EditingAlgorithms.JsTrim(text);
+        return value.Length == 0 || text.Any(character => character is '\r' or '\n' or (char)0x2028 or (char)0x2029) ||
+            value.EnumerateRunes().Count() > EditingLimits.MaxCorrectionCodePoints ? null : value;
     }
 
     /// <summary>Make a manual clip from the selection and return its id (design §6.2). The clip is titled with the first seven
@@ -584,6 +642,8 @@ public sealed class EditorViewModel : ObservableObject
     {
         if (isLeaving) return;
         CaptionDrag.Cancel();
+        // A new transcript replaces the word an open correction was typed for, so its draft is dropped.
+        EndCorrection(keep: false);
         if (state is not null)
         {
             state = EditingEngine.Reduce(state, new EditOperation.ReplaceTranscript(value));
