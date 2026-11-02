@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 import Synchronization
 import VoxClipCore
@@ -60,12 +61,36 @@ actor SpeechTestLogger: Redacting {
     }
 }
 
+let speechStubDefaultRunLoopMode: CFRunLoopMode = {
+    #if compiler(>=6.4)
+    .defaultMode
+    #else
+    kCFRunLoopDefaultMode!
+    #endif
+}()
+
+func speechStubSchedulingMode(_ mode: CFRunLoopMode) -> CFString {
+    #if compiler(>=6.4)
+    mode.rawValue
+    #else
+    mode
+    #endif
+}
+
+/// Handler work uses immutable request snapshots; client callbacks stay on the loading run loop and stop state is locked.
 final class SpeechStubHTTP: URLProtocol, @unchecked Sendable {
     typealias Handler = @Sendable (URLRequest) throws -> (Int, [String: String], Data)
-    private struct LoadingThread: @unchecked Sendable {
-        let thread = Thread.current
-        func fail(_ stub: SpeechStubHTTP, code: URLError.Code) {
-            stub.perform(#selector(SpeechStubHTTP.fail(_:)), on: thread, with: URLError(code) as NSError, waitUntilDone: false)
+    /// Immutable references used only through Core Foundation's thread-safe run-loop scheduling functions.
+    private struct LoadingRunLoop: @unchecked Sendable {
+        let runLoop: CFRunLoop
+        let mode: CFRunLoopMode
+        init() {
+            runLoop = CFRunLoopGetCurrent()!
+            mode = CFRunLoopCopyCurrentMode(runLoop) ?? speechStubDefaultRunLoopMode
+        }
+        func perform(_ action: @escaping @Sendable () -> Void) {
+            CFRunLoopPerformBlock(runLoop, speechStubSchedulingMode(mode), action)
+            CFRunLoopWakeUp(runLoop)
         }
     }
     final class WriteAcknowledgement: Sendable {
@@ -125,23 +150,37 @@ final class SpeechStubHTTP: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        do {
-            guard let host = request.value(forHTTPHeaderField: "X-VoxClip-Test-Handler") ?? request.url?.host,
-                  let handler = Self.handlers.withLock({ $0[host] }) else {
-                var details: [String: Any] = [NSLocalizedDescriptionKey: "No SpeechStubHTTP handler for \(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")."]
-                if let url = request.url { details[NSURLErrorFailingURLErrorKey] = url }
-                throw URLError(.badURL, userInfo: details)
+        let loadingRunLoop = LoadingRunLoop()
+        let request = request
+        let host = request.value(forHTTPHeaderField: "X-VoxClip-Test-Handler") ?? request.url?.host
+        let handler = host.flatMap { host in Self.handlers.withLock { $0[host] } }
+        DispatchQueue.global().async {
+            guard !self.stopped.withLock({ $0 }) else { return }
+            let result = Result<Reply, any Error> {
+                guard let handler else {
+                    var details: [String: Any] = [NSLocalizedDescriptionKey: "No SpeechStubHTTP handler for \(request.httpMethod ?? "GET") \(request.url?.absoluteString ?? "")."]
+                    if let url = request.url { details[NSURLErrorFailingURLErrorKey] = url }
+                    throw URLError(.badURL, userInfo: details)
+                }
+                return try handler(request)
             }
-            let reply = try handler(request)
+            loadingRunLoop.perform { self.deliver(result, on: loadingRunLoop) }
+        }
+    }
+    private func deliver(_ result: Result<Reply, any Error>, on loadingRunLoop: LoadingRunLoop) {
+        guard !stopped.withLock({ $0 }) else { return }
+        do {
+            let reply = try result.get()
             let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: "HTTP/1.1", headerFields: reply.headers)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            guard !stopped.withLock({ $0 }) else { return }
             client?.urlProtocol(self, didLoad: reply.body)
+            guard !stopped.withLock({ $0 }) else { return }
             if reply.stalls { return }
             if let failure = reply.failure {
                 if let acknowledgement = reply.failureAfterWrite {
-                    let loadingThread = LoadingThread()
                     acknowledgement.onWrite { [weak self] in
-                        if let self { loadingThread.fail(self, code: failure) }
+                        loadingRunLoop.perform { [weak self] in self?.fail(URLError(failure) as NSError) }
                     }
                 } else {
                     fail(URLError(failure) as NSError)
@@ -149,9 +188,9 @@ final class SpeechStubHTTP: URLProtocol, @unchecked Sendable {
                 return
             }
             client?.urlProtocolDidFinishLoading(self)
-        } catch { client?.urlProtocol(self, didFailWithError: error) }
+        } catch { fail(error as NSError) }
     }
-    @objc private func fail(_ error: NSError) {
+    private func fail(_ error: NSError) {
         guard !stopped.withLock({ $0 }) else { return }
         client?.urlProtocol(self, didFailWithError: error)
     }
