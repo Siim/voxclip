@@ -408,7 +408,7 @@ A local, offline alternative (DeepFilterNet or similar) is out of scope until it
 
 ## 5. Voice Lab beta: 0.1.0 gate and settings
 
-0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice and re-voice rewritten words; Windows re-voice is not available until voice creation is. Change Voice and lip sync are later (M3+).
+0.1.0 ships text Rewrite. Voice Lab is a beta behind its setting: Mac can create your voice, re-voice rewritten words and change the voice of a passage or full take; Windows re-voice is not available until voice creation is. Lip sync is later (M3+).
 
 - Settings → Voice Lab → **Show Voice Lab (beta)**. It is off by default in release builds; development builds turn it on (below). On Mac, turning it on opens the inline Voice first-use card; Windows retains its one-time presentation:
   - "Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key."

@@ -198,6 +198,35 @@ import Testing
         editor.mediaResolved = true; editor.mediaUnreadable = false; editor.refresh()
         return shell
     }
+    @Test func releasingAPausedExportBeforeItStartsDoesNotLoseTheRelease() async throws {
+        let exporter = RegressionExporter()
+        await exporter.pauseFirstTarget()
+        await exporter.releaseFirstTarget()
+        let shell = try await shell(exporter: exporter)
+        let editor = try #require(shell.editor)
+        defer { editor.close() }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        editor.beginExport(targets: [.clip("five-1")], folder: directory)
+        _ = try await TestDeadline.value(editor.exportTask, "previously released export")
+        #expect(await exporter.jobs.count == 1)
+        #expect(editor.exports.count == 1 && editor.exportError == nil && !editor.exporting)
+    }
+    @Test func cancellingAPausedExportReleasesItsContinuation() async throws {
+        let exporter = RegressionExporter()
+        await exporter.pauseFirstTarget()
+        let shell = try await shell(exporter: exporter)
+        let editor = try #require(shell.editor)
+        defer { editor.close() }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        editor.beginExport(targets: [.clip("five-1")], folder: directory)
+        try #require(await TestDeadline.until { await !exporter.jobs.isEmpty })
+        let task = try #require(editor.exportTask)
+        task.cancel()
+        _ = try await TestDeadline.value(task, "cancel paused export")
+        #expect(editor.exports.isEmpty && editor.exportError == nil && !editor.exporting)
+    }
     @Test func jobRunsAcrossPanelAndTabSwitchesThenDoneReturnsToPreviousJob() async throws {
         let exporter = RegressionExporter(); await exporter.pauseFirstTarget()
         let shell = try await shell(exporter: exporter), editor = try #require(shell.editor)
@@ -208,7 +237,7 @@ import Testing
         #expect(editor.exportJob.scope == .thisClip && editor.exportPrimaryTitle([.clip("five-1")]) == "Export Clip 1")
         editor.exportJob.fileNamePattern = "custom-{clip}"
         editor.beginExport(targets: [.clip("five-1")], folder: directory)
-        await TestDeadline.until { await !exporter.jobs.isEmpty }
+        try #require(await TestDeadline.until { await !exporter.jobs.isEmpty })
         #expect(editor.exporting)
         shell.choosePanelJob(.captions, for: editor); shell.choose(.clip("five-2"))
         editor.presentExport()

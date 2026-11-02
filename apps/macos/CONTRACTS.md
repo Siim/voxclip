@@ -1,8 +1,16 @@
 # macOS implementation contracts
 
+## Restore reviewed integration fixes (3 Nov 2026)
+
+- Integration run `41529063688` passes Windows native Media/CLI, both Release architectures, strict inventories and DEBUG launch (demo plus five ordinary opens). Shared/hygiene and Main 10 pass. Mac Core reports six HTTP-stub checkpoint timeouts; App reports an export-start checkpoint timeout. The failed run was cancelled after Windows completed to retrieve its Mac log; later Mac gates and aggregate CLI parity were not accepted.
+- Test checkpoint polling suspends for 1 ms per failed poll, as the lead explicitly requested after review; the ten-second deadlines and cancellation checks stay unchanged. Restore serialized Voice Consent/Voice Lab service cases and cache immutable C7 statement/training WAV bytes so audio fixture generation does not starve unrelated HTTP checkpoints.
+- Restore a single shared panel focus binding, isolated transcript settings, TextKit application initialization and explicit legacy/overlay resize frames. The offscreen ownership regression uses the current run-on-open API. Retain timeline’s explicit 1×/2× caption-lane tests; restore fixed 2× folded-transcript captures. Historical Explorer test counts below describe its own branch, not this integration’s acceptance.
+- The Mac beta includes passage/full-take Change Voice. The first-use card renders `VoiceLabSession.betaCopy`; lip sync remains hidden. Windows short-speech evidence reuses `VoiceConsentMethod`; remove the duplicate enum and its exact Release inventory entries. No schema shape changes.
+- The DEBUG fake exporter's first-target release is latched even before the target enters its continuation, and cancellation releases an entered pause. Export tests require readiness before continuing. An independent early-release regression covers the lost-event case; production export behavior is unchanged. Local controls and the next hosted receipt are recorded in the integration handoff.
+
 ## Integration 3 — pinned takes, Motion, Explorer and main (2 Nov 2026)
 
-- Merge exact inputs in order: takes `2b3e23d9`, Motion `2b02f503`, Explorer `e8bf33be`, and main `564f2ffe`. Preserve lead Mac source/tests during Explorer integration, adding only its independent shared v2 fixture replay and contract text. Keep the inline Motion draft lifecycle and the short-phrase measured/unmeasured selection rules.
+- Merge exact inputs in order: takes `2b3e23d9`, Motion `2b02f503`, Explorer `e8bf33be`, and main `564f2ffe`. Preserve current lead Mac APIs and restore Explorer’s deliberate Mac scheduling, focus and isolated-fixture edits from `5513547e`, `f76bab6c` and `8948971b`; the first merge incorrectly dropped these changes, corrected after lead review. Keep the inline Motion draft lifecycle and the short-phrase measured/unmeasured selection rules.
 - Add pinned Windows short-speech reader `b9480124` after the original four inputs. Its schema property is identical to takes2: retain one definition and the version-preserving generator. The independent 27-vector corpus now has a Swift replay in v3 and v4, including refusal, accepted round trips and full-render disclosure. Swift retains its native error taxonomy; Windows asserts its named wire errors.
 - Reconcile shared consent/v4 schemas and corpus without replacing either feature. Keep the version-preserving render-schema generator with short-speech evidence. Document Windows consent service compatibility, unavailable short-speech measurement and closed native-speaker gate separately from the Mac pooled policy. Keep platform-specific transcript treatments explicit.
 - Main's lip-sync availability flag remains false: fal.ai/sync.so keys and cap rows stay hidden while approved-provider services remain intact. Keep the inline Voice first-use host, lead teardown regressions and main's narrower beta notice/settings tests. Main's correction selection fix retains v2 selection/scope refreshes.
@@ -150,8 +158,8 @@
 ### 2026-11-01 - W4/W2b hosted Swift test portability (track/v2-core)
 
 - The first complete Xcode 26 run exposed Core timeouts from concurrent large audio fixtures. `VoiceConsentTests` and `VoiceLabServiceTests` now serialize their cases, as the newer enrollment/take suites already do. The normal parallel Core run passes all 830 tests locally; no assertion, timeout or explicit concurrency scenario changed. Excluding only those two suites also passed all 743 remaining tests, while excluding C7 alone reproduced the timeouts.
-- Offscreen transcript/timeline pixel checks use a fixed 2x raster, so their one-point strokes have the same coverage on 1x hosted displays and Retina development displays. The resize test explicitly delivers the container frame before AppKit's layout pass. It still checks TextKit's own viewport updates without forcing them manually.
-- The headless Director focus fixture keeps its transcript stand-in outside the panel's SwiftUI hierarchy, recognizes a focused descendant rather than one concrete hosting view, drains ready run-loop work without sleeping, and waits for the mounted panel's initial quote before preparing its test send. All keyboard ownership, Escape and reply assertions remain. These are DEBUG/test harness changes; no production view, copy or paid-send rule changed.
+- Offscreen folded-transcript pixel checks use a fixed 2x raster, so their one-point strokes have the same coverage on 1x hosted displays and Retina development displays. The current lead timeline implementation retains its broader explicit 1x/2x caption-lane coverage instead of forcing that helper to 2x. The resize test explicitly delivers the container frame before AppKit's layout pass. It still checks TextKit's own viewport updates without forcing them manually.
+- The headless Director focus fixture keeps its transcript stand-in outside the panel's SwiftUI hierarchy, recognizes a focused descendant rather than one concrete hosting view, drains ready run-loop work without sleeping, and waits for the mounted live Rewrite task panel (the current API runs immediately and has no quote-preparation phase). All keyboard ownership, Escape and reply assertions remain. These are DEBUG/test harness changes; no production view, copy or paid-send rule changed.
 - Native real-window behavior remains owed; these checks create only never-shown offscreen windows. Windows inventory drift from the same run is resolved using the matching x64/arm64 artifact in the Windows contracts.
 
 ### 2026-11-01 - track/v2-core: first hosted CI compatibility
@@ -1441,13 +1449,13 @@
 ### 2026-11-01 — parity-copy-2 review follow-up
 
 - Return/Tab keep unsavable inline correction drafts open with their text. A valid Tab saves and opens the next word's correction field; the last word closes. Focus loss still drops invalid drafts; Esc cancels. Line-break regression drafts differ from the original word (`Today\n`, `\rToday`).
-- 0.1.0 ships text Rewrite. Voice Lab stays behind its beta setting: Mac creates voices and re-voices rewritten words; Windows cannot create a voice, so re-voice is unavailable. Change Voice and lip sync are M3+. Windows adds its availability sentence to the beta notice and both creation entry points.
+- 0.1.0 ships text Rewrite. Voice Lab stays behind its beta setting: Mac creates voices, re-voices rewritten words and includes scoped Change Voice for a passage or full take; Windows cannot create a voice, so re-voice is unavailable. Lip sync is M3+. Windows adds its availability sentence to the beta notice and both creation entry points.
 - Settings uses one lip-sync availability constant per platform to hide fal.ai/sync.so keys and monthly caps together; existing keys and setting values are preserved.
 - Owed native: correction focus and keyboard behavior, Settings layout, and platform screen-reader checks. No windows or live provider calls were used.
 
 ### 2026-11-01 — parity-copy-2 — Voice Lab 0.1.0 copy
 
-- The one-time notice uses `VoiceLabSession.betaCopy` in Settings and the editor. It promises own-voice creation and rewritten words with ElevenLabs only; Change Voice and Lip sync are M3+. `VoiceLabSessionTests` checks the exact copy. Estonian consent QA is not applicable after the failed et-v1 calibration (89% versus 95% required).
+- The one-time notice uses `VoiceLabSession.betaCopy` in Settings and the editor. It describes own-voice creation and rewritten words with ElevenLabs. The Mac beta also includes scoped Change Voice for a passage or full take; lip sync remains hidden (`LipSyncAvailability.shipped = false`). `VoiceLabSessionTests` checks the exact copy. Estonian consent QA is not applicable after the failed et-v1 calibration (89% versus 95% required).
 - Settings still shows fal.ai/sync.so keys and spending caps; this task leaves those rows in place. No new native window checks; beta layout and VoiceOver remain owed.
 
 ### 2026-11-01 — parity-copy-2 — inline correction parity

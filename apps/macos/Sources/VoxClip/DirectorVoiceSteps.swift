@@ -259,7 +259,7 @@ import VoxClipCore
     var showsPrimary = true
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Voice Lab can create a copy of your own voice and re-voice words you rewrite. Everything it makes is labelled 'AI MODIFIED' in exports, as EU law requires. It uses your ElevenLabs key.")
+            Text(VoiceLabSession.betaCopy)
             if !session.flow.keyChecked { ProgressView("Checking for your ElevenLabs key…") }
             else if !session.flow.keyReady {
                 Text("FIRST, YOUR ELEVENLABS KEY").font(.system(size: 11, weight: .semibold))

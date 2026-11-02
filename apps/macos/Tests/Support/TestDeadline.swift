@@ -61,7 +61,9 @@ enum TestDeadline {
         while true {
             if await condition() { return true }
             guard !Task.isCancelled, ContinuousClock.now < deadline else { break }
-            await Task.yield()
+            // Yielding can immediately requeue and starve HTTP/native callbacks while
+            // CPU-heavy audio suites run. Suspend between polls without extending the deadline.
+            try? await Task.sleep(for: .milliseconds(1))
         }
         Issue.record("Test condition did not become true within \(timeout)", sourceLocation: sourceLocation)
         return false

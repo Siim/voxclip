@@ -21,11 +21,19 @@ actor RegressionExporter: Exporter {
         try await withCheckedThrowingContinuation { resumeHold = $0 }
     }
     func pauseFirstTarget() { pauseFirst = true }
-    func releaseFirstTarget() { resumeFirst?.resume(); resumeFirst = nil }
+    func releaseFirstTarget() {
+        pauseFirst = false
+        resumeFirst?.resume(); resumeFirst = nil
+    }
     func export(_ job: ExportJob, progress: @escaping @Sendable (ExportProgress) -> Void) async throws -> ExportResult {
         jobs.append(job)
         progress(ExportProgress(phase: .encoding, fraction: 0.25))
-        if pauseFirst && jobs.count == 1 { await withCheckedContinuation { resumeFirst = $0 } }
+        if pauseFirst && jobs.count == 1 {
+            try await withTaskCancellationHandler {
+                await withCheckedContinuation { resumeFirst = $0 }
+                try Task.checkCancellation()
+            } onCancel: { Task { await self.releaseFirstTarget() } }
+        }
         if hold {
             try await withTaskCancellationHandler { try await waitForRelease() } onCancel: { Task { await self.cancelHold() } }
         }

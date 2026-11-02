@@ -39,16 +39,21 @@ enum EditorPane: CaseIterable {
 @MainActor struct EditorPaneFocus: ViewModifier {
     let model: EditorModel?
     let pane: EditorPane
-    @FocusState private var focused: Bool
+    /// A pane that also hands focus between views shares this binding. A focusable
+    /// view must have one binding, so F6 and a task handover observe and update
+    /// the same owner when the first responder moves in or out of the pane.
+    var focus: FocusState<Bool>.Binding? = nil
+    @FocusState private var ownFocus: Bool
+    private var focusBinding: FocusState<Bool>.Binding { focus ?? $ownFocus }
     /// The whole-pane ring marks a pane reached from the keyboard (⌃F6, Tab), not the focus a launch or a click gives it.
     @State private var ringVisible = false
     func body(content: Content) -> some View {
-        content.focusable().focused($focused).focusSection()
+        content.focusable().focused(focusBinding).focusSection()
             .focusEffectDisabled(!ringVisible)
             .onChange(of: model?.paneFocusRequest) { _, _ in
-                if model?.focusedPane == pane { ringVisible = true; focused = true }
+                if model?.focusedPane == pane { ringVisible = true; focusBinding.wrappedValue = true }
             }
-            .onChange(of: focused) { _, value in
+            .onChange(of: focusBinding.wrappedValue) { _, value in
                 if value { model?.focusedPane = pane; ringVisible = ringVisible || NSApp.currentEvent?.type == .keyDown } else { ringVisible = false }
             }
     }

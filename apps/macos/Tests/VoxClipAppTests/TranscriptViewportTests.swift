@@ -28,7 +28,7 @@ import Testing
         project.media.source.durationSeconds = 402
         project.edits = ProjectEdits(cutWordIds: [])
         project.edits.clips = [ClipRange(id: "middle", startWordId: "v\((paragraph - 2) * 20)", endWordId: "v\((paragraph + 3) * 20 - 1)", title: "Middle")]
-        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
         model.activate(model.project.edits.clips[0])
         // These viewport tests scroll through paragraphs outside the active clip.
         model.showsSurroundingContext = true
@@ -122,12 +122,17 @@ import Testing
     }
 
     /// At the take's top, where TextKit keeps the scroll position as lines rewrap.
-    @Test func aResizeRewrapsWhatFollowsTheLines() throws {
+    @Test(arguments: [NSScroller.Style.overlay, .legacy])
+    func aResizeRewrapsWhatFollowsTheLines(_ scrollerStyle: NSScroller.Style) throws {
         let model = try editor(paragraph: 2); defer { model.close() }
         let pane = try TranscriptPane(model: model, size: NSSize(width: 652, height: 488)); defer { pane.close() }
+        pane.scroll.scrollerStyle = scrollerStyle
+        layoutPass(pane)
         let before = try overlays(pane)
         #expect(!before.bandHidden && !before.caretHidden && before.selection.count == 2, "\(before)")
         pane.window.setContentSize(NSSize(width: 820, height: 488))
+        // Hidden macOS 26 windows need the explicit frame that SwiftUI normally delivers.
+        pane.scroll.setFrameSize(NSSize(width: 820, height: 488))
         layoutPass(pane)
         // A legacy scroller (a Mac with a mouse, the hosted runner) takes its width from the pane.
         let width: CGFloat = pane.scroll.contentSize.width

@@ -42,8 +42,10 @@ enum SpeechTestFiles {
 
 enum SpeechTestWait {
     /// A held transport must reach its checkpoint before its explicit deadline.
-    static func until(_ condition: () async -> Bool) async throws {
-        guard await TestDeadline.until(condition) else { throw TestDeadlineFailure.timedOut("speech checkpoint") }
+    static func until(sourceLocation: SourceLocation = #_sourceLocation, _ condition: () async -> Bool) async throws {
+        guard await TestDeadline.until(sourceLocation: sourceLocation, condition) else {
+            throw TestDeadlineFailure.timedOut("speech checkpoint")
+        }
     }
     /// Awaits an unstructured task and cancels it if the test is cancelled, so the time limit also
     /// ends a job stuck in a queue instead of leaving the run waiting on it.

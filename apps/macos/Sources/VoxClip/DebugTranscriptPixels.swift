@@ -1063,6 +1063,7 @@ extension DebugTranscriptPixels {
         window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -10000, y: -10000), size: size), styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .darkAqua)
+        scroll.autoresizingMask = [.width, .height]
         window.contentView = scroll
         update(rebuild: true)
     }
@@ -1112,7 +1113,12 @@ extension DebugTranscriptPixels {
         var result: NSBitmapImageRep?
         NSAppearance(named: .darkAqua)?.performAsCurrentDrawingAppearance {
             text.backgroundColor = DesignValues.nsColor("bg.surface")
-            guard let cached = scroll.bitmapImageRepForCachingDisplay(in: scroll.bounds) else { return }
+            // Keep transcript pixel checks independent of the hosted display's backing scale.
+            guard let cached = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(scroll.bounds.width * 2),
+                                                 pixelsHigh: Int(scroll.bounds.height * 2), bitsPerSample: 8, samplesPerPixel: 4,
+                                                 hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+            else { return }
+            cached.size = scroll.bounds.size
             scroll.cacheDisplay(in: scroll.bounds, to: cached)
             result = cached
         }

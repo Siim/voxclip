@@ -27,11 +27,12 @@ import Testing
         project.media.source.durationSeconds = Double(count) / 2 + 2
         project.edits = ProjectEdits(cutWordIds: stride(from: 0, to: count, by: 5).map { "r\($0)" })
         project.edits.clips = [ClipRange(id: "fifth", startWordId: "r40", endWordId: "r49", title: "Fifth", origin: suggested ? .ai : .manual, selected: !suggested)]
-        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(), preview: DemoPreviewEngine())
+        let model = EditorModel(document: VoxClipDocument(project: project, demo: true), app: AppModel(settingsStore: RegressionSettingsStore()), preview: DemoPreviewEngine())
         model.showsCuts = showCuts
         return model
     }
     private func pane(_ model: EditorModel) throws -> (TranscriptNSTextView, TranscriptRenderer, TranscriptTextView.Coordinator) {
+        _ = NSApplication.shared
         let coordinator = TranscriptTextView.Coordinator(model: model)
         let scroll = TranscriptTextView.makeScrollView(model: model, coordinator: coordinator, width: 652, height: 488)
         let text = try #require(scroll.documentView as? TranscriptNSTextView)

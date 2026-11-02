@@ -66,6 +66,11 @@ private actor RefusingKeys: ProviderKeyStore {
     func answer(_ approved: Bool) { answer?.resume(returning: approved); answer = nil }
 }
 
+/// Drain ready AppKit/SwiftUI work without ordering a window onscreen.
+@MainActor private func pumpPanelRunLoop() {
+    _ = RunLoop.current.run(mode: .default, before: Date())
+}
+
 /// The right column in a window that is never shown, with an AppKit text view that stands in for the transcript, so a
 /// test can move the keyboard out of the panel. SwiftUI focus runs in it as in the editor's window when the panel is the
 /// window's content view (in a plain container view it does not take focus while the window is not key).
@@ -80,12 +85,14 @@ private actor RefusingKeys: ProviderKeyStore {
         host = NSHostingView(rootView: AnyView(PanelHost(model: editor, shell: WorkspaceShell(app: editor.app), width: 404, height: 600).environment(editor.app)))
         host.frame = CGRect(x: 0, y: 0, width: 404, height: 600)
         window.contentView = host
-        host.addSubview(elsewhere)
+        // The transcript stand-in is outside the panel's SwiftUI focus hierarchy.
+        host.superview?.addSubview(elsewhere)
     }
     /// Lays the panel out and lets SwiftUI run its updates and tasks, until `done` holds or for `turns` turns.
     func settle(turns: Int = 2_000, until done: () -> Bool = { false }) async {
         for _ in 0..<turns {
             host.layoutSubtreeIfNeeded()
+            pumpPanelRunLoop()
             if done() { return }
             await Task.yield()
         }
@@ -95,7 +102,14 @@ private actor RefusingKeys: ProviderKeyStore {
     /// A text field in the panel has the keyboard: the passage panel's instruction, or a key field.
     var fieldHasKeyboard: Bool { (window.firstResponder as? NSTextView).map { $0 !== elsewhere && $0.isDescendant(of: host) } ?? false }
     /// The task's panel itself has the keyboard (SwiftUI focus on a view that is not a text field).
-    var paneHasKeyboard: Bool { window.firstResponder === host }
+    var paneHasKeyboard: Bool {
+        !(window.firstResponder is NSTextView) && (window.firstResponder as? NSView).map { $0.isDescendant(of: host) } == true
+    }
+    /// Rewrite runs immediately; readiness is the mounted task panel for the live session.
+    /// There is no separate quote/preparation phase in this API.
+    func ready(_ session: RewriteSession) -> Bool {
+        session.isOpen && showsTaskPanel && session.task.state == .running
+    }
     /// Esc, and ⌘., which AppKit sends as the same action.
     func escape() { window.firstResponder?.tryToPerform(#selector(NSResponder.cancelOperation(_:)), with: nil) }
     func close() { window.close() }
@@ -668,6 +682,42 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(!session.isOpen && editor.openRewrite == nil)
         await ollama.release()
         #expect(await session.sending?.value == false)
+    }
+
+    /// F6 and the task handover share one owner, including when the user leaves before a reply.
+    @Test func paneFocusAndTaskHandoverShareKeyboardOwnership() async throws {
+        let ollama = StubConnector(id: .ollama, hold: true)
+        let (app, _) = app("ollama", connectors: ["ollama": ollama])
+        let editor = try editor(app)
+        defer { editor.close() }
+        let panel = PanelWindow(editor: editor)
+        defer { panel.close() }
+        panel.window.makeFirstResponder(panel.elsewhere)
+        let session = try await open(editor, waits: false)
+        await ollama.untilWaiting()
+        await panel.settle { panel.ready(session) }
+        try #require(panel.ready(session))
+
+        editor.focusedPane = .panel
+        editor.paneFocusRequest += 1
+        await panel.settle { panel.paneHasKeyboard && session.task.keyboardInPanel }
+        #expect(panel.paneHasKeyboard && session.task.keyboardInPanel)
+        #expect(panel.window.makeFirstResponder(panel.elsewhere))
+        await panel.settle { !session.task.keyboardInPanel }
+        #expect(!session.task.keyboardInPanel)
+
+        editor.focusedPane = .panel
+        editor.paneFocusRequest += 1
+        await panel.settle { panel.paneHasKeyboard && session.task.keyboardInPanel }
+        #expect(panel.paneHasKeyboard && session.task.keyboardInPanel, "F6 updates the handover's ownership binding")
+        #expect(panel.window.makeFirstResponder(panel.elsewhere))
+        await panel.settle { !session.task.keyboardInPanel }
+        #expect(!session.task.keyboardInPanel)
+        await ollama.release()
+        #expect(await session.sending?.value == true)
+        await panel.settle { session.task.state == .proposal }
+        await panel.settle(turns: 500)
+        #expect(panel.window.firstResponder === panel.elsewhere, "a reply after F6 and a move out keeps the keyboard outside")
     }
 
     /// The reply keeps the keyboard where it was: in the panel when it was there (R2 replaces R1 in the same panel), and
