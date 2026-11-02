@@ -29,7 +29,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 - Fix a Mac crash when starting microphone recording for Voice Lab.
 - Fix a blank Mac workspace caused by chrome backgrounds painting over neighboring content.
 - Windows reads, validates and prepares saved short-speech voice recipes without inventing speaker measurements; short-take generation remains unavailable.
-
+- Windows fixes timeline drawing ownership and tab styling errors that prevent the Editor from rendering.
+- Windows preserves project voice consent and v4 context/motion metadata, distinguishes insufficient generated speech from a measured mismatch, and refuses unsupported visual exports while keeping saved edits intact.
 - Windows preserves project voice consent and v4 context/motion metadata, distinguishes insufficient generated speech from a measured mismatch, and refuses unsupported visual exports while keeping saved edits intact.
 - Windows v2 shell now connects scoped inline Rewrite/Hook jobs, transcript review, real caption timeline snapshots and durable local transcription estimates; native Windows acceptance remains pending.
 - Windows gains an Explorer workspace, preview/pinned clip tabs, local one-step Tighten, inline Rename and a Ctrl+K command palette; changing tabs no longer dirties a project or consumes Undo.

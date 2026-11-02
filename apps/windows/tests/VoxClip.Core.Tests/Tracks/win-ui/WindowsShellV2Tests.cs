@@ -222,6 +222,22 @@ public sealed class WindowsShellV2Tests
     }
 
     [Fact]
+    public void EditorTabStripHostsANativeTabViewInsteadOfInheritingItsStyle()
+    {
+        // The managed surrogate cannot apply WinUI styles on this host. Protect the
+        // composition that keeps TabView's native runtime type for its default style.
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var source = File.ReadAllText(Path.Combine(root, "apps/windows/src/VoxClip.App/Controls/EditorTabStrip.cs"));
+        Assert.Matches(@"class\s+EditorTabStrip\s*:\s*Grid\b", source);
+        Assert.Contains("private readonly TabView tabs = new();", source);
+        Assert.Contains("Children.Add(tabs);", source);
+        Assert.Contains("AutomationProperties.SetName(tabs, \"Editor tabs\");", source);
+        Assert.Contains("internal object? SelectedItem => tabs.SelectedItem;", source);
+        Assert.Contains("tabs.SelectionChanged +=", source);
+        Assert.Contains("tabs.TabCloseRequested +=", source);
+    }
+
+    [Fact]
     public void ShellSourceMountsExistingChildrenAndHasNoReplacementModalOrInsertionRoute()
     {
         var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;

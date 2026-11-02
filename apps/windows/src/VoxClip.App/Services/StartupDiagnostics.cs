@@ -36,9 +36,9 @@ internal static class StartupDiagnostics
                 ? current.Message : "";
             Log.Write(LogLevel.Error, "startup", $"stage={stage} type={current.GetType().FullName} hresult=0x{current.HResult:X8} {detail}");
 #if DEBUG
-            var frames = new System.Diagnostics.StackTrace(current).GetFrames().Select(frame => frame.GetMethod())
-                .Where(method => method?.DeclaringType?.Namespace?.StartsWith("VoxClip", StringComparison.Ordinal) == true)
-                .Select(method => $"{method!.DeclaringType!.Name}.{method.Name}");
+            var frames = new System.Diagnostics.StackTrace(current, true).GetFrames()
+                .Where(frame => frame.GetMethod()?.DeclaringType?.Namespace?.StartsWith("VoxClip", StringComparison.Ordinal) == true)
+                .Select(frame => $"{frame.GetMethod()!.DeclaringType!.Name}.{frame.GetMethod()!.Name}:{frame.GetFileLineNumber()}");
             Log.Write(LogLevel.Error, "startup", $"frames={string.Join(",", frames)}");
 #endif
         }

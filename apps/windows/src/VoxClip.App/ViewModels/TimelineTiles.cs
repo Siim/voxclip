@@ -6,6 +6,21 @@ namespace VoxClip.App.ViewModels;
 internal sealed record TimelineMediaTile(TimelinePieces Pieces, TimelineMark[] Video, TimelineMark[] Peaks, TimelineMark[] Core,
     TimelineMark[] GhostPeaks, TimelineMark[] GhostCore, TimelineMark[] Gaps, TimelineMark[] Seams);
 
+/// <summary>Native geometry belongs to one visual. Share cached marks, but create a geometry for each path owner.</summary>
+internal sealed class TimelineMediaGeometry<T>
+{
+    internal IReadOnlyList<T> Paths { get; }
+    internal T VideoSeams { get; }
+
+    internal TimelineMediaGeometry(TimelineMediaTile tile, Func<TimelineMark[], bool, T> create)
+    {
+        Paths = [create(tile.Video, true), create(tile.Peaks, false), create(tile.Core, false),
+            create(tile.GhostPeaks, false), create(tile.GhostCore, false), create(tile.Gaps, false),
+            create(tile.Seams, false), create(tile.Video, true), create(tile.Video, true), create(tile.Video, true)];
+        VideoSeams = create(tile.Seams, false);
+    }
+}
+
 internal sealed class TimelineTileCache
 {
     internal const int Capacity = 8;

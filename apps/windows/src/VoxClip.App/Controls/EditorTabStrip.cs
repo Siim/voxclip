@@ -6,25 +6,30 @@ using VoxClip.App.ViewModels;
 
 namespace VoxClip.App.Controls;
 
-public sealed partial class EditorTabStrip : TabView
+public sealed partial class EditorTabStrip : Grid
 {
+    private readonly TabView tabs = new();
     private bool syncing;
     public EditorTabs Model { get; } = new();
+    internal object? SelectedItem => tabs.SelectedItem;
     public event EventHandler<string?>? ScopeRequested;
 
     public EditorTabStrip()
     {
-        IsAddTabButtonVisible = false;
-        CanDragTabs = false;
-        CanReorderTabs = false;
-        TabWidthMode = TabViewWidthMode.SizeToContent;
+        // Keep the styled control native: a managed TabView subclass constructed in
+        // code can project as Control and reject the TabView style during loading.
+        tabs.IsAddTabButtonVisible = false;
+        tabs.CanDragTabs = false;
+        tabs.CanReorderTabs = false;
+        tabs.TabWidthMode = TabViewWidthMode.SizeToContent;
         MinWidth = 0;
-        AutomationProperties.SetName(this, "Editor tabs");
-        SelectionChanged += (_, _) =>
+        AutomationProperties.SetName(tabs, "Editor tabs");
+        Children.Add(tabs);
+        tabs.SelectionChanged += (_, _) =>
         {
             if (!syncing && SelectedItem is TabViewItem { Tag: EditorTab tab }) ScopeRequested?.Invoke(this, tab.ClipId);
         };
-        TabCloseRequested += (_, args) =>
+        tabs.TabCloseRequested += (_, args) =>
         {
             if (args.Tab.Tag is EditorTab tab) Close(tab.ClipId);
         };
@@ -56,26 +61,26 @@ public sealed partial class EditorTabStrip : TabView
         try
         {
             var wanted = Model.Items.Select(tab => tab.ClipId).ToHashSet();
-            foreach (var item in TabItems.OfType<TabViewItem>().ToArray())
-                if (item.Tag is EditorTab tab && !wanted.Contains(tab.ClipId)) TabItems.Remove(item);
+            foreach (var item in tabs.TabItems.OfType<TabViewItem>().ToArray())
+                if (item.Tag is EditorTab tab && !wanted.Contains(tab.ClipId)) tabs.TabItems.Remove(item);
             for (var index = 0; index < Model.Items.Count; index++)
             {
                 var tab = Model.Items[index];
-                var item = TabItems.OfType<TabViewItem>().FirstOrDefault(item => item.Tag is EditorTab current && current.ClipId == tab.ClipId);
+                var item = tabs.TabItems.OfType<TabViewItem>().FirstOrDefault(item => item.Tag is EditorTab current && current.ClipId == tab.ClipId);
                 if (item is null)
                 {
                     item = new TabViewItem();
                     item.DoubleTapped += (_, _) => { if (item.Tag is EditorTab current) { Model.Pin(current.ClipId); Render(); } };
-                    TabItems.Add(item);
+                    tabs.TabItems.Add(item);
                 }
-                var currentIndex = TabItems.IndexOf(item);
-                if (currentIndex != index) { TabItems.RemoveAt(currentIndex); TabItems.Insert(index, item); }
+                var currentIndex = tabs.TabItems.IndexOf(item);
+                if (currentIndex != index) { tabs.TabItems.RemoveAt(currentIndex); tabs.TabItems.Insert(index, item); }
                 item.Tag = tab;
                 item.Header = tab.Title;
                 item.IsClosable = tab.ClipId is not null;
                 item.FontStyle = tab.Pinned ? Windows.UI.Text.FontStyle.Normal : Windows.UI.Text.FontStyle.Italic;
                 AutomationProperties.SetName(item, tab.Title + (tab.Suggested ? ", suggested clip" : "") + (tab.Pinned ? ", pinned" : ", preview tab"));
-                if (tab.ClipId == Model.ActiveClipId) SelectedItem = item;
+                if (tab.ClipId == Model.ActiveClipId) tabs.SelectedItem = item;
             }
         }
         finally { syncing = false; }
