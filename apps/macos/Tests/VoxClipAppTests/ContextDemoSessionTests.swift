@@ -18,8 +18,8 @@ import Testing
     var cancels = 0
     var accessChecks = 0
     var currentness: (@MainActor () -> Bool)?
-    var preparationRelease: CheckedContinuation<Void, Never>?
-    var recordingRelease: CheckedContinuation<Void, Never>?
+    var preparationRelease: TestContinuation<Void>?
+    var recordingRelease: TestContinuation<Void>?
     private var projectID = ""
     private var captureIndex = 0
 
@@ -33,14 +33,14 @@ import Testing
             revision: document.revision, target: target, durationSeconds: duration,
             actions: [ContextDemoReviewedAction(id: "open", summary: "Open only the reviewed page.")])
         prepared.append(request)
-        if holdPreparation { await withCheckedContinuation { preparationRelease = $0 } }
+        if holdPreparation { await withTestDeadline { preparationRelease = $0 } }
         if let prepareFailure { throw prepareFailure }
         return request
     }
     func record(_ request: ContextDemoCaptureRequest, isCurrent: @escaping @MainActor () -> Bool) async throws -> (asset: ContextDemoAsset, url: URL) {
         currentness = isCurrent
         started.append(request)
-        if holdRecording { await withCheckedContinuation { recordingRelease = $0 } }
+        if holdRecording { await withTestDeadline { recordingRelease = $0 } }
         captureIndex += 1
         let id = "capture-\(captureIndex)"
         let asset = ContextDemoAsset(id: id, requestId: request.id, target: request.target,
@@ -402,18 +402,18 @@ struct ContextDemoWebCaptureLifetimeTests {
 
     @Test func cancellationKeepsWindowUntilCaptureAndActionsDrain() async throws {
         var events: [String] = []
-        var releaseCapture: CheckedContinuation<Void, Never>?
-        var releaseActions: CheckedContinuation<Void, Never>?
+        var releaseCapture: TestContinuation<Void>?
+        var releaseActions: TestContinuation<Void>?
         defer { releaseCapture?.resume(); releaseActions?.resume() }
         let lifetime = ContextDemoWebCaptureLifetime(cancelCapture: { events.append("capture-cancel") },
             stopBrowser: { events.append("browser-stop") }, closeBrowser: { events.append("browser-close") })
         let action = Task { @MainActor in
-            await withCheckedContinuation { releaseActions = $0 }
+            await withTestDeadline { releaseActions = $0 }
             events.append("actions-drained")
         }
         lifetime.retainAction(action)
         let operation = Task { @MainActor in
-            await withCheckedContinuation { releaseCapture = $0 }
+            await withTestDeadline { releaseCapture = $0 }
             events.append("capture-drained")
             await lifetime.drainActions()
             lifetime.closeAfterCaptureDrained()

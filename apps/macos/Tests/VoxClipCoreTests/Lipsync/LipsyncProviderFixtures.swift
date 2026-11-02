@@ -7,26 +7,27 @@ import Testing
 actor LipsyncFixtureBarrier {
     private var entered = false
     private var released = false
-    private var started: [UUID: CheckedContinuation<Void, any Error>] = [:]
-    private var pending: CheckedContinuation<Void, Never>?
+    private var started: [UUID: TestContinuation<Void>] = [:]
+    private var pending: TestContinuation<Void>?
     func block() async {
         entered = true
         for continuation in started.values { continuation.resume() }
         started.removeAll()
-        if !released { await withCheckedContinuation { pending = $0 } }
+        if !released { await withTestDeadline { pending = $0 } }
     }
     func waitUntilEntered() async throws {
         let id = UUID()
         try await withTaskCancellationHandler {
             try Task.checkCancellation()
             if !entered {
-                try await withCheckedThrowingContinuation { started[id] = $0 }
+                await withTestDeadline { started[id] = $0 }
+                try Task.checkCancellation()
             }
         } onCancel: {
             Task { await self.cancelWaiter(id) }
         }
     }
-    private func cancelWaiter(_ id: UUID) { started.removeValue(forKey: id)?.resume(throwing: CancellationError()) }
+    private func cancelWaiter(_ id: UUID) { started.removeValue(forKey: id)?.resume() }
     func release() { released = true; pending?.resume(); pending = nil }
 }
 

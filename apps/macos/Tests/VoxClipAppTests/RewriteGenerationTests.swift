@@ -14,8 +14,8 @@ private struct GenerationTestKeys: KeyProvider {
 @MainActor private final class GenerationQuoteTestState {
     var preparations = 0
     var executions = 0
-    var suspended: CheckedContinuation<Void, Never>?
-    var resume: CheckedContinuation<Void, Never>?
+    var suspended: TestContinuation<Void>?
+    var resume: TestContinuation<Void>?
     var unknown = false
     var failing = false
     var usdPerCall = Decimal(string: "0.01")!
@@ -23,12 +23,12 @@ private struct GenerationTestKeys: KeyProvider {
 
 @MainActor private final class GenerationSuspension {
     private var reached = false
-    private var arrival: CheckedContinuation<Void, Never>?
-    private var release: CheckedContinuation<Void, Never>?
+    private var arrival: TestContinuation<Void>?
+    private var release: TestContinuation<Void>?
     func pause() async {
-        await withCheckedContinuation { release = $0; reached = true; arrival?.resume(); arrival = nil }
+        await withTestDeadline { release = $0; reached = true; arrival?.resume(); arrival = nil }
     }
-    func wait() async { if !reached { await withCheckedContinuation { arrival = $0 } } }
+    func wait() async { if !reached { await withTestDeadline { arrival = $0 } } }
     func resume() { release?.resume(); release = nil }
 }
 
@@ -390,7 +390,7 @@ private final class GenerationDispatchCount: Sendable {
         session.prepareForTests = { _ in
             state.preparations += 1
             if let suspended = state.suspended {
-                await withCheckedContinuation { state.resume = $0; suspended.resume() }
+                await withTestDeadline { state.resume = $0; suspended.resume() }
             }
             if state.failing { throw VoiceLabError.unauthorized }
             let takes = (0..<3).map { index in
@@ -423,7 +423,7 @@ private final class GenerationDispatchCount: Sendable {
         await session.finishGenerationForTests()
         #expect(state.executions == 2 && state.preparations == 3 && session.rows.map(\.index) == [0, 1])
         let retained = session.rows, retainedID = session.selectedID
-        await withCheckedContinuation { ready in
+        await withTestDeadline { ready in
             state.suspended = ready
             session.requestQuote()
         }
@@ -456,11 +456,11 @@ private final class GenerationDispatchCount: Sendable {
         await session.finishQuotePreparationForTests()
         #expect(session.canExecute && session.rows == retained && !session.readyToAccept)
         session.executeForTests = { _, _, _ in
-            await withCheckedContinuation { state.resume = $0; state.suspended?.resume() }
+            await withTestDeadline { state.resume = $0; state.suspended?.resume() }
             #expect(!session.dispatchIsCurrent)
             return .init(rows: [], end: .cancelled)
         }
-        await withCheckedContinuation { ready in
+        await withTestDeadline { ready in
             state.suspended = ready
             session.approve(true)
         }

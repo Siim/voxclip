@@ -49,7 +49,7 @@ final class VoiceChangeTestLog: Sendable {
 
 actor VoiceChangeTestSignal {
     private var signalled = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [TestContinuation<Void>] = []
     func signal() {
         signalled = true
         for waiter in waiters { waiter.resume() }
@@ -57,7 +57,7 @@ actor VoiceChangeTestSignal {
     }
     func wait() async {
         if signalled { return }
-        await withCheckedContinuation { waiters.append($0) }
+        await withTestDeadline { waiters.append($0) }
     }
 }
 

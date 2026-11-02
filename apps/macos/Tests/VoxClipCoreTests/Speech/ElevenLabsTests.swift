@@ -5,10 +5,10 @@ import Testing
 
 private actor ApprovalBoundaryKeys: KeyProvider {
     private var waiting = false
-    private var continuation: CheckedContinuation<Void, Never>?
-    private var observer: CheckedContinuation<Void, Never>?
+    private var continuation: TestContinuation<Void>?
+    private var observer: TestContinuation<Void>?
     func key(for provider: String) async throws -> String? {
-        await withCheckedContinuation { continuation in
+        await withTestDeadline { continuation in
             self.continuation = continuation; waiting = true
             observer?.resume(); observer = nil
         }
@@ -16,7 +16,7 @@ private actor ApprovalBoundaryKeys: KeyProvider {
     }
     func waitUntilRead() async {
         guard !waiting else { return }
-        await withCheckedContinuation { observer = $0 }
+        await withTestDeadline { observer = $0 }
     }
     func resumeRead() { continuation?.resume(); continuation = nil }
 }

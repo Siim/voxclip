@@ -69,6 +69,16 @@ private final class TakeRunDispatchSignal: Sendable {
                 }
                 if outcome == 1 { continuation.resume(returning: ()) }
                 else if outcome == -1 { continuation.resume(throwing: CancellationError()) }
+                else {
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 10) { [self] in
+                        let expired = value.withLock { state in
+                            let pending = state.continuation
+                            state.continuation = nil
+                            return pending
+                        }
+                        expired?.resume(throwing: TestDeadlineFailure.timedOut("take dispatch"))
+                    }
+                }
             }
         } onCancel: {
             let continuation = self.value.withLock { state in
@@ -82,14 +92,14 @@ private final class TakeRunDispatchSignal: Sendable {
 }
 private actor TakeRunSuspension {
     nonisolated let reached = TakeRunDispatchSignal()
-    private var continuation: CheckedContinuation<Void, Never>?
+    private var continuation: TestContinuation<Void>?
     private var calls = 0
     func pause(on ordinal: Int) async {
         calls += 1
         if calls == ordinal { await pause() }
     }
     func pause() async {
-        await withCheckedContinuation { continuation in self.continuation = continuation; reached.fire() }
+        await withTestDeadline { continuation in self.continuation = continuation; reached.fire() }
     }
     func release() { continuation?.resume(); continuation = nil }
 }
@@ -184,7 +194,9 @@ struct VoiceLabTakeRunTests {
                     return state
                 }
                 http.dispatched.fire()
-                if state.paused { http.gate.wait() }
+                if state.paused, http.gate.wait(timeout: .now() + 10) != .success {
+                    throw TestDeadlineFailure.timedOut("held take response")
+                }
                 if state.seeds.count == 1 && state.firstStatus != 200 { return (state.firstStatus, [:], Data()) }
                 var pcm = Data()
                 let frames = Int(state.duration * 24_000)

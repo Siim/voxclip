@@ -7,7 +7,7 @@ import Testing
 private actor ContextDemoProjectCommandProbe: ProcessRunner {
     private(set) var requests: [ProcessRequest] = []
     private(set) var cancellationSeen = false
-    private var release: CheckedContinuation<Void, Never>?
+    private var release: TestContinuation<Void>?
     let suspended: Bool
     let exitCode: Int32
 
@@ -20,7 +20,7 @@ private actor ContextDemoProjectCommandProbe: ProcessRunner {
         requests.append(request)
         if suspended {
             await withTaskCancellationHandler {
-                await withCheckedContinuation { release = $0 }
+                await withTestDeadline { release = $0 }
             } onCancel: {
                 Task { await self.markCancellation() }
             }

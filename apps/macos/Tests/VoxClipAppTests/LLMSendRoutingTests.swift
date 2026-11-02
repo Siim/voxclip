@@ -72,12 +72,12 @@ import Testing
         switch action {
         case .findClips:
             editor.findClips()
-            await editor.findTask?.value
+            _ = try await TestDeadline.value(editor.findTask, "Find Clips")
         case .rewrite:
             editor.runRewrite()
-            await editor.rewriteOpenTask?.value
+            _ = try await TestDeadline.value(editor.rewriteOpenTask, "open routed Rewrite")
             let session = try #require(editor.rewrite)
-            await session.actionTask?.value
+            _ = try await TestDeadline.value(session.actionTask, "finish routed Rewrite")
         case .test:
             let provider = try #require(app.providers.first { $0.id == app.string("llm.connector") })
             _ = await testProvider(provider, app: app)
@@ -134,9 +134,9 @@ import Testing
         switch action {
         case .rewrite:
             editor.runRewrite()
-            await editor.rewriteOpenTask?.value
+            _ = try await TestDeadline.value(editor.rewriteOpenTask, "open routed Rewrite")
             let session = try #require(editor.rewrite)
-            await session.actionTask?.value
+            _ = try await TestDeadline.value(session.actionTask, "finish routed Rewrite")
             // The sign-in it can't place reads as signed out: R1x says how to sign in, and nothing was sent.
             #expect(session.changes.isEmpty && session.task.state == .error(.signedOut(cli: "Claude Code", command: "claude")))
         default: try await send(action, editor: editor, app: app)
@@ -233,9 +233,9 @@ import Testing
         var stepsBehindSheet: [ActivityStep.Status] = []
         log.answer = { _ in stepsBehindSheet = editor.rewrite?.task.steps.map(\.status) ?? []; return false }
         editor.runRewrite()
-        await editor.rewriteOpenTask?.value
+        _ = try await TestDeadline.value(editor.rewriteOpenTask, "open routed Rewrite")
         let session = try #require(editor.rewrite)
-        await session.actionTask?.value
+        _ = try await TestDeadline.value(session.actionTask, "finish routed Rewrite")
         #expect(log.take() == [.cost])
         #expect(await fake.sends == 0)
         #expect(stepsBehindSheet == [.done, .waiting, .waiting, .waiting])
@@ -259,7 +259,7 @@ import Testing
         var findingBehindSheet = false
         log.answer = { _ in findingBehindSheet = editor.finding; return false }
         editor.findClips()
-        await editor.findTask?.value
+        _ = try await TestDeadline.value(editor.findTask, "Find Clips")
         #expect(log.take() == [.cost])
         #expect(await fake.sends == 0)
         #expect(!findingBehindSheet && !editor.finding && !editor.llmRuns.isBusy)
@@ -267,7 +267,7 @@ import Testing
         #expect(editor.clipError == "Earlier error." && editor.fallbackNote == "Answered by fixture-fallback because fixture-local was busy.")
         log.answer = { _ in true }
         editor.findClips()
-        await editor.findTask?.value
+        _ = try await TestDeadline.value(editor.findTask, "Find Clips")
         #expect(await fake.sends == 1)
         #expect(sidebarReveals == 1 && editor.announcements.contains("Finding clips"))
         #expect(editor.fallbackNote == nil && editor.clipError != "Earlier error.")
@@ -281,7 +281,7 @@ import Testing
         var sidebarReveals = 0
         editor.onNeedsSidebar = { sidebarReveals += 1 }
         editor.findClips()
-        await editor.findTask?.value
+        _ = try await TestDeadline.value(editor.findTask, "Find Clips")
         #expect(log.sheets.isEmpty)
         #expect(await fake.sends == 0)
         #expect(sidebarReveals == 1 && !editor.finding)
@@ -295,7 +295,7 @@ import Testing
         let editor = try editor(app)
         defer { editor.close() }
         editor.findClips()
-        await editor.findTask?.value
+        _ = try await TestDeadline.value(editor.findTask, "Find Clips")
         #expect(editor.clipError?.contains("\(name) isn't answering at \(url).") == true)
         #expect(app.harnessStatus.stateWords?.contains(url) == true)
         let rewriteEditor = try self.editor(app)

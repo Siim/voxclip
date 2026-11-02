@@ -208,7 +208,7 @@ import Testing
         #expect(editor.exportJob.scope == .thisClip && editor.exportPrimaryTitle([.clip("five-1")]) == "Export Clip 1")
         editor.exportJob.fileNamePattern = "custom-{clip}"
         editor.beginExport(targets: [.clip("five-1")], folder: directory)
-        while await exporter.jobs.isEmpty { await Task.yield() }
+        await TestDeadline.until { await !exporter.jobs.isEmpty }
         #expect(editor.exporting)
         shell.choosePanelJob(.captions, for: editor); shell.choose(.clip("five-2"))
         editor.presentExport()
@@ -239,7 +239,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: directory) }
         shell.choose(.clip("five-1")); editor.presentExport()
         editor.beginExport(targets: [.clip("five-1")], folder: directory)
-        while await exporter.jobs.isEmpty { await Task.yield() }
+        await TestDeadline.until { await !exporter.jobs.isEmpty }
         for _ in 0..<2_000 where editor.exportPercent != 25 { await Task.yield() }
         func rendering() -> Bool {
             editor.exporting && editor.exportTask != nil && editor.exportPercent == 25 && editor.statusExport.text == "Exporting 25%"

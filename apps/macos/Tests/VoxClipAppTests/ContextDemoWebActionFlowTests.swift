@@ -17,7 +17,7 @@ import WebKit
     var holdPreparation = false
     var onAction: (() -> Void)?
     var actionFailure: ContextDemoBrowserError?
-    private var preparationRelease: CheckedContinuation<Void, Never>?
+    private var preparationRelease: TestContinuation<Void>?
     private var projectID = ""
 
     func checkAvailability() { events.append("check-access") }
@@ -37,7 +37,7 @@ import WebKit
         let review = try ContextDemoAutomation.prepare(request: request, actions: webActions)
         prepared.append(review)
         scriptChoices.append(allowsPageScripts)
-        if holdPreparation { await withCheckedContinuation { preparationRelease = $0 } }
+        if holdPreparation { await withTestDeadline { preparationRelease = $0 } }
         return review.request
     }
     func record(_ request: ContextDemoCaptureRequest, isCurrent: @escaping @MainActor () -> Bool) async throws -> (asset: ContextDemoAsset, url: URL) {

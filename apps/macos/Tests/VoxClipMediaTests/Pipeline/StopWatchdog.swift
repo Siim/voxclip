@@ -1,4 +1,5 @@
 import Foundation
+import Testing
 import Synchronization
 
 enum StopWatchdogError: Error { case timedOut }
@@ -27,7 +28,9 @@ func awaitStoppedExport<Value: Sendable>(_ task: Task<Value, any Error>,
             watchdog.withLock { current in
                 current = Task {
                     do {
-                        while stoppedAt() == nil { try await Task.sleep(for: .milliseconds(1)) }
+                        guard await TestDeadline.until({ stoppedAt() != nil }) else {
+                            completion.finish(.failure(StopWatchdogError.timedOut)); task.cancel(); return
+                        }
                         if let stopped = stoppedAt() {
                             try await Task.sleep(until: stopped.advanced(by: .seconds(2)), clock: .continuous)
                         }

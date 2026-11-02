@@ -15,8 +15,8 @@ private actor StubConnector: LLMConnector {
     private let authMethod: String?
     private var failure: LLMError?
     private let hold: Bool
-    private var waiting: CheckedContinuation<Void, Never>?
-    private var arrivals: [CheckedContinuation<Void, Never>] = []
+    private var waiting: TestContinuation<Void>?
+    private var arrivals: [TestContinuation<Void>] = []
     private(set) var sends = 0
     init(id: ConnectorID, readiness: ConnectorStatus = .ready, authMethod: String? = "claude.ai", failure: LLMError? = nil, hold: Bool = false) {
         self.id = id; self.readiness = readiness; self.authMethod = authMethod; self.failure = failure; self.hold = hold
@@ -27,12 +27,12 @@ private actor StubConnector: LLMConnector {
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) async throws -> RawCompletion {
         sends += 1
-        if hold { await withCheckedContinuation { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
+        if hold { await withTestDeadline { waiting = $0; arrivals.forEach { $0.resume() }; arrivals = [] } }
         if let failure { throw failure }
         return RawCompletion(text: "{\"rewrite\":\"A clearer passage\"}", model: model, stop: .complete)
     }
     /// Returns once a send waits for `release()`; a release before that would leave the send waiting for good.
-    func untilWaiting() async { if waiting == nil { await withCheckedContinuation { arrivals.append($0) } } }
+    func untilWaiting() async { if waiting == nil { await withTestDeadline { arrivals.append($0) } } }
     func release() { waiting?.resume(); waiting = nil }
     func set(readiness: ConnectorStatus) { self.readiness = readiness }
     func set(failure: LLMError?) { self.failure = failure }
@@ -54,15 +54,15 @@ private actor RefusingKeys: ProviderKeyStore {
 /// The consent and cost sheets of a send, held until the test answers each.
 @MainActor private final class HeldSheets {
     private(set) var asked: [ConnectorSendPrompt.Reason] = []
-    private var answer: CheckedContinuation<Bool, Never>?
-    private var arrivals: [CheckedContinuation<Void, Never>] = []
+    private var answer: TestContinuation<Bool>?
+    private var arrivals: [TestContinuation<Void>] = []
     var isAsking: Bool { answer != nil }
     func ask(_ sheet: ConnectorSendPrompt) async -> Bool {
         asked.append(sheet.reason)
-        return await withCheckedContinuation { answer = $0; arrivals.forEach { $0.resume() }; arrivals = [] }
+        return await withTestDeadline(returning: false) { answer = $0; arrivals.forEach { $0.resume() }; arrivals = [] }
     }
     /// Returns once a sheet asks; an answer before that would leave the sheet asking for good.
-    func untilAsking() async { if answer == nil { await withCheckedContinuation { arrivals.append($0) } } }
+    func untilAsking() async { if answer == nil { await withTestDeadline { arrivals.append($0) } } }
     func answer(_ approved: Bool) { answer?.resume(returning: approved); answer = nil }
 }
 
@@ -141,9 +141,9 @@ private actor RefusingKeys: ProviderKeyStore {
     /// or the detection ends; a held stub's run waits for `release()`.
     private func open(_ editor: EditorModel, waits: Bool = true) async throws -> RewriteSession {
         editor.runRewrite()
-        await editor.rewriteOpenTask?.value
+        _ = try await TestDeadline.value(editor.rewriteOpenTask, "open Rewrite")
         let session = try #require(editor.openRewrite)
-        if waits { await session.actionTask?.value }
+        if waits { _ = try await TestDeadline.value(session.actionTask, "finish Rewrite") }
         return session
     }
     /// Runs Rewrite again on the session's words, as Rewrite in the passage panel does.

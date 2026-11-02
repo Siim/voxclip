@@ -12,16 +12,16 @@ private struct AcceptanceTestKeys: KeyProvider {
 
 @MainActor private final class AcceptanceBarrier {
     private var arrived = false
-    private var arrival: CheckedContinuation<Void, Never>?
-    private var release: CheckedContinuation<Void, Never>?
+    private var arrival: TestContinuation<Void>?
+    private var release: TestContinuation<Void>?
     func pause() async {
-        await withCheckedContinuation { continuation in
+        await withTestDeadline { continuation in
             release = continuation; arrived = true; arrival?.resume(); arrival = nil
         }
     }
     func wait() async {
         if arrived { return }
-        await withCheckedContinuation { arrival = $0 }
+        await withTestDeadline { arrival = $0 }
     }
     func resume() { release?.resume(); release = nil }
 }

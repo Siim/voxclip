@@ -5,12 +5,12 @@ import Testing
 private actor SettingsDebounceClock {
     private(set) var scheduled = 0
     private(set) var finished: Set<Int> = []
-    private var waiters: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var waiters: [Int: TestContinuation<Void>] = [:]
     func sleep() async throws {
         let index = scheduled
         scheduled += 1
         defer { finished.insert(index) }
-        await withCheckedContinuation { waiters[index] = $0 }
+        await withTestDeadline { waiters[index] = $0 }
         try Task.checkCancellation()
     }
     func advance(_ index: Int) { waiters.removeValue(forKey: index)?.resume() }

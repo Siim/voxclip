@@ -95,7 +95,7 @@ struct SpeechStubHTTPTests {
         let entered = Mutex(false), returned = Mutex(false)
         let heldURL = SpeechStubHTTP.register { _ in
             entered.withLock { $0 = true }
-            gate.wait()
+            guard gate.wait(timeout: .now() + 10) == .success else { throw TestDeadlineFailure.timedOut("held HTTP handler") }
             returned.withLock { $0 = true }
             return (200, [:], Data("held".utf8))
         }
@@ -126,7 +126,7 @@ struct SpeechStubHTTPTests {
         let entered = Mutex(false), returned = Mutex(false)
         let url = SpeechStubHTTP.register { _ in
             entered.withLock { $0 = true }
-            gate.wait()
+            guard gate.wait(timeout: .now() + 10) == .success else { throw TestDeadlineFailure.timedOut("held HTTP handler") }
             returned.withLock { $0 = true }
             return (200, [:], Data("too late".utf8))
         }

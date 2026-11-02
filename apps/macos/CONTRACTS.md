@@ -1,5 +1,11 @@
 # macOS implementation contracts
 
+## Bounded headless test synchronization (2 Nov 2026)
+
+- One shared test-support source, linked into all three test targets, bounds continuation gates and readiness polling at ten seconds. Expiry records the originating test location; late releases are idempotent. Rewrite opening/completion in Director and send-routing tests now names and bounds each awaited task, so a missed completion cannot consume the hosted job’s ten-minute limit. No product timeout or suite limit changed.
+- The full test-tree wait inventory also covers cache leases, transcription starts, export queue starts, Voice Change drain, lip-sync arrivals, take dispatch and native stop checkpoints. Blocking HTTP/reader test gates have explicit deadlines. Finite byte/sample loops, root-terminated fixture walks and subprocesses deliberately killed by bounded runner tests remain distinct from synchronization waits. Native fixture waits inherit their existing 120-second generation limit.
+- Focused verification: 34 App tests across the Director and send-routing suites pass, plus eight Core tests across HTTP scheduling and deadline support. Two known-issue negative controls prove missing conditions/completions report failures; late completion is safe. Broader parallel and SDK 26 acceptance follow in the consolidation report.
+
 ## Hosted caption pixel portability (2 Nov 2026)
 
 - Caption lane tests render explicitly at 1× and 2× in Aqua and Dark Aqua. Expected swatches use the captured view’s appearance, and fill probes avoid antialiased rounded edges. The one-point seam, cut wash and outside-scope alpha assertions remain exact.
