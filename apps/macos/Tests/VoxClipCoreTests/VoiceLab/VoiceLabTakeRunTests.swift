@@ -117,6 +117,9 @@ private final class TakeRunHTTP: Sendable {
         var missingAlignment = false
         var remoteRequiresVerification = false
         var malformedAlignment = false
+        /// Eleven v3's shape: the characters run from 0 to the PCM's last frame plus this overshoot (the client accepts
+        /// up to 50 ms), so the audio holds nothing past the last aligned character. Nil keeps 0.1 s at each end.
+        var edgeAlignmentOvershoot: Double?
         /// Scribe answers 200 with no words, after the spend ledger has recorded the QA request.
         var malformedQA = false
         var current = true
@@ -239,8 +242,11 @@ struct VoiceLabTakeRunTests {
                 }
                 let generatedText = try #require(body["text"] as? String)
                 let characters = Array(generatedText).map(String.init)
-                let starts = characters.indices.map { 0.1 + Double($0) * (state.duration - 0.2) / Double(characters.count) }
-                let ends = characters.indices.map { 0.1 + Double($0 + 1) * (state.duration - 0.2) / Double(characters.count) }
+                let lead = state.edgeAlignmentOvershoot == nil ? 0.1 : 0
+                let span = state.edgeAlignmentOvershoot.map { state.duration + $0 } ?? state.duration - 0.2
+                let starts = characters.indices.map { lead + Double($0) * span / Double(characters.count) }
+                var ends = characters.indices.map { lead + Double($0 + 1) * span / Double(characters.count) }
+                if state.edgeAlignmentOvershoot != nil { ends[ends.count - 1] = span }
                 let alignment: Any = state.missingAlignment ? NSNull() : ["characters": characters, "character_start_times_seconds": state.malformedAlignment ? Array(starts.dropLast()) : starts, "character_end_times_seconds": ends]
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["audio_base64": pcm.base64EncodedString(), "alignment": alignment]))
             case ("POST", "/v1/speech-to-text"):
@@ -626,6 +632,38 @@ struct VoiceLabTakeRunTests {
         let result = try await fixture.run.execute(quote, approved: true)
         #expect(result.best == nil && result.rows.count == 1)
         #expect(fixture.http.value.withLock { $0.qa == 0 && $0.seeds.count == 1 })
+    }
+    /// Live 2026-11-03 (Eleven v3): a take that ends on its last aligned character has no handle after its trim. A longer
+    /// take that must shorten has no pad either, so the fitted asset once read past the paid file (invalidAudio).
+    @Test(arguments: [0.0, 0.03]) func aTakeWithNoAudioPastItsAlignmentGetsSilentHandles(overshoot: Double) async throws {
+        let fixture = try await fixture { $0.duration = 5; $0.edgeAlignmentOvershoot = overshoot }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        #expect(result.rows.count == 3 && result.rows.allSatisfy { $0.failure == nil || $0.qa != nil })
+        let row = try #require(result.rows.first), scratch = try #require(await fixture.run.scratch(for: row.id))
+        let fitted = scratch.fitted, plan = fitted.fit.plan
+        #expect(plan.incoming.padFrames == 0 && plan.outgoing.padFrames == 0 && plan.trimStartFrame == 0 && plan.trimEndFrame == 120_000)
+        // The hard seams' handles (144 frames at 24 kHz) are silence; the take between them is the paid audio.
+        #expect(fitted.isDerived && fitted.trimStartFrame == 144 && fitted.wave.frames == 144 + plan.outputFrames + 144)
+        #expect((0..<144).allSatisfy { fitted.wave.sample(frame: Int64($0), channel: 0) == 0 })
+        #expect((0..<144).allSatisfy { fitted.wave.sample(frame: fitted.wave.frames - 1 - Int64($0), channel: 0) == 0 })
+        #expect(fitted.wave.sample(frame: 145, channel: 0) != 0)
+    }
+    /// Live 2026-11-03: a 1.36 s Eleven v3 take timed to its last frame. `ceil(1.36 × 24,000)` is 32,641 in binary64, one
+    /// frame past the asset, and the fit planner refused the word timing (invalidAlignment) until times were clamped.
+    @Test(arguments: [0.0, 0.03]) func aLastCharacterTimedToTheEndOfThePCMIsClamped(overshoot: Double) async throws {
+        let fixture = try await fixture { $0.duration = 1.36; $0.edgeAlignmentOvershoot = overshoot }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        #expect((1.36 * 24_000).rounded(.up) == 32_641)
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        #expect(result.end == .completed && result.rows.count == 3)
+        #expect(result.rows.allSatisfy { $0.failure != .invalidAlignment && $0.failure != .provider(.invalidAlignment) && $0.qa != nil })
+        let words = try #require(result.rows.first?.audio?.words)
+        #expect(words.count == 1 && words[0].end > words[0].start)
+        #expect(VoiceLabTakeProcessing.lastAlignedTime(frames: 32_640, rate: 24_000) < 1.36)
+        #expect((VoiceLabTakeProcessing.lastAlignedTime(frames: 32_640, rate: 24_000) * 24_000).rounded(.up) == 32_640)
     }
     @Test func changedDurationRanksButDoesNotPretendToFit() async throws {
         let fixture = try await fixture { $0.duration = 5 }; defer { try? FileManager.default.removeItem(at: fixture.root) }

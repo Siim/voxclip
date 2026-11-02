@@ -83,7 +83,11 @@ public enum VoiceLabSilenceFit {
         }
         let incoming = try handle(window.leftSeam, incoming: true), outgoing = try handle(window.rightSeam, incoming: false)
         guard (incoming + plan.outputFrames + outgoing) * Int64(original.stride) <= 256 * 1_024 * 1_024 else { throw VoiceLabAssetError.tooLarge(paidAsset.id) }
-        let derived = !plan.edits.isEmpty || plan.incoming.padFrames > 0 || plan.outgoing.padFrames > 0
+        // A provider take can end on its last aligned frame (Eleven v3 does) or start within a handle of it. TTS is silent
+        // outside its trim (§8.7 item 2), so a handle the asset cannot hold is written as silence in a derived asset.
+        let missingBefore = plan.incoming.padFrames > 0 ? 0 : max(0, incoming - plan.trimStartFrame)
+        let missingAfter = plan.outgoing.padFrames > 0 ? 0 : max(0, plan.trimEndFrame + outgoing - original.frames)
+        let derived = !plan.edits.isEmpty || plan.incoming.padFrames > 0 || plan.outgoing.padFrames > 0 || missingBefore > 0 || missingAfter > 0
         if !derived {
             guard plan.trimStartFrame >= incoming, plan.trimEndFrame + outgoing <= original.frames,
                   plan.trimEndFrame - plan.trimStartFrame == plan.outputFrames else { throw VoiceLabError.invalidAudio }
@@ -98,7 +102,7 @@ public enum VoiceLabSilenceFit {
         }
         func silence(_ frames: Int64) { pcm.append(Data(count: Int(frames) * original.stride)) }
         if plan.incoming.padFrames > 0 { silence(incoming) }
-        else { try copy(plan.trimStartFrame - incoming, plan.trimStartFrame) }
+        else { silence(missingBefore); try copy(plan.trimStartFrame - incoming + missingBefore, plan.trimStartFrame) }
         silence(plan.incoming.padFrames)
         var cursor = plan.trimStartFrame
         var joins: [(output: Int64, left: Int64, right: Int64)] = []
@@ -123,7 +127,7 @@ public enum VoiceLabSilenceFit {
         silence(plan.outgoing.padFrames)
         guard pcm.count / original.stride == incoming + plan.outputFrames else { throw VoiceLabError.invalidAudio }
         if plan.outgoing.padFrames > 0 { silence(outgoing) }
-        else { try copy(plan.trimEndFrame, plan.trimEndFrame + outgoing) }
+        else { try copy(plan.trimEndFrame, plan.trimEndFrame + outgoing - missingAfter); silence(missingAfter) }
         var wave = VoiceLabWavePCM(rate: original.rate, channels: original.channels, bits: original.bits, floating: original.floating, pcm: pcm)
         for join in joins {
             for offset in 0..<fade {
