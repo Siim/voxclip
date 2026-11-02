@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Simplify the Mac Rewrite field’s scope fallback for supported compilers.
+
 - Keep Mac offline HTTP tests compatible with the supported Core Foundation SDK names.
 
 - Keep Mac demonstration and voice-change controls compatible with the supported compiler.

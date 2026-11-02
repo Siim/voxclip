@@ -83,7 +83,8 @@ extension AppModel {
         }
     }
     private var words: DirectorScope {
-        editor.rewrite?.task.words ?? DirectorScope(kind: .fullTake, wordCount: 0)
+        if let session = editor.rewrite { return session.task.words }
+        return DirectorScope(kind: .fullTake, wordCount: 0)
     }
     var body: some View {
         let placeholder = Self.placeholder(words)

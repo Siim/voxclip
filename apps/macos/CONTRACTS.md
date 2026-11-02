@@ -1,5 +1,10 @@
 # macOS implementation contracts
 
+## Split the Rewrite field scope fallback (2 Nov 2026)
+
+- Replace AskField’s optional chain plus nil-coalescing constructor with an explicit session branch and a separate Full Take fallback. Placeholder text, scope choice and send behavior are unchanged. This addresses the lead’s 302–312 ms expression-check observation at RewriteSuggestions.swift:86.
+- The expression-warning build reports no RewriteSuggestions warning after the split; all 57 targeted RewriteScope, DirectorTask and ClipBar tests pass. No additional hosted dispatch is made beyond the brief’s three-run cap.
+
 ## SDK-independent Core Foundation stub mode names (2 Nov 2026)
 
 - Remove the compiler-version fallback around CFRunLoopMode.defaultMode and rawValue. The fallback chose the obsolete kCFRunLoopDefaultMode spelling and treated the typed mode as CFString; compiler versions do not determine the SDK’s imported representation. The supported typed spelling also type-checks with the installed Swift 6.1.2 / macOS 15.5 Command Line Tools, while the old spelling fails as renamed.
