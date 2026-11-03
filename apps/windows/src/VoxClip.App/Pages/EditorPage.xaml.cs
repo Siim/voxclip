@@ -573,7 +573,7 @@ if (insertion ||
         var connectorWireId = App.Services.Get("llm.connector", "");
         if (!CurrentOpening()) return;
         rewrite = new(ViewModel, passage.First, passage.Last, envelope, connector, passage.InsertionAfter,
-            prices: VoiceLabPrices.Load(), synthesisModel: "eleven_multilingual_v2",
+            prices: VoiceLabPrices.Load(),
             connectorIsCurrent: () => App.Services.Get("llm.connector", "") == connectorWireId &&
                 (entry is null || App.Services.Get("llm.model." + entry.WireId, entry.DefaultModel) == connector?.Model),
             scope: ViewModel.HasSelection ? null : project.Edits.ActiveClipId is { } scopeClip ? RewriteScope.Clip(scopeClip) : RewriteScope.FullTake);

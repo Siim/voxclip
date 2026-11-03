@@ -120,7 +120,14 @@ internal sealed partial class RewritePanel
             edit.IsEnabled = session.ReviewIsCurrent;
             actions.Children.Add(reveal); actions.Children.Add(edit); row.Children.Add(actions);
             var voiceHunk = current.VoiceHunks.FirstOrDefault(voice => voice.Ordinals.Contains(ordinal));
-            SetName(row, $"Change {ordinal} of {current.Diff.Hunks.Count}. {voiceHunk?.SpokenTiming}");
+            var fitted = session.FitRowNote(ordinal);
+            SetName(row, $"Change {ordinal} of {current.Diff.Hunks.Count}. {fitted ?? voiceHunk?.SpokenTiming}");
+            if (fitted is not null)
+            {
+                var note = Small(fitted);
+                AutomationProperties.SetAutomationId(note, "Rewrite.FitNote" + ordinal);
+                reviewElements.Add(note); row.Children.Add(note);
+            }
             if (included && voiceHunk?.Fit is { } fit)
             {
                 var timing = Small(fit.Copy);
@@ -131,21 +138,23 @@ internal sealed partial class RewritePanel
                 {
                     row.Children.Add(new InfoBar { IsOpen = true, IsClosable = false, Severity = InfoBarSeverity.Warning,
                         Message = fit.TooLong ? VoiceLabRewriteFit.TooLongCopy : VoiceLabRewriteFit.TooShortCopy });
-                    var shorter = new Button { Content = fit.TooLong ? "Ask for shorter" : "Use surrounding sentence", IsEnabled = session.ReviewIsCurrent && !requestingApproval };
-                    AutomationProperties.SetAutomationId(shorter, "Rewrite.Shorter" + ordinal);
+                    var shorter = new Button { Content = fit.TooLong ? "Ask for shorter" : "Ask for longer", IsEnabled = session.ReviewIsCurrent && !requestingApproval };
+                    AutomationProperties.SetAutomationId(shorter, (fit.TooLong ? "Rewrite.Shorter" : "Rewrite.Longer") + ordinal);
                     shorter.Click += async (_, _) =>
                     {
                         if (!ReferenceEquals(current, session.Review)) return;
                         if (fit.TooLong) await AskForShorterAsync(ordinal);
-                        else session.ReviewSurroundingSentence(ordinal);
+                        else await session.AskForLongerAsync();
                     };
+                    var surrounding = Ui.Button("Use surrounding sentence", () => { if (ReferenceEquals(current, session.Review)) session.ReviewSurroundingSentence(ordinal); });
+                    AutomationProperties.SetAutomationId(surrounding, "Rewrite.Surrounding" + ordinal);
                     var keep = Ui.Button("Keep original words", () => { if (ReferenceEquals(current, session.Review)) session.SetChangeIncluded(ordinal, false); });
                     AutomationProperties.SetAutomationId(keep, "Rewrite.KeepOriginal" + ordinal);
                     var anyway = new HyperlinkButton { Content = "Price it anyway" };
                     AutomationProperties.SetAutomationId(anyway, "Rewrite.PriceAnyway" + ordinal);
                     anyway.Click += (_, _) => { if (ReferenceEquals(current, session.Review)) session.PriceItAnyway(ordinal); };
-                    keep.IsEnabled = anyway.IsEnabled = session.ReviewIsCurrent;
-                    row.Children.Add(shorter); row.Children.Add(keep); row.Children.Add(anyway);
+                    keep.IsEnabled = anyway.IsEnabled = surrounding.IsEnabled = session.ReviewIsCurrent;
+                    row.Children.Add(shorter); row.Children.Add(surrounding); row.Children.Add(keep); row.Children.Add(anyway);
                 }
             }
             else if (included && voiceHunk?.Refusal is { } refusal)
@@ -157,8 +166,8 @@ internal sealed partial class RewritePanel
         }
         if (current.VoiceHunks.Count > 0)
         {
-            review.Children.Add(Small(ExpressionNote(session.Generation?.ModelId)));
-            review.Children.Add(Small(session.FitFooter));
+            review.Children.Add(Small(ExpressionNote));
+            review.Children.Add(Small(session.ReviewFooter));
         }
         if (current.Summary is { } summary) review.Children.Add(Small(summary.Copy));
         if (current.Budget.Copy is { } budget) review.Children.Add(Small(budget));

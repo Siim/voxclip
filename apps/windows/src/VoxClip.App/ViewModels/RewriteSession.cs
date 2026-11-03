@@ -41,7 +41,8 @@ internal sealed partial class RewriteSession : IDisposable
     private int revision;
     private bool estimateShown;
     private readonly VoiceLabPriceCatalog? prices;
-    private string? synthesisModel;
+    /// <summary>New Rewrite phrases always use Eleven v4; takes already made keep their receipts' models.</summary>
+    private const string synthesisModel = VoiceLabWordingFit.ModelId;
     private Func<CancellationToken, Task<bool>>? consent;
     private readonly Func<bool> connectorIsCurrent;
     private Func<bool> contextIsCurrent = () => true;
@@ -97,12 +98,13 @@ internal sealed partial class RewriteSession : IDisposable
     /// could be listed in it (<see cref="VoiceLabSession.VoicesUnavailable"/>). With no voice listed, the voice row explains instead
     /// of offering Create Your Voice… or voice discovery.</summary>
     internal bool VoicesUnavailable { get; }
-    internal bool GenerationIsCurrent => IsOpen && ReferenceEquals(Project, Editor.Project) && !IsProposing &&
+    internal bool GenerationIsCurrent => IsOpen && ReferenceEquals(Project, Editor.Project) && !IsProposing && !WordingIsLocked &&
         !Editor.Busy && !Editor.IsLeaving && !Editor.IsReadOnly && connectorIsCurrent() && contextIsCurrent();
     internal void ConfigureGeneration(RewriteGeneration generation)
     {
         generationFactory = null;
         RetireGenerationWindows();
+        generation.FixedModelId = synthesisModel;
         generationWindows.Add(generation);
         ActiveWindow = 0;
         Generation = generation;
@@ -113,11 +115,7 @@ internal sealed partial class RewriteSession : IDisposable
     }
     private void GenerationChanged(object? sender, EventArgs args)
     {
-        if (ReferenceEquals(sender, Generation) && Generation?.ModelId is { } model && synthesisModel != model)
-        {
-            synthesisModel = model;
-            RefreshReview(preserveGenerations: true);
-        }
+        ObserveMeasuredTakes();
         Changed?.Invoke(this, EventArgs.Empty);
     }
     private void GenerationSelectionChanged(object? sender, EventArgs args)
@@ -135,8 +133,11 @@ internal sealed partial class RewriteSession : IDisposable
             throw new RewriteGenerationException("Keep fewer changed passages before generating takes. Your edits are saved.");
         if (windowIndex < 0 || windowIndex >= PricedVoiceHunks.Count) return null;
         var hunk = PricedVoiceHunks[windowIndex];
-        if (hunk.Window is not { } window || hunk.PatchText is not { } text)
+        if (hunk.Window is not { } window || hunk.PatchText is not { } patch)
             throw new RewriteGenerationException(hunk.Refusal ?? "This change can't be placed in this take. Your edits are saved.");
+        // A measured rewording replaces the whole spoken phrase of this window; its tags follow the words.
+        var text = measuredWording.TryGetValue(windowIndex, out var reworded) ? reworded : patch;
+        var requestTags = ReferenceEquals(text, patch) ? hunk.RequestAudioTags : VoiceLabAudioTags.Reanchored(hunk.RequestAudioTags, patch, text);
         var combined = Editor.ProjectWithLocalOperations(Project, LocalOperations());
         try { VoiceLabRenderContract.ValidatePlacement(combined, Scope, window); }
         catch (VoiceLabProjectException) { throw new RewriteGenerationException("This change can't blend beside the proposed cuts. Keep more of the surrounding speech or re-record this sentence. Your edits are saved."); }
@@ -158,12 +159,12 @@ internal sealed partial class RewriteSession : IDisposable
         return new VoiceLabTakeInput(text, modelId, recordId, Project.Transcript?.Language ?? "en", seed, Project.Media.Source.ContentKey,
             read.Excerpt, read.Envelope, rate, Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window,
             silence.Incoming, silence.Outgoing, false, providerConsent,
-            RewriteReview.MeasureTiming(this, combined, text, window, modelId, hunk.RequestAudioTags).Pace)
-            { PauseProfile = VoiceLabPauseProfile.Measure(pauseWords.Where(word => !Project.Edits.CutWordIds.Contains(word.Id)).ToArray(), read.Envelope, 0, double.MaxValue), AudioTags = hunk.RequestAudioTags };
+            RewriteReview.MeasureTiming(this, combined, text, window, modelId, requestTags).Pace)
+            { PauseProfile = VoiceLabPauseProfile.Measure(pauseWords.Where(word => !Project.Edits.CutWordIds.Contains(word.Id)).ToArray(), read.Envelope, 0, double.MaxValue), AudioTags = requestTags };
     }
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
-        int? insertionAfter = null, VoiceLabPriceCatalog? prices = null, string? synthesisModel = null,
+        int? insertionAfter = null, VoiceLabPriceCatalog? prices = null,
         Func<CancellationToken, Task<bool>>? consent = null, Func<bool>? connectorIsCurrent = null, Func<string, bool>? speakerCalibrated = null,
         RewriteScope? scope = null)
     {
@@ -176,7 +177,6 @@ internal sealed partial class RewriteSession : IDisposable
         Connector = connector;
         InsertionAfter = insertionAfter;
         this.prices = prices;
-        this.synthesisModel = synthesisModel;
         this.consent = consent;
         this.connectorIsCurrent = connectorIsCurrent ?? (() => true);
         requestedScope = scope;
@@ -198,6 +198,7 @@ internal sealed partial class RewriteSession : IDisposable
     internal async Task SetInstructionAsync(string text, bool retainFailure = false, IReadOnlyList<VoiceRewriteTimingFeedback>? shorterPhrases = null)
     {
         if (!IsOpen) return;
+        if (!retainFailure) StopWordingFit();
         InvalidateProposal();
         Instruction = text;
         if (!retainFailure) InvalidateGenerationInputs();
@@ -281,7 +282,18 @@ internal sealed partial class RewriteSession : IDisposable
         finally { if (ReferenceEquals(confirming, cancellation)) confirming = null; }
     }
 
+    /// <summary>Sends the Rewrite, then fits the reply's phrases to their slots automatically (at most three free rounds, or one
+    /// inline approval for a billed connector). Ask again cancels any rounds still running.</summary>
     internal async Task<bool> ProposeAsync(VoiceLabPreparedAction action, bool affirmative)
+    {
+        if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action)) return false;
+        StopWordingFit();
+        var proposed = await SendRewriteAsync(action, affirmative);
+        if (proposed && IsOpen) await BeginAutomaticWordingFitAsync();
+        return proposed;
+    }
+
+    private async Task<bool> SendRewriteAsync(VoiceLabPreparedAction action, bool affirmative)
     {
         if (!CanPropose || !affirmative || !ReferenceEquals(Prepared, action) || request is null && scopePlan is null || Connector is null) return false;
         using var run = Editor.LlmRuns.TryAcquire();
@@ -323,6 +335,7 @@ internal sealed partial class RewriteSession : IDisposable
             if (!IsOpen || revision != current) return false;
             changeStates.Clear();
             priceOverrides.Clear();
+            ResetWordingFit();
             NewWords = resultText;
             RefreshReview();
             ProposalRevision++;
@@ -354,6 +367,7 @@ internal sealed partial class RewriteSession : IDisposable
     internal void Edit(string text)
     {
         if (!IsOpen) return;
+        StopWordingFit();
         audioTags = VoiceLabAudioTags.Reanchored(ReviewAudioTags(), NewWords, text);
         InvalidateProposal();
         scopeHunks = null;
@@ -367,9 +381,9 @@ internal sealed partial class RewriteSession : IDisposable
 
     private void RefreshReview(bool preserveGenerations = false)
     {
-        if (!preserveGenerations) { sentenceReplacements.Clear(); SentenceReview = null; SentenceProblem = ""; }
+        if (!preserveGenerations) { sentenceReplacements.Clear(); SentenceReview = null; SentenceProblem = ""; ClearMeasuredWording(); }
         reviewProblem = "";
-        try { Review = RewriteReview.Build(this, prices, synthesisModel ?? Generation?.ModelId); }
+        try { Review = RewriteReview.Build(this, prices, synthesisModel); }
         catch (VoiceLabWordDiffException exception)
         {
             Review = null;
@@ -438,6 +452,7 @@ internal sealed partial class RewriteSession : IDisposable
     {
         if (!IsOpen) return;
         IsOpen = false;
+        StopWordingFit();
         Editor.SelectionChanged -= GenerationSelectionChanged;
         RetireGenerationWindows();
         InvalidateProposal();

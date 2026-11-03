@@ -33,7 +33,8 @@ public sealed class RewriteGenerationTests
         Assert.Contains("Ui.Button(\"Create Your Voice…\", () =>", panel);
         Assert.DoesNotContain("(2 min)", panel);
         Assert.DoesNotContain("Clean Audio", panel);
-        Assert.Contains("prices: VoiceLabPrices.Load(), synthesisModel: \"eleven_multilingual_v2\"", Source("Pages/EditorPage.xaml.cs"));
+        Assert.Contains("prices: VoiceLabPrices.Load(),", Source("Pages/EditorPage.xaml.cs"));
+        Assert.DoesNotContain("synthesisModel:", Source("Pages/EditorPage.xaml.cs"));
         Assert.Contains("panel.DebugFitStatesAsync", Source("Pages/EditorPage.NativeProbe.cs"));
     }
     [Fact]
@@ -188,6 +189,26 @@ public sealed class RewriteGenerationTests
         Assert.Equal("eleven_v4", test.Generation.ModelId);
         Assert.Equal("eleven_v4", test.Runner.PreparedInputs.Last().ModelId);
         Assert.Equal(0, test.Runner.PaidRequests);
+    }
+    [Fact]
+    public async Task ARewriteGenerationUsesOnlyItsFixedModelAndSaysWhenItIsMissing()
+    {
+        VoiceLabModel[] models = [new("eleven_multilingual_v2", "Multilingual v2", ["en"], true, false, 5000, 1),
+            new("eleven_v4", "Account v4 label", ["en"], true, false, 5000, 1)];
+        await using var test = new Harness(models);
+        test.Generation.FixedModelId = "eleven_v4";
+        await test.Generation.DiscoverAsync();
+        Assert.Equal("eleven_v4", test.Generation.ModelId);
+        await test.Generation.ChooseModelAsync("eleven_multilingual_v2");
+        Assert.Equal("eleven_v4", test.Generation.ModelId);
+        Assert.All(test.Runner.PreparedInputs, input => Assert.Equal("eleven_v4", input.ModelId));
+        await using var missing = new Harness([models[0]]);
+        missing.Generation.FixedModelId = "eleven_v4";
+        await missing.Generation.DiscoverAsync();
+        Assert.Null(missing.Generation.ModelId);
+        Assert.Equal(RewriteGeneration.FixedModelUnavailable, missing.Generation.Problem);
+        Assert.Empty(missing.Runner.PreparedInputs);
+        Assert.Equal(0, test.Runner.PaidRequests + missing.Runner.PaidRequests);
     }
     [Fact]
     public async Task NothingIsSentUntilThisExactEstimateHasRendered()

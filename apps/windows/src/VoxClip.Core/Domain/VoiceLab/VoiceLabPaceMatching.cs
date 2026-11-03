@@ -8,10 +8,13 @@ public static class VoiceLabPaceMatching
     public static VoiceLabRewriteFitResult Measure(string text, double rate, VoiceLabWindow window,
         double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool hardJoinSmoothing, bool supportsPace = true,
         IReadOnlyList<TimedWord>? sourceItems = null, AudioEnvelope? sourceEnvelope = null,
-        IReadOnlyList<VoiceLabAudioTag>? audioTags = null, string modelId = "") =>
-        Match(VoiceLabRewriteFit.Estimate(text, rate) + VoiceLabAudioTags.Allowance(audioTags ?? [], text, modelId), window, incomingSilence, outgoingSilence, sourceSampleRate,
+        IReadOnlyList<VoiceLabAudioTag>? audioTags = null, string modelId = "", double rateMultiplier = 1)
+    {
+        if (!double.IsFinite(rateMultiplier) || rateMultiplier <= 0) throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
+        return Match(VoiceLabRewriteFit.Estimate(text, rate) * rateMultiplier + VoiceLabAudioTags.Allowance(audioTags ?? [], text, modelId), window, incomingSilence, outgoingSilence, sourceSampleRate,
             supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing, sourceItems: sourceItems, sourceEnvelope: sourceEnvelope, generatedText: text,
             audioTags: VoiceLabNaturalPacing.PauseTags(audioTags ?? [], modelId, Domain.Editing.EditingAlgorithms.SplitWords(text).Count));
+    }
 
     public static VoiceLabRewriteFitResult Match(double seconds, VoiceLabWindow window,
         double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool hardJoinSmoothing, double oldPace = 1, bool supportsPace = true,
@@ -34,6 +37,19 @@ public static class VoiceLabPaceMatching
         var exactLower = Math.Max(1.0 / sourceSampleRate, source - padding);
         var exactUpper = expanded - edge;
         var retimeUpper = expanded / VoiceLabRewriteFit.MinimumVideoSpeed - edge;
+        // The shortest wording that still fits at source speed: the fit range's lower end the wording fit aims for.
+        var fitLower = exactLower;
+        if (profile is not null && generatedText is not null && Fit(exactLower) is VoiceLabFitResult.Exact)
+        {
+            double lower = 1.0 / sourceSampleRate, upper = exactLower;
+            for (var step = 0; step < 14; step++)
+            {
+                var middle = (lower + upper) / 2;
+                if (Fit(middle) is VoiceLabFitResult.Exact) upper = middle;
+                else lower = middle;
+            }
+            fitLower = upper;
+        }
         var natural = seconds * oldPace;
         var minimum = supportsPace ? VoiceLabNaturalPacing.NATURAL_PACE_MIN : 1;
         var maximum = supportsPace ? VoiceLabNaturalPacing.NATURAL_PACE_MAX : 1;
@@ -58,6 +74,6 @@ public static class VoiceLabPaceMatching
         var cuts = sourceEnvelope is null ? [] : VoiceLabNaturalPacing.Cuts(cutPlan.WindowStartSample, cutPlan.WindowEndSample,
             cutPlan.OutputFrames, sourceSampleRate, sourceEnvelope, sourceItems ?? []);
         return new(predicted, source, VoiceLabRewriteFit.AllowsVideo(fit, sourceSampleRate, sourceSampleRate) || cuts.Count > 0,
-            chosen, fit is not VoiceLabFitResult.Exact && cuts.Count > 0, Math.Max(0, retimeUpper));
+            chosen, fit is not VoiceLabFitResult.Exact && cuts.Count > 0, Math.Max(0, retimeUpper), fitLower);
     }
 }

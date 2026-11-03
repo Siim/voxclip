@@ -41,7 +41,9 @@ internal sealed partial class RewritePanel : Grid
     private bool updating;
     private readonly StackPanel generationBody = Ui.Stack(12);
     private readonly ComboBox voice = new() { Header = "Voice", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Label", SelectedValuePath = "Id" };
-    private readonly ComboBox speechModel = new() { Header = "Speech model", HorizontalAlignment = HorizontalAlignment.Stretch, DisplayMemberPath = "Name", SelectedValuePath = "Id" };
+    /// <summary>New Rewrite phrases always use Eleven v4: a fixed label, not a choice.</summary>
+    internal const string SpeechModelLabel = "Eleven v4 · audio tags";
+    private readonly TextBlock speechModel = Ui.Text(SpeechModelLabel);
     private readonly Button discover = new() { Content = "Choose Voice…" };
     private readonly StackPanel noVoice = Ui.Stack(6);
     private readonly StackPanel languageUnavailable = Ui.Stack(6);
@@ -111,7 +113,8 @@ internal sealed partial class RewritePanel : Grid
         body.Children.Add(taskStatus);
         SetName(instruction, "What should change?"); SetName(words, "New words"); SetName(propose, "Rewrite");
         instruction.TextChanged += async (_, _) => { if (!updating) await session.SetInstructionAsync(instruction.Text); };
-        words.TextChanged += (_, _) => { if (!updating) session.Edit(words.Text); };
+        // TextChanged also echoes programmatic updates; only a real edit (which cancels fit rounds) reaches the session.
+        words.TextChanged += (_, _) => { if (!updating && words.Text != session.NewWords) session.Edit(words.Text); };
         propose.Click += async (_, _) => await SendProposalAsync();
         body.Children.Add(instruction); body.Children.Add(busy); body.Children.Add(propose);
         body.Children.Add(Small(SendLine)); body.Children.Add(estimate);
@@ -133,7 +136,8 @@ internal sealed partial class RewritePanel : Grid
         Grid.SetColumn(changeSummary, 1);
         newHeader.Children.Add(changeSummary);
         body.Children.Add(newHeader);
-        body.Children.Add(words); body.Children.Add(review); body.Children.Add(paidReviewChange); body.Children.Add(sentenceReview); body.Children.Add(problem);
+        BuildWordingFit();
+        body.Children.Add(words); body.Children.Add(wordingFit); body.Children.Add(review); body.Children.Add(paidReviewChange); body.Children.Add(sentenceReview); body.Children.Add(problem);
         BuildGeneration();
         body.Children.Add(generationBody);
         var scroll = new ScrollViewer { Content = body, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
@@ -320,6 +324,7 @@ internal sealed partial class RewritePanel : Grid
         estimate.FontSize = 11;
         problem.Text = session.Problem;
         problem.Visibility = session.Problem.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RenderWordingFit();
         RenderChangeReview();
         if (session.Prepared is { } action) DispatcherQueue.TryEnqueue(() => session.MarkEstimateShown(action));
         RenderGeneration();
@@ -332,6 +337,7 @@ internal sealed partial class RewritePanel : Grid
         BuildWindowPicker();
         AutomationProperties.SetAutomationId(voice, "Rewrite.Voice");
         AutomationProperties.SetAutomationId(speechModel, "Rewrite.SpeechModel");
+        SetName(speechModel, "Speech model: " + SpeechModelLabel);
         AutomationProperties.SetAutomationId(generate, "Rewrite.Generate");
         AutomationProperties.SetAutomationId(discover, "Rewrite.ChooseVoice");
         AutomationProperties.SetAutomationId(generationProgress, "Rewrite.GenerationProgress");
@@ -354,8 +360,6 @@ internal sealed partial class RewritePanel : Grid
         discover.Click += async (_, _) => await session.DiscoverWindowsAsync();
         voice.SelectionChanged += async (_, _) =>
         { if (!updating) await session.ChooseVoiceForWindowsAsync(voice.SelectedValue as string); };
-        speechModel.SelectionChanged += async (_, _) =>
-        { if (!updating) await session.ChooseModelForWindowsAsync(speechModel.SelectedValue as string); };
         generate.Click += async (_, _) =>
         {
             if (!VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified) return;
@@ -406,20 +410,14 @@ internal sealed partial class RewritePanel : Grid
         windowPicker.SelectedIndex = session.ActiveWindow;
         windowPicker.IsEnabled = !session.IsGeneratingBatch;
         voice.IsEnabled = !session.IsGeneratingBatch;
-        speechModel.IsEnabled = !session.IsGeneratingBatch && !generation.IsPreparing && !generation.IsRunning;
         if (!ReferenceEquals(voice.ItemsSource, generation.Voices)) voice.ItemsSource = generation.Voices;
-        if (!ReferenceEquals(renderedSpeechModels, generation.Models))
-        {
-            renderedSpeechModels = generation.Models;
-            speechModel.ItemsSource = generation.Models.Select(model => model with { Name = model.Id switch
-            { "eleven_v3" => "Eleven v3 · audio tags", "eleven_v4" => "Eleven v4 · audio tags", _ => model.Name } }).ToArray();
-        }
-        voice.SelectedValue = generation.VoiceId; speechModel.SelectedValue = generation.ModelId;
+        voice.SelectedValue = generation.VoiceId;
         updating = false;
         voice.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         speechModel.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         discover.Content = session.GetPriceTitle;
-        discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && !session.IsGeneratingBatch && !generation.IsPreparing;
+        discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && !session.IsGeneratingBatch && !generation.IsPreparing &&
+            !session.WordingIsLocked;
         var unavailable = generation.Voices.Count == 0 && session.VoicesUnavailable;
         discover.Visibility = unavailable || session.PricedVoiceHunks.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         noVoice.Visibility = !unavailable && generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;

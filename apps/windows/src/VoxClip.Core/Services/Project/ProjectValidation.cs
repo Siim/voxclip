@@ -79,13 +79,23 @@ internal static class ProjectValidation
         UniqueIds(ai.GetProperty("results").EnumerateArray().Select(result => result.GetProperty("id").GetString()!));
         var voice = root.GetProperty("voiceLab");
         var projectVersion = root.GetProperty("schemaVersion").GetInt32();
+        if (voice.ValueKind == JsonValueKind.Object && voice.TryGetProperty("speakingRateSamples", out var rates))
+            Dictionary(rates, key => Require(key.Length > 0), samples =>
+            {
+                Require(samples.ValueKind == JsonValueKind.Array && samples.GetArrayLength() <= VoiceLabWordingFit.MaximumSamples);
+                Array(samples, sample =>
+                {
+                    Object(sample, "id ratio"); Text(sample.GetProperty("id"), 1, int.MaxValue);
+                    Require(sample.GetProperty("ratio").ValueKind == JsonValueKind.Number && sample.GetProperty("ratio").GetDouble() is var ratio && double.IsFinite(ratio) && ratio > 0);
+                });
+            });
         if (projectVersion == 1)
         {
-            Object(voice, "segments"); Require(voice.GetProperty("segments").ValueKind == JsonValueKind.Array && voice.GetProperty("segments").GetArrayLength() == 0);
+            Object(voice, "segments", "speakingRateSamples"); Require(voice.GetProperty("segments").ValueKind == JsonValueKind.Array && voice.GetProperty("segments").GetArrayLength() == 0);
         }
         else
         {
-            Object(voice, projectVersion >= 3 ? "assets segments cleanAudio voices videoAssets" : "assets segments");
+            Object(voice, projectVersion >= 3 ? "assets segments cleanAudio voices videoAssets" : "assets segments", "speakingRateSamples");
             Array(voice.GetProperty("assets"), asset => Object(asset, "id kind file sha256 durationSeconds sampleRate createdAt"));
             Array(voice.GetProperty("segments"), segment =>
             {
