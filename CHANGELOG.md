@@ -4,8 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
-- Define the shared Eleven v4 dialogue take request and validation contract.
-
+- Eleven v4 can now voice takes on macOS and Windows.
 - Bound competition between headless Mac fixture suites while preserving request and cancellation checks.
 - Keep headless Mac checks responsive during audio validation, preserve panel keyboard ownership, and latch early export releases.
 - Integrate pooled short-phrase checks, inline Motion editing and the Windows v2 shell while preserving Release availability gates.
