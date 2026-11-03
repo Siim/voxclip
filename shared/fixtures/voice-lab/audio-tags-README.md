@@ -34,7 +34,8 @@ extra ha before/after its ordered expected occurrence, untagged input, bracket
 events, and missing/extra lexical words. `filtered` is normalized words, with
 only surplus catalog events removed when `tagged` is true. Preserve ordered
 expected matches when choosing which duplicate event occurrences to remove.
-All new values are deterministic and byte-exact, never tolerance-listed.
+The total `caseCount` is 71 (40 existing + 31 review-fix vectors). All new values
+are deterministic and byte-exact, never tolerance-listed.
 
 macOS replays all sections. Windows replays optional-field decode, validation and
 preservation only; the behavior/UI twin is explicitly owed in its CONTRACTS.
