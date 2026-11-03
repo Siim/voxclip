@@ -51,6 +51,18 @@ public sealed class RewriteTakeReviewTests
         Assert.Contains("retimeCopy.Text = generation.RetimeCopy", source);
     }
     [Fact]
+    public void FailedRowsHaveInlineKeyboardReachablePlaybackWithoutARejectAction()
+    {
+        var source = AppSource("Controls/RewritePanel.Takes.cs");
+        var failure = source[source.IndexOf("if (!content.Selectable)", StringComparison.Ordinal)..source.IndexOf("else\n        {", StringComparison.Ordinal)];
+        Assert.Contains("content.PlayName", failure);
+        Assert.Contains("PlayTakeAsync(row.Id)", failure);
+        Assert.Contains("IsTabStop = true", failure);
+        Assert.DoesNotContain("new ContentDialog", failure);
+        Assert.DoesNotContain("Flyout", failure);
+        Assert.DoesNotContain("RejectTakeAsync", failure);
+    }
+    [Fact]
     public void FooterIsScopedEnabledDefaultAndFocusReturnsOnlyAfterTakeSuccess()
     {
         var panel = AppSource("Controls/RewritePanel.cs");
@@ -79,6 +91,23 @@ public sealed class RewriteTakeReviewTests
         Assert.Contains("Editor.SelectionChanged -= GenerationSelectionChanged", session);
     }
 #if DEBUG
+    [Fact]
+    public async Task FailedCheckedTakePlaysItsMixWithoutChangingSelectionBestOrAcceptance()
+    {
+        await using var test = new Harness("mixed"); await test.GenerateAsync();
+        var failed = test.Generation.Rows.Single(row => !row.Selectable);
+        var selected = test.Generation.SelectedTakeId; var best = test.Generation.BestTakeId;
+        var ready = test.Generation.ReadyToAccept;
+        Assert.True(test.Generation.CanPlayTake(failed.Id));
+        await test.Generation.PlayTakeAsync(failed.Id);
+        Assert.True(test.Audition.Snapshot.IsPlaying); Assert.Equal(failed.Id, test.Audition.Snapshot.TakeId);
+        Assert.Equal(test.Runner.Scratch(failed.Id)!.MixedAudioPath, test.Endpoints.Last().OpenedPath);
+        Assert.Equal(selected, test.Generation.SelectedTakeId); Assert.Equal(best, test.Generation.BestTakeId);
+        Assert.Equal(ready, test.Generation.ReadyToAccept); Assert.False(await test.Generation.SelectTakeAsync(failed.Id));
+        Assert.Equal(0, test.PublishCalls);
+        await test.Generation.PlayTakeAsync(failed.Id);
+        Assert.False(test.Audition.Snapshot.IsPlaying); Assert.True(test.Runner.Scratch(failed.Id)!.IsValid);
+    }
     private static CancellationToken Token => TestContext.Current.CancellationToken;
     private sealed class Harness : IAsyncDisposable
     {
@@ -184,8 +213,9 @@ public sealed class RewriteTakeReviewTests
         internal readonly TaskCompletionSource Done = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int Plays;
         internal int Disposals;
+        internal string? OpenedPath;
         public Task<string?> CheckAvailabilityAsync(CancellationToken ct) { ct.ThrowIfCancellationRequested(); return Task.FromResult(reason()); }
-        public Task OpenAsync(string path, CancellationToken ct) { ct.ThrowIfCancellationRequested(); Assert.True(File.Exists(path)); return Task.CompletedTask; }
+        public Task OpenAsync(string path, CancellationToken ct) { ct.ThrowIfCancellationRequested(); Assert.True(File.Exists(path)); OpenedPath = path; return Task.CompletedTask; }
         public Task PlayAsync(CancellationToken ct) { ct.ThrowIfCancellationRequested(); Assert.False(preview.Position.IsPlaying); Plays++; return Task.CompletedTask; }
         public Task Completion => Done.Task;
         public TimeSpan Position => TimeSpan.Zero;
@@ -240,7 +270,7 @@ public sealed class RewriteTakeReviewTests
         Assert.Contains("Take 2 selected.", test.Generation.Announcement);
     }
     [Fact]
-    public async Task FailedRowsStayPresentButNeverSelectOrPlay()
+    public async Task FailedRowsStayPresentAndPlayableButNeverSelect()
     {
         await using var test = new Harness("mixed"); await test.GenerateAsync();
         Assert.Equal(3, test.Generation.Rows.Count);
@@ -248,7 +278,8 @@ public sealed class RewriteTakeReviewTests
         Assert.False(await test.Generation.SelectTakeAsync(failed.Id));
         await test.Generation.PlayTakeAsync(failed.Id);
         Assert.Equal(test.Generation.Rows[1].Id, test.Generation.SelectedTakeId);
-        Assert.Equal("Take 1, didn't pass the speech check", TakeRowPresentation.From(failed, test.Generation.BestTakeId).AutomationName);
+        Assert.Equal("Take 1: The recognized words did not pass the word check. Left out.", TakeRowPresentation.From(failed, test.Generation.BestTakeId).AutomationName);
+        Assert.Equal(failed.Id, test.Audition.Snapshot.TakeId); Assert.True(test.Audition.Snapshot.IsPlaying);
         Assert.Equal("Take 2 fits. One failed the speech check.", test.Generation.Announcement);
     }
     [Fact]
@@ -294,6 +325,7 @@ public sealed class RewriteTakeReviewTests
     public async Task OffThreadAuditionCompletionAlwaysMarshalsItsChangedNotification()
     {
         await using var test = new Harness(); await test.GenerateAsync();
+        Assert.True(test.Audition.Snapshot.IsPlaying, test.Generation.Problem + " / " + test.Generation.Phase + " / " + test.Generation.Audition);
         var delivered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         test.Generation.Changed += (_, _) =>
         {

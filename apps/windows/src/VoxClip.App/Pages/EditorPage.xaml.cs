@@ -700,9 +700,10 @@ if (insertion ||
             });
         App.Services.VoiceLab.Changed += ConsentRecordsChanged;
         generation.ConfigureTransport(transportCoordinator);
+        generation.PhraseNumber = windowIndex + 1;
         generation.ConfigureSpendObserver(() => WorkflowSpendCache.RefreshAsync(App.Services.Data));
         var audition = new VoxClip.Media.Audio.VoiceLabAudition(ct => RewriteGeneration.PausePreviewAsync(preview, ct));
-        _ = generation.ConfigureTakesAsync(new(audition, scratch, reject, publish));
+        _ = generation.ConfigureTakesAsync(new(audition, scratch, reject, publish, backend.PaidAudioAsync));
         Windows.Media.Devices.MediaDevice.DefaultAudioRenderDeviceChanged += OutputChanged;
         if (watchKeys && Directory.Exists(App.Services.Data.Root))
         {

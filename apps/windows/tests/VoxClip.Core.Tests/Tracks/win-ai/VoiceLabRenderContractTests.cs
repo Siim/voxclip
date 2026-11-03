@@ -14,6 +14,22 @@ public sealed class VoiceLabRenderContractTests
     static Project Replace(Project project, VoiceLabSegment segment) => project with { VoiceLab = project.VoiceLab with { Segments = [segment] } };
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PaidAudioStillCannotRenderWithFailedOrMissingChecks(bool uncheckedAudio)
+    {
+        var project = Fixture(); var segment = project.VoiceLab.Segments[0];
+        var candidates = segment.Candidates.ToArray(); var selected = candidates[segment.SelectedCandidateIndex];
+        var qa = selected.Recipe!.Qa;
+        qa = uncheckedAudio ? qa with { TranscriptExact = null, TranscriptMatch = null, SpeakerScore = null, SpeakerPassed = null }
+            : qa with { TranscriptExact = false, TranscriptMatch = .5, SpeakerPassed = false };
+        candidates[segment.SelectedCandidateIndex] = selected with { Recipe = selected.Recipe with { Qa = qa } };
+        project = Replace(project, segment with { Candidates = candidates });
+        Error(VoiceLabProjectErrorCode.QaRejected, () => VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight));
+        Error(VoiceLabProjectErrorCode.QaRejected, () => VoiceLabRenderContract.Prepare(project, VoiceLabOutputScope.Clip(project.Edits.Clips[0].Id), VoiceLabLabelPosition.TopRight));
+    }
+
+    [Theory]
     [InlineData("v1/text-to-dialogue/with-timestamps", "eleven_v4", true)]
     [InlineData("v1/text-to-dialogue/with-timestamps", "eleven_v3", false)]
     [InlineData("v1/text-to-dialogue/with-timestamps", "eleven_v4_turbo", false)]

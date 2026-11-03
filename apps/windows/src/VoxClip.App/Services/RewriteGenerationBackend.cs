@@ -14,6 +14,7 @@ internal sealed class RewriteGenerationBackend : IDisposable
 {
     private readonly ElevenLabsVoiceLab client;
     private readonly VoiceConsentStore store;
+    private readonly VoiceLabTakeStorage storage;
     private readonly VoiceLabDispatchGate gate = new();
     private readonly Func<bool> current;
     internal VoiceLabTakeRun Runner { get; }
@@ -23,14 +24,21 @@ internal sealed class RewriteGenerationBackend : IDisposable
         this.current = current;
         store = new(data);
         client = new(keys, region, log, prices, new VoiceLabSpendLedger(data));
+        storage = new(projectId, Path.Combine(data.Root, "VoiceLab"), Path.Combine(data.Root, "VoiceLabScratch"));
         Runner = new(client, store, VoiceSpeakerCheck.Unavailable,
-            new(projectId, Path.Combine(data.Root, "VoiceLab"), Path.Combine(data.Root, "VoiceLabScratch")), gate,
+            storage, gate,
             async ct =>
             {
                 var valid = false;
                 await onUi(() => valid = !ct.IsCancellationRequested && current());
                 return valid;
             });
+    }
+    internal async Task<PreparedVoiceLabAsset?> PaidAudioAsync(Guid id, CancellationToken ct)
+    {
+        RequireCurrent(ct);
+        return Runner.PaidAsset(id) is { } asset
+            ? await VoiceLabAssets.PreparePaidAsync(asset, storage.ProjectId, storage.PaidRoot, storage.ScratchRoot, ct) : null;
     }
     internal async Task<RewriteGenerationChoices> DiscoverAsync(string language, CancellationToken ct)
     {

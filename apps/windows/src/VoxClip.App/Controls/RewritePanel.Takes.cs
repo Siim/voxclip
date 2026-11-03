@@ -15,7 +15,7 @@ internal sealed partial class RewritePanel
     private readonly TextBlock lengthCopy = Ui.Text("");
     private readonly RadioButtons videoChoices = new() { Header = "How the video keeps up", SelectedIndex = -1, MaxColumns = 1 };
     private readonly TextBlock retimeCopy = Ui.Text("");
-    private readonly Dictionary<Guid, (Button Play, Button Reject)> takeButtons = [];
+    private readonly Dictionary<Guid, (Button Play, Button? Reject)> takeButtons = [];
     private IReadOnlyList<VoiceLabTakeRow> renderedRows = [];
     private Guid? renderedBest;
     private bool applyingTake;
@@ -58,7 +58,7 @@ internal sealed partial class RewritePanel
     private void TakeContainerChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
         if (args.InRecycleQueue || args.Item is not VoiceLabTakeRow row) return;
-        var content = TakeRowPresentation.From(row, session.Generation?.BestTakeId);
+        var content = TakeRowPresentation.From(row, session.Generation?.BestTakeId, session.Generation?.PhraseNumber ?? 1);
         SetName(args.ItemContainer, content.AutomationName);
         AutomationProperties.SetAutomationId(args.ItemContainer, "Rewrite.Take" + (row.Index + 1));
         var grid = new Grid { Height = 40, ColumnSpacing = 4, Padding = new(0), HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -69,6 +69,18 @@ internal sealed partial class RewritePanel
             failure.FontSize = 10; failure.TextWrapping = TextWrapping.NoWrap; failure.TextTrimming = TextTrimming.CharacterEllipsis;
             failure.VerticalAlignment = VerticalAlignment.Center;
             ToolTipService.SetToolTip(grid, content.FailureText);
+            if (content.PlayName.Length > 0)
+            {
+                grid.ColumnDefinitions.Add(new() { Width = new GridLength(32) });
+                grid.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+                var play = new Button { Content = new FontIcon { Glyph = "\uE768", FontSize = 12 }, Width = 32, Height = 32, Padding = new(0), IsTabStop = true };
+                SetName(play, content.PlayName);
+                ToolTipService.SetToolTip(play, content.PlayHelp);
+                AutomationProperties.SetAutomationId(play, "Rewrite.PlayTake" + (row.Index + 1));
+                play.Click += async (_, _) => { if (session.Generation is { } generation) await generation.PlayTakeAsync(row.Id); };
+                Grid.SetColumn(failure, 1); grid.Children.Add(play);
+                takeButtons[row.Id] = (play, null);
+            }
             grid.Children.Add(failure);
         }
         else
@@ -138,7 +150,7 @@ internal sealed partial class RewritePanel
         {
             if (takeList.ContainerFromIndex(index) is not ListViewItem item || item.ActualHeight is <= 0 or > 40 ||
                 item.Content is not Grid grid || grid.ActualHeight > 40 || grid.ActualWidth > item.ActualWidth + 1 ||
-                AutomationProperties.GetName(item) != TakeRowPresentation.From(renderedRows[index], renderedBest).AutomationName)
+                AutomationProperties.GetName(item) != TakeRowPresentation.From(renderedRows[index], renderedBest, session.Generation?.PhraseNumber ?? 1).AutomationName)
                 throw new InvalidOperationException("A Rewrite take row exceeds 40 epx, overflows its column, or has a stale accessible name.");
         }
     }
@@ -148,13 +160,13 @@ internal sealed partial class RewritePanel
         foreach (var row in renderedRows)
         {
             if (!takeButtons.TryGetValue(row.Id, out var buttons)) continue;
-            var content = TakeRowPresentation.From(row, generation.BestTakeId);
+            var content = TakeRowPresentation.From(row, generation.BestTakeId, generation.PhraseNumber);
             var playing = generation.Audition is { IsPlaying: true } state && state.TakeId == row.Id;
             buttons.Play.Content = new FontIcon { Glyph = playing ? "\uE769" : "\uE768", FontSize = 12 };
             buttons.Play.IsEnabled = generation.CanPlayTake(row.Id);
             SetName(buttons.Play, playing ? content.PauseName : content.PlayName);
-            ToolTipService.SetToolTip(buttons.Play, generation.Audition?.UnavailableReason ?? (playing ? content.PauseName : content.PlayName));
-            buttons.Reject.IsEnabled = !generation.IsRunning;
+            ToolTipService.SetToolTip(buttons.Play, generation.Audition?.UnavailableReason ?? (content.Selectable && playing ? content.PauseName : content.PlayHelp));
+            if (buttons.Reject is { } reject) reject.IsEnabled = !generation.IsRunning;
         }
     }
 }

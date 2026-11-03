@@ -2,6 +2,7 @@
 using System.Globalization;
 using VoxClip.App.ViewModels;
 using VoxClip.Core.Domain.VoiceLab;
+using VoxClip.Core.Services.Speech;
 using Xunit;
 
 namespace VoxClip.Core.Tests.Tracks.WinUi;
@@ -38,11 +39,28 @@ public sealed class TakeRowPresentationTests
         var failed = Row(2) with { Failure = new IOException("synthetic") };
         var content = TakeRowPresentation.From(failed, failed.Id);
         Assert.False(content.Selectable); Assert.False(content.BestMatch);
-        Assert.Equal("Take 3 didn't pass the speech check.", content.FailureText);
-        Assert.Equal("Take 3, didn't pass the speech check", content.AutomationName);
-        Assert.Empty(content.PlayName); Assert.Empty(content.RejectName);
+        Assert.Equal("Take 3: The required checks did not complete. No result is available. Left out.", content.FailureText);
+        Assert.Equal(content.FailureText, content.AutomationName);
+        Assert.Equal("Play phrase 1, take 3", content.PlayName);
+        Assert.Equal("Pause phrase 1, take 3", content.PauseName);
+        Assert.Empty(content.RejectName);
         Assert.DoesNotContain("Try Another", content.ToString());
         Assert.Null(TakeRowPresentation.Preselect(new([failed], VoiceLabTakeRunEnd.Completed)));
+    }
+    [Theory]
+    [InlineData(false, "Take 2: The recognized words did not pass the word check. Left out.", "Play phrase 1, take 2")]
+    [InlineData(true, "Take 2 · not checked: The take's word timing could not be validated. Left out.", "Play phrase 1, take 2, not checked")]
+    public void PaidFailuresExposeExactMacCopyAndAccessibleInlinePlayback(bool uncheckedAudio, string copy, string playName)
+    {
+        var receipt = new VoiceLabReceipt("elevenlabs", ElevenLabsRegion.Default, "fixture", "eleven_multilingual_v2", "voice", Guid.NewGuid(), null, null);
+        var row = Row(1) with { Qa = new(.5, 0, -3, .8, [VoiceLabTakeQaFailure.Transcript]) };
+        if (uncheckedAudio) row = row with { Audio = null, Qa = null, Generated = new([1, 0], 24000, null, receipt),
+            Failure = new VoiceLabException(VoiceLabErrorKind.InvalidAlignment) };
+        var content = TakeRowPresentation.From(row, row.Id);
+        Assert.Equal(copy, content.FailureText); Assert.Equal(copy, content.AutomationName);
+        Assert.Equal(playName, content.PlayName); Assert.Equal(playName.Replace("Play", "Pause"), content.PauseName);
+        Assert.False(content.Selectable); Assert.False(content.BestMatch); Assert.Empty(content.RejectName);
+        Assert.Null(TakeRowPresentation.Preselect(new([row], VoiceLabTakeRunEnd.Completed)));
     }
     [Theory]
     [InlineData(0)]
