@@ -451,13 +451,14 @@ struct RewriteChange: Equatable, Sendable {
             let elapsed = started.duration(to: .now).components
             finishRun(seconds: Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18)
             return true
-        } catch is CancellationError { return false } catch VoiceLabWordDiffError.tokenLimit {
+        } catch VoiceLabWordDiffError.tokenLimit {
             // A reply too long to review shows its problem (R1x).
-            guard current, revision == expected else { return false }
+            guard isOpen, revision == expected else { return false }
             fail(.message(VoiceLabPatchBudget.disabledCopy))
             return false
         } catch {
-            if current && revision == expected { await fail(error) }
+            guard isOpen, revision == expected else { return false }
+            await fail(error is CancellationError ? LLMError.cancelled : error)
             return false
         }
     }

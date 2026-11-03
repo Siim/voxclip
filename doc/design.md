@@ -1096,6 +1096,7 @@ The instruction is bound into the quote like any instruction (`PatchRewriteReque
 
 - *Idle*: as above.
 - *Running*: the field is read-only and shows what was asked. The verb is replaced by a spinner and "Rewriting…", which is status, not a button. An indeterminate progress line runs along the bar, static under Reduce Motion. Stop lives in the panel.
+- *Failed* (macOS): the open Rewrite stays available, the verb reads **Rewrite failed** with a warning triangle (also in the narrow icon-only bar), and its accessible label and tooltip name the failure and **Try Again**. The Ask field becomes editable again. The status bar keeps a short warning such as "Rewrite stopped: couldn't reach Claude Code" until retry, replacement or dismissal; clicking it, or pressing it with VoiceOver, opens the session's tab and selects the Rewrite job, showing the right column if hidden.
 - *Proposal open*: the field keeps the asked text and stays editable. **Rewrite** sends again and replaces the proposal. When any change was edited, or takes exist, it first asks "Discard these {c} changes?" with **Keep Working** (the default) and **Discard Changes**, inline in the Rewrite job's footer rather than in an alert (Mac; the job comes to the panel to ask and the keyboard moves to Keep Working, wherever it was, with its focus ring and the question as its VoiceOver hint; Return, Space and Esc keep working, and Discard Changes takes a click or VoiceOver; once answered, the keyboard goes back where the question found it, such as the transcript or the Ask field).
 - *Another AI run holds the lease* (Find Clips, AI tighten; ai.md §4.7): the verb is replaced by the status "Finding clips…" or "Tightening…".
 - *Untranscribed project, or no editable scope*: the bar is hidden.
@@ -1244,6 +1245,8 @@ Selection snapping skips them. Hit-testing an inserted run focuses its change.
 - Windows retains its native R0b confirmation until its v2 port.
 
 **R1. Running**
+
+- On macOS, a failed proposal selects and keeps the Rewrite job with its existing R1x copy and recovery actions, including **Open Local Network Settings** and **Try Again** for an unreachable CLI. A connector returning cancellation without a user Stop is a failure: "The rewrite stopped before a reply was received. Try Again. Your edits are saved." Error reporting is bound to the still-open run's revision, not to whether its project or connector snapshot still matches. Declining consent or discarding a stale successful reply retains the existing silent restore/close behavior. Explicit **Stop** still closes the session silently; a late failure cannot reopen it or replace a newer Rewrite.
 
 - Header "Rewrite clip {n}". Context line "{AI} · {model} · no extra cost" (or "· billed to your key").
 - A quote line: "Asked: **Fix mistakes**, fix slips and repeats, keep my words, change as little as possible." For a typed instruction: "Asked: “{instruction}”".

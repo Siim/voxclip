@@ -208,8 +208,7 @@ extension RewriteSession {
 
     // MARK: R1x
 
-    /// The error a failed send shows, nil for a cancelled one, which is silent.
-    func panelError(_ error: any Error) async -> PanelError? {
+    func panelError(_ error: any Error) async -> PanelError {
         if let plan = error as? ScopeRewritePlanError, let size = PanelError(plan) { return size }
         // The rest is a failure the app log keeps by its code: a plan Core refused, a placement, a quote the service
         // refused, missing resources. Each shows the session's own copy. An AI's error is its connector's to log.
@@ -220,7 +219,7 @@ extension RewriteSession {
         }
         guard let error = error as? LLMError else { return .message(await editor.app.log.redact(Self.refusal(error))) }
         switch error {
-        case .cancelled: return nil
+        case .cancelled: return .message("The rewrite stopped before a reply was received. Try Again. Your edits are saved.")
         case .cliNetworkUnreachable(let detail):
             let safe = await editor.app.log.redact(detail)
             return .cliNetworkUnreachable(cli: aiName, detail: String(safe.prefix(200)))
@@ -233,7 +232,8 @@ extension RewriteSession {
     }
     /// Shows a failed send's error (R1x), announced.
     func fail(_ error: any Error) async {
-        guard let shown = await panelError(error), isOpen else { return }
+        let shown = await panelError(error)
+        guard isOpen else { return }
         sendFailure = error as? LLMError
         fail(shown)
     }
@@ -306,8 +306,28 @@ extension RewriteSession {
         }
         if let problem { cards.append(.text(problem)) }
         task.show(.error(error), headline: headline, cards: cards, footer: footer)
+        if editor.app.shell.editor === editor { editor.app.shell.choosePanelJob(.rewrite, for: editor) }
         if case .noKey = error { task.requestFocus() }
         editor.announce(problem ?? headline.text + ".")
+    }
+
+    var failureStatus: String? {
+        guard isOpen, case .error(let error) = task.state else { return nil }
+        let reason: String
+        switch sendFailure {
+        case .network, .cliNetworkUnreachable: reason = "couldn't reach \(aiName)"
+        case .timeout: reason = "\(aiName) didn't answer in time"
+        case .cliFailed: reason = "\(aiName) stopped with an error"
+        case .cliSignedOut: reason = "\(aiName) isn't signed in"
+        case .planLimit: reason = "\(aiName) usage limit reached"
+        case .overloaded: reason = "\(aiName) is busy"
+        case .rateLimited: reason = "\(aiName) rate limit reached"
+        case .cancelled: reason = "no reply was received"
+        default:
+            if case .cliNetworkUnreachable(let cli, _) = error { reason = "couldn't reach \(cli)" }
+            else { reason = "couldn't rewrite \(task.words.name)" }
+        }
+        return "Rewrite stopped: " + reason
     }
     /// Ask for Something Else (R1x refused, R2 with no changes): the keyboard goes to the Ask field, which the clip bar
     /// holds from V3b and the job's panel until then.

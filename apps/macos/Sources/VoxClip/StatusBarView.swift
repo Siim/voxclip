@@ -109,6 +109,7 @@ extension EditorModel {
         } else {
             running = nil
         }
+        if running == nil, let failure = statusRewriteFailure { return (failure, nil) }
         if running == nil, let at = transcription.completedAt, now.timeIntervalSince(at) < 6, let text = transcription.completion {
             return (StatusItem(kind: .task, lead: .symbol("checkmark"), parts: [StatusText(string: text)], spoken: text), nil)
         }
@@ -130,6 +131,13 @@ extension EditorModel {
     /// A Rewrite press that refused to start says why here, never silently (`EditorModel.rewriteNotice`).
     var statusRewriteNotice: StatusItem? {
         rewriteNotice.map { StatusItem(kind: .task, lead: .symbol("exclamationmark.triangle"), parts: [StatusText(string: $0)], spoken: $0) }
+    }
+
+    var statusRewriteFailure: StatusItem? {
+        openRewrite?.failureStatus.map {
+            StatusItem(kind: .task, lead: .symbol("exclamationmark.triangle"), parts: [StatusText(string: $0)], spoken: $0,
+                       help: "Show the failed Rewrite and its recovery actions.")
+        }
     }
 
     /// The open tab's edit summary (notes.md, f1): "Clip 1 · 0:43 · 8 cuts · 5 changes to review", the duration in
@@ -269,6 +277,9 @@ enum StatusBarMetrics {
     let kind: StatusItem.Kind
     private(set) var item: StatusItem
     let spinner = NSProgressIndicator()
+    var onPress: (() -> Void)? {
+        didSet { setAccessibilityRole(onPress == nil ? .staticText : .button) }
+    }
 
     init(kind: StatusItem.Kind) {
         self.kind = kind
@@ -288,7 +299,20 @@ enum StatusBarMetrics {
     }
     required init?(coder: NSCoder) { nil }
     override var isFlipped: Bool { true }
-    override var mouseDownCanMoveWindow: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { onPress == nil }
+    override var acceptsFirstResponder: Bool { onPress != nil }
+    override func mouseDown(with event: NSEvent) {
+        if let onPress { onPress() } else { super.mouseDown(with: event) }
+    }
+    override func accessibilityPerformPress() -> Bool {
+        guard let onPress else { return false }
+        onPress()
+        return true
+    }
+    override func keyDown(with event: NSEvent) {
+        if onPress != nil, [36, 49, 76].contains(event.keyCode) { onPress?() }
+        else { super.keyDown(with: event) }
+    }
 
     func show(_ item: StatusItem) {
         guard item != self.item else { return }
@@ -463,6 +487,8 @@ enum StatusBarMetrics {
         // The summary and the export state follow the project, which only projectRevision makes observable.
         _ = editor?.projectRevision
         show(StatusBarContent.make(app: shell.app, editor: editor, now: now()))
+        itemView(.task)?.onPress = editor?.statusRewriteFailure != nil && content[.task] == editor?.statusRewriteFailure
+            ? { [weak self] in self?.shell.showRewriteFailure() } : nil
         frameButton.show(content[.frame] ?? StatusItem(kind: .frame, parts: [], spoken: ""), aspect: editor?.project.export.aspect ?? .source,
                          canChange: editor?.canChangeFrame ?? false)
     }

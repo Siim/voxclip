@@ -84,6 +84,16 @@ extension EditorModel {
 }
 
 extension WorkspaceShell {
+    func showRewriteFailure() {
+        guard let editor, let session = editor.openRewrite, session.failureStatus != nil else { return }
+        choose(session.project.edits.activeClipId.map(SidebarItem.clip) ?? .fullTake, byClick: false)
+        if !viewerShown { toggleViewer() }
+        choosePanelJob(.rewrite, for: editor)
+        editor.focusedPane = .panel
+        editor.paneFocusRequest += 1
+        _ = chromeFocus?.focus(.panel)
+    }
+
     /// The panel's job for `model` in this window: the open task's job while it asks a
     /// question (`PanelConfirm`), else the job picked in the switcher while it can act and
     /// either no task is open (a Rewrite closed under Export leaves Export showing) or the
