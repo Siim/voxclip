@@ -165,9 +165,11 @@ public actor PatchRewriteService {
         guard result.edits.reduce(0, { $0 + $1.text.utf8.count }) <= PatchRewriteValidator.maxTextBytes else {
             throw LLMError.invalidOutput(reason: "The edits hold more than 20,000 bytes of text.")
         }
-        return PatchRewriteProposal(id: UUID(), edits: result.edits, unknownLines: result.unknownLines,
-                                    duplicateLines: result.duplicateLines, malformedItems: parsed.droppedItems + result.malformedItems,
+        var proposal = PatchRewriteProposal(id: UUID(), edits: result.edits, unknownLines: result.unknownLines,
+                                    duplicateLines: result.duplicateLines, malformedItems: (parsed.dropped["edits"] ?? 0) + result.malformedItems,
                                     checkThisMessage: rendered.checkThisMessage, connector: connector.id, model: completion.model,
                                     providerRequestID: completion.requestID)
+        proposal.nextActions = RewriteNextAction.parse(parsed.object[ai: "nextActions"])
+        return proposal
     }
 }

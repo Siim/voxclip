@@ -85,4 +85,6 @@ public struct PatchRewriteProposal: Sendable {
     public let connector: ConnectorID
     public let model: String
     public let providerRequestID: String?
+    /// The reply's valid AI-suggested next steps (`RewriteNextAction.parse`); empty when it gave none.
+    public var nextActions: [RewriteNextAction] = []
 }
