@@ -123,6 +123,7 @@ private final class TakeRunHTTP: Sendable {
         var edgeAlignmentOvershoot: Double?
         /// The PCM is silent this long at each end, inside the aligned lead and tail, as a take that pauses at its edges.
         var silentEdges = 0.0
+        var unevenJoin = false
         /// Scribe answers 200 with no words, after the spend ledger has recorded the QA request.
         var malformedQA = false
         var current = true
@@ -245,7 +246,8 @@ struct VoiceLabTakeRunTests {
                     // Speech fades over 20 ms (480 frames) into its silent edges.
                     let inside = edge == 0 ? Int.max : min(index - edge, frames - edge - 1 - index)
                     let envelope = inside < 0 ? 0 : inside >= 480 ? 1 : 0.5 - 0.5 * cos(Double.pi * Double(inside) / 480)
-                    var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200 * envelope).rounded()).littleEndian
+                    let level = state.unevenJoin && index >= frames / 2 ? 0.1 : 1.0
+                    var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200 * envelope * level).rounded()).littleEndian
                     withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
                 }
                 let inputs = body["inputs"] as? [[String: Any]]
@@ -846,6 +848,27 @@ struct VoiceLabTakeRunTests {
         #expect(VoiceLabTakeProcessing.lastAlignedTime(frames: 32_640, rate: 24_000) < 1.36)
         #expect((VoiceLabTakeProcessing.lastAlignedTime(frames: 32_640, rate: 24_000) * 24_000).rounded(.up) == 32_640)
     }
+    @Test func joinOnlyAdvisoryRetainsTheTakeAndDoesNotEarlyStop() async throws {
+        let fixture = try await fixture { $0.unevenJoin = true }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input, candidates: 2)
+        let result = try await fixture.run.execute(quote, approved: true)
+        #expect(result.end == .completed && result.rows.count == 2)
+        for row in result.rows {
+            #expect(row.qa?.verdict == .passedWithAdvisory)
+            let selectable = row.selectable
+            #expect(selectable && row.failure == nil)
+            #expect(row.requiresJoinAdvisoryAcceptance && !row.automaticallySelectable)
+            let scratch = await fixture.run.scratch(for: row.id)
+            #expect(scratch?.isValid == true)
+            await #expect(throws: VoiceLabError.consentRequired) {
+                try await fixture.run.publishForAcceptance(row, input: fixture.input, at: Date())
+            }
+        }
+        #expect(result.bestAutomatic == nil)
+        #expect(fixture.http.value.withLock { $0.seeds.count == 2 && $0.qa == 2 })
+    }
+
     @Test func changedDurationRanksButDoesNotPretendToFit() async throws {
         let fixture = try await fixture { $0.duration = 5 }; defer { try? FileManager.default.removeItem(at: fixture.root) }
         let quote = try await fixture.run.prepare(fixture.input)

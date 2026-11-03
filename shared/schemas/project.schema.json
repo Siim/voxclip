@@ -1807,6 +1807,9 @@
             }
           ]
         },
+        "joinAdvisory": {
+          "$ref": "#/$defs/voiceLabJoinAdvisory"
+        },
         "shortSpeech": {
           "type": "object",
           "additionalProperties": false,
@@ -2683,6 +2686,44 @@
         }
       },
       "description": "Canonical wire only: duration is 0.1...120 seconds with 1e-9 arithmetic tolerance; progress is strictly ascending with first 0 and last 1. Runtime rejects noncanonical arrays before model normalization. Overlap is permitted for defensive evaluation; authored UI rejects it."
+    },
+    "voiceLabJoinAdvisory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seams",
+        "acceptedAt"
+      ],
+      "properties": {
+        "seams": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "side",
+              "excessLu"
+            ],
+            "properties": {
+              "side": {
+                "enum": [
+                  "left",
+                  "right"
+                ]
+              },
+              "excessLu": {
+                "type": "number",
+                "exclusiveMinimum": 2
+              }
+            }
+          }
+        },
+        "acceptedAt": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
     }
   }
 }

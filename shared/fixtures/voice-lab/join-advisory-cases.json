@@ -1,0 +1,265 @@
+{
+  "schema": "voxclip-voice-lab-join-advisory-cases/1",
+  "baseProject": "passage-render-v3.voxclip",
+  "caseCount": 16,
+  "cases": [
+    {
+      "name": "legacy-clean",
+      "qa": {},
+      "valid": true,
+      "schemaValid": true
+    },
+    {
+      "name": "accepted-left",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 4
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        }
+      },
+      "valid": true,
+      "schemaValid": true
+    },
+    {
+      "name": "accepted-right",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "right",
+              "excessLu": 4
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        }
+      },
+      "valid": true,
+      "schemaValid": true
+    },
+    {
+      "name": "accepted-both",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 3
+            },
+            {
+              "side": "right",
+              "excessLu": 4
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        }
+      },
+      "valid": true,
+      "schemaValid": true
+    },
+    {
+      "name": "unaccepted-join",
+      "qa": {
+        "lufsJumpLu": 4
+      },
+      "valid": false,
+      "schemaValid": true
+    },
+    {
+      "name": "clipping-stays-hard",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 4
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        },
+        "peakDbfs": 0
+      },
+      "valid": false,
+      "schemaValid": true
+    },
+    {
+      "name": "words-stay-hard",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 4
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        },
+        "transcriptExact": false
+      },
+      "valid": false,
+      "schemaValid": true
+    },
+    {
+      "name": "voice-stays-hard",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 4
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        },
+        "speakerScore": 0.1,
+        "speakerPassed": false
+      },
+      "valid": false,
+      "schemaValid": true
+    },
+    {
+      "name": "empty-seams",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        }
+      },
+      "valid": false,
+      "schemaValid": false
+    },
+    {
+      "name": "invalid-side",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "middle",
+              "excessLu": 4
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        }
+      },
+      "valid": false,
+      "schemaValid": false
+    },
+    {
+      "name": "not-an-advisory",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 2
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        }
+      },
+      "valid": false,
+      "schemaValid": false
+    },
+    {
+      "name": "duplicate-side",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 4
+            },
+            {
+              "side": "left",
+              "excessLu": 3
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        }
+      },
+      "valid": false,
+      "schemaValid": true
+    },
+    {
+      "name": "inconsistent-measurement",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 3
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:00Z"
+        }
+      },
+      "valid": false,
+      "schemaValid": true
+    },
+    {
+      "name": "acceptance-after-recipe",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 4
+            }
+          ],
+          "acceptedAt": "2026-10-25T12:10:01Z"
+        }
+      },
+      "valid": false,
+      "schemaValid": true
+    },
+    {
+      "name": "invalid-timestamp",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 4
+            }
+          ],
+          "acceptedAt": "not-a-date"
+        }
+      },
+      "valid": false,
+      "schemaValid": false
+    },
+    {
+      "name": "missing-timestamp",
+      "qa": {
+        "lufsJumpLu": 4,
+        "joinAdvisory": {
+          "seams": [
+            {
+              "side": "left",
+              "excessLu": 4
+            }
+          ]
+        }
+      },
+      "valid": false,
+      "schemaValid": false
+    }
+  ]
+}

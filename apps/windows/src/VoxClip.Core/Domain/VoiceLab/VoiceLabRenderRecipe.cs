@@ -35,9 +35,17 @@ public sealed record VoiceLabVideoRecipe(VoiceLabVideoMode Mode, long SourceStar
     string? RequestId, long? WindowStartSample, long? WindowEndSample, string? SyncMode);
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceLabVoiceSource>))]
 public enum VoiceLabVoiceSource { [JsonStringEnumMemberName("own")] Own, [JsonStringEnumMemberName("stock")] Stock }
+public sealed record VoiceLabJoinAdvisorySeam(string Side, double ExcessLu);
+public sealed record VoiceLabJoinAdvisory(IReadOnlyList<VoiceLabJoinAdvisorySeam> Seams, DateTimeOffset AcceptedAt)
+{
+    public bool Validates(double jump, DateTimeOffset createdAt) => Seams is { Count: >= 1 and <= 2 } &&
+        Seams.All(seam => seam is not null && seam.Side is "left" or "right" && double.IsFinite(seam.ExcessLu) && seam.ExcessLu > 2) &&
+        Seams.Select(seam => seam.Side).Distinct().Count() == Seams.Count && Seams.Max(seam => seam.ExcessLu) == jump && AcceptedAt <= createdAt;
+}
 public sealed record VoiceLabRenderQa(int? TranscriptTokens, bool? TranscriptExact, double? TranscriptMatch, double LufsJumpLu,
     double PeakDbfs, double? SpeakerScore, double? SpeakerThreshold, string? SpeakerModel, bool? SpeakerPassed,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceLabShortSpeechEvidence? ShortSpeech = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceLabShortSpeechEvidence? ShortSpeech = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceLabJoinAdvisory? JoinAdvisory = null);
 public sealed record VoiceLabCost(string QuoteId, double? Usd);
 public sealed record VoiceLabRenderRecipe(VoiceLabAudio Audio, IReadOnlyList<VoiceLabWord>? Words, double OutDuration, uint Seed, IReadOnlyList<VoiceLabChunk> Chunks,
     VoiceLabRoomTone? RoomTone, VoiceLabSeams Seams, VoiceLabVideoRecipe Video, VoiceLabRenderQa Qa,

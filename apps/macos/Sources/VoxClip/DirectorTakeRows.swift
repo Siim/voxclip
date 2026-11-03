@@ -2,6 +2,12 @@ import SwiftUI
 import VoxClipCore
 
 enum TakeFailurePresentation {
+    static func joinAdvisory(_ row: VoiceLabTakeRow, number: Int) -> String? {
+        guard row.hasJoinAdvisory, let audio = row.audio, let seams = row.qa?.joinSeams, !seams.isEmpty else { return nil }
+        let duration = String(format: "%.1f s", locale: Locale(identifier: "en_US_POSIX"), Double(audio.fit.plan.outputFrames) / Double(audio.sampleRate))
+        let side = seams.count > 1 ? "either" : seams[0].side.rawValue
+        return "Take \(number) · \(duration) · The join may sound uneven (\(side) side). Listen before using."
+    }
     static func shortSpeechSummary(_ rows: [VoiceLabTakeRow], selected: UUID?) -> [String] {
         let selectedRow = rows.first { $0.id == selected && $0.selectable && $0.voiceCheck.evidence != nil }
         let measured = rows.last { $0.selectable && $0.voiceCheck.evidence?.mode == .pooled }
@@ -255,7 +261,7 @@ extension ClipTakePlan.Phrase {
             }
             HStack(spacing: 4) {
                 ForEach(phrase.takes) { take in
-                    if take.row.selectable, !session.takesBusy {
+                    if take.row.selectable, !take.row.requiresJoinAdvisoryAcceptance, !session.takesBusy {
                         Button(String(take.number)) {
                             session.focusedTakePhrase = phrase.id
                             _ = plan.select(take: take.id, phrase: phrase.id)
@@ -275,6 +281,30 @@ extension ClipTakePlan.Phrase {
             }
             ForEach(TakeFailurePresentation.shortSpeechSummary(phrase.takes.map(\.row), selected: phrase.selectedID), id: \.self) { copy in
                 Text(copy).font(VCType.callout.font()).foregroundStyle(DesignValues.color("text.secondary"))
+            }
+            ForEach(phrase.takes.filter { $0.row.hasJoinAdvisory }) { take in
+                if let copy = TakeFailurePresentation.joinAdvisory(take.row, number: take.number) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(copy).font(VCType.callout.font()).foregroundStyle(DesignValues.color("status.warning"))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityLabel("Phrase \(phrase.id + 1), join advisory. \(copy)")
+                        if !session.takesBusy {
+                            HStack(spacing: 8) {
+                                let playing = plan.audition.isPlaying && plan.audition.takeId == take.id
+                                Button(playing ? "Pause" : "Play") {
+                                    session.focusedTakePhrase = phrase.id
+                                    Task { await session.playTake(take.id, phrase: phrase.id) }
+                                }.buttonStyle(.plain).frame(minHeight: 22)
+                                    .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number), join advisory")
+                                Button("Use anyway") {
+                                    session.focusedTakePhrase = phrase.id
+                                    _ = plan.useAnyway(take: take.id, phrase: phrase.id)
+                                }.buttonStyle(.plain).frame(minHeight: 22)
+                                    .accessibilityLabel("Use take \(take.number) anyway, phrase \(phrase.id + 1), accept join advisory")
+                            }.font(VCType.callout.font())
+                        }
+                    }
+                }
             }
             ForEach(phrase.takes.filter { !$0.row.selectable }) { take in
                 if let copy = TakeFailurePresentation.leftOut(take.row, number: take.number) {

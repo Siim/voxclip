@@ -36,7 +36,7 @@ import VoxClipMedia
         var estimatedVoicedSeconds: Double?
         var selected: Take? { takes.first { $0.id == selectedID } }
         var bestMeasured: Take? {
-            takes.filter { $0.row.selectable && $0.row.qa?.values.speakerScore?.isFinite == true }
+            takes.filter { $0.row.automaticallySelectable && $0.row.qa?.values.speakerScore?.isFinite == true }
                 .max { ($0.row.score ?? 0) < ($1.row.score ?? 0) }
         }
         var originalLength: Double { window.end - window.start }
@@ -152,7 +152,8 @@ import VoxClipMedia
     var canAccept: Bool {
         guard stillCurrent, !generating, !preparing, !publishing, !preparingVideo,
               !selectedPhrases.isEmpty, selectedPhrases.allSatisfy({ phrase in
-                  phrase.videoChoice.map { videoAvailability(phrase: phrase.id).allows($0) } == true
+                  phrase.selected?.row.requiresJoinAdvisoryAcceptance == false &&
+                      phrase.videoChoice.map { videoAvailability(phrase: phrase.id).allows($0) } == true
               }) else { return false }
         return !selectedPhrases.contains(where: { $0.videoChoice == .retimed }) || preparedVideoSelection?.choices == videoChoices
     }
@@ -551,7 +552,7 @@ import VoxClipMedia
 
     @discardableResult func select(take: UUID, phrase: Int) -> Bool {
         guard !generating, !preparing, !publishing, !preparingVideo, !retired, isCurrent(), phrases.indices.contains(phrase),
-              phrases[phrase].takes.contains(where: { $0.id == take && $0.row.selectable }) else { return false }
+              phrases[phrase].takes.contains(where: { $0.id == take && $0.row.selectable && !$0.row.requiresJoinAdvisoryAcceptance }) else { return false }
         stopAudition()
         if phrases[phrase].selectedID != take {
             clearPreparedVideo()
@@ -560,6 +561,14 @@ import VoxClipMedia
         phrases[phrase].selectedID = take
         phrases[phrase].explicitlySelected = true
         return true
+    }
+
+    @discardableResult func useAnyway(take: UUID, phrase: Int, at date: Date = Date()) -> Bool {
+        guard !generating, !preparing, !publishing, !preparingVideo, !retired, isCurrent(), phrases.indices.contains(phrase),
+              let index = phrases[phrase].takes.firstIndex(where: { $0.id == take }),
+              let row = try? phrases[phrase].takes[index].row.acceptingJoinAdvisory(at: date) else { return false }
+        phrases[phrase].takes[index] = Take(number: phrases[phrase].takes[index].number, row: row)
+        return select(take: take, phrase: phrase)
     }
 
     func stopAudition() {
@@ -643,7 +652,13 @@ import VoxClipMedia
             }
             if let existing = phrases[phrase].takes.firstIndex(where: { $0.id == row.id }) {
                 let number = phrases[phrase].takes[existing].number
-                phrases[phrase].takes[existing] = Take(number: number, row: row)
+                let previous = phrases[phrase].takes[existing].row
+                let retained: VoiceLabTakeRow
+                if let acceptance = previous.acceptedJoinAdvisory, row.qa?.joinSeams == acceptance.seams,
+                   let accepted = try? row.acceptingJoinAdvisory(at: acceptance.acceptedAt) {
+                    retained = accepted
+                } else { retained = row }
+                phrases[phrase].takes[existing] = Take(number: number, row: retained)
                 continue
             }
             guard receivedInBatch.insert(row.id).inserted else { continue }
@@ -664,7 +679,10 @@ import VoxClipMedia
             }
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
-        if phrases[phrase].explicitlySelected, phrases[phrase].selected?.row.selectable == true { return }
+        if phrases[phrase].explicitlySelected {
+            if let row = phrases[phrase].selected?.row, row.selectable, !row.requiresJoinAdvisoryAcceptance { return }
+            phrases[phrase].explicitlySelected = false
+        }
         let best = phrases[phrase].bestMeasured
         if best?.id != phrases[phrase].selectedID {
             clearPreparedVideo()
@@ -737,7 +755,8 @@ import VoxClipMedia
         var segments: [VoiceLabSegment] = [], assets: [VoiceLabAsset] = []
         var voice: VoiceLabVoiceReference?
         for phrase in selected {
-            guard let row = phrase.selected?.row, row.selectable, let fit = row.audio?.fit.plan else { throw Failure.noSelection }
+            guard let row = phrase.selected?.row, row.selectable, !row.requiresJoinAdvisoryAcceptance,
+                  let fit = row.audio?.fit.plan else { throw Failure.noSelection }
             let made = input(for: row, phrase: phrase.id)
             let (published, record) = try await backend.publish(phrase.id, row, made, date)
             try checkCurrent(version)

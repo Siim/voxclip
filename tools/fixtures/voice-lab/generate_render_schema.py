@@ -52,9 +52,13 @@ d['voiceLabVideoRecipe']['allOf'] = [
     {'if': {'properties': {'mode': {'const': 'zoomCover'}}}, 'then': {'required': ['retimeFactor', 'zoom', 'faceX', 'faceY']}},
     {'if': {'properties': {'mode': {'const': 'lipsync'}}}, 'then': {'required': ['assetId', 'provider', 'model', 'requestId', 'windowStartSample', 'windowEndSample', 'syncMode']}}
 ]
+d['voiceLabJoinAdvisory'] = obj({'seams': {'type': 'array', 'minItems': 1, 'maxItems': 2,
+                                        'items': obj({'side': {'enum': ['left', 'right']}, 'excessLu': {'type': 'number', 'exclusiveMinimum': 2}})},
+                                'acceptedAt': {'$ref': '#/$defs/timestamp'}})
 d['voiceLabRenderQA'] = obj({'transcriptTokens': nullable(integer), 'transcriptExact': nullable({'type': 'boolean'}), 'transcriptMatch': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}),
                               'lufsJumpLu': num, 'peakDbfs': num, 'speakerScore': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}),
                               'speakerThreshold': nullable({'type': 'number', 'minimum': 0, 'maximum': 1}), 'speakerModel': nullable(string), 'speakerPassed': nullable({'type': 'boolean'}),
+                              'joinAdvisory': {'$ref': '#/$defs/voiceLabJoinAdvisory'},
                               'shortSpeech': obj({'mode': {'enum': ['pooled', 'unmeasured']}, 'recordId': string,
                                                   'consentMethod': {'enum': ['recordedStatement', 'projectAttestation']},
                                                   'voicedFrames': integer, 'takeCount': {'type': 'integer', 'minimum': 1}})},

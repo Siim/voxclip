@@ -164,7 +164,8 @@ public static class VoiceLabRenderValidation
             default: throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidSegment);
         }
         var qa = recipe.Qa;
-        Require(double.IsFinite(qa.LufsJumpLu) && Math.Abs(qa.LufsJumpLu) <= 2 && double.IsFinite(qa.PeakDbfs) && qa.PeakDbfs < 0, VoiceLabProjectErrorCode.QaRejected);
+        var joinAllowed = qa.JoinAdvisory?.Validates(qa.LufsJumpLu, recipe.Provenance.CreatedAt) ?? (Math.Abs(qa.LufsJumpLu) <= 2);
+        Require(double.IsFinite(qa.LufsJumpLu) && joinAllowed && double.IsFinite(qa.PeakDbfs) && qa.PeakDbfs < 0, VoiceLabProjectErrorCode.QaRejected);
         if (segment.Kind == VoiceLabSegmentKind.Tts)
         {
             Require(recipe.VoiceSource == VoiceLabVoiceSource.Own, VoiceLabProjectErrorCode.ConsentUnverified);
@@ -226,6 +227,8 @@ public static class VoiceLabRenderValidation
             video.WindowStartSample is null or >= 0 && video.WindowEndSample is null or >= 0 && video.SyncMode is null or "remap", VoiceLabProjectErrorCode.InvalidSegment);
         Require(qa.TranscriptTokens is null or >= 0 && Unit(qa.TranscriptMatch) && double.IsFinite(qa.LufsJumpLu) && double.IsFinite(qa.PeakDbfs) &&
             Unit(qa.SpeakerScore) && Unit(qa.SpeakerThreshold) && qa.SpeakerModel is null or { Length: > 0 }, VoiceLabProjectErrorCode.InvalidSegment);
+        if (qa.JoinAdvisory is { } advisory)
+            Require(advisory.Validates(qa.LufsJumpLu, provenance.CreatedAt), VoiceLabProjectErrorCode.InvalidSegment);
         if (qa.ShortSpeech is { } evidence)
             Require(evidence.IsValid && evidence.RecordId == provenance.ConsentRecordId && recipe.VoiceSource == VoiceLabVoiceSource.Own,
                 VoiceLabProjectErrorCode.InvalidSegment);

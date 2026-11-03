@@ -77,7 +77,7 @@ public actor VoiceLabTakeRun {
     }
     public func publishForAcceptance(_ row: VoiceLabTakeRow, input: VoiceLabTakeInput, at date: Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord) {
         let version = revision
-        guard row.selectable, let scratch = scratches[row.id], scratch.isValid,
+        guard row.selectable, !row.requiresJoinAdvisoryAcceptance, let scratch = scratches[row.id], scratch.isValid,
               await inputsAreCurrent(), version == revision else { throw VoiceLabError.consentRequired }
         let record = try await store.load(input.recordID)
         try await store.validateUse(record)
@@ -357,7 +357,7 @@ public actor VoiceLabTakeRun {
                 let rank = try VoiceLabTakeQuality.rank(fit: processed.fit, windowSeconds: value.input.window.end - value.input.window.start,
                     matchRatio: qa.values.transcriptMatch ?? 0, flatness: flatness)
                 let row = VoiceLabTakeRow(id: take.synthesis.requestID, index: take.index, seed: take.seed, receipt: receipt,
-                    audio: processed, qa: qa, score: rank, failure: qa.passed ? nil : .qa(qa.failures),
+                    audio: processed, qa: qa, score: rank, failure: qa.hardFailures.isEmpty ? nil : .qa(qa.hardFailures),
                     qaReceipt: qaReceipt, generated: generated, quote: take, voiceCheck: short ? .waiting : .perTake)
                 if short {
                     try await pool.append(row, voiced: voiced, record: value.record, speaker: speaker,

@@ -302,6 +302,24 @@ private final class GenerationDispatchCount: Sendable {
         let qa = VoiceLabTakeQAResult(values: VoiceLabQA(transcriptMatch: 1, lufsJumpLu: 0, peakDbfs: -20, speakerScore: failure ? 0.1 : 0.8), failures: failure ? [.speaker] : [])
         return VoiceLabTakeRow(id: UUID(), index: index, seed: UInt32(index), audio: audio, qa: qa, score: score, failure: failure ? .qa([.speaker]) : nil)
     }
+    @Test func compatibilityReviewNeverAutomaticallySelectsAJoinAdvisory() async {
+        let session = session()
+        let clean = row(index: 0, score: 0.8)
+        let qa = VoiceLabTakeQAResult(values: .init(transcriptMatch: 1, lufsJumpLu: 4, peakDbfs: -10, speakerScore: 0.9),
+            failures: [.loudness], joinSeams: [.init(side: .right, excessLu: 4)])
+        let advisory = VoiceLabTakeRow(id: UUID(), index: 1, seed: 1, audio: clean.audio, qa: qa, score: 1)
+        session.review(.init(rows: [advisory], end: .completed), input: fixtureInput())
+        #expect(session.selectedID == nil && session.bestID == nil && !session.readyToAccept)
+        #expect(session.announcement == "One take has a join advisory. Listen before using.")
+        let selected = session.select(advisory.id)
+        #expect(!selected && session.takeToAutoplay() == nil)
+        session.review(.init(rows: [advisory, clean], end: .completed), input: fixtureInput())
+        #expect(session.selectedID == clean.id)
+        await session.reject(clean)
+        #expect(session.selectedID == nil && !session.readyToAccept)
+        session.invalidate()
+    }
+
     @Test func exactBestIsPreselectedButRejectedRowsNeverAre() {
         let session = session()
         let rejected = row(index: 0, failure: true, score: 1)

@@ -93,6 +93,9 @@ public enum VoiceLabRenderValidation {
               video.syncMode.map({ $0 == "remap" }) ?? true else { throw VoiceLabProjectError.invalidSegment }
         guard (qa.transcriptTokens ?? 0) >= 0, unit(qa.transcriptMatch), qa.lufsJumpLu.isFinite, qa.peakDbfs.isFinite,
               unit(qa.speakerScore), unit(qa.speakerThreshold), qa.speakerModel?.isEmpty != true else { throw VoiceLabProjectError.invalidSegment }
+        if let advisory = qa.joinAdvisory {
+            guard advisory.validates(jump: qa.lufsJumpLu, createdAt: provenance.createdAt) else { throw VoiceLabProjectError.invalidSegment }
+        }
         if let evidence = qa.shortSpeech {
             guard evidence.valid, evidence.recordId == provenance.consentRecordId,
                   recipe.voiceSource == .own else { throw VoiceLabProjectError.invalidSegment }
@@ -203,7 +206,9 @@ public enum VoiceLabRenderValidation {
                   video.retimeFactor == nil, video.zoom == nil, video.faceX == nil, video.faceY == nil else { throw VoiceLabProjectError.missingRenderPolicy }
         }
         let qa = recipe.qa
-        guard qa.lufsJumpLu.isFinite, abs(qa.lufsJumpLu) <= 2,
+        let joinAllowed = qa.joinAdvisory.map { $0.validates(jump: qa.lufsJumpLu, createdAt: recipe.provenance.createdAt) }
+            ?? (abs(qa.lufsJumpLu) <= 2)
+        guard qa.lufsJumpLu.isFinite, joinAllowed,
               qa.peakDbfs.isFinite, qa.peakDbfs < 0 else { throw VoiceLabProjectError.qaRejected }
         if segment.kind == .tts {
             guard recipe.voiceSource == .own else { throw VoiceLabProjectError.consentUnverified }

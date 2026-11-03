@@ -5,6 +5,16 @@ import Testing
 
 @Suite("Take failure presentation", .offlineFixtures)
 @MainActor struct TakeFailurePresentationTests {
+    @Test(arguments: [VoiceLabJoinAdvisorySeam.Side.left, .right])
+    func joinAdvisoryCopyNamesTheTakeDurationAndSide(side: VoiceLabJoinAdvisorySeam.Side) throws {
+        let qa = VoiceLabTakeQAResult(values: .init(transcriptMatch: 1, lufsJumpLu: 4, peakDbfs: -10, speakerScore: 0.9),
+            failures: [.loudness], joinSeams: [.init(side: side, excessLu: 4)])
+        let take = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, audio: audio(), qa: qa)
+        #expect(TakeFailurePresentation.joinAdvisory(take, number: 2)
+            == "Take 2 · 1.0 s · The join may sound uneven (\(side.rawValue) side). Listen before using.")
+        #expect(TakeFailurePresentation.leftOut(take, number: 2) == nil)
+        #expect(TakeFailurePresentation.reason(for: take) == nil)
+    }
     private func row(_ failure: VoiceLabTakeFailure? = nil, values: VoiceLabQA? = nil,
                      failures: [VoiceLabTakeQAFailure] = [], audio: VoiceLabTakeAudio? = nil) -> VoiceLabTakeRow {
         VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, audio: audio,

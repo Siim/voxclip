@@ -184,7 +184,7 @@ import xlocale
     }
     func reject(_ row: VoiceLabTakeRow) async {
         audition.stop(); rows.removeAll { $0.id == row.id }
-        let next = VoiceLabTakeRunResult(rows: rows, end: .completed).best
+        let next = VoiceLabTakeRunResult(rows: rows, end: .completed).bestAutomatic
         bestID = next?.id
         if selectedID == row.id {
             clearVideoChoice()
@@ -323,7 +323,7 @@ import xlocale
         reviewedInputsCurrent = false
         announcement = "These takes no longer match the current inputs. Review the changes before using a take."
         if phase == .generating {
-            let retained = selected ?? VoiceLabTakeRunResult(rows: rows, end: .completed).best
+            let retained = selected ?? VoiceLabTakeRunResult(rows: rows, end: .completed).bestAutomatic
             phase = retained.map { $0.fits ? .readyToAccept : .lengthChanged } ?? (rows.isEmpty ? .idle : .nonePassed)
         }
         let previous = cleanup; let run = run; let executionRevision = executionRevision
@@ -484,7 +484,7 @@ import xlocale
         launchStarted = false
         if let input { self.input = input }
         reviewedInputsCurrent = true
-        rows = result.rows; bestID = result.best?.id; selectedID = nil; videoChoice = nil
+        rows = result.rows; bestID = result.bestAutomatic?.id; selectedID = nil; videoChoice = nil
         runFailure = result.failure
         problem = result.failure.map { TakeFailurePresentation.reason(for: $0) } ?? ""
         guard result.end == .completed || result.end == .earlyStop else {
@@ -493,7 +493,7 @@ import xlocale
             announcement = status + " No take can be used from this review." + (problem.isEmpty ? "" : " " + problem)
             return
         }
-        guard let best = result.best else {
+        guard let best = result.bestAutomatic else {
             phase = .nonePassed
             announcement = Self.completionAnnouncement(rows: rows, fittedTake: nil)
             if !problem.isEmpty, !announcement.contains(problem) { announcement += " " + problem }
@@ -504,7 +504,8 @@ import xlocale
         announcement = Self.completionAnnouncement(rows: rows, fittedTake: best.fits ? best.index + 1 : nil)
     }
     static func completionAnnouncement(rows: [VoiceLabTakeRow], fittedTake: Int?) -> String {
-        let checked = rows.filter(\.selectable)
+        let checked = rows.filter(\.automaticallySelectable)
+        let advisories = rows.filter { $0.selectable && $0.hasJoinAdvisory }
         let fitting = checked.filter(\.fits)
         var parts: [String] = []
         if let fittedTake, fitting.contains(where: { $0.index + 1 == fittedTake }) {
@@ -513,8 +514,11 @@ import xlocale
             parts.append("\(countWord(fitting.count)) \(fitting.count == 1 ? "take fits" : "takes fit").")
         } else if !checked.isEmpty {
             parts.append("No take fits yet. \(countWord(checked.count)) \(checked.count == 1 ? "take passed" : "takes passed") checks but \(checked.count == 1 ? "needs" : "need") a timing change.")
-        } else {
+        } else if advisories.isEmpty {
             parts.append("No usable takes.")
+        }
+        if !advisories.isEmpty {
+            parts.append("\(countWord(advisories.count)) \(advisories.count == 1 ? "take has a join advisory" : "takes have join advisories"). Listen before using.")
         }
         let excluded = rows.filter { !$0.selectable }
         if !excluded.isEmpty { parts.append("\(countWord(excluded.count)) \(excluded.count == 1 ? "take" : "takes") left out.") }
@@ -526,7 +530,7 @@ import xlocale
     }
     @discardableResult func select(_ id: UUID) -> Bool {
         guard !accepting, !preparingVideo, reviewedInputsCurrent, inputsAreCurrent(), [.lengthChanged, .readyToAccept, .nonePassed].contains(phase),
-              let row = rows.first(where: { $0.id == id }), row.selectable else { return false }
+              let row = rows.first(where: { $0.id == id }), row.selectable, !row.requiresJoinAdvisoryAcceptance else { return false }
         if selectedID == id { return true }
         audition.selectionChanged(to: id.uuidString)
         clearVideoChoice()

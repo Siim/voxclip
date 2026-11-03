@@ -131,7 +131,11 @@ enum ProjectValidation {
         _ = try object(seams["in"], required: "kind fadeSamples sourceHandleSamples assetHandleFrames")
         _ = try object(seams["out"], required: "kind fadeSamples sourceHandleSamples assetHandleFrames")
         _ = try object(recipe["video"], required: "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode")
-        let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech")
+        let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech joinAdvisory")
+        if let value = qa["joinAdvisory"] {
+            let advisory = try object(value, required: "seams acceptedAt")
+            for seam in try array(advisory["seams"]) { _ = try object(seam, required: "side excessLu") }
+        }
         if let evidence = qa["shortSpeech"] {
             _ = try object(evidence, required: "mode recordId consentMethod voicedFrames takeCount")
         }
