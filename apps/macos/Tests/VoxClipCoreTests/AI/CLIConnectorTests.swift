@@ -4,6 +4,33 @@ import Testing
 
 @Suite("CLI connector safety and recorded outputs", .offlineFixtures)
 struct CLIConnectorTests {
+    @Test func shorterFeedbackReachesOnlyTheApprovedStubCLI() async throws {
+        let shared = SharedResources(root: try FixtureLoader.sharedRoot())
+        let catalog = try LLMCatalog(shared: shared)
+        let process = CLIFakeRunner(id: .claudeCode, catalog: catalog) { request in
+            let prompt = String(decoding: request.stdin, as: UTF8.self)
+            #expect(prompt.contains("SHORTER WORDING FEEDBACK"))
+            #expect(prompt.contains("Original words: and let's go."))
+            #expect(prompt.contains("Say it in fewer words; keep the other changes as they are."))
+            return cliTestResult(#"{"type":"result","is_error":false,"structured_output":{"rewrite":"Let's go."}}"#)
+        }
+        let connector = cliTestConnector(.claudeCode, runner: process, catalog: catalog)
+        let service = VoiceRewriteService(shared: shared)
+        let feedback = "SHORTER WORDING FEEDBACK:\nOriginal words: and let's go.\nSay it in fewer words; keep the other changes as they are."
+        let input = VoiceRewriteRequest(id: UUID(), scope: .passage,
+            sourceWords: [TimedWord(id: "w1", text: "and let's go.", start: 0, end: 1.1)], instruction: "Keep my tone.",
+            language: "en", targetSeconds: 1.1, minChars: 1, maxChars: 30, feedback: feedback)
+        let quote = try await service.prepare(input, connector: .claudeCode, model: "default")
+        await #expect(throws: (any Error).self) {
+            _ = try await service.propose(input, connector: connector, model: "default",
+                authorization: VoiceRewriteAuthorization(quote: quote, approved: false))
+        }
+        #expect(await process.generationCount == 0)
+        let fresh = try await service.prepare(input, connector: .claudeCode, model: "default")
+        _ = try await service.propose(input, connector: connector, model: "default",
+            authorization: VoiceRewriteAuthorization(quote: fresh, approved: true))
+        #expect(await process.generationCount == 1)
+    }
     @Test(arguments: [ConnectorID.claudeCode, .codex], [
         "API Error: Connection refused (ECONNREFUSED)", "ENETUNREACH", "EHOSTUNREACH",
         "Connection refused", "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed",

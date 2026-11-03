@@ -15,13 +15,15 @@ public struct PatchRewriteLineRange: Codable, Sendable, Equatable {
 /// One Fix with AI request (voice-lab §8.1, path 3). `entries` are the in-scope transcript items with their absolute indices
 /// and display text (ai.md §11.2), and `ranges` holds one range per formatted line, in line order.
 public struct PatchRewriteRequest: Codable, Sendable {
+    public let feedback: String?
     public let id: UUID
     public let entries: [ClipWord]
     public let ranges: [PatchRewriteLineRange]
     /// What to fix, for example "I said 2024; it's 2025". It must not be empty after `jsTrim`.
     public let instruction: String
     public let language: String
-    public init(id: UUID, entries: [ClipWord], ranges: [PatchRewriteLineRange], instruction: String, language: String) {
+    public init(id: UUID, entries: [ClipWord], ranges: [PatchRewriteLineRange], instruction: String, language: String, feedback: String? = nil) {
+        self.feedback = feedback
         self.id = id; self.entries = entries; self.ranges = ranges; self.instruction = instruction; self.language = language
     }
 }

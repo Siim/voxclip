@@ -1202,17 +1202,32 @@ Rewrite checks every included voice change before **Get Price**. The local-lengt
 character budget does not permit any single changed phrase to grow unchecked.
 
 The estimator counts Unicode letters and digits in the complete synthesized patch (including
-bridge words). Use the clip's corrected transcript speaking rate, excluding long pauses,
-without the optimistic 20 characters/second provider floor. Add 0.12 s for each comma,
+bridge words). Measure the clip's corrected transcript letters and digits per voiced second
+using the union of its word spans (no inter-word pauses), excluding cut words. Multiply
+this user rate by the calibrated provider cadence multiplier **1.8**, not a 20 characters/s
+floor: slower users still get slower estimates. Add 0.12 s for each comma,
 semicolon, colon or dash pause and 0.22 s for each sentence-ending punctuation group.
 Trimmed provider lead/tail allowance is `TTS_TRIM_LEAD + TTS_TRIM_TAIL`.
 Punctuation runs count once. Estimates are advisory, never speech-check evidence.
 `ClipTakePlan.validateSpeechAvailability` retains its conservative generated-speech rule;
 the fit estimate must not enable a short-phrase speaker check.
 
+Calibration uses the app's `SpeakerVAD.ranges` and `VoiceConsentAudio.pcm16k`, the pinned
+Silero 6.2.0 model, CPU, threshold 0.5, minimum speech 250 ms, silence 100 ms, no padding.
+The supplied 3 November casual clip has 9.988221436984691 letters/digits per word-span
+second. Phrase 2 (45 letters/digits) measured 2.6799375 voiced seconds from 2.7399375 raw;
+its estimate is 2.832948… s (5.71% high). Phrase 3 (20 letters/digits, two commas and a
+stop) measured 1.63 voiced seconds from 1.9504375 raw; its estimate is 1.662421… s and
+cannot fit the 1.1 s source window, even at 0.80× source-video speed. Phrase 1's two
+supplied takes measured 11.02 and 12.2148125 voiced seconds. Deterministic calibration
+vectors live in the new `phrase-timing-cases.json`, not an existing replay category.
+
 The slot is the longest usable take: evaluate the same silence-only fit planner and video
 duration gate as a paid take, with lendable source silence and the existing 0.80×–1.25×
 source-video speed range. Borrowed silence expands the fit window before testing retiming;
+the maximum slot is that maximally borrowed window divided by 0.80, minus required
+incoming/outgoing edge padding (all sample-rounded by the planner). This follows the
+existing post-take gate, rather than independently capping retiming at the unborrowed window.
 do not invent an independent speed or pause gate in the UI. A fully voiced hypothetical
 take is conservative: no unmeasured generated internal silence is assumed shrinkable.
 Before pricing, “fits” means that at least one post-take video option permits a hypothetical
@@ -1224,12 +1239,20 @@ show **Too long for its slot. A take won't fit the video.**, **Ask for shorter**
 that fit or have that explicit override enter the quote. The footer reads
 `{n} phrase(s) need(s) a shorter wording.` and **Get Price · {k} phrase(s)**;
 omit the priced button when k is zero. With no blocked phrases, read **Nothing paid yet.**
+The same gate can reject wording that is too short to pad or retime safely. In that case
+say **Too short for its slot. A take won't fit the video.**, offer **Ask again** instead of
+asking for fewer words, and use `{n} phrase(s) need(s) wording that fits.` in the footer.
+The original-words and explicit pricing override remain available.
 
 **Ask for shorter** uses the same scope and normal text-only Rewrite send, with fresh
 consent/approval checks, never a previous send authorization. Append the shared
 `shorterFeedbackBlock`, rendering `shorterPhraseLine` for each blocked phrase with its
 original/proposed words and estimate/slot seconds. The new proposal replaces the old one
 and resets timing overrides. **Keep original words** uses the existing per-change exclusion.
+The optional `feedback` field is distinct from the user's instruction: preserve the existing
+1,000-byte instruction limit and bound feedback to 20,000 UTF-8 bytes. Both passage and
+scope request fingerprints bind feedback to the fresh send quote; nil retains the existing
+request and fixture shape. Render template placeholders once, never inside substituted words.
 Paid takes with neither video option available also offer both recovery actions; further
 audio generation always goes through the usual fresh price and approval.
 
