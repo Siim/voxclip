@@ -22,6 +22,8 @@ independent; the pace-matching revision below changes only its own contract.
 
 `natural-pacing-cases.json` uses its own `voxclip-natural-pacing/1` schema: 0.3 s / 1.1 s hard windows reserve 0.06 s / 0.14 s per side and retain 0.18 s / 0.82 s speech. Both platforms replay the helper, paid planner, measured matcher and pre-pay estimate. Regenerate with `python3 tools/fixtures/voice-lab/generate_natural_pacing.py`. Legacy fit and hard-join fixture categories remain unchanged.
 
+`natural-pacing-review-cases.json` uses its own `voxclip-natural-pacing-review/1` schema: an odd 48 kHz window with a 24 kHz take whose cut removes `window − jsRound(videoDuration × rate)` samples, a 0.5 s hard window that borrows gap silence and reserves 20% of the widened window, and two pause classes with no measured pauses that keep the legacy 150 ms / 60 ms shrink floors. Both platforms replay it. Regenerate with `python3 tools/fixtures/voice-lab/generate_natural_pacing_review.py`.
+
 The existing `hard-join-cases.json` reserve vector keeps its geometry and fit result, but its automatic pace changes from 1.20 to 1.00: 0.9 s speech plus 0.28 s hard-side pauses cannot Keep-source fit within the natural range, so it retains natural speech and offers Match video rather than automatically using the provider maximum. No hard-join bed-weight or room-tone vectors change here.
 
 `pace-cases.json` is the separate per-take speech-pace contract; both platforms replay all 15 request/refusal rows. See [pace-README.md](pace-README.md) for exact bytes, default compatibility, approval binding and provenance rules.

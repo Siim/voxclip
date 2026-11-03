@@ -15,6 +15,9 @@ public sealed record VoiceLabPauseDistribution
         double Percentile(double fraction) => sorted.Length == 0 ? 0 : sorted[Math.Max(0, (int)Math.Ceiling(sorted.Length * fraction) - 1)];
         P25 = Percentile(0.25); P75 = Percentile(0.75); P90 = Percentile(0.90);
     }
+
+    /// <summary>No pause of this class was measured: every percentile is zero, so it bounds neither growth nor shrinking.</summary>
+    public bool IsEmpty => P25 <= 0;
 }
 
 public sealed record VoiceLabPauseProfile(VoiceLabPauseDistribution WithinSentence, VoiceLabPauseDistribution BetweenSentences)
@@ -76,8 +79,10 @@ public static class VoiceLabNaturalPacing
         var fitted = Plan(true);
         if (fitted is VoiceLabFitResult.Exact) return fitted;
         var spoken = Plan(false);
-        var output = (long)VoxClip.Core.Domain.Editing.EditingMath.Round((double)spoken.Plan.OutputFrames * sourceSampleRate / take.AssetSampleRate);
-        var cuts = Cuts(spoken.Plan.WindowStartSample, spoken.Plan.WindowEndSample, output, sourceSampleRate, sourceEnvelope, items);
+        // The same output the video-duration options and the recipe use, so a paid take's cut passes ValidCuts.
+        var rounded = VoxClip.Core.Domain.Editing.EditingMath.Round(VoiceLabRewriteFit.VideoDuration(spoken) * sourceSampleRate);
+        if (!double.IsFinite(rounded) || rounded <= 0 || rounded >= long.MaxValue) return fitted;
+        var cuts = Cuts(spoken.Plan.WindowStartSample, spoken.Plan.WindowEndSample, (long)rounded, sourceSampleRate, sourceEnvelope, items);
         if (cuts.Count == 0) return fitted;
         var plan = spoken.Plan with { VideoCuts = cuts };
         return spoken is VoiceLabFitResult.ChangedDuration changed ?

@@ -1,0 +1,74 @@
+{
+  "schema": "voxclip-natural-pacing-review/1",
+  "sourceSampleRate": 48000,
+  "paidRateCutCaseCount": 1,
+  "paidRateCutCases": [
+    {
+      "id": "odd-window-half-rate-take",
+      "assetSampleRate": 24000,
+      "takeFrames": 24000,
+      "windowEndSample": 115201,
+      "sourceQuietBlocks": [
+        [
+          50,
+          56
+        ],
+        [
+          190,
+          196
+        ]
+      ],
+      "outputSamples": 47999,
+      "expectedCuts": [
+        [
+          24000,
+          91202
+        ]
+      ]
+    }
+  ],
+  "borrowedReserveCaseCount": 1,
+  "borrowedReserveCases": [
+    {
+      "id": "short-hard-window-borrows-gap",
+      "windowSeconds": 0.5,
+      "outgoingSilenceSeconds": 0.4,
+      "speechSeconds": 0.45,
+      "reserveFrames": 5400,
+      "windowEndSample": 27000
+    }
+  ],
+  "emptyClassCaseCount": 2,
+  "emptyClassCases": [
+    {
+      "id": "empty-between-sentence-class",
+      "tokens": [
+        "done.",
+        "next"
+      ],
+      "withinSentence": [
+        0.1,
+        0.2,
+        0.3
+      ],
+      "betweenSentences": [],
+      "windowSeconds": 0.7,
+      "removedFrames": 7200
+    },
+    {
+      "id": "empty-within-sentence-class",
+      "tokens": [
+        "one",
+        "two"
+      ],
+      "withinSentence": [],
+      "betweenSentences": [
+        0.1,
+        0.2,
+        0.3
+      ],
+      "windowSeconds": 0.7,
+      "removedFrames": 11520
+    }
+  ]
+}

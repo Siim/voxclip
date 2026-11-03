@@ -211,8 +211,7 @@ public static class VoiceLabRenderValidation
     /// Render policy runs first for unrejected candidates, so this only reports what policy leaves unchecked.</summary>
     static void ValidateShape(VoiceLabRenderRecipe recipe)
     {
-        var windowDuration = recipe.Video.OutputSamples > 0 ? recipe.OutDuration * ((double)recipe.Video.SourceEndSample - recipe.Video.SourceStartSample) / recipe.Video.OutputSamples : recipe.OutDuration;
-        VoiceLabHardJoin.Validate(recipe.Seams, recipe.EdgeGain, recipe.OutDuration, windowDuration);
+        VoiceLabHardJoin.Validate(recipe.Seams, recipe.EdgeGain, recipe.OutDuration, VoiceLabHardJoin.WindowDuration(recipe.Video, recipe.OutDuration));
         foreach (var incoming in new[] { true, false })
             if ((incoming ? recipe.Seams.In.MicroPause : recipe.Seams.Out.MicroPause) is { } pause)
             {

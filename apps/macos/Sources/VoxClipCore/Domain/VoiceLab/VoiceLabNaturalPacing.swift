@@ -13,6 +13,9 @@ public struct VoiceLabPauseDistribution: Sendable, Equatable {
         }
         p25 = percentile(0.25); p75 = percentile(0.75); p90 = percentile(0.90)
     }
+
+    /// No pause of this class was measured: every percentile is zero, so it bounds neither growth nor shrinking.
+    public var isEmpty: Bool { p25 <= 0 }
 }
 
 public struct VoiceLabPauseProfile: Sendable, Equatable {
@@ -89,9 +92,11 @@ public enum VoiceLabNaturalPacing {
         guard case .changedDuration = fitted else { return fitted }
         let spoken = try plan(allowGrowth: false)
         var cutPlan = spoken.plan
-        let output = Int64(EditingPrimitives.jsRound(Double(cutPlan.outputFrames) * Double(sourceSampleRate) / Double(take.assetSampleRate)))
+        // The same output the video-duration options and the recipe use, so a paid take's cut passes `validCuts`.
+        let rounded = EditingPrimitives.jsRound(VoiceLabVideoDurationOptions.videoDuration(spoken) * Double(sourceSampleRate))
+        guard rounded.isFinite, rounded > 0, rounded < Double(Int64.max) else { return fitted }
         cutPlan.videoCuts = cuts(windowStartSample: cutPlan.windowStartSample, windowEndSample: cutPlan.windowEndSample,
-            outputSamples: output, sampleRate: sourceSampleRate, envelope: sourceEnvelope, items: items)
+            outputSamples: Int64(rounded), sampleRate: sourceSampleRate, envelope: sourceEnvelope, items: items)
         guard !cutPlan.videoCuts.isEmpty else { return fitted }
         switch spoken {
         case .exact: return .exact(cutPlan)

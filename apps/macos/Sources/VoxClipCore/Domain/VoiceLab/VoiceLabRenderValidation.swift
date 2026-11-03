@@ -69,8 +69,7 @@ public enum VoiceLabRenderValidation {
     /// The project.schema.json shape of every stored recipe, rejected or not, whatever its kind or voice source.
     /// Render policy runs first for unrejected candidates, so this only reports what policy leaves unchecked.
     private static func validateShape(_ recipe: VoiceLabRenderRecipe) throws {
-        let geometry = recipe.video
-        let windowDuration = geometry.outputSamples > 0 ? recipe.outDuration * (Double(geometry.sourceEndSample) - Double(geometry.sourceStartSample)) / Double(geometry.outputSamples) : recipe.outDuration
+        let windowDuration = VoiceLabHardJoin.windowDuration(video: recipe.video, outDuration: recipe.outDuration)
         try VoiceLabHardJoin.validate(seams: recipe.seams, edgeGain: recipe.edgeGain, duration: recipe.outDuration, windowDuration: windowDuration)
         for incoming in [true, false] {
             if let pause = incoming ? recipe.seams.in.microPause : recipe.seams.out.microPause {

@@ -135,6 +135,14 @@ public enum VoiceLabHardJoin {
         1
     }
 
+    /// The source window a stored recipe covers, borrowed gap samples included, in its output's seconds. The fit planner
+    /// sizes each hard reserve from this same widened window.
+    public static func windowDuration(video: VoiceLabVideoRecipe, outDuration: Double) -> Double {
+        guard video.outputSamples > 0 else { return outDuration }
+        let source = Double(video.sourceEndSample) - Double(video.sourceStartSample)
+        return outDuration * source / Double(video.outputSamples)
+    }
+
     public static func validate(seams: VoiceLabSeams, edgeGain: VoiceLabEdgeGain?, duration: Double, windowDuration: Double? = nil) throws {
         if seams.in.microPause == nil && seams.out.microPause == nil && edgeGain == nil { return }
         guard duration.isFinite, duration > 0, duration <= 290,

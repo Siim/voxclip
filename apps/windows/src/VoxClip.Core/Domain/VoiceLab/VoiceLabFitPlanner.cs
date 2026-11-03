@@ -73,6 +73,27 @@ public static class VoiceLabFitPlanner
         VoiceLabFitTake take, IReadOnlyList<string> tokens, double sourceSampleRate, bool hardJoinSmoothing,
         VoiceLabPauseProfile? pauseProfile = null, IReadOnlyList<VoiceLabAudioTag>? audioTags = null, bool allowPauseGrowth = true)
     {
+        // Each hard side reserves min(140 ms, 20%) of the source window the recipe covers, which render validation
+        // recomputes from the recipe's video samples. A window that borrows gap silence is wider than the replacement,
+        // so the plan repeats with the widened duration until its reserve stops growing (a fifth of the extra each time).
+        var reserveWindow = window.End - window.Start;
+        long Reserve(double duration) => VoiceLabGeometry.Samples(VoiceLabHardJoin.PauseForWindow(duration), take.AssetSampleRate);
+        for (var attempt = 0; attempt < 32; attempt++)
+        {
+            var result = Plan(window, incomingSilence, outgoingSilence, take, tokens, sourceSampleRate, hardJoinSmoothing,
+                pauseProfile, audioTags, allowPauseGrowth, reserveWindow);
+            if (!hardJoinSmoothing || window.LeftSeam.Kind != VoiceLabSeamKind.Hard && window.RightSeam.Kind != VoiceLabSeamKind.Hard) return result;
+            var widened = result.Plan.WindowEnd - result.Plan.WindowStart;
+            if (Reserve(widened) <= Reserve(reserveWindow)) return result;
+            reserveWindow = widened;
+        }
+        throw TouchesVoice();
+    }
+
+    static VoiceLabFitResult Plan(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
+        VoiceLabFitTake take, IReadOnlyList<string> tokens, double sourceSampleRate, bool hardJoinSmoothing,
+        VoiceLabPauseProfile? pauseProfile, IReadOnlyList<VoiceLabAudioTag>? audioTags, bool allowPauseGrowth, double reserveWindow)
+    {
         var rate = sourceSampleRate;
         VoiceLabSeamKind[] kinds = [window.LeftSeam.Kind, window.RightSeam.Kind];
         double?[] silences = [incomingSilence, outgoingSilence];
@@ -94,7 +115,7 @@ public static class VoiceLabFitPlanner
             ? Math.Max(0, VoiceLabGeometry.Samples(silences[0] ?? 0, assetRate) - leadIn) : 0;
         var edgeOut = kinds[1] == VoiceLabSeamKind.None
             ? Math.Max(0, VoiceLabGeometry.Samples(silences[1] ?? 0, assetRate) - tailOut) : 0;
-        var reserve = VoiceLabGeometry.Samples(VoiceLabHardJoin.PauseForWindow(window.End - window.Start), assetRate);
+        var reserve = VoiceLabGeometry.Samples(VoiceLabHardJoin.PauseForWindow(reserveWindow), assetRate);
         if (hardJoinSmoothing && kinds[0] == VoiceLabSeamKind.Hard) edgeIn = Math.Max(0, reserve - leadIn);
         if (hardJoinSmoothing && kinds[1] == VoiceLabSeamKind.Hard) edgeOut = Math.Max(0, reserve - tailOut);
         var n = window.EndSample - window.StartSample;
@@ -110,7 +131,9 @@ public static class VoiceLabFitPlanner
             if (pauseProfile is null) return legacyRooms![index];
             var distribution = pauseProfile.Distribution(tokens[pause.Word]);
             var boundary = VoiceLabNaturalPacing.ClauseBoundary(tokens[pause.Word], tokens[pause.Word + 1]);
-            var floor = VoiceLabGeometry.Samples(distribution.P25, assetRate);
+            // A class the source never uses has no p25: shrink only to the legacy floor, as growth already stays at zero.
+            var legacyFloor = pause.Punctuation ? VoiceLabPatchConstants.PAUSE_FLOOR_PUNCT : VoiceLabPatchConstants.PAUSE_FLOOR_PHRASE;
+            var floor = VoiceLabGeometry.Samples(distribution.IsEmpty ? legacyFloor : distribution.P25, assetRate);
             var ceiling = VoiceLabGeometry.Samples(Math.Min(distribution.P75, distribution.P90), assetRate);
             var minimumGap = VoiceLabGeometry.Samples(VoiceLabHardJoin.GeneratedFadeSeconds + VoiceLabHardJoin.SourceFadeSeconds, assetRate);
             if (shorten) return Math.Max(0, pause.Length - Math.Max(floor, minimumGap));

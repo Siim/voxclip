@@ -225,4 +225,105 @@ public sealed class VoiceLabNaturalPacingTests
         Assert.False(VoiceLabNaturalPacing.ValidCuts(video with { Cuts = [new(0, 96_000)] }, 48_000));
         Assert.False(VoiceLabNaturalPacing.ValidCuts(video with { Zoom = 1.12 }, 48_000));
     }
+
+    private static JsonDocument Review()
+    {
+        var root = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR") ?? throw new InvalidOperationException("VOXCLIP_SHARED_DIR required");
+        var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "fixtures/voice-lab/natural-pacing-review-cases.json")));
+        Assert.Equal("voxclip-natural-pacing-review/1", document.RootElement.GetProperty("schema").GetString());
+        Assert.Equal(48000, document.RootElement.GetProperty("sourceSampleRate").GetInt32());
+        return document;
+    }
+
+    [Fact]
+    public void PaidRateCutUsesTheVideoOptionsOutput()
+    {
+        using var document = Review();
+        var fixture = document.RootElement;
+        Assert.Equal(1, fixture.GetProperty("paidRateCutCaseCount").GetInt32());
+        Assert.Equal(1, fixture.GetProperty("paidRateCutCases").GetArrayLength());
+        VoiceLabWord[] words = [new("hello,", 0, 0.3, true), new("world", 0.5, 1, true)];
+        foreach (var row in fixture.GetProperty("paidRateCutCases").EnumerateArray())
+        {
+            var id = row.GetProperty("id").GetString();
+            var assetRate = row.GetProperty("assetSampleRate").GetInt32();
+            var frames = row.GetProperty("takeFrames").GetInt64();
+            var blocks = (int)(frames / VoiceLabGeometry.FrameSize(assetRate));
+            var take = new VoiceLabFitTake(frames, assetRate, 0, 1, words,
+                new(assetRate, 0.01, Enumerable.Range(0, blocks).Select(block => block is >= 30 and < 50 ? 0f : 1f).ToArray()));
+            var quiet = row.GetProperty("sourceQuietBlocks").EnumerateArray().Select(range => (Start: range[0].GetInt32(), End: range[1].GetInt32())).ToArray();
+            var source = new AudioEnvelope(48000, 0.01, Enumerable.Range(0, 240).Select(block =>
+                quiet.Any(range => block >= range.Start && block < range.End) ? 0.001f : 1f).ToArray());
+            var endSample = row.GetProperty("windowEndSample").GetInt64();
+            var end = endSample / 48000.0;
+            var window = new VoiceLabWindow("first", "last", [], [], 0, end, 0, endSample,
+                new(VoiceLabSeamKind.Hard, 0, 0, 240), new(VoiceLabSeamKind.Hard, end, endSample, 240));
+            var fit = VoiceLabNaturalPacing.Fit(window, null, null, take, 48000, false,
+                new(new([0.1, 0.7, 0.8]), new([])), [], source, []);
+            var output = (long)VoxClip.Core.Domain.Editing.EditingMath.Round(VoiceLabRewriteFit.VideoDuration(fit) * 48000);
+            Assert.Equal(row.GetProperty("outputSamples").GetInt64(), output);
+            var expected = row.GetProperty("expectedCuts").EnumerateArray().Select(span => new VoiceLabVideoCut(span[0].GetInt64(), span[1].GetInt64())).ToArray();
+            Assert.True(expected.SequenceEqual(fit.Plan.VideoCuts), id);
+            var video = new VoiceLabVideoRecipe(VoiceLabVideoMode.Cut, fit.Plan.WindowStartSample, fit.Plan.WindowEndSample, output,
+                null, VoiceLabNaturalPacing.CUT_PUNCH_IN, 0.5, 0.5, null, null, null, null, null, null, null, fit.Plan.VideoCuts);
+            Assert.True(VoiceLabNaturalPacing.ValidCuts(video, 48000), id);
+        }
+    }
+
+    [Fact]
+    public void BorrowedWindowReservesWhatRenderValidationRecomputes()
+    {
+        using var document = Review();
+        var fixture = document.RootElement;
+        Assert.Equal(1, fixture.GetProperty("borrowedReserveCaseCount").GetInt32());
+        Assert.Equal(1, fixture.GetProperty("borrowedReserveCases").GetArrayLength());
+        foreach (var row in fixture.GetProperty("borrowedReserveCases").EnumerateArray())
+        {
+            var id = row.GetProperty("id").GetString();
+            var seconds = row.GetProperty("windowSeconds").GetDouble();
+            var speech = row.GetProperty("speechSeconds").GetDouble();
+            var end = VoiceLabGeometry.Samples(seconds, 48000);
+            var window = new VoiceLabWindow("first", "last", [], [], 0, seconds, 0, end,
+                new(VoiceLabSeamKind.Hard, 0, 0, 240), new(VoiceLabSeamKind.Gap, seconds, end, 240));
+            var frames = VoiceLabGeometry.Samples(speech, 48000);
+            var take = new VoiceLabFitTake(frames, 48000, 0, speech, [new("speech", 0, speech, true)],
+                new(48000, 0.01, Enumerable.Repeat(1f, (int)(frames / 480)).ToArray()));
+            var plan = Assert.IsType<VoiceLabFitResult.Exact>(VoiceLabFitPlanner.Plan(window, null,
+                row.GetProperty("outgoingSilenceSeconds").GetDouble(), take, ["speech"], 48000, true)).Plan;
+            Assert.Equal(row.GetProperty("reserveFrames").GetInt64(), plan.Incoming.PadFrames);
+            Assert.Equal(row.GetProperty("windowEndSample").GetInt64(), plan.WindowEndSample);
+            Assert.Equal(plan.WindowEndSample - end, plan.Outgoing.BorrowedSamples);
+            var outDuration = plan.OutputFrames / 48000.0;
+            var video = new VoiceLabVideoRecipe(VoiceLabVideoMode.Source, plan.WindowStartSample, plan.WindowEndSample,
+                plan.WindowEndSample - plan.WindowStartSample, null, null, null, null, null, null, null, null, null, null, null);
+            var seams = new VoiceLabSeams(new(VoiceLabSeamKind.Hard, 240, 120, 120, VoiceLabHardJoin.Pause(plan.Words, outDuration, true)),
+                new(VoiceLabSeamKind.Gap, 240, 120, 120));
+            var error = Record.Exception(() => VoiceLabHardJoin.Validate(seams, null, outDuration, VoiceLabHardJoin.WindowDuration(video, outDuration)));
+            Assert.True(error is null, id + ": " + error?.Message);
+        }
+    }
+
+    [Fact]
+    public void UnmeasuredPauseClassKeepsItsLegacyShrinkFloor()
+    {
+        using var document = Review();
+        var fixture = document.RootElement;
+        Assert.Equal(2, fixture.GetProperty("emptyClassCaseCount").GetInt32());
+        Assert.Equal(2, fixture.GetProperty("emptyClassCases").GetArrayLength());
+        static double[] Seconds(JsonElement values) => values.EnumerateArray().Select(value => value.GetDouble()).ToArray();
+        foreach (var row in fixture.GetProperty("emptyClassCases").EnumerateArray())
+        {
+            var id = row.GetProperty("id").GetString();
+            var tokens = row.GetProperty("tokens").EnumerateArray().Select(token => token.GetString()!).ToArray();
+            VoiceLabWord[] words = [new(tokens[0], 0, 0.3, true), new(tokens[1], 0.6, 1, true)];
+            var take = new VoiceLabFitTake(48000, 48000, 0, 1, words,
+                new(48000, 0.01, Enumerable.Range(0, 100).Select(block => block is >= 30 and < 60 ? 0f : 1f).ToArray()));
+            var profile = new VoiceLabPauseProfile(new(Seconds(row.GetProperty("withinSentence"))), new(Seconds(row.GetProperty("betweenSentences"))));
+            Assert.True(profile.Distribution(tokens[0]).IsEmpty, id);
+            var fit = VoiceLabFitPlanner.Plan(Window(row.GetProperty("windowSeconds").GetDouble()), null, null, take, tokens, 48000, false, profile);
+            var edit = Assert.Single(fit.Plan.Edits);
+            Assert.Equal(VoiceLabFitEditKind.Remove, edit.Kind);
+            Assert.True(row.GetProperty("removedFrames").GetInt64() == edit.Count, id + ": " + edit.Count);
+        }
+    }
 }

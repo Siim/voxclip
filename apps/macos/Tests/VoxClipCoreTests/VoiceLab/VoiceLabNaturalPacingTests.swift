@@ -245,4 +245,105 @@ import Testing
             #expect(timing.pace == 1, "\(seconds)/\(slot): \(timing.pace)")
         }
     }
+
+    private struct ReviewDocument: Decodable {
+        struct PaidRateCut: Decodable {
+            let id: String; let assetSampleRate: Int; let takeFrames: Int64; let windowEndSample: Int64
+            let sourceQuietBlocks: [[Int]]; let outputSamples: Int64; let expectedCuts: [[Int64]]
+        }
+        struct BorrowedReserve: Decodable {
+            let id: String; let windowSeconds: Double; let outgoingSilenceSeconds: Double; let speechSeconds: Double
+            let reserveFrames: Int64; let windowEndSample: Int64
+        }
+        struct EmptyClass: Decodable {
+            let id: String; let tokens: [String]; let withinSentence: [Double]; let betweenSentences: [Double]
+            let windowSeconds: Double; let removedFrames: Int64
+        }
+        let schema: String; let sourceSampleRate: Int
+        let paidRateCutCaseCount: Int; let paidRateCutCases: [PaidRateCut]
+        let borrowedReserveCaseCount: Int; let borrowedReserveCases: [BorrowedReserve]
+        let emptyClassCaseCount: Int; let emptyClassCases: [EmptyClass]
+    }
+    private func review() throws -> ReviewDocument {
+        let fixture = try FixtureLoader.decode(ReviewDocument.self, at: "fixtures/voice-lab/natural-pacing-review-cases.json")
+        #expect(fixture.schema == "voxclip-natural-pacing-review/1" && fixture.sourceSampleRate == 48_000)
+        return fixture
+    }
+
+    @Test func paidRateCutUsesTheVideoOptionsOutput() throws {
+        let fixture = try review()
+        #expect(fixture.paidRateCutCaseCount == 1 && fixture.paidRateCutCases.count == fixture.paidRateCutCaseCount)
+        let words = [VoiceLabWord(text: "hello,", start: 0, end: 0.3, synthetic: true),
+                     VoiceLabWord(text: "world", start: 0.5, end: 1, synthetic: true)]
+        for row in fixture.paidRateCutCases {
+            let assetRate = Double(row.assetSampleRate)
+            let blocks = Int(row.takeFrames / VoiceLabGeometry.frameSize(assetRate))
+            let take = VoiceLabFitTake(assetFrames: row.takeFrames, assetSampleRate: row.assetSampleRate, trimStart: 0, trimEnd: 1,
+                words: words, envelope: .init(sampleRate: assetRate, levels: (0..<blocks).map { (30..<50).contains($0) ? 0 : 1 }))
+            let source = AudioEnvelope(sampleRate: 48_000, levels: (0..<240).map { block in
+                row.sourceQuietBlocks.contains { ($0[0]..<$0[1]).contains(block) } ? 0.001 : 1
+            })
+            let end = Double(row.windowEndSample) / 48_000
+            let window = VoiceLabWindow(firstWordId: "first", lastWordId: "last", leftBridgeWordIds: [], rightBridgeWordIds: [],
+                start: 0, end: end, startSample: 0, endSample: row.windowEndSample,
+                leftSeam: .init(kind: .hard, time: 0, sample: 0, fadeSamples: 240),
+                rightSeam: .init(kind: .hard, time: end, sample: row.windowEndSample, fadeSamples: 240))
+            let fit = try VoiceLabNaturalPacing.fit(window: window, incomingSilence: nil, outgoingSilence: nil, take: take,
+                sourceSampleRate: 48_000, hardJoinSmoothing: false,
+                pauseProfile: .init(withinSentence: [0.1, 0.7, 0.8], betweenSentences: []), audioTags: [],
+                sourceEnvelope: source, items: [])
+            let options = VoiceLabVideoDurationOptions(fit: fit, sourceSampleRate: 48_000, assetSampleRate: row.assetSampleRate)
+            #expect(options.outputSamples == row.outputSamples, "\(row.id)")
+            #expect(fit.plan.videoCuts.map { [$0.startSample, $0.endSample] } == row.expectedCuts, "\(row.id)")
+            #expect(options.allows(.cut) && options.cuts == fit.plan.videoCuts, "\(row.id)")
+        }
+    }
+
+    @Test func borrowedWindowReservesWhatRenderValidationRecomputes() throws {
+        let fixture = try review()
+        #expect(fixture.borrowedReserveCaseCount == 1 && fixture.borrowedReserveCases.count == fixture.borrowedReserveCaseCount)
+        for row in fixture.borrowedReserveCases {
+            let end = VoiceLabGeometry.samples(row.windowSeconds, 48_000)
+            let window = VoiceLabWindow(firstWordId: "first", lastWordId: "last", leftBridgeWordIds: [], rightBridgeWordIds: [],
+                start: 0, end: row.windowSeconds, startSample: 0, endSample: end,
+                leftSeam: .init(kind: .hard, time: 0, sample: 0, fadeSamples: 240),
+                rightSeam: .init(kind: .gap, time: row.windowSeconds, sample: end, fadeSamples: 240))
+            let frames = VoiceLabGeometry.samples(row.speechSeconds, 48_000)
+            let take = VoiceLabFitTake(assetFrames: frames, assetSampleRate: 48_000, trimStart: 0, trimEnd: row.speechSeconds,
+                words: [.init(text: "speech", start: 0, end: row.speechSeconds, synthetic: true)],
+                envelope: .init(sampleRate: 48_000, levels: Array(repeating: 1, count: Int(frames / 480))))
+            let fit = try VoiceLabFitPlanner.plan(window: window, incomingSilence: nil, outgoingSilence: row.outgoingSilenceSeconds,
+                take: take, tokens: ["speech"], sourceSampleRate: 48_000, hardJoinSmoothing: true)
+            guard case .exact(let plan) = fit else { Issue.record("\(row.id): the gap must lend enough"); continue }
+            #expect(plan.incoming.padFrames == row.reserveFrames, "\(row.id)")
+            #expect(plan.windowEndSample == row.windowEndSample && plan.outgoing.borrowedSamples == row.windowEndSample - end, "\(row.id)")
+            let outDuration = Double(plan.outputFrames) / 48_000
+            let video = VoiceLabVideoRecipe(mode: .source, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
+                outputSamples: plan.windowEndSample - plan.windowStartSample, retimeFactor: nil, zoom: nil, faceX: nil, faceY: nil,
+                assetId: nil, provider: nil, model: nil, requestId: nil, windowStartSample: nil, windowEndSample: nil, syncMode: nil)
+            let pause = VoiceLabHardJoin.pause(words: plan.words, duration: outDuration, incoming: true)
+            let seams = VoiceLabSeams(in: .init(kind: .hard, fadeSamples: 240, sourceHandleSamples: 120, assetHandleFrames: 120, microPause: pause),
+                                      out: .init(kind: .gap, fadeSamples: 240, sourceHandleSamples: 120, assetHandleFrames: 120))
+            let windowDuration = VoiceLabHardJoin.windowDuration(video: video, outDuration: outDuration)
+            #expect(throws: Never.self, "\(row.id)") {
+                try VoiceLabHardJoin.validate(seams: seams, edgeGain: nil, duration: outDuration, windowDuration: windowDuration)
+            }
+        }
+    }
+
+    @Test func unmeasuredPauseClassKeepsItsLegacyShrinkFloor() throws {
+        let fixture = try review()
+        #expect(fixture.emptyClassCaseCount == 2 && fixture.emptyClassCases.count == fixture.emptyClassCaseCount)
+        for row in fixture.emptyClassCases {
+            let words = [VoiceLabWord(text: row.tokens[0], start: 0, end: 0.3, synthetic: true),
+                         VoiceLabWord(text: row.tokens[1], start: 0.6, end: 1, synthetic: true)]
+            let take = VoiceLabFitTake(assetFrames: 48_000, assetSampleRate: 48_000, trimStart: 0, trimEnd: 1,
+                words: words, envelope: .init(sampleRate: 48_000, levels: (0..<100).map { (30..<60).contains($0) ? 0 : 1 }))
+            let profile = VoiceLabPauseProfile(withinSentence: row.withinSentence, betweenSentences: row.betweenSentences)
+            #expect(profile.distribution(after: row.tokens[0]).isEmpty, "\(row.id)")
+            let fit = try VoiceLabFitPlanner.plan(window: window(row.windowSeconds), incomingSilence: nil, outgoingSilence: nil,
+                take: take, tokens: row.tokens, sourceSampleRate: 48_000, hardJoinSmoothing: false, pauseProfile: profile)
+            #expect(fit.plan.edits.map(\.kind) == [.remove] && fit.plan.edits.map(\.count) == [row.removedFrames], "\(row.id)")
+        }
+    }
 }
