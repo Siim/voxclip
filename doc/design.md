@@ -1,6 +1,6 @@
 # VoxClip design specification
 
-### Inline voice expressions (Mac, 2026-11-03)
+### Inline voice expressions (Mac and Windows, 2026-11-03)
 
 The speech model popup labels are **Eleven v3 · audio tags** and **Eleven v4 · audio
 tags**. Review and voice rows wrap quoted words with small expression chips and a
@@ -8,8 +8,10 @@ remove control; transcript text and captions never include chips. Each phrase ha
 an inline **+ Expression** toggle revealing the shared whitelist. Selection appends
 at the end of the rewritten words (before trailing unchanged bridge/context words
 in a full take phrase), not at a caret. Removal preserves the remaining anchors.
-Controls are keyboard buttons with VoiceOver names such as “Add laughs to phrase
-1” and “Remove laughs from phrase 1”. No new sheet or alert is used.
+Controls are keyboard buttons with VoiceOver / Narrator names such as “Add laughs
+to phrase 1” and “Remove laughs from phrase 1”. No new sheet, alert, ContentDialog
+or dialog-like flyout is used. Windows uses wrapping quoted-word/chip runs above
+the take choices; chips have bounded widths, not a fixed-width horizontal row.
 
 Under the rows: “Rewrite suggests tags where your original had a laugh, sigh or
 pause. Tags aren't spoken words and don't count in the word check.” For v2:
@@ -20,7 +22,7 @@ takes remain authoritative. Before payment, a tag edit retires the exact old quo
 and prepares another without synthesis; after payment/in-flight it first uses the
 existing inline discard confirmation, and cancelling changes nothing. The new
 quote still requires its own explicit paid action. Narrow wrapping and native
-VoiceOver/listening acceptance require the usual real-window gate.
+VoiceOver / Narrator and listening acceptance require the usual real-window gate.
 
 Status: normative for 0.1.0 (M1), with M2/M3 surfaces marked. Date: 2026-10-26.
 

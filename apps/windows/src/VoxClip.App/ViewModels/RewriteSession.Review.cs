@@ -44,6 +44,7 @@ internal sealed partial class RewriteSession
     private IReadOnlyList<ScopeRewriteDiff.Hunk>? scopeHunks;
     private readonly Dictionary<int, TranscriptChangeState> changeStates = [];
     private readonly HashSet<int> priceOverrides = [];
+    private IReadOnlyList<VoiceLabAudioTag> audioTags = [];
     internal IReadOnlyList<RewriteHunkReview> PricedVoiceHunks => Review?.VoiceHunks.Where(CanPriceHunk).ToArray() ?? [];
     internal IReadOnlyList<RewriteHunkReview> BlockedVoiceHunks => Review?.VoiceHunks.Where(hunk => hunk.Fit is { Fits: false } && !CanPriceHunk(hunk)).ToArray() ?? [];
     internal string FitFooter => BlockedVoiceHunks.Count is var count && count > 0
@@ -93,8 +94,8 @@ internal sealed partial class RewriteSession
             ? audio.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: > 0 }
             : hunk.Fit is not { Fits: false, TooLong: false })).Select(hunk => new VoiceRewriteTimingFeedback(
             string.Join(" ", hunk.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text)),
-            hunk.PatchText!, Measured(hunk) is { Audio: { } audio } ? audio.Fit.Plan.OutputFrames / (double)audio.SampleRate : hunk.Fit!.EstimateSeconds,
-            hunk.Fit!.SlotSeconds)).ToArray();
+            hunk.PatchText!, hunk.Fit!.EstimateSeconds, hunk.Fit!.SlotSeconds)
+            { MeasuredSeconds = Measured(hunk) is { Audio: { } audio } ? audio.Fit.Plan.OutputFrames / (double)audio.SampleRate : null }).ToArray();
     }
     private async Task<bool> PrepareShorterFeedbackAsync(IReadOnlyList<VoiceRewriteTimingFeedback> feedback)
     {
@@ -155,7 +156,8 @@ internal sealed partial class RewriteSession
         try
         {
             var sourceIds = hunk.SourceWordIds.ToHashSet(StringComparer.Ordinal);
-            var local = VoiceLabWordDiff.Diff(Source.Where(word => sourceIds.Contains(word.Id)).ToArray(), text);
+            var local = VoiceLabWordDiff.Diff(Source.Where(word => sourceIds.Contains(word.Id)).ToArray(), text,
+                VoiceLabAudioTags.Reanchored(hunk.AudioTags, string.Join(" ", hunk.NewTokens), text));
             var proposals = scopeHunks ?? Review.Diff.Hunks.Select(change => new ScopeRewriteDiff.Hunk(change, null, [], [], false)).ToArray();
             var metadata = proposals[ordinal - 1];
             var replacements = local.Hunks.Select(change => metadata with
@@ -181,7 +183,7 @@ internal sealed partial class RewriteSession
 
     internal VoiceLabWordDiffResult ReviewDiff()
     {
-        if (scopeHunks is null) return VoiceLabWordDiff.Diff(Source, NewWords);
+        if (scopeHunks is null) return VoiceLabWordDiff.Diff(Source, NewWords, audioTags);
         var tokens = Source.Where(word => word.Kind == WordKind.Word).SelectMany(word =>
             EditingAlgorithms.SplitWords(word.Text).Select(token => (Word: word, Token: token))).ToArray();
         List<VoiceLabDiffOp> operations = [];
@@ -205,5 +207,56 @@ internal sealed partial class RewriteSession
             operations.Add(new(VoiceLabDiffOpKind.Equal, item.Word.Id, item.Token, item.Token));
         }
         return new(operations, scopeHunks.Select(hunk => hunk.Diff).ToArray());
+    }
+
+    private IReadOnlyList<VoiceLabAudioTag> ReviewAudioTags()
+    {
+        if (scopeHunks is null || Review is null) return audioTags;
+        var result = new List<VoiceLabAudioTag>();
+        var oldIndex = 0;
+        var newIndex = 0;
+        var next = 0;
+        foreach (var operation in Review.Diff.Ops)
+        {
+            while (next < Review.Diff.Hunks.Count && Review.Diff.Hunks[next].SourceStartIndex == oldIndex)
+            {
+                result.AddRange(VoiceLabAudioTags.Shifted(Review.Diff.Hunks[next].AudioTags, newIndex));
+                next++;
+            }
+            if (operation.Kind != VoiceLabDiffOpKind.Insert) oldIndex++;
+            if (operation.Kind != VoiceLabDiffOpKind.Delete) newIndex++;
+        }
+        while (next < Review.Diff.Hunks.Count) result.AddRange(VoiceLabAudioTags.Shifted(Review.Diff.Hunks[next++].AudioTags, newIndex));
+        return result;
+    }
+
+    internal bool AddExpression(int ordinal, string tag)
+    {
+        if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count ||
+            Review.Diff.Hunks[ordinal - 1] is not { Kind: VoiceLabDiffHunkKind.Voice } hunk || !VoiceLabAudioTags.Definitions.Any(definition => definition.Tag == tag) ||
+            (Review.VoiceHunks.FirstOrDefault(phrase => phrase.Ordinals.Contains(ordinal))?.RequestAudioTags.Count ?? hunk.AudioTags.Count) >= 64) return false;
+        return SetExpressions(ordinal, hunk.AudioTags.Append(new(hunk.NewTokens.Count, tag)).ToArray());
+    }
+    internal bool RemoveExpression(int ordinal, int index)
+    {
+        if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count ||
+            index < 0 || index >= Review.Diff.Hunks[ordinal - 1].AudioTags.Count) return false;
+        return SetExpressions(ordinal, Review.Diff.Hunks[ordinal - 1].AudioTags.Where((_, at) => at != index).ToArray());
+    }
+    private bool SetExpressions(int ordinal, IReadOnlyList<VoiceLabAudioTag> annotations)
+    {
+        var captured = annotations.ToArray();
+        if (DeferPaidReviewChange(() => Task.FromResult(SetExpressions(ordinal, captured)))) return false;
+        if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
+        var proposals = scopeHunks ?? Review.Diff.Hunks.Select(change => new ScopeRewriteDiff.Hunk(change, null, [], [], false)).ToArray();
+        scopeHunks = proposals.Select((proposal, index) => index == ordinal - 1 ? proposal with
+            { Diff = proposal.Diff with { AudioTags = captured } } : proposal).ToArray();
+        if (sentenceReplacements.TryGetValue(ordinal, out var expanded)) sentenceReplacements[ordinal] = expanded with
+            { AudioTags = VoiceLabAudioTags.Shifted(captured, proposals[ordinal - 1].Diff.SourceStartIndex - expanded.SourceStartIndex) };
+        InvalidateProposal();
+        RefreshReview(preserveGenerations: true);
+        InvalidateGenerationInputs();
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 }

@@ -9,6 +9,7 @@ internal sealed record RewriteDiffRun(string Text, RewriteDiffKind Kind, string?
 internal sealed record RewriteHunkReview(VoiceLabDiffHunk Hunk, VoiceLabWindow? Window, string? PatchText,
     VoiceLabFitMeterResult? Meter, string? Refusal, IReadOnlyList<int> Ordinals, VoiceLabRewriteFitResult? Fit = null)
 {
+    internal IReadOnlyList<VoiceLabAudioTag> RequestAudioTags { get; init; } = [];
     internal string SpokenTiming => Fit?.Copy ?? Refusal ?? "";
 }
 
@@ -43,9 +44,11 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
                 string Text(string id) => session.Transcript.First(word => word.Id == id).Text;
                 var patch = string.Join(" ", window.LeftBridgeWordIds.Select(Text).Append(newWords).Concat(window.RightBridgeWordIds.Select(Text)));
                 var rate = VoiceLabLengthBudget.Rate(session.Transcript).CharactersPerSecond;
-                var meter = VoiceLabFitMeter.Measure(patch, window, silence.Incoming, silence.Outgoing, rate, newWords, voice.Length > 1);
-                var fit = MeasureTiming(session, session.Project, patch, window, model);
-                reviews.Add(new(hunk, window, patch, meter, null, ordinals, fit));
+                var tags = VoiceLabAudioTags.Shifted(hunk.AudioTags, window.LeftBridgeWordIds.Sum(id => EditingAlgorithms.SplitWords(Text(id)).Count));
+                var meter = VoiceLabFitMeter.Measure(patch, window, silence.Incoming, silence.Outgoing, rate, newWords, voice.Length > 1,
+                    VoiceLabAudioTags.Allowance(tags, patch, model ?? ""));
+                var fit = MeasureTiming(session, session.Project, patch, window, model, tags);
+                reviews.Add(new(hunk, window, patch, meter, null, ordinals, fit) { RequestAudioTags = tags });
             }
             catch (Exception exception) when (exception is VoiceLabGeometryException or VoiceLabLengthBudgetException or VoiceLabProjectException)
             {
@@ -57,7 +60,7 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
         VoiceLabDiffSummaryResult? summary = priced.Length > 0 && priced.All(review => review.Meter is not null)
             ? VoiceLabDiffSummary.Make(diff with { Hunks = pricedHunks }, priced.Select(review => review.Meter! with
                 { EstimateSeconds = review.Fit!.EstimateSeconds }).ToArray(), prices, model,
-                patchTexts: priced.Select(review => review.PatchText).ToArray()) : null;
+                patchTexts: priced.Select(review => VoiceLabAudioTags.RequestText(review.PatchText!, review.RequestAudioTags, model ?? "")).ToArray()) : null;
         var runs = DiffRuns(diff, session.Source, session.Transcript, reviews);
         var inserted = diff.Ops.Count(op => op.Kind == VoiceLabDiffOpKind.Insert);
         var removed = diff.Ops.Count(op => op.Kind == VoiceLabDiffOpKind.Delete);
@@ -67,7 +70,7 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
     }
 
     internal static VoiceLabRewriteFitResult MeasureTiming(RewriteSession session, Project project,
-        string patch, VoiceLabWindow window, string? model)
+        string patch, VoiceLabWindow window, string? model, IReadOnlyList<VoiceLabAudioTag>? audioTags = null)
     {
         var spoken = session.Transcript;
         if (session.Scope.ClipId is { } clipId && project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } clip)
@@ -80,7 +83,7 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
             .Select(word => word with { Text = project.Edits.Corrections.GetValueOrDefault(word.Id) ?? word.Text }).ToArray());
         var silence = VoiceLabWindowPlanner.LendableSilence(project, session.Scope, window);
         return VoiceLabPaceMatching.Measure(patch, rate, window, silence.Incoming, silence.Outgoing,
-            project.Media.Source.Audio?.SampleRate ?? 48_000, supportsPace: model != "eleven_v4");
+            project.Media.Source.Audio?.SampleRate ?? 48_000, supportsPace: model != "eleven_v4", audioTags: audioTags, modelId: model ?? "");
     }
 
     private static IReadOnlyList<RewriteDiffRun> DiffRuns(VoiceLabWordDiffResult diff, IReadOnlyList<TimedWord> source,

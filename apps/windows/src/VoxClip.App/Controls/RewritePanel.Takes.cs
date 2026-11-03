@@ -43,6 +43,7 @@ internal sealed partial class RewritePanel
             if (takeList.SelectedItem is VoiceLabTakeRow row) await generation.SelectTakeAsync(row.Id);
             RenderTakes(generation);
         };
+        generationBody.Children.Add(takeExpression);
         generationBody.Children.Add(takeList);
         generationBody.Children.Add(nextPace);
         AutomationProperties.SetAutomationId(videoChoices, "Rewrite.VideoChoice");
@@ -161,6 +162,7 @@ internal sealed partial class RewritePanel
     }
     private void RenderTakes(RewriteGeneration generation)
     {
+        RenderTakeExpression(generation);
         var rows = generation.Rows;
         updating = true;
         if (!renderedRows.SequenceEqual(rows) || renderedBest != generation.BestTakeId)

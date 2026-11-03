@@ -105,7 +105,7 @@ internal sealed partial class RewriteSession
                 var suffix = words.Skip(last + 1).Take(candidate.End - last - 1).Sum(word => EditingAlgorithms.SplitWords(word.Text).Count);
                 var expanded = original with { SourceWordIds = sentence.Select(word => word.Id).ToArray(), NewTokens = pieces,
                     CorrectedTexts = [], AbsorbedItemIds = [], BridgeWordIds = [], SourceStartIndex = original.SourceStartIndex - prefix,
-                    SourceEndIndex = original.SourceEndIndex + suffix, AnchorSeconds = null };
+                    SourceEndIndex = original.SourceEndIndex + suffix, AnchorSeconds = null, AudioTags = VoiceLabAudioTags.Shifted(original.AudioTags, prefix) };
                 var proposed = Review.Diff with { Hunks = IncludedHunks.Select(hunk => ReferenceEquals(hunk, original) ? expanded : hunk).ToArray() };
                 if (VoiceLabPatchBudget.Evaluate(proposed, words).Flag != VoiceLabPatchBudgetFlag.Allowed) continue;
                 SentenceReview = new(ReviewIdentity, Generation?.ModelId, Generation?.VoiceId, ordinal, expanded, window,

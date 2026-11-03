@@ -208,7 +208,7 @@ internal sealed partial class RewriteGeneration : IDisposable
     {
         if (input.ModelId == "eleven_v4") return 1;
         if (Selected is not { Audio: { } audio } selected || audio.Fit is VoiceLabFitResult.Exact || audio.Trimmed.Length == 0 ||
-            ReviewedInput is not { } previous || previous.Text != input.Text || previous.Window.StartSample != input.Window.StartSample ||
+            ReviewedInput is not { } previous || previous.RequestText != input.RequestText || previous.Window.StartSample != input.Window.StartSample ||
             previous.Window.EndSample != input.Window.EndSample) return input.Pace;
         return VoiceLabPaceMatching.Match(audio.Trimmed.Length / (double)audio.SampleRate, input.Window,
             input.IncomingSilence, input.OutgoingSilence, input.SourceSampleRate,
