@@ -1,5 +1,12 @@
 # macOS implementation contracts
 
+## Stopped phrase cause and probe analysis (3 Nov 2026)
+
+- **Built.** When a fatal take ends an approved Mac batch, every remaining quoted phrase now reads Stopped and names the actual cause. Original alignment refusal names Eleven v4/v3 and explains that replies cannot yet be checked; no later send occurs. Completed rows, paid playback/receipts and fresh-quote retry authorization remain intact. QA rejections and malformed segments remain ordinary failed rows and continue through the approved phrases.
+- **Decision.** Preserve `invalidAlignment` as route-blocking: §8.11 defers recovery and the spec's “Alignment to words” acceptance case explicitly ends the run after that take. Replaced misleading Waiting copy in place; added no controls or dialogs. Windows should apply the same explicit stopped-cause presentation; its source was not edited.
+- **Focused verification.** All four new tests (six argument cases) pass in 17.097 s. Against the previous plan implementation, the alignment/fatal-account cases fail with ten precise Waiting-versus-Stopped assertions; segment and QA continuation cases already pass. Both speech routes retain playable failed PCM/receipts and reject stale/unapproved retry quotes. Final Core/App checks follow this focused push.
+- **Analysis.** [The short probe note](../../doc/voice-lab-validation-probe.md) distinguishes documented normalization from unproven reply contents. ASCII/curly apostrophes are preserved by phrase preparation; exact live scalars remain unknown. Grouped alignment entries already work. A precise punctuation/whitespace comparison is proposed only; strict comparison remains enabled pending the diagnostic and lead decision.
+
 ## Speech validation probe diagnostics (3 Nov 2026)
 
 - **Built.** Mac DEBUG/profile speech replies on both routes now report the exact failed alignment/segment check and save an allowlisted, redacted JSON under `DataLocations.logs/Diagnostics/VoiceLab/`, named by synthesis request ID. Original and normalized text, scalar mismatch evidence, timing edges, PCM duration and segment fields are available without audio, headers or keys. One text-free INFO event reaches the existing logger. Release source guards exclude the writer and test destination; diagnostic I/O cannot replace errors or affect playable paid PCM/receipt retention.

@@ -4,6 +4,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Explain why unsent Mac voice phrases stopped after a timing or account failure, while ordinary failed takes keep the run moving.
 - Mac profile builds can diagnose failed voice timing checks without saving audio or credentials in diagnostics.
 - A failed Rewrite now stays open and says why.
 - Paid takes that failed their checks can now be played on Windows too, without being used.

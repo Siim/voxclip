@@ -469,6 +469,22 @@ import VoxClipMedia
                     if result.end == .fatal {
                         fatalPhrases.insert(phrase)
                         phrases[phrase].status = .failed(problem.isEmpty ? Self.failureCopy(result) : problem)
+                        let failure = result.failure ?? result.rows.last?.failure
+                        let reason: String
+                        if failure == .provider(.invalidAlignment) {
+                            let model: String
+                            switch inputs[phrase].modelID {
+                            case "eleven_v4": model = "Eleven v4"
+                            case "eleven_v3": model = "Eleven v3"
+                            default: model = "The speech model"
+                            }
+                            reason = "\(model) replies can't be checked yet."
+                        } else { reason = problem.isEmpty ? Self.failureCopy(result) : problem }
+                        for later in batchIndices.dropFirst(offset + 1) {
+                            let unsent = phrases[later].takes.isEmpty ? "Nothing sent for this phrase." : "No new take sent for this phrase."
+                            let next = failure == .provider(.invalidAlignment) ? " Try again after the timing issue is resolved." : ""
+                            phrases[later].status = .stopped("Stopped: \(reason) \(unsent)\(next)")
+                        }
                         break
                     }
                     if phrases[phrase].takes.contains(where: { $0.row.voiceCheck == .waiting }) {
