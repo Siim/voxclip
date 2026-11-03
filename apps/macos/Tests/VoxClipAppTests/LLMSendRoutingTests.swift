@@ -94,11 +94,14 @@ import Testing
         let firstActions = log.actions
         #expect(log.take() == row.first)
         #expect(firstActions.allSatisfy { $0 == action })
-        #expect(await fake.sends == 1)
+        let fitsPerReply = action == .rewrite && row.later.isEmpty ? 1 : 0
+        #expect(await fake.entrySends == 1)
+        #expect(await fake.fitSends == fitsPerReply)
         for later in 2...3 {
             try await send(action, editor: editor, app: app)
             #expect(log.take() == row.later, "send \(later)")
-            #expect(await fake.sends == later)
+            #expect(await fake.entrySends == later)
+            #expect(await fake.fitSends == later * fitsPerReply)
         }
         #expect(!editor.finding && !editor.llmRuns.isBusy && app.testingProviders.isEmpty)
     }

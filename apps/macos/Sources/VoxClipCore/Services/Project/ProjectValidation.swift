@@ -53,7 +53,12 @@ enum ProjectValidation {
             for clip in try array(result["clips"]) { _ = try object(clip, required: "title reason score startWordId endWordId") }
         }
         let version = isV4 ? 4 : root["schemaVersion"] == .number(3) ? 3 : root["schemaVersion"] == .number(2) ? 2 : 1
-        let voice = try object(root["voiceLab"], required: version >= 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments")
+        let voice = try object(root["voiceLab"], required: version >= 3 ? "segments assets cleanAudio voices videoAssets" : version == 2 ? "segments assets" : "segments", optional: "speakingRateSamples")
+        if let rates = voice["speakingRateSamples"] {
+            for samples in try map(rates).values {
+                for sample in try array(samples) { _ = try object(sample, required: "id ratio") }
+            }
+        }
         if version == 1 { try require(try array(voice["segments"]).isEmpty, "Version 1 Voice Lab must be empty") }
         if version >= 2 {
             for asset in try array(voice["assets"]) {

@@ -88,7 +88,7 @@ extension RewriteSession {
             // The plan's own model once the user changes it with paid takes kept (`ClipTakePlan.changeModel`).
             weak var created: ClipTakePlan?
             let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks,
-                makeInput: { phrase in
+                makeInput: { [weak self] phrase in
                     let modelID = created?.modelID ?? modelID
                     let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
                     let timing = try VoiceLabPaceMatching.measure(text: phrase.text, rate: speakingRate, window: phrase.window,
@@ -96,7 +96,7 @@ extension RewriteSession {
                         sourceSampleRate: audio.sampleRate, supportsPace: modelID != "eleven_v4", hardJoinSmoothing: true,
                         audioTags: phrase.audioTags, modelID: modelID,
                         sourceItems: RewriteReview.timingTranscript(timingInputs), sourceEnvelope: envelope,
-                        rateMultiplier: VoiceLabWordingFit.multiplier(final.voiceLab.speakingRateSamples?[modelID] ?? []))
+                        rateMultiplier: VoiceLabWordingFit.multiplier(self?.project.voiceLab.speakingRateSamples?[modelID] ?? []))
                     let source = try await VoiceLabSourceAudio.rewriteSource(source: sourceURL, frames: frames, sampleRate: audio.sampleRate,
                         window: phrase.window, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing, items: Self.corrected(final))
                     var input = VoiceLabTakeInput(text: phrase.text, modelID: modelID, recordID: recordID,

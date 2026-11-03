@@ -94,6 +94,14 @@ import Testing
         let render = try VoiceLabRenderContract.prepare(opened, scope: .full, labelPosition: .topRight)
         #expect(render.outputPlan.outputSamples == 7_000 && render.selectedSegmentRecipes.count == 1)
         try render.verify(project: opened, scope: .full, labelPosition: .topRight)
+        var calibrated = opened
+        calibrated.voiceLab.speakingRateSamples = ["eleven_v4": [.init(id: "first", ratio: 1.1), .init(id: "second", ratio: 1.3)]]
+        #expect(try ProjectJSON.decode(ProjectJSON.encode(calibrated)) == calibrated)
+        for invalid in [[VoiceLabRateSample(id: "", ratio: 1)], [.init(id: "bad", ratio: 0)],
+                        [.init(id: "bad", ratio: .infinity)], Array(repeating: .init(id: "many", ratio: 1), count: 11)] {
+            calibrated.voiceLab.speakingRateSamples = ["eleven_v4": invalid]
+            #expect(throws: (any Error).self) { try ProjectJSON.encode(calibrated) }
+        }
     }
 
     @Test func fitServiceUsesStructuredKeepOriginalAndRejectsFrozenOrDuplicatePhrases() async throws {

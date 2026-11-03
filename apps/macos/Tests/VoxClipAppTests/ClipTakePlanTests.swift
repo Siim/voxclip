@@ -1373,7 +1373,11 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(requests[0].cachedBlock?.contains(tooLong ? "fewer words" : "more words") == true)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
         #expect(editor.project.voiceLab.speakingRateSamples?["eleven_v4"]?.count == 1)
+        let staleAction = try #require(session.pricedTakeAction(phrase: 0))
+        #expect(staleAction.title.hasPrefix("Make Take"))
         session.keepMeasuredTake()
+        staleAction.perform()
+        await session.takesTask?.value
         #expect(session.wordingFit.measured == nil && plan.phrases[0].text == originalText)
         #expect(plan.phrases[0].selectedID == suggestion.take && plan.approvalID == nil)
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
@@ -1390,6 +1394,22 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(samples?.map(\.id) == ids.suffix(10).map(\.uuidString))
         for id in ids { session.recordSpeakingRate(model: "eleven_v4", take: id, measured: 99, baseline: 1) }
         #expect(editor.project.voiceLab.speakingRateSamples?["eleven_v4"] == samples)
+    }
+
+    @Test func measuredRecoveryOffersWordingEvenWhenRetimeIsAvailable() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let connector = MeasuredFitConnector()
+        let (editor, session) = try await productionSession(fixture, rewriteConnector: connector); defer { editor.close() }
+        let plan = try #require(session.takePlan)
+        let length = plan.phrases[0].originalLength
+        ClipTakeHTTP.state.withLock { $0.duration = length + 1.5; $0.speechMargin = 0.15 }
+        await plan.start(approved: true, quoteID: plan.approvalID)
+        await session.wordingFit.measuredWork?.value
+        let availability = plan.videoAvailability(phrase: 0)
+        #expect(!availability.allows(.source) && !availability.allows(.cut) && availability.allows(.retimed))
+        #expect(session.wordingFit.measured?.text != nil && plan.approvalID != nil)
+        #expect(await connector.requests.count == 1)
+        #expect(ClipTakeHTTP.state.withLock { $0.texts.count == 1 })
     }
 
     @Test(arguments: [false, true]) func measuredAPIRoundWaitsForInlineApprovalAndNeverSynthesizes(approve: Bool) async throws {
@@ -1722,8 +1742,6 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(generation.models.last?.sendsSpeechContext == false)
     }
 
-    /// Live 2026-11-03: after a run the Speech model picker was disabled, so a failing model could not be swapped before
-    /// Try another. A new model applies to the next take; the paid take keeps its own.
     @Test func newTakesStayOnV4AfterARunAndKeepPaidTakes() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         ClipTakeHTTP.state.withLock { $0.listsMultilingual = true }
@@ -1741,10 +1759,9 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.models } == ["eleven_v4", "eleven_v4"])
         #expect(plan.phrases[0].takes.count == 2)
         #expect(plan.phrases[0].takes.map { $0.row.receipt?.modelID } == ["eleven_v4", "eleven_v4"])
-        // The first take is published on the model that made it, not the plan's new one.
         let first = plan.phrases[0].takes[0]
         #expect(first.row.selectable && plan.select(take: first.id, phrase: 0) && plan.chooseVideo(.source, phrase: 0))
-        #expect(await session.acceptTakes(), "\(plan.problem)")
+        #expect(await session.acceptTakes(), "\(plan.problem); \(session.problem)")
         #expect(editor.project.voiceLab.segments.last?.candidates.first?.recipe?.provenance.model == "eleven_v4")
     }
 
@@ -1753,7 +1770,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let (editor, session) = try await productionSession(fixture); defer { editor.close() }
         let plan = try #require(session.takePlan)
         let oldAction = try #require(session.pricedTakeAction())
-        let original = editor.project
+        var original = editor.project
         let undo = UndoManager(); editor.undoManager = undo
         if generated {
             await plan.start(approved: true)
@@ -1765,6 +1782,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             #expect(session.task.confirm != nil)
             session.task.confirm?.confirm.perform()
         } else { #expect(editor.excludeChange(1)) }
+        original.voiceLab.speakingRateSamples = editor.project.voiceLab.speakingRateSamples
         #expect(editor.project == original && editor.undoSteps == 0 && !plan.stillCurrent)
         oldAction.perform(); await session.takesTask?.value
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == sent.0 && $0.qa == sent.1 })
@@ -1785,7 +1803,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let (editor, session) = try await productionSession(fixture); defer { editor.close() }
         let plan = try #require(session.takePlan), action = try #require(session.pricedTakeAction())
-        let original = editor.project, undo = UndoManager(); editor.undoManager = undo
+        var original = editor.project
+        let undo = UndoManager(); editor.undoManager = undo
         let barrier = ClipTakeBarrier()
         fixture.beforeProgress = { await barrier.pause() }
         await editor.app.refreshMonthlySpend()
@@ -1806,6 +1825,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(ClipTakeHTTP.state.withLock { $0.texts.count == sent.0 && $0.qa >= sent.1 })
         let total = try #require(await fixture.ledger.total(provider: "elevenlabs", at: Date()))
         #expect(plan.spent.units > 0 && editor.app.monthlySpend.total == total)
+        original.voiceLab.speakingRateSamples = editor.project.voiceLab.speakingRateSamples
         #expect(editor.project == original && editor.undoSteps == 0 && !undo.canUndo)
         #expect(!editor.excludeChange(1) && plan.stillCurrent)
         session.task.confirm?.confirm.perform()

@@ -80,7 +80,8 @@ import xlocale
     func showFixture(_ state: String, voice: VoiceConsentRecord) {
         fixture = true
         voices = state == "no-voice" ? [] : [voice]
-        models = [.init(id: "eleven_multilingual_v2", name: "Multilingual v2", languages: ["en"], canSpeak: true, canConvert: false, maximumTextLength: 5_000, characterCostMultiplier: 1)]
+        let modelID = fixedModelID ?? "eleven_multilingual_v2"
+        models = [.init(id: modelID, name: modelID == "eleven_v4" ? "Eleven v4" : "Multilingual v2", languages: ["en"], canSpeak: true, canConvert: false, maximumTextLength: 5_000, characterCostMultiplier: 1)]
         selectedVoiceID = voices.first?.id; selectedModelID = models.first?.id
         let changed = state == "length-changed"
         let plan = VoiceLabFitPlan(edits: [], incoming: .init(padFrames: 0, borrowedSamples: 0), outgoing: .init(padFrames: 0, borrowedSamples: 0),

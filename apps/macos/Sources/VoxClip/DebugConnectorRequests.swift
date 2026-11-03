@@ -10,6 +10,8 @@ actor ConsentFixtureConnector: LLMConnector {
     let authMethod: String?
     private(set) var statuses = 0
     private(set) var sends = 0
+    private(set) var fitSends = 0
+    var entrySends: Int { sends - fitSends }
     init(id: ConnectorID, readiness: ConnectorStatus = .ready, authMethod: String? = "api_key") {
         self.id = id; self.readiness = readiness; self.authMethod = authMethod
     }
@@ -19,6 +21,12 @@ actor ConsentFixtureConnector: LLMConnector {
     func contextTokens(model: String) -> Int? { 128_000 }
     func send(_ request: LLMRequest, model: String) -> RawCompletion {
         sends += 1
+        if request.tag == "voice-rewrite-fit" {
+            fitSends += 1
+            let ordinals = (request.cachedBlock ?? "").matches(of: #/Phrase (\d+)\n/#).compactMap { Int($0.1) }
+            let phrases = ordinals.map { "{\"ordinal\":\($0),\"action\":\"keepOriginal\",\"text\":\"\"}" }
+            return RawCompletion(text: "{\"phrases\":[" + phrases.joined(separator: ",") + "]}", model: model, stop: .complete)
+        }
         let text = request.feature == .test ? "{\"ok\":true,\"echo\":\"voxclip\"}" : request.feature == .voiceRewrite ? RewriteFixtureReply.text(for: request) : "{\"clips\":[]}"
         return RawCompletion(text: text, model: model, stop: .complete)
     }
@@ -75,7 +83,7 @@ actor ConsentFixtureConnector: LLMConnector {
                     case .test:
                         _ = await testProvider(provider, app: app)
                     }
-                    let sends = await fake.sends
+                    let sends = await fake.entrySends
                     let known = method != nil && method != "unrecognized"
                     let expected = choice == "cancel" || !known ? 0 : 1
                     // An API key, or a CLI signed in with one, confirms every send after the consent (VS, C8).

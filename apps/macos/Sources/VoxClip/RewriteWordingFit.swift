@@ -187,7 +187,8 @@ extension RewriteSession {
                   let phrase = plan.phrases.first(where: { phrase in
                       guard let take = phrase.selected, !wordingFit.measuredTakes.contains(take.id),
                             plan.measuredInput(take: take.id)?.modelID == VoiceLabWordingFit.modelID else { return false }
-                      return takeNeedsWordingRecovery(phrase, plan: plan)
+                      let availability = plan.videoAvailability(phrase: phrase.id)
+                      return !availability.allows(.source) && !availability.allows(.cut)
                   }), let take = phrase.selected, let measured = take.length else { return }
             wordingFit.measuredTakes.insert(take.id)
             wordingFit.measured = MeasuredWordingSuggestion(phrase: phrase.id, take: take.id, number: take.number,

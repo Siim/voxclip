@@ -187,6 +187,11 @@ public enum VoiceLabProject {
         value.range(of: "\\A(?:" + pattern + ")\\z", options: .regularExpression) != nil
     }
     public static func validate(_ project: Project) throws {
+        if let rates = project.voiceLab.speakingRateSamples {
+            guard rates.values.allSatisfy({ samples in
+                samples.count <= 10 && samples.allSatisfy { !$0.id.isEmpty && $0.ratio.isFinite && $0.ratio > 0 }
+            }) else { throw VoiceLabProjectError.invalidSegment }
+        }
         if project.schemaVersion == 1 {
             guard project.voiceLab.segments.isEmpty, project.voiceLab.assets == nil,
                   project.voiceLab.cleanAudio == nil, project.voiceLab.voices == nil, project.voiceLab.videoAssets == nil else { throw VoiceLabProjectError.invalidSegment }
