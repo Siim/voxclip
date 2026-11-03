@@ -117,10 +117,26 @@ public enum VoiceLabSilenceFit {
         silence(plan.incoming.padFrames)
         var cursor = plan.trimStartFrame
         var joins: [(output: Int64, left: Int64, right: Int64)] = []
+        var naturalJoins: [(start: Int64, end: Int64)] = []
         let fade = Int64(EditingPrimitives.jsRound(VoiceLabPatchConstants.SEAM_FADE * Double(original.rate)))
         var previousEnd = plan.trimStartFrame
         for edit in plan.edits {
             try Task.checkCancellation()
+            if edit.roomTone {
+                let fadeOut = Int64(EditingPrimitives.jsRound(VoiceLabHardJoin.generatedFadeSeconds * Double(original.rate)))
+                let fadeIn = Int64(EditingPrimitives.jsRound(VoiceLabHardJoin.sourceFadeSeconds * Double(original.rate)))
+                guard edit.kind == .insert, edit.count > 0, edit.count <= plan.outputFrames,
+                      edit.start - fadeOut >= cursor, edit.start + fadeIn <= plan.trimEndFrame else {
+                    throw VoiceLabGeometryError.fitTouchesVoice
+                }
+                try copy(cursor, edit.start)
+                let start = Int64(pcm.count / original.stride)
+                silence(edit.count)
+                naturalJoins.append((start, start + edit.count))
+                cursor = edit.start
+                previousEnd = edit.start + fadeIn
+                continue
+            }
             guard edit.start >= cursor, edit.start <= plan.trimEndFrame,
                   edit.count > 0, edit.count <= plan.trimEndFrame - edit.start else { throw VoiceLabError.invalidAudio }
             let end = edit.start + edit.count
@@ -140,6 +156,20 @@ public enum VoiceLabSilenceFit {
         if plan.outgoing.padFrames > 0 { silence(outgoing) }
         else { try copy(plan.trimEndFrame, plan.trimEndFrame + outgoing - missingAfter); silence(missingAfter) }
         var wave = VoiceLabWavePCM(rate: original.rate, channels: original.channels, bits: original.bits, floating: original.floating, pcm: pcm)
+        for join in naturalJoins {
+            let outCount = Int64(EditingPrimitives.jsRound(VoiceLabHardJoin.generatedFadeSeconds * Double(original.rate)))
+            let inCount = Int64(EditingPrimitives.jsRound(VoiceLabHardJoin.sourceFadeSeconds * Double(original.rate)))
+            for offset in 0..<outCount {
+                let frame = join.start - outCount + offset
+                let weight = cos(.pi * Double(offset) / Double(outCount - 1) / 2)
+                for channel in 0..<original.channels { wave.setSample(wave.sample(frame: frame, channel: channel) * weight, frame: frame, channel: channel) }
+            }
+            for offset in 0..<inCount {
+                let frame = join.end + offset
+                let weight = sin(.pi * Double(offset) / Double(inCount - 1) / 2)
+                for channel in 0..<original.channels { wave.setSample(wave.sample(frame: frame, channel: channel) * weight, frame: frame, channel: channel) }
+            }
+        }
         for join in joins {
             for offset in 0..<fade {
                 let local = offset - fade / 2

@@ -12,6 +12,12 @@ public struct VoiceLabPublishedTake: Sendable {
 }
 
 public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
+    public private(set) var cuts: [VoiceLabVideoCut] = []
+    public private(set) var addedPauseSeconds: Double = 0
+    public private(set) var removedVideoSeconds: Double = 0
+    public var cutUnavailableReason: String? {
+        cuts.isEmpty ? "No safe source pause can hold this video cut without touching speech or the window edges." : nil
+    }
     public static let retimeRange = 0.80...1.25
     public let outputSamples: Int64?
     public let retimeFactor: Double?
@@ -52,6 +58,15 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
         }
         let output = Int64(rounded)
         let source = plan.windowEndSample - plan.windowStartSample
+        addedPauseSeconds = Double(plan.edits.filter { $0.kind == .insert }.reduce(0) { $0 + $1.count }) / Double(assetSampleRate)
+        var cutVideo = VoiceLabVideoRecipe(mode: .cut, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
+            outputSamples: output, retimeFactor: nil, zoom: VoiceLabNaturalPacing.CUT_PUNCH_IN, faceX: 0.5, faceY: 0.5,
+            assetId: nil, provider: nil, model: nil, requestId: nil, windowStartSample: nil, windowEndSample: nil, syncMode: nil)
+        cutVideo.cuts = plan.videoCuts
+        if VoiceLabNaturalPacing.validCuts(cutVideo, sampleRate: Double(sourceSampleRate)) {
+            cuts = plan.videoCuts
+            removedVideoSeconds = Double(source - output) / Double(sourceSampleRate)
+        }
         outputSamples = output
         let factor = Double(source) / Double(output)
         retimeFactor = factor
@@ -72,6 +87,7 @@ public struct VoiceLabVideoDurationOptions: Sendable, Equatable {
     public func allows(_ choice: VoiceLabVideoMode) -> Bool {
         switch choice {
         case .source: unchangedUnavailableReason == nil
+        case .cut: cutUnavailableReason == nil
         case .retimed: changedUnavailableReason == nil
         case .zoomCover, .lipsync: false
         }
@@ -106,7 +122,7 @@ public enum VoiceLabRecipeBuilder {
         let plan = take.fit.plan
         let options = VoiceLabVideoDurationOptions(row: row, sourceSampleRate: input.sourceSampleRate)
         guard let videoChoice, options.allows(videoChoice) else { throw VoiceLabProjectError.videoModeUnsupported }
-        let mode: VoiceLabVideoMode = videoChoice == .source ? .source : .zoomCover
+        let mode: VoiceLabVideoMode = videoChoice == .source ? .source : videoChoice == .cut ? .cut : .zoomCover
         let rate = Double(input.sourceSampleRate)
         let roundedSamples = EditingPrimitives.jsRound(published.outDuration * rate)
         guard input.sourceSampleRate > 0, asset.sampleRate > 0,
@@ -140,10 +156,12 @@ public enum VoiceLabRecipeBuilder {
             seed: row.seed, createdAt: createdAt)
         provenance.region = receipt.region.rawValue
         provenance.pace = receipt.pace
-        let video = VoiceLabVideoRecipe(mode: mode, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
+        var video = VoiceLabVideoRecipe(mode: mode, sourceStartSample: plan.windowStartSample, sourceEndSample: plan.windowEndSample,
             outputSamples: outputSamples, retimeFactor: mode == .zoomCover ? factor : nil,
-            zoom: mode == .zoomCover ? 1.12 : nil, faceX: mode == .zoomCover ? 0.5 : nil, faceY: mode == .zoomCover ? 0.5 : nil, assetId: nil, provider: nil, model: nil, requestId: nil,
+            zoom: mode == .cut ? VoiceLabNaturalPacing.CUT_PUNCH_IN : mode == .zoomCover ? 1.12 : nil,
+            faceX: mode == .zoomCover || mode == .cut ? 0.5 : nil, faceY: mode == .zoomCover || mode == .cut ? 0.5 : nil, assetId: nil, provider: nil, model: nil, requestId: nil,
             windowStartSample: nil, windowEndSample: nil, syncMode: nil)
+        video.cuts = mode == .cut ? options.cuts : nil
         let usd: Double?
         if let synthesis = quote.synthesis.estimate.usd, let qa = quote.qa.estimate.usd { usd = NSDecimalNumber(decimal: synthesis + qa).doubleValue }
         else { usd = nil }

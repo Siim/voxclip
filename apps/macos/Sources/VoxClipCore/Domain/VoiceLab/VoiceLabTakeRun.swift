@@ -8,6 +8,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public let seed: UInt32
     public let pace: Double?
     public let hardJoinSmoothing: Bool
+    public var pauseProfile: VoiceLabPauseProfile? = nil
     public let contentKey: String
     /// The source frames the run reads, at `sourceSampleRate`.
     public let source: VoiceLabSourceExcerpt
@@ -45,10 +46,12 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     }
     /// The same input on another speech model: a phrase's later takes can use a model the user picked after its first run.
     public func replacingModel(_ id: String) -> VoiceLabTakeInput {
-        VoiceLabTakeInput(text: text, modelID: id, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
+        var input = VoiceLabTakeInput(text: text, modelID: id, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
             source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
             providerConsent: providerConsent, pace: pace, hardJoinSmoothing: hardJoinSmoothing)
+        input.pauseProfile = pauseProfile
+        return input
     }
     public func options(take: Int) -> VoiceLabSpeechOptions {
         let kept = items.filter { $0.kind == .word && !cutWordIDs.contains($0.id) }
@@ -57,10 +60,12 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
         return VoiceLabSpeechOptions(seed: seed &+ UInt32(truncatingIfNeeded: take), previousText: previous, nextText: next, pace: pace)
     }
     public func replacingPace(_ value: Double?) -> VoiceLabTakeInput {
-        VoiceLabTakeInput(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
+        var input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
             source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
             providerConsent: providerConsent, pace: value, hardJoinSmoothing: hardJoinSmoothing)
+        input.pauseProfile = pauseProfile
+        return input
     }
 }
 

@@ -1,0 +1,19 @@
+{
+  "schema": "voxclip-natural-pacing/1",
+  "sourceSampleRate": 48000,
+  "caseCount": 2,
+  "cases": [
+    {
+      "id": "short-hard-window",
+      "windowSeconds": 0.3,
+      "reserveSeconds": 0.06,
+      "speechSeconds": 0.18
+    },
+    {
+      "id": "long-hard-window",
+      "windowSeconds": 1.1,
+      "reserveSeconds": 0.14,
+      "speechSeconds": 0.82
+    }
+  ]
+}

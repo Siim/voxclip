@@ -3,10 +3,11 @@ import Foundation
 /// Request-bound Voice Lab data. The paid root is a location for preflight only; Media reads
 /// the immutable private snapshots returned by VoiceLabAssets after validation.
 public struct VoiceLabRenderInput: Sendable, Equatable {
-    public static func supportsVideoMode(_ mode: VoiceLabVideoMode) -> Bool { mode == .source || mode == .zoomCover }
+    public static func supportsVideoMode(_ mode: VoiceLabVideoMode) -> Bool { mode == .source || mode == .cut || mode == .zoomCover }
 
     static func supportsVideoRecipe(_ video: VoiceLabVideoRecipe) -> Bool {
         guard supportsVideoMode(video.mode) else { return false }
+        if video.mode == .cut { return video.cuts?.isEmpty == false }
         if video.mode == .source { return true }
         guard video.sourceStartSample >= 0, video.sourceEndSample > video.sourceStartSample,
               video.outputSamples > 0, let declared = video.retimeFactor, declared.isFinite,
@@ -28,7 +29,7 @@ public struct VoiceLabRenderInput: Sendable, Equatable {
                 paidRoot: URL, prepared: VoiceLabPreparedRender) throws {
         try prepared.verify(project: project, scope: scope, labelPosition: labelPosition)
         guard prepared.selectedSegmentRecipes.allSatisfy({ Self.supportsVideoRecipe($0.recipe.video) &&
-            ($0.recipe.video.mode != .zoomCover || $0.recipe.audio.stretch == 1) })
+            (($0.recipe.video.mode != .zoomCover && $0.recipe.video.mode != .cut) || $0.recipe.audio.stretch == 1) })
         else { throw VoiceLabProjectError.videoModeUnsupported }
         self.project = project
         self.scope = scope

@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using System.Globalization;
 using VoxClip.Core.Domain.Editing;
+using VoxClip.Core.Domain.Transcript;
 using VoxClip.Core.Domain.VoiceLab;
 using VoxClip.Core.Services.Project;
 using Xunit;
@@ -18,7 +19,7 @@ public sealed class VoiceLabPaceMatchingTests
     [InlineData(1, 0.69)]
     [InlineData(1, 1.21)]
     public void InvalidMeasuredInputsAreRefusedBeforeAnyQuote(double seconds, double oldPace) =>
-        Assert.Throws<VoiceLabLengthBudgetException>(() => VoiceLabPaceMatching.Match(seconds, Window(5.12), .05, .05, 48_000, oldPace, hardJoinSmoothing: false));
+        Assert.Throws<VoiceLabLengthBudgetException>(() => VoiceLabPaceMatching.Match(seconds, Window(5.12), .05, .05, 48_000, oldPace: oldPace, hardJoinSmoothing: false));
 
     private static VoiceLabWindow Window(double seconds, VoiceLabSeamKind kind = VoiceLabSeamKind.Gap)
     {
@@ -32,9 +33,9 @@ public sealed class VoiceLabPaceMatchingTests
     public void SharedSampleExactPaidPhrasesPreferKeepingSource()
     {
         var fixture = JsonNode.Parse(File.ReadAllBytes(Path.Combine(SharedResources.ResolveRoot(), "fixtures", "voice-lab", "pace-matching-cases.json")))!;
-        Assert.Equal("voxclip-pace-matching/1", fixture["schema"]!.GetValue<string>());
-        Assert.Equal(3, fixture["caseCount"]!.GetValue<int>());
-        Assert.Equal(3, fixture["cases"]!.AsArray().Count);
+        Assert.Equal("voxclip-pace-matching/2", fixture["schema"]!.GetValue<string>());
+        Assert.Equal(6, fixture["caseCount"]!.GetValue<int>());
+        Assert.Equal(6, fixture["cases"]!.AsArray().Count);
         var sampleRate = fixture["sourceSampleRate"]!.GetValue<int>();
         Assert.Equal("gap", fixture["seamKind"]!.GetValue<string>());
         var incoming = fixture["incomingSilence"]!.GetValue<double>();
@@ -42,13 +43,21 @@ public sealed class VoiceLabPaceMatchingTests
         foreach (var row in fixture["cases"]!.AsArray())
         {
             var window = Window(row!["windowSeconds"]!.GetValue<double>());
-            var timing = VoiceLabPaceMatching.Match(row["measuredSeconds"]!.GetValue<double>(), window, incoming, outgoing, sampleRate, hardJoinSmoothing: false);
+            var quiet = row["quietSpan"]!.AsArray();
+            var envelope = new AudioEnvelope(sampleRate, 0.01, Enumerable.Range(0, (int)Math.Ceiling(window.End * 100)).Select(block =>
+            {
+                var local = block / 100.0 - window.Start;
+                return local >= quiet[0]!.GetValue<double>() && local + 0.01 <= quiet[1]!.GetValue<double>() ? 0.001f : 1f;
+            }).ToArray());
+            var timing = VoiceLabPaceMatching.Match(row["measuredSeconds"]!.GetValue<double>(), window, incoming, outgoing, sampleRate,
+                hardJoinSmoothing: false, sourceEnvelope: envelope);
             Assert.Equal(row["pace"]!.GetValue<double>(), timing.Pace);
             Assert.Equal(row["fits"]!.GetValue<bool>(), timing.Fits);
-            var fit = VoiceLabRewriteFit.Hypothetical(window, incoming, outgoing, timing.EstimateSeconds, sampleRate);
+            var fit = VoiceLabRewriteFit.Hypothetical(window, incoming, outgoing, timing.EstimateSeconds, sampleRate, hardJoinSmoothing: false);
             Assert.Equal(row["keepsSource"]!.GetValue<bool>(), fit is VoiceLabFitResult.Exact);
             Assert.True(fit.Plan.Incoming.PadFrames + fit.Plan.Outgoing.PadFrames <= 28_800);
-            Assert.Contains("at ≈ " + timing.Pace.ToString("F2", CultureInfo.InvariantCulture) + "× pace", timing.Copy);
+            Assert.Equal(row["videoCut"]!.GetValue<bool>(), timing.FitsWithVideoCut);
+            Assert.DoesNotContain("pace", timing.Copy);
             if (!timing.Fits) Assert.True(timing.TooLong);
         }
     }
@@ -67,10 +76,12 @@ public sealed class VoiceLabPaceMatchingTests
             var natural = duration * fraction;
             VoiceLabFitResult Fit(double pace) => VoiceLabRewriteFit.Hypothetical(window, silence, silence, natural / pace, 48_000, hardJoinSmoothing);
             var timing = VoiceLabPaceMatching.Match(natural, window, silence, silence, 48_000, hardJoinSmoothing: hardJoinSmoothing);
-            var grid = Enumerable.Range(70, 51).Select(value => Fit(value / 100.0)).ToArray();
-            Assert.Equal(grid.Any(fit => VoiceLabRewriteFit.AllowsVideo(fit, 48_000, 48_000)), timing.Fits);
+            var grid = Enumerable.Range(90, 21).Select(value => Fit(value / 100.0)).ToArray();
+            Assert.InRange(timing.Pace, 0.9, 1.1);
+            Assert.Equal(VoiceLabRewriteFit.AllowsVideo(Fit(timing.Pace), 48_000, 48_000), timing.Fits);
             if (grid.Any(fit => fit is VoiceLabFitResult.Exact))
                 Assert.IsType<VoiceLabFitResult.Exact>(Fit(timing.Pace));
+            else Assert.Equal(1, timing.Pace);
         }
     }
 
@@ -79,15 +90,15 @@ public sealed class VoiceLabPaceMatchingTests
     {
         var window = Window(5.12, VoiceLabSeamKind.Hard);
         var timing = VoiceLabPaceMatching.Match(3.39, window, null, null, 48_000, hardJoinSmoothing: false);
-        Assert.Equal(0.7, timing.Pace);
-        Assert.True(timing.Fits);
-        var fit = VoiceLabRewriteFit.Hypothetical(window, null, null, timing.EstimateSeconds, 48_000);
+        Assert.Equal(1, timing.Pace);
+        Assert.False(timing.Fits);
+        var fit = VoiceLabRewriteFit.Hypothetical(window, null, null, timing.EstimateSeconds, 48_000, hardJoinSmoothing: false);
         Assert.IsType<VoiceLabFitResult.ChangedDuration>(fit);
-        Assert.True(VoiceLabRewriteFit.AllowsVideo(fit, 48_000, 48_000));
+        Assert.False(VoiceLabRewriteFit.AllowsVideo(fit, 48_000, 48_000));
         var retry = VoiceLabPaceMatching.Match(5.8, window, null, null, 48_000, oldPace: 0.7, hardJoinSmoothing: false);
-        Assert.Equal(0.8, retry.Pace);
+        Assert.Equal(1, retry.Pace);
         Assert.True(retry.Fits);
-        Assert.Equal(5.075, retry.EstimateSeconds, 9);
+        Assert.Equal(4.06, retry.EstimateSeconds, 9);
     }
 
     [Fact]
@@ -95,7 +106,7 @@ public sealed class VoiceLabPaceMatchingTests
     {
         var window = Window(5.12, VoiceLabSeamKind.Hard);
         var shortTiming = VoiceLabPaceMatching.Match(1, window, null, null, 48_000, hardJoinSmoothing: false);
-        Assert.Equal(0.7, shortTiming.Pace);
+        Assert.Equal(1, shortTiming.Pace);
         Assert.False(shortTiming.Fits);
         Assert.False(shortTiming.TooLong);
         var dialogue = VoiceLabPaceMatching.Match(3.39, window, null, null, 48_000, supportsPace: false, hardJoinSmoothing: false);

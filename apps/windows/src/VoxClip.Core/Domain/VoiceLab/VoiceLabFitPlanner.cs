@@ -19,7 +19,10 @@ public enum VoiceLabFitEditKind { Remove, Insert }
 /// <summary>One pause edit in paid-asset frames. A removal drops frames [Start, Start + Count), and an insertion plays them
 /// twice. Either way the playhead jumps once, at Start for a removal and at Start + Count for an insertion, with one
 /// equal-power SEAM_FADE join centred on the jump: floor(N/2) frames before it and ceil(N/2) after.</summary>
-public sealed record VoiceLabFitEdit(VoiceLabFitEditKind Kind, long Start, long Count);
+public sealed record VoiceLabFitEdit(VoiceLabFitEditKind Kind, long Start, long Count)
+{
+    public bool RoomTone { get; init; }
+}
 
 /// <summary>One seam of a fitted take: silence on the asset grid, a take-edge pad included, and source samples borrowed from
 /// its gap.</summary>
@@ -35,6 +38,7 @@ public sealed record VoiceLabFitPlan(IReadOnlyList<VoiceLabFitEdit> Edits, Voice
     long OutputFrames, IReadOnlyList<VoiceLabWord> Words)
 {
     public bool HardJoinSmoothing { get; init; }
+    public IReadOnlyList<VoiceLabVideoCut> VideoCuts { get; init; } = [];
 }
 
 /// <summary>Exact fills the window. ChangedDuration keeps every edit at its limit and lasts duration(W) + ResidualSeconds, with
@@ -66,7 +70,8 @@ public static class VoiceLabFitPlanner
     /// (None) the silence to the window's nearest word, and null for a hard seam. tokens are the patch tokens, one per
     /// word.</summary>
     public static VoiceLabFitResult Plan(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
-        VoiceLabFitTake take, IReadOnlyList<string> tokens, double sourceSampleRate, bool hardJoinSmoothing = false)
+        VoiceLabFitTake take, IReadOnlyList<string> tokens, double sourceSampleRate, bool hardJoinSmoothing,
+        VoiceLabPauseProfile? pauseProfile = null)
     {
         var rate = sourceSampleRate;
         VoiceLabSeamKind[] kinds = [window.LeftSeam.Kind, window.RightSeam.Kind];
@@ -89,7 +94,7 @@ public static class VoiceLabFitPlanner
             ? Math.Max(0, VoiceLabGeometry.Samples(silences[0] ?? 0, assetRate) - leadIn) : 0;
         var edgeOut = kinds[1] == VoiceLabSeamKind.None
             ? Math.Max(0, VoiceLabGeometry.Samples(silences[1] ?? 0, assetRate) - tailOut) : 0;
-        var reserve = VoiceLabGeometry.Samples(VoiceLabHardJoin.PauseSeconds, assetRate);
+        var reserve = VoiceLabGeometry.Samples(VoiceLabHardJoin.PauseForWindow(window.End - window.Start), assetRate);
         if (hardJoinSmoothing && kinds[0] == VoiceLabSeamKind.Hard) edgeIn = Math.Max(0, reserve - leadIn);
         if (hardJoinSmoothing && kinds[1] == VoiceLabSeamKind.Hard) edgeOut = Math.Max(0, reserve - tailOut);
         var n = window.EndSample - window.StartSample;
@@ -98,13 +103,28 @@ public static class VoiceLabFitPlanner
         var rho = natural - target;
         var shorten = rho > 0;
         var lengths = pauses.Select(pause => pause.Length).ToArray();
-        var rooms = RoomsOf(pauses, shorten, assetRate, fade);
+        var rooms = pauseProfile is null ? RoomsOf(pauses, shorten, assetRate, fade) : pauses.Select(pause =>
+        {
+            var distribution = pauseProfile.Distribution(tokens[pause.Word]);
+            var boundary = VoiceLabNaturalPacing.ClauseBoundary(tokens[pause.Word], tokens[pause.Word + 1]);
+            var floor = VoiceLabGeometry.Samples(distribution.P25, assetRate);
+            var ceiling = VoiceLabGeometry.Samples(Math.Min(distribution.P75, distribution.P90), assetRate);
+            var minimumGap = VoiceLabGeometry.Samples(VoiceLabHardJoin.GeneratedFadeSeconds + VoiceLabHardJoin.SourceFadeSeconds, assetRate);
+            if (shorten) return Math.Max(0, pause.Length - Math.Max(floor, minimumGap));
+            return pause.Length >= minimumGap && (boundary || pause.Length >= VoiceLabGeometry.Samples(0.10, assetRate)) ? Math.Max(0, ceiling - pause.Length) : 0;
+        }).ToArray();
         var alloc = new long[pauses.Count];
         var remaining = Math.Abs(rho);
         foreach (var punctuation in new[] { true, false })
         {
-            var group = Enumerable.Range(0, pauses.Count).Where(index => pauses[index].Punctuation == punctuation).ToArray();
-            remaining = Spread(remaining, group, lengths, rooms, alloc);
+            var group = Enumerable.Range(0, pauses.Count).Where(index =>
+            {
+                var existing = pauseProfile is not null && !shorten
+                    ? pauses[index].Punctuation || pauses[index].Length >= VoiceLabGeometry.Samples(0.10, assetRate)
+                    : pauses[index].Punctuation;
+                return existing == punctuation;
+            }).ToArray();
+            remaining = Spread(remaining, group, pauseProfile is null ? lengths : lengths.Select(_ => 1L).ToArray(), rooms, alloc);
         }
 
         // Seams: borrow source samples into a gap, keeping PAUSE_SLACK_KEEP beside the kept word, or pad silence.
@@ -132,7 +152,7 @@ public static class VoiceLabFitPlanner
         {
             var gapPad = VoiceLabGeometry.Samples(VoiceLabPatchConstants.SEAM_PAD_MAX, assetRate);
             var hardPad = hardJoinSmoothing ? 0 : VoiceLabGeometry.Samples(VoiceLabPatchConstants.HARD_SEAM_PAD_MAX, assetRate);
-            long[] caps = [kinds[0] == VoiceLabSeamKind.Hard ? hardPad : gapPad, kinds[1] == VoiceLabSeamKind.Hard ? hardPad : gapPad];
+            long[] caps = pauseProfile is not null ? [0, 0] : [kinds[0] == VoiceLabSeamKind.Hard ? hardPad : gapPad, kinds[1] == VoiceLabSeamKind.Hard ? hardPad : gapPad];
             var extra = Split(remaining, caps);
             pad = [pad[0] + extra[0], pad[1] + extra[1]];
             exact = extra[0] + extra[1] == remaining;
@@ -171,8 +191,11 @@ public static class VoiceLabFitPlanner
         {
             if (alloc[index] <= 0) continue;
             var pause = pauses[index];
-            var start = pause.Start + (pause.Length - alloc[index]) / 2;
-            edits.Add(new VoiceLabFitEdit(shorten ? VoiceLabFitEditKind.Remove : VoiceLabFitEditKind.Insert, start, alloc[index]));
+            var roomTone = pauseProfile is not null && !shorten;
+            var start = roomTone ? Math.Max(pause.Start + VoiceLabGeometry.Samples(VoiceLabHardJoin.GeneratedFadeSeconds, assetRate),
+                Math.Min(pause.End - VoiceLabGeometry.Samples(VoiceLabHardJoin.SourceFadeSeconds, assetRate), pause.Start + pause.Length / 2)) :
+                pause.Start + (pause.Length - alloc[index]) / 2;
+            edits.Add(new VoiceLabFitEdit(shorten ? VoiceLabFitEditKind.Remove : VoiceLabFitEditKind.Insert, start, alloc[index]) { RoomTone = roomTone });
             for (var word = pause.Word + 1; word < take.Words.Count; word++) shifts[word] += deltas[index];
         }
         var startSample = window.StartSample - borrow[0];
@@ -191,7 +214,7 @@ public static class VoiceLabFitPlanner
         Validate(words, duration, rate);
         var plan = new VoiceLabFitPlan(edits, new VoiceLabFitSeam(pad[0], borrow[0]), new VoiceLabFitSeam(pad[1], borrow[1]), t0, t1,
             windowStart, windowEnd, startSample, endSample, output, words) { HardJoinSmoothing = hardJoinSmoothing };
-        CheckVoice(plan, spans, unvoiced, size, fade);
+        CheckVoice(plan, spans, unvoiced, size, fade, assetRate);
         if (exact) return new VoiceLabFitResult.Exact(plan);
         return new VoiceLabFitResult.ChangedDuration(plan, natural / assetRate, residualSeconds);
     }
@@ -364,15 +387,15 @@ public static class VoiceLabFitPlanner
     /// <summary>The never-touch-voice invariant (§8.9.2 Edits): every edit and its join lie inside the trim, in order and apart,
     /// clear of every word span and of every envelope frame at or above VOICED_FRAME, so every other output sample is a copy of
     /// its paid frame; and the output length adds up.</summary>
-    static void CheckVoice(VoiceLabFitPlan plan, (long Start, long End)[] spans, bool[] unvoiced, long size, long fade)
+    static void CheckVoice(VoiceLabFitPlan plan, (long Start, long End)[] spans, bool[] unvoiced, long size, long fade, double takeRate)
     {
         if (plan.Incoming.PadFrames < 0 || plan.Outgoing.PadFrames < 0) throw TouchesVoice();
         var cursor = plan.TrimStartFrame;
         var frames = plan.Incoming.PadFrames + plan.TrimEndFrame - plan.TrimStartFrame + plan.Outgoing.PadFrames;
         foreach (var edit in plan.Edits)
         {
-            var lo = edit.Start - fade / 2;
-            var hi = edit.Start + edit.Count + fade - fade / 2;
+            var lo = edit.Start - (edit.RoomTone ? VoiceLabGeometry.Samples(VoiceLabHardJoin.GeneratedFadeSeconds, takeRate) : fade / 2);
+            var hi = edit.Start + (edit.RoomTone ? VoiceLabGeometry.Samples(VoiceLabHardJoin.SourceFadeSeconds, takeRate) : edit.Count + fade - fade / 2);
             if (edit.Count <= 0 || cursor > lo || hi > plan.TrimEndFrame || spans.Any(span => span.Start < hi && lo < span.End))
                 throw TouchesVoice();
             for (var block = lo / size; block * size < hi; block++)

@@ -107,6 +107,42 @@ struct FittedAssetVector: Decodable {
 extension HeavyMediaTests {
 @Suite("Fitted take assets", .serialized, .offlineFixtures) struct VoiceLabSilenceFitTests {
     private let projectId = "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11"
+    @Test func naturalRoomToneInsertionCopiesWordsAndFadesOnlyQuietHandles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("natural-fit-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let rate = 24_000
+        var wave = VoiceLabWavePCM(rate: rate, channels: 1, bits: 16, floating: false, pcm: Data(count: rate * 2))
+        for frame in 0..<rate {
+            let speech = (2_400..<7_200).contains(frame) || (12_000..<21_600).contains(frame)
+            wave.setSample(speech ? 0.25 : 0.005, frame: Int64(frame), channel: 0)
+        }
+        let words = [VoiceLabWord(text: "hello,", start: 0.1, end: 0.3, synthetic: true),
+                     VoiceLabWord(text: "world", start: 0.5, end: 0.9, synthetic: true)]
+        let take = VoiceLabFitTake(assetFrames: Int64(rate), assetSampleRate: rate, trimStart: 0, trimEnd: 1, words: words,
+            envelope: .init(sampleRate: Double(rate), levels: (0..<100).map { (10..<30).contains($0) || (50..<90).contains($0) ? 0.25 : 0.005 }))
+        let window = VoiceLabWindow(firstWordId: "a", lastWordId: "b", leftBridgeWordIds: [], rightBridgeWordIds: [],
+            start: 2, end: 3.5, startSample: 96_000, endSample: 168_000,
+            leftSeam: .init(kind: .hard, time: 2, sample: 96_000, fadeSamples: 240),
+            rightSeam: .init(kind: .hard, time: 3.5, sample: 168_000, fadeSamples: 240))
+        let fit = try VoiceLabFitPlanner.plan(window: window, incomingSilence: nil, outgoingSilence: nil, take: take,
+            tokens: words.map(\.text), sourceSampleRate: 48_000, hardJoinSmoothing: true,
+            pauseProfile: .init(withinSentence: [0.7], betweenSentences: []))
+        let edit = try #require(fit.plan.edits.first)
+        #expect(edit.roomTone && edit.count == 10_080)
+        let paid = try VoiceLabAssetStore.writeWave(pcm: wave.pcm, sampleRate: rate, channels: 1, bits: 16, floating: false,
+            projectId: projectId, assetId: "natural-fit", paidRoot: root, createdAt: Date(timeIntervalSince1970: 0))
+        let snapshot = try VoiceLabAssets.preparePaid(asset: paid, projectId: projectId, paidRoot: root, scratchRoot: root)
+        defer { snapshot.invalidate() }
+        let fitted = try VoiceLabSilenceFit.prepare(snapshot: snapshot, paidAsset: paid, fit: fit, window: window, sourceSampleRate: 48_000)
+        for range in [2_400..<7_200, 12_000..<21_600] {
+            for frame in range {
+                let offset = fit.plan.incoming.padFrames + Int64(frame) + (frame >= 12_000 ? edit.count : 0)
+                #expect(fitted.wave.sample(frame: fitted.trimStartFrame + offset, channel: 0) == wave.sample(frame: Int64(frame), channel: 0))
+            }
+        }
+        #expect(abs(fitted.wave.sample(frame: fitted.trimStartFrame + fit.plan.incoming.padFrames + edit.start - 1, channel: 0)) < 0.0001)
+        #expect(abs(fitted.wave.sample(frame: fitted.trimStartFrame + fit.plan.incoming.padFrames + edit.start + edit.count, channel: 0)) < 0.0001)
+    }
     @Test(arguments: [false, true]) func scratchSeamsAreCentredEqualPowerAndHaveExactLengths(hard: Bool) throws {
         let vector = try #require(FittedAssetVector.load().first { $0.name == "balanced-edits" })
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

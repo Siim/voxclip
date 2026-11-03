@@ -224,7 +224,7 @@ public sealed class VoiceLabRewriteSourceTests
         var window = Window(30, 31, rate, VoiceLabSeamKind.Gap);
         var take = new VoiceLabFitTake(8 * asset, asset, 0, 8, [new VoiceLabWord("new", 0, 8, true)],
             new AudioEnvelope(asset, 0.01, Enumerable.Repeat(1f, 800).ToArray()));
-        var plan = Assert.IsType<VoiceLabFitResult.Exact>(VoiceLabFitPlanner.Plan(window, 8, 0.1, take, ["new"], rate)).Plan;
+        var plan = Assert.IsType<VoiceLabFitResult.Exact>(VoiceLabFitPlanner.Plan(window, 8, 0.1, take, ["new"], rate, hardJoinSmoothing: false)).Plan;
         Assert.Equal(7L * rate, plan.Incoming.BorrowedSamples);
         Assert.Equal(23.0, plan.WindowStart);
         Assert.Equal(31.0, plan.WindowEnd);

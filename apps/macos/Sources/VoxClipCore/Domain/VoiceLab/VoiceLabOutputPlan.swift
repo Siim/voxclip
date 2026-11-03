@@ -19,6 +19,7 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
     public let pieces: [VoiceLabOutputPiece]
     public let captions: [CaptionWord]
     public let scope: VoiceLabOutputScope
+    public var videoCuts: [String: [VoiceLabVideoCut]] = [:]
     public var outputSamples: Int64 { pieces.last?.outputEndSample ?? 0 }
     public var duration: Double { Double(outputSamples) / sampleRate }
     public var requiresSyntheticRendering: Bool { pieces.contains { $0.kind == .synth } }
@@ -32,6 +33,10 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
         for piece in pieces {
             if sample < piece.sourceStartSample { return Double(prior) / sampleRate }
             if sample <= piece.sourceEndSample {
+                if let id = piece.segmentId, let cuts = videoCuts[id], !cuts.isEmpty {
+                    let removed = cuts.reduce(Int64(0)) { $0 + max(0, min(sample, $1.endSample) - $1.startSample) }
+                    return Double(piece.outputStartSample + sample - piece.sourceStartSample - removed) / sampleRate
+                }
                 let fraction = Double(sample - piece.sourceStartSample) / Double(piece.sourceEndSample - piece.sourceStartSample)
                 return (Double(piece.outputStartSample) + fraction * Double(piece.outputEndSample - piece.outputStartSample)) / sampleRate
             }
@@ -42,6 +47,13 @@ public struct VoiceLabOutputPlan: Sendable, Equatable {
     public func sourceTime(_ edited: Double) -> Double {
         let sample = min(Double(outputSamples), max(0, EditingPrimitives.jsRound(edited.isFinite ? edited * sampleRate : 0)))
         for piece in pieces where sample < Double(piece.outputEndSample) {
+            if let id = piece.segmentId, let cuts = videoCuts[id], !cuts.isEmpty {
+                var sourceSample = Double(piece.sourceStartSample) + sample - Double(piece.outputStartSample)
+                for cut in cuts where sourceSample >= Double(cut.startSample) {
+                    sourceSample += Double(cut.endSample - cut.startSample)
+                }
+                return sourceSample / sampleRate
+            }
             let fraction = (sample - Double(piece.outputStartSample)) / Double(piece.outputEndSample - piece.outputStartSample)
             return (Double(piece.sourceStartSample) + fraction * Double(piece.sourceEndSample - piece.sourceStartSample)) / sampleRate
         }
@@ -170,6 +182,11 @@ public enum VoiceLabOutputPlanner {
             try append(.source, position, interval.endSample, interval.endSample - position)
         }
         var plan = VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces, captions: [], scope: scope)
+        for segment in enabled {
+            if segment.candidates.indices.contains(segment.selectedCandidateIndex),
+               let video = segment.candidates[segment.selectedCandidateIndex].recipe?.video,
+               video.mode == .cut { plan.videoCuts[segment.id] = video.cuts }
+        }
         if !windows.isEmpty { return plan }
         if enabled.isEmpty {
             return VoiceLabOutputPlan(sampleRate: rate, totalSourceSamples: total, pieces: pieces,

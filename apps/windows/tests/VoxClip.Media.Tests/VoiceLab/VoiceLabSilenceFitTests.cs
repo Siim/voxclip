@@ -10,6 +10,34 @@ namespace VoxClip.Media.Tests.VoiceLab;
 public sealed class VoiceLabSilenceFitTests
 {
     private const string Project = "5b7e0f7a-3c1d-4b8e-9a51-2f6d0c8e4a11";
+    [Fact]
+    public async Task NaturalRoomToneInsertionCopiesWordsAndFadesOnlyQuietHandles()
+    {
+        using var storage = new Storage();
+        const int rate = 24_000;
+        var wave = new VoiceLabWavePcm(rate, 1, 16, false, new byte[rate * 2]);
+        for (var frame = 0; frame < rate; frame++) wave.SetSample(frame is >= 2_400 and < 7_200 or >= 12_000 and < 21_600 ? 0.25 : 0.005, frame, 0);
+        VoiceLabWord[] words = [new("hello,", 0.1, 0.3, true), new("world", 0.5, 0.9, true)];
+        var envelope = new VoxClip.Core.Domain.Transcript.AudioEnvelope(rate, 0.01,
+            Enumerable.Range(0, 100).Select(block => block is >= 10 and < 30 or >= 50 and < 90 ? 0.25f : 0.005f).ToArray());
+        var take = new VoiceLabFitTake(rate, rate, 0, 1, words, envelope);
+        var window = new VoiceLabWindow("a", "b", [], [], 2, 3.5, 96_000, 168_000,
+            new(VoiceLabSeamKind.Hard, 2, 96_000, 240), new(VoiceLabSeamKind.Hard, 3.5, 168_000, 240));
+        var fit = VoiceLabFitPlanner.Plan(window, null, null, take, words.Select(word => word.Text).ToArray(), 48_000, true, new(new([0.7]), new([])));
+        var edit = Assert.Single(fit.Plan.Edits);
+        Assert.True(edit.RoomTone);
+        Assert.Equal(10_080, edit.Count);
+        var paid = VoiceLabAssetStore.WriteWave(wave.Pcm, rate, 1, 16, false, Project, "natural-fit", storage.Root, DateTimeOffset.UnixEpoch, TestContext.Current.CancellationToken);
+        await using var snapshot = await VoiceLabAssets.PreparePaidAsync(paid, Project, storage.Root, storage.Root, TestContext.Current.CancellationToken);
+        var fitted = VoiceLabSilenceFit.Prepare(snapshot, paid, fit, window, 48_000, TestContext.Current.CancellationToken);
+        foreach (var frame in Enumerable.Range(2_400, 4_800).Concat(Enumerable.Range(12_000, 9_600)))
+        {
+            var offset = fit.Plan.Incoming.PadFrames + frame + (frame >= 12_000 ? edit.Count : 0);
+            Assert.Equal(wave.Sample(frame, 0), fitted.Wave.Sample(fitted.TrimStartFrame + offset, 0));
+        }
+        Assert.True(Math.Abs(fitted.Wave.Sample(fitted.TrimStartFrame + fit.Plan.Incoming.PadFrames + edit.Start - 1, 0)) < 0.0001);
+        Assert.True(Math.Abs(fitted.Wave.Sample(fitted.TrimStartFrame + fit.Plan.Incoming.PadFrames + edit.Start + edit.Count, 0)) < 0.0001);
+    }
     private sealed class Storage : IDisposable
     {
         internal readonly string Root = Path.Combine(Path.GetTempPath(), "voxclip-fit-" + Guid.NewGuid().ToString("N"));

@@ -352,7 +352,7 @@ public sealed class VoiceLabWindowTests
             var silence = VoiceLabWindowPlanner.LendableSilence(project, scope, placed);
             var take = new VoiceLabFitTake(12000, 24000, 0.02, 0.41,
                 [new VoiceLabWord("patch", 0.05, 0.35, true)], new AudioEnvelope(24000, 0.01, Enumerable.Repeat(0.1f, 50).ToArray()));
-            var result = VoiceLabFitPlanner.Plan(placed, silence.Incoming, silence.Outgoing, take, ["patch"], rate);
+            var result = VoiceLabFitPlanner.Plan(placed, silence.Incoming, silence.Outgoing, take, ["patch"], rate, hardJoinSmoothing: false);
             var plan = result.Plan;
             var duration = plan.WindowEnd - plan.WindowStart;
             if (result is VoiceLabFitResult.ChangedDuration changed) duration = plan.WindowEnd - plan.WindowStart + changed.ResidualSeconds;
@@ -443,7 +443,7 @@ public sealed class VoiceLabWindowTests
         var silence = VoiceLabWindowPlanner.LendableSilence(project, VoiceLabOutputScope.Full, placed);
         var take = new VoiceLabFitTake(16800, 24000, 0.02, changed ? 0.62 : 0.52,
             [new VoiceLabWord("patch", 0.05, changed ? 0.56 : 0.45, true)], new AudioEnvelope(24000, 0.01, Enumerable.Repeat(0.1f, 70).ToArray()));
-        var result = VoiceLabFitPlanner.Plan(placed, silence.Incoming, silence.Outgoing, take, ["patch"], rate);
+        var result = VoiceLabFitPlanner.Plan(placed, silence.Incoming, silence.Outgoing, take, ["patch"], rate, hardJoinSmoothing: false);
         Assert.Equal(changed, result is VoiceLabFitResult.ChangedDuration);
         var fitted = result.Plan;
         var residual = result is VoiceLabFitResult.ChangedDuration partial ? partial.ResidualSeconds : 0;
@@ -475,6 +475,38 @@ public sealed class VoiceLabWindowTests
             Assert.Equal(synth.SourceEndSample - synth.SourceStartSample, synth.OutputEndSample - synth.OutputStartSample);
             Assert.Equal(VoiceLabVideoMode.Source, Assert.Single(prepared.SelectedSegmentRecipes).Recipe.Video.Mode);
         }
+    }
+
+    [Fact]
+    public void CutRecipesRoundTripTheWholeProjectButRefuseWindowsRendering()
+    {
+        var project = Passage.Value;
+        var segment = project.VoiceLab.Segments[0];
+        var candidate = segment.Candidates[0];
+        var original = candidate.Recipe!;
+        var audio = original.Audio with { TrimEnd = 0.76, Stretch = 1 };
+        var recipe = original with
+        {
+            Audio = audio,
+            OutDuration = 0.66,
+            Chunks = [original.Chunks[0] with { AssembledEndFrame = 18_240 }],
+            Video = original.Video with
+            {
+                Mode = VoiceLabVideoMode.Cut, OutputSamples = 660,
+                Zoom = 1.06, FaceX = 0.5, FaceY = 0.5,
+                Cuts = [new(2800, 2840)],
+            },
+        };
+        segment = segment with { Audio = audio, OutDuration = 0.66, Candidates = [candidate with { Recipe = recipe }] };
+        project = project with { VoiceLab = project.VoiceLab with { Segments = [segment] } };
+        VoiceLabProject.Validate(project);
+        VoiceLabRenderValidation.Validate(project);
+        var decoded = ProjectSerialization.Deserialize(ProjectSerialization.Serialize(project));
+        VoiceLabRenderValidation.Validate(decoded);
+        Assert.Equal(recipe.Video.Cuts, decoded.VoiceLab.Segments[0].Candidates[0].Recipe!.Video.Cuts);
+        var failure = Assert.Throws<VoiceLabProjectException>(() =>
+            VoiceLabRenderContract.Prepare(decoded, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight));
+        Assert.Equal(VoiceLabProjectErrorCode.VideoModeUnsupported, failure.Code);
     }
 
     /// <summary>The selected recipe a candidate would carry for window, built only from the geometry above, as segment id with

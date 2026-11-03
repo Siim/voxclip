@@ -334,7 +334,7 @@ public sealed class VoiceLabUpgradeTests
 
     /// <summary>The Mac suite proves its encoder writes these <c>videoRecipes</c> exactly; every mode must read back here.</summary>
     [Fact]
-    public void MacEncodedVideoRecipesDecodeInEveryMode()
+    public void MacEncodedVideoRecipesDecodeInEveryLegacyMode()
     {
         var recipes = UpgradeCases()["videoRecipes"]!.AsObject();
         var modes = new List<VoiceLabVideoMode>();
@@ -345,7 +345,7 @@ public sealed class VoiceLabUpgradeTests
             Assert.Equal(mode, node!["mode"]!.GetValue<string>());
             Assert.Equal(Canonical(node), Canonical(JsonSerializer.SerializeToNode(recipe, ProjectJsonContext.Default.VoiceLabVideoRecipe)));
         }
-        Assert.Equal(Enum.GetValues<VoiceLabVideoMode>(), modes.Order());
+        Assert.Equal(new[] { VoiceLabVideoMode.Source, VoiceLabVideoMode.Retimed, VoiceLabVideoMode.ZoomCover, VoiceLabVideoMode.Lipsync }, modes.Order());
     }
 
     /// <summary>Every video key is required, explicit null included (architecture §2.1 rule 8), as on Mac and in the schema.

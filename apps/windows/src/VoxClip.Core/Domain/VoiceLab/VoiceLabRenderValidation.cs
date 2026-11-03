@@ -138,6 +138,9 @@ public static class VoiceLabRenderValidation
         Require(video.SourceStartSample == start && video.SourceEndSample == end && video.OutputSamples == output, VoiceLabProjectErrorCode.InvalidRange);
         switch (video.Mode)
         {
+            case VoiceLabVideoMode.Cut:
+                Require(recipe.Audio.Stretch == 1 && VoiceLabNaturalPacing.ValidCuts(video, rate), VoiceLabProjectErrorCode.InvalidRange);
+                break;
             case VoiceLabVideoMode.Source:
                 Require(video.RetimeFactor is null && video.Zoom is null && video.FaceX is null && video.FaceY is null &&
                     video.AssetId is null && video.Provider is null && video.Model is null && video.RequestId is null &&
@@ -164,6 +167,7 @@ public static class VoiceLabRenderValidation
             default: throw new VoiceLabProjectException(VoiceLabProjectErrorCode.InvalidSegment);
         }
         var qa = recipe.Qa;
+        Require(video.Mode == VoiceLabVideoMode.Cut || video.Cuts is null, VoiceLabProjectErrorCode.InvalidSegment);
         var joinAllowed = qa.JoinAdvisory?.Validates(qa.LufsJumpLu, recipe.Provenance.CreatedAt) ?? (Math.Abs(qa.LufsJumpLu) <= 2);
         Require(double.IsFinite(qa.LufsJumpLu) && joinAllowed && double.IsFinite(qa.PeakDbfs) && qa.PeakDbfs < 0, VoiceLabProjectErrorCode.QaRejected);
         if (segment.Kind == VoiceLabSegmentKind.Tts)
@@ -207,7 +211,8 @@ public static class VoiceLabRenderValidation
     /// Render policy runs first for unrejected candidates, so this only reports what policy leaves unchecked.</summary>
     static void ValidateShape(VoiceLabRenderRecipe recipe)
     {
-        VoiceLabHardJoin.Validate(recipe.Seams, recipe.EdgeGain, recipe.OutDuration);
+        var windowDuration = recipe.Video.OutputSamples > 0 ? recipe.OutDuration * ((double)recipe.Video.SourceEndSample - recipe.Video.SourceStartSample) / recipe.Video.OutputSamples : recipe.OutDuration;
+        VoiceLabHardJoin.Validate(recipe.Seams, recipe.EdgeGain, recipe.OutDuration, windowDuration);
         foreach (var incoming in new[] { true, false })
             if ((incoming ? recipe.Seams.In.MicroPause : recipe.Seams.Out.MicroPause) is { } pause)
             {

@@ -87,7 +87,7 @@ public sealed class VoiceLabHardJoinTests
             var rate = rateElement.GetInt32();
             var window = Window(rate);
             var seconds = row.GetProperty("speechSeconds").GetDouble();
-            var legacy = VoiceLabRewriteFit.Hypothetical(window, null, null, seconds, rate);
+            var legacy = VoiceLabRewriteFit.Hypothetical(window, null, null, seconds, rate, hardJoinSmoothing: false);
             var fit = VoiceLabRewriteFit.Hypothetical(window, null, null, seconds, rate, hardJoinSmoothing: true);
             Assert.Equal(row.GetProperty("legacyOutputSeconds").GetDouble(), legacy.Plan.OutputFrames / (double)rate, 9);
             Assert.Equal(row.GetProperty("outputSeconds").GetDouble(), fit.Plan.OutputFrames / (double)rate, 9);
@@ -95,7 +95,7 @@ public sealed class VoiceLabHardJoinTests
             Assert.Equal(fit.Plan.Incoming.PadFrames, fit.Plan.Outgoing.PadFrames);
             Assert.Equal(window.StartSample, fit.Plan.WindowStartSample);
             Assert.Equal(window.EndSample, fit.Plan.WindowEndSample);
-            var timing = VoiceLabPaceMatching.Match(seconds, window, null, null, rate);
+            var timing = VoiceLabPaceMatching.Match(seconds, window, null, null, rate, hardJoinSmoothing: true);
             Assert.Equal(row.GetProperty("pace").GetDouble(), timing.Pace);
             Assert.Equal(row.GetProperty("fits").GetBoolean(), timing.Fits);
         }

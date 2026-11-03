@@ -100,6 +100,11 @@ public enum VoiceLabRenderContract {
                 piece.sourceEndSample - piece.sourceStartSample != piece.outputEndSample - piece.outputStartSample) {
                 throw VoiceLabProjectError.videoModeUnsupported
             }
+            if recipe.video.mode == .cut {
+                guard recipe.audio.stretch == 1, VoiceLabNaturalPacing.validCuts(recipe.video, sampleRate: plan.sampleRate) else {
+                    throw VoiceLabProjectError.videoModeUnsupported
+                }
+            }
             if recipe.video.mode == .zoomCover {
                 let sourceSamples = piece.sourceEndSample - piece.sourceStartSample
                 let outputSamples = piece.outputEndSample - piece.outputStartSample

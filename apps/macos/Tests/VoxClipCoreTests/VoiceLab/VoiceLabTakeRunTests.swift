@@ -111,7 +111,7 @@ private final class TakeRunHTTP: Sendable {
         var qaWAVs: [Data] = []
         var firstStatus = 200
         var mismatchCount = 0
-        var duration = 4.0
+        var duration = 4.11
         var durations: [Double] = []
         var recognized: [String] = []
         var missingAlignment = false
@@ -547,7 +547,7 @@ struct VoiceLabTakeRunTests {
         #expect(result.best?.selectable == true && result.best?.fits == true)
         #expect(result.best?.audio?.words.allSatisfy(\.synthetic) == true)
         #expect(result.best?.generated != nil && result.best?.qaReceipt != nil)
-        #expect(result.best?.audio?.trimmed.count == 93_360)
+        #expect(result.best?.audio?.trimmed.count == 96_000)
         #expect(result.best?.audio?.fit.plan.outputFrames == 96_000)
         #expect(result.best?.audio?.roomTone?.sourceStartSample == 156_000)
         #expect(fixture.http.value.withLock { $0.seeds == [UInt32.max] && $0.qa == 1 })

@@ -26,6 +26,12 @@ public struct VoiceLabEdgeGain: Codable, Sendable, Equatable {
 
 public enum VoiceLabHardJoin {
     public static let pauseSeconds = 0.140
+    public static let windowPauseFraction = 0.20
+
+    public static func pauseSeconds(windowDuration: Double) -> Double {
+        guard windowDuration.isFinite, windowDuration > 0 else { return 0 }
+        return min(pauseSeconds, windowDuration * windowPauseFraction)
+    }
     public static let generatedFadeSeconds = 0.025
     public static let sourceFadeSeconds = 0.020
     public static let gainRampSeconds = 0.020
@@ -137,14 +143,14 @@ public enum VoiceLabHardJoin {
         return max(pause, sqrt(max(0, 1 - voice * voice)))
     }
 
-    public static func validate(seams: VoiceLabSeams, edgeGain: VoiceLabEdgeGain?, duration: Double) throws {
+    public static func validate(seams: VoiceLabSeams, edgeGain: VoiceLabEdgeGain?, duration: Double, windowDuration: Double? = nil) throws {
         if seams.in.microPause == nil && seams.out.microPause == nil && edgeGain == nil { return }
         guard duration.isFinite, duration > 0, duration <= 290,
               edgeGain == nil || edgeGain?.in != nil || edgeGain?.out != nil else { throw VoiceLabProjectError.invalidFadeHandles }
         func valid(_ word: VoiceLabMicroPause, incoming: Bool) -> Bool {
             let start = word.wordStartSeconds, end = word.wordEndSeconds
             return start.isFinite && end.isFinite && end > start &&
-                (incoming ? start >= pauseSeconds - 0.001 && end <= duration : start >= -duration && end <= -pauseSeconds + 0.001)
+                (incoming ? start >= pauseSeconds(windowDuration: windowDuration ?? duration) - 0.001 && end <= duration : start >= -duration && end <= -pauseSeconds(windowDuration: windowDuration ?? duration) + 0.001)
         }
         for incoming in [true, false] {
             let seam = incoming ? seams.in : seams.out

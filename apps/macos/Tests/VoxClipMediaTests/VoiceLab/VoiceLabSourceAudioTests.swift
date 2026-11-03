@@ -204,7 +204,7 @@ import VoxClipCore
                                    words: [VoiceLabWord(text: "new", start: 0, end: 8, synthetic: true)],
                                    envelope: AudioEnvelope(sampleRate: Double(asset), levels: [Float](repeating: 1, count: 800)))
         let fit = try VoiceLabFitPlanner.plan(window: window, incomingSilence: 8, outgoingSilence: 0.1, take: take,
-                                              tokens: ["new"], sourceSampleRate: Double(rate))
+                                              tokens: ["new"], sourceSampleRate: Double(rate), hardJoinSmoothing: false)
         guard case .exact(let plan) = fit else { Issue.record("The take should fit exactly by borrowing"); return }
         #expect(plan.incoming.borrowedSamples == Int64(7 * rate) && plan.windowStart == 23 && plan.windowEnd == 31)
         let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: Int64(frames), sampleRate: rate, window: window,

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using VoxClip.Core.Domain.Editing;
 using VoxClip.Core.Domain.Transcript;
 #pragma warning disable CS1591
 
@@ -68,7 +69,14 @@ public static class VoiceLabTakeProcessing
         var trimmed = samples[lower..upper];
         var gain = VoiceLabLoudness.LevelGainDb(preflight.SourceLevel, VoiceLabLoudness.VoicedRmsDb(trimmed, rate), VoiceLabLoudness.TruePeakDbtp(trimmed, rate));
         var take = new VoiceLabFitTake(samples.Length, rate, trim.Start, trim.End, words, Envelope(samples, rate));
-        var fit = VoiceLabFitPlanner.Plan(input.Window, input.IncomingSilence, input.OutgoingSilence, take, words.Select(word => word.Text).ToArray(), input.SourceSampleRate, input.HardJoinSmoothing);
+        var profile = input.PauseProfile ?? VoiceLabPauseProfile.Measure(input.Items, input.SourceEnvelope, 0, double.MaxValue);
+        var fitted = VoiceLabFitPlanner.Plan(input.Window, input.IncomingSilence, input.OutgoingSilence, take, words.Select(word => word.Text).ToArray(),
+            input.SourceSampleRate, input.HardJoinSmoothing, profile);
+        var outputSamples = (long)EditingMath.Round((double)fitted.Plan.OutputFrames * input.SourceSampleRate / rate);
+        var plan = fitted.Plan with { VideoCuts = VoiceLabNaturalPacing.Cuts(fitted.Plan.WindowStartSample, fitted.Plan.WindowEndSample,
+            outputSamples, input.SourceSampleRate, input.SourceEnvelope, input.Items) };
+        VoiceLabFitResult fit = fitted is VoiceLabFitResult.ChangedDuration changed ?
+            new VoiceLabFitResult.ChangedDuration(plan, changed.NaturalOut, changed.ResidualSeconds) : new VoiceLabFitResult.Exact(plan);
         return new(rate, trimmed, gain, preflight.RoomTone, fit);
     }
     public static byte[] EncodeQaWav(ReadOnlySpan<float> samples, int rate)

@@ -1,48 +1,59 @@
 #pragma warning disable CS1591
+using VoxClip.Core.Domain.Shared;
+using VoxClip.Core.Domain.Transcript;
 namespace VoxClip.Core.Domain.VoiceLab;
 
 public static class VoiceLabPaceMatching
 {
     public static VoiceLabRewriteFitResult Measure(string text, double rate, VoiceLabWindow window,
-        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool supportsPace = true, bool hardJoinSmoothing = true) =>
+        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool hardJoinSmoothing, bool supportsPace = true,
+        IReadOnlyList<TimedWord>? sourceItems = null, AudioEnvelope? sourceEnvelope = null) =>
         Match(VoiceLabRewriteFit.Estimate(text, rate), window, incomingSilence, outgoingSilence, sourceSampleRate,
-            supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing);
+            supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing, sourceItems: sourceItems, sourceEnvelope: sourceEnvelope, generatedText: text);
 
     public static VoiceLabRewriteFitResult Match(double seconds, VoiceLabWindow window,
-        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, double oldPace = 1, bool supportsPace = true, bool hardJoinSmoothing = true)
+        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool hardJoinSmoothing, double oldPace = 1, bool supportsPace = true,
+        IReadOnlyList<TimedWord>? sourceItems = null, AudioEnvelope? sourceEnvelope = null, string? generatedText = null, VoiceLabPauseProfile? pauseProfile = null)
     {
         if (!double.IsFinite(seconds) || seconds <= 0 || !VoiceLabPace.IsValid(oldPace))
             throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
-        VoiceLabFitResult Fit(double duration) => VoiceLabRewriteFit.Hypothetical(window, incomingSilence, outgoingSilence, duration, sourceSampleRate, hardJoinSmoothing);
+        var profile = pauseProfile ?? (sourceEnvelope is null ? null : VoiceLabPauseProfile.Measure(sourceItems ?? [], sourceEnvelope, 0, double.MaxValue));
+        VoiceLabFitResult Fit(double duration) => VoiceLabRewriteFit.Hypothetical(window, incomingSilence, outgoingSilence, duration, sourceSampleRate,
+            hardJoinSmoothing, generatedText, profile);
+        VoiceLabFitResult Bounds(double duration) => VoiceLabRewriteFit.Hypothetical(window, incomingSilence, outgoingSilence, duration, sourceSampleRate, hardJoinSmoothing);
         var probeSeconds = 2 * (window.End - window.Start + (incomingSilence ?? 0) + (outgoingSilence ?? 0) + 1);
-        var high = Fit(probeSeconds).Plan;
-        var low = Fit(1.0 / sourceSampleRate).Plan;
+        var high = Bounds(probeSeconds).Plan;
+        var low = Bounds(1.0 / sourceSampleRate).Plan;
         var source = (window.EndSample - window.StartSample) / (double)sourceSampleRate;
         var expanded = (high.WindowEndSample - high.WindowStartSample) / (double)sourceSampleRate;
         var edge = (high.Incoming.PadFrames + high.Outgoing.PadFrames) / (double)sourceSampleRate;
         var padding = (low.OutputFrames - 1) / (double)sourceSampleRate;
         var exactLower = Math.Max(1.0 / sourceSampleRate, source - padding);
         var exactUpper = expanded - edge;
-        var retimeLower = Math.Max(1.0 / sourceSampleRate, source / VoiceLabRewriteFit.MaximumVideoSpeed - padding);
         var retimeUpper = expanded / VoiceLabRewriteFit.MinimumVideoSpeed - edge;
-        var target = Math.Max(1.0 / sourceSampleRate, (exactLower + exactUpper) / 2);
         var natural = seconds * oldPace;
-        var minimum = supportsPace ? VoiceLabPace.Minimum : 1;
-        var maximum = supportsPace ? VoiceLabPace.Maximum : 1;
-        var ideal = Math.Round(natural / target * 100, MidpointRounding.AwayFromZero) / 100;
+        var minimum = supportsPace ? VoiceLabNaturalPacing.NATURAL_PACE_MIN : 1;
+        var maximum = supportsPace ? VoiceLabNaturalPacing.NATURAL_PACE_MAX : 1;
         double? Pace(double lower, double upper)
         {
             if (upper < lower || upper <= 0) return null;
             var slowest = Math.Max(minimum, Math.Ceiling(natural / upper * 100) / 100);
             var fastest = Math.Min(maximum, Math.Floor(natural / lower * 100) / 100);
-            return slowest <= fastest ? Math.Clamp(ideal, slowest, fastest) : null;
+            return slowest <= fastest ? Math.Clamp(1, slowest, fastest) : null;
         }
-        var chosen = supportsPace ? VoiceLabPace.Clamp(ideal) : 1;
-        if (Pace(exactLower, exactUpper) is { } exact && Fit(natural / exact) is VoiceLabFitResult.Exact)
+        var chosen = 1.0;
+        if (profile is not null && Fit(natural) is not VoiceLabFitResult.Exact && supportsPace)
+        {
+            foreach (var candidate in Enumerable.Range(90, 21).Select(value => value / 100.0).OrderBy(value => Math.Abs(value - 1)).ThenBy(value => value))
+                if (Fit(natural / candidate) is VoiceLabFitResult.Exact) { chosen = candidate; break; }
+        }
+        else if (Fit(natural) is not VoiceLabFitResult.Exact && Pace(exactLower, exactUpper) is { } exact && Fit(natural / exact) is VoiceLabFitResult.Exact)
             chosen = exact;
-        else if (Pace(retimeLower, retimeUpper) is { } retimed && VoiceLabRewriteFit.AllowsVideo(Fit(natural / retimed), sourceSampleRate, sourceSampleRate))
-            chosen = retimed;
         var predicted = natural / chosen;
-        return new(predicted, Math.Max(0, retimeUpper), VoiceLabRewriteFit.AllowsVideo(Fit(predicted), sourceSampleRate, sourceSampleRate), chosen);
+        var fit = Fit(predicted);
+        var cuts = sourceEnvelope is null ? [] : VoiceLabNaturalPacing.Cuts(fit.Plan.WindowStartSample, fit.Plan.WindowEndSample,
+            fit.Plan.OutputFrames, sourceSampleRate, sourceEnvelope, sourceItems ?? []);
+        return new(predicted, source, VoiceLabRewriteFit.AllowsVideo(fit, sourceSampleRate, sourceSampleRate) || cuts.Count > 0,
+            chosen, fit is not VoiceLabFitResult.Exact && cuts.Count > 0, Math.Max(0, retimeUpper));
     }
 }

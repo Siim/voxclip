@@ -98,8 +98,9 @@ public struct VoiceLabChunk: Codable, Sendable, Equatable {
         self.assembledStartFrame = assembledStartFrame; self.assembledEndFrame = assembledEndFrame
     }
 }
-public enum VoiceLabVideoMode: String, Codable, Sendable { case source, retimed, zoomCover, lipsync }
+public enum VoiceLabVideoMode: String, Codable, Sendable { case source, cut, retimed, zoomCover, lipsync }
 public struct VoiceLabVideoRecipe: Codable, Sendable, Equatable {
+    public var cuts: [VoiceLabVideoCut]? = nil
     public var mode: VoiceLabVideoMode
     public var sourceStartSample: Int64
     public var sourceEndSample: Int64
@@ -127,7 +128,7 @@ public struct VoiceLabVideoRecipe: Codable, Sendable, Equatable {
     }
     private enum CodingKeys: String, CodingKey {
         case mode, sourceStartSample, sourceEndSample, outputSamples, retimeFactor, zoom, faceX, faceY, assetId, provider, model, requestId
-        case windowStartSample, windowEndSample, syncMode
+        case windowStartSample, windowEndSample, syncMode, cuts
     }
     /// Writes every key, with null for the fields a mode does not use, as Windows and the schema require.
     public func encode(to encoder: any Encoder) throws {
@@ -140,6 +141,7 @@ public struct VoiceLabVideoRecipe: Codable, Sendable, Equatable {
         try values.encode(model, forKey: .model); try values.encode(requestId, forKey: .requestId)
         try values.encode(windowStartSample, forKey: .windowStartSample); try values.encode(windowEndSample, forKey: .windowEndSample)
         try values.encode(syncMode, forKey: .syncMode)
+        try values.encodeIfPresent(cuts, forKey: .cuts)
     }
 }
 public enum VoiceLabVoiceSource: String, Codable, Sendable { case own, stock }

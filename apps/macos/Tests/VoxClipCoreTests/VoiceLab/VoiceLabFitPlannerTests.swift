@@ -144,7 +144,7 @@ struct VoiceLabFitPlannerTests {
 
     private func plan(_ input: FitInput) throws -> VoiceLabFitResult {
         try VoiceLabFitPlanner.plan(window: window(input), incomingSilence: input.incomingSilence, outgoingSilence: input.outgoingSilence,
-                                    take: take(input), tokens: input.tokens, sourceSampleRate: input.sourceSampleRate)
+                                    take: take(input), tokens: input.tokens, sourceSampleRate: input.sourceSampleRate, hardJoinSmoothing: false)
     }
 
     /// Replays one vector: its typed refusal, or its plan field by field. Named vectors also carry the window times and
@@ -459,7 +459,7 @@ struct VoiceLabFitPlannerTests {
         func refusal(_ window: VoiceLabWindow = placed, incoming: Double? = 0.6, take: VoiceLabFitTake = good, rate: Double = 48000) -> String? {
             do {
                 _ = try VoiceLabFitPlanner.plan(window: window, incomingSilence: incoming, outgoingSilence: 0.6, take: take, tokens: base.tokens,
-                                                sourceSampleRate: rate)
+                                                sourceSampleRate: rate, hardJoinSmoothing: false)
                 return nil
             } catch let error as VoiceLabGeometryError {
                 return code(error)

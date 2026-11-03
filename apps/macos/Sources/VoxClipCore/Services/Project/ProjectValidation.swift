@@ -141,7 +141,10 @@ enum ProjectValidation {
                 }
             }
         }
-        _ = try object(recipe["video"], required: "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode")
+        let video = try object(recipe["video"], required: "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode", optional: "cuts")
+        if let cuts = video["cuts"] {
+            for cut in try array(cuts) { _ = try object(cut, required: "startSample endSample") }
+        }
         let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech joinAdvisory")
         if let value = qa["joinAdvisory"] {
             let advisory = try object(value, required: "seams acceptedAt")

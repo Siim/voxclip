@@ -32,7 +32,7 @@ struct CompositionVideoSpan: Sendable {
             }
         case .voiceLab(let plan):
             var cursor: Int64 = 0
-            return try plan.pieces.map { piece in
+            return try plan.pieces.flatMap { piece -> [CompositionVideoSpan] in
                 guard piece.sourceStartSample >= 0, piece.sourceEndSample > piece.sourceStartSample,
                       piece.sourceEndSample <= plan.totalSourceSamples, piece.outputStartSample == cursor,
                       piece.outputEndSample > cursor else {
@@ -51,6 +51,23 @@ struct CompositionVideoSpan: Sendable {
                         throw VoiceLabProjectError.staleRenderContract
                     }
                     switch recipe.mode {
+                    case .cut:
+                        guard VoiceLabNaturalPacing.validCuts(recipe, sampleRate: timeline.sampleRate), let cuts = recipe.cuts else {
+                            throw VoiceLabProjectError.videoModeUnsupported
+                        }
+                        var spans: [CompositionVideoSpan] = []
+                        var sourceStart = piece.sourceStartSample, outputStart = piece.outputStartSample
+                        for cut in cuts {
+                            let count = cut.startSample - sourceStart
+                            spans.append(CompositionVideoSpan(source: range(sourceStart, cut.startSample),
+                                output: range(outputStart, outputStart + count), zoom: spans.isEmpty ? 1 : VoiceLabNaturalPacing.CUT_PUNCH_IN,
+                                anchorX: 0.5, anchorY: 0.5))
+                            sourceStart = cut.endSample; outputStart += count
+                        }
+                        spans.append(CompositionVideoSpan(source: range(sourceStart, piece.sourceEndSample),
+                            output: range(outputStart, piece.outputEndSample), zoom: VoiceLabNaturalPacing.CUT_PUNCH_IN, anchorX: 0.5, anchorY: 0.5))
+                        cursor = piece.outputEndSample
+                        return spans
                     case .source:
                         guard sourceCount == outputCount else { throw VoiceLabProjectError.videoModeUnsupported }
                     case .zoomCover:
@@ -68,9 +85,9 @@ struct CompositionVideoSpan: Sendable {
                     }
                 } else if sourceCount != outputCount { throw VoiceLabProjectError.videoModeUnsupported }
                 cursor = piece.outputEndSample
-                return CompositionVideoSpan(source: range(piece.sourceStartSample, piece.sourceEndSample),
+                return [CompositionVideoSpan(source: range(piece.sourceStartSample, piece.sourceEndSample),
                     output: range(piece.outputStartSample, piece.outputEndSample), zoom: zoom,
-                    anchorX: anchorX, anchorY: anchorY)
+                    anchorX: anchorX, anchorY: anchorY)]
             }
         }
     }

@@ -4,6 +4,8 @@ User-facing changes, newest first, one line each. The release scripts read the s
 
 ## 0.1.0 - Unreleased
 
+- Phrases in your voice keep a natural pace; extra time becomes natural pauses or a jump cut.
+
 - Joins between the generated phrase and your recording now get a short natural pause instead of a hard cut
 - Let the first Rewrite start across saves and land across unrelated Motion, Demo and metadata changes; explain AI changes and unavailable retries.
 - Rewrite chooses a fitting voice pace before pricing and learns from a take's measured length when you try another.

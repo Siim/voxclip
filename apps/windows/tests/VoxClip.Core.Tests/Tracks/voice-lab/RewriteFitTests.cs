@@ -48,7 +48,7 @@ public sealed class RewriteFitTests
                 Assert.True(estimate >= 1.6);
                 var window = new VoiceLabWindow("first", "last", [], [], 2, 3.1, 96_000, 148_800,
                     new(VoiceLabSeamKind.Hard, 2, 96_000, 0), new(VoiceLabSeamKind.Hard, 3.1, 148_800, 0));
-                Assert.False(VoiceLabPaceMatching.Measure(phrase["text"]!.GetValue<string>(), phrase["rate"]!.GetValue<double>(), window, null, null, 48_000, supportsPace: false).Fits);
+                Assert.False(VoiceLabPaceMatching.Measure(phrase["text"]!.GetValue<string>(), phrase["rate"]!.GetValue<double>(), window, null, null, 48_000, supportsPace: false, hardJoinSmoothing: true).Fits);
             }
         }
     }
@@ -77,13 +77,14 @@ public sealed class RewriteFitTests
                 (long)EditingMath.Round(end * sourceRate), new(kind, start, (long)EditingMath.Round(start * sourceRate), 0),
                 new(kind, end, (long)EditingMath.Round(end * sourceRate), 0));
             double? lend = kind == VoiceLabSeamKind.Hard ? null : kind == VoiceLabSeamKind.None ? Math.Min(silence, seconds / 4) : silence;
-            var review = VoiceLabPaceMatching.Measure("word", 14, window, lend, lend, sourceRate, supportsPace: false);
-            Assert.True(VoiceLabRewriteFit.AllowsVideo(VoiceLabRewriteFit.Hypothetical(window, lend, lend, review.SlotSeconds - 0.001, sourceRate, hardJoinSmoothing: true), sourceRate, sourceRate),
+            var review = VoiceLabPaceMatching.Measure("word", 14, window, lend, lend, sourceRate, supportsPace: false, hardJoinSmoothing: true);
+            var maximum = Assert.IsType<double>(review.MaximumSeconds);
+            Assert.True(VoiceLabRewriteFit.AllowsVideo(VoiceLabRewriteFit.Hypothetical(window, lend, lend, maximum - 0.001, sourceRate, hardJoinSmoothing: true), sourceRate, sourceRate),
                 $"rate={sourceRate}, seconds={seconds}, kind={kind}, silence={lend}, slot={review.SlotSeconds}");
-            Assert.False(VoiceLabRewriteFit.AllowsVideo(VoiceLabRewriteFit.Hypothetical(window, lend, lend, review.SlotSeconds + 0.001, sourceRate, hardJoinSmoothing: true), sourceRate, sourceRate));
+            Assert.False(VoiceLabRewriteFit.AllowsVideo(VoiceLabRewriteFit.Hypothetical(window, lend, lend, maximum + 0.001, sourceRate, hardJoinSmoothing: true), sourceRate, sourceRate));
             foreach (var estimate in new[] { review.SlotSeconds * 0.5, review.SlotSeconds, review.SlotSeconds + 0.1 })
             {
-                var measured = VoiceLabPaceMatching.Measure("word", 4 / ((estimate - 0.09) * VoiceLabRewriteFit.ProviderSpeechRateMultiplier), window, lend, lend, sourceRate, supportsPace: false);
+                var measured = VoiceLabPaceMatching.Measure("word", 4 / ((estimate - 0.09) * VoiceLabRewriteFit.ProviderSpeechRateMultiplier), window, lend, lend, sourceRate, supportsPace: false, hardJoinSmoothing: true);
                 var fit = VoiceLabRewriteFit.Hypothetical(window, lend, lend, measured.EstimateSeconds, sourceRate, hardJoinSmoothing: true);
                 Assert.Equal(VoiceLabRewriteFit.AllowsVideo(fit, sourceRate, sourceRate), measured.Fits);
             }

@@ -167,7 +167,7 @@ public sealed class VoiceLabFitPlannerTests
     }
 
     static VoiceLabFitResult Plan(JsonElement input) => VoiceLabFitPlanner.Plan(Window(input), Silence(input, "incomingSilence"),
-        Silence(input, "outgoingSilence"), Take(input), Strings(input.GetProperty("tokens")), Number(input, "sourceSampleRate"));
+        Silence(input, "outgoingSilence"), Take(input), Strings(input.GetProperty("tokens")), Number(input, "sourceSampleRate"), hardJoinSmoothing: false);
 
     /// <summary>Replays one vector: its typed refusal, or its plan field by field. Named vectors also carry the window times and word
     /// times; property cases leave them to the formulas CheckProperties applies to every plan.</summary>
@@ -388,7 +388,7 @@ public sealed class VoiceLabFitPlannerTests
         {
             try
             {
-                _ = VoiceLabFitPlanner.Plan(window ?? placed, incoming, 0.6, take ?? good, tokens, rate);
+                _ = VoiceLabFitPlanner.Plan(window ?? placed, incoming, 0.6, take ?? good, tokens, rate, hardJoinSmoothing: false);
                 return null;
             }
             catch (VoiceLabGeometryException failure) { return Code(failure.Code); }

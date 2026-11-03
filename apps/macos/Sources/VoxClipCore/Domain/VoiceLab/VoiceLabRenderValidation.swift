@@ -69,7 +69,9 @@ public enum VoiceLabRenderValidation {
     /// The project.schema.json shape of every stored recipe, rejected or not, whatever its kind or voice source.
     /// Render policy runs first for unrejected candidates, so this only reports what policy leaves unchecked.
     private static func validateShape(_ recipe: VoiceLabRenderRecipe) throws {
-        try VoiceLabHardJoin.validate(seams: recipe.seams, edgeGain: recipe.edgeGain, duration: recipe.outDuration)
+        let geometry = recipe.video
+        let windowDuration = geometry.outputSamples > 0 ? recipe.outDuration * (Double(geometry.sourceEndSample) - Double(geometry.sourceStartSample)) / Double(geometry.outputSamples) : recipe.outDuration
+        try VoiceLabHardJoin.validate(seams: recipe.seams, edgeGain: recipe.edgeGain, duration: recipe.outDuration, windowDuration: windowDuration)
         for incoming in [true, false] {
             if let pause = incoming ? recipe.seams.in.microPause : recipe.seams.out.microPause {
                 guard let words = recipe.words, let expected = VoiceLabHardJoin.pause(words: words, duration: recipe.outDuration, incoming: incoming),
@@ -130,7 +132,7 @@ public enum VoiceLabRenderValidation {
               recipe.audio.stretch == 1 || abs(recipe.audio.stretch - recipe.outDuration / (recipe.audio.trimEnd - recipe.audio.trimStart)) <= 1e-6,
               recipe.audio.stretch == 1 || (0.92...1.08).contains((recipe.audio.trimEnd - recipe.audio.trimStart) / recipe.outDuration)
         else { throw VoiceLabProjectError.invalidRange }
-        if recipe.video.mode == .zoomCover {
+        if recipe.video.mode == .zoomCover || recipe.video.mode == .cut {
             let assetRate = Double(asset.sampleRate)
             let contentFrames = samples(recipe.audio.trimEnd, assetRate) - samples(recipe.audio.trimStart, assetRate)
             guard recipe.audio.stretch == 1, contentFrames > 0,
@@ -190,6 +192,8 @@ public enum VoiceLabRenderValidation {
         let video = recipe.video
         guard video.sourceStartSample == start, video.sourceEndSample == end, video.outputSamples == out else { throw VoiceLabProjectError.invalidRange }
         switch video.mode {
+        case .cut:
+            guard VoiceLabNaturalPacing.validCuts(video, sampleRate: rate) else { throw VoiceLabProjectError.invalidRange }
         case .source:
             guard video.retimeFactor == nil, video.zoom == nil, video.faceX == nil, video.faceY == nil,
                   video.assetId == nil, video.provider == nil, video.model == nil, video.requestId == nil,
@@ -214,6 +218,7 @@ public enum VoiceLabRenderValidation {
                   first >= 0, first <= start, last <= total, last >= end, last > first, video.syncMode == "remap",
                   video.retimeFactor == nil, video.zoom == nil, video.faceX == nil, video.faceY == nil else { throw VoiceLabProjectError.missingRenderPolicy }
         }
+        guard video.mode == .cut || video.cuts == nil else { throw VoiceLabProjectError.invalidSegment }
         let qa = recipe.qa
         let joinAllowed = qa.joinAdvisory.map { $0.validates(jump: qa.lufsJumpLu, createdAt: recipe.provenance.createdAt) }
             ?? (abs(qa.lufsJumpLu) <= 2)

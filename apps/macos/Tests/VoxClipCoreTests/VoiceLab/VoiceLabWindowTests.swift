@@ -347,7 +347,7 @@ struct VoiceLabWindowTests {
                                        words: [VoiceLabWord(text: "patch", start: 0.05, end: 0.35, synthetic: true)],
                                        envelope: AudioEnvelope(sampleRate: 24_000, levels: Array(repeating: 0.1, count: 50)))
             let result = try VoiceLabFitPlanner.plan(window: placed, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                                                     take: take, tokens: ["patch"], sourceSampleRate: rate)
+                                                     take: take, tokens: ["patch"], sourceSampleRate: rate, hardJoinSmoothing: false)
             let plan: VoiceLabFitPlan, duration: Double
             switch result {
             case let .exact(value): plan = value; duration = value.windowEnd - value.windowStart
@@ -405,7 +405,7 @@ struct VoiceLabWindowTests {
                                        words: [VoiceLabWord(text: "patch", start: 0.05, end: changed ? 0.56 : 0.45, synthetic: true)],
                                        envelope: AudioEnvelope(sampleRate: 24_000, levels: Array(repeating: 0.1, count: 70)))
             let result = try VoiceLabFitPlanner.plan(window: placed, incomingSilence: silence.incoming, outgoingSilence: silence.outgoing,
-                                                     take: take, tokens: ["patch"], sourceSampleRate: rate)
+                                                     take: take, tokens: ["patch"], sourceSampleRate: rate, hardJoinSmoothing: false)
             let fitted = result.plan
             let residual: Double
             switch result {
