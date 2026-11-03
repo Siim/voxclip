@@ -14,7 +14,7 @@ public sealed class VoiceLabNaturalPacingTests
         var root = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR") ?? throw new InvalidOperationException("VOXCLIP_SHARED_DIR required");
         using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "fixtures/voice-lab/natural-pacing-cases.json")));
         var fixture = document.RootElement;
-        Assert.Equal("voxclip-natural-pacing/1", fixture.GetProperty("schema").GetString());
+        Assert.Equal("voxclip-natural-pacing/2", fixture.GetProperty("schema").GetString());
         Assert.Equal(2, fixture.GetProperty("caseCount").GetInt32());
         var sampleRate = fixture.GetProperty("sourceSampleRate").GetInt32();
         foreach (var row in fixture.GetProperty("cases").EnumerateArray())
@@ -39,6 +39,53 @@ public sealed class VoiceLabNaturalPacingTests
     private static VoiceLabWindow Window(double seconds) => new("first", "last", [], [], 0, seconds, 0, (long)(seconds * 48_000),
         new(VoiceLabSeamKind.Hard, 0, 0, 240), new(VoiceLabSeamKind.Hard, seconds, (long)(seconds * 48_000), 240));
 
+    [Fact]
+    public void SharedQuietBoundaryCuts()
+    {
+        var root = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "fixtures/voice-lab/natural-pacing-cases.json")));
+        var fixture = document.RootElement;
+        Assert.Equal(13, fixture.GetProperty("cutCaseCount").GetInt32());
+        Assert.Equal(13, fixture.GetProperty("cutCases").GetArrayLength());
+        foreach (var row in fixture.GetProperty("cutCases").EnumerateArray())
+        {
+            var quiet = row.GetProperty("quietBlocks").EnumerateArray().Select(range => (Start: range[0].GetInt32(), End: range[1].GetInt32())).ToArray();
+            var levels = Enumerable.Range(0, 500).Select(block => quiet.Any(range => block >= range.Start && block < range.End) ? 0.005f : 1f).ToArray();
+            foreach (var entry in row.GetProperty("levels").EnumerateArray()) levels[entry[0].GetInt32()] = entry[1].GetSingle();
+            var items = row.GetProperty("speech").EnumerateArray().Select((item, index) => new TimedWord("speech-" + index, "speech",
+                item.GetProperty("kind").GetString() == "word" ? WordKind.Word : WordKind.UnlabeledSpeech,
+                item.GetProperty("start").GetDouble(), item.GetProperty("end").GetDouble(), null, null, null, null, TimingSource.Native)).ToArray();
+            var cuts = VoiceLabNaturalPacing.Cuts(row.GetProperty("windowStartSample").GetInt64(), row.GetProperty("windowEndSample").GetInt64(),
+                row.GetProperty("outputSamples").GetInt64(), fixture.GetProperty("sourceSampleRate").GetInt32(), new(48000, 0.01, levels), items);
+            var expected = row.GetProperty("expected").EnumerateArray().Select(span => new VoiceLabVideoCut(span[0].GetInt64(), span[1].GetInt64())).ToArray();
+            Assert.True(expected.SequenceEqual(cuts), row.GetProperty("id").GetString());
+        }
+    }
+
+    [Fact]
+    public void SharedTaggedPauseEdits()
+    {
+        var root = Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR")!;
+        using var document = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "fixtures/voice-lab/natural-pacing-cases.json")));
+        using var catalog = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "data/voice-audio-tags.json")));
+        var fixture = document.RootElement;
+        Assert.Equal(3, fixture.GetProperty("pauseCaseCount").GetInt32());
+        VoiceLabWord[] words = [new("hello,", 0, 0.3, true), new("world,", 0.6, 0.9, true), new("again", 1.2, 1.5, true)];
+        var levels = Enumerable.Range(0, 150).Select(block => block is >= 30 and < 60 or >= 90 and < 120 ? 0f : 1f).ToArray();
+        var take = new VoiceLabFitTake(72000, 48000, 0, 1.5, words, new(48000, 0.01, levels));
+        foreach (var row in fixture.GetProperty("pauseCases").EnumerateArray())
+            foreach (var tag in catalog.RootElement.GetProperty("tags").EnumerateArray())
+            {
+                var fit = VoiceLabFitPlanner.Plan(Window(row.GetProperty("windowSeconds").GetDouble()), null, null, take,
+                    words.Select(word => word.Text).ToArray(), 48000, false, new(new([0.1, 0.5, 0.7]), new([])),
+                    [new(row.GetProperty("beforeToken").GetInt32(), tag.GetProperty("tag").GetString()!)]);
+                var edit = Assert.Single(fit.Plan.Edits);
+                Assert.Equal(row.GetProperty("kind").GetString() == "insert" ? VoiceLabFitEditKind.Insert : VoiceLabFitEditKind.Remove, edit.Kind);
+                Assert.True(row.GetProperty("editedGap").GetInt32() == 1 ? edit.Start < 28800 : edit.Start >= 43200,
+                    row.GetProperty("id").GetString() + ": " + tag.GetProperty("tag").GetString());
+            }
+    }
+
     [Theory]
     [InlineData(4.1, 5.4)]
     [InlineData(1.3, 2.2)]
@@ -48,6 +95,46 @@ public sealed class VoiceLabNaturalPacingTests
         var timing = VoiceLabPaceMatching.Match(seconds, Window(slot), null, null, 48_000, hardJoinSmoothing: true);
         Assert.Equal(1, timing.Pace);
         Assert.DoesNotContain("pace", timing.Copy);
+    }
+
+    [Fact]
+    public void CutReadyFitUsesSpokenTakeWithoutPartialPauseGrowth()
+    {
+        VoiceLabWord[] words = [new("hello,", 0, 0.3, true), new("world", 0.5, 1, true)];
+        var take = new VoiceLabFitTake(48000, 48000, 0, 1, words,
+            new(48000, 0.01, Enumerable.Range(0, 100).Select(block => block is >= 30 and < 50 ? 0f : 1f).ToArray()));
+        var profile = new VoiceLabPauseProfile(new([0.1, 0.7, 0.8]), new([]));
+        var source = new AudioEnvelope(48000, 0.01, Enumerable.Range(0, 240).Select(block =>
+            block is >= 50 and < 56 or >= 190 and < 196 ? 0.001f : 1f).ToArray());
+        var grown = VoiceLabFitPlanner.Plan(Window(2.4), null, null, take, words.Select(word => word.Text).ToArray(), 48000, false, profile);
+        Assert.Equal(28800, Assert.Single(grown.Plan.Edits).Count);
+        var fit = VoiceLabNaturalPacing.Fit(Window(2.4), null, null, take, 48000, false, profile, [], source, []);
+        Assert.Empty(fit.Plan.Edits);
+        Assert.Equal(48000, fit.Plan.OutputFrames);
+        Assert.Equal(words, fit.Plan.Words);
+        Assert.Equal(new VoiceLabVideoCut(24000, 91200), Assert.Single(fit.Plan.VideoCuts));
+        var paidRateTake = take with { AssetSampleRate = 24000, AssetFrames = 24000, Envelope = new(24000, 0.01, take.Envelope.Rms) };
+        var paidRateFit = VoiceLabNaturalPacing.Fit(Window(2.4), null, null, paidRateTake, 48000, false, profile, [], source, []);
+        Assert.Equal(24000, paidRateFit.Plan.OutputFrames);
+        Assert.Equal(fit.Plan.VideoCuts, paidRateFit.Plan.VideoCuts);
+        var noCut = VoiceLabNaturalPacing.Fit(Window(2.4), null, null, take, 48000, false, profile, [],
+            new(48000, 0.01, Enumerable.Repeat(1f, 240).ToArray()), []);
+        Assert.Equal(grown.Plan.OutputFrames, noCut.Plan.OutputFrames);
+        Assert.Equal(grown.Plan.Edits, noCut.Plan.Edits);
+    }
+
+    [Fact]
+    public void PauseTagsRequireACapableModelAndWhitelistedBoundary()
+    {
+        VoiceLabAudioTag[] tags = [new(1, "long pause"), new(1, "not allowed"), new(3, "laughs")];
+        Assert.Empty(VoiceLabNaturalPacing.PauseTags(tags, "eleven_multilingual_v2", 2));
+        Assert.Equal(tags.Take(1), VoiceLabNaturalPacing.PauseTags(tags, "eleven_v3", 2));
+        var mutable = new List<VoiceLabAudioTag>(tags);
+        var input = new VoiceLabTakeInput("hello world", "eleven_v3", "record", "en", 1, "key", new float[48000], 48000,
+            [], new HashSet<string>(), Window(1), null, null, false, true) { AudioTags = mutable };
+        var snapshot = input.Snapshot();
+        mutable.Clear();
+        Assert.Equal(tags, snapshot.AudioTags);
     }
 
     [Fact]
@@ -127,7 +214,7 @@ public sealed class VoiceLabNaturalPacingTests
         Assert.Equal(3, timeline.SourceTime(1));
         Assert.Equal(4, timeline.SourceTime(2));
         var two = VoiceLabNaturalPacing.Cuts(0, 240_000, 144_000, 48_000, Envelope((50, 150), (250, 350)), []);
-        Assert.Equal(2, two.Count);
+        Assert.Equal(new VoiceLabVideoCut(24_000, 120_000), Assert.Single(two));
         Assert.Equal(96_000, two.Sum(cut => cut.EndSample - cut.StartSample));
         Assert.Empty(VoiceLabNaturalPacing.Cuts(0, 240_000, 24_000, 48_000, Envelope((0, 500)), []));
         var video = new VoiceLabVideoRecipe(VoiceLabVideoMode.Cut, 0, 240_000, 144_000, null, 1.06, 0.5, 0.5,

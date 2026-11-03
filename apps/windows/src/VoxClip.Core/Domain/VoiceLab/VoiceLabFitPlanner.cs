@@ -71,7 +71,7 @@ public static class VoiceLabFitPlanner
     /// word.</summary>
     public static VoiceLabFitResult Plan(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
         VoiceLabFitTake take, IReadOnlyList<string> tokens, double sourceSampleRate, bool hardJoinSmoothing,
-        VoiceLabPauseProfile? pauseProfile = null)
+        VoiceLabPauseProfile? pauseProfile = null, IReadOnlyList<VoiceLabAudioTag>? audioTags = null, bool allowPauseGrowth = true)
     {
         var rate = sourceSampleRate;
         VoiceLabSeamKind[] kinds = [window.LeftSeam.Kind, window.RightSeam.Kind];
@@ -103,8 +103,11 @@ public static class VoiceLabFitPlanner
         var rho = natural - target;
         var shorten = rho > 0;
         var lengths = pauses.Select(pause => pause.Length).ToArray();
-        var rooms = pauseProfile is null ? RoomsOf(pauses, shorten, assetRate, fade) : pauses.Select(pause =>
+        var legacyRooms = pauseProfile is null ? RoomsOf(pauses, shorten, assetRate, fade) : null;
+        var rooms = pauses.Select((pause, index) =>
         {
+            if (audioTags?.Any(tag => tag.BeforeToken == pause.Word + 1) == true || !shorten && !allowPauseGrowth) return 0L;
+            if (pauseProfile is null) return legacyRooms![index];
             var distribution = pauseProfile.Distribution(tokens[pause.Word]);
             var boundary = VoiceLabNaturalPacing.ClauseBoundary(tokens[pause.Word], tokens[pause.Word + 1]);
             var floor = VoiceLabGeometry.Samples(distribution.P25, assetRate);
@@ -152,7 +155,7 @@ public static class VoiceLabFitPlanner
         {
             var gapPad = VoiceLabGeometry.Samples(VoiceLabPatchConstants.SEAM_PAD_MAX, assetRate);
             var hardPad = hardJoinSmoothing ? 0 : VoiceLabGeometry.Samples(VoiceLabPatchConstants.HARD_SEAM_PAD_MAX, assetRate);
-            long[] caps = pauseProfile is not null ? [0, 0] : [kinds[0] == VoiceLabSeamKind.Hard ? hardPad : gapPad, kinds[1] == VoiceLabSeamKind.Hard ? hardPad : gapPad];
+            long[] caps = pauseProfile is not null || !allowPauseGrowth ? [0, 0] : [kinds[0] == VoiceLabSeamKind.Hard ? hardPad : gapPad, kinds[1] == VoiceLabSeamKind.Hard ? hardPad : gapPad];
             var extra = Split(remaining, caps);
             pad = [pad[0] + extra[0], pad[1] + extra[1]];
             exact = extra[0] + extra[1] == remaining;

@@ -10,17 +10,19 @@ public static class VoiceLabPaceMatching
         IReadOnlyList<TimedWord>? sourceItems = null, AudioEnvelope? sourceEnvelope = null,
         IReadOnlyList<VoiceLabAudioTag>? audioTags = null, string modelId = "") =>
         Match(VoiceLabRewriteFit.Estimate(text, rate) + VoiceLabAudioTags.Allowance(audioTags ?? [], text, modelId), window, incomingSilence, outgoingSilence, sourceSampleRate,
-            supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing, sourceItems: sourceItems, sourceEnvelope: sourceEnvelope, generatedText: text);
+            supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing, sourceItems: sourceItems, sourceEnvelope: sourceEnvelope, generatedText: text,
+            audioTags: VoiceLabNaturalPacing.PauseTags(audioTags ?? [], modelId, Domain.Editing.EditingAlgorithms.SplitWords(text).Count));
 
     public static VoiceLabRewriteFitResult Match(double seconds, VoiceLabWindow window,
         double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool hardJoinSmoothing, double oldPace = 1, bool supportsPace = true,
-        IReadOnlyList<TimedWord>? sourceItems = null, AudioEnvelope? sourceEnvelope = null, string? generatedText = null, VoiceLabPauseProfile? pauseProfile = null)
+        IReadOnlyList<TimedWord>? sourceItems = null, AudioEnvelope? sourceEnvelope = null, string? generatedText = null, VoiceLabPauseProfile? pauseProfile = null,
+        IReadOnlyList<VoiceLabAudioTag>? audioTags = null)
     {
         if (!double.IsFinite(seconds) || seconds <= 0 || !VoiceLabPace.IsValid(oldPace))
             throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
         var profile = pauseProfile ?? (sourceEnvelope is null ? null : VoiceLabPauseProfile.Measure(sourceItems ?? [], sourceEnvelope, 0, double.MaxValue));
-        VoiceLabFitResult Fit(double duration) => VoiceLabRewriteFit.Hypothetical(window, incomingSilence, outgoingSilence, duration, sourceSampleRate,
-            hardJoinSmoothing, generatedText, profile);
+        VoiceLabFitResult Fit(double duration, bool allowPauseGrowth = true) => VoiceLabRewriteFit.Hypothetical(window, incomingSilence, outgoingSilence, duration, sourceSampleRate,
+            hardJoinSmoothing, generatedText, profile, audioTags, allowPauseGrowth);
         VoiceLabFitResult Bounds(double duration) => VoiceLabRewriteFit.Hypothetical(window, incomingSilence, outgoingSilence, duration, sourceSampleRate, hardJoinSmoothing);
         var probeSeconds = 2 * (window.End - window.Start + (incomingSilence ?? 0) + (outgoingSilence ?? 0) + 1);
         var high = Bounds(probeSeconds).Plan;
@@ -52,8 +54,9 @@ public static class VoiceLabPaceMatching
             chosen = exact;
         var predicted = natural / chosen;
         var fit = Fit(predicted);
-        var cuts = sourceEnvelope is null ? [] : VoiceLabNaturalPacing.Cuts(fit.Plan.WindowStartSample, fit.Plan.WindowEndSample,
-            fit.Plan.OutputFrames, sourceSampleRate, sourceEnvelope, sourceItems ?? []);
+        var cutPlan = Fit(predicted, false).Plan;
+        var cuts = sourceEnvelope is null ? [] : VoiceLabNaturalPacing.Cuts(cutPlan.WindowStartSample, cutPlan.WindowEndSample,
+            cutPlan.OutputFrames, sourceSampleRate, sourceEnvelope, sourceItems ?? []);
         return new(predicted, source, VoiceLabRewriteFit.AllowsVideo(fit, sourceSampleRate, sourceSampleRate) || cuts.Count > 0,
             chosen, fit is not VoiceLabFitResult.Exact && cuts.Count > 0, Math.Max(0, retimeUpper));
     }

@@ -8,23 +8,26 @@ public enum VoiceLabPaceMatching {
         try match(seconds: VoiceLabPhraseTiming.estimate(text: text, rate: rate) + VoiceLabAudioTags.allowance(audioTags, text: text, modelID: modelID), window: window,
             incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
             sourceSampleRate: sourceSampleRate, supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing,
-            sourceItems: sourceItems, sourceEnvelope: sourceEnvelope, generatedText: text)
+            sourceItems: sourceItems, sourceEnvelope: sourceEnvelope, generatedText: text,
+            audioTags: VoiceLabAudioTags.recorded(VoiceLabAudioTags.validated(audioTags, text: text), modelID: modelID) ?? [])
     }
 
     public static func match(seconds: Double, oldPace: Double = 1, window: VoiceLabWindow,
                              incomingSilence: Double?, outgoingSilence: Double?, sourceSampleRate: Int,
                              supportsPace: Bool = true, hardJoinSmoothing: Bool,
                              sourceItems: [TimedWord] = [], sourceEnvelope: AudioEnvelope? = nil,
-                             generatedText: String? = nil, pauseProfile: VoiceLabPauseProfile? = nil) throws -> VoiceLabPhraseTiming {
+                             generatedText: String? = nil, pauseProfile: VoiceLabPauseProfile? = nil,
+                             audioTags: [VoiceLabAudioTag] = []) throws -> VoiceLabPhraseTiming {
         guard seconds.isFinite, seconds > 0, VoiceLabPace.isValid(oldPace) else {
             throw VoiceLabLengthBudgetError.invalidInput
         }
         let rate = Double(sourceSampleRate)
         let profile = pauseProfile ?? sourceEnvelope.map { VoiceLabPauseProfile.measure(items: sourceItems, envelope: $0, start: 0, end: .greatestFiniteMagnitude) }
-        func fit(_ duration: Double) throws -> VoiceLabFitResult {
+        func fit(_ duration: Double, allowPauseGrowth: Bool = true) throws -> VoiceLabFitResult {
             try VoiceLabPhraseTiming.preview(seconds: duration, window: window,
                 incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, sourceSampleRate: sourceSampleRate,
-                hardJoinSmoothing: hardJoinSmoothing, generatedText: generatedText, pauseProfile: profile)
+                hardJoinSmoothing: hardJoinSmoothing, generatedText: generatedText, pauseProfile: profile,
+                audioTags: audioTags, allowPauseGrowth: allowPauseGrowth)
         }
         func options(_ duration: Double) throws -> VoiceLabVideoDurationOptions {
             VoiceLabVideoDurationOptions(fit: try fit(duration), sourceSampleRate: sourceSampleRate, assetSampleRate: sourceSampleRate)
@@ -66,7 +69,7 @@ public enum VoiceLabPaceMatching {
         }
         let predicted = natural / chosen
         let gate = try options(predicted)
-        let preview = try fit(predicted).plan
+        let preview = try fit(predicted, allowPauseGrowth: false).plan
         let cuts = sourceEnvelope.map {
             VoiceLabNaturalPacing.cuts(windowStartSample: preview.windowStartSample, windowEndSample: preview.windowEndSample,
                 outputSamples: preview.outputFrames, sampleRate: sourceSampleRate, envelope: $0, items: sourceItems)

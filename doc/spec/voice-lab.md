@@ -1368,9 +1368,12 @@ use the existing fit-edit mechanism with 25 ms equal-power out and 20 ms in fade
 on the constant source room-tone bed. No speech is stretched.
 
 If natural pauses cannot fill a shorter take's window, offer **Cut the video to this
-take** only when one quiet source span can hold the excess (two only if one cannot).
-Cuts cannot intersect transcript words or the first/last 0.3 s. Choose the quietest
-span by squared envelope energy, tie-breaking by earliest source time. Audio plays
+take** when a source span has quiet boundaries (two spans only if no single span works).
+Both boundaries must be in wordless quiet runs of at least 40 ms, inside the first/last
+0.3 s guards. The removed interior may contain speech: its audio is replaced by the take.
+Step start candidates by envelope block; minimize the sum of the two boundary blocks'
+squared levels, tie-breaking by earliest start. A span wholly inside one quiet run
+remains valid, including its terminal boundary. Audio plays
 continuously; after the first hard video cut, use a 1.06× centered punch-in.
 The row reads `≈ 3.1 s · slot 3.9 s · fits`, or `≈ 3.1 s · slot 4.9 s · fits with a
 video cut`; include `at 1.05× pace` only away from 1.00. Slot means the actual
@@ -1445,8 +1448,8 @@ Let `D = duration(trimmed TTS)` (§8.7 step 1). At a take edge (seam kind `none`
 2. **Borrow pause time.** Whatever step 1 cannot place goes to the seams, in the same plan:
    - If the TTS is longer, widen `W` into the neighbouring gaps, keeping at least `PAUSE_SLACK_KEEP` of silence next to each kept word.
    - If the TTS is shorter, new profiled plans do not add arbitrary seam padding beyond their hard-side reserve and retained source-edge silence. Whatever the natural pause capacity cannot hold becomes a changed duration (step 3). Profile-less compatibility vectors retain `SEAM_PAD_MAX` / `HARD_SEAM_PAD_MAX` padding.
-3. **Choose video duration inline.** Partial silence edits stay and only the residual changes output length: `outDuration = duration(W) + residualSeconds`, with fit factor 1. Offer **Keep source video duration**, an eligible **Cut the video to this take**, and **Match video to this take's duration** (ADR-R36/R38). None is preselected or reused from another take. Keep source and Match video explain their unavailable state; show Cut only when a safe source span exists and its renderer is ready. Do not silently fall back after a failure.
-   - **Cut (`cut`)** removes the exact residual from one quiet source span (two only when one cannot fit), clear of transcript speech and the first/last 0.3 s. Take audio stays continuous; source video has a centered 1.06× punch-in after the first jump. Windows validates and preserves this recipe but refuses rendering until its twin lands.
+3. **Choose video duration inline.** `outDuration = duration(W) + residualSeconds`, with fit factor 1. Offer **Keep source video duration**, an eligible **Cut the video to this take**, and **Match video to this take's duration** (ADR-R36/R38). None is preselected or reused from another take. Keep source and Match video explain their unavailable state; show Cut only when safe source boundaries exist and its renderer is ready. Do not silently fall back after a failure.
+   - **Cut (`cut`)** removes `windowSamples − spokenTakeSamples` from one source span with quiet endpoints (two only when no single span works). Each endpoint's quiet run is at least 40 ms, below `VOICED_FRAME_LEVEL`, and has no word or unlabeled-speech overlap. The interior may contain speech; both endpoints keep the 0.3 s edge guards. Minimize summed boundary-block squared levels; ties use the earliest start. Take audio stays continuous at the planner-selected provider pace; do not grow pauses to reduce the cut. Keep mandatory seam reserves. An exact natural-pause fit still keeps source duration. For a non-exact fit with a valid cut, discard partial pause growth and use the as-spoken plan for both changed-duration choices; when no cut exists, retain the original partial-fit plan. Source video has a centered 1.06× punch-in after the first jump. Windows validates and preserves this recipe but refuses rendering until its twin lands.
    - **Retimed source video (`zoomCover`)**: a jump cut to 1.12× around the face during the replaced range, with source frames retimed by `duration(W) / outDuration`. Explain the speed change and slight crop before selection. Only allowed when that factor is in `RETIME_VIDEO_OK`.
      - Face centre: Vision `VNDetectFaceRectanglesRequest` on macOS, `Windows.Media.FaceAnalysis.FaceDetector` on Windows, sampled every 0.5 s and averaged.
      - With no face, use the frame centre.
@@ -1494,6 +1497,13 @@ handles. Source room-tone insert edits may exceed the original quiet run length;
 zero-filled intermediate PCM receives the source bed, not a repeated speech tail.
 No arbitrary extra seam padding is used with a profile. A profile is a snapshot
 of the complete clip context, not just the replaced words.
+
+**Tagged gaps.** Callers explicitly pass the take's validated audio tags only for a
+tag-capable model. A gap before token `i` is protected when any whitelisted tag has
+`beforeToken = i`: neither shortening nor growth may edit it, regardless of tag
+kind. Unsupported models pass no tags because they did not speak those expressions.
+The paid-input snapshot preserves this list. Advisory pre-pay fitting uses the same
+exclusions. Untagged and profile-less callers retain their existing defaults.
 
 
 `VoiceLabFitPlanner` in each Core (`Domain/VoiceLab/`) is free, pure and deterministic, and gives the same result on both platforms. Its shared vectors are `shared/fixtures/voice-lab/fit-cases.json`, written by `tools/fixtures/voice-lab/generate.py` through its standard-library reference planner `tools/fixtures/voice-lab/generate_fit.py`.
@@ -2386,3 +2396,16 @@ splits only the video track around cuts; generated audio remains continuous.
 Timeline seek/source mappings collapse cut spans and skip them in reverse.
 Windows decodes, validates and preserves this recipe, but explicitly refuses its
 render until the native changed-duration/cut twin lands. No migration guesses cuts.
+
+#### ADR-R38 amendment: quiet endpoints and deliberate expressions (3 November 2026)
+
+This refines ADR-R38's former whole-quiet-span restriction without changing the recipe
+or schema. A vlog jump cut may remove source speech because replacement audio covers
+the window; the two surviving visual boundaries must still be quiet. Search single
+spans first, then ordered disjoint two-span pairs. Two-span ties minimize all four
+boundary powers, then first start, first end and second start. The existing `validCuts`
+contract, 1.06× punch-in and speech/voice/clipping/consent gates are unchanged.
+`natural-pacing-cases.json` is now `voxclip-natural-pacing/2`: the two original hard-window
+vectors are unchanged, with 13 boundary-cut and three tagged-pause vectors added.
+The formerly two-span synthetic 0.50–1.50 / 2.50–3.50 s example now selects a single
+0.50–2.50 s cut; the removed speech is deliberate, not an unsafe boundary.

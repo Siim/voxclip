@@ -6921,7 +6921,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner :: method private Touches
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner :: method private Validate(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabWord>,double,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner :: method private Validate(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,VoxClip.Core.Domain.VoiceLab.VoiceLabSeamKind[],System.Nullable`1<double>[],VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner :: method private WordSpans(VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake,System.Collections.Generic.IReadOnlyList`1<string>,long,long,double)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner :: method public Plan(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake,System.Collections.Generic.IReadOnlyList`1<string>,double,bool,VoxClip.Core.Domain.VoiceLab.VoiceLabPauseProfile)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner :: method public Plan(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake,System.Collections.Generic.IReadOnlyList`1<string>,double,bool,VoxClip.Core.Domain.VoiceLab.VoiceLabPauseProfile,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner+Pause :: method internal get_Length()
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner+Pause :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner+Pause)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabFitPlanner+Pause :: method private PrintMembers(System.Text.StringBuilder)
@@ -7366,11 +7366,14 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap :: method public set_Limi
 member VoxClip.Core.Domain.VoiceLab.VoiceLabMonthlyCap :: method public set_Spent(System.Decimal)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public CUT_EDGE_GUARD
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public CUT_PUNCH_IN
+member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public CUT_QUIET_RUN
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public NATURAL_PACE_MAX
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: field public NATURAL_PACE_MIN
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method public ClauseBoundary(string,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method public Cuts(long,long,long,int,VoxClip.Core.Domain.Transcript.AudioEnvelope,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method public EndsSentence(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method public Fit(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,VoxClip.Core.Domain.VoiceLab.VoiceLabFitTake,int,bool,VoxClip.Core.Domain.VoiceLab.VoiceLabPauseProfile,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,VoxClip.Core.Domain.Transcript.AudioEnvelope,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method public PauseTags(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,string,int)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabNaturalPacing :: method public ValidCuts(VoxClip.Core.Domain.VoiceLab.VoiceLabVideoRecipe,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOperation :: field public CreateClone
 member VoxClip.Core.Domain.VoiceLab.VoiceLabOperation :: field public DeleteClone
@@ -7484,7 +7487,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabPace :: field public Minimum
 member VoxClip.Core.Domain.VoiceLab.VoiceLabPace :: method internal Rounded(System.Nullable`1<double>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabPace :: method public Clamp(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabPace :: method public IsValid(double)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabPaceMatching :: method public Match(double,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,int,bool,double,bool,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,VoxClip.Core.Domain.Transcript.AudioEnvelope,string,VoxClip.Core.Domain.VoiceLab.VoiceLabPauseProfile)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabPaceMatching :: method public Match(double,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,int,bool,double,bool,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,VoxClip.Core.Domain.Transcript.AudioEnvelope,string,VoxClip.Core.Domain.VoiceLab.VoiceLabPauseProfile,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabPaceMatching :: method public Measure(string,double,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,int,bool,bool,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>,VoxClip.Core.Domain.Transcript.AudioEnvelope,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,string)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabPatchBudget :: field public DisabledCopy
 member VoxClip.Core.Domain.VoiceLab.VoiceLabPatchBudget :: method public Evaluate(VoxClip.Core.Domain.VoiceLab.VoiceLabWordDiffResult,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
@@ -8155,7 +8158,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public TooLongCo
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public TooShortCopy
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public AllowsVideo(VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult,double,double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public Estimate(string,double)
-member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public Hypothetical(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,double,double,bool,string,VoxClip.Core.Domain.VoiceLab.VoiceLabPauseProfile)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public Hypothetical(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,double,double,bool,string,VoxClip.Core.Domain.VoiceLab.VoiceLabPauseProfile,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceLabAudioTag>,bool)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public SpeakingRate(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method private PrintMembers(System.Text.StringBuilder)
