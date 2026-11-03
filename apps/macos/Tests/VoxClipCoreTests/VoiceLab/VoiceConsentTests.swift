@@ -620,9 +620,10 @@ struct VoiceConsentTests {
         #expect(quote.voiceID == record.voiceId)
         if mode.hasPrefix("wrong-voice-") {
             var otherJSON = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
-            otherJSON["id"] = UUID().uuidString.lowercased()
+            otherJSON["recordId"] = UUID().uuidString.lowercased()
             otherJSON["voiceId"] = "otherOwnVoice"
             let other = try JSONDecoder().decode(VoiceConsentRecord.self, from: JSONSerialization.data(withJSONObject: otherJSON))
+            #expect(other.id != record.id && other.voiceId != record.voiceId)
             try await store.saveStatement(wav, recordID: other.id)
             try await store.save(other)
             let speech = [Float](repeating: 0.1, count: 160_000)

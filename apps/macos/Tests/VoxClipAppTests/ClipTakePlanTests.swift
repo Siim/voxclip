@@ -761,7 +761,7 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     }
 
     @Test(arguments: zip([false, false, true, true], [false, true, false, true]))
-    func acceptedMalformedOrLostResponsesCountWithoutReceiptOrAutomaticResend(qa: Bool, lost: Bool) async throws {
+    func acceptedMalformedOrLostResponsesRetainAvailableReceiptsWithoutAutomaticResend(qa: Bool, lost: Bool) async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         ClipTakeHTTP.state.withLock {
             $0.malformedSynthesis = !qa && !lost; $0.malformedQA = qa && !lost
@@ -773,7 +773,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await fixture.plan.start(approved: true)
         let rows = fixture.plan.phrases[0].takes.map(\.row)
         #expect(rows.count == attempts && rows.allSatisfy { !$0.selectable && $0.qaReceipt == nil })
-        #expect(rows.allSatisfy { ($0.receipt != nil) == (qa && !lost) && $0.acceptedRequestIDs.count == (qa ? 2 : 1) })
+        #expect(rows.allSatisfy { ($0.receipt != nil) == !lost && $0.acceptedRequestIDs.count == (qa ? 2 : 1) })
+        if !qa && !lost {
+            #expect(rows.allSatisfy { $0.receipt != nil && $0.receipt == $0.generated?.receipt })
+        }
         let accepted = Set(rows.flatMap(\.acceptedRequestIDs))
         let expectedIDs = Set(quotes.prefix(attempts).flatMap { qa ? [$0.synthesis.requestID, $0.qa.requestID] : [$0.synthesis.requestID] })
         #expect(accepted == expectedIDs)

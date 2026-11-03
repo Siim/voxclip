@@ -1284,9 +1284,9 @@ struct VoiceLabTakeRunTests {
         await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.approve(quote) }
         await #expect(throws: VoiceLabError.consentRequired) { try await fixture.run.execute(quote, approved: true) }
     }
-    /// A request the provider accepted counts as sent even when its reply then fails and leaves no receipt: the spend
-    /// ledger recorded it on the 2xx status line, and the batch's progress agrees with the ledger.
-    @Test(arguments: [false, true]) func anAcceptedRequestWithoutAReceiptCountsAsSent(qa: Bool) async throws {
+    /// Accepted requests count as sent even when metadata or QA fails. Available synthesis receipts survive,
+    /// while missing QA receipts still agree with the spend ledger and batch progress.
+    @Test(arguments: [false, true]) func acceptedFailuresCountAsSentAndRetainAvailableReceipts(qa: Bool) async throws {
         let fixture = try await fixture { $0.missingAlignment = !qa; $0.malformedQA = qa }
         defer { try? FileManager.default.removeItem(at: fixture.root) }
         let runs = VoiceLabTakeBatchRun(runs: [fixture.run])
@@ -1302,7 +1302,8 @@ struct VoiceLabTakeRunTests {
             #expect(progress.sent == Set(takes.flatMap { [$0.synthesis.requestID, $0.qa.requestID] }))
             #expect(fixture.http.value.withLock { $0.seeds.count == 3 && $0.qa == 3 })
         } else {
-            #expect(result.end == .fatal && result.rows.count == 1 && result.rows.allSatisfy { $0.receipt == nil })
+            #expect(result.end == .fatal && result.rows.count == 1)
+            #expect(result.rows.allSatisfy { $0.receipt != nil && $0.receipt == $0.generated?.receipt })
             #expect(progress.sent == [takes[0].synthesis.requestID] && progress.sentEstimate.units == 1)
             #expect(fixture.http.value.withLock { $0.seeds.count == 1 && $0.qa == 0 })
         }
