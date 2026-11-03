@@ -88,7 +88,9 @@ enum TakeFailurePresentation {
 
     static func leftOut(_ row: VoiceLabTakeRow, number: Int) -> String? {
         if row.voiceCheck == .waiting { return "Take \(number) · waiting for the voice check" }
-        return reason(for: row).map { "Take \(number): " + $0 + " Left out." }
+        // A take that failed before the checks still has its paid audio, which plays unchecked.
+        let name = row.audio == nil && row.generated != nil ? "Take \(number) · not checked: " : "Take \(number): "
+        return reason(for: row).map { name + $0 + " Left out." }
     }
 }
 
@@ -277,7 +279,7 @@ extension ClipTakePlan.Phrase {
             ForEach(phrase.takes.filter { !$0.row.selectable }) { take in
                 if let copy = TakeFailurePresentation.leftOut(take.row, number: take.number) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        if take.row.audio != nil, !session.takesBusy {
+                        if take.playable, !session.takesBusy {
                             let playing = plan.audition.isPlaying && plan.audition.takeId == take.id
                             Button {
                                 session.focusedTakePhrase = phrase.id
@@ -286,8 +288,9 @@ extension ClipTakePlan.Phrase {
                                 Image(systemName: playing ? "pause.fill" : "play.fill").frame(width: 20, height: 20)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number)")
-                            .help("Listen to this take. It stays left out.")
+                            .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number)\(take.notChecked ? ", not checked" : "")")
+                            .help(take.notChecked ? "Listen to this take as ElevenLabs returned it. It was not checked and stays left out."
+                                                  : "Listen to this take. It stays left out.")
                         }
                         Text(copy).font(VCType.small.font()).foregroundStyle(DesignValues.color("status.warning"))
                     }

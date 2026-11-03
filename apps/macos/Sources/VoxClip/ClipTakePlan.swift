@@ -18,6 +18,10 @@ import VoxClipMedia
         var id: UUID { row.id }
         var length: Double? { row.audio.map { Double($0.fit.plan.outputFrames) / Double($0.sampleRate) } }
         var fits: Bool { row.selectable && row.fits }
+        /// Paid audio that failed before the checks: no checked mix, so it plays as the provider returned it.
+        var notChecked: Bool { row.audio == nil && row.generated != nil }
+        /// Every take with audio can be heard, checked or not.
+        var playable: Bool { row.audio != nil || notChecked }
     }
     struct Phrase: Identifiable {
         let id: Int
@@ -64,6 +68,8 @@ import VoxClipMedia
         var invalidate: @MainActor () async -> Void
         var publish: @MainActor (Int, VoiceLabTakeRow, VoiceLabTakeInput, Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord)
         var scratch: @MainActor (Int, UUID) async -> VoiceLabTakeScratch?
+        /// The stored paid audio of a take with no checked mix (it failed before the checks).
+        var paidAudio: @MainActor (Int, UUID) async -> URL?
         var retire: @MainActor (Int, UUID) async -> Void
 
         init(runs: [VoiceLabTakeRun]) {
@@ -86,6 +92,7 @@ import VoxClipMedia
             }
             publish = { phrase, row, input, date in try await runs[phrase].publishForAcceptance(row, input: input, at: date) }
             scratch = { phrase, take in await runs[phrase].scratch(for: take) }
+            paidAudio = { phrase, take in await runs[phrase].paidAudioURL(for: take) }
             retire = { phrase, take in await runs[phrase].reject(take) }
         }
     }
@@ -558,10 +565,22 @@ import VoxClipMedia
     }
 
     /// Plays one take's checked mix, failed or not, without selecting it: a failed take stays left out, but the user can
-    /// hear what the checks refused. Toggles like `play(phrase:)`. A take whose audio was never staged has nothing to play.
+    /// hear what the checks refused. Toggles like `play(phrase:)`. A take that failed before the checks has no mix, so
+    /// its paid audio plays as the provider returned it (`Phrase.Take.notChecked`).
     func play(take id: UUID, phrase: Int) async {
         guard stillCurrent, !generating, !preparing, !publishing, phrases.indices.contains(phrase),
-              phrases[phrase].takes.contains(where: { $0.id == id && $0.row.audio != nil }) else { return }
+              let take = phrases[phrase].takes.first(where: { $0.id == id }), take.playable else { return }
+        if take.notChecked {
+            let wasPlaying = audition.isPlaying && audition.takeId == id
+            stopAudition()
+            guard !wasPlaying else { return }
+            let turn = auditionTurn
+            guard let url = await backend?.paidAudio(phrase, id), turn == auditionTurn, stillCurrent,
+                  phrases[phrase].takes.contains(where: { $0.id == id }), !generating, !preparing, !publishing else { return }
+            do { try audition.play(paidAudio: url, takeId: id, selectionId: String(phrase)) }
+            catch { problem = Self.copy(error) }
+            return
+        }
         let wasPlaying = audition.isPlaying && audition.takeId == id
         stopAudition()
         guard !wasPlaying else { return }

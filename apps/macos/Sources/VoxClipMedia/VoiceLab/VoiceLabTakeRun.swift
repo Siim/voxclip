@@ -70,6 +70,11 @@ public actor VoiceLabTakeRun {
     }
     public func scratch(for takeId: UUID) -> VoiceLabTakeScratch? { scratches[takeId] }
     public func paidAsset(for takeId: UUID) -> VoiceLabAsset? { paidAssets[takeId] }
+    /// Where the paid audio of a take this run made is stored, as the provider returned it, so a take that failed before
+    /// the checks can still be heard. Nil once the run retired the take.
+    public func paidAudioURL(for takeId: UUID) -> URL? {
+        paidAssets[takeId].map { storage.paidRoot.appendingPathComponent($0.file, isDirectory: false) }
+    }
     public func publishForAcceptance(_ row: VoiceLabTakeRow, input: VoiceLabTakeInput, at date: Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord) {
         let version = revision
         guard row.selectable, let scratch = scratches[row.id], scratch.isValid,

@@ -43,6 +43,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var malformedQA = false
         var failOwner = false
         var failGenerated = false
+        /// Synthesis returns silence, which fails the level step after the paid audio is stored, before any check.
+        var silentSynthesis = false
         var amplitudeVariance = 0.0
         var echoQA = false
         var gets = 0
@@ -77,11 +79,12 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                     state.texts.append(text); state.seeds.append(seed); state.models.append(model); return state.duration
                 }
                 let variance = Self.state.withLock { $0.amplitudeVariance }
+                let silent = Self.state.withLock { $0.silentSynthesis }
                 var pcm = Data()
                 for index in 0..<Int(duration * 24_000) {
                     let seconds = Double(index) / 24_000
                     let amplitude = 1 + variance * sin(2 * Double.pi * 2 * seconds)
-                    var value = Int16((sin(2 * Double.pi * 100 * seconds) * 3_200 * amplitude).rounded()).littleEndian
+                    var value = Int16(silent ? 0 : (sin(2 * Double.pi * 100 * seconds) * 3_200 * amplitude).rounded()).littleEndian
                     withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
                 }
                 let characters = Array(text).map(String.init)
@@ -1231,6 +1234,22 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
     }
 
     /// Live 2026-11-03: four failed takes could not be heard. A failed take with staged audio plays without being selected.
+    /// A take that failed before the checks has no checked mix, but its paid audio plays inline, named as not checked.
+    @Test func aTakeThatFailedBeforeTheChecksPlaysItsPaidAudio() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare()
+        ClipTakeHTTP.state.withLock { $0.silentSynthesis = true }
+        await plan.start(approved: true)
+        let take = try #require(plan.phrases[0].takes.first)
+        #expect(take.row.audio == nil && take.row.generated != nil && take.notChecked && take.playable && !take.row.selectable)
+        #expect(TakeFailurePresentation.leftOut(take.row, number: take.number)?.hasPrefix("Take 1 · not checked: ") == true)
+        await plan.play(take: take.id, phrase: 0)
+        #expect(plan.audition.isPlaying && plan.audition.takeId == take.id && plan.phrases[0].selectedID == nil)
+        #expect(!plan.select(take: take.id, phrase: 0))
+        await plan.play(take: take.id, phrase: 0)
+        #expect(!plan.audition.isPlaying && fixture.playback.stops >= 1)
+    }
     @Test func aFailedTakeWithAudioPlaysButStaysLeftOut() async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let plan = fixture.plan
