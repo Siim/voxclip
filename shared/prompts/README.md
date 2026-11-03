@@ -1,5 +1,16 @@
 # Shared prompts
 
+`voice-rewrite-fit.json` (`schemaVersion: 1`, `promptVersion: 1`) is the bounded,
+review-only wording-fit prompt. It contains longer/shorter and measured feedback
+templates and a strict `{phrases: [{ordinal, action, text}]}` schema. Only
+`action: "keepOriginal"` with empty text keeps the recording. Each request lists
+only its unfitted phrases; the service rejects missing, duplicate or unsolicited
+ordinals. Neither fit approval nor a fit reply authorizes audio synthesis.
+The Mac service consumes it; the Windows automatic-fit behavior/UI twin is owed.
+`tools/fixtures/voice-lab/generate_autofit.py` pins its hash and longer, shorter,
+measured-longer and measured-shorter requests. The normal LLM generator includes
+its SHA-256 in the deliberate voice-rewrite/CLI request hash manifest changes.
+
 The macOS and Windows apps send the same prompts to every LLM connector. The prompt text, presets, limits and output schemas live only in this folder. Neither app may keep a copy of prompt text in source code.
 
 | File | Feature | Milestone |

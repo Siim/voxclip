@@ -20,6 +20,7 @@ from pathlib import Path
 TOLERANT = ['shared/fixtures/voice-lab/audio-math-cases.json',
             'shared/fixtures/voice-lab/accept-all-cases.json']
 EXACT = ['shared/fixtures/voice-lab/pace-cases.json', 'shared/fixtures/voice-lab/dialogue-cases.json', 'shared/fixtures/voice-lab/continuity-cases.json', 'shared/fixtures/voice-lab/scope-rewrite-plan-cases.json',
+         'shared/fixtures/voice-lab/autofit-cases.json',
          'shared/fixtures/voice-lab/hard-join-cases.json',
          'shared/fixtures/voice-lab/audio-tag-cases.json',
          'shared/fixtures/voice-lab/hard-join-review-cases.json',

@@ -7,6 +7,7 @@ public struct VoiceLabPhraseTiming: Sendable, Equatable {
     public var pace: Double = 1
     public var fitsWithVideoCut: Bool = false
     public var maximumSeconds: Double? = nil
+    public var minimumSeconds: Double? = nil
     public var tooLong: Bool { estimateSeconds > (maximumSeconds ?? slotSeconds) }
     public var copy: String {
         let paceCopy = pace == 1 ? "" : " at \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), pace))× pace"

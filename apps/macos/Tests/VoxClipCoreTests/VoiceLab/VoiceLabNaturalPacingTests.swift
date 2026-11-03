@@ -149,4 +149,15 @@ import Testing
             #expect(timing.pace == 1, "\(seconds)/\(slot): \(timing.pace)")
         }
     }
+
+    @Test func wordingTargetsIncludeNaturalInternalPauseCapacity() throws {
+        let profile = VoiceLabPauseProfile(withinSentence: [0.3, 0.7], betweenSentences: [0.6, 1])
+        let plain = try VoiceLabPaceMatching.match(seconds: 2, window: window(3), incomingSilence: nil,
+            outgoingSilence: nil, sourceSampleRate: 48_000, supportsPace: false, hardJoinSmoothing: true)
+        let natural = try VoiceLabPaceMatching.match(seconds: 2, window: window(3), incomingSilence: nil,
+            outgoingSilence: nil, sourceSampleRate: 48_000, supportsPace: false, hardJoinSmoothing: true,
+            generatedText: "Hello, world. Welcome back.", pauseProfile: profile)
+        #expect(try #require(natural.minimumSeconds) < #require(plain.minimumSeconds))
+        #expect(natural.pace == 1)
+    }
 }

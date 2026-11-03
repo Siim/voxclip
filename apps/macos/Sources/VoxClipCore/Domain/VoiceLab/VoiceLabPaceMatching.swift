@@ -4,8 +4,10 @@ public enum VoiceLabPaceMatching {
     public static func measure(text: String, rate: Double, window: VoiceLabWindow,
                                incomingSilence: Double?, outgoingSilence: Double?, sourceSampleRate: Int,
                                supportsPace: Bool = true, hardJoinSmoothing: Bool, audioTags: [VoiceLabAudioTag] = [], modelID: String = "",
-                               sourceItems: [TimedWord] = [], sourceEnvelope: AudioEnvelope? = nil) throws -> VoiceLabPhraseTiming {
-        try match(seconds: VoiceLabPhraseTiming.estimate(text: text, rate: rate) + VoiceLabAudioTags.allowance(audioTags, text: text, modelID: modelID), window: window,
+                               sourceItems: [TimedWord] = [], sourceEnvelope: AudioEnvelope? = nil,
+                               rateMultiplier: Double = 1) throws -> VoiceLabPhraseTiming {
+        guard rateMultiplier.isFinite, rateMultiplier > 0 else { throw VoiceLabLengthBudgetError.invalidInput }
+        return try match(seconds: VoiceLabPhraseTiming.estimate(text: text, rate: rate) * rateMultiplier + VoiceLabAudioTags.allowance(audioTags, text: text, modelID: modelID), window: window,
             incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
             sourceSampleRate: sourceSampleRate, supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing,
             sourceItems: sourceItems, sourceEnvelope: sourceEnvelope, generatedText: text)
@@ -41,6 +43,17 @@ public enum VoiceLabPaceMatching {
         let exactLower = max(1 / rate, source - padding)
         let exactUpper = expanded - edge
         let retimeUpper = expanded / VoiceLabVideoDurationOptions.retimeRange.lowerBound - edge
+        var fitLower = exactLower
+        if profile != nil, generatedText != nil, try options(exactLower).allows(.source) {
+            var lower = 1 / rate
+            var upper = exactLower
+            for _ in 0..<14 {
+                let middle = (lower + upper) / 2
+                if try options(middle).allows(.source) { upper = middle }
+                else { lower = middle }
+            }
+            fitLower = upper
+        }
         let natural = seconds * oldPace
         let minimum = supportsPace ? VoiceLabNaturalPacing.NATURAL_PACE_MIN : 1
         let maximum = supportsPace ? VoiceLabNaturalPacing.NATURAL_PACE_MAX : 1
@@ -73,6 +86,6 @@ public enum VoiceLabPaceMatching {
         } ?? []
         return VoiceLabPhraseTiming(estimateSeconds: predicted, slotSeconds: source,
             fits: gate.allows(.source) || gate.allows(.retimed) || !cuts.isEmpty, pace: chosen,
-            fitsWithVideoCut: !gate.allows(.source) && !cuts.isEmpty, maximumSeconds: max(0, retimeUpper))
+            fitsWithVideoCut: !gate.allows(.source) && !cuts.isEmpty, maximumSeconds: max(0, retimeUpper), minimumSeconds: fitLower)
     }
 }
