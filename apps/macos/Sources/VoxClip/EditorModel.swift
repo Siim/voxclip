@@ -417,8 +417,14 @@ struct EditorRenderSnapshot {
     /// The load `followWaveformKey` started for `requestedWaveformKey`, until it ends.
     @ObservationIgnored private(set) var waveformTask: Task<Void, Never>?
     @ObservationIgnored private var requestedWaveformKey: WaveformCache.Key?
+    #if DEBUG
+    @ObservationIgnored var beforeWaveformLoad: @MainActor () async -> Void = {}
+    #endif
     func loadWaveform() async {
         let key = waveformKey
+        #if DEBUG
+        await beforeWaveformLoad()
+        #endif
         let value = if let key { await WaveformCache.shared.load(key) } else { nil as WaveformData? }
         guard !Task.isCancelled, key == waveformKey else { return }
         waveform = value
