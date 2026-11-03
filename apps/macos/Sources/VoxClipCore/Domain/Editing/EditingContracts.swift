@@ -17,7 +17,19 @@ public enum VoiceLabEditCommand: Sendable {
         case .chooseCandidate: "Choose Voice Lab take"
         }
     }
-    public func applying(to project: Project, outputScope: VoiceLabOutputScope = .full) throws -> Project {
+    public func applying(to project: Project, outputScope: VoiceLabOutputScope = .full,
+                         videoAssets: [VoiceLabVideoAsset] = []) throws -> Project {
+        var project = project
+        if !videoAssets.isEmpty {
+            project = try VoiceLabProject.upgradeToV3(project)
+            var existing = project.voiceLab.videoAssets ?? []
+            for asset in videoAssets {
+                if let previous = existing.first(where: { $0.id == asset.id }) {
+                    guard previous == asset else { throw VoiceLabProjectError.invalidAsset }
+                } else { existing.append(asset) }
+            }
+            project.voiceLab.videoAssets = existing
+        }
         switch self {
         case .accept(let segment, let assets, let voice):
             return try VoiceLabEditCommand.acceptAll(segments: [segment], assets: assets, voice: voice)

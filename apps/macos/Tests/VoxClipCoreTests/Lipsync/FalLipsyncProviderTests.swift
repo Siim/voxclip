@@ -143,14 +143,14 @@ struct FalLipsyncProviderTests {
         #expect(await http.requests.isEmpty)
     }
 
-    @Test(arguments: [429, 500, 503]) func submitNeverAutomaticallyRetries(status: Int) async throws {
+    @Test(arguments: [429, 500, 503]) func submitRetriesOnlyTwoTimesAfterExplicitResponse(status: Int) async throws {
         let root = try Fixtures.directory(); defer { try? FileManager.default.removeItem(at: root) }
-        let http = LipsyncFixtureHTTP([.json(status, #"{"error":"synthetic failure"}"#)])
+        let http = LipsyncFixtureHTTP(Array(repeating: .json(status, #"{"error":"synthetic failure"}"#), count: 3))
         let provider = try Fixtures.provider(http), quote = try await Fixtures.quote(provider)
         let approval = try await Fixtures.approval(provider, quote: quote, root: root)
-        await #expect(throws: status == 429 ? LipsyncError.http(429) : .submissionUncertain) { _ = try await provider.submit(quote, approval: approval) }
-        #expect(await http.requests.count == 1)
-        if status != 429 { #expect(await provider.status(quoteID: quote.id)?.billing.mayBill == true) }
+        await #expect(throws: LipsyncError.http(status)) { _ = try await provider.submit(quote, approval: approval) }
+        #expect(await http.requests.count == 3)
+        #expect(await provider.status(quoteID: quote.id) == nil)
     }
 
     @Test func lostSubmissionReceiptBlocksAnotherPaidDispatch() async throws {

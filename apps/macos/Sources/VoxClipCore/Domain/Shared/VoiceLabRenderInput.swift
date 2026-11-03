@@ -3,10 +3,11 @@ import Foundation
 /// Request-bound Voice Lab data. The paid root is a location for preflight only; Media reads
 /// the immutable private snapshots returned by VoiceLabAssets after validation.
 public struct VoiceLabRenderInput: Sendable, Equatable {
-    public static func supportsVideoMode(_ mode: VoiceLabVideoMode) -> Bool { mode == .source || mode == .cut || mode == .zoomCover }
+    public static func supportsVideoMode(_ mode: VoiceLabVideoMode) -> Bool { mode == .source || mode == .cut || mode == .zoomCover || mode == .lipsync }
 
     static func supportsVideoRecipe(_ video: VoiceLabVideoRecipe) -> Bool {
         guard supportsVideoMode(video.mode) else { return false }
+        if video.mode == .lipsync { return supportsVideoRecipe(video.lipsyncBase) }
         if video.mode == .cut { return video.cuts?.isEmpty == false }
         if video.mode == .source { return true }
         guard video.sourceStartSample >= 0, video.sourceEndSample > video.sourceStartSample,
