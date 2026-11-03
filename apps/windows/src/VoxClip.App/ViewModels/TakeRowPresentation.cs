@@ -7,6 +7,9 @@ namespace VoxClip.App.ViewModels;
 public sealed record TakeRowPresentation(string Title, string Duration, string Note, string AutomationName,
     string PlayName, string RejectName, bool Selectable, bool BestMatch, string? FailureText)
 {
+    public bool JoinAdvisory { get; init; }
+    public string UseAnywayName { get; init; } = "";
+    public string Copy => Title + " · " + Duration + " · " + Note;
     /// <summary>Accessible name while the row's Play button shows Pause.</summary>
     public string PauseName => PlayName.Length > 0 ? "Pause" + PlayName[4..] : "";
     public string PlayHelp => Selectable ? PlayName : PlayName.EndsWith(", not checked", StringComparison.Ordinal)
@@ -29,6 +32,16 @@ public sealed record TakeRowPresentation(string Title, string Duration, string N
         }
         var audio = row.Audio!;
         var duration = (audio.Fit.Plan.OutputFrames / (double)audio.SampleRate).ToString("F1", CultureInfo.InvariantCulture) + " s";
+        if (row.HasJoinAdvisory)
+        {
+            var sides = row.Qa!.JoinSeams.Select(seam => seam.Side).Distinct().ToArray();
+            var side = sides.Length == 1 ? sides[0] : "either";
+            var advisory = "The join may sound uneven (" + side + " side). Listen before using.";
+            var qualifier = "phrase " + phraseNumber.ToString(CultureInfo.InvariantCulture) + ", take " + number + ", join advisory";
+            return new(title, duration, advisory, "Phrase " + phraseNumber.ToString(CultureInfo.InvariantCulture) + ", join advisory. " + title + " · " + duration + " · " + advisory,
+                "Play " + qualifier, "", true, false, null) { JoinAdvisory = true,
+                    UseAnywayName = "Use take " + number + " anyway, phrase " + phraseNumber.ToString(CultureInfo.InvariantCulture) + ", accept join advisory" };
+        }
         var best = row.Id == bestId;
         var frames = audio.Fit.Plan.Edits.Sum(edit => edit.Kind == VoiceLabFitEditKind.Insert ? edit.Count : -edit.Count);
         var note = best ? "Best match" : VoiceLabPauseFitNote.Format(frames / (double)audio.SampleRate);
@@ -89,7 +102,7 @@ public sealed record TakeRowPresentation(string Title, string Duration, string N
     /// <summary>Preselects the highest-ranked eligible take only after a completed or early-stop run.</summary>
     public static Guid? Preselect(VoiceLabTakeRunResult result, IReadOnlySet<Guid>? rejected = null) =>
         result.End is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop
-            ? result.Ranked.FirstOrDefault(row => rejected?.Contains(row.Id) != true)?.Id : null;
+            ? result.Ranked.FirstOrDefault(row => row.AutomaticallySelectable && rejected?.Contains(row.Id) != true)?.Id : null;
 
     /// <summary>Live notification for a newly ready row, using its zero-based Core index.</summary>
     public static string Ready(int index) => $"Take {(index + 1).ToString(CultureInfo.InvariantCulture)} ready.";

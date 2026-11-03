@@ -70,11 +70,18 @@ public enum VoiceLabTakeQaFailure
     [JsonStringEnumMemberName("insufficientGeneratedSpeech")] InsufficientGeneratedSpeech
 }
 public sealed class VoiceInsufficientGeneratedSpeechException() : Exception("The generated audio does not contain enough speech for the calibrated speaker check.");
+public enum VoiceLabTakeQaVerdict { Passed, PassedWithAdvisory, Failed }
 public sealed record VoiceLabTakeQaResult(double? TranscriptMatch, double? LufsJumpLu, double? PeakDbfs, double? SpeakerScore,
     IReadOnlyList<VoiceLabTakeQaFailure> Failures)
 {
-    public bool Passed => Failures.Count == 0 && TranscriptMatch is { } match && double.IsFinite(match) &&
-        LufsJumpLu is { } jump && double.IsFinite(jump) && PeakDbfs is { } peak && double.IsFinite(peak) && SpeakerScore is { } score && double.IsFinite(score);
+    public IReadOnlyList<VoiceLabJoinAdvisorySeam> JoinSeams { get; init; } = [];
+    public VoiceLabTakeQaVerdict Verdict => TranscriptMatch is not { } match || !double.IsFinite(match) ||
+        LufsJumpLu is not { } jump || !double.IsFinite(jump) || PeakDbfs is not { } peak || !double.IsFinite(peak) ||
+        SpeakerScore is not { } score || !double.IsFinite(score) || Failures.Any(failure => failure != VoiceLabTakeQaFailure.Loudness)
+            ? VoiceLabTakeQaVerdict.Failed
+            : Failures.Count == 0 && jump is >= 0 and <= 2 ? VoiceLabTakeQaVerdict.Passed
+            : Failures.Count > 0 && jump > 2 ? VoiceLabTakeQaVerdict.PassedWithAdvisory : VoiceLabTakeQaVerdict.Failed;
+    public bool Passed => Verdict == VoiceLabTakeQaVerdict.Passed;
 }
 public sealed record VoiceLabQaTranscript(IReadOnlyList<VoiceLabWord> Words, VoiceLabReceipt Receipt);
 public static class VoiceLabTakeQuality
@@ -95,7 +102,7 @@ public static class VoiceLabTakeQuality
         return 2.0 * previous[^1] / (expected.Count + recognized.Count);
     }
     public static VoiceLabTakeQaResult Evaluate(string expected, IReadOnlyList<string> recognized, float[] mixed, int sampleRate,
-        IReadOnlyList<int> seams, double speakerScore, double threshold)
+        IReadOnlyList<int> seams, double speakerScore, double threshold, IReadOnlyList<bool>? generatedAfter = null)
     {
         if (!double.IsFinite(speakerScore) || speakerScore is < -1 or > 1 || !double.IsFinite(threshold) || threshold is < 0 or > 1)
             throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
@@ -104,13 +111,17 @@ public static class VoiceLabTakeQuality
         var ratio = TranscriptRatio(expectedTokens, recognizedTokens);
         var peak = VoiceLabLoudness.SamplePeakDbfs(mixed);
         if (!double.IsFinite(peak)) throw new VoiceLabException(VoiceLabErrorKind.InvalidAudio);
-        var jump = VoiceLabLoudness.LufsJumpLu(mixed, sampleRate, seams);
+        if (generatedAfter is not null && generatedAfter.Count != seams.Count) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+        var jumps = VoiceLabLoudness.SeamJumps(mixed, sampleRate, seams);
+        var jump = jumps.Length == 0 ? 0 : jumps.Max();
+        var joinSeams = jumps.Select((excess, index) => new VoiceLabJoinAdvisorySeam(
+            (generatedAfter?[index] ?? index == 0) ? "left" : "right", excess)).Where(seam => seam.ExcessLu > 2).ToArray();
         var failures = new List<VoiceLabTakeQaFailure>();
         if (expectedTokens.Length <= 5 ? !expectedTokens.SequenceEqual(recognizedTokens) : ratio < 0.9) failures.Add(VoiceLabTakeQaFailure.Transcript);
         if (peak >= 0) failures.Add(VoiceLabTakeQaFailure.Clipping);
         if (jump > 2) failures.Add(VoiceLabTakeQaFailure.Loudness);
         if (speakerScore < threshold) failures.Add(VoiceLabTakeQaFailure.Speaker);
-        return new(ratio, jump, peak, speakerScore, Array.AsReadOnly(failures.ToArray()));
+        return new(ratio, jump, peak, speakerScore, Array.AsReadOnly(failures.ToArray())) { JoinSeams = Array.AsReadOnly(joinSeams) };
     }
     public static double Rank(VoiceLabFitResult fit, double windowSeconds, double matchRatio, double flatness)
     {
@@ -126,6 +137,19 @@ public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabRece
     VoiceLabAudioResult? Generated = null, VoiceLabTakeQuote? Quote = null, VoiceLabTakeAudio? Audio = null,
     VoiceLabTakeQaResult? Qa = null, double? Score = null, Exception? Failure = null)
 {
+    public VoiceLabJoinAdvisory? AcceptedJoinAdvisory { get; init; }
+    public bool HasJoinAdvisory => Qa?.Verdict == VoiceLabTakeQaVerdict.PassedWithAdvisory;
+    public bool RequiresJoinAdvisoryAcceptance => HasJoinAdvisory &&
+        (AcceptedJoinAdvisory is not { } accepted || !accepted.Seams.SequenceEqual(Qa!.JoinSeams) ||
+            !accepted.Validates(Qa.LufsJumpLu!.Value, accepted.AcceptedAt));
+    public bool AutomaticallySelectable => Selectable && !HasJoinAdvisory;
+    public VoiceLabTakeRow AcceptingJoinAdvisory(DateTimeOffset acceptedAt)
+    {
+        if (!Selectable || !HasJoinAdvisory) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.QaRejected);
+        var acceptance = new VoiceLabJoinAdvisory(Array.AsReadOnly(Qa!.JoinSeams.ToArray()), acceptedAt);
+        if (!acceptance.Validates(Qa.LufsJumpLu!.Value, acceptedAt)) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.QaRejected);
+        return this with { AcceptedJoinAdvisory = RequiresJoinAdvisoryAcceptance ? acceptance : AcceptedJoinAdvisory };
+    }
     /// <summary>Accepted status lines, including a paid response that failed before producing a receipt.</summary>
     public IReadOnlySet<Guid> Accepted { get; init; } = System.Collections.Frozen.FrozenSet<Guid>.Empty;
     public IReadOnlySet<Guid> AcceptedRequestIds => Accepted.Concat(Receipt is null ? [] : new[] { Receipt.ActionId })
@@ -134,12 +158,13 @@ public sealed record VoiceLabTakeRow(Guid Id, int Index, uint Seed, VoiceLabRece
     /// <summary>An interrupted take retains paid request IDs without claiming its speech failed QA.</summary>
     public bool Stopped => Failure is OperationCanceledException or VoxClip.Core.Services.VoiceLab.VoiceLabRunInvalidatedException
         or VoiceLabException { Kind: VoiceLabErrorKind.Cancelled };
-    public bool Selectable => Failure is null && Qa?.Passed == true && Audio is not null;
+    public bool Selectable => Failure is null && Qa is { Verdict: not VoiceLabTakeQaVerdict.Failed } && Audio is not null;
     public bool Fits => Audio?.Fit is VoiceLabFitResult.Exact;
 }
 public enum VoiceLabTakeRunEnd { Completed, EarlyStop, Cancelled, Invalidated, Fatal }
 public sealed record VoiceLabTakeRunResult(IReadOnlyList<VoiceLabTakeRow> Rows, VoiceLabTakeRunEnd End)
 {
-    public IReadOnlyList<VoiceLabTakeRow> Ranked => Rows.Where(row => row.Selectable).OrderByDescending(row => row.Score).ThenBy(row => row.Index).ToArray();
+    public IReadOnlyList<VoiceLabTakeRow> Ranked => Rows.Where(row => row.Selectable).OrderBy(row => row.HasJoinAdvisory).ThenByDescending(row => row.Score).ThenBy(row => row.Index).ToArray();
     public VoiceLabTakeRow? Best => Ranked.FirstOrDefault();
+    public VoiceLabTakeRow? BestAutomatic => Ranked.FirstOrDefault(row => row.AutomaticallySelectable);
 }

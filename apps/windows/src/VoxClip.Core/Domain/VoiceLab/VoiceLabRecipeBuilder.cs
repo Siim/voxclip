@@ -14,12 +14,14 @@ public static class VoiceLabRecipeBuilder
         VoiceConsentRecord record, DateTimeOffset createdAt, VoiceLabVideoMode? videoChoice = null, VoiceLabZoomCover? face = null)
     {
         var asset = published.Assets.FirstOrDefault(asset => asset.Id == published.Audio.AssetId);
-        if (!row.Selectable || row.Audio is not { } take || row.Qa is not { Passed: true } qa || row.Receipt is not { } receipt || row.Quote is not { } quote ||
+        if (!row.Selectable || row.RequiresJoinAdvisoryAcceptance || row.Audio is not { } take || row.Qa is not { Verdict: not VoiceLabTakeQaVerdict.Failed } qa || row.Receipt is not { } receipt || row.Quote is not { } quote ||
             qa.SpeakerScore is not { } score || !double.IsFinite(score) || score < record.Speaker.Threshold ||
             qa.TranscriptMatch is not { } match || qa.LufsJumpLu is not { } jump || qa.PeakDbfs is not { } peak ||
             record.Status != VoiceConsentStatus.Active || record.RecordId != input.RecordId || receipt.VoiceId != record.VoiceId || receipt.ModelId != input.ModelId ||
             !published.Words.SequenceEqual(take.Fit.Plan.Words) || published.Audio.Stretch != 1 || !double.IsFinite(published.OutDuration) || published.OutDuration <= 0 ||
             asset is null || record.Attestations.AcceptedAt > createdAt)
+            throw Error(VoiceLabProjectErrorCode.QaRejected);
+        if (row.AcceptedJoinAdvisory is { } accepted && (!row.HasJoinAdvisory || !accepted.Seams.SequenceEqual(qa.JoinSeams) || !accepted.Validates(jump, createdAt)))
             throw Error(VoiceLabProjectErrorCode.QaRejected);
         var plan = take.Fit.Plan;
         var mode = row.Fits ? VoiceLabVideoMode.Source : VoiceLabVideoMode.ZoomCover;
@@ -44,7 +46,7 @@ public static class VoiceLabRecipeBuilder
         }
         var tokens = VoiceLabTakeQuality.Tokens(input.Text).Length;
         var checkedQa = new VoiceLabRenderQa(tokens, tokens <= 5 ? match == 1 : null, match, jump, peak,
-            score, record.Speaker.Threshold, record.Speaker.Model, true);
+            score, record.Speaker.Threshold, record.Speaker.Model, true, JoinAdvisory: row.AcceptedJoinAdvisory);
         var provenance = new VoiceLabProvenance(receipt.Provider, receipt.Endpoint.TrimStart('/'), input.ModelId, record.VoiceId, record.RecordId,
             receipt.ActionId.ToString("D"), row.Seed, createdAt) { Region = receipt.Region.ToString().ToLowerInvariant(), Pace = receipt.Pace };
         var video = new VoiceLabVideoRecipe(mode, plan.WindowStartSample, plan.WindowEndSample, output,

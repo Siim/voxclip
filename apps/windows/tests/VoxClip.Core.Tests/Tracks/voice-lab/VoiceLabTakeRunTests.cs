@@ -10,6 +10,39 @@ namespace VoxClip.Core.Tests.Tracks.VoiceLab;
 
 public sealed class VoiceLabTakeRunTests
 {
+    [Fact]
+    public void JoinOnlyTakeIsSelectableAndCleanPassesRankFirst()
+    {
+        var plan = new VoiceLabFitPlan([], new(0, 0), new(0, 0), 0, 24000, 0, 1, 0, 24000, 24000, []);
+        var advisory = new VoiceLabTakeRow(Guid.NewGuid(), 0, 1,
+            Audio: new(24000, [], [], 0, 0, [], 0, null, new VoiceLabFitResult.Exact(plan)),
+            Qa: new(1, 4, -3, .8, [VoiceLabTakeQaFailure.Loudness]), Score: 1);
+        var clean = advisory with { Id = Guid.NewGuid(), Index = 1, Score = .1, Qa = new(1, 0, -3, .8, []) };
+        Assert.True(advisory.Selectable);
+        Assert.False(advisory.Qa!.Passed);
+        Assert.Equal(new[] { clean.Id, advisory.Id }, new VoiceLabTakeRunResult([advisory, clean], VoiceLabTakeRunEnd.Completed).Ranked.Select(row => row.Id));
+        foreach (var failure in new[] { VoiceLabTakeQaFailure.Transcript, VoiceLabTakeQaFailure.Clipping, VoiceLabTakeQaFailure.Speaker, VoiceLabTakeQaFailure.InsufficientGeneratedSpeech })
+            Assert.False((advisory with { Qa = advisory.Qa with { Failures = [VoiceLabTakeQaFailure.Loudness, failure] } }).Selectable);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AdvisoryMeasuresEachJoinAndRecordsItsActualSide(bool generatedAfter)
+    {
+        var samples = Enumerable.Range(0, 16000).Select(index => (float)((index < 8000 ? .01 : .1) * Math.Sin(2 * Math.PI * 220 * index / 16000))).ToArray();
+        var qa = VoiceLabTakeQuality.Evaluate("Hello", ["Hello"], samples, 16000, [8000], .8, .45, [generatedAfter]);
+        Assert.Equal(VoiceLabTakeQaVerdict.PassedWithAdvisory, qa.Verdict);
+        var seam = Assert.Single(qa.JoinSeams);
+        Assert.Equal(generatedAfter ? "left" : "right", seam.Side);
+        Assert.Equal(qa.LufsJumpLu, seam.ExcessLu);
+        Assert.Throws<VoiceLabException>(() => VoiceLabTakeQuality.Evaluate("Hello", ["Hello"], samples, 16000, [8000], .8, .45, []));
+        foreach (var jump in new double?[] { null, double.NaN, double.PositiveInfinity, -3, 0, 2 })
+            Assert.Equal(VoiceLabTakeQaVerdict.Failed, (qa with { LufsJumpLu = jump }).Verdict);
+        Assert.Equal(VoiceLabTakeQaVerdict.Failed, (qa with { SpeakerScore = null }).Verdict);
+        Assert.Equal(VoiceLabTakeQaVerdict.Failed, (qa with { PeakDbfs = double.NaN }).Verdict);
+    }
+
     private sealed class Clock : TimeProvider
     {
         internal long Elapsed;

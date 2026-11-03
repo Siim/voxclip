@@ -33,6 +33,80 @@ public sealed class PaidTakePlaybackTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UseAnywayDoesNotClaimPlaybackAndPreservesTheDurationGate(bool changedDuration)
+    {
+        await using var test = new Harness(false, true, VoiceLabTakeRunEnd.Completed);
+        test.Runner.Advisory = true;
+        test.Runner.ChangedDuration = changedDuration;
+        test.NoOutput = true;
+        await test.GenerateAsync();
+        var row = Assert.Single(test.Generation.Rows);
+        Assert.False(test.Generation.CanPlayTake(row.Id));
+        Assert.True(test.Generation.CanUseTakeAnyway(row.Id));
+        Assert.False(test.Audition.Snapshot.Completed);
+        Assert.True(await test.Generation.UseTakeAnywayAsync(row.Id));
+        Assert.False(test.Audition.Snapshot.Completed);
+        Assert.Empty(test.OpenedPaths);
+        Assert.Equal(changedDuration ? RewriteGenerationPhase.LengthChanged : RewriteGenerationPhase.ReadyToAccept, test.Generation.Phase);
+        Assert.Equal(!changedDuration, test.Session.CanAcceptAll);
+        Assert.Null(test.Generation.VideoChoice);
+    }
+
+    [Fact]
+    public async Task UseAllNeverPublishesAnUnacceptedAdvisoryAlternative()
+    {
+        await using var test = new Harness(false, false, VoiceLabTakeRunEnd.Completed);
+        test.Runner.Advisory = true;
+        await test.GenerateAsync();
+        var advisory = test.Generation.Rows[0];
+        var clean = test.Generation.Rows[1];
+        Assert.Equal(clean.Id, test.Generation.SelectedTakeId);
+        Assert.False(await test.Session.ApplyTakeAsync());
+        Assert.Equal(new[] { clean.Id }, test.PublishedIds);
+        Assert.Null(test.Generation.Rows[0].AcceptedJoinAdvisory);
+        Assert.True(await test.Generation.UseTakeAnywayAsync(advisory.Id));
+        Assert.False(await test.Session.ApplyTakeAsync());
+        Assert.Equal(new[] { clean.Id, advisory.Id }, test.PublishedIds);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task JoinAdvisoryPlaybackNeverSelectsOrEnablesUse(bool advisoryOnly)
+    {
+        await using var test = new Harness(false, advisoryOnly, VoiceLabTakeRunEnd.Completed);
+        test.Runner.Advisory = true;
+        await test.GenerateAsync();
+        var row = test.Generation.Rows[0];
+        Assert.True(row.Selectable);
+        var selected = test.Generation.SelectedTakeId;
+        Assert.NotEqual(row.Id, selected);
+        Assert.False(await test.Generation.SelectTakeAsync(row.Id));
+        await test.Generation.PlayTakeAsync(row.Id);
+        Assert.Equal(row.Id, test.Audition.Snapshot.TakeId);
+        Assert.Equal(selected, test.Generation.SelectedTakeId);
+        Assert.Equal(!advisoryOnly, test.Session.CanAcceptAll);
+        Assert.Equal(0, test.PublishCalls);
+        Assert.True(await test.Generation.UseTakeAnywayAsync(row.Id));
+        var accepted = test.Generation.Selected!;
+        Assert.Equal(row.Id, accepted.Id);
+        Assert.False(accepted.RequiresJoinAdvisoryAcceptance);
+        Assert.True(test.Session.CanAcceptAll);
+        Assert.False(test.Editor.CanUndo);
+        Assert.Equal(0, test.PublishCalls);
+        Assert.Equal(row.Qa!.JoinSeams, accepted.AcceptedJoinAdvisory!.Seams);
+        Assert.True(await test.Generation.SelectTakeAsync(row.Id));
+        await test.Generation.PlayTakeAsync(row.Id);
+        Assert.Equal(accepted.AcceptedJoinAdvisory, test.Generation.Selected!.AcceptedJoinAdvisory);
+        Assert.Contains("Listen before using.", TakeRowPresentation.From(test.Generation.Selected, test.Generation.BestTakeId).Copy);
+        await test.Generation.RejectTakeAsync(row.Id);
+        Assert.NotEqual(row.Id, test.Generation.SelectedTakeId);
+        Assert.Equal(!advisoryOnly, test.Session.CanAcceptAll);
+    }
+
+    [Theory]
     [InlineData(false, false, VoiceLabTakeRunEnd.Completed)]
     [InlineData(false, true, VoiceLabTakeRunEnd.Completed)]
     [InlineData(true, false, VoiceLabTakeRunEnd.Completed)]
@@ -142,6 +216,8 @@ public sealed class PaidTakePlaybackTests
         internal Func<Task>? BeforePaid;
         internal PreparedVoiceLabAsset? LastPaid;
         internal int PublishCalls;
+        internal readonly List<Guid> PublishedIds = [];
+        internal bool NoOutput;
         internal Harness(bool uncheckedAudio, bool allFailed, VoiceLabTakeRunEnd end)
         {
             var project = ProjectSerialization.Deserialize(File.ReadAllText(Path.Combine(SharedResources.ResolveRoot(), "fixtures/projects/interview-take.voxclip")));
@@ -163,12 +239,12 @@ public sealed class PaidTakePlaybackTests
                 }, ct), _ => Task.FromResult(true), _ => Task.FromResult<decimal?>(null), () => Session.GenerationIsCurrent,
                 action => { action(); return Task.CompletedTask; });
             Session.ConfigureGeneration(Generation);
-            Audition = new(() => new Endpoint(OpenedPaths), _ => Task.CompletedTask, new SilentClock());
+            Audition = new(() => new Endpoint(OpenedPaths, () => NoOutput ? VoiceLabAudition.NoOutputDevice : null), _ => Task.CompletedTask, new SilentClock());
         }
         internal async Task GenerateAsync()
         {
             await Generation.ConfigureTakesAsync(new(Audition, Runner.Scratch, _ => Task.CompletedTask,
-                (_, _, _) => { PublishCalls++; throw new InvalidOperationException("Playback must not publish a take."); }, async (id, ct) =>
+                (id, _, _) => { PublishCalls++; PublishedIds.Add(id); throw new InvalidOperationException("Playback must not publish a take."); }, async (id, ct) =>
                 {
                     if (BeforePaid is { } before) await before();
                     return LastPaid = await Runner.PaidAudioAsync(id, ct);
@@ -188,6 +264,8 @@ public sealed class PaidTakePlaybackTests
 
     private sealed class Runner(VoiceLabTakeStorage storage, bool uncheckedAudio, bool allFailed, VoiceLabTakeRunEnd end) : IVoiceLabTakeRunner
     {
+        internal bool Advisory;
+        internal bool ChangedDuration;
         private readonly Dictionary<Guid, VoiceLabTakeScratch> scratches = [];
         private VoiceLabTakeInput? input;
         private VoiceLabTakeRunQuote? pending;
@@ -239,10 +317,11 @@ public sealed class PaidTakePlaybackTests
                 {
                     var snapshot = await PaidAudioAsync(take.Synthesis.Review.RequestId, ct);
                     var frames = (long)Math.Floor((input.Window.End - input.Window.Start) * 24000 + .5);
+                    if (ChangedDuration) frames += 4800;
                     var incoming = (long)Math.Ceiling(input.Window.LeftSeam.FadeSamples / 2 * 24000d / input.SourceSampleRate);
                     var plan = new VoiceLabFitPlan([], new(0, 0), new(0, 0), incoming, incoming + frames, input.Window.Start, input.Window.End,
                         input.Window.StartSample, input.Window.EndSample, frames, [new(input.Text, .01, frames / 24000d - .01, true)]);
-                    var fit = new VoiceLabFitResult.Exact(plan);
+                    VoiceLabFitResult fit = ChangedDuration ? new VoiceLabFitResult.ChangedDuration(plan, frames / 24000d, .2) : new VoiceLabFitResult.Exact(plan);
                     var fitted = VoiceLabSilenceFit.Prepare(snapshot!, paid, fit, input.Window, input.SourceSampleRate, ct);
                     var source = new float[checked((int)Math.Floor(input.Source.TotalFrames * 24000d / input.SourceSampleRate + .5))];
                     var scratch = VoiceLabTakeRenderer.Stage(fitted, new(24000, samples, 0, null, fit), input, VoiceLabSourceExcerpt.Whole(source), storage.ScratchRoot, ct);
@@ -250,7 +329,9 @@ public sealed class PaidTakePlaybackTests
                     if (ReportChangedDuration) audio = audio with { Fit = new VoiceLabFitResult.ChangedDuration(plan, 5, 3) };
                 }
                 rows.Add(new(take.Synthesis.Review.RequestId, take.Index, take.Seed, receipt, Generated: generated, Quote: take, Audio: audio,
-                    Qa: audio is null ? null : new(take.Index == 0 ? .5 : 1, 0, -3, .8, take.Index == 0 ? [VoiceLabTakeQaFailure.Transcript] : []),
+                    Qa: audio is null ? null : new(take.Index == 0 && !Advisory ? .5 : 1, take.Index == 0 && Advisory ? 4 : 0, -3, .8,
+                        take.Index == 0 ? [Advisory ? VoiceLabTakeQaFailure.Loudness : VoiceLabTakeQaFailure.Transcript] : [])
+                        { JoinSeams = take.Index == 0 && Advisory ? [new("left", 4)] : [] },
                     Score: take.Index > 0 ? 1 : null, Failure: audio is null ? new VoiceLabException(VoiceLabErrorKind.InvalidAlignment) : null));
             }
             if (progress is not null) await progress(rows);
@@ -268,10 +349,10 @@ public sealed class PaidTakePlaybackTests
         public Task<VoiceLabMonthlyCap?> RefreshMonthlyCapAsync(VoiceLabMonthlyCap? cap, CancellationToken ct = default) => Task.FromResult(cap);
     }
 
-    private sealed class Endpoint(List<string> paths) : IVoiceLabRenderEndpoint
+    private sealed class Endpoint(List<string> paths, Func<string?> unavailable) : IVoiceLabRenderEndpoint
     {
         private readonly TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Task<string?> CheckAvailabilityAsync(CancellationToken ct) => Task.FromResult<string?>(null);
+        public Task<string?> CheckAvailabilityAsync(CancellationToken ct) => Task.FromResult(unavailable());
         public Task OpenAsync(string path, CancellationToken ct) { paths.Add(path); Assert.True(File.Exists(path)); return Task.CompletedTask; }
         public Task PlayAsync(CancellationToken ct) => Task.CompletedTask;
         public Task Completion => done.Task;

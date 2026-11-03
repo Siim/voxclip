@@ -33,7 +33,7 @@ internal sealed partial class RewriteGeneration
     internal VoiceLabVideoMode? VideoChoice { get; private set; }
     internal bool ReadyToAccept => !closed && !accepting && !IsRunning && current() && ReviewedInputsCurrent &&
         reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop &&
-        Phase == RewriteGenerationPhase.ReadyToAccept && Selected is { Selectable: true } selected && takes?.Scratch(selected.Id)?.IsValid == true;
+        Phase == RewriteGenerationPhase.ReadyToAccept && Selected is { Selectable: true, RequiresJoinAdvisoryAcceptance: false } selected && takes?.Scratch(selected.Id)?.IsValid == true;
     internal string AcceptTitle => "Use Take " + ((Selected?.Index ?? 0) + 1).ToString(CultureInfo.InvariantCulture);
     internal VoiceLabAuditionState? Audition => takes?.Audition.Snapshot;
     internal int PhraseNumber { get; set; } = 1;
@@ -43,6 +43,9 @@ internal sealed partial class RewriteGeneration
     internal bool NeedsShorterWording => Selected is { Fits: false } && !CanRetime && !IsRunning;
     internal bool CanPlayTake(Guid id) => CanPlay && Rows.FirstOrDefault(row => row.Id == id) is { Stopped: false } row &&
         (row.Audio is not null ? takes?.Scratch(id)?.IsValid == true : row.Generated is not null && takes?.PaidAudio is not null);
+    internal bool CanUseTakeAnyway(Guid id) => !closed && !accepting && !IsRunning && current() &&
+        reviewEnd is VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop &&
+        Rows.FirstOrDefault(row => row.Id == id) is { Selectable: true, HasJoinAdvisory: true } && takes?.Scratch(id)?.IsValid == true;
     internal string RetimeCopy => "Retimed source video is not available in this build. Re-record this sentence instead.";
     internal string LengthCopy => Selected is { Audio.Fit: VoiceLabFitResult.ChangedDuration change } row
         ? $"Take {row.Index + 1} runs {Math.Abs(change.ResidualSeconds).ToString("F1", CultureInfo.InvariantCulture)} s {(change.ResidualSeconds >= 0 ? "longer" : "shorter")} than the words it replaces. Choose how the video keeps up." : "";
@@ -93,7 +96,7 @@ internal sealed partial class RewriteGeneration
         reviewEnd = result.End;
         VideoChoice = null;
         BestTakeId = TakeRowPresentation.Preselect(result, rejected);
-        var retained = explicitSelection is { } chosen && Rows.Any(row => row.Id == chosen && row.Selectable) ? explicitSelection : null;
+        var retained = explicitSelection is { } chosen && Rows.Any(row => row.Id == chosen && row.Selectable && !row.RequiresJoinAdvisoryAcceptance) ? explicitSelection : null;
         core.SelectTake(retained ?? BestTakeId);
         Phase = result.End switch
         {
@@ -101,19 +104,31 @@ internal sealed partial class RewriteGeneration
             VoiceLabTakeRunEnd.Fatal => RewriteGenerationPhase.Failed,
             _ => ReviewPhase()
         };
-        Announcement = BestTakeId is null ? TakeRowPresentation.NonePassed :
+        Announcement = !Rows.Any(row => row.Selectable) ? TakeRowPresentation.NonePassed :
             TakeRowPresentation.Completion(Rows.Count, Selected is { Fits: true } row ? row.Index + 1 : null, Rows.Count(row => !row.Selectable && !row.Stopped));
         Notify();
     }
     internal async Task<bool> SelectTakeAsync(Guid id)
     {
         if (closed || accepting || IsRunning || !current() || reviewEnd is not (VoiceLabTakeRunEnd.Completed or VoiceLabTakeRunEnd.EarlyStop) ||
-            Rows.FirstOrDefault(row => row.Id == id) is not { Selectable: true }) return false;
+            Rows.FirstOrDefault(row => row.Id == id) is not { Selectable: true, RequiresJoinAdvisoryAcceptance: false }) return false;
         if (SelectedTakeId == id) { explicitSelection = id; return true; }
         var version = ++selectionRevision;
         if (takes is not null) await takes.Audition.TakeChangedAsync(id);
         if (closed || version != selectionRevision || !current() || !Rows.Any(row => row.Id == id)) return false;
         explicitSelection = id; core.SelectTake(id); VideoChoice = null; Phase = ReviewPhase(); Notify();
+        return true;
+    }
+    internal async Task<bool> UseTakeAnywayAsync(Guid id)
+    {
+        if (!CanUseTakeAnyway(id) || takes is null || Rows.FirstOrDefault(row => row.Id == id) is not { } row) return false;
+        var version = ++selectionRevision;
+        await takes.Audition.TakeChangedAsync(id);
+        if (closed || version != selectionRevision || !current() || !Rows.Contains(row)) return false;
+        core.UseTakeAnyway(id, clock.GetUtcNow());
+        explicitSelection = id; VideoChoice = null; Phase = ReviewPhase();
+        Announcement = TakeRowPresentation.From(row, BestTakeId, PhraseNumber).Copy;
+        Notify();
         return true;
     }
     internal async Task PlayTakeAsync(Guid id)
@@ -123,10 +138,10 @@ internal sealed partial class RewriteGeneration
             Rows.FirstOrDefault(row => row.Id == id) is not { Stopped: false } row) return;
         if (takes.Audition.Snapshot is { IsPlaying: true } playing && playing.TakeId == id)
         { selectionRevision++; await takes.Audition.StopAsync(); return; }
-        if (row.Selectable && !await SelectTakeAsync(id)) return;
+        if (row.Selectable && !row.HasJoinAdvisory && !await SelectTakeAsync(id)) return;
         var version = ++selectionRevision;
         bool Current() => !closed && !accepting && !IsRunning && version == selectionRevision && current() &&
-            Rows.Any(candidate => candidate.Id == id) && (!row.Selectable || SelectedTakeId == id);
+            Rows.Any(candidate => candidate.Id == id) && (!row.Selectable || row.HasJoinAdvisory || SelectedTakeId == id);
         try
         {
             await takes.Audition.StopAsync();
@@ -224,7 +239,7 @@ internal sealed partial class RewriteGeneration
             List<VoiceLabCandidate> candidates = []; List<VoiceLabAsset> assets = [];
             VoiceLabVoiceReference? voice = null; int? selectedIndex = null;
             var date = clock.GetUtcNow();
-            foreach (var row in Rows.Where(row => row.Selectable && (row.Fits || row.Id == selected.Id) &&
+            foreach (var row in Rows.Where(row => row.Selectable && !row.RequiresJoinAdvisoryAcceptance && (row.Fits || row.Id == selected.Id) &&
                 row.Audio!.Fit.Plan.WindowStartSample == selected.Audio!.Fit.Plan.WindowStartSample &&
                 row.Audio.Fit.Plan.WindowEndSample == selected.Audio.Fit.Plan.WindowEndSample))
             {

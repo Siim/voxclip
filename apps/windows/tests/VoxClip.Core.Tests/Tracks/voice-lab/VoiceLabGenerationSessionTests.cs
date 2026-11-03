@@ -8,6 +8,62 @@ namespace VoxClip.Core.Tests.Tracks.VoiceLab;
 
 public sealed class VoiceLabGenerationSessionTests
 {
+    [Theory]
+    [InlineData("same")]
+    [InlineData("otherTake")]
+    [InlineData("changedSeam")]
+    [InlineData("hardFailure")]
+    [InlineData("clean")]
+    [InlineData("missingEvidence")]
+    public async Task AdvisoryAcceptanceIsExplicitAndBoundToTheTakeAndItsMeasurements(string update)
+    {
+        var plan = new VoiceLabFitPlan([], new(0, 0), new(0, 0), 0, 24000, 0, 1, 0, 24000, 24000, []);
+        var original = new VoiceLabTakeRow(Guid.NewGuid(), 0, 1,
+            Audio: new(24000, [], [], 0, 0, [], 0, null, new VoiceLabFitResult.Exact(plan)),
+            Qa: new(1, 4, -3, .8, [VoiceLabTakeQaFailure.Loudness]) { JoinSeams = [new("right", 4)] });
+        var runner = new Runner { ReturnedRows = [original] };
+        var session = new VoiceLabGenerationSession(runner);
+        await session.UpdateInputsAsync(Input(), ct: Token);
+        await session.ContinueAsync(Token);
+        Assert.Null(session.SelectedTakeId);
+        Assert.Throws<VoiceLabProjectException>(() => session.SelectTake(original.Id));
+        session.AuditionTake(original.Id);
+        Assert.Null(session.SelectedTakeId);
+        var acceptedAt = DateTimeOffset.UnixEpoch.AddDays(1);
+        session.UseTakeAnyway(original.Id, acceptedAt);
+        Assert.Equal(original.Id, session.SelectedTakeId);
+        session.UseTakeAnyway(original.Id, acceptedAt.AddSeconds(1));
+        var acceptance = Assert.Single(session.Rows).AcceptedJoinAdvisory;
+        Assert.NotNull(acceptance);
+        Assert.Equal(acceptedAt, acceptance.AcceptedAt);
+        runner.Price = .60m;
+        var quote = await session.UpdateInputsAsync(Input(), ct: Token);
+        await session.ApproveAsync(quote, false, Token);
+        Assert.Same(acceptance, Assert.Single(session.Rows).AcceptedJoinAdvisory);
+        var updated = update switch
+        {
+            "otherTake" => original with { Id = Guid.NewGuid() },
+            "changedSeam" => original with { Qa = original.Qa! with { JoinSeams = [new("left", 4)] } },
+            "hardFailure" => original with { Qa = original.Qa! with { Failures = [VoiceLabTakeQaFailure.Loudness, VoiceLabTakeQaFailure.Transcript] } },
+            "clean" => original with { Qa = new(1, 0, -3, .8, []) },
+            "missingEvidence" => original with { Qa = original.Qa! with { JoinSeams = [] } },
+            _ => original
+        };
+        typeof(VoiceLabGenerationSession).GetMethod("UpdateRows", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .Invoke(session, new object[] { new VoiceLabTakeRow[] { updated } });
+        var refreshed = Assert.Single(session.Rows);
+        if (update == "same")
+        {
+            Assert.Same(acceptance, refreshed.AcceptedJoinAdvisory);
+            Assert.Equal(original.Id, session.SelectedTakeId);
+        }
+        else Assert.Null(refreshed.AcceptedJoinAdvisory);
+        if (refreshed.RequiresJoinAdvisoryAcceptance) Assert.Null(session.SelectedTakeId);
+        await session.InvalidateAsync();
+        Assert.Empty(session.Rows);
+        Assert.Null(session.SelectedTakeId);
+    }
+
     [Fact]
     public async Task CancellationDuringTheLiveCostReadCannotLaunchAndKeepsTheQuote()
     {
@@ -106,6 +162,7 @@ public sealed class VoiceLabGenerationSessionTests
         new("first", "last", [], [], 0, 1, 0, 24000, new(VoiceLabSeamKind.Hard, 0, 0, 0), new(VoiceLabSeamKind.Hard, 1, 24000, 0)), null, null, false, true);
     private sealed class Runner : IVoiceLabTakeRunner
     {
+        internal IReadOnlyList<VoiceLabTakeRow>? ReturnedRows;
         internal decimal? Price = 0.06m;
         internal decimal? RefreshedSpent;
         internal int Sends;
@@ -152,7 +209,7 @@ public sealed class VoiceLabGenerationSessionTests
             Entered.TrySetResult();
             if (Resume is not null) await Resume.Task.WaitAsync(ct);
             Sends += quote.Takes.Count;
-            return new(quote.Takes.Select(take => new VoiceLabTakeRow(Guid.NewGuid(), take.Index, take.Seed)).ToArray(), VoiceLabTakeRunEnd.Completed);
+            return new(ReturnedRows ?? quote.Takes.Select(take => new VoiceLabTakeRow(Guid.NewGuid(), take.Index, take.Seed)).ToArray(), VoiceLabTakeRunEnd.Completed);
         }
         public async Task<VoiceLabTakeRunResult> ExecuteWithDispatchAsync(VoiceLabTakeRunQuote quote, VoiceLabRunDispatch dispatch,
             Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default)

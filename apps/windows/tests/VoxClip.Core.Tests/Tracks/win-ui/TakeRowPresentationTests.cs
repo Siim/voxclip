@@ -9,6 +9,27 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 public sealed class TakeRowPresentationTests
 {
+    [Fact]
+    public void AdvisoryRowOffersListenFirstCopyAndNeverPreselects()
+    {
+        var row = Row(1) with { Qa = new(1, 4, -3, .8, [VoiceLabTakeQaFailure.Loudness]) { JoinSeams = [new("left", 4)] } };
+        var content = TakeRowPresentation.From(row, row.Id, 3);
+        Assert.True(content.Selectable);
+        Assert.False(content.BestMatch);
+        Assert.Equal("The join may sound uneven (left side). Listen before using.", content.Note);
+        Assert.Equal("Play phrase 3, take 2, join advisory", content.PlayName);
+        Assert.Equal("Use take 2 anyway, phrase 3, accept join advisory", content.UseAnywayName);
+        Assert.Equal("Take 2 · 1.2 s · The join may sound uneven (left side). Listen before using.", content.Copy);
+        Assert.Equal("Phrase 3, join advisory. " + content.Copy, content.AutomationName);
+        Assert.Null(TakeRowPresentation.Preselect(new([row], VoiceLabTakeRunEnd.Completed)));
+        Assert.Null(TakeRowPresentation.Preselect(new([row.AcceptingJoinAdvisory(DateTimeOffset.UnixEpoch)], VoiceLabTakeRunEnd.Completed)));
+        foreach (var side in new[] { "right", "either" })
+        {
+            var seams = side == "right" ? new VoiceLabJoinAdvisorySeam[] { new("right", 4) } : [new("left", 3), new("right", 4)];
+            Assert.Contains("(" + side + " side)", TakeRowPresentation.From(row with { Qa = row.Qa with { JoinSeams = seams } }, null).Copy);
+        }
+    }
+
     private static VoiceLabTakeRow Row(int index, double score = .5, bool fits = true)
     {
         var plan = new VoiceLabFitPlan([new(VoiceLabFitEditKind.Insert, 0, 19200)], new(0, 0), new(0, 0), 0, 57600, 0, 1.2, 0, 57600, 57600, []);

@@ -48,7 +48,26 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
     public Guid? SelectedTakeId { get { lock (sync) return selectedTakeId; } }
     public Guid? AuditionedTakeId { get { lock (sync) return auditionedTakeId; } }
 
-    public void SelectTake(Guid? id) { lock (sync) { RequireRow(id); selectedTakeId = id; } }
+    public void SelectTake(Guid? id)
+    {
+        lock (sync)
+        {
+            RequireRow(id);
+            if (rows.Any(row => row.Id == id && row.RequiresJoinAdvisoryAcceptance)) throw new VoiceLabProjectException(VoiceLabProjectErrorCode.QaRejected);
+            selectedTakeId = id;
+        }
+    }
+    public void UseTakeAnyway(Guid id, DateTimeOffset acceptedAt)
+    {
+        lock (sync)
+        {
+            if (executing) throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+            var row = rows.FirstOrDefault(row => row.Id == id) ?? throw new VoiceLabException(VoiceLabErrorKind.InvalidInput);
+            var accepted = row.AcceptingJoinAdvisory(acceptedAt);
+            rows = Array.AsReadOnly(rows.Select(candidate => candidate.Id == id ? accepted : candidate).ToArray());
+            selectedTakeId = id;
+        }
+    }
     public void AuditionTake(Guid? id) { lock (sync) { RequireRow(id); auditionedTakeId = id; } }
     private void RequireRow(Guid? id)
     {
@@ -277,12 +296,12 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
                 lock (sync)
                 {
                     if (revision != version) return Task.CompletedTask;
-                    rows = Array.AsReadOnly(progress.ToArray());
+                    UpdateRows(progress);
                     if (rows.Count == 0) { selectedTakeId = null; auditionedTakeId = null; }
                 }
                 return Task.CompletedTask;
             }, cancellation.Token).ConfigureAwait(false);
-            lock (sync) if (started && revision == version) rows = Array.AsReadOnly(result.Rows.ToArray());
+            lock (sync) if (started && revision == version) UpdateRows(result.Rows);
             return result;
         }
         catch (VoiceLabConfirmationRequiredException error)
@@ -318,6 +337,18 @@ public sealed class VoiceLabGenerationSession(IVoiceLabTakeRunner runner)
             }
             finally { finished.TrySetResult(); }
         }
+    }
+
+    private void UpdateRows(IReadOnlyList<VoiceLabTakeRow> updated)
+    {
+        rows = Array.AsReadOnly(updated.Select(row =>
+        {
+            var prior = rows.FirstOrDefault(candidate => candidate.Id == row.Id);
+            var accepted = row.Selectable && row.HasJoinAdvisory && prior is { RequiresJoinAdvisoryAcceptance: false, AcceptedJoinAdvisory: { } acceptance } &&
+                acceptance.Seams.SequenceEqual(row.Qa!.JoinSeams) ? acceptance : null;
+            return row with { AcceptedJoinAdvisory = accepted };
+        }).ToArray());
+        if (selectedTakeId is { } selected && !rows.Any(row => row.Id == selected && row.Selectable && !row.RequiresJoinAdvisoryAcceptance)) selectedTakeId = null;
     }
 
     private VoiceLabTakeRunQuote RequireQuote()
