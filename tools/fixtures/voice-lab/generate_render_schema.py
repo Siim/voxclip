@@ -66,6 +66,7 @@ d['voiceLabRenderQA']['properties']['shortSpeech']['allOf'] = [
      'else': {'properties': {'voicedFrames': {'maximum': 47999}}}}
 ]
 d['voiceLabCost'] = obj({'quoteId': idref, 'usd': nullable({'type': 'number', 'minimum': 0})})
+d['voiceLabSegment']['properties']['provenance']['properties']['pace'] = {'type': 'number', 'minimum': 0.7, 'maximum': 1.2}
 d['voiceLabRenderRecipe'] = obj({'audio': d['voiceLabSegment']['properties']['audio'], 'words': d['voiceLabSegment']['properties']['words'], 'outDuration': {'type': 'number', 'exclusiveMinimum': 0}, 'seed': {'type': 'integer', 'minimum': 0, 'maximum': 4294967295},
                                  'chunks': {'type': 'array', 'minItems': 1, 'items': {'$ref': '#/$defs/voiceLabChunk'}}, 'roomTone': nullable({'$ref': '#/$defs/voiceLabRoomTone'}),
                                  'seams': {'$ref': '#/$defs/voiceLabSeams'}, 'video': {'$ref': '#/$defs/voiceLabVideoRecipe'}, 'qa': {'$ref': '#/$defs/voiceLabRenderQA'},

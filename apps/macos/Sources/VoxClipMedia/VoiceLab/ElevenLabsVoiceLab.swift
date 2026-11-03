@@ -220,13 +220,13 @@ public actor ElevenLabsVoiceLab {
 
     private func quote(_ operation: VoiceLabOperation, requestID: UUID, endpoint: String,
                        fields: [String], model: String? = nil, voiceID: String? = nil, units: Double,
-                       languageMode: VoiceLabLanguageMode? = nil, guardAudioHash: String? = nil) throws -> VoiceLabQuote {
+                       languageMode: VoiceLabLanguageMode? = nil, guardAudioHash: String? = nil, pace: Double? = nil) throws -> VoiceLabQuote {
         guard units > 0 else { throw VoiceLabError.invalidInput }
         let estimate = try estimate(operation, modelID: model, units: units)
         let value = VoiceLabQuote(id: UUID(), operation: operation, requestID: requestID, estimate: estimate,
                                   region: region, endpoint: endpoint, languageMode: languageMode,
                                   fingerprint: VoiceLabFingerprint.fields(fields), guardAudioHash: guardAudioHash,
-                                  preparedAt: now(), modelID: model, voiceID: voiceID)
+                                  preparedAt: now(), modelID: model, voiceID: voiceID, pace: pace)
         if preparedOrder.count >= 32 {
             guard let oldest = preparedOrder.first(where: { candidate in !approvedRuns.values.contains(where: { $0.contains(candidate) }) }) else { throw VoiceLabError.invalidInput }
             prepared.removeValue(forKey: oldest); preparedOrder.removeAll { $0 == oldest }
@@ -300,12 +300,14 @@ public actor ElevenLabsVoiceLab {
         try voice.validate()
         let model = try selectedModel(modelID, language: language, speak: true)
         try validateSpeechText(text, model: model, voiceID: voice.id)
+        try validatePace(options.pace, model: model)
         try selectedVoice(voice)
         let route = try speechRoute(model)
         return try quote(.textToSpeech, requestID: requestID, endpoint: route.endpoint(voiceID: voice.id),
                          fields: speechFields(text, model, voice, language, options),
                          model: modelID, voiceID: voice.id, units: Double(text.unicodeScalars.count),
-                         languageMode: modelID == "eleven_multilingual_v2" ? .autoDetected(expected: language) : .explicit(language))
+                         languageMode: modelID == "eleven_multilingual_v2" ? .autoDetected(expected: language) : .explicit(language),
+                         pace: options.pace ?? VoiceLabPace.defaultValue)
     }
 
     public func prepareConversion(audio: Data, modelID: String, voice: VoiceLabVoiceChoice, language: String,
@@ -387,10 +389,16 @@ public actor ElevenLabsVoiceLab {
         else { throw VoiceLabError.invalidInput }
     }
     private func speechFields(_ text: String, _ model: VoiceLabModel, _ voice: VoiceLabVoiceChoice, _ language: String, _ options: VoiceLabSpeechOptions) -> [String] {
-        // Called only with a supported selected model. Empty context fields mean omitted, on both transports.
-        [region.rawValue, model.speechRoute?.endpoint(voiceID: voice.id) ?? "", "pcm_24000", text, model.id, language, String(options.seed),
+        var fields = [region.rawValue, model.speechRoute?.endpoint(voiceID: voice.id) ?? "", "pcm_24000", text, model.id, language, String(options.seed),
          model.sendsSpeechContext ? Self.speechContext(options.previousText, previous: true) ?? "" : "",
          model.sendsSpeechContext ? Self.speechContext(options.nextText, previous: false) ?? "" : ""] + voiceFields(voice)
+        if let pace = options.pace, pace != VoiceLabPace.defaultValue { fields.append(String(pace)) }
+        return fields
+    }
+    private func validatePace(_ pace: Double?, model: VoiceLabModel) throws {
+        let value = pace ?? VoiceLabPace.defaultValue
+        guard VoiceLabPace.isValid(value), model.speechRoute != .textToDialogue || value == VoiceLabPace.defaultValue
+        else { throw VoiceLabError.invalidInput }
     }
     /// Removes Unicode White_Space at both ends. Foundation's whitespace sets differ: they also hold U+200B.
     private static func trimWhiteSpace(_ text: String) -> String {
@@ -589,12 +597,12 @@ public actor ElevenLabsVoiceLab {
         let capability = try capability(voice)
         let model = try selectedModel(modelID, language: language, speak: true)
         try validateSpeechText(text, model: model, voiceID: voice.id)
+        try validatePace(options.pace, model: model)
         try selectedVoice(voice)
         let route = try speechRoute(model)
         let path = route.endpoint(voiceID: voice.id)
         var components = URLComponents(url: region.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "output_format", value: "pcm_24000")]
-        // Voice settings are spec constants (§8.5), not caller choices.
         var payload: [String: Any]
         switch route {
         case .textToSpeech:
@@ -610,7 +618,12 @@ public actor ElevenLabsVoiceLab {
             if let previous = Self.speechContext(options.previousText, previous: true) { payload["previous_text"] = previous }
             if let next = Self.speechContext(options.nextText, previous: false) { payload["next_text"] = next }
         }
-        let body = try JSONSerialization.data(withJSONObject: payload, options: route == .textToDialogue ? [.sortedKeys] : [])
+        let customPace = options.pace != nil && options.pace != VoiceLabPace.defaultValue
+        if customPace {
+            payload["voice_settings"] = ["stability": NSDecimalNumber(string: "0.5"), "similarity_boost": NSDecimalNumber(string: "0.8"),
+                                         "speed": NSDecimalNumber(string: String(VoiceLabPace.rounded(options.pace)))]
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload, options: route == .textToDialogue || customPace ? [.sortedKeys] : [])
         let deadline = deadlines[authorization.quote.id]
         try claim(authorization, operation: .textToSpeech, requestID: requestID, endpoint: path,
                   fields: speechFields(text, model, voice, language, options))
@@ -631,7 +644,8 @@ public actor ElevenLabsVoiceLab {
         guard let row = try? JSONSerialization.jsonObject(with: reply.bytes) as? [String: Any],
               let base64 = row["audio_base64"] as? String, let pcm = Data(base64Encoded: base64) else { throw VoiceLabError.invalidAudio }
         try Self.validatePCM(pcm, maxBytes: maxResponse)
-        let provenance = receipt(path, model: modelID, voice: voice.id, authorization: authorization, reply: reply)
+        let provenance = receipt(path, model: modelID, voice: voice.id, authorization: authorization, reply: reply,
+                                 pace: VoiceLabPace.rounded(options.pace))
         acceptance?.preserve(VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: nil, receipt: provenance))
         let duration = Double(pcm.count) / 48_000
         do {
@@ -736,10 +750,10 @@ public actor ElevenLabsVoiceLab {
             }
         }
     }
-    private func receipt(_ path: String, model: String?, voice: String?, authorization: VoiceLabAuthorization, reply: Reply) -> VoiceLabReceipt {
+    private func receipt(_ path: String, model: String?, voice: String?, authorization: VoiceLabAuthorization, reply: Reply, pace: Double? = nil) -> VoiceLabReceipt {
         let remote = reply.response.value(forHTTPHeaderField: "request-id") ?? reply.response.value(forHTTPHeaderField: "x-request-id")
         return VoiceLabReceipt(provider: "elevenlabs", region: region, endpoint: path, modelID: model, voiceID: voice,
-                               requestID: authorization.requestID, providerRequestID: remote, spendWarning: reply.spendWarning)
+                               requestID: authorization.requestID, providerRequestID: remote, spendWarning: reply.spendWarning, pace: pace)
     }
     /// Starts recording the approved quote's estimate; voice-lab §3.1. The record runs detached, off this actor and the main
     /// actor, so the caller's cancellation cannot stop it. Its warning is logged and never fails the action. Nil without a ledger.

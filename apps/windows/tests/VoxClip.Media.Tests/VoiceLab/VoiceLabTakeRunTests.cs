@@ -18,6 +18,23 @@ namespace VoxClip.Media.Tests.VoiceLab;
 
 public sealed partial class VoiceLabTakeRunTests
 {
+    [Fact]
+    public async Task SlowTakeCarriesPaceThroughOptionsQuotesReceiptsAndRecipe()
+    {
+        await using var fixture = new Fixture(input => input with { Pace = 0.8, ContentKey = new string('a', 64) });
+        Assert.Equal(0.8, fixture.Input.Snapshot().Pace);
+        for (var index = 0; index < 3; index++) Assert.Equal(0.8, fixture.Input.Options(index).Pace);
+        var quote = await fixture.Prepare();
+        Assert.All(quote.Takes, take => Assert.Equal(0.8, take.Synthesis.Review.Pace));
+        var result = await fixture.Run.ExecuteAsync(quote, true, ct: Token);
+        var row = Assert.Single(result.Rows);
+        Assert.True(row.Selectable, row.Failure?.ToString());
+        Assert.Equal(0.8, row.Receipt!.Pace);
+        var (publication, consent) = await fixture.Run.PublishForAcceptanceAsync(row.Id, DateTimeOffset.UtcNow, Token);
+        var published = new VoiceLabPublishedTake(publication.Assets, publication.Audio, publication.OutDuration, publication.Words, publication.Chunks);
+        var candidate = VoiceLabRecipeBuilder.Candidate(row, fixture.Input, published, consent, DateTimeOffset.UtcNow);
+        Assert.Equal(0.8, candidate.Recipe!.Provenance.Pace);
+    }
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -51,6 +68,7 @@ public sealed partial class VoiceLabTakeRunTests
         var candidate = VoiceLabRecipeBuilder.Candidate(row, fixture.Input, published, consent, DateTimeOffset.UtcNow);
         Assert.Equal("v1/text-to-dialogue/with-timestamps", candidate.Recipe!.Provenance.Endpoint);
         Assert.Equal("eleven_v4", candidate.Recipe.Provenance.Model);
+        Assert.Equal(1, candidate.Recipe.Provenance.Pace);
         Assert.True(candidate.Recipe.Qa.SpeakerPassed);
         var segment = VoiceLabRecipeBuilder.Segment("dialogue-take", [candidate], 0, fixture.Input, row.Audio!.Fit.Plan);
         var project = ProjectSerialization.Deserialize(FixtureLoader.ReadText("fixtures/voice-lab/passage-render-v3.voxclip"));

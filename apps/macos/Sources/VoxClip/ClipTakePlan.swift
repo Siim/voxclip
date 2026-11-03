@@ -406,7 +406,7 @@ import VoxClipMedia
                             language: input.language, seed: nextSeeds[index], contentKey: input.contentKey, source: input.source,
                             sourceEnvelope: input.sourceEnvelope, sourceSampleRate: input.sourceSampleRate, items: input.items,
                             cutWordIDs: input.cutWordIDs, window: input.window, incomingSilence: input.incomingSilence,
-                            outgoingSilence: input.outgoingSilence, cleanAudioOn: input.cleanAudioOn, providerConsent: input.providerConsent)
+                            outgoingSilence: input.outgoingSilence, cleanAudioOn: input.cleanAudioOn, providerConsent: input.providerConsent, pace: input.pace)
                         nextSeeds[index] &+= UInt32(candidates)
                     }
                 }

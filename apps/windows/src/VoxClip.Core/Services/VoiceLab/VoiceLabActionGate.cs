@@ -166,6 +166,7 @@ internal sealed class VoiceLabActionGate
             review.ConsentPolicy?.SpeakerMatched.ToString(), review.ConsentPolicy?.OwnerConfirmed.ToString(),
             estimate.Units.ToString("R", System.Globalization.CultureInfo.InvariantCulture), estimate.Unit,
             estimate.Usd?.ToString(System.Globalization.CultureInfo.InvariantCulture), estimate.Credits?.ToString(), estimate.Basis];
+        if (review.Pace is { } pace && pace != VoiceLabPace.DefaultValue) fields = [.. fields, pace.ToString("R", System.Globalization.CultureInfo.InvariantCulture)];
         return Fingerprint(review.ConsentPolicy is { ConsentMethod: not VoiceConsentMethod.RecordedStatement } policy
             ? [.. fields, policy.ConsentMethod.ToString()] : fields);
     }

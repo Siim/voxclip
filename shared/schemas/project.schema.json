@@ -510,6 +510,11 @@
             },
             "createdAt": {
               "$ref": "#/$defs/timestamp"
+            },
+            "pace": {
+              "type": "number",
+              "minimum": 0.7,
+              "maximum": 1.2
             }
           }
         },
@@ -2075,6 +2080,11 @@
             "createdAt": {
               "$ref": "#/$defs/timestamp"
             },
+            "pace": {
+              "type": "number",
+              "minimum": 0.7,
+              "maximum": 1.2
+            },
             "region": {
               "type": "string",
               "minLength": 1
@@ -2321,6 +2331,11 @@
             },
             "createdAt": {
               "$ref": "#/$defs/timestamp"
+            },
+            "pace": {
+              "type": "number",
+              "minimum": 0.7,
+              "maximum": 1.2
             },
             "region": {
               "type": "string",

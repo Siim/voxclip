@@ -10,6 +10,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ProjectSchemaGenerationTests(unittest.TestCase):
+    def test_pace_is_optional_in_every_provenance_shape(self):
+        schema = json.loads((ROOT / 'shared/schemas/project.schema.json').read_bytes())
+        for name in ['voiceLabSegment', 'voiceLabSegmentV3', 'voiceLabRenderRecipe']:
+            provenance = schema['$defs'][name]['properties']['provenance']
+            self.assertNotIn('pace', provenance['required'])
+            self.assertEqual(provenance['properties']['pace'], {'type': 'number', 'minimum': 0.7, 'maximum': 1.2})
+
     def test_short_speech_is_optional_and_uses_record_id_wire_key(self):
         schema = json.loads((ROOT / 'shared/schemas/project.schema.json').read_bytes())
         qa = schema['$defs']['voiceLabRenderQA']

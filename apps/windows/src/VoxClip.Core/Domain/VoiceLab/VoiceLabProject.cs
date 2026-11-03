@@ -26,6 +26,7 @@ public sealed record VoiceLabProvenance(string Provider, string Endpoint, string
     string? ConsentRecordId, string? RequestId, uint? Seed, DateTimeOffset CreatedAt)
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Region { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public double? Pace { get; init; }
 }
 public sealed record VoiceLabQa(double? TranscriptMatch, double? LufsJumpLu, double? PeakDbfs, double? SpeakerScore);
 public sealed record VoiceLabSegment(string Id, VoiceLabSegmentKind Kind, bool Enabled, VoiceLabReplacement Replace,
@@ -139,6 +140,7 @@ public static class VoiceLabProject
                 if (candidate.Rejected is null) Require(candidate.AssetId is not null && (!requiresRank || candidate.Score is not null), VoiceLabProjectErrorCode.InvalidCandidate);
             }
             var provenance = segment.Provenance;
+            Require(provenance.Pace is not { } pace || VoiceLabPace.IsValid(pace), VoiceLabProjectErrorCode.InvalidSegment);
             Require(Matches(provenance.Provider, "[a-z0-9-]+") && !string.IsNullOrEmpty(provenance.Endpoint) &&
                 !provenance.Endpoint.Contains("://", StringComparison.Ordinal) && !string.IsNullOrEmpty(provenance.Model) &&
                 !string.IsNullOrEmpty(provenance.VoiceId) && (provenance.ConsentRecordId is null || Matches(provenance.ConsentRecordId, Id)) &&

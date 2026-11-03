@@ -46,7 +46,7 @@ public static class VoiceLabRecipeBuilder
         var checkedQa = new VoiceLabRenderQa(tokens, tokens <= 5 ? match == 1 : null, match, jump, peak,
             score, record.Speaker.Threshold, record.Speaker.Model, true);
         var provenance = new VoiceLabProvenance(receipt.Provider, receipt.Endpoint.TrimStart('/'), input.ModelId, record.VoiceId, record.RecordId,
-            receipt.ActionId.ToString("D"), row.Seed, createdAt) { Region = receipt.Region.ToString().ToLowerInvariant() };
+            receipt.ActionId.ToString("D"), row.Seed, createdAt) { Region = receipt.Region.ToString().ToLowerInvariant(), Pace = receipt.Pace };
         var video = new VoiceLabVideoRecipe(mode, plan.WindowStartSample, plan.WindowEndSample, output,
             row.Fits ? null : factor, row.Fits ? null : 1.12, row.Fits ? null : face!.FaceX, row.Fits ? null : face!.FaceY,
             null, null, null, null, null, null, null);
