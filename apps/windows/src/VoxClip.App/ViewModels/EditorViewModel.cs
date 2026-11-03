@@ -268,6 +268,18 @@ public sealed class EditorViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectionText));
         SelectionChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    internal void ClearSelection()
+    {
+        if (!HasSelection) return;
+        selectionAnchor = -1;
+        selectionEnd = -1;
+        RewriteSelectionRevision++;
+        if (CorrectionWordId is not null) EndCorrection();
+        OnPropertyChanged(nameof(HasSelection));
+        OnPropertyChanged(nameof(SelectionText));
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
     /// <summary>← / → move the caret one word; with Shift they extend the selection from its moving end (design §11.2). With
     /// nothing selected, the first arrow selects the first word.</summary>
     public void Step(int delta, bool extend = false) => Select(HasSelection ? selectionEnd + delta : 0, extend);

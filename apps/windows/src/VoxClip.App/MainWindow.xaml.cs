@@ -482,6 +482,7 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
         try
         {
             Nav.SelectedItem = target;
+            foreach (var row in Shell.Rows) row.IsSelected = ReferenceEquals(row, target);
             if (Nav.ContainerFromMenuItem(target) is ListViewItem item) item.IsSelected = true;
         }
         finally { syncingSelection = false; }
@@ -599,6 +600,33 @@ public sealed partial class MainWindow : Window, IUpdateRestartWindow
     }
     /// <summary>A suggestion's Keep and Dismiss buttons act without selecting their row.</summary>
     private void RowButtonTapped(object sender, TappedRoutedEventArgs args) => args.Handled = true;
+    private void ClipRowPointerEntered(object sender, PointerRoutedEventArgs args)
+    {
+        if (sender is FrameworkElement { DataContext: SidebarRow row }) row.IsPointerOver = true;
+    }
+    private void ClipRowPointerExited(object sender, PointerRoutedEventArgs args)
+    {
+        if (sender is FrameworkElement { DataContext: SidebarRow row }) row.IsPointerOver = false;
+    }
+    private void MoreClipClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement button) return;
+        DependencyObject? container = button;
+        while (container is not null && container is not ListViewItem) container = VisualTreeHelper.GetParent(container);
+        if (container is ListViewItem { ContextFlyout: MenuFlyout menu }) menu.ShowAt(button);
+    }
+    private void RewriteClipClicked(object sender, RoutedEventArgs args)
+    {
+        if (sender is not FrameworkElement { Tag: string id } || editor is not { } page
+            || !Shell.Rows.Any(row => row.ClipId == id && row.CanRewrite)) return;
+        ShowScope(id);
+        if (page.ViewModel.State?.ActiveClipId != id) return;
+        page.ViewModel.ClearSelection();
+        var command = page.ShellCommands().FirstOrDefault(command => command.Id == "job.rewrite");
+        if (command is not { IsEnabled: true }) return;
+        page.Tabs.PinActive();
+        command.TryExecute();
+    }
     /// <summary>A row's keys (F2, Delete, Ctrl+Enter) act only while focus is in that row, never from the transcript.</summary>
     private void ScopeRowKeys(object sender, RoutedEventArgs args)
     {

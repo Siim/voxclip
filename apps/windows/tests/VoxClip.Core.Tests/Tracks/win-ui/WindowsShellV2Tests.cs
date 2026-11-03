@@ -8,6 +8,132 @@ namespace VoxClip.Ui.Tests;
 
 public sealed class WindowsShellV2Tests
 {
+    [Fact]
+    public void RowRewriteClearsThePreviousSelectionWithoutEditingTheClip()
+    {
+        var model = Model();
+        var clip = model.Clips.First(clip => !clip.IsSuggested);
+        model.Select(0);
+        model.Select(2, true);
+        model.SetScope(clip.Id);
+        var project = model.Project;
+        var revision = model.RewriteSelectionRevision;
+        var notifications = 0;
+        model.SelectionChanged += (_, _) => notifications++;
+        model.ClearSelection();
+        Assert.False(model.HasSelection);
+        Assert.Equal("", model.SelectionText);
+        Assert.Equal(clip.Id, model.State?.ActiveClipId);
+        Assert.Same(project, model.Project);
+        Assert.False(model.IsDirty);
+        Assert.False(model.CanUndo);
+        Assert.Equal(revision + 1, model.RewriteSelectionRevision);
+        Assert.Equal(1, notifications);
+        model.ClearSelection();
+        Assert.Equal(1, notifications);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void ClipRowActionsReplaceDurationOnSelectionOrHover(bool selected, bool hovered, bool visible)
+    {
+        var row = new SidebarRow(SidebarKind.Clip, "clip:first") { Number = "12" };
+        Assert.Equal(32, row.RowHeight);
+        var changed = new List<string?>();
+        row.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+        row.IsSelected = selected;
+        row.IsPointerOver = hovered;
+        Assert.Equal(visible, row.ShowsActions);
+        Assert.Equal(!visible, row.ShowsDuration);
+        Assert.Equal(32, row.RowHeight);
+        Assert.Equal("Rewrite Clip 12", row.RewriteName);
+        Assert.Equal("Rewrite Clip 12 (Ctrl+R)", row.RewriteHelp);
+        if (visible)
+        {
+            Assert.Contains(nameof(SidebarRow.ShowsActions), changed);
+            Assert.Contains(nameof(SidebarRow.ShowsDuration), changed);
+        }
+        row.IsSelected = false;
+        row.IsPointerOver = false;
+        Assert.False(row.ShowsActions);
+        Assert.True(row.ShowsDuration);
+    }
+
+    [Theory]
+    [InlineData(SidebarKind.Suggestion)]
+    [InlineData(SidebarKind.FullTake)]
+    [InlineData(SidebarKind.Home)]
+    public void OtherRowsKeepTheirExistingActionsAndDuration(SidebarKind kind)
+    {
+        var row = new SidebarRow(kind, "other") { IsSelected = true, IsPointerOver = true };
+        Assert.False(row.ShowsActions);
+        Assert.True(row.ShowsDuration);
+    }
+
+    [Fact]
+    public void ClipRewriteAvailabilityRequiresEditableKeptWordsWithoutVoiceLab()
+    {
+        var model = Model();
+        var shell = new ShellViewModel();
+        var clip = model.Clips.First(clip => !clip.IsSuggested).Clip;
+        shell.Update(model, false, [], null);
+        var row = Assert.Single(shell.Rows, row => row.Kind == SidebarKind.Clip && row.ClipId == clip.Id);
+        Assert.True(row.CanRewrite);
+        shell.Update(model, true, [], null);
+        Assert.False(row.CanRewrite);
+        model.Busy = true;
+        shell.Update(model, false, [], null);
+        Assert.False(row.CanRewrite);
+        model.Busy = false;
+        model.SetMediaUnavailable(true);
+        shell.Update(model, false, [], null);
+        Assert.False(row.CanRewrite);
+        model.SetMediaUnavailable(false);
+        var first = model.Index(clip.StartWordId);
+        var last = model.Index(clip.EndWordId);
+        model.Select(first);
+        model.Select(last, true);
+        model.CutSelection();
+        shell.Update(model, false, [], null);
+        Assert.False(row.CanRewrite);
+    }
+
+    [Fact]
+    public void ClipRowActionsReuseTheContextMenuAndDoNotSelectOrAddKeyboardStops()
+    {
+        var root = Path.GetDirectoryName(Environment.GetEnvironmentVariable("VOXCLIP_SHARED_DIR"))!;
+        var app = Path.Combine(root, "apps/windows/src/VoxClip.App");
+        var window = File.ReadAllText(Path.Combine(app, "MainWindow.xaml"));
+        var clip = window.Split("x:Key=\"ClipRow\"")[1].Split("</DataTemplate>")[0];
+        var suggestion = window.Split("x:Key=\"SuggestionRow\"")[1].Split("</DataTemplate>")[0];
+        Assert.Contains("PointerEntered=\"ClipRowPointerEntered\"", clip);
+        Assert.Contains("PointerExited=\"ClipRowPointerExited\"", clip);
+        Assert.Contains("Visibility=\"{x:Bind ShowsActions, Mode=OneWay}\"", clip);
+        Assert.Contains("Visibility=\"{x:Bind ShowsDuration, Mode=OneWay}\"", clip);
+        Assert.Contains("<Grid ColumnSpacing=\"8\" MinHeight=\"32\">", clip);
+        Assert.Contains("Click=\"RewriteClipClicked\" Tapped=\"RowButtonTapped\"", clip);
+        Assert.Contains("Click=\"MoreClipClicked\" Tapped=\"RowButtonTapped\"", clip);
+        Assert.Contains("AutomationProperties.Name=\"{x:Bind RewriteName, Mode=OneWay}\"", clip);
+        Assert.Contains("AutomationProperties.Name=\"More\"", clip);
+        Assert.Equal(2, clip.Split("Style=\"{ThemeResource SubtleButtonStyle}\"").Length - 1);
+        Assert.Contains("IsTabStop=\"False\"", clip);
+        Assert.Equal(1, clip.Split("<MenuFlyout>").Length - 1);
+        Assert.DoesNotContain("RewriteClipClicked", suggestion);
+        Assert.Contains("Click=\"KeepClicked\" Tapped=\"RowButtonTapped\"", suggestion);
+        Assert.Contains("Click=\"DismissClicked\" Tapped=\"RowButtonTapped\"", suggestion);
+        var code = File.ReadAllText(Path.Combine(app, "MainWindow.xaml.cs"));
+        Assert.Contains("menu.ShowAt(button)", code);
+        Assert.Contains("command.TryExecute()", code);
+        var rewrite = code.Split("private void RewriteClipClicked")[1].Split("private void ScopeRowKeys")[0];
+        Assert.Contains("ShowScope(id)", rewrite);
+        Assert.Contains("page.ViewModel.ClearSelection()", rewrite);
+        Assert.True(rewrite.IndexOf("ClearSelection()", StringComparison.Ordinal) < rewrite.IndexOf("command.TryExecute()", StringComparison.Ordinal));
+        Assert.Contains("args.Handled = true", code);
+    }
+
     private static EditorViewModel Model()
     {
         var project = HomeViewModelTests.Fixture("clip-from-long-take.voxclip");

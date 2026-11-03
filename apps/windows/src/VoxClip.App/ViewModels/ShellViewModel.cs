@@ -20,6 +20,9 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     private string accessibleName = "";
     private string toolTip = "";
     private bool isActive;
+    private bool isSelected;
+    private bool isPointerOver;
+    private bool canRewrite;
     private bool isEnabled = true;
     private bool isLlmBusy;
     private bool edits = true;
@@ -43,7 +46,7 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public string ExportDetail => ExportState is ClipExportState.ChangedSinceExport or ClipExportState.Failed ? new ExportRowState(ExportState).Label : "";
     public bool HasExportDetail => ExportDetail.Length > 0;
     public bool ShowsRetry => ExportState == ClipExportState.Failed && Edits;
-    public double RowHeight => HasExportDetail ? 52 : 28;
+    public double RowHeight => HasExportDetail ? 52 : Kind == SidebarKind.Clip ? 32 : 28;
     public SidebarKind Kind { get; } = kind;
     public string Key { get; } = key;
     public int WordIndex { get; set; } = -1;
@@ -77,10 +80,22 @@ public sealed class SidebarRow(SidebarKind kind, string key) : ObservableObject
     public bool ShowsCancel { get => showsCancel; set => SetProperty(ref showsCancel, value); }
     public string CancelName { get => cancelName; set => SetProperty(ref cancelName, value); }
     /// <summary>Display number of a clip or suggestion; never stored (design §2).</summary>
-    public string Number { get => number; set { if (SetProperty(ref number, value)) { OnPropertyChanged(nameof(KeepName)); OnPropertyChanged(nameof(DismissName)); } } }
+    public string Number { get => number; set { if (SetProperty(ref number, value)) { OnPropertyChanged(nameof(KeepName)); OnPropertyChanged(nameof(DismissName)); OnPropertyChanged(nameof(RewriteName)); OnPropertyChanged(nameof(RewriteHelp)); } } }
     /// <summary>A suggestion's Keep and Dismiss buttons: "Keep suggested clip 5", "Dismiss suggested clip 5".</summary>
     public string KeepName => $"Keep suggested clip {Number}";
     public string DismissName => $"Dismiss suggested clip {Number}";
+    public string RewriteName => $"Rewrite Clip {Number}";
+    public string RewriteHelp => $"{RewriteName} (Ctrl+R)";
+    public bool CanRewrite { get => canRewrite; set => SetProperty(ref canRewrite, value); }
+    public bool IsSelected { get => isSelected; set { if (SetProperty(ref isSelected, value)) RefreshActions(); } }
+    public bool IsPointerOver { get => isPointerOver; set { if (SetProperty(ref isPointerOver, value)) RefreshActions(); } }
+    public bool ShowsActions => Kind == SidebarKind.Clip && (IsSelected || IsPointerOver);
+    public bool ShowsDuration => !ShowsActions;
+    private void RefreshActions()
+    {
+        OnPropertyChanged(nameof(ShowsActions));
+        OnPropertyChanged(nameof(ShowsDuration));
+    }
     public string AccessibleName { get => accessibleName; set => SetProperty(ref accessibleName, value); }
     public string ToolTip { get => toolTip; set => SetProperty(ref toolTip, value); }
     /// <summary>The row's clip is the active clip: its badge takes the accent fill.</summary>
@@ -211,6 +226,10 @@ public sealed class ShellViewModel
                 row.IsActive = clip.Id == active;
                 row.Media = ClipMedia.GetValueOrDefault(clip.Id);
                 row.Edits = !showingHome;
+                var first = editor.Index(clip.Clip.StartWordId);
+                var last = editor.Index(clip.Clip.EndWordId);
+                row.CanRewrite = !suggestion && row.Edits && !editor.IsReadOnly && editor.CanFindClips && first >= 0 && last >= first
+                    && editor.Words.Skip(first).Take(last - first + 1).Any(word => editor.State?.CutWordIds.Contains(word.Id) != true);
                 if (suggestion && number == kept.Length + 1) next.Add(SuggestedHeader(suggested.Length, showingHome));
                 next.Add(row);
             }

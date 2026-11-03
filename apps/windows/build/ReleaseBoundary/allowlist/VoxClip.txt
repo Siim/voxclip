@@ -1402,6 +1402,8 @@ member VoxClip.App.MainWindow :: method private CancelFindingClicked(object,Micr
 member VoxClip.App.MainWindow :: method private CancelRecentTranscriptionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private CancelTakeTranscriptionClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private ClipCommand(string,System.Func`2<VoxClip.App.ViewModels.EditorViewModel,bool>)
+member VoxClip.App.MainWindow :: method private ClipRowPointerEntered(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
+member VoxClip.App.MainWindow :: method private ClipRowPointerExited(object,Microsoft.UI.Xaml.Input.PointerRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private CloseCommandPalette(bool)
 member VoxClip.App.MainWindow :: method private CloseShellTab()
 member VoxClip.App.MainWindow :: method private CommandPaletteClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
@@ -1430,6 +1432,7 @@ member VoxClip.App.MainWindow :: method private InvokeRowAsync(VoxClip.App.ViewM
 member VoxClip.App.MainWindow :: method private KeepAllClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private KeepClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private KeepSuggestionInvoked(Microsoft.UI.Xaml.Input.KeyboardAccelerator,Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs)
+member VoxClip.App.MainWindow :: method private MoreClipClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private NavItemInvoked(object,Microsoft.UI.Xaml.Controls.ItemClickEventArgs)
 member VoxClip.App.MainWindow :: method private NavSelectionChanged(object,Microsoft.UI.Xaml.Controls.SelectionChangedEventArgs)
 member VoxClip.App.MainWindow :: method private OpenCommandPalette()
@@ -1449,6 +1452,7 @@ member VoxClip.App.MainWindow :: method private RenameKeyDown(object,Microsoft.U
 member VoxClip.App.MainWindow :: method private RenameSaveClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private RequestCloseAsync(VoxClip.App.ViewModels.ShellPath)
 member VoxClip.App.MainWindow :: method private RetryExportClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
+member VoxClip.App.MainWindow :: method private RewriteClipClicked(object,Microsoft.UI.Xaml.RoutedEventArgs)
 member VoxClip.App.MainWindow :: method private RootSizeChanged(object,Microsoft.UI.Xaml.SizeChangedEventArgs)
 member VoxClip.App.MainWindow :: method private RowButtonTapped(object,Microsoft.UI.Xaml.Input.TappedRoutedEventArgs)
 member VoxClip.App.MainWindow :: method private RowCommand(Microsoft.UI.Xaml.Input.KeyboardAcceleratorInvokedEventArgs,System.Func`3<VoxClip.App.ViewModels.EditorViewModel,string,bool>)
@@ -2821,6 +2825,7 @@ member VoxClip.App.ViewModels.EditorViewModel :: field private undo
 member VoxClip.App.ViewModels.EditorViewModel :: field private voiceLabEdits
 member VoxClip.App.ViewModels.EditorViewModel :: field private voiceLabLabelPosition
 member VoxClip.App.ViewModels.EditorViewModel :: method internal BeginLeaving()
+member VoxClip.App.ViewModels.EditorViewModel :: method internal ClearSelection()
 member VoxClip.App.ViewModels.EditorViewModel :: method internal CompleteCaptionDrag(VoxClip.Core.Domain.Shared.CaptionPosition)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ContainsAiSpeech(string)
 member VoxClip.App.ViewModels.EditorViewModel :: method internal ExportStatus(string)
@@ -4222,6 +4227,7 @@ member VoxClip.App.ViewModels.SidebarKind :: field public Suggestion
 member VoxClip.App.ViewModels.SidebarKind :: field public value__
 member VoxClip.App.ViewModels.SidebarRow :: field private accessibleName
 member VoxClip.App.ViewModels.SidebarRow :: field private action
+member VoxClip.App.ViewModels.SidebarRow :: field private canRewrite
 member VoxClip.App.ViewModels.SidebarRow :: field private cancelName
 member VoxClip.App.ViewModels.SidebarRow :: field private detail
 member VoxClip.App.ViewModels.SidebarRow :: field private edits
@@ -4230,6 +4236,8 @@ member VoxClip.App.ViewModels.SidebarRow :: field private exportState
 member VoxClip.App.ViewModels.SidebarRow :: field private isActive
 member VoxClip.App.ViewModels.SidebarRow :: field private isEnabled
 member VoxClip.App.ViewModels.SidebarRow :: field private isLlmBusy
+member VoxClip.App.ViewModels.SidebarRow :: field private isPointerOver
+member VoxClip.App.ViewModels.SidebarRow :: field private isSelected
 member VoxClip.App.ViewModels.SidebarRow :: field private media
 member VoxClip.App.ViewModels.SidebarRow :: field private metaStatus
 member VoxClip.App.ViewModels.SidebarRow :: field private metaTime
@@ -4238,10 +4246,12 @@ member VoxClip.App.ViewModels.SidebarRow :: field private showsCancel
 member VoxClip.App.ViewModels.SidebarRow :: field private showsKeepAll
 member VoxClip.App.ViewModels.SidebarRow :: field private title
 member VoxClip.App.ViewModels.SidebarRow :: field private toolTip
+member VoxClip.App.ViewModels.SidebarRow :: method private RefreshActions()
 member VoxClip.App.ViewModels.SidebarRow :: method public .ctor(VoxClip.App.ViewModels.SidebarKind,string)
 member VoxClip.App.ViewModels.SidebarRow :: method public ToString()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_AccessibleName()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_Action()
+member VoxClip.App.ViewModels.SidebarRow :: method public get_CanRewrite()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_CancelName()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_ClipId()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_Detail()
@@ -4258,6 +4268,8 @@ member VoxClip.App.ViewModels.SidebarRow :: method public get_IsEnabled()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_IsExporting()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_IsLlmBusy()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_IsNeutral()
+member VoxClip.App.ViewModels.SidebarRow :: method public get_IsPointerOver()
+member VoxClip.App.ViewModels.SidebarRow :: method public get_IsSelected()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_KeepName()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_Key()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_Kind()
@@ -4268,8 +4280,12 @@ member VoxClip.App.ViewModels.SidebarRow :: method public get_MetaStatus()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_MetaTime()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_Number()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_Recent()
+member VoxClip.App.ViewModels.SidebarRow :: method public get_RewriteHelp()
+member VoxClip.App.ViewModels.SidebarRow :: method public get_RewriteName()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_RowHeight()
+member VoxClip.App.ViewModels.SidebarRow :: method public get_ShowsActions()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_ShowsCancel()
+member VoxClip.App.ViewModels.SidebarRow :: method public get_ShowsDuration()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_ShowsKeepAll()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_ShowsRetry()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_Title()
@@ -4277,6 +4293,7 @@ member VoxClip.App.ViewModels.SidebarRow :: method public get_ToolTip()
 member VoxClip.App.ViewModels.SidebarRow :: method public get_WordIndex()
 member VoxClip.App.ViewModels.SidebarRow :: method public set_AccessibleName(string)
 member VoxClip.App.ViewModels.SidebarRow :: method public set_Action(string)
+member VoxClip.App.ViewModels.SidebarRow :: method public set_CanRewrite(bool)
 member VoxClip.App.ViewModels.SidebarRow :: method public set_CancelName(string)
 member VoxClip.App.ViewModels.SidebarRow :: method public set_ClipId(string)
 member VoxClip.App.ViewModels.SidebarRow :: method public set_Detail(string)
@@ -4286,6 +4303,8 @@ member VoxClip.App.ViewModels.SidebarRow :: method public set_ExportState(VoxCli
 member VoxClip.App.ViewModels.SidebarRow :: method public set_IsActive(bool)
 member VoxClip.App.ViewModels.SidebarRow :: method public set_IsEnabled(bool)
 member VoxClip.App.ViewModels.SidebarRow :: method public set_IsLlmBusy(bool)
+member VoxClip.App.ViewModels.SidebarRow :: method public set_IsPointerOver(bool)
+member VoxClip.App.ViewModels.SidebarRow :: method public set_IsSelected(bool)
 member VoxClip.App.ViewModels.SidebarRow :: method public set_Media(VoxClip.App.ViewModels.MediaTile)
 member VoxClip.App.ViewModels.SidebarRow :: method public set_MetaStatus(string)
 member VoxClip.App.ViewModels.SidebarRow :: method public set_MetaTime(string)
