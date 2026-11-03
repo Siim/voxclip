@@ -10,7 +10,7 @@ extension EditorModel {
 
     /// Commits all included takes, cuts and fixes through one native project-snapshot undo transaction.
     func applyVoiceLab(_ segments: [VoiceLabSegment], assets: [VoiceLabAsset], voice: VoiceLabVoiceReference,
-                      scope: RewriteScope, localCommands: [EditCommand] = []) throws {
+                      scope: RewriteScope, localCommands: [EditCommand] = [], videoAssets: [VoiceLabVideoAsset] = []) throws {
         let output: VoiceLabOutputScope
         let words: DirectorScope
         switch scope {
@@ -30,14 +30,14 @@ extension EditorModel {
             words = DirectorScope(kind: .selection(inClip: project.edits.activeClipId != nil), wordCount: count)
         }
         try applyVoiceLab(.acceptAll(segments: segments, assets: assets, voice: voice), localCommands: localCommands,
-                          outputScope: output, name: words.title)
+                          outputScope: output, name: words.title, videoAssets: videoAssets)
     }
 
     private func applyVoiceLab(_ command: VoiceLabEditCommand, localCommands: [EditCommand],
-                               outputScope: VoiceLabOutputScope, name: String) throws {
+                               outputScope: VoiceLabOutputScope, name: String, videoAssets: [VoiceLabVideoAsset] = []) throws {
         guard app.voiceLabRewriteEnabled, capabilities.edit, !capabilities.exporting, !capabilities.aiBusy else { throw VoiceLabProjectError.invalidSegment }
         var changed = try voiceLabReviewProject(localCommands: localCommands)
-        changed = try command.applying(to: changed, outputScope: outputScope)
+        changed = try command.applying(to: changed, outputScope: outputScope, videoAssets: videoAssets)
         replace(changed, name: name)
     }
 

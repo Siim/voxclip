@@ -21,6 +21,7 @@ public struct ImportedLipsyncResult: Sendable, Equatable {
     public let asset: VoiceLabVideoAsset
     public let url: URL
     public let provenance: LipsyncResultProvenance
+    public var colorWarning = false
 
     public func videoRecipe(sourceStartSample: Int64, sourceEndSample: Int64, outputSamples: Int64,
                             windowStartSample: Int64, windowEndSample: Int64) throws -> VoiceLabVideoRecipe {
@@ -39,7 +40,8 @@ public struct LipsyncResultImporter: Sendable {
     public init() {}
 
     public func importResult(provider: FalLipsyncProvider, job: LipsyncJob, quote: LipsyncQuote,
-                             projectID: String, paidRoot: URL, sourceWidth: Int, sourceHeight: Int) async throws -> ImportedLipsyncResult {
+                             projectID: String, paidRoot: URL, sourceWidth: Int, sourceHeight: Int,
+                             referenceVideo: LipsyncUploadFile? = nil) async throws -> ImportedLipsyncResult {
         guard UUID(uuidString: projectID)?.uuidString.lowercased() == projectID,
               try await provider.quote(for: job) == quote, quote.model == job.model,
               (16...4_096).contains(sourceWidth), (16...4_096).contains(sourceHeight),
@@ -57,7 +59,8 @@ public struct LipsyncResultImporter: Sendable {
         let downloaded = scratch.appendingPathComponent("result.mp4")
         defer {
             if let scratchFD = try? LipsyncLocalPath.openDirectory(scratch) {
-                unlinkat(scratchFD, "result.mp4", 0); Darwin.close(scratchFD)
+                for name in ["result.mp4", "reference.mp4", "conformed.mp4"] { unlinkat(scratchFD, name, 0) }
+                Darwin.close(scratchFD)
             }
             unlinkat(project, scratchName, AT_REMOVEDIR)
         }
@@ -65,15 +68,17 @@ public struct LipsyncResultImporter: Sendable {
             try await provider.download(result, to: downloaded)
             try Task.checkCancellation()
             guard let status = await provider.status(quoteID: quote.id), !status.cancelled else { throw CancellationError() }
+            let (conformed, colorWarning) = try await LipsyncResultConformer.conform(downloaded,
+                duration: quote.outputDurationSeconds, fps: quote.fps, width: sourceWidth, height: sourceHeight, reference: referenceVideo)
             let assetID = UUID().uuidString.lowercased()
             let relative = "\(projectID)/\(assetID).mp4"
             let destination = paidRoot.appendingPathComponent(relative)
             let staged = try LipsyncStagedFile(destination: destination)
             defer { staged.discard() }
             var info = stat()
-            guard lstat(downloaded.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+            guard lstat(conformed.path, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
                   (12...Int64(LipsyncLimits.maximumVideoBytes)).contains(info.st_size) else { throw LipsyncError.invalidMedia }
-            let hash = try copy(downloaded, to: staged.descriptor, byteCount: Int(info.st_size))
+            let hash = try copy(conformed, to: staged.descriptor, byteCount: Int(info.st_size))
             let metadata = try await LipsyncResultValidation.validate(file: staged.temporaryURL, durationSeconds: quote.outputDurationSeconds,
                                                                       fps: quote.fps, width: sourceWidth, height: sourceHeight)
             try Task.checkCancellation()
@@ -94,7 +99,7 @@ public struct LipsyncResultImporter: Sendable {
                 unlinkat(project, "\(assetID).mp4", 0)
                 throw error
             }
-            return ImportedLipsyncResult(asset: asset, url: destination, provenance: provenance)
+            return ImportedLipsyncResult(asset: asset, url: destination, provenance: provenance, colorWarning: colorWarning)
         } catch {
             await provider.cleanup(job)
             throw error

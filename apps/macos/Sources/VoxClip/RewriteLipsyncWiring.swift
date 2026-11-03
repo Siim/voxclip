@@ -1,0 +1,37 @@
+import Foundation
+import VoxClipCore
+import VoxClipMedia
+
+extension RewriteSession {
+    func configureLipsync(_ plan: ClipTakePlan) {
+        let app = editor.app
+        let paid = app.locations.root.appendingPathComponent("VoiceLab", isDirectory: true)
+        let scratch = app.locations.root.appendingPathComponent("VoiceLabScratch", isDirectory: true)
+        plan.lipsync.backend = RewriteLipsyncSession.Backend(offers: { [weak plan] in
+            guard let plan else { throw CancellationError() }
+            return try await plan.makeLipsyncOffers()
+        }, hasKey: {
+            (try? await app.secrets.key(for: "fal"))?.isEmpty == false
+        }, hasConsent: {
+            app.bool("voiceLab.providerConsent.fal")
+        }, acceptConsent: {
+            app.set("voiceLab.providerConsent.fal", .bool(true))
+        }, cap: {
+            guard let limit = Decimal(string: app.string("voiceLab.monthlyCapUsd.fal"), locale: Locale(identifier: "en_US_POSIX")) else { return nil }
+            guard let spent = await VoiceLabSpendLedger(locations: app.locations).total(provider: "fal", at: Date()),
+                  spent.unknownCount == 0 else { throw ClipTakePlan.Failure.unknownSpend }
+            return VoiceLabMonthlyCap(limit: limit, spent: spent.usd)
+        }, run: { request, window, recordID, progress in
+            try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let provider = FalLipsyncProvider(keys: app.secrets, logger: app.log, spend: VoiceLabSpendLedger(locations: app.locations))
+            #if DEBUG
+            await provider.setDiagnostic(LipsyncDiagnostic())
+            #endif
+            return try await LipsyncRun(provider: provider, consentStore: VoiceConsentStore(locations: app.locations),
+                paidRoot: paid, scratchRoot: scratch).execute(request: request, window: window, recordID: recordID, onProgress: progress)
+        }, changed: { [weak self] in
+            await app.refreshMonthlySpend()
+            self?.showProposal()
+        })
+    }
+}
