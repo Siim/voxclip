@@ -46,11 +46,11 @@ extension HeavyMediaTests {
         let report = try JSONDecoder().decode([UIProcessHarness.Result].self, from: Data(contentsOf: directory.appendingPathComponent("results.json")))
         #expect(report.count >= 315)
         for result in report { #expect(result.passed && result.skipped == nil, Comment(rawValue: result.name)) }
-        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let box: CGRect; let header: CGRect; let variant: String; let jobs: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
+        struct Measurement: Decodable { let width: Double; let minimumWidth: Double; let proposedWidth: Double; let box: CGRect; let header: CGRect; let variant: String; let jobs: [String]; let lipsyncButtons: [String]; let viewOverflow: [String]; let accessibilityOverflow: [String] }
         let measurements = try JSONDecoder().decode([Measurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-layout.json")))
-        #expect(measurements.count == 108)
+        #expect(measurements.count == 156)
         let captures = try JSONDecoder().decode([String].self, from: Data(contentsOf: directory.appendingPathComponent("rewrite-captures.json")))
-        #expect(captures.count == 48)
+        #expect(captures.count == 96)
         for name in captures { #expect(FileManager.default.fileExists(atPath: directory.appendingPathComponent(name).path)) }
         #expect(Set(measurements.map(\.width)) == [300, 320, 340, 360, 440, 560])
         for measurement in measurements {
@@ -61,6 +61,15 @@ extension HeavyMediaTests {
             #expect(measurement.viewOverflow.isEmpty && measurement.accessibilityOverflow.isEmpty)
             let expectedJobs = measurement.variant.hasPrefix("rewrite-takes-") ? ["captions", "voice", "demo"] : measurement.variant.hasPrefix("rewrite") ? ["captions", "rewrite", "demo"] : ["captions", "demo"]
             #expect(measurement.jobs == expectedJobs, Comment(rawValue: "\(measurement.variant) at \(measurement.width)"))
+            if measurement.variant.contains("lipsync-") {
+                let expected: String
+                if measurement.variant.hasSuffix("missing-key") { expected = "Open Settings, Voice Lab, add fal.ai key" }
+                else if measurement.variant.hasSuffix("running") || measurement.variant.hasSuffix("waiting") { expected = "Cancel lip sync, phrase 1" }
+                else if measurement.variant.hasSuffix("done") { expected = "Play lip-synced phrase 1" }
+                else if measurement.variant.hasSuffix("failed") || measurement.variant.hasSuffix("cancelled") { expected = "Try Again, phrase 1" }
+                else { expected = "Lip Sync, phrase 1" }
+                #expect(measurement.lipsyncButtons.contains { $0.hasPrefix(expected) }, Comment(rawValue: "\(measurement.variant): \(measurement.lipsyncButtons)"))
+            }
         }
         struct HeightMeasurement: Decodable {
             let width: Double
@@ -74,7 +83,7 @@ extension HeavyMediaTests {
             let markers: [String: CGRect]
         }
         let heights = try JSONDecoder().decode([HeightMeasurement].self, from: Data(contentsOf: directory.appendingPathComponent("right-column-heights.json")))
-        #expect(heights.count == 55)
+        #expect(heights.count == 79)
         #expect(Set(heights.map(\.height)) == [322, 422, 522, 622])
         for measurement in heights {
             let viewport = try #require(measurement.scrollFrames.first)

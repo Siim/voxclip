@@ -274,10 +274,13 @@ extension RewriteSession {
     /// The footer prepares one plan for the entire included set. V18 supplies the phrase rows.
     private func takesFooter(_ voice: ProposalItem, keepAll: PanelAction?) -> PanelFooter {
         if let takePlan {
+            if takePlan.lipsync.usingTakes { return PanelFooter(note: "Waiting for lip syncs. You can cancel them in the phrase rows.") }
             guard !takesBusy else { return PanelFooter(note: takeSpendLine) }
             if usableTakeCount > 0, takePlan.stillCurrent {
                 let title = usableTakeCount == takePlan.phrases.count ? "Use Takes" : "Use \(usableTakeCount) \(usableTakeCount == 1 ? "Take" : "Takes")"
-                return PanelFooter(note: "Exports show AI MODIFIED on the video. The post disclosure is optional.",
+                let all = lipSyncAllAction()
+                let note = all == nil ? "Exports show AI MODIFIED on the video. The post disclosure is optional." : "Uploads video + new audio to fal.ai (sync-3)."
+                return PanelFooter(note: note, link: all,
                     primary: PanelAction(id: "useTakes", title: title) { [weak self] in self?.useTake() })
             }
             if let blocker = takePlan.acceptanceBlocker { return PanelFooter(note: blocker + " " + takeSpendLine) }
@@ -363,6 +366,7 @@ extension RewriteSession {
     }
     /// Use Take {n}: the take with the free changes still pending, one undo step.
     func useTake() {
+        guard takePlan?.lipsync.usingTakes != true else { return }
         takesTask?.cancel()
         takesTask = Task { [weak self] in _ = await self?.acceptTakes() }
     }

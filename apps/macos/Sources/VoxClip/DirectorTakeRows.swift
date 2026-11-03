@@ -173,7 +173,9 @@ extension RewriteSession {
     func selectTake(number: Int) {
         guard let plan = takePlan, plan.phrases.indices.contains(focusedTakePhrase),
               let take = plan.phrases[focusedTakePhrase].takes.first(where: { $0.number == number }) else { return }
-        _ = plan.select(take: take.id, phrase: focusedTakePhrase)
+        let phrase = focusedTakePhrase
+        if plan.phrases[phrase].selectedID == take.id { return }
+        mutateLipsync(phrase: phrase) { _ = plan.select(take: take.id, phrase: phrase) }
     }
     func moveTakePhrase(backward: Bool) {
         guard let plan = takePlan, !plan.phrases.isEmpty else { return }
@@ -247,6 +249,11 @@ extension ClipTakePlan.Phrase {
             }
             if let plan = session.takePlan {
                 ForEach(plan.phrases) { phrase in phraseRow(phrase, plan: plan) }
+                if let disclosure = plan.lipsync.allDisclosure {
+                    Text("Lip Sync All\n" + disclosure).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.secondary"))
+                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel("Lip Sync All approval. " + disclosure)
+                }
                 Text(AudioTagPhrase.explanation).font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
                 if !VoiceLabAudioTags.supports(generation.selectedModelID ?? "") {
                     Text("Multilingual v2 leaves tags out.").font(VCType.small.font()).foregroundStyle(DesignValues.color("text.tertiary"))
@@ -268,6 +275,11 @@ extension ClipTakePlan.Phrase {
         .accessibilityElement(children: .contain).accessibilityLabel("Phrase takes")
         .onChange(of: session.editor.app.bool("voiceLab.providerConsent.elevenlabs")) { _, _ in generation.inputsChanged() }
         .onChange(of: session.editor.app.voiceLabSession.records) { _, _ in generation.inputsChanged() }
+        .onChange(of: session.editor.app.connectorReadinessRevision) { _, _ in Task { await session.takePlan?.lipsync.refresh() } }
+        .onChange(of: session.editor.app.string("voiceLab.monthlyCapUsd.fal")) { _, _ in Task { await session.takePlan?.lipsync.refresh() } }
+        .task(id: session.takePlan?.phrases.map { "\($0.selectedID?.uuidString ?? "")-\($0.videoChoice?.rawValue ?? "")-\($0.text)" }) {
+            await session.takePlan?.lipsync.refresh()
+        }
         .onDisappear { session.takePlan?.stopAudition() }
     }
     private func phraseRow(_ phrase: ClipTakePlan.Phrase, plan: ClipTakePlan) -> some View {
@@ -296,7 +308,9 @@ extension ClipTakePlan.Phrase {
                     if take.row.selectable, !take.row.requiresJoinAdvisoryAcceptance, !session.takesBusy {
                         Button(String(take.number)) {
                             session.focusedTakePhrase = phrase.id
-                            _ = plan.select(take: take.id, phrase: phrase.id)
+                            if phrase.selectedID != take.id {
+                                session.mutateLipsync(phrase: phrase.id) { _ = plan.select(take: take.id, phrase: phrase.id) }
+                            }
                         }
                         .buttonStyle(.plain).frame(width: 24, height: 24)
                         .background(phrase.selectedID == take.id ? DesignValues.color("bg.selectedRow") : .clear, in: .rect(cornerRadius: 4))
@@ -334,7 +348,7 @@ extension ClipTakePlan.Phrase {
                                     .accessibilityLabel("\(playing ? "Pause" : "Play") phrase \(phrase.id + 1), take \(take.number), join advisory")
                                 Button("Use anyway") {
                                     session.focusedTakePhrase = phrase.id
-                                    _ = plan.useAnyway(take: take.id, phrase: phrase.id)
+                                    session.mutateLipsync(phrase: phrase.id) { _ = plan.useAnyway(take: take.id, phrase: phrase.id) }
                                 }.buttonStyle(.plain).frame(minHeight: 22)
                                     .accessibilityLabel("Use take \(take.number) anyway, phrase \(phrase.id + 1), accept join advisory")
                             }.font(VCType.callout.font())
@@ -364,10 +378,17 @@ extension ClipTakePlan.Phrase {
             }
             VideoDurationChoiceView(availability: plan.videoAvailability(phrase: phrase.id), selection: phrase.videoChoice,
                 busy: session.takesBusy) { choice in
-                    guard plan.chooseVideo(choice, phrase: phrase.id) else { return }
-                    Task { await plan.prepareVideoChoices() }
+                    guard choice != phrase.videoChoice else { return }
+                    session.mutateLipsync(phrase: phrase.id) {
+                        guard plan.chooseVideo(choice, phrase: phrase.id) else { return }
+                        Task { await plan.prepareVideoChoices(); await plan.lipsync.refresh() }
+                    }
                 }
             if plan.preparingVideo { ProgressView("Preparing video duration…").controlSize(.small) }
+            if plan.lipsync.enabled, phrase.selected?.row.selectable == true, phrase.videoChoice != nil {
+                RewriteLipsyncControls(session: plan.lipsync, phrase: phrase.id, busy: session.takesBusy,
+                    play: { session.playLipsync(phrase: phrase.id) }, changed: { session.showProposal() })
+            }
             if !session.takesBusy, session.takeNeedsWordingRecovery(phrase, plan: plan) {
                 PhraseTimingRecovery(tooLong: (phrase.lengthDifference ?? 0) >= 0, priceAnyway: false) { action in
                     let ordinals = session.takePhraseOrdinals(phrase)

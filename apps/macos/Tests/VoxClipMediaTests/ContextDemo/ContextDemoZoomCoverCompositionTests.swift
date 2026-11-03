@@ -230,6 +230,11 @@ struct ContextDemoZoomCoverNativeTests {
         let image = try await exported.image(at: CMTime(seconds: fadeStart + 0.15, preferredTimescale: 600_000)).image
         #expect(try Self.centerLuma(image) > 200)
         #expect(request.voiceLab?.prepared.disclosure.postText?.contains("Lip movement generated with AI.") == true)
+        let (conformed, warning) = try await LipsyncResultConformer.conform(lipFile, duration: range.duration.seconds,
+            fps: 30, width: 160, height: 90, reference: prepared.video)
+        let resized = try await LipsyncResultValidation.validate(file: conformed, durationSeconds: range.duration.seconds,
+            fps: 30, width: 160, height: 90)
+        #expect(resized.width == 160 && resized.height == 90 && warning)
     }
 
     private static func centerLuma(_ image: CGImage) throws -> Double {

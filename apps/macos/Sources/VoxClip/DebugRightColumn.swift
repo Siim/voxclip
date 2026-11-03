@@ -20,6 +20,9 @@ import VoxClipMedia
         /// The switcher's jobs, in order.
         let jobs: [String]
         let accessibilityElements: Int
+        /// The VoiceOver names of each lip-sync section's buttons, from its layout evidence (SwiftUI's
+        /// accessibility tree cannot be read offscreen).
+        let lipsyncButtons: [String]
         let viewOverflow: [String]
         let accessibilityOverflow: [String]
     }
@@ -264,6 +267,8 @@ import VoxClipMedia
             measurements.append(Measurement(variant: variant, width: width, minimumWidth: minimum.width, proposedWidth: proposed.width,
                 box: markers["viewer.box"] ?? .zero, stage: markers["viewer.stage"] ?? .zero, header: markers["panel.header"] ?? .zero, markers: markers,
                 jobs: jobs, accessibilityElements: accessibilityElements(host).filter { $0.isAccessibilityElement() }.count,
+                lipsyncButtons: texts(in: host).filter { $0.key.hasPrefix("voice.lipsync.") }.sorted { $0.key < $1.key }
+                    .flatMap { $0.value.split(separator: "\n").map(String.init) },
                 viewOverflow: viewOverflow(host), accessibilityOverflow: accessibilityOverflow(host)))
           }
         }

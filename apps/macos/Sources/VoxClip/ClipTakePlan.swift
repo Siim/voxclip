@@ -623,6 +623,7 @@ import VoxClipMedia
     }
 
     @discardableResult func useAnyway(take: UUID, phrase: Int, at date: Date = Date()) -> Bool {
+        if phrases.indices.contains(phrase), phrases[phrase].selectedID != take, lipsync.blocksMutation(phrase) { return false }
         guard !generating, !preparing, !publishing, !preparingVideo, !retired, isCurrent(), phrases.indices.contains(phrase),
               let index = phrases[phrase].takes.firstIndex(where: { $0.id == take }),
               let row = try? phrases[phrase].takes[index].row.acceptingJoinAdvisory(at: date) else { return false }
@@ -738,6 +739,7 @@ import VoxClipMedia
             }
         }
         guard (revision == version || stopping), !retired, isCurrent() else { return }
+        guard !lipsync.blocksMutation(phrase) else { return }
         if phrases[phrase].explicitlySelected {
             if let row = phrases[phrase].selected?.row, row.selectable, !row.requiresJoinAdvisoryAcceptance { return }
             phrases[phrase].explicitlySelected = false
@@ -773,8 +775,8 @@ import VoxClipMedia
 
     func acceptance(at date: Date = Date()) async throws -> Acceptance {
         stopAudition()
-        try await lipsync.waitForUseTakes()
         defer { lipsync.finishUseTakes() }
+        try await lipsync.waitForUseTakes()
         guard stillCurrent else { invalidate(); throw Failure.stale }
         guard canAccept else { throw Failure.noSelection }
         let output = try applyingLipsync(to: await publishSelection(at: date))

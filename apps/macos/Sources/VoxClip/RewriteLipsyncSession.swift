@@ -60,16 +60,32 @@ import VoxClipMedia
     @ObservationIgnored private var currentRun: Task<ImportedLipsyncResult, any Error>?
     @ObservationIgnored private var turn = UUID()
     @ObservationIgnored private var invalidated: Set<UUID> = []
+    @ObservationIgnored private var refreshAgain = false
 
     var running: Bool { operation != nil }
     var enabled: Bool { backend != nil }
     var hasPaidWork: Bool { !applied.isEmpty || running }
+    static let firstUse = "fal.ai receives this phrase's video and new audio. VoxClip deletes uploads and results after download where its API allows; inputs expire after one hour. Clicking Lip Sync approves the transfer and charge."
+
+    func previewFailed() { problem = "Couldn't play the lip-synced preview. Your takes and original video are safe." }
+
+    var allDisclosure: String? {
+        guard let offer = allOffer else { return nil }
+        var lines = ["Uploads \(offer.phraseIDs.count) phrases' prepared video and new audio to fal.ai (sync-3) with your key. Exports say “Lip movement generated with AI.”"]
+        if !consentAccepted { lines.append(Self.firstUse) }
+        if let warning = capWarning(for: offer) { lines.append(warning) }
+        return lines.joined(separator: "\n")
+    }
 
     func refresh() async {
-        guard let backend, !refreshing, !usingTakes else { return }
+        guard let backend, !usingTakes else { return }
+        guard !refreshing else { refreshAgain = true; return }
         let revision = turn
         refreshing = true
-        defer { refreshing = false }
+        defer {
+            refreshing = false
+            if refreshAgain { refreshAgain = false; Task { await self.refresh() } }
+        }
         keyAvailable = await backend.hasKey()
         consentAccepted = backend.hasConsent()
         do {
@@ -91,6 +107,7 @@ import VoxClipMedia
 
     func start(_ offer: Offer) {
         guard let backend, keyAvailable, !usingTakes, offer.isCurrent(),
+              !receipts.contains(where: { $0.id == offer.id }),
               offer.phraseIDs.allSatisfy({ !isRunning($0) && applied[$0] == nil }) else { return }
         backend.acceptConsent(); consentAccepted = true
         receipts.append(Receipt(id: offer.id, phraseIDs: offer.phraseIDs, estimate: offer.estimate))
@@ -205,4 +222,47 @@ import VoxClipMedia
         if case LipsyncError.http(let status) = error { return "fal.ai returned HTTP \(status)." }
         return "The job could not be completed. Your original video and edits are safe."
     }
+
+    #if DEBUG
+    func showFixture(_ state: String, project: Project, phrases: [ClipTakePlan.Phrase]) throws {
+        let plan = try VoiceLabOutputPlanner.build(project, scope: .full)
+        let request = RenderRequest(sourceURL: URL(fileURLWithPath: "/synthetic/lipsync.mp4"),
+            plan: EditPlan(sampleRate: plan.sampleRate, totalSamples: plan.totalSourceSamples,
+                kept: [MediaInterval(startSample: 0, endSample: plan.totalSourceSamples)]),
+            output: OutputSpec(size: PixelSize(width: 320, height: 180), fps: 30, videoBitrate: 1_000_000))
+        let windows = try phrases.map { phrase in
+            try LipsyncWindow.make(seamIn: phrase.window.startSample, seamOut: phrase.window.endSample,
+                totalSamples: plan.totalSourceSamples, sampleRate: Int(plan.sampleRate), phraseID: phrase.id)
+        }
+        func offer(_ windows: [LipsyncRenderWindow]) -> Offer {
+            let seconds = windows.reduce(0) { $0 + $1.seconds(sampleRate: plan.sampleRate) }
+            let estimate = CostEstimate(provider: "fal", operation: "lipsync", units: seconds, unit: "second",
+                usd: Decimal(seconds) * 8 / 60, basis: "offline fixture")
+            return Offer(id: UUID(), request: request, windows: windows, estimate: estimate,
+                recordID: "fixture", dependencies: Set(windows.flatMap { $0.source.phraseIDs }), isCurrent: { true })
+        }
+        let individual = try Dictionary(uniqueKeysWithValues: windows.map { window in
+            (window.phraseIDs[0], offer(try LipsyncRenderWindow.jobs(windows: [window], plan: plan)))
+        })
+        let all = ["lipsync-running", "lipsync-done", "lipsync-waiting"].contains(state) ? nil : offer(try LipsyncRenderWindow.jobs(windows: windows, plan: plan))
+        offers = individual; allOffer = all
+        keyAvailable = state != "lipsync-missing-key"
+        consentAccepted = state != "lipsync-first-use"
+        monthlyCap = state == "lipsync-first-use" ? VoiceLabMonthlyCap(limit: Decimal(string: "0.1")!, spent: 0) : nil
+        let key = keyAvailable, consent = consentAccepted, cap = monthlyCap
+        backend = .init(offers: { (individual, all) }, hasKey: { key }, hasConsent: { consent }, acceptConsent: {},
+            cap: { cap }, run: { _, _, _, _ in throw CancellationError() }, changed: {})
+        usingTakes = state == "lipsync-waiting"
+        for phrase in phrases {
+            let price = individual[phrase.id]?.price ?? "$0.40"
+            switch state {
+            case "lipsync-running", "lipsync-waiting": states[phrase.id] = .running(started: Date().addingTimeInterval(-12), progress: 0.4)
+            case "lipsync-done": states[phrase.id] = .done(seconds: 34, price: price)
+            case "lipsync-failed": states[phrase.id] = .failed(reason: "fal.ai returned HTTP 503.", price: price, mayBill: true)
+            case "lipsync-cancelled": states[phrase.id] = .cancelled(price: price)
+            default: break
+            }
+        }
+    }
+    #endif
 }
