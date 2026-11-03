@@ -77,6 +77,8 @@ extension RewriteSession {
             let sampleCount: Double = project.media.source.durationSeconds * sampleRate
             let frames: Int64 = Int64(EditingPrimitives.jsRound(sampleCount))
             let outputScope = scope, sourceURL = editor.sourceURL
+            // The plan's own model once the user changes it with paid takes kept (`ClipTakePlan.changeModel`).
+            weak var created: ClipTakePlan?
             let plan = try ClipTakePlan(project: final, scope: scope, envelope: envelope, hunks: hunks,
                 makeInput: { phrase in
                     let silence = try VoiceLabWindowPlanner.lendableSilence(project: final, scope: outputScope, window: phrase.window)
@@ -94,11 +96,12 @@ extension RewriteSession {
                     guard let self, let generation else { return false }
                     return current && editor.project == snapshot && self.revision == revision && includedVoice == ordinals &&
                         localCommands == commands && changes == reviewedChanges && ownProposal?.changes == proposalChanges &&
-                        generation.selectedVoiceID == recordID && generation.selectedModelID == modelID &&
+                        generation.selectedVoiceID == recordID && generation.selectedModelID == (created?.modelID ?? modelID) &&
                         region.map { generationIsCurrent(region: $0) } == true
                 }, acceptedChargesChanged: { [weak app = editor.app] in
                     await app?.refreshMonthlySpend()
                 })
+            created = plan
             plan.prepareDurationRender = durationRenderPreparer()
             if let contextReview, let contextRequest {
                 try contextReview.validatePreparedPhrases(plan.phrases, current: contextRequest, envelope: envelope)

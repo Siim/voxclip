@@ -39,6 +39,13 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
         self.cutWordIDs = cutWordIDs; self.window = window; self.incomingSilence = incomingSilence; self.outgoingSilence = outgoingSilence
         self.cleanAudioOn = cleanAudioOn; self.providerConsent = providerConsent
     }
+    /// The same input on another speech model: a phrase's later takes can use a model the user picked after its first run.
+    public func replacingModel(_ id: String) -> VoiceLabTakeInput {
+        VoiceLabTakeInput(text: text, modelID: id, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
+            source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
+            window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
+            providerConsent: providerConsent)
+    }
     public func options(take: Int) -> VoiceLabSpeechOptions {
         let kept = items.filter { $0.kind == .word && !cutWordIDs.contains($0.id) }
         let previous = kept.filter { $0.end <= window.start }.map(\.text).joined(separator: " ")

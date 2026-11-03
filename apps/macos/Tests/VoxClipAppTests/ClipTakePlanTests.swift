@@ -50,6 +50,8 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var voicesVisible = true
         /// The account also lists Multilingual v2, after Eleven v3, as the live account did.
         var listsMultilingual = false
+        /// Each synthesis request's `model_id`, in order.
+        var models: [String] = []
     }
     static let state = Mutex(State())
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -70,7 +72,10 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
                 let body = try #require(JSONSerialization.jsonObject(with: Self.body(request)) as? [String: Any])
                 let text = try #require(body["text"] as? String)
                 let seed = try #require(body["seed"] as? UInt32)
-                let duration = Self.state.withLock { state in state.texts.append(text); state.seeds.append(seed); return state.duration }
+                let model = body["model_id"] as? String ?? ""
+                let duration = Self.state.withLock { state in
+                    state.texts.append(text); state.seeds.append(seed); state.models.append(model); return state.duration
+                }
                 let variance = Self.state.withLock { $0.amplitudeVariance }
                 var pcm = Data()
                 for index in 0..<Int(duration * 24_000) {
@@ -986,6 +991,32 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         #expect(generation.selectedModelID == "eleven_multilingual_v2")
         generation.chooseModel("eleven_v3")
         #expect(generation.selectedModelID == "eleven_v3")
+    }
+
+    /// Live 2026-11-03: after a run the Speech model picker was disabled, so a failing model could not be swapped before
+    /// Try another. A new model applies to the next take; the paid take keeps its own.
+    @Test func theModelChangesAfterARunForTheNextTakeOnly() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.listsMultilingual = true }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let generation = try #require(session.generation), plan = try #require(session.takePlan)
+        await plan.start(approved: true)
+        #expect(session.hasPaidTakes && plan.phrases[0].takes.count == 1)
+        generation.chooseModel("eleven_v3")
+        await generation.finishQuotePreparationForTests()
+        #expect(generation.selectedModelID == "eleven_v3" && session.takePlan === plan && plan.stillCurrent)
+        #expect(plan.modelID == "eleven_v3" && plan.phrases[0].takes.count == 1 && plan.approvalID == nil && generation.problem.isEmpty)
+        session.priceAnotherTake(phrase: 0); await session.takesTask?.value
+        let retry = try #require(session.pricedTakeAction(phrase: 0))
+        retry.perform(); await session.takesTask?.value
+        #expect(ClipTakeHTTP.state.withLock { $0.models } == ["eleven_multilingual_v2", "eleven_v3"])
+        #expect(plan.phrases[0].takes.count == 2)
+        #expect(plan.phrases[0].takes.map { $0.row.receipt?.modelID } == ["eleven_multilingual_v2", "eleven_v3"])
+        // The first take is published on the model that made it, not the plan's new one.
+        let first = plan.phrases[0].takes[0]
+        #expect(first.row.selectable && plan.select(take: first.id, phrase: 0) && plan.chooseVideo(.source, phrase: 0))
+        #expect(await session.acceptTakes(), "\(plan.problem)")
+        #expect(editor.project.voiceLab.segments.last?.candidates.first?.recipe?.provenance.model == "eleven_multilingual_v2")
     }
 
     @Test(arguments: [false, true]) func productionQuotePinsPendingBridgeCorrectionAndPaidDiscard(generated: Bool) async throws {

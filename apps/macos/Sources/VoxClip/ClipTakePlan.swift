@@ -129,6 +129,8 @@ import VoxClipMedia
     @ObservationIgnored private var retired = false
     @ObservationIgnored private var stopping = false
     @ObservationIgnored private var runningPhrase: Int?
+    /// The speech model the plan's later quotes use, once `changeModel` replaced the one its inputs were decoded with.
+    @ObservationIgnored private(set) var modelID: String?
     var stillCurrent: Bool { !retired && isCurrent() && contextIsCurrent() }
     var isRetired: Bool { retired }
     var approvalID: UUID? { batch?.id }
@@ -346,6 +348,24 @@ import VoxClipMedia
         await prepareQuote(indices: [phrase], decoding: true, candidates: 1)
     }
 
+    /// Moves the plan's later quotes to another speech model and keeps every take already made, paid or not. Each take
+    /// keeps the model it was made with (its receipt), and the held quote, priced for the old model, is dropped, so the
+    /// next Try another prices the new one. Refused while anything runs.
+    func changeModel(_ id: String) -> Bool {
+        guard !generating, !preparing, !publishing, !preparingVideo, !retired, operation == nil else { return false }
+        stopAudition()
+        inputs = inputs.map { $0.replacingModel(id) }
+        modelID = id
+        revision += 1; batch = nil; batchIndices = []; progress = nil; cost = nil; estimate = nil
+        return true
+    }
+    /// The input a take was made from, on the model its receipt names.
+    private func input(for row: VoiceLabTakeRow, phrase: Int) -> VoiceLabTakeInput {
+        let input = inputs[phrase]
+        guard let model = row.receipt?.modelID, model != input.modelID else { return input }
+        return input.replacingModel(model)
+    }
+
     func prepareAnother(phrase index: Int) async {
         guard phrases.indices.contains(index), inputs.indices.contains(index) else { return }
         await prepareQuote(indices: [index], decoding: false, candidates: 1)
@@ -365,7 +385,10 @@ import VoxClipMedia
                 try checkCurrent(version)
                 if decoding {
                     var decoded: [VoiceLabTakeInput] = []
-                    for phrase in phrases { decoded.append(try await makeInput(phrase)); try checkCurrent(version) }
+                    for phrase in phrases {
+                        let input = try await makeInput(phrase)
+                        decoded.append(modelID.map { input.replacingModel($0) } ?? input); try checkCurrent(version)
+                    }
                     guard decoded.map(\.window) == phrases.map(\.window), decoded.map(\.text) == phrases.map(\.text) else { throw Failure.stale }
                     inputs = decoded
                     nextSeeds = decoded.map { $0.seed &+ UInt32(candidates) }
@@ -680,12 +703,13 @@ import VoxClipMedia
         var voice: VoiceLabVoiceReference?
         for phrase in selected {
             guard let row = phrase.selected?.row, row.selectable, let fit = row.audio?.fit.plan else { throw Failure.noSelection }
-            let (published, record) = try await backend.publish(phrase.id, row, inputs[phrase.id], date)
+            let made = input(for: row, phrase: phrase.id)
+            let (published, record) = try await backend.publish(phrase.id, row, made, date)
             try checkCurrent(version)
-            let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: inputs[phrase.id], published: published,
+            let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: made, published: published,
                                                                record: record, createdAt: date, videoChoice: phrase.videoChoice)
             segments.append(try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: [candidate],
-                selected: 0, input: inputs[phrase.id], plan: fit))
+                selected: 0, input: made, plan: fit))
             for asset in published.assets {
                 if let previous = assets.first(where: { $0.id == asset.id }) {
                     guard previous == asset else { throw VoiceLabProjectError.invalidAsset }

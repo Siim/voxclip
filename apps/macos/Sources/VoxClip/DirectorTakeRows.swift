@@ -216,7 +216,8 @@ extension ClipTakePlan.Phrase {
                 Picker("Speech model", selection: Binding(get: { generation.selectedModelID ?? "" }, set: { generation.chooseModel($0) })) {
                     ForEach(generation.models, id: \.id) { Text($0.name).tag($0.id) }
                 }
-                .disabled(session.takesBusy || session.hasPaidTakes)
+                // After a run the model still changes for Try another; the takes already made keep theirs.
+                .disabled(session.takesBusy || (session.hasPaidTakes && session.takePlan?.stillCurrent != true))
             }
             if let plan = session.takePlan {
                 ForEach(plan.phrases) { phrase in phraseRow(phrase, plan: plan) }

@@ -302,9 +302,12 @@ import xlocale
         guard id != selectedVoiceID else { return }
         selectedVoiceID = id; inputsChanged()
     }
+    /// Moves a plan with paid takes to another model and keeps its takes; false leaves the ordinary invalidation.
+    @ObservationIgnored var changeModelKeepingTakes: (@MainActor (String) -> Bool)?
     func chooseModel(_ id: String?) {
         guard id == nil || models.contains(where: { $0.id == id }) else { return }
         guard id != selectedModelID else { return }
+        if let id, changeModelKeepingTakes?(id) == true { selectedModelID = id; return }
         selectedModelID = id; inputsChanged()
     }
     func inputsChanged(prepareNewQuote: Bool = true) {
