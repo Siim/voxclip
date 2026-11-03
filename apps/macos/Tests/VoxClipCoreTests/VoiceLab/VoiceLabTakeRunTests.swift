@@ -117,6 +117,11 @@ private final class TakeRunHTTP: Sendable {
         var missingAlignment = false
         var remoteRequiresVerification = false
         var malformedAlignment = false
+        /// Eleven v3's shape: the characters run from 0 to the PCM's last frame plus this overshoot (the client accepts
+        /// up to 50 ms), so the audio holds nothing past the last aligned character. Nil keeps 0.1 s at each end.
+        var edgeAlignmentOvershoot: Double?
+        /// The PCM is silent this long at each end, inside the aligned lead and tail, as a take that pauses at its edges.
+        var silentEdges = 0.0
         /// Scribe answers 200 with no words, after the spend ledger has recorded the QA request.
         var malformedQA = false
         var current = true
@@ -196,6 +201,7 @@ struct VoiceLabTakeRunTests {
     }
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
+                         background: (left: Double, right: Double, run: Double)? = nil,
                          boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
@@ -233,14 +239,21 @@ struct VoiceLabTakeRunTests {
                 if state.seeds.count == 1 && state.firstStatus != 200 { return (state.firstStatus, [:], Data()) }
                 var pcm = Data()
                 let frames = Int(state.duration * 24_000)
+                let edge = Int(state.silentEdges * 24_000)
                 for index in 0..<frames {
-                    var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200).rounded()).littleEndian
+                    // Speech fades over 20 ms (480 frames) into its silent edges.
+                    let inside = edge == 0 ? Int.max : min(index - edge, frames - edge - 1 - index)
+                    let envelope = inside < 0 ? 0 : inside >= 480 ? 1 : 0.5 - 0.5 * cos(Double.pi * Double(inside) / 480)
+                    var value = Int16((sin(2 * Double.pi * 100 * Double(index) / 24_000) * 3_200 * envelope).rounded()).littleEndian
                     withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
                 }
                 let generatedText = try #require(body["text"] as? String)
                 let characters = Array(generatedText).map(String.init)
-                let starts = characters.indices.map { 0.1 + Double($0) * (state.duration - 0.2) / Double(characters.count) }
-                let ends = characters.indices.map { 0.1 + Double($0 + 1) * (state.duration - 0.2) / Double(characters.count) }
+                let lead = state.edgeAlignmentOvershoot == nil ? 0.1 : 0
+                let span = state.edgeAlignmentOvershoot.map { state.duration + $0 } ?? state.duration - 0.2
+                let starts = characters.indices.map { lead + Double($0) * span / Double(characters.count) }
+                var ends = characters.indices.map { lead + Double($0 + 1) * span / Double(characters.count) }
+                if state.edgeAlignmentOvershoot != nil { ends[ends.count - 1] = span }
                 let alignment: Any = state.missingAlignment ? NSNull() : ["characters": characters, "character_start_times_seconds": state.malformedAlignment ? Array(starts.dropLast()) : starts, "character_end_times_seconds": ends]
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["audio_base64": pcm.base64EncodedString(), "alignment": alignment]))
             case ("POST", "/v1/speech-to-text"):
@@ -297,7 +310,15 @@ struct VoiceLabTakeRunTests {
         let source: [Float] = (0..<(8 * rate)).map { index in
             let seconds = Double(index) / Double(rate)
             let quiet = (1.9..<2.1).contains(seconds) || (5.9..<6.1).contains(seconds) || (6.5..<7.1).contains(seconds)
-            return !sourceAudible ? 0 : quiet ? 0.001 : Float(0.1 * sin(2 * Double.pi * 100 * seconds))
+            guard sourceAudible else { return 0 }
+            // With `background`, speech fades over 20 ms into and out of each pause, as speech decays, instead of
+            // stopping on a broadband click, and the pauses hold noise at each side's level.
+            let edges = [1.9, 2.1, 5.9, 6.1, 6.5, 7.1], distance = edges.map { abs(seconds - $0) }.min() ?? 1
+            let envelope = background == nil || distance >= 0.02 ? 1 : 0.5 - 0.5 * cos(Double.pi * distance / 0.02)
+            guard quiet else { return Float(0.1 * envelope * sin(2 * Double.pi * 100 * seconds)) }
+            guard let background else { return 0.001 }
+            let level = seconds < 4 ? background.left : seconds < 6.3 ? background.right : background.run
+            return Float(Double((index * 7_919) % 1_001 - 500) / 500 * level)
         }
         var items = [TimedWord(id: "before", text: "before", kind: .word, start: 0, end: 1.9),
                      TimedWord(id: "old", text: "old", kind: .word, start: 2.1, end: 5.9),
@@ -540,7 +561,14 @@ struct VoiceLabTakeRunTests {
         #expect(scratch.audio == audio)
         #expect(fixture.http.value.withLock { $0.qaWAVs.first } == (try VoiceLabTakeWAV.encode(audio.mixed, rate: audio.sampleRate)))
         #expect(qa.values.peakDbfs == (try VoiceLabLoudness.samplePeakDbfs(audio.mixed)))
-        #expect(qa.values.lufsJumpLu == (try VoiceLabLoudness.lufsJumpLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams)))
+        // The seam value is the step the join adds over the unedited source's own jump at the same seams (§8.11 item 3).
+        let original = try #require(fixture.input.source.samples(36_000..<156_000))
+        #expect(audio.sourceSeamSteps == (try VoiceLabLoudness.seamStepsLu(Array(original), sampleRate: 24_000, seamSamples: [12_000, 108_000])))
+        #expect(audio.sourceSeamPauseSteps == (try VoiceLabLoudness.pauseSeamStepsLu(Array(original), sampleRate: 24_000, seamSamples: [12_000, 108_000])))
+        #expect(qa.values.lufsJumpLu == (try VoiceLabLoudness.seamExcessLu(mixedSteps: VoiceLabLoudness.seamStepsLu(audio.mixed,
+            sampleRate: audio.sampleRate, seamSamples: audio.seams), sourceSteps: audio.sourceSeamSteps,
+            mixedPauseSteps: VoiceLabLoudness.pauseSeamStepsLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams),
+            sourcePauseSteps: audio.sourceSeamPauseSteps)))
         let paid = try #require(await fixture.run.paidAsset(for: row.id))
         let paidURL = fixture.root.appendingPathComponent("VoiceLab").appendingPathComponent(paid.file)
         await fixture.run.reject(row.id)
@@ -626,6 +654,97 @@ struct VoiceLabTakeRunTests {
         let result = try await fixture.run.execute(quote, approved: true)
         #expect(result.best == nil && result.rows.count == 1)
         #expect(fixture.http.value.withLock { $0.qa == 0 && $0.seeds.count == 1 })
+    }
+    /// Live 2026-11-03 (Eleven v3): a take that ends on its last aligned character has no handle after its trim. A longer
+    /// take that must shorten has no pad either, so the fitted asset once read past the paid file (invalidAudio).
+    @Test(arguments: [0.0, 0.03]) func aTakeWithNoAudioPastItsAlignmentGetsSilentHandles(overshoot: Double) async throws {
+        let fixture = try await fixture { $0.duration = 5; $0.edgeAlignmentOvershoot = overshoot }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        #expect(result.rows.count == 3 && result.rows.allSatisfy { $0.failure == nil || $0.qa != nil })
+        let row = try #require(result.rows.first), scratch = try #require(await fixture.run.scratch(for: row.id))
+        let fitted = scratch.fitted, plan = fitted.fit.plan
+        #expect(plan.incoming.padFrames == 0 && plan.outgoing.padFrames == 0 && plan.trimStartFrame == 0 && plan.trimEndFrame == 120_000)
+        // The hard seams' handles (144 frames at 24 kHz) are silence; the take between them is the paid audio.
+        #expect(fitted.isDerived && fitted.trimStartFrame == 144 && fitted.wave.frames == 144 + plan.outputFrames + 144)
+        #expect((0..<144).allSatisfy { fitted.wave.sample(frame: Int64($0), channel: 0) == 0 })
+        #expect((0..<144).allSatisfy { fitted.wave.sample(frame: fitted.wave.frames - 1 - Int64($0), channel: 0) == 0 })
+        // The take's file starts on a zero sample, so its start is the paid audio unchanged.
+        #expect(fitted.wave.sample(frame: 145, channel: 0) != 0)
+        // It ends on a non-zero sample, as Eleven v3 stops mid-word: the take's own last 5 ms fade to 0 before the silent
+        // handle, so no step at the edge is larger than the 100 Hz tone's own largest step (§8.9.3).
+        let end = fitted.trimEndFrame, edge = Int64(120)
+        #expect(fitted.wave.sample(frame: end - 1, channel: 0) == 0 && fitted.wave.sample(frame: end, channel: 0) == 0)
+        let slope = 2 * Double.pi * 100 / 24_000 * 3_200 / 32_768 + 1.0 / 32_768
+        #expect(((end - edge)...end).allSatisfy { abs(fitted.wave.sample(frame: $0, channel: 0) - fitted.wave.sample(frame: $0 - 1, channel: 0)) <= slope })
+        #expect(abs(fitted.wave.sample(frame: end - edge - 1, channel: 0)) > 0.001)
+        // The source kept around the window is untouched: the mixed lead and tail outside the seam fades are its frames.
+        let audio = scratch.audio, lead = audio.patchRange.lowerBound, half = 144
+        let source = try #require(fixture.input.source.samples((48_000 - lead)..<(48_000 + 96_000 + 12_000)))
+        #expect(Array(audio.mixed[0..<(audio.seams[0] - half)]) == Array(source[source.startIndex..<(source.startIndex + audio.seams[0] - half)]))
+        let tailCount = audio.mixed.count - (audio.seams[1] + half)
+        #expect(Array(audio.mixed.suffix(tailCount)) == Array(source.suffix(tailCount)))
+    }
+    /// Live 2026-11-03 (take 4): the background was 8 LU apart on the two sides of a window, and one room-tone level
+    /// met neither join. The bed ramps from the left side's level to the right side's, so both pause joins stay within
+    /// 2 LU; equal backgrounds keep today's single pooled level and the earlier encoding.
+    @Test(arguments: [8.0, 0.0]) func theRoomToneBedRampsBetweenTwoBackgrounds(stepDb: Double) async throws {
+        let left = 0.003, right = left * pow(10, -stepDb / 20)
+        let fixture = try await fixture({ $0.duration = 2.6; $0.silentEdges = 0.2 }, background: (left, right, 0.001))
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let rate = 24_000, window = 48_000..<144_000
+        let preflight = try VoiceLabTakeProcessing.preflight(fixture.input)
+        let tone = try #require(preflight.roomTone)
+        let run = Array(try #require(fixture.input.source.samples(Int(tone.sourceStartSample)..<Int(tone.sourceEndSample))))
+        let sides = try VoiceLabLoudness.seamBackgroundSidesRmsDb(fixture.input.source, sampleRate: rate, window: window)
+        let (l, r) = (try #require(sides.left), try #require(sides.right))
+        #expect(abs((l - r) - stepDb) < 0.5)
+        if stepDb == 0 {
+            // Equal backgrounds: one level, today's pooled one, and no end gain in the file.
+            let pooled = try VoiceLabLoudness.seamBackgroundRmsDb(fixture.input.source, sampleRate: rate, window: window)
+            let today = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: pooled, run: run)
+            #expect(tone.endGainDb == nil && tone.gainDb == today)
+            let encoded = try JSONEncoder().encode(tone)
+            #expect(String(decoding: encoded, as: UTF8.self).contains("endGainDb") == false)
+        } else {
+            let start = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: l, run: run)
+            let end = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: r, run: run)
+            #expect(tone.gainDb == start && tone.endGainDb == end)
+            #expect(tone.gainDb(atFrame: -10, of: 100) == tone.gainDb && tone.gainDb(atFrame: 200, of: 100) == tone.endGainDb)
+            #expect(abs(tone.gainDb(atFrame: 50, of: 100) - (tone.gainDb + (tone.endGainDb ?? 0)) / 2) < 1e-12)
+            let decoded = try JSONDecoder().decode(VoiceLabRoomTone.self, from: JSONEncoder().encode(tone))
+            #expect(decoded == tone)
+        }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first), audio = try #require(row.audio), qa = try #require(row.qa)
+        #expect(audio.roomTone == tone)
+        // Both joins sit in a pause on both sides: the source's pause, and the take's pad over the bed.
+        let pauses = try VoiceLabLoudness.pauseSeamStepsLu(audio.mixed, sampleRate: audio.sampleRate, seamSamples: audio.seams)
+        #expect(pauses.count == 2 && pauses.allSatisfy { $0.map { abs($0) <= 2 } == true }, "\(pauses)")
+        #expect((qa.values.lufsJumpLu ?? 9) <= 2 && !qa.failures.contains(.loudness), "\(qa)")
+        if stepDb > 0 {
+            // One pooled level would have missed both joins by about half the step.
+            let pooled = try VoiceLabLoudness.seamBackgroundRmsDb(fixture.input.source, sampleRate: rate, window: window)
+            let flat = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: pooled, run: run)
+            #expect(abs(flat - tone.gainDb) > 2 && abs(flat - (tone.endGainDb ?? 0)) > 2)
+        }
+    }
+    /// Live 2026-11-03: a 1.36 s Eleven v3 take timed to its last frame. `ceil(1.36 × 24,000)` is 32,641 in binary64, one
+    /// frame past the asset, and the fit planner refused the word timing (invalidAlignment) until times were clamped.
+    @Test(arguments: [0.0, 0.03]) func aLastCharacterTimedToTheEndOfThePCMIsClamped(overshoot: Double) async throws {
+        let fixture = try await fixture { $0.duration = 1.36; $0.edgeAlignmentOvershoot = overshoot }
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        #expect((1.36 * 24_000).rounded(.up) == 32_641)
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        #expect(result.end == .completed && result.rows.count == 3)
+        #expect(result.rows.allSatisfy { $0.failure != .invalidAlignment && $0.failure != .provider(.invalidAlignment) && $0.qa != nil })
+        let words = try #require(result.rows.first?.audio?.words)
+        #expect(words.count == 1 && words[0].end > words[0].start)
+        #expect(VoiceLabTakeProcessing.lastAlignedTime(frames: 32_640, rate: 24_000) < 1.36)
+        #expect((VoiceLabTakeProcessing.lastAlignedTime(frames: 32_640, rate: 24_000) * 24_000).rounded(.up) == 32_640)
     }
     @Test func changedDurationRanksButDoesNotPretendToFit() async throws {
         let fixture = try await fixture { $0.duration = 5 }; defer { try? FileManager.default.removeItem(at: fixture.root) }

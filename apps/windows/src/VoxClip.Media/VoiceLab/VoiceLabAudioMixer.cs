@@ -259,7 +259,11 @@ internal sealed class VoiceLabAudioMixer : IDisposable
             {
                 if ((i & 4095) == 0) ct.ThrowIfCancellationRequested();
                 for (var channel = 0; channel < 2; channel++)
-                    target[2 * i + channel] += toneGain * RoomToneSample(tone, relative + i, channel, fade);
+                {
+                    // A bed whose two sides differ ramps across the window, linearly in dB (voice-lab §8.7 item 3).
+                    var gain = run.EndGainDb is null ? toneGain : (float)Math.Pow(10, run.GainDbAt(relative + i, recipe.OutDuration * plan.SampleRate) / 20);
+                    target[2 * i + channel] += gain * RoomToneSample(tone, relative + i, channel, fade);
+                }
             }
         }
     }

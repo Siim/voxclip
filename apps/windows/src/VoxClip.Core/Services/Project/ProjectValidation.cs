@@ -132,7 +132,7 @@ internal static class ProjectValidation
         Object(recipe.GetProperty("audio"), "assetId trimStart trimEnd stretch gainDb");
         Nullable(recipe.GetProperty("words"), words => Array(words, word => Object(word, "text start end synthetic")));
         Array(recipe.GetProperty("chunks"), item => Object(item, "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame"));
-        Nullable(recipe.GetProperty("roomTone"), item => Object(item, "sourceStartSample sourceEndSample gainDb"));
+        Nullable(recipe.GetProperty("roomTone"), item => Object(item, "sourceStartSample sourceEndSample gainDb", "endGainDb"));
         var seams = recipe.GetProperty("seams"); Object(seams, "in out");
         Object(seams.GetProperty("in"), "kind fadeSamples sourceHandleSamples assetHandleFrames");
         Object(seams.GetProperty("out"), "kind fadeSamples sourceHandleSamples assetHandleFrames");

@@ -614,7 +614,7 @@ extension DebugRewrite {
 
     /// R2, one scene per footer case of design.md R2 with impl-plan item 25 (V15), each a real reply to Rewrite clip 1
     /// read through the passage diff and shown in the transcript: only cuts and fixes; phrases in your voice with Voice
-    /// Lab off; f3's Make Takes, with Keep All; Make Your Voice; Use Take 1; more than one phrase; over the voice budget;
+    /// Lab off; f3's Get Price, with Keep All; Make Your Voice; Use Take 1; more than one phrase; over the voice budget;
     /// every change left out; and no changes. Voice Lab's settings are put back, and each scene's change list stops
     /// following them, so it shows its case when drawn.
     static func proposalScenes(app: AppModel, fixture: Project) -> [DirectorScene] {
@@ -656,7 +656,7 @@ extension DebugRewrite {
         add("r2-free", scene("r2-free") { replacing($0, ["word12": nil, "word20": "Word20"]) })
         // A phrase in your voice with Voice Lab off: Turn On Voice Lab… and Apply 2 Free Changes.
         add("r2-voice-lab-off", scene("r2-voice-lab-off", voiceLab: false) { replacing($0, ["word12": nil, "word20": "Word20", "word30": "fresh"]) })
-        // f3: two cuts and a phrase in your voice, "Nothing paid yet.", Keep All and Make Takes.
+        // f3: two cuts and a phrase in your voice, "Nothing paid yet.", Keep All and Get Price.
         add("r2-make-takes", scene("r2-make-takes") { replacing($0, ["word12": nil, "word13": nil, "word25": nil, "word30": "fresh"]) })
         // No voice yet: Make Your Voice.
         let noVoice = scene("r2-make-voice") { replacing($0, ["word12": nil, "word30": "fresh"]) }

@@ -39,6 +39,36 @@ import Testing
         #expect(actual.roomTone == expected.roomTone && actual.roomTone?.sourceStartSample == 200_000)
     }
 
+    /// Live 2026-11-03 (car vlog): the take's quietest half second sat 8 to 14 dB under the noise in the pauses beside the
+    /// windows, so pads and pauses under the patch dipped. The loop plays at the background measured at the seams.
+    @Test func roomToneLoopsAtTheBackgroundBesideTheSeams() throws {
+        let floor: Float = 0.003
+        let whole: [Float] = (0..<(30 * rate)).map { index in
+            let seconds = Double(index) / Double(rate)
+            if (24.9..<26).contains(seconds) { return 0.001 }
+            if (11.5..<12).contains(seconds) || (13..<13.5).contains(seconds) { return index.isMultiple(of: 2) ? floor : -floor }
+            return Float(0.1 * sin(2 * Double.pi * 100 * seconds))
+        }
+        let items = [TimedWord(id: "before", text: "before", kind: .word, start: 0, end: 11.5),
+                     TimedWord(id: "old", text: "old", kind: .word, start: 12, end: 13),
+                     TimedWord(id: "after", text: "after", kind: .word, start: 13.5, end: 25),
+                     TimedWord(id: "last", text: "last", kind: .word, start: 25.8, end: 30)]
+        let window = VoiceLabWindow(firstWordId: "old", lastWordId: "old", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 12, end: 13,
+            startSample: 96_000, endSample: 104_000, leftSeam: .init(kind: .gap, time: 12, sample: 96_000, fadeSamples: 160),
+            rightSeam: .init(kind: .gap, time: 13, sample: 104_000, fadeSamples: 160))
+        let input = VoiceLabTakeInput(text: "Hello", modelID: "eleven_multilingual_v2", recordID: "record", language: "en", seed: 1,
+            contentKey: "synthetic-source", source: whole, sourceSampleRate: rate, items: items, window: window,
+            incomingSilence: 0.5, outgoingSilence: 0.5, providerConsent: true)
+        let tone = try #require(try VoiceLabTakeProcessing.preflight(input).roomTone)
+        #expect(tone.sourceStartSample == 200_000)
+        #expect(abs(tone.gainDb - 20 * log10(3.0)) < 1e-3)
+        // A seam in speech has no background to match: the loop keeps its natural level.
+        #expect(try VoiceLabTakeProcessing.preflight(self.input(VoiceLabSourceExcerpt(whole: source()),
+            envelope: VoiceLabTakeProcessing.envelope(source(), sampleRate: rate))).roomTone?.gainDb == 0)
+        #expect(try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: 0, run: [0.001]) == 12)
+        #expect(try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: nil, run: [0.001]) == 0)
+    }
+
     @Test func preflightRefusesRegionsWithoutTheLoudnessNeighbourhood() throws {
         let whole = source()
         let envelope = VoiceLabTakeProcessing.envelope(whole, sampleRate: rate)

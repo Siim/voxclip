@@ -153,21 +153,48 @@ struct EditorRenderSnapshot {
             return
         }
         rewriteOpenTask?.cancel()
-        closeRewrite(returnFocus: false)
+        // The open session on another scope stays until the new one opens: closing it first re-rendered the transcript
+        // without its proposal, which could move the selection and cancel this open, leaving no session and no message.
+        rewriteNotice = nil
         let snapshot = project
         let selection = selectedWordIDs
         let pauses = selectedPauseIDs
         let signature = rewriteConnectorSignature
+        let token = UUID()
+        rewriteOpenToken = token
         rewriteOpenTask = Task { [weak self] in
             guard let self else { return }
             await previousFind?.value
             await previous?.waitForSend()
             if waveform == nil { await loadWaveform() }
-            guard !Task.isCancelled, capabilities.ai, project == snapshot, selectedWordIDs == selection, selectedPauseIDs == pauses,
-                  rewriteConnectorSignature == signature else { return }
+            // A newer Rewrite or an explicit close replaced this one; it says nothing.
+            guard rewriteOpenToken == token else { return }
+            rewriteOpenToken = nil
+            let refusal: String? = if !capabilities.ai { Self.rewriteUnavailableNotice }
+                else if selectedWordIDs != selection || selectedPauseIDs != pauses { Self.rewriteSelectionNotice }
+                else if project != snapshot { Self.rewriteProjectNotice }
+                else if rewriteConnectorSignature != signature { Self.rewriteConnectorNotice }
+                else if Task.isCancelled { Self.rewriteStoppedNotice }
+                else { nil }
+            if let refusal {
+                rewriteNotice = refusal
+                announce(refusal)
+                return
+            }
+            closeRewrite(returnFocus: false)
             openRewriteSession(scope: scope, instruction: instruction)
         }
     }
+    /// Why the last Rewrite press did not start, shown in the status bar until the next press (design.md §6.3.6 Start).
+    var rewriteNotice: String?
+    @ObservationIgnored private var rewriteOpenToken: UUID?
+    static let rewriteSelectionNotice = "Rewrite didn't start because the selection changed. Nothing was sent. Press Rewrite again."
+    static let rewriteProjectNotice = "Rewrite didn't start because the project changed. Nothing was sent. Press Rewrite again."
+    static let rewriteConnectorNotice = "Rewrite didn't start because the AI choice changed. Nothing was sent. Press Rewrite again."
+    static let rewriteUnavailableNotice = "Rewrite isn't available right now. Nothing was sent."
+    static let rewriteStoppedNotice = "Rewrite didn't start. Nothing was sent. Press Rewrite again."
+    /// Ends a Rewrite still getting ready without a notice: a close, or a send of the open session, replaced it.
+    private func cancelRewriteOpen() { rewriteOpenToken = nil; rewriteOpenTask?.cancel() }
     /// Scope changes reword the single row and bind its approval to the newly displayed words, also headlessly.
     func refreshPendingSendScope() {
         guard sendConfirmation.isPresented, openRewrite != nil else { return }
@@ -181,7 +208,7 @@ struct EditorRenderSnapshot {
     /// which sends. The job comes to the panel to ask, and VoiceOver hears the question.
     func sendRewriteAgain(_ session: RewriteSession, instruction: String? = nil) {
         guard session.isOpen, !session.isProposing else { return }
-        rewriteOpenTask?.cancel()
+        cancelRewriteOpen()
         let count = session.proposalCount
         guard count > 0, session.hasPaidTakes || session.hasEditedChanges else {
             sendAgain(session, instruction: instruction)
@@ -200,7 +227,7 @@ struct EditorRenderSnapshot {
     }
     private func sendAgain(_ session: RewriteSession, instruction: String?) {
         guard session.isOpen, !session.isProposing else { return }
-        rewriteOpenTask?.cancel()
+        cancelRewriteOpen()
         rewriteOpenTask = Task {
             guard !Task.isCancelled, session.isOpen else { return }
             session.actionTask?.cancel()
@@ -241,7 +268,7 @@ struct EditorRenderSnapshot {
         return [id, app.string("llm.model.\(id)"), app.string("llm.baseUrl.\(id)"), app.string("llm.cliPath.\(id)")]
     }
     func closeRewrite(returnFocus: Bool = true) {
-        rewriteOpenTask?.cancel(); openRewrite?.close(); openRewrite = nil
+        cancelRewriteOpen(); openRewrite?.close(); openRewrite = nil
         transcriptRevision += 1
         if returnFocus { _ = focusTranscript(in: window) }
     }

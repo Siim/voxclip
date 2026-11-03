@@ -64,6 +64,68 @@ public enum VoiceLabLoudness {
         return try neighbourhoodVoicedRmsDb(Array(samples), sampleRate: sampleRate, window: (window.lowerBound - lower)..<(window.upperBound - lower))
     }
 
+    /// The background level at the window's seams (§8.7 item 3), in dBFS: the RMS pooled over the unvoiced 10 ms frames
+    /// (at or below `VOICED_FRAME`) that touch each seam from outside the window, framed outward from the seam and
+    /// stopping at the first voiced frame or after 0.4 s, the momentary window QA reads there. Nil with fewer than 10
+    /// such frames, as at hard seams in connected speech. `source` must hold 0.4 s beside the window, clamped to the take.
+    public static func seamBackgroundRmsDb(_ source: VoiceLabSourceExcerpt, sampleRate: Int, window: Range<Int>) throws -> Double? {
+        let sides = try seamBackgroundPower(source, sampleRate: sampleRate, window: window)
+        return level(power: sides.left.power + sides.right.power, frames: sides.left.frames + sides.right.frames, sampleRate: sampleRate)
+    }
+
+    /// The same background measured on each side of the window on its own (§8.7 item 3): before the incoming seam and
+    /// after the outgoing one, each nil with fewer than 10 unvoiced frames there.
+    public static func seamBackgroundSidesRmsDb(_ source: VoiceLabSourceExcerpt, sampleRate: Int,
+                                                  window: Range<Int>) throws -> (left: Double?, right: Double?) {
+        let sides = try seamBackgroundPower(source, sampleRate: sampleRate, window: window)
+        return (level(power: sides.left.power, frames: sides.left.frames, sampleRate: sampleRate),
+                level(power: sides.right.power, frames: sides.right.frames, sampleRate: sampleRate))
+    }
+    private static func level(power: Double, frames: Int, sampleRate: Int) -> Double? {
+        guard frames >= 10, power > 0 else { return nil }
+        return 10 * log10(power / Double(frames * sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate)))
+    }
+    private static func seamBackgroundPower(_ source: VoiceLabSourceExcerpt, sampleRate: Int,
+                                            window: Range<Int>) throws -> (left: (power: Double, frames: Int), right: (power: Double, frames: Int)) {
+        guard sampleRate > 0, window.lowerBound >= 0, window.upperBound <= source.totalFrames else { throw VoiceLabAudioMathError.invalidInput }
+        let size = sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate), limit = sampleCount(momentarySeconds, sampleRate) / size
+        let threshold = VoiceLabPatchConstants.VOICED_FRAME_LEVEL
+        var sides: [(power: Double, frames: Int)] = []
+        for outward in [-1, 1] {
+            let span = outward < 0 ? max(0, window.lowerBound - limit * size)..<window.lowerBound
+                                   : window.upperBound..<min(source.totalFrames, window.upperBound + limit * size)
+            guard let held = source.samples(span) else { throw VoiceLabAudioMathError.invalidInput }
+            let raw = Array(held)
+            guard raw.allSatisfy(\.isFinite) else { throw VoiceLabAudioMathError.invalidInput }
+            var total = 0.0, frames = 0
+            for index in 0..<limit {
+                let start = outward < 0 ? raw.count - (index + 1) * size : index * size
+                guard start >= 0, start + size <= raw.count else { break }
+                var sum = 0.0
+                for offset in start..<(start + size) { sum += Double(raw[offset]) * Double(raw[offset]) }
+                if (sum / Double(size)).squareRoot() > threshold { break }
+                total += sum; frames += 1
+            }
+            sides.append((total, frames))
+        }
+        return (sides[0], sides[1])
+    }
+
+    /// The smallest background difference between the two sides, in dB, at which the room-tone bed ramps from one
+    /// side's level to the other's instead of playing at their pooled level (§8.7 item 3).
+    public static let roomToneRampMinimumDb = 1.0
+
+    /// The room-tone loop's gain (§8.7 item 3): a background level (`seamBackgroundRmsDb`, or one side's from
+    /// `seamBackgroundSidesRmsDb`) less the RMS of the selected run, clamped to `GAIN_CLAMP`; 0, its natural level, when
+    /// there is no background to match.
+    public static func roomToneGainDb(seamBackgroundRmsDb background: Double?, run: [Float]) throws -> Double {
+        guard let background else { return 0 }
+        guard background.isFinite, !run.isEmpty, run.allSatisfy(\.isFinite) else { throw VoiceLabAudioMathError.invalidInput }
+        let power = run.reduce(0.0) { $0 + Double($1) * Double($1) } / Double(run.count)
+        guard power > 0 else { return 0 }
+        return min(max(background - 10 * log10(power), -gainClampDb), gainClampDb)
+    }
+
     /// `audio.gainDb` for a candidate (§8.7 item 2): the voiced-RMS difference clamped to `GAIN_CLAMP`, then lowered
     /// until the candidate's true peak sits at −1 dBTP. A recipe stores one static gain, so this cap is the only form
     /// the limit can take; nothing limits dynamically and the voice itself is unaltered.
@@ -172,6 +234,82 @@ public enum VoiceLabLoudness {
         try seamJumps(samples, sampleRate: sampleRate, seamSamples: [seamSample])[0]
     }
 
+    /// Every seam's signed momentary step, in order: `max(M_after, −70) − max(M_before, −70)` over the windows of
+    /// `seamJumpLu`, whose value is this step's magnitude. One K-weighting pass over `samples`.
+    public static func seamStepsLu(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double] {
+        try seamSteps(samples, sampleRate: sampleRate, seamSamples: seamSamples)
+    }
+
+    /// The take QA's seam value (§8.11 item 3): how far each seam's signed step in the mixed audio lies outside the
+    /// unedited source's own step at the same seam, and the largest of them, 0 without a seam. A seam sits in a pause or
+    /// at a word edge, so one 400 ms side holds more speech than the other and the source itself steps there. A mixed
+    /// step between 0 and the source's step, in the same direction, adds nothing; one beyond it adds the difference;
+    /// one in the other direction adds its whole size, so a take far louder than the speech it replaces cannot pass by
+    /// mirroring the source's step. Both lists come from `seamStepsLu`, seam by seam.
+    public static func seamExcessLu(mixedSteps: [Double], sourceSteps: [Double]) throws -> Double {
+        guard mixedSteps.count == sourceSteps.count, (mixedSteps + sourceSteps).allSatisfy(\.isFinite) else {
+            throw VoiceLabAudioMathError.invalidInput
+        }
+        return zip(mixedSteps, sourceSteps).map { mixed, source in outside(mixed, source) }.max() ?? 0
+    }
+
+    /// Each seam's signed step across the pause it lies in (§8.11 item 3), or nil when it does not lie in one. Each side
+    /// is framed in 10 ms frames outward from the seam, as `seamBackgroundRmsDb` frames it, and keeps the unvoiced frames
+    /// (RMS at or below `VOICED_FRAME`) up to the first voiced frame or 0.4 s. When both sides keep at least 0.1 s, the
+    /// step is `max(M_after, −70) − max(M_before, −70)` over just those frames of the K-weighted audio, so two pause or
+    /// room-tone levels are compared instead of windows that also hold some speech.
+    public static func pauseSeamStepsLu(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double?] {
+        try validate(samples, sampleRate: sampleRate)
+        guard seamSamples.allSatisfy({ $0 >= 0 && $0 <= samples.count }) else { throw VoiceLabAudioMathError.invalidInput }
+        guard !seamSamples.isEmpty else { return [] }
+        let size = sampleCount(VoiceLabPatchConstants.RMS_FRAME, sampleRate)
+        let limit = sampleCount(momentarySeconds, sampleRate) / size, minimum = sampleCount(minimumSeamWindowSeconds, sampleRate) / size
+        let threshold = VoiceLabPatchConstants.VOICED_FRAME_LEVEL
+        func unvoiced(_ start: Int) -> Bool {
+            var sum = 0.0
+            for index in start..<(start + size) { sum += Double(samples[index]) * Double(samples[index]) }
+            return (sum / Double(size)).squareRoot() <= threshold
+        }
+        func run(from seam: Int, outward: Int) -> Int {
+            var frames = 0
+            while frames < limit {
+                let start = outward < 0 ? seam - (frames + 1) * size : seam + frames * size
+                guard start >= 0, start + size <= samples.count, unvoiced(start) else { break }
+                frames += 1
+            }
+            return frames
+        }
+        let weighted = kWeighted(samples, count: samples.count, sampleRate: sampleRate)
+        return weighted.withUnsafeBufferPointer { buffer in
+            seamSamples.map { seam -> Double? in
+                let before = run(from: seam, outward: -1), after = run(from: seam, outward: 1)
+                guard before >= minimum, after >= minimum else { return nil }
+                let lower = loudness(buffer.baseAddress!, from: seam - before * size, to: seam)
+                let upper = loudness(buffer.baseAddress!, from: seam, to: seam + after * size)
+                return max(upper, silenceGateLufs) - max(lower, silenceGateLufs)
+            }
+        }
+    }
+
+    /// The take QA's seam value with pauses (§8.11 item 3). A seam whose mixed audio lies in a pause on both sides
+    /// (`mixedPauseSteps` not nil) compares its pause step with the source's pause step at the same seam, or with 0 when
+    /// the source is not in a pause there, since two pauses should sit at one background level. Every other seam keeps
+    /// `seamExcessLu(mixedSteps:sourceSteps:)`. The largest value, 0 without a seam.
+    public static func seamExcessLu(mixedSteps: [Double], sourceSteps: [Double], mixedPauseSteps: [Double?],
+                                    sourcePauseSteps: [Double?]) throws -> Double {
+        let count = mixedSteps.count
+        guard sourceSteps.count == count, mixedPauseSteps.count == count, sourcePauseSteps.count == count,
+              (mixedSteps + sourceSteps + mixedPauseSteps.compactMap { $0 } + sourcePauseSteps.compactMap { $0 }).allSatisfy(\.isFinite) else {
+            throw VoiceLabAudioMathError.invalidInput
+        }
+        return (0..<count).map { index in
+            if let pause = mixedPauseSteps[index] { return outside(pause, sourcePauseSteps[index] ?? 0) }
+            return outside(mixedSteps[index], sourceSteps[index])
+        }.max() ?? 0
+    }
+    /// How far `mixed` lies outside the interval between 0 and `source`.
+    private static func outside(_ mixed: Double, _ source: Double) -> Double { max(0, min(0, source) - mixed, mixed - max(0, source)) }
+
     /// A recipe's `qa.lufsJumpLu`: the largest jump over its seams that are not `none`, or 0 without such a seam.
     public static func lufsJumpLu(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> Double {
         try seamJumps(samples, sampleRate: sampleRate, seamSamples: seamSamples).max() ?? 0
@@ -179,6 +317,9 @@ public enum VoiceLabLoudness {
 
     // Spec: voice-lab.md §8.11 item 3; each window is floored at −70 LUFS, the BS.1770 absolute gate (lead decision).
     static func seamJumps(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double] {
+        try seamSteps(samples, sampleRate: sampleRate, seamSamples: seamSamples).map(abs)
+    }
+    static func seamSteps(_ samples: [Float], sampleRate: Int, seamSamples: [Int]) throws -> [Double] {
         try validate(samples, sampleRate: sampleRate)
         let window = sampleCount(momentarySeconds, sampleRate), minimum = sampleCount(minimumSeamWindowSeconds, sampleRate)
         for seam in seamSamples {
@@ -192,7 +333,7 @@ public enum VoiceLabLoudness {
             seamSamples.map { seam in
                 let before = loudness(buffer.baseAddress!, from: max(0, seam - window), to: seam)
                 let after = loudness(buffer.baseAddress!, from: seam, to: min(samples.count, seam + window))
-                return abs(max(after, silenceGateLufs) - max(before, silenceGateLufs))
+                return max(after, silenceGateLufs) - max(before, silenceGateLufs)
             }
         }
     }

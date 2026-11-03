@@ -40,8 +40,24 @@ public enum VoiceLabTakeProcessing {
         let leading = try bridgeTokens(input.window.leftBridgeWordIds), trailing = try bridgeTokens(input.window.rightBridgeWordIds)
         guard Array(tokens.prefix(leading.count)) == leading, Array(tokens.suffix(trailing.count)) == trailing else { throw VoiceLabError.invalidInput }
         let level = try VoiceLabLoudness.neighbourhoodVoicedRmsDb(input.source, sampleRate: rate, window: range)
-        let tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: input.sourceEnvelope,
+        var tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: input.sourceEnvelope,
             sourceSampleRate: Double(rate), totalSamples: Int64(total))
+        // The quietest run of the whole take can sit well under the noise beside the window (a car vlog), and the patch's
+        // pads and pauses would dip; the loop plays at the background level measured at the seams.
+        if let selected = tone {
+            guard let run = input.source.samples(Int(selected.sourceStartSample)..<Int(selected.sourceEndSample)) else { throw VoiceLabError.invalidInput }
+            let background = try VoiceLabLoudness.seamBackgroundRmsDb(input.source, sampleRate: rate, window: range)
+            tone?.gainDb = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: background, run: Array(run))
+            // When the background differs on the two sides, no one level meets both seams: the bed ramps from the
+            // left side's level to the right side's across the window, linearly in dB.
+            let sides = try VoiceLabLoudness.seamBackgroundSidesRmsDb(input.source, sampleRate: rate, window: range)
+            if let left = sides.left, let right = sides.right, abs(right - left) >= VoiceLabLoudness.roomToneRampMinimumDb {
+                let start = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: left, run: Array(run))
+                let end = try VoiceLabLoudness.roomToneGainDb(seamBackgroundRmsDb: right, run: Array(run))
+                tone?.gainDb = start
+                tone?.endGainDb = end == start ? nil : end
+            }
+        }
         return VoiceLabTakePreflight(sourceLevel: level, roomTone: tone)
     }
     public static func envelope(_ samples: [Float], sampleRate: Int) -> AudioEnvelope {
@@ -64,8 +80,11 @@ public enum VoiceLabTakeProcessing {
             (0..<(bytes.count / 2)).map { Float(Int16(littleEndian: bytes.loadUnaligned(fromByteOffset: $0 * 2, as: Int16.self))) / 32_768 }
         }
         let duration = Double(samples.count) / Double(rate)
-        let words: [VoiceLabWord] = try VoiceLabAlignment.words(characters: alignment.map(\.character), starts: alignment.map(\.start),
-            ends: alignment.map(\.end), expectedText: input.text)
+        // The provider may time the last character to the end of its PCM or a little past it (the client accepts 50 ms);
+        // Eleven v3 ends its audio on the last word. No frame lies past the asset, so times are clamped to its last frame.
+        let last = lastAlignedTime(frames: samples.count, rate: rate)
+        let words: [VoiceLabWord] = try VoiceLabAlignment.words(characters: alignment.map(\.character), starts: alignment.map { min($0.start, last) },
+            ends: alignment.map { min($0.end, last) }, expectedText: input.text)
         let trim = try VoiceLabAlignment.trim(words: words, assetDuration: duration)
         let trimStart = frames(trim.start, rate), trimEnd = frames(trim.end, rate)
         guard trimEnd <= samples.count, trimStart < trimEnd else { throw VoiceLabError.invalidAlignment }
@@ -80,4 +99,11 @@ public enum VoiceLabTakeProcessing {
         return VoiceLabTakeAnalysis(sampleRate: rate, trimmed: trimmed, gainDb: gain, roomTone: preflight.roomTone, fit: fit)
     }
     private static func frames(_ seconds: Double, _ rate: Int) -> Int { Int(EditingPrimitives.jsRound(seconds * Double(rate))) }
+    /// The latest time whose frame span, `ceil(t × rate)` as the fit planner rounds a word's end, stays inside `frames`:
+    /// `frames / rate`, or the double just below it when binary64 rounds the product up (1.36 s × 24 kHz).
+    static func lastAlignedTime(frames: Int, rate: Int) -> Double {
+        var time = Double(frames) / Double(rate)
+        while time > 0 && (time * Double(rate)).rounded(.up) > Double(frames) { time = time.nextDown }
+        return time
+    }
 }

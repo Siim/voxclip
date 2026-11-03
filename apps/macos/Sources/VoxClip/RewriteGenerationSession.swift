@@ -294,7 +294,7 @@ import xlocale
             if !voices.contains(where: { $0.id == selectedVoiceID }) { chooseVoice(nil) }
             if !models.contains(where: { $0.id == selectedModelID }) { chooseModel(nil) }
             if selectedVoiceID == nil { chooseVoice(voices.first?.id) }
-            if selectedModelID == nil { chooseModel(models.first?.id) }
+            if selectedModelID == nil { chooseModel(VoiceLabModel.patchDefault(models)?.id) }
         } catch { problem = RewriteSession.refusal(error) }
     }
     func chooseVoice(_ id: String?) {
@@ -302,9 +302,17 @@ import xlocale
         guard id != selectedVoiceID else { return }
         selectedVoiceID = id; inputsChanged()
     }
+    /// Moves a plan with paid takes to another model and keeps its takes: true when it moved, false when it could not
+    /// (the model stays, so paid takes are never dropped by a model change), nil without paid takes, which leaves the
+    /// ordinary invalidation.
+    @ObservationIgnored var changeModelKeepingTakes: (@MainActor (String) -> Bool?)?
     func chooseModel(_ id: String?) {
         guard id == nil || models.contains(where: { $0.id == id }) else { return }
         guard id != selectedModelID else { return }
+        if let id, let kept = changeModelKeepingTakes?(id) {
+            if kept { selectedModelID = id }
+            return
+        }
         selectedModelID = id; inputsChanged()
     }
     func inputsChanged(prepareNewQuote: Bool = true) {

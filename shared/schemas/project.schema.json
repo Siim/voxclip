@@ -1386,6 +1386,9 @@
         },
         "gainDb": {
           "type": "number"
+        },
+        "endGainDb": {
+          "type": "number"
         }
       }
     },

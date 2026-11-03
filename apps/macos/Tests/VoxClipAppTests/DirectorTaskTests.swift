@@ -177,6 +177,37 @@ private actor RefusingKeys: ProviderKeyStore {
 
     // MARK: The model's words
 
+    /// Live 2026-11-03: the first Rewrite selection press closed the open Rewrite at once and then, its selection having
+    /// moved, opened nothing and said nothing. The open session now stays until the new one opens, and a refusal is shown.
+    @Test func aRewriteThatCannotStartKeepsTheOpenSessionAndSaysWhy() async throws {
+        let (app, _) = app(nil)
+        let editor = try editor(app)
+        defer { editor.close() }
+        editor.selectedWordIDs = Set(editor.words[3...5].map(\.id))
+        let first = try await open(editor, waits: false)
+        #expect(first.rewriteScope == .selection(3...5))
+        editor.selectedWordIDs = Set(editor.words[7...9].map(\.id))
+        editor.runRewrite()
+        #expect(editor.openRewrite === first)
+        editor.selectedWordIDs = Set(editor.words[10...12].map(\.id))
+        await editor.rewriteOpenTask?.value
+        #expect(editor.openRewrite === first && first.isOpen)
+        #expect(editor.rewriteNotice == EditorModel.rewriteSelectionNotice)
+        #expect(editor.lastAnnouncement == EditorModel.rewriteSelectionNotice)
+        #expect(StatusBarContent.make(app: app, editor: editor, now: Date()).items[.task]?.spoken == EditorModel.rewriteSelectionNotice)
+        // Pressed again, it opens on the selection now and replaces the first session.
+        editor.runRewrite()
+        #expect(editor.rewriteNotice == nil)
+        await editor.rewriteOpenTask?.value
+        let second = try #require(editor.openRewrite)
+        #expect(second !== first && !first.isOpen && second.rewriteScope == .selection(10...12))
+        // An explicit close while Rewrite gets ready says nothing.
+        editor.selectedWordIDs = Set(editor.words[3...5].map(\.id))
+        editor.runRewrite(); editor.closeRewrite(returnFocus: false)
+        await editor.rewriteOpenTask?.value
+        #expect(editor.openRewrite == nil && editor.rewriteNotice == nil)
+    }
+
     @Test func scopeWordsFollowTheScope() {
         let clip = DirectorScope(kind: .clip(number: 1), wordCount: 118)
         #expect([clip.title, clip.name, clip.words, clip.noun, clip.tooLong] == ["Rewrite clip 1", "clip 1", "the 118 words of clip 1", "clip", "Clip 1 is too long to rewrite at once"])
@@ -659,6 +690,44 @@ private actor RefusingKeys: ProviderKeyStore {
         #expect(shell.panelJob(for: editor) == .captions && panel()["director.question"] == nil)
         shell.choosePanelJob(.rewrite, for: editor)
         #expect(panel()["director.panel"] != nil)
+    }
+
+    /// Live 2026-11-03: after Tighten the panel went back to Captions and the Rewrite job was gone. Tighten inside the
+    /// clip a proposal covers sets the proposal aside and shows R3 in the same job (design.md R3); the session stays
+    /// open, the panel keeps Rewrite, and an undo brings the proposal back.
+    @Test func tightenInsideTheScopeKeepsTheRewriteJobInR3() async throws {
+        _ = NSApplication.shared
+        let shell = WorkspaceShell(app: AppModel())
+        let shared = try SharedResources.locate()
+        var base = try JSONProjectStore.decode(Data(contentsOf: shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip")))
+        base.edits.cutWordIds = []; base.edits.cutPauseIds = []
+        base.edits.clips = [ClipRange(id: "tight-1", startWordId: "w1", endWordId: "w7", title: "One", origin: .manual, selected: true)]
+        base.edits.activeClipId = nil
+        await shell.attachForTesting(VoxClipDocument(project: base, demo: true), selection: .clip("tight-1"))
+        let editor = try #require(shell.editor)
+        defer { editor.close() }
+        editor.mediaResolved = true
+        editor.refresh()
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        editor.undoManager = undo
+        let connector = RewriteConnector(connector: StubConnector(id: .ollama), model: "fixture-local", name: "Ollama", group: "local", plan: "")
+        let session = RewriteSession(editor: editor, scope: .clip("tight-1"), envelope: nil, connector: connector)
+        editor.rewrite = session
+        session.sendRun()
+        try session.receivePassage("So, um, today we shipped uh the")
+        session.finishRun(seconds: 1)
+        guard case .proposal = session.task.state else { Issue.record("no proposal"); return }
+        #expect(shell.panelJob(for: editor) == .rewrite && editor.proposal != nil)
+        undo.beginUndoGrouping()
+        let cuts = editor.tighten(scope: "tight-1")
+        undo.endUndoGrouping()
+        #expect((cuts ?? 0) > 0)
+        #expect(editor.openRewrite === session && session.isOpen && session.task.state == .changed)
+        #expect(shell.panelJob(for: editor) == .rewrite && PanelJob.available(in: editor).contains(.rewrite))
+        undo.undo()
+        #expect(session.isOpen && editor.proposal != nil && shell.panelJob(for: editor) == .rewrite)
+        guard case .proposal = session.task.state else { Issue.record("the undo did not show the proposal again"); return }
     }
 
     /// A run keeps the keyboard where it was (design.md §10); moved into R1 (F6), Esc (and ⌘.) stop it there.

@@ -60,6 +60,21 @@ import VoxClipCore
         guard playback.play() else { stop(); throw VoiceLabError.invalidAudio }
         isPlaying = true
     }
+    /// Plays a paid take that never reached the checks, so it has no checked mix: the stored paid asset as the provider
+    /// returned it. That file is immutable and not scratch, so no lease is held; a later `play` or `stop` replaces it.
+    public func play(paidAudio url: URL, takeId: UUID, selectionId: String) throws {
+        stop()
+        guard FileManager.default.isReadableFile(atPath: url.path) else { throw VoiceLabError.invalidAudio }
+        scratch = nil; self.takeId = takeId; self.selectionId = selectionId
+        let current = UUID(); token = current
+        let playback = try makeBackend(url) { [weak self] in
+            guard let self, self.token == current else { return }
+            self.refreshPosition(); self.isPlaying = false; self.completed = true
+        }
+        backend = playback
+        guard playback.play() else { stop(); throw VoiceLabError.invalidAudio }
+        isPlaying = true
+    }
     private func leaseInvalidated(token: UUID) {
         guard self.token == token else { return }
         stop(); scratch = nil; takeId = nil

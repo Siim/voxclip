@@ -123,7 +123,7 @@ enum ProjectValidation {
         _ = try object(recipe["audio"], required: "assetId trimStart trimEnd stretch gainDb")
         if recipe["words"] != .null { for word in try array(recipe["words"]) { _ = try object(word, required: "text start end synthetic") } }
         for value in try array(recipe["chunks"]) { _ = try object(value, required: "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame") }
-        if recipe["roomTone"] != .null { _ = try object(recipe["roomTone"], required: "sourceStartSample sourceEndSample gainDb") }
+        if recipe["roomTone"] != .null { _ = try object(recipe["roomTone"], required: "sourceStartSample sourceEndSample gainDb", optional: "endGainDb") }
         let seams = try object(recipe["seams"], required: "in out")
         _ = try object(seams["in"], required: "kind fadeSamples sourceHandleSamples assetHandleFrames")
         _ = try object(seams["out"], required: "kind fadeSamples sourceHandleSamples assetHandleFrames")

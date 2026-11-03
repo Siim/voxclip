@@ -39,12 +39,17 @@ enum VoiceLabAudioRenderer {
             tone = run.flatMap { [$0, $0] }
         } else { tone = [] }
         let gain = Float(pow(10, analysis.gainDb / 20)), toneGain = Float(pow(10, (analysis.roomTone?.gainDb ?? 0) / 20))
+        // A bed whose two sides differ ramps across the window, linearly in dB (§8.7 item 3).
+        func bedGain(_ relative: Int) -> Float {
+            guard let room = analysis.roomTone, room.endGainDb != nil else { return toneGain }
+            return Float(pow(10, room.gainDb(atFrame: Double(relative), of: Double(length)) / 20))
+        }
         func signal(_ relative: Int) throws -> Float {
             let frame = fitted.trimStartFrame + Int64(relative)
             guard frame >= 0, frame < fitted.wave.frames else { throw VoiceLabError.invalidAudio }
             var sample: Float = 0
             for channel in 0..<fitted.wave.channels { sample += Float(fitted.wave.sample(frame: frame, channel: channel)) / Float(fitted.wave.channels) }
-            let background = tone.isEmpty ? 0 : toneSample(tone, at: Int64(relative), channel: 0, rate: Double(rate)) * toneGain
+            let background = tone.isEmpty ? 0 : toneSample(tone, at: Int64(relative), channel: 0, rate: Double(rate)) * bedGain(relative)
             return sample * gain + background
         }
         guard let leading = source.samples((start - lead)..<start), let trailing = source.samples(end..<(end + tail)) else { throw VoiceLabError.invalidAudio }
@@ -54,7 +59,7 @@ enum VoiceLabAudioRenderer {
             mixed.append(try signal(relative))
         }
         mixed.append(contentsOf: trailing)
-        var seams: [Int] = []
+        var seams: [Int] = [], sourceSeams: [Int] = []
         for incoming in [true, false] {
             let placement = incoming ? input.window.leftSeam : input.window.rightSeam
             if placement.kind == .none { continue }
@@ -70,9 +75,13 @@ enum VoiceLabAudioRenderer {
             }
             let blended = incoming ? crossfade(old, generated, n: count) : crossfade(generated, old, n: count)
             for offset in 0..<count { mixed[seam + offset - before] = blended[offset * 2] }
-            seams.append(seam)
+            seams.append(seam); sourceSeams.append(lead + (incoming ? 0 : end - start))
         }
         guard mixed.allSatisfy(\.isFinite) else { throw VoiceLabError.invalidAudio }
+        // The unedited source over the same lead, window and tail, so QA counts only the step a join adds (§8.11 item 3).
+        guard let original = source.samples((start - lead)..<(end + tail)) else { throw VoiceLabError.invalidAudio }
+        let sourceSeamSteps = try VoiceLabLoudness.seamStepsLu(Array(original), sampleRate: rate, seamSamples: sourceSeams)
+        let sourceSeamPauseSteps = try VoiceLabLoudness.pauseSeamStepsLu(Array(original), sampleRate: rate, seamSamples: sourceSeams)
         try reserveDisk(scratchRoot, frames: Int64(mixed.count), additionalBytes: Int64(fitted.wave.pcm.count + 88))
         let operation = try VoiceLabAssetRecovery.Operation.create(in: scratchRoot)
         let directory = scratchRoot.appendingPathComponent(operation.name, isDirectory: true)
@@ -87,7 +96,8 @@ enum VoiceLabAudioRenderer {
             let measured = (0..<readback.frames).map { Float(readback.sample(frame: $0, channel: 0)) }
             guard measured == mixed else { throw VoiceLabError.invalidAudio }
             let audio = VoiceLabTakeAudio(sampleRate: rate, trimmed: analysis.trimmed, mixed: measured,
-                patchRange: lead..<(lead + length), seams: seams, gainDb: analysis.gainDb, roomTone: analysis.roomTone, fit: analysis.fit)
+                patchRange: lead..<(lead + length), seams: seams, gainDb: analysis.gainDb, roomTone: analysis.roomTone, fit: analysis.fit,
+                sourceSeamSteps: sourceSeamSteps, sourceSeamPauseSteps: sourceSeamPauseSteps)
             return VoiceLabTakeScratch(directory: directory, operation: operation, fitted: fitted, audio: audio)
         } catch { operation.discard(); throw error }
     }
@@ -418,7 +428,9 @@ enum VoiceLabAudioRenderer {
             }
             let tone: [Float]?
             let toneGain: Float
+            var toneRamp: (VoiceLabRoomTone, Double)?
             if piece.kind == .synth, let id = piece.segmentId, let room = recipes[id]?.roomTone {
+                if room.endGainDb != nil, let recipe = recipes[id] { toneRamp = (room, recipe.outDuration * plan.sampleRate) }
                 tone = try read(source, start: room.sourceStartSample, count: Int(room.sourceEndSample - room.sourceStartSample))
                 toneGain = Float(pow(10, room.gainDb / 20))
             } else { tone = nil; toneGain = 0 }
@@ -442,7 +454,10 @@ enum VoiceLabAudioRenderer {
                     }
                     for channel in 0..<2 {
                         channels[channel][frame] *= gain
-                        if let tone { channels[channel][frame] += toneSample(tone, at: position + Int64(frame), channel: channel, rate: plan.sampleRate) * toneGain }
+                        if let tone {
+                            let bed = toneRamp.map { Float(pow(10, $0.gainDb(atFrame: Double(position + Int64(frame)), of: $1) / 20)) } ?? toneGain
+                            channels[channel][frame] += toneSample(tone, at: position + Int64(frame), channel: channel, rate: plan.sampleRate) * bed
+                        }
                     }
                     if let seam = windows.first(where: { absolute >= $0.start && absolute < $0.end }) {
                         let slot = Int(absolute - seam.start) * 2
@@ -550,12 +565,15 @@ enum VoiceLabAudioRenderer {
         let toneGain = Float(pow(10, (recipe.roomTone?.gainDb ?? 0) / 20))
         for frame in 0..<(samples.count / 2) {
             try Task.checkCancellation()
+            // A seam handle lies just outside the window, where a ramped bed keeps that side's level.
+            let bed = recipe.roomTone.flatMap { room in room.endGainDb.map { _ in
+                Float(pow(10, room.gainDb(atFrame: Double(bodyOffset + Int64(frame)), of: recipe.outDuration * rate) / 20)) } } ?? toneGain
             for channel in 0..<2 {
                 let slot = frame * 2 + channel
                 output[slot] *= gain
                 if let tone {
                     output[slot] += toneSample(tone, at: bodyOffset + Int64(frame), channel: channel,
-                                               rate: rate) * toneGain
+                                               rate: rate) * bed
                 }
             }
         }

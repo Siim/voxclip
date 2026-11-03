@@ -87,6 +87,18 @@ public struct VoiceLabModel: Sendable, Equatable {
     public let characterCostMultiplier: Double?
     /// v4 is documented for Text to Dialogue; that separate timing path is not implemented here.
     public var supportsTimestampedTTS: Bool { canSpeak && id != "eleven_v4" && id != "eleven_v4_turbo" }
+    /// Whether a take on this model gets the surrounding transcript as `previous_text` and `next_text` (§8.5). Eleven v3
+    /// has no request stitching, so the client omits both for it.
+    public var sendsSpeechContext: Bool { supportsTimestampedTTS && id != "eleven_v3" }
+    /// The model known to take both the §8.5 context and reliable `/with-timestamps` alignment.
+    public static let patchingModelID = "eleven_multilingual_v2"
+    /// The default speech model for re-voicing a phrase, from the account's discovered list (§8.5): Multilingual v2 when it
+    /// is listed, since a patch must match the words around it; otherwise the first model that is sent context; otherwise
+    /// the first model. The list order is the account's, newest first, so the newest model is not simply the default.
+    public static func patchDefault(_ models: [VoiceLabModel]) -> VoiceLabModel? {
+        models.first { $0.id == patchingModelID && $0.supportsTimestampedTTS }
+            ?? models.first(where: \.sendsSpeechContext) ?? models.first(where: \.supportsTimestampedTTS)
+    }
 }
 
 public struct VoiceLabSubscription: Sendable, Equatable {

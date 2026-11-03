@@ -57,7 +57,7 @@ struct StatusBarContent: Equatable {
             content.items[.spend] = StatusItem(kind: .spend, lead: .symbol("waveform"), parts: [StatusText(string: combined)], spoken: combined, help: "Estimated daily transcription and monthly Voice Lab spend, from separate local ledgers; not a provider invoice.")
         }
         let task = editor.statusTask(now: now)
-        content.items[.task] = task?.item ?? editor.statusReadOnly
+        content.items[.task] = task?.item ?? editor.statusReadOnly ?? editor.statusRewriteNotice
         content.taskSince = task?.since
         content.items[.summary] = editor.statusSummary
         content.items[.frame] = editor.statusFrame
@@ -126,6 +126,10 @@ extension EditorModel {
     /// you locate the video" (v5 f24c), "Read-only until you confirm the video" (f24). Nothing runs meanwhile.
     var statusReadOnly: StatusItem? {
         mediaReadOnlyNote.map { StatusItem(kind: .task, lead: .symbol("exclamationmark.triangle"), parts: [StatusText(string: $0)], spoken: $0) }
+    }
+    /// A Rewrite press that refused to start says why here, never silently (`EditorModel.rewriteNotice`).
+    var statusRewriteNotice: StatusItem? {
+        rewriteNotice.map { StatusItem(kind: .task, lead: .symbol("exclamationmark.triangle"), parts: [StatusText(string: $0)], spoken: $0) }
     }
 
     /// The open tab's edit summary (notes.md, f1): "Clip 1 · 0:43 · 8 cuts · 5 changes to review", the duration in

@@ -327,6 +327,21 @@ struct VoiceLabServiceTests {
         #expect(calls.withLock { $0 } == 2)
     }
 
+    /// Live 2026-11-03: the picker defaulted to the account's first model, Eleven v3, which gets no context and ends its
+    /// audio on the last word. A patch defaults to Multilingual v2; every listed model stays selectable.
+    @Test func patchingDefaultsToTheModelThatTakesContext() {
+        func model(_ id: String) -> VoiceLabModel {
+            VoiceLabModel(id: id, name: id, languages: ["en"], canSpeak: true, canConvert: false, maximumTextLength: 5_000, characterCostMultiplier: 1)
+        }
+        let v4 = model("eleven_v4"), v3 = model("eleven_v3"), v2 = model("eleven_multilingual_v2"), flash = model("eleven_flash_v2_5")
+        #expect(VoiceLabModel.patchDefault([v3, flash, v2])?.id == "eleven_multilingual_v2")
+        #expect(VoiceLabModel.patchDefault([v3, flash])?.id == "eleven_flash_v2_5")
+        #expect(VoiceLabModel.patchDefault([v3])?.id == "eleven_v3")
+        #expect(VoiceLabModel.patchDefault([v4, v3])?.id == "eleven_v3")
+        #expect(VoiceLabModel.patchDefault([v4]) == nil && VoiceLabModel.patchDefault([]) == nil)
+        #expect(!v3.sendsSpeechContext && v2.sendsSpeechContext && flash.sendsSpeechContext && !v4.sendsSpeechContext)
+    }
+
     @Test func multilingualModelMarksAutoDetectionAndOmitsLanguageField() async throws {
         let models = Data("[{\"model_id\":\"eleven_multilingual_v2\",\"can_do_text_to_speech\":true,\"languages\":[{\"language_id\":\"en\"}]}]".utf8)
         let voices = self.voices, audio = pcm()

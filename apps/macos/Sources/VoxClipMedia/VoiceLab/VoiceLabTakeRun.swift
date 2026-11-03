@@ -70,6 +70,11 @@ public actor VoiceLabTakeRun {
     }
     public func scratch(for takeId: UUID) -> VoiceLabTakeScratch? { scratches[takeId] }
     public func paidAsset(for takeId: UUID) -> VoiceLabAsset? { paidAssets[takeId] }
+    /// Where the paid audio of a take this run made is stored, as the provider returned it, so a take that failed before
+    /// the checks can still be heard. Nil once the run retired the take.
+    public func paidAudioURL(for takeId: UUID) -> URL? {
+        paidAssets[takeId].map { storage.paidRoot.appendingPathComponent($0.file, isDirectory: false) }
+    }
     public func publishForAcceptance(_ row: VoiceLabTakeRow, input: VoiceLabTakeInput, at date: Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord) {
         let version = revision
         guard row.selectable, let scratch = scratches[row.id], scratch.isValid,
@@ -350,7 +355,8 @@ public actor VoiceLabTakeRun {
                 let upper = Double(processed.patchRange.upperBound) / Double(processed.sampleRate)
                 let inside = recognized.words.filter { ($0.start + $0.end) / 2 >= lower && ($0.start + $0.end) / 2 < upper }.map(\.text)
                 let qa = try VoiceLabTakeQuality.evaluate(expected: value.input.text, recognized: inside, mixed: processed.mixed,
-                    sampleRate: processed.sampleRate, seams: processed.seams, speakerScore: score, threshold: value.record.speaker.threshold)
+                    sampleRate: processed.sampleRate, seams: processed.seams, sourceSeamSteps: processed.sourceSeamSteps, sourceSeamPauseSteps: processed.sourceSeamPauseSteps,
+                    speakerScore: score, threshold: value.record.speaker.threshold)
                 let flatness = try VoiceLabLoudness.flatness(processed.trimmed, sampleRate: processed.sampleRate)
                 let rank = try VoiceLabTakeQuality.rank(fit: processed.fit, windowSeconds: value.input.window.end - value.input.window.start,
                     matchRatio: qa.values.transcriptMatch ?? 0, flatness: flatness)

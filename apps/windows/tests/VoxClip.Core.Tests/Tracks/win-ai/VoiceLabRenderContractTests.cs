@@ -153,6 +153,28 @@ public sealed class VoiceLabRenderContractTests
         VoiceLabProject.Validate(passage);
         Error(VoiceLabProjectErrorCode.VideoModeUnsupported, () => VoiceLabRenderContract.Prepare(passage, VoiceLabOutputScope.Full, VoiceLabLabelPosition.TopRight));
     }
+    /// <summary>A Mac recipe may carry the room-tone bed's end gain (voice-lab §8.7 item 3): it reads, validates and
+    /// writes back; a flat bed keeps the earlier encoding; the gain moves linearly in dB across the window.</summary>
+    [Fact]
+    public void RoomToneEndGainRoundTripsAndRamps()
+    {
+        var passage = Fixture(); var segment = passage.VoiceLab.Segments[0]; var first = segment.Candidates[0];
+        var tone = Assert.IsType<VoiceLabRoomTone>(first.Recipe!.RoomTone);
+        Assert.Null(tone.EndGainDb);
+        Assert.DoesNotContain("endGainDb", ProjectSerialization.Serialize(passage), StringComparison.Ordinal);
+        var ramp = tone with { GainDb = 6, EndGainDb = -2 };
+        var ramped = Replace(passage, segment with { Candidates = [first with { Recipe = first.Recipe with { RoomTone = ramp } }, segment.Candidates[1]] });
+        VoiceLabProject.Validate(ramped);
+        var json = ProjectSerialization.Serialize(ramped);
+        Assert.Contains("\"endGainDb\": -2", json, StringComparison.Ordinal);
+        var back = ProjectSerialization.Deserialize(json);
+        Assert.Equal(ramp, back.VoiceLab.Segments[0].Candidates[0].Recipe!.RoomTone);
+        Assert.Equal(json, ProjectSerialization.Serialize(back));
+        Assert.Equal(6, ramp.GainDbAt(-5, 100)); Assert.Equal(-2, ramp.GainDbAt(150, 100)); Assert.Equal(2, ramp.GainDbAt(50, 100), 12);
+        Assert.Equal(6, tone with { GainDb = 6 } is var flat ? flat.GainDbAt(50, 100) : 0);
+        var bad = Replace(passage, segment with { Candidates = [first with { Recipe = first.Recipe with { RoomTone = ramp with { EndGainDb = double.NaN } } }, segment.Candidates[1]] });
+        Assert.ThrowsAny<Exception>(() => VoiceLabProject.Validate(bad));
+    }
     [Fact]
     public void AcceptRejectsMalformedCandidateIndices()
     {

@@ -31,7 +31,9 @@ nullable = lambda value: {'oneOf': [{'type': 'null'}, value]}
 obj = lambda fields, required=None: {'type': 'object', 'additionalProperties': False, 'required': required or list(fields), 'properties': fields}
 d['voiceLabCleanAudio'] = obj({'mode': {'enum': ['off', 'on']}, 'assetId': nullable(idref), 'mix': nullable({'type': 'number', 'minimum': 0, 'maximum': 1})})
 d['voiceLabVoiceReference'] = obj({'id': idref, 'provider': string, 'voiceId': string, 'consentRecordId': idref, 'displayName': string, 'status': {'enum': ['active', 'deleted']}})
-d['voiceLabRoomTone'] = obj({'sourceStartSample': integer, 'sourceEndSample': integer, 'gainDb': num})
+# endGainDb (optional, Mac since 2026-11-03): the loop's gain at the window's end, ramped linearly in dB from gainDb.
+d['voiceLabRoomTone'] = obj({'sourceStartSample': integer, 'sourceEndSample': integer, 'gainDb': num, 'endGainDb': num},
+                            required=['sourceStartSample', 'sourceEndSample', 'gainDb'])
 d['voiceLabVideoAsset'] = obj({'id': idref, 'file': {'type': 'string', 'pattern': '^[0-9a-f-]{36}/[a-z0-9][a-z0-9_-]{0,63}\\.mp4$'},
                                'sha256': {'type': 'string', 'pattern': '^[0-9a-f]{64}$'}, 'durationSeconds': {'type': 'number', 'exclusiveMinimum': 0},
                                'frameRate': {'type': 'number', 'exclusiveMinimum': 0}, 'width': {'type': 'integer', 'minimum': 1}, 'height': {'type': 'integer', 'minimum': 1}})

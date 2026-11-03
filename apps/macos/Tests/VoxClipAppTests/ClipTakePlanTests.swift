@@ -43,11 +43,17 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         var malformedQA = false
         var failOwner = false
         var failGenerated = false
+        /// Synthesis returns silence, which fails the level step after the paid audio is stored, before any check.
+        var silentSynthesis = false
         var amplitudeVariance = 0.0
         var echoQA = false
         var gets = 0
         var qa = 0
         var voicesVisible = true
+        /// The account also lists Multilingual v2, after Eleven v3, as the live account did.
+        var listsMultilingual = false
+        /// Each synthesis request's `model_id`, in order.
+        var models: [String] = []
     }
     static let state = Mutex(State())
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -59,20 +65,26 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/v1/models"):
                 Self.state.withLock { $0.gets += 1 }
-                data = Data(#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}]"#.utf8)
+                let multilingual = Self.state.withLock { $0.listsMultilingual }
+                    ? #",{"model_id":"eleven_multilingual_v2","name":"Multilingual v2","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":10000}"# : ""
+                data = Data((#"[{"model_id":"eleven_v3","name":"Speech","can_do_text_to_speech":true,"can_do_voice_conversion":false,"languages":[{"language_id":"en"}],"maximum_text_length_per_request":5000}"# + multilingual + "]").utf8)
             case ("GET", "/v2/voices"):
                 data = Self.state.withLock { $0.voicesVisible } ? Data(#"{"voices":[{"voice_id":"fixtureOwnVoice","name":"My voice","category":"cloned","is_owner":true}],"has_more":false}"#.utf8) : Data(#"{"voices":[],"has_more":false}"#.utf8)
             case ("POST", "/v1/text-to-speech/fixtureOwnVoice/with-timestamps"):
                 let body = try #require(JSONSerialization.jsonObject(with: Self.body(request)) as? [String: Any])
                 let text = try #require(body["text"] as? String)
                 let seed = try #require(body["seed"] as? UInt32)
-                let duration = Self.state.withLock { state in state.texts.append(text); state.seeds.append(seed); return state.duration }
+                let model = body["model_id"] as? String ?? ""
+                let duration = Self.state.withLock { state in
+                    state.texts.append(text); state.seeds.append(seed); state.models.append(model); return state.duration
+                }
                 let variance = Self.state.withLock { $0.amplitudeVariance }
+                let silent = Self.state.withLock { $0.silentSynthesis }
                 var pcm = Data()
                 for index in 0..<Int(duration * 24_000) {
                     let seconds = Double(index) / 24_000
                     let amplitude = 1 + variance * sin(2 * Double.pi * 2 * seconds)
-                    var value = Int16((sin(2 * Double.pi * 100 * seconds) * 3_200 * amplitude).rounded()).littleEndian
+                    var value = Int16(silent ? 0 : (sin(2 * Double.pi * 100 * seconds) * 3_200 * amplitude).rounded()).littleEndian
                     withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
                 }
                 let characters = Array(text).map(String.init)
@@ -971,6 +983,45 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         return (editor, session)
     }
 
+    /// Live 2026-11-03: the Speech model defaulted to the account's first model, Eleven v3. Patching defaults to
+    /// Multilingual v2, which takes the surrounding transcript; v3 stays selectable.
+    @Test func productionTakesDefaultToTheContextModelAndKeepOthersSelectable() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.listsMultilingual = true }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let generation = try #require(session.generation)
+        #expect(generation.models.map(\.id) == ["eleven_v3", "eleven_multilingual_v2"])
+        #expect(generation.selectedModelID == "eleven_multilingual_v2")
+        generation.chooseModel("eleven_v3")
+        #expect(generation.selectedModelID == "eleven_v3")
+    }
+
+    /// Live 2026-11-03: after a run the Speech model picker was disabled, so a failing model could not be swapped before
+    /// Try another. A new model applies to the next take; the paid take keeps its own.
+    @Test func theModelChangesAfterARunForTheNextTakeOnly() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        ClipTakeHTTP.state.withLock { $0.listsMultilingual = true }
+        let (editor, session) = try await productionSession(fixture); defer { editor.close() }
+        let generation = try #require(session.generation), plan = try #require(session.takePlan)
+        await plan.start(approved: true)
+        #expect(session.hasPaidTakes && plan.phrases[0].takes.count == 1)
+        generation.chooseModel("eleven_v3")
+        await generation.finishQuotePreparationForTests()
+        #expect(generation.selectedModelID == "eleven_v3" && session.takePlan === plan && plan.stillCurrent)
+        #expect(plan.modelID == "eleven_v3" && plan.phrases[0].takes.count == 1 && plan.approvalID == nil && generation.problem.isEmpty)
+        session.priceAnotherTake(phrase: 0); await session.takesTask?.value
+        let retry = try #require(session.pricedTakeAction(phrase: 0))
+        retry.perform(); await session.takesTask?.value
+        #expect(ClipTakeHTTP.state.withLock { $0.models } == ["eleven_multilingual_v2", "eleven_v3"])
+        #expect(plan.phrases[0].takes.count == 2)
+        #expect(plan.phrases[0].takes.map { $0.row.receipt?.modelID } == ["eleven_multilingual_v2", "eleven_v3"])
+        // The first take is published on the model that made it, not the plan's new one.
+        let first = plan.phrases[0].takes[0]
+        #expect(first.row.selectable && plan.select(take: first.id, phrase: 0) && plan.chooseVideo(.source, phrase: 0))
+        #expect(await session.acceptTakes(), "\(plan.problem)")
+        #expect(editor.project.voiceLab.segments.last?.candidates.first?.recipe?.provenance.model == "eleven_multilingual_v2")
+    }
+
     @Test(arguments: [false, true]) func productionQuotePinsPendingBridgeCorrectionAndPaidDiscard(generated: Bool) async throws {
         let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
         let (editor, session) = try await productionSession(fixture); defer { editor.close() }
@@ -1179,6 +1230,42 @@ private final class ClipTakeHTTP: URLProtocol, @unchecked Sendable {
         await plan.play(phrase: 0); plan.invalidate()
         #expect(!plan.audition.isPlaying && fixture.playback.stops == 3)
         await plan.play(phrase: 0)
+        #expect(!plan.audition.isPlaying)
+    }
+
+    /// Live 2026-11-03: four failed takes could not be heard. A failed take with staged audio plays without being selected.
+    /// A take that failed before the checks has no checked mix, but its paid audio plays inline, named as not checked.
+    @Test func aTakeThatFailedBeforeTheChecksPlaysItsPaidAudio() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare()
+        ClipTakeHTTP.state.withLock { $0.silentSynthesis = true }
+        await plan.start(approved: true)
+        let take = try #require(plan.phrases[0].takes.first)
+        #expect(take.row.audio == nil && take.row.generated != nil && take.notChecked && take.playable && !take.row.selectable)
+        #expect(TakeFailurePresentation.leftOut(take.row, number: take.number)?.hasPrefix("Take 1 · not checked: ") == true)
+        await plan.play(take: take.id, phrase: 0)
+        #expect(plan.audition.isPlaying && plan.audition.takeId == take.id && plan.phrases[0].selectedID == nil)
+        #expect(!plan.select(take: take.id, phrase: 0))
+        await plan.play(take: take.id, phrase: 0)
+        #expect(!plan.audition.isPlaying && fixture.playback.stops >= 1)
+    }
+    @Test func aFailedTakeWithAudioPlaysButStaysLeftOut() async throws {
+        let fixture = try await fixture(indices: [10]); defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let plan = fixture.plan
+        await plan.prepare()
+        ClipTakeHTTP.state.withLock { $0.failGenerated = true }
+        await plan.start(approved: true)
+        let take = try #require(plan.phrases[0].takes.first)
+        #expect(!take.row.selectable && take.row.audio != nil && plan.phrases[0].selectedID == nil)
+        await plan.play(phrase: 0)
+        #expect(!plan.audition.isPlaying)
+        await plan.play(take: take.id, phrase: 0)
+        #expect(plan.audition.isPlaying && plan.audition.takeId == take.id && plan.phrases[0].selectedID == nil)
+        #expect(!plan.select(take: take.id, phrase: 0))
+        await plan.play(take: take.id, phrase: 0)
+        #expect(!plan.audition.isPlaying && fixture.playback.stops >= 1)
+        await plan.play(take: UUID(), phrase: 0)
         #expect(!plan.audition.isPlaying)
     }
 

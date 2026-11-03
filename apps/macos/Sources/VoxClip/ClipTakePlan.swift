@@ -18,6 +18,10 @@ import VoxClipMedia
         var id: UUID { row.id }
         var length: Double? { row.audio.map { Double($0.fit.plan.outputFrames) / Double($0.sampleRate) } }
         var fits: Bool { row.selectable && row.fits }
+        /// Paid audio that failed before the checks: no checked mix, so it plays as the provider returned it.
+        var notChecked: Bool { row.audio == nil && row.generated != nil }
+        /// Every take with audio can be heard, checked or not.
+        var playable: Bool { row.audio != nil || notChecked }
     }
     struct Phrase: Identifiable {
         let id: Int
@@ -64,6 +68,8 @@ import VoxClipMedia
         var invalidate: @MainActor () async -> Void
         var publish: @MainActor (Int, VoiceLabTakeRow, VoiceLabTakeInput, Date) async throws -> (VoiceLabPublishedTake, VoiceConsentRecord)
         var scratch: @MainActor (Int, UUID) async -> VoiceLabTakeScratch?
+        /// The stored paid audio of a take with no checked mix (it failed before the checks).
+        var paidAudio: @MainActor (Int, UUID) async -> URL?
         var retire: @MainActor (Int, UUID) async -> Void
 
         init(runs: [VoiceLabTakeRun]) {
@@ -86,6 +92,7 @@ import VoxClipMedia
             }
             publish = { phrase, row, input, date in try await runs[phrase].publishForAcceptance(row, input: input, at: date) }
             scratch = { phrase, take in await runs[phrase].scratch(for: take) }
+            paidAudio = { phrase, take in await runs[phrase].paidAudioURL(for: take) }
             retire = { phrase, take in await runs[phrase].reject(take) }
         }
     }
@@ -129,6 +136,8 @@ import VoxClipMedia
     @ObservationIgnored private var retired = false
     @ObservationIgnored private var stopping = false
     @ObservationIgnored private var runningPhrase: Int?
+    /// The speech model the plan's later quotes use, once `changeModel` replaced the one its inputs were decoded with.
+    @ObservationIgnored private(set) var modelID: String?
     var stillCurrent: Bool { !retired && isCurrent() && contextIsCurrent() }
     var isRetired: Bool { retired }
     var approvalID: UUID? { batch?.id }
@@ -346,6 +355,24 @@ import VoxClipMedia
         await prepareQuote(indices: [phrase], decoding: true, candidates: 1)
     }
 
+    /// Moves the plan's later quotes to another speech model and keeps every take already made, paid or not. Each take
+    /// keeps the model it was made with (its receipt), and the held quote, priced for the old model, is dropped, so the
+    /// next Try another prices the new one. Refused while anything runs.
+    func changeModel(_ id: String) -> Bool {
+        guard !generating, !preparing, !publishing, !preparingVideo, !retired, operation == nil else { return false }
+        stopAudition()
+        inputs = inputs.map { $0.replacingModel(id) }
+        modelID = id
+        revision += 1; batch = nil; batchIndices = []; progress = nil; cost = nil; estimate = nil
+        return true
+    }
+    /// The input a take was made from, on the model its receipt names.
+    private func input(for row: VoiceLabTakeRow, phrase: Int) -> VoiceLabTakeInput {
+        let input = inputs[phrase]
+        guard let model = row.receipt?.modelID, model != input.modelID else { return input }
+        return input.replacingModel(model)
+    }
+
     func prepareAnother(phrase index: Int) async {
         guard phrases.indices.contains(index), inputs.indices.contains(index) else { return }
         await prepareQuote(indices: [index], decoding: false, candidates: 1)
@@ -365,7 +392,10 @@ import VoxClipMedia
                 try checkCurrent(version)
                 if decoding {
                     var decoded: [VoiceLabTakeInput] = []
-                    for phrase in phrases { decoded.append(try await makeInput(phrase)); try checkCurrent(version) }
+                    for phrase in phrases {
+                        let input = try await makeInput(phrase)
+                        decoded.append(modelID.map { input.replacingModel($0) } ?? input); try checkCurrent(version)
+                    }
                     guard decoded.map(\.window) == phrases.map(\.window), decoded.map(\.text) == phrases.map(\.text) else { throw Failure.stale }
                     inputs = decoded
                     nextSeeds = decoded.map { $0.seed &+ UInt32(candidates) }
@@ -534,6 +564,33 @@ import VoxClipMedia
         catch { problem = Self.copy(error) }
     }
 
+    /// Plays one take's checked mix, failed or not, without selecting it: a failed take stays left out, but the user can
+    /// hear what the checks refused. Toggles like `play(phrase:)`. A take that failed before the checks has no mix, so
+    /// its paid audio plays as the provider returned it (`Phrase.Take.notChecked`).
+    func play(take id: UUID, phrase: Int) async {
+        guard stillCurrent, !generating, !preparing, !publishing, phrases.indices.contains(phrase),
+              let take = phrases[phrase].takes.first(where: { $0.id == id }), take.playable else { return }
+        if take.notChecked {
+            let wasPlaying = audition.isPlaying && audition.takeId == id
+            stopAudition()
+            guard !wasPlaying else { return }
+            let turn = auditionTurn
+            guard let url = await backend?.paidAudio(phrase, id), turn == auditionTurn, stillCurrent,
+                  phrases[phrase].takes.contains(where: { $0.id == id }), !generating, !preparing, !publishing else { return }
+            do { try audition.play(paidAudio: url, takeId: id, selectionId: String(phrase)) }
+            catch { problem = Self.copy(error) }
+            return
+        }
+        let wasPlaying = audition.isPlaying && audition.takeId == id
+        stopAudition()
+        guard !wasPlaying else { return }
+        let turn = auditionTurn
+        guard let audio = await backend?.scratch(phrase, id), turn == auditionTurn, stillCurrent,
+              phrases[phrase].takes.contains(where: { $0.id == id }), !generating, !preparing, !publishing else { return }
+        do { try audition.play(audio, takeId: id, selectionId: String(phrase)) }
+        catch { problem = Self.copy(error) }
+    }
+
     func dispatch(_ request: UUID, start: @escaping @Sendable () throws -> Void) async throws {
         let version = revision
         try checkCurrent(version)
@@ -665,12 +722,13 @@ import VoxClipMedia
         var voice: VoiceLabVoiceReference?
         for phrase in selected {
             guard let row = phrase.selected?.row, row.selectable, let fit = row.audio?.fit.plan else { throw Failure.noSelection }
-            let (published, record) = try await backend.publish(phrase.id, row, inputs[phrase.id], date)
+            let made = input(for: row, phrase: phrase.id)
+            let (published, record) = try await backend.publish(phrase.id, row, made, date)
             try checkCurrent(version)
-            let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: inputs[phrase.id], published: published,
+            let candidate = try VoiceLabRecipeBuilder.candidate(row: row, input: made, published: published,
                                                                record: record, createdAt: date, videoChoice: phrase.videoChoice)
             segments.append(try VoiceLabRecipeBuilder.segment(id: UUID().uuidString.lowercased(), candidates: [candidate],
-                selected: 0, input: inputs[phrase.id], plan: fit))
+                selected: 0, input: made, plan: fit))
             for asset in published.assets {
                 if let previous = assets.first(where: { $0.id == asset.id }) {
                     guard previous == asset else { throw VoiceLabProjectError.invalidAsset }
