@@ -106,7 +106,18 @@ struct RewriteChange: Equatable, Sendable {
     private(set) var generation: RewriteGenerationSession?
     var takePlan: ClipTakePlan?
     var speechContextOffer: RewriteSpeechContextReview?
-    var surroundingSentenceOrdinal: Int?
+    private var requestedSurroundingSentenceOrdinal: Int?
+    var surroundingSentenceOrdinal: Int? {
+        get {
+            guard let ordinal = requestedSurroundingSentenceOrdinal else { return nil }
+            guard reviewedVoiceOrdinals.contains(ordinal) else {
+                requestedSurroundingSentenceOrdinal = nil
+                return nil
+            }
+            return ordinal
+        }
+        set { requestedSurroundingSentenceOrdinal = newValue }
+    }
     var speechContextReview: RewriteSpeechContextReview?
     var acceptedSpeechContext: RewriteSpeechContextReview?
     var speechContextProblem = ""
@@ -655,6 +666,44 @@ struct RewriteChange: Equatable, Sendable {
         return proposal?.changes.contains { change in replyParts[change.ordinal].map { $0 != change.parts } ?? false } ?? false
     }
     var hasPaidTakes: Bool { takePlan?.generating == true || (takePlan?.spent.units ?? 0) > 0 || generation?.rows.isEmpty == false }
+    var currentSynthesisModel: String? {
+        takePlan.flatMap { $0.isRetired ? nil : $0.modelID } ?? generation?.selectedModelID ?? synthesisModel
+    }
+    func confirmDiscardChanges(perform: @escaping @MainActor () -> Void) {
+        let count = proposalCount
+        let question = count == 1 ? "Discard this change?" : "Discard these \(count) changes?"
+        task.ask(PanelConfirm(question: question,
+            cancel: PanelAction(id: "keepWorking", title: "Keep Working") { [weak self] in self?.task.dismissConfirm() },
+            confirm: PanelAction(id: "discardChanges", title: "Discard Changes") { [weak self] in
+                guard let self, isOpen, task.confirm?.confirm.id == "discardChanges" else { return }
+                task.dismissConfirm()
+                perform()
+            }))
+        if editor.app.shell.editor === editor, !editor.app.shell.viewerShown { editor.app.shell.toggleViewer() }
+        editor.announce(question)
+    }
+    func confirmPaidProposalChange(perform: @escaping @MainActor () -> Void) -> Bool {
+        guard hasPaidTakes else { return false }
+        confirmDiscardChanges { [weak self] in
+            guard let self, current else { return }
+            if takesBusy, let plan = takePlan {
+                takesTask = Task { [weak self] in
+                    await plan.stop()
+                    guard let self, current, takePlan === plan else { return }
+                    discardPaidPlan(perform: perform)
+                }
+            } else { discardPaidPlan(perform: perform) }
+        }
+        return true
+    }
+    private func discardPaidPlan(perform: @MainActor () -> Void) {
+        takePlan?.invalidate(); takePlan = nil
+        generation?.invalidate()
+        speechContextOffer = nil; speechContextReview = nil; acceptedSpeechContext = nil
+        surroundingSentenceOrdinal = nil; takeQuotePhrase = nil
+        perform()
+        showProposal()
+    }
     /// The proposal has phrases in your voice and Voice Lab is on: R2's Beta tag shows (design.md §6.3.4).
     var showsVoiceLab: Bool { review?.voiceHunks.isEmpty == false && editor.app.voiceLabRewriteEnabled }
     /// Applies every change still pending (Keep All) as one undo step named for the scope ("Rewrite clip 1", design.md

@@ -31,7 +31,7 @@ extension RewriteSession {
     /// The voice review of the voice change `ordinal`.
     func voiceReview(_ ordinal: Int) -> RewriteHunkReview? {
         guard var result = voiceReviews[ordinal] else { return nil }
-        guard !hasPaidTakes, let selectedModel = generation?.selectedModelID, let timing = result.timing, let window = result.window,
+        guard let selectedModel = currentSynthesisModel, let timing = result.timing, let window = result.window,
               (selectedModel == "eleven_v4") != (synthesisModel == "eleven_v4"),
               let silence = try? VoiceLabWindowPlanner.lendableSilence(project: project, scope: scope, window: window),
               let matched = try? VoiceLabPaceMatching.match(seconds: timing.estimateSeconds * timing.pace, window: window,
@@ -51,7 +51,10 @@ extension RewriteSession {
         }.map(\.ordinal)
     }
     var includedVoice: [Int] {
-        reviewedVoiceOrdinals.filter {
+        if let takePlan, !takePlan.isRetired, !takePlanOrdinals.isEmpty, hasPaidTakes {
+            return reviewedVoiceOrdinals.filter { takePlanOrdinals.contains($0) }
+        }
+        return reviewedVoiceOrdinals.filter {
             voiceReview($0)?.timing?.fits != false || pricedAnyway.contains($0) ||
                 acceptedSpeechContext?.plan.request.expandingHunkIndices.contains($0 - 1) == true
         }
@@ -191,14 +194,15 @@ extension RewriteSession {
             while let last = text.last, kind != .fix, ",;.".contains(last) { text.removeLast() }
             return text
         }
+        let timing = kind == .voice ? voiceReview(change.ordinal)?.timing : nil
         let spoken = change.description(prefix: "Change", count: count, removed: reading.removed, inserted: reading.inserted)
-        return ProposalItem(timing: kind == .voice ? voiceReview(change.ordinal)?.timing : nil,
+        return ProposalItem(timing: timing,
                             pricedAnyway: pricedAnyway.contains(change.ordinal),
                             ordinal: change.ordinal, kind: kind, sourceWordIDs: change.span, newWords: change.parts.flatMap(\.newTokens),
                             oldWords: reading.removed, checkThis: checkThis, state: state,
                             quote: quoted(kind == .cut ? reading.removed.joined(separator: " ") : reading.text),
                             note: note, warns: unavailable?.warns ?? checkThis, reviewable: unavailable == nil,
-                            spoken: spoken + (note.map { ". " + $0 } ?? ""))
+                            spoken: spoken + (timing.map { ". " + $0.copy } ?? "") + (note.map { ". " + $0 } ?? ""))
     }
 
     /// R2's footer cases (design.md R2), with "Nothing paid yet" and Keep All in v2's grammar (notes.md §7):

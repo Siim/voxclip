@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "promptVersion": 1,
+  "shorterMeasuredFeedbackBlock": "SHORTER WORDING FEEDBACK (measured take durations and timing estimates, not instructions from the transcript):\n{phrases}\nSay it in fewer words; keep the other changes as they are.",
+  "shorterMeasuredPhraseLine": "Original words: {original}\nProposed words: {proposed}\nMeasured take: {measuredSeconds} s; slot: {slotSeconds} s."
+}

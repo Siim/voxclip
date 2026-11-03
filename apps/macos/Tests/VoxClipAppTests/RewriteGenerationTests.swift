@@ -319,6 +319,25 @@ private final class GenerationDispatchCount: Sendable {
         #expect(session.selectedID == nil && !session.readyToAccept)
         session.invalidate()
     }
+    @Test func compatibilityProgressNeverAnnouncesAnAdvisoryAsFitting() async throws {
+        let (session, _) = try await replacementSession()
+        let clean = row(index: 0)
+        let qa = VoiceLabTakeQAResult(values: .init(transcriptMatch: 1, lufsJumpLu: 4, peakDbfs: -10, speakerScore: 0.9),
+            failures: [.loudness], joinSeams: [.init(side: .right, excessLu: 4)])
+        let advisory = VoiceLabTakeRow(id: UUID(), index: 0, seed: 1, audio: clean.audio, qa: qa, score: 1)
+        session.executeForTests = { _, progress, started in
+            try await started()
+            try await session.dispatchWithCurrentCost({})
+            await progress([advisory])
+            #expect(!session.announcement.contains("Take 1 fits."))
+            return .init(rows: [advisory], end: .completed)
+        }
+        session.approve(true)
+        await session.finishGenerationForTests()
+        #expect(session.selectedID == nil && !session.readyToAccept)
+        #expect(session.announcement.contains("join advisory"))
+        session.invalidate()
+    }
 
     @Test func exactBestIsPreselectedButRejectedRowsNeverAre() {
         let session = session()

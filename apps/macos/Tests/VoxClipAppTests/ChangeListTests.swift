@@ -98,7 +98,10 @@ import Testing
         #expect(set.items.map(\.kind) == [.cut, .cut, .voice] && set.items.map(\.quote) == ["word12 word13", "word25", "fresh"] && set.focused == 1)
         #expect(set.items.map(\.state) == [.pending, .pending, .pending] && set.items.allSatisfy(\.reviewable))
         let rotor = try #require(editor.proposalDisplay).shown.map(\.description)
-        #expect(set.items.map(\.spoken) == rotor.map { $0.replacingOccurrences(of: "Proposed change", with: "Change") })
+        for (item, description) in zip(set.items, rotor) {
+            let timing = item.timing.map { ". " + $0.copy } ?? ""
+            #expect(item.spoken == description.replacingOccurrences(of: "Proposed change", with: "Change") + timing)
+        }
         #expect(set.items.first?.spoken == "Change 1 of 3: removed word12 word13")
         #expect(session.task.headline == PanelHeadline(text: "3 changes", sub: "2 cuts · 1 phrase in your voice", tag: "Beta"))
         // ↓ in the list focuses the next change in the transcript too.
@@ -206,8 +209,6 @@ import Testing
         #expect(session.task.footer.primary?.title == "Get Price · 1 phrase" && session.task.footer.link?.title == "Keep All")
     }
 
-    /// Paid takes stay with their original review. Changing inclusion retires acceptance without replacing paid work
-    /// or preparing a quote until the existing discard question is explicitly answered.
     @Test func takesStayWithTheirPhrase() async throws {
         let (editor, session, _, scenes) = try scene("r2-several-voices", verifiablePhrases: true)
         defer { scenes.forEach { $0.editor?.close() } }
@@ -226,20 +227,26 @@ import Testing
         session.showProposal()
         let plan = try #require(session.takePlan)
         #expect(session.includedVoicesSeen == [2] && session.usableTakeCount == 1 && session.task.footer.primary?.title == "Use Takes")
-        // Keep phrase 3 too: several phrases, no takes. Then leave phrase 2 out: phrase 3 alone.
+        let before = editor.proposal
         session.review(3, .keep)
-        #expect(session.task.footer.note?.contains("Rewrite one passage") == false)
+        #expect(session.task.confirm != nil && editor.proposal == before)
+        #expect(session.takePlan === plan && plan.stillCurrent && session.usableTakeCount == 1)
+        session.task.confirm?.cancel.perform()
+        session.review(2, .undo)
+        #expect(session.task.confirm != nil && editor.proposal == before)
+        await generation.finishQuotePreparationForTests()
+        #expect(session.includedVoice == [2] && session.includedVoicesSeen == [2] && quotes == 0)
+        #expect(session.takePlan === plan && plan.stillCurrent && session.hasPaidTakes && plan.spent.units > 0)
+        session.task.confirm?.cancel.perform()
+        #expect(editor.proposal == before && session.task.footer.primary?.title == "Use Takes")
+        session.review(3, .keep)
+        session.task.confirm?.confirm.perform()
+        #expect(plan.isRetired && session.takePlan == nil && !session.hasPaidTakes)
         session.review(2, .undo)
         await generation.finishQuotePreparationForTests()
-        #expect(session.includedVoice == [3] && session.includedVoicesSeen == [3] && !generation.readyToAccept && quotes == 0)
-        #expect(session.takePlan === plan && !plan.stillCurrent && session.hasPaidTakes && plan.spent.units > 0)
-        #expect(session.task.footer.primary == nil && session.task.footer.note?.contains("Made") == true)
-        #expect(await session.acceptTakes() == false && editor.project.voiceLab.segments.isEmpty)
-        // Back to phrase 2 alone: the retired paid plan still cannot be accepted or silently replaced.
-        session.review(2, .keep); session.review(3, .undo)
-        await generation.finishQuotePreparationForTests()
-        #expect(session.includedVoice == [2] && session.includedVoicesSeen == [2] && quotes == 0 && session.task.footer.primary == nil)
-        #expect(session.takePlan === plan && session.hasPaidTakes && !plan.stillCurrent)
+        #expect(session.includedVoice == [3] && session.includedVoicesSeen == [3] && quotes > 0)
+        #expect(!generation.readyToAccept && editor.project.voiceLab.segments.isEmpty)
+        #expect(session.task.footer.primary?.title == "Get Price · 1 phrase")
     }
 
     /// A footer drawn for one phrase's quote makes no takes of another: a Make Takes the transcript's reviews left on screen

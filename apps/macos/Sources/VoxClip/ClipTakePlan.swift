@@ -402,7 +402,9 @@ import VoxClipMedia
     }
 
     func phrasePace(_ index: Int) -> Double? {
-        inputs.indices.contains(index) ? inputs[index].pace : nil
+        guard inputs.indices.contains(index) else { return nil }
+        if batch != nil, batchIndices.contains(index) { return inputs[index].pace }
+        return try? retryPace(phrase: index)
     }
 
     private func prepareQuote(indices: [Int], decoding: Bool, candidates: Int) async {

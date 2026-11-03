@@ -352,11 +352,11 @@ extension ClipTakePlan.Phrase {
                 PhraseTimingRecovery(tooLong: (phrase.lengthDifference ?? 0) >= 0, priceAnyway: false) { action in
                     let ordinals = session.takePhraseOrdinals(phrase)
                     if case .original = action {
-                        for ordinal in ordinals { session.phraseTimingAction(.original, ordinal: ordinal) }
+                        session.phraseTimingAction(.original, ordinals: ordinals)
                     } else if case .surrounding = action {
                         session.reviewSpeechContext(phrase: phrase.id)
-                    } else if let ordinal = ordinals.first {
-                        session.phraseTimingAction(.shorter, ordinal: ordinal)
+                    } else {
+                        session.phraseTimingAction(.shorter, ordinals: ordinals)
                     }
                 }
             }

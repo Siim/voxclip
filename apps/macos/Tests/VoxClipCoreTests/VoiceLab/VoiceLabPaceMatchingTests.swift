@@ -44,7 +44,7 @@ import Testing
             let gate = VoiceLabVideoDurationOptions(fit: fit, sourceSampleRate: 48_000, assetSampleRate: 48_000)
             #expect(gate.allows(.source) == row.keepsSource)
             #expect(fit.plan.incoming.padFrames + fit.plan.outgoing.padFrames <= 28_800)
-            #expect(timing.copy.contains("at \(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), row.pace))× pace"))
+            #expect(timing.copy.contains("at ≈\(String(format: "%.2f", locale: Locale(identifier: "en_US_POSIX"), row.pace))× pace"))
             if !row.fits { #expect(timing.tooLong) }
         }
     }

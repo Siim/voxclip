@@ -475,7 +475,11 @@ import xlocale
             input = quotedInput; quotedInput = nil
         }
         for row in rows where !self.rows.contains(where: { $0.id == row.id }) && row.selectable {
-            announcement = row.fits ? "Take \(row.index + 1) fits." : "Take \(row.index + 1) passed checks but needs a timing change."
+            if row.automaticallySelectable {
+                announcement = row.fits ? "Take \(row.index + 1) fits." : "Take \(row.index + 1) passed checks but needs a timing change."
+            } else {
+                announcement = Self.completionAnnouncement(rows: [row], fittedTake: nil)
+            }
         }
         self.rows = rows
     }
