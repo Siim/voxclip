@@ -143,7 +143,7 @@ import Testing
         step(undo) { session.task.footer.link?.perform() }
         #expect(undo.undoActionName == "Rewrite clip 1" && editor.undoSteps == 1 && editor.cutWordIDs.isSuperset(of: ["r2-12", "r2-13", "r2-25"]))
         #expect(changes(session)?.items.map(\.state) == [.kept, .kept, .kept] && session.isOpen && !session.hasUnreviewedChanges)
-        #expect(session.task.footer.primary?.title == "Make Takes" && session.task.footer.link == nil && session.includedVoice == [3])
+        #expect(session.task.footer.primary?.title == "Get Price" && session.task.footer.link == nil && session.includedVoice == [3])
         undo.undo()
         await settle { changes(session)?.items.first?.state == .pending }
         #expect(editor.project.edits == before.edits && changes(session)?.items.map(\.state) == [.pending, .pending, .pending] && session.task.footer.link?.title == "Keep All")
@@ -196,7 +196,7 @@ import Testing
         editor.app.settings.values["voiceLab.betaNoticeAccepted"] = .bool(true)
         await settle { changes(session)?.items.last?.reviewable == true }
         #expect(changes(session)?.items.last?.state == .pending && editor.proposal?[3]?.state == .pending)
-        #expect(session.task.footer.primary?.title == "Make Takes" && session.task.footer.link?.title == "Keep All")
+        #expect(session.task.footer.primary?.title == "Get Price" && session.task.footer.link?.title == "Keep All")
     }
 
     /// Paid takes stay with their original review. Changing inclusion retires acceptance without replacing paid work
@@ -205,9 +205,9 @@ import Testing
         let (editor, session, _, scenes) = try scene("r2-several-voices", verifiablePhrases: true)
         defer { scenes.forEach { $0.editor?.close() } }
         editor.app.settings.values["voiceLab.providerConsent.elevenlabs"] = .bool(true)
-        #expect(session.includedVoice == [2, 3] && session.task.footer.primary?.title == "Make Takes")
+        #expect(session.includedVoice == [2, 3] && session.task.footer.primary?.title == "Get Price")
         session.review(3, .undo)
-        #expect(session.includedVoice == [2] && session.task.footer.primary?.title == "Make Takes")
+        #expect(session.includedVoice == [2] && session.task.footer.primary?.title == "Get Price")
         // Phrase 2's takes: one passed. Nothing is quoted or sent here.
         try DebugRewriteGeneration.install("ready", in: session)
         if let plan = session.takePlan {
@@ -266,13 +266,13 @@ import Testing
             items: [], window: window, incomingSilence: nil, outgoingSilence: nil, providerConsent: true))
         session.showProposal()
         let stale = try #require(session.task.footer.primary)
-        #expect(stale.title == "Prepare Takes" && session.pricedTakeAction() == nil && generation.canExecute)
+        #expect(stale.title == "Get Price" && session.pricedTakeAction() == nil && generation.canExecute)
         // ⌘↩ on phrase 3 and ⌘⌫ on phrase 2 in the transcript; the list follows them on a later turn.
         editor.keepChange(3); editor.excludeChange(2)
         stale.perform()
         #expect(generation.phase != .generating)
-        await settle { session.includedVoicesSeen == [3] && quotes == 1 && session.task.footer.primary?.title == "Prepare Takes" }
-        #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary?.title == "Prepare Takes",
+        await settle { session.includedVoicesSeen == [3] && quotes == 1 && session.task.footer.primary?.title == "Get Price" }
+        #expect(session.includedVoice == [3] && quotes == 1 && generation.quote == nil && session.task.footer.primary?.title == "Get Price",
             "footer: \(session.task.footer.primary?.title ?? "none"), note: \(session.task.footer.note ?? "none")")
         await generation.finishGenerationForTests()
     }
@@ -340,7 +340,7 @@ import Testing
         session.reportGenerationProblem(VoiceLabError.unauthorized)
         await settle { session.task.cards.count > 1 }
         #expect(session.task.cards.last == .callout("ElevenLabs rejected the key (401). Your edits are saved."))
-        #expect(session.task.footer.primary?.title == "Make Takes")
+        #expect(session.task.footer.primary?.title == "Get Price")
         session.reportGenerationProblem(nil)
         await settle { session.task.cards.count == 1 }
         #expect(session.task.cards.count == 1)

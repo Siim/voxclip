@@ -226,6 +226,9 @@ extension RewriteSession {
     /// R2's note once every change is kept: nothing is left to apply; ⌘Z of a Keep brings its change back for review.
     static let everyChangeKept = "Every change is kept."
 
+    /// Every footer action that only finds the voices and prices the set; nothing is sent until the priced
+    /// "Make Takes · ≈ $x" that replaces it is pressed. A first "Make Takes" that only priced read as a failed click.
+    static let getPriceTitle = "Get Price"
     /// The footer prepares one plan for the entire included set. V18 supplies the phrase rows.
     private func takesFooter(_ voice: ProposalItem, keepAll: PanelAction?) -> PanelFooter {
         if let takePlan {
@@ -238,7 +241,7 @@ extension RewriteSession {
             if takePlan.spent.units > 0 { return PanelFooter(note: "Left out until a take fits. " + takeSpendLine) }
             if let action = pricedTakeAction() { return PanelFooter(note: takeSendLine, link: keepAll, primary: action) }
             return PanelFooter(note: takePlan.problem.isEmpty ? "Prepare a fresh price to make takes." : takePlan.problem,
-                link: keepAll, primary: PanelAction(id: "prepareTakes", title: "Prepare Takes") { [weak self] in self?.makeTakes() })
+                link: keepAll, primary: PanelAction(id: "prepareTakes", title: Self.getPriceTitle) { [weak self] in self?.makeTakes() })
         }
         if let parts = replyParts[voice.ordinal], ownProposal?[voice.ordinal]?.parts != parts {
             return PanelFooter(note: "Takes are made from the AI's words. Rewrite again to make takes of an edited change.", link: keepAll)
@@ -249,7 +252,7 @@ extension RewriteSession {
                 let amount = VoiceLabCostPresentation.format(usd)
                 return "\nTakes " + (amount.hasPrefix("<") ? amount : "≈ " + amount) + " on ElevenLabs."
             } ?? ""
-            return PanelFooter(note: unpaid + estimate, link: keepAll, primary: PanelAction(id: "makeTakes", title: "Make Takes") { [weak self] in self?.makeTakes() })
+            return PanelFooter(note: unpaid + estimate, link: keepAll, primary: PanelAction(id: "makeTakes", title: Self.getPriceTitle) { [weak self] in self?.makeTakes() })
         }
         if generation.voices.isEmpty {
             let make = PanelAction(id: "makeVoice", title: "Make Your Voice") { [weak self] in
@@ -258,7 +261,7 @@ extension RewriteSession {
             return PanelFooter(note: unpaid + " Next: make your voice from this \(task.words.noun). Once.", link: keepAll, primary: make)
         }
         return PanelFooter(note: unpaid + " " + takeSendLine, link: keepAll,
-            primary: PanelAction(id: "prepareTakes", title: "Prepare Takes") { [weak self] in self?.makeTakes() })
+            primary: PanelAction(id: "prepareTakes", title: Self.getPriceTitle) { [weak self] in self?.makeTakes() })
     }
 
     /// The proposal has changes waiting for review, shown or set aside by R3: its tab shows the dirty dot (notes.md §5).
