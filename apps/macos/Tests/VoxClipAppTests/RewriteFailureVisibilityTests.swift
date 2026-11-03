@@ -27,6 +27,10 @@ private actor RewriteFailureRunner: ProcessRunner {
         case "timeout": throw CLIProcessTimeout(stdout: Data(), stderr: Data())
         case "cancelled": throw LLMError.cancelled
         case "cancellationError": throw CancellationError()
+        case "cancelledTask":
+            withUnsafeCurrentTask { $0?.cancel() }
+            throw LLMError.cancelled
+        case "malformed": return result("not a JSON reply")
         default: return ProcessResult(exitCode: 1, stdout: Data(), stderr: Data(failure.utf8))
         }
     }
@@ -39,7 +43,8 @@ private actor RewriteFailureRunner: ProcessRunner {
 @Suite("Rewrite failure stays visible", .serialized,
     .enabled(if: ProcessInfo.processInfo.environment["VOXCLIP_DATA_DIR"] != nil, "Use isolated app data and stub CLI processes."), .offlineFixtures)
 @MainActor struct RewriteFailureVisibilityTests {
-    private func setup(_ failure: String) async throws -> (AppModel, EditorModel, WorkspaceShell, RewriteFailureRunner) {
+    private func setup(_ failure: String, clip: Bool = false) async throws -> (AppModel, EditorModel, WorkspaceShell, RewriteFailureRunner) {
+        _ = NSApplication.shared
         let app = AppModel(settingsStore: RegressionSettingsStore())
         let shared = try SharedResources.locate()
         let runner = RewriteFailureRunner(failure: failure)
@@ -51,8 +56,13 @@ private actor RewriteFailureRunner: ProcessRunner {
         app.settings.values["llm.connector"] = .string("claude-code")
         app.settings.values["llm.model.claude-code"] = .string("opus")
         app.settings.values["voiceLab.enabled"] = .bool(false)
-        let fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
-        await app.shell.attachForTesting(VoxClipDocument(project: fixture, demo: true), selection: .fullTake, preview: DemoPreviewEngine())
+        var fixture = try DemoEditing.loadFixture(shared.root.appendingPathComponent("fixtures/projects/interview-take.voxclip"))
+        if clip {
+            let words = try #require(fixture.transcript?.words)
+            fixture.edits.clips = [ClipRange(id: "failure-clip", startWordId: words[0].id, endWordId: words[5].id)]
+            fixture.edits.activeClipId = "failure-clip"
+        }
+        await app.shell.attachForTesting(VoxClipDocument(project: fixture, demo: true), selection: clip ? .clip("failure-clip") : .fullTake, preview: DemoPreviewEngine())
         let editor = try #require(app.shell.editor)
         editor.mediaResolved = true
         editor.refresh()
@@ -70,7 +80,7 @@ private actor RewriteFailureRunner: ProcessRunner {
         return session
     }
 
-    @Test(arguments: ["API Error: Connection refused (ECONNREFUSED)", "unexpected CLI failure", "timeout", "Not logged in", "Usage limit reached", "overloaded", "cancelled", "cancellationError"])
+    @Test(arguments: ["API Error: Connection refused (ECONNREFUSED)", "unexpected CLI failure", "timeout", "Not logged in", "Usage limit reached", "overloaded", "malformed", "cancelled", "cancellationError", "cancelledTask"])
     func firstFailureKeepsJobClipBarAndStatus(_ failure: String) async throws {
         let (app, editor, shell, runner) = try await setup(failure)
         defer { editor.close() }
@@ -85,9 +95,16 @@ private actor RewriteFailureRunner: ProcessRunner {
         #expect(PanelJob.available(in: editor).contains(.rewrite))
         #expect(shell.panelJob(for: editor) == .rewrite)
         if case .error = session.task.state {} else { Issue.record("Failure did not remain visible: \(session.task.state)") }
+        if failure == "unexpected CLI failure" || failure == "timeout" {
+            let expected: LLMError = failure == "timeout" ? .timeout : .cliFailed(failure)
+            let copy = RewriteSession.proposalError(expected, provider: "Claude Code", model: "opus")
+            #expect(session.task.state == .error(.message(copy)))
+            #expect(session.task.cards.contains(.text(copy)))
+        }
         let bar = ClipBarView(model: editor, shell: shell)
         bar.render()
         #expect(bar.rewrite.label == "Rewrite failed")
+        #expect(bar.rewrite.symbol == "exclamationmark.triangle")
         #expect(!bar.rewrite.isHidden && bar.rewrite.isOn && bar.rewriting.isHidden)
         let status = try #require(StatusBarContent.make(app: app, editor: editor, now: Date()).items[.task])
         #expect(status.spoken.hasPrefix("Rewrite stopped: "))
@@ -97,6 +114,27 @@ private actor RewriteFailureRunner: ProcessRunner {
         #expect(editor.openRewrite == nil && !session.isOpen)
         #expect(!PanelJob.available(in: editor).contains(.rewrite))
         #expect(StatusBarContent.make(app: app, editor: editor, now: Date()).items[.task] == nil)
+    }
+
+    @Test(arguments: [false, true])
+    func scopedFailureCanBeReopenedFromAnotherTab(_ clip: Bool) async throws {
+        let (_, editor, shell, runner) = try await setup("unexpected CLI failure", clip: clip)
+        defer { editor.close() }
+        editor.selectedWordIDs = []
+        let session = try await open(editor, runner: runner)
+        #expect(session.rewriteScope == (clip ? .clip("failure-clip") : .fullTake))
+        await runner.release()
+        _ = try await TestDeadline.value(session.actionTask, "finish scoped failure")
+        #expect(editor.openRewrite === session && session.isOpen)
+        #expect(shell.panelJob(for: editor) == .rewrite)
+        if clip {
+            shell.choose(.fullTake, byClick: false)
+            #expect(editor.rewrite == nil && editor.statusRewriteFailure != nil)
+        }
+        if shell.viewerShown { shell.toggleViewer() }
+        shell.showRewriteFailure()
+        #expect(shell.viewerShown && shell.panelJob(for: editor) == .rewrite)
+        #expect(editor.rewrite === session && editor.focusedPane == .panel)
     }
 
     @Test(arguments: ["API Error: Connection refused (ECONNREFUSED)", "unexpected CLI failure", "timeout"])

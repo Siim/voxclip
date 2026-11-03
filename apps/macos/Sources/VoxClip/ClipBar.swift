@@ -164,10 +164,12 @@ enum ClipBarMetrics {
         rewrite.isHidden = !readOnly && (!canRewrite || running)
         rewrite.isOn = model.rewrite != nil
         // The chosen AI asks before each send (C8): "Rewrite…", as Edit › Rewrite's title (design.md §3.1).
-        rewrite.label = model.rewriteAsksFirst ? "Rewrite…" : "Rewrite"
+        let failure = model.rewrite?.failureStatus
+        rewrite.symbol = failure != nil ? "exclamationmark.triangle" : "sparkles"
+        rewrite.label = failure != nil ? "Rewrite failed" : model.rewriteAsksFirst ? "Rewrite…" : "Rewrite"
         let names = rewriteNames
-        rewrite.setAccessibilityLabel(names.verb)
-        rewrite.toolTip = note ?? "\(names.verb) (⇧⌘R)"
+        rewrite.setAccessibilityLabel(failure.map { "\(names.verb). \($0). Try Again" } ?? names.verb)
+        rewrite.toolTip = note ?? failure.map { "\($0). Try Again (⇧⌘R)" } ?? "\(names.verb) (⇧⌘R)"
         let askName = names.ask.replacingOccurrences(of: "…", with: "")
         if ask.placeholder != names.ask { ask.placeholder = names.ask }
         ask.setAccessibilityLabel(askName)
@@ -404,7 +406,7 @@ enum ClipBarMetrics {
 @MainActor final class ClipBarButton: NSButton {
     enum Style { case verb, bordered, ghost }
     let style: Style
-    private let symbol: String?
+    var symbol: String? { didSet { if symbol != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true } } }
     let hint: String?
     var label: String { didSet { if label != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true; updateTip() } } }
     var iconOnly = false { didSet { if iconOnly != oldValue { invalidateIntrinsicContentSize(); needsDisplay = true; updateTip() } } }
