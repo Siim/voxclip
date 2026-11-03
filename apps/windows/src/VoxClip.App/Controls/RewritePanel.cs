@@ -111,19 +111,7 @@ internal sealed partial class RewritePanel : Grid
         SetName(instruction, "What should change?"); SetName(words, "New words"); SetName(propose, "Rewrite");
         instruction.TextChanged += async (_, _) => { if (!updating) await session.SetInstructionAsync(instruction.Text); };
         words.TextChanged += (_, _) => { if (!updating) session.Edit(words.Text); };
-        propose.Click += async (_, _) =>
-        {
-            if (requestingApproval || session.Prepared is not { } action || !session.CanPropose) return;
-            requestingApproval = true;
-            App.Services.BusyOperations++;
-            try
-            {
-                if (await ApproveProposalAsync(action) && session.IsOpen) await session.ProposeAsync(action, true);
-            }
-            catch (Exception exception) when (exception is not OutOfMemoryException)
-            { if (session.IsOpen) problem.Text = UiError.Message(exception, "Rewrite"); }
-            finally { requestingApproval = false; App.Services.BusyOperations--; }
-        };
+        propose.Click += async (_, _) => await SendProposalAsync();
         body.Children.Add(instruction); body.Children.Add(busy); body.Children.Add(propose);
         body.Children.Add(Small(SendLine)); body.Children.Add(estimate);
         body.Children.Add(confirmation);
@@ -421,15 +409,17 @@ internal sealed partial class RewritePanel : Grid
         updating = false;
         voice.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         speechModel.Visibility = generation.Voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        discover.Content = generation.HasDiscovered ? "Refresh voices" : "Choose Voice…";
+        discover.Content = session.GetPriceTitle;
         discover.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && !session.IsGeneratingBatch && !generation.IsPreparing;
         var unavailable = generation.Voices.Count == 0 && session.VoicesUnavailable;
-        discover.Visibility = unavailable ? Visibility.Collapsed : Visibility.Visible;
+        discover.Visibility = unavailable || session.PricedVoiceHunks.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         noVoice.Visibility = !unavailable && generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         languageUnavailable.Visibility = unavailable ? Visibility.Visible : Visibility.Collapsed;
         var batch = session.PreparedBatch;
-        var title = batch is null ? "Generate Takes" : VoiceLabCostPresentation.ButtonTitle("Generate All Takes", batch.TakeCount, batch.Kind());
+        var actionTitle = session.GenerationWindows.All(window => window.Rows.Count == 0) ? "Make take" : "Try another";
+        var title = batch is null ? actionTitle : VoiceLabCostPresentation.ButtonTitle(actionTitle, null, batch.Kind());
         generate.Content = title;
+        generate.Visibility = session.PricedVoiceHunks.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         generate.IsEnabled = VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck.WindowsNativeParityVerified && session.CanGenerateAll;
         SetName(generate, title); ToolTipService.SetToolTip(generate, title);
         var running = session.GenerationWindows.FirstOrDefault(window => window.IsRunning);

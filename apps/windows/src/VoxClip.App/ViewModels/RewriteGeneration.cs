@@ -65,7 +65,7 @@ internal sealed partial class RewriteGeneration : IDisposable
         get
         {
             RefreshExpiredQuote();
-            return GenerationButtonTitle(Rows.Count == 0 ? "Generate Takes" : "Generate Again");
+            return GenerationButtonTitle(Rows.Count == 0 ? "Make take" : "Try another");
         }
     }
     internal string GenerationButtonTitle(string title) => VoiceLabCostPresentation.ButtonTitle(title, null,

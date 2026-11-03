@@ -1,3 +1,4 @@
+#pragma warning disable CS1591
 using VoxClip.Core.Domain.Clips;
 using VoxClip.Core.Services.LLM;
 
@@ -12,7 +13,10 @@ public sealed record PatchRewriteLineRange(string Line, int MinChars, int MaxCha
 /// indices and display text (ai.md §11.2), and <c>Ranges</c> holds one range per formatted line, in line order. <c>Instruction</c> says
 /// what to fix, for example "I said 2024; it's 2025", and must not be empty after <c>jsTrim</c>.</summary>
 public sealed record PatchRewriteRequest(Guid RequestId, IReadOnlyList<ClipWord> Entries, IReadOnlyList<PatchRewriteLineRange> Ranges,
-    string Instruction, string Language);
+    string Instruction, string Language)
+{
+    public IReadOnlyList<VoiceRewriteTimingFeedback> ShorterPhrases { get; init; } = [];
+}
 
 /// <summary>One validated line edit; review data is inert. <c>Text</c> is the new text of the whole line exactly as the model returned it,
 /// <c>Length</c> is Core's own <see cref="VoiceLabTextLength"/> of it, and <c>InRange</c> says whether that lies in the line's range; an

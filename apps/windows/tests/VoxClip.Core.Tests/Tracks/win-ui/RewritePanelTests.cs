@@ -12,6 +12,197 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 
 public sealed class RewritePanelTests
 {
+    [Fact]
+    public void PrepayFitActionsAreInlineAndFirstTakeIsNamedMakeTake()
+    {
+        var review = AppSource("Controls", "RewritePanel.Review.cs");
+        Assert.Contains("Ask for shorter", review);
+        Assert.Contains("Keep original words", review);
+        Assert.Contains("Price it anyway", review);
+        Assert.Contains("Make take", AppSource("ViewModels", "RewriteGeneration.cs"));
+    }
+
+    [Fact]
+    public void UnusablePaidTakeHasInlineWordingRecovery()
+    {
+        var takes = AppSource("Controls", "RewritePanel.Takes.cs");
+        Assert.Contains("Ask for shorter", takes);
+        Assert.Contains("Keep original words", takes);
+        Assert.Contains("Ask again", takes);
+    }
+
+    [Fact]
+    public async Task ShorterWordingIsAFreshTextOnlySendAndReplacesTheProposal()
+    {
+        var connector = new RecordingConnector { Rewrite = "short word11 word12" };
+        var consentCount = 0;
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(connector, "chosen", "Stub", "apiKey", ""),
+            consent: _ => { consentCount++; return Task.FromResult(true); });
+        await session.SetInstructionAsync("Keep my casual tone");
+        var previous = session.Prepared!;
+        session.MarkEstimateShown(previous);
+        Assert.True(await session.ProposeAsync(previous, true));
+        session.Edit("a very long phrase with far too many extra words for this tiny slot word11 word12");
+        var blocked = Assert.Single(session.BlockedVoiceHunks);
+        Assert.Empty(session.PricedVoiceHunks);
+        Assert.Null(session.Review!.Summary);
+        Assert.Equal("1 phrase needs a shorter wording.", session.FitFooter);
+        var oldWords = session.NewWords;
+        Assert.True(await session.PrepareShorterAsync());
+        Assert.Single(connector.Requests);
+        var prepared = session.Prepared!;
+        Assert.False(await session.ProposeAsync(previous, true));
+        Assert.False(await session.ProposeAsync(prepared, true));
+        session.MarkEstimateShown(prepared);
+        Assert.True(await session.ProposeAsync(prepared, true), session.Problem);
+        Assert.Equal(2, consentCount);
+        Assert.Equal(2, connector.Requests.Count);
+        var sent = connector.Requests[^1];
+        Assert.Contains("SHORTER WORDING FEEDBACK", sent.Instruction);
+        Assert.Contains("Original words: word10", sent.Instruction);
+        Assert.Contains("Proposed words: " + blocked.PatchText, sent.Instruction);
+        Assert.Contains("Say it in fewer words; keep the other changes as they are.", sent.Instruction);
+        Assert.Equal("short word11 word12", session.NewWords);
+        Assert.NotEqual(oldWords, session.NewWords);
+        Assert.Empty(session.BlockedVoiceHunks);
+        Assert.Equal("Nothing paid yet.", session.FitFooter);
+        Assert.Equal("Get Price · 1 phrase", session.GetPriceTitle);
+        Assert.Equal(2, session.ProposalRevision);
+    }
+
+    [Fact]
+    public void PricingExcludesBlockedPhrasesUntilExplicitOverrideAndKeepOriginalExcludesTheChange()
+    {
+        var prices = VoiceLabPriceCatalog.Parse(File.ReadAllBytes(Path.Combine(Shared, "catalog", "voice-lab.json")));
+        using var session = new RewriteSession(Editor(), 10, 18, Envelope(), null, prices: prices, synthesisModel: "eleven_multilingual_v2");
+        session.Edit("a very long phrase with far too many extra words for this tiny slot word11 word12 word13 word14 word15 word16 word17 five");
+        Assert.Equal(2, session.Review!.VoiceHunks.Count);
+        Assert.Single(session.PricedVoiceHunks);
+        Assert.Equal(1, session.Review.Summary!.RevoicedPhrases);
+        var fittingPrice = session.Review.Summary.CostEstimate!.Usd;
+        Assert.True(session.PriceItAnyway(1));
+        Assert.Equal(2, session.PricedVoiceHunks.Count);
+        Assert.Empty(session.BlockedVoiceHunks);
+        Assert.True(session.Review!.Summary!.CostEstimate!.Usd > fittingPrice);
+        Assert.True(session.SetChangeIncluded(1, false));
+        Assert.Single(session.PricedVoiceHunks);
+        Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[1]);
+        Assert.True(session.SetChangeIncluded(1, true));
+        Assert.Single(session.BlockedVoiceHunks);
+        session.Edit("a different extremely long phrase with too many words for the slot word11 word12");
+        Assert.Single(session.BlockedVoiceHunks);
+    }
+
+    [Fact]
+    public void ASharedVoiceWindowKeepsItsOriginalChangeOrdinalsForOverridesAndPricing()
+    {
+        var words = Enumerable.Range(0, 200).Select(index => Word(index, "word" + index) with
+            { Start = 1 + index * 0.25 + (index >= 10 ? 0.1 : 0) + (index >= 13 ? 0.1 : 0) + (index >= 16 ? 0.1 : 0),
+                End = 1.23 + index * 0.25 + (index >= 10 ? 0.1 : 0) + (index >= 13 ? 0.1 : 0) + (index >= 16 ? 0.1 : 0) }).ToArray();
+        using var session = new RewriteSession(Editor(words), 10, 15, Envelope(), null);
+        session.Edit("a much longer replacement with many extra words word11 word12 word13 word14 another long replacement with far too many words");
+        Assert.Equal(2, session.Review!.Diff.Hunks.Count);
+        var phrase = Assert.Single(session.Review.VoiceHunks);
+        Assert.Equal(new[] { 1, 2 }, phrase.Ordinals);
+        Assert.Single(session.BlockedVoiceHunks);
+        Assert.True(session.PriceItAnyway(2));
+        Assert.Single(session.PricedVoiceHunks);
+        Assert.Equal(1, session.Review!.Summary!.RevoicedPhrases);
+    }
+
+    [Fact]
+    public async Task TooShortPhrasesAskAgainWithoutRequestingEvenShorterWords()
+    {
+        var words = Enumerable.Range(0, 80).Select(index => Word(index, "word" + index) with { End = index + 1.98 }).ToArray();
+        var connector = new RecordingConnector();
+        using var session = new RewriteSession(Editor(words), 10, 12, Envelope(), new(connector, "chosen", "Stub", "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        session.Edit("z word11 word12");
+        var phrase = Assert.Single(session.BlockedVoiceHunks);
+        Assert.False(phrase.Fit!.TooLong);
+        Assert.Equal("1 phrase needs wording that fits.", session.FitFooter);
+        Assert.Equal("Too short for its slot. A take won't fit the video.", VoiceLabRewriteFit.TooShortCopy);
+        Assert.True(await session.PrepareShorterAsync(1));
+        Assert.DoesNotContain("send", connector.Calls);
+        var prepared = session.Prepared!;
+        session.MarkEstimateShown(prepared);
+        Assert.True(await session.ProposeAsync(prepared, true));
+        Assert.DoesNotContain("Say it in fewer words", Assert.Single(connector.Requests).Instruction);
+    }
+
+    [Fact]
+    public void ReviewRateUsesCorrectedTranscriptWithoutCutWords()
+    {
+        var editor = Editor();
+        editor.Apply(new EditOperation.SetWordCuts(["w0"], true));
+        editor.Apply(new EditOperation.Correct("w1", "a substantially longer corrected word"));
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), null);
+        session.Edit("Sunday word11 word12");
+        var phrase = Assert.Single(session.Review!.VoiceHunks);
+        var expected = VoiceLabRewriteFit.Estimate(phrase.PatchText!, VoiceLabRewriteFit.SpeakingRate(session.Transcript.Where(word => word.Id != "w0").ToArray()));
+        Assert.Equal(expected, phrase.Fit!.EstimateSeconds);
+    }
+
+    [Fact]
+    public void ActiveClipUsesItsOwnSpeakingRateInsteadOfTheRestOfTheTake()
+    {
+        var words = Enumerable.Range(0, 80).Select(index => Word(index, "word" + index) with
+            { End = index + 1 + (index is >= 10 and <= 20 ? 0.8 : 0.1) }).ToArray();
+        var project = Editor(words).Project;
+        var editor = new EditorViewModel(project with { Edits = project.Edits with
+            { Clips = [new("timing-clip", "w10", "w20", "Timing", ClipOrigin.Manual, null, null, true)], ActiveClipId = "timing-clip" } });
+        using var session = new RewriteSession(editor, 10, 12, Envelope(), null);
+        session.Edit("Sunday word11 word12");
+        var phrase = Assert.Single(session.Review!.VoiceHunks);
+        var expected = VoiceLabRewriteFit.Estimate(phrase.PatchText!, VoiceLabRewriteFit.SpeakingRate(session.Transcript.Skip(10).Take(11).ToArray()));
+        Assert.Equal(expected, phrase.Fit!.EstimateSeconds);
+    }
+
+    [Fact]
+    public async Task ShortPaidTakeCanAskAgainWithoutShorteningAnOtherwiseFittingEstimate()
+    {
+        var connector = new RecordingConnector();
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(connector, "chosen", "Stub", "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        session.Edit("short word11 word12");
+        Assert.Single(session.PricedVoiceHunks);
+        Assert.True(await session.PrepareShorterAsync(1, askAgain: true));
+        var prepared = session.Prepared!;
+        session.MarkEstimateShown(prepared);
+        Assert.True(await session.ProposeAsync(prepared, true));
+        Assert.DoesNotContain("Say it in fewer words", Assert.Single(connector.Requests).Instruction);
+    }
+
+    [Fact]
+    public async Task ScopedShorterSendUsesTheSameScopeAndReplacesItsHunks()
+    {
+        var editor = Editor();
+        var scope = RewriteScope.FullTake;
+        var plan = ScopeRewritePlan.Make(editor.Project, scope, "Plainly", "en", Envelope());
+        var line = plan.Lines[0];
+        const string longWords = "a much longer replacement with far too many extra words for the tiny slot";
+        string Text(string replacement) => string.Join(" ", line.Items.Select((word, index) => index == 2 ? replacement : word.Text));
+        JsonArray Edits(string replacement) => new(new JsonObject { ["line"] = line.Label, ["text"] = Text(replacement), ["reason"] = "Plainly" });
+        var connector = new RecordingConnector { Edits = Edits(longWords) };
+        using var session = new RewriteSession(editor, 0, 79, Envelope(), new(connector, "chosen", "Stub", "local", ""), scope: scope);
+        await session.SetInstructionAsync("Plainly");
+        var first = session.Prepared!; session.MarkEstimateShown(first);
+        Assert.True(await session.ProposeAsync(first, true), session.Problem);
+        Assert.Single(session.BlockedVoiceHunks);
+        Assert.True(session.PriceItAnyway(1));
+        connector.Edits = Edits("clear");
+        Assert.True(await session.PrepareShorterAsync(1));
+        var shorter = session.Prepared!; session.MarkEstimateShown(shorter);
+        Assert.True(await session.ProposeAsync(shorter, true), session.Problem);
+        Assert.Equal(connector.Requests[0].CachedBlock, connector.Requests[1].CachedBlock);
+        Assert.Contains("SHORTER WORDING FEEDBACK", connector.Requests[1].Instruction);
+        Assert.DoesNotContain(longWords, session.NewWords);
+        Assert.Single(session.ScopeHunks!);
+        Assert.Empty(session.ChangeStates);
+        Assert.True(session.EditChange(1, longWords));
+        Assert.Single(session.BlockedVoiceHunks);
+    }
+
     [Theory]
     [InlineData("Claude Code")]
     [InlineData("Codex")]
@@ -196,7 +387,7 @@ public sealed class RewritePanelTests
         using (var production = new RewriteSession(Project(), 10, 12, Envelope(), null)) Assert.False(production.VoicesUnavailable);
         var panel = AppSource("Controls", "RewritePanel.cs");
         Assert.Contains("var unavailable = generation.Voices.Count == 0 && session.VoicesUnavailable;", panel);
-        Assert.Contains("discover.Visibility = unavailable ? Visibility.Collapsed : Visibility.Visible;", panel);
+        Assert.Contains("discover.Visibility = unavailable || session.PricedVoiceHunks.Count == 0 ? Visibility.Collapsed : Visibility.Visible;", panel);
         Assert.Contains("noVoice.Visibility = !unavailable && generation.HasDiscovered && generation.Voices.Count == 0 ? Visibility.Visible : Visibility.Collapsed;", panel);
         Assert.Contains("languageUnavailable.Visibility = unavailable ? Visibility.Visible : Visibility.Collapsed;", panel);
         Assert.Contains("var unavailable = Small(VoiceLabCopy.LanguageUnavailable);", panel);
@@ -344,8 +535,10 @@ public sealed class RewritePanelTests
             Assert.Equal(expected, hunk.Meter);
             Assert.StartsWith("“" + string.Join(" ", hunk.Hunk.NewTokens) + "” · about ", hunk.Meter!.Copy);
         }
-        var summary = VoiceLabDiffSummary.Make(review.Diff, review.VoiceHunks.Select(hunk => hunk.Meter!).ToArray(), prices,
-            "eleven_multilingual_v2", patchTexts: review.VoiceHunks.Select(hunk => hunk.PatchText).ToArray());
+        var priced = session.PricedVoiceHunks;
+        var summary = VoiceLabDiffSummary.Make(review.Diff with { Hunks = priced.Select(hunk => hunk.Hunk).ToArray() },
+            priced.Select(hunk => hunk.Meter! with { EstimateSeconds = hunk.Fit!.EstimateSeconds }).ToArray(), prices,
+            "eleven_multilingual_v2", patchTexts: priced.Select(hunk => hunk.PatchText).ToArray());
         Assert.Equal(summary, review.Summary);
         Assert.NotNull(review.Summary!.CostEstimate!.Usd);
         session.Edit("Sunday word11 word12 word13 word14 word15 word16 word17 word18");
@@ -816,6 +1009,7 @@ public sealed class RewritePanelTests
         // New words now prepare takes at any length, as on the Mac: the reader is asked for the regions of a 126,720,000-frame
         // track (the old cap refused anything over 30,000,000 frames, 10 min 25 s at 48 kHz, before decoding).
         session.Edit("much clearer words");
+        if (session.BlockedVoiceHunks.Count > 0) Assert.True(session.PriceItAnyway(1));
         var hunk = Assert.Single(session.Review!.VoiceHunks);
         RewriteSourceRequest? request = null;
         var input = await session.GenerationInputAsync("voice", "model", 1, true, (value, _) =>
@@ -834,6 +1028,7 @@ public sealed class RewritePanelTests
         // An hour at 44.1 kHz reaches the reader too; nothing in the App refuses by length any more.
         using var hour = new RewriteSession(Long(3_600, 44_100), 10, 12, new(44_100, 0.01, Enumerable.Repeat(0.01f, 10_000).ToArray()), null);
         hour.Edit("much clearer words");
+        if (hour.BlockedVoiceHunks.Count > 0) Assert.True(hour.PriceItAnyway(1));
         long? frames = null;
         await hour.GenerationInputAsync("voice", "model", 1, true, (value, _) =>
         {
@@ -855,10 +1050,12 @@ public sealed class RewritePanelTests
     private sealed class RecordingConnector : ILlmConnector
     {
         internal List<string> Calls { get; } = [];
+        internal List<LlmRequest> Requests { get; } = [];
         internal Exception? Failure { get; set; }
         internal TaskCompletionSource<RawCompletion>? Pending { get; init; }
         internal bool IgnoreCancellation { get; init; }
         internal string Rewrite { get; init; } = "Better passage";
+        internal JsonArray? Edits { get; set; }
         public ConnectorId Id => ConnectorId.OpenAI;
         public Task<ConnectorStatus> GetStatusAsync(CancellationToken ct) { Calls.Add("status"); return Task.FromResult<ConnectorStatus>(new ConnectorStatus.Ready()); }
         public Task<IReadOnlyList<LlmModel>> GetModelsAsync(bool refresh, CancellationToken ct)
@@ -867,8 +1064,10 @@ public sealed class RewritePanelTests
         public Task<RawCompletion> SendAsync(LlmRequest request, string model, CancellationToken ct)
         {
             Calls.Add("send");
+            Requests.Add(request);
             if (Failure is not null) return Task.FromException<RawCompletion>(Failure);
-            return (IgnoreCancellation ? Pending?.Task : Pending?.Task.WaitAsync(ct)) ?? Task.FromResult(new RawCompletion(null, new JsonObject { ["rewrite"] = Rewrite }, model, new StopKind.Complete(), null, "fake"));
+            return (IgnoreCancellation ? Pending?.Task : Pending?.Task.WaitAsync(ct)) ?? Task.FromResult(new RawCompletion(null,
+                Edits is null ? new JsonObject { ["rewrite"] = Rewrite } : new JsonObject { ["edits"] = Edits.DeepClone() }, model, new StopKind.Complete(), null, "fake"));
         }
     }
     [Theory]

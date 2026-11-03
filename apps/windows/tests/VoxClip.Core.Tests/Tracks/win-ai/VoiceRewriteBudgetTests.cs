@@ -304,7 +304,7 @@ public sealed class VoiceRewriteBudgetTests
         Assert.Equal(text, proposal.ProposedText);
         Assert.Equal(17, proposal.ProposedLength);
         Assert.Equal(inRange, proposal.InRange);
-        Assert.EndsWith($"about 2.5 seconds to say, which is {minChars} to {maxChars} letters and digits. Spaces and punctuation are not counted. Write natural wording that stays inside this range.",
+        Assert.EndsWith($"about 2.5 seconds to say, which is {minChars} to {maxChars} letters and digits. Spaces and punctuation are not counted. Write natural wording that stays inside this range. Keep each change about as long, when spoken, as the words it replaces; prefer the same number of syllables.",
             Assert.Single(connector.Requests).Instruction, StringComparison.Ordinal);
     }
 

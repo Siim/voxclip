@@ -5446,6 +5446,7 @@ member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public get_Ins
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public get_Language()
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public get_Ranges()
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public get_RequestId()
+member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public get_ShorterPhrases()
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest,VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest)
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest,VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest)
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public set_Entries(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.ClipWord>)
@@ -5453,6 +5454,7 @@ member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public set_Ins
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public set_Language(string)
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public set_Ranges(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.PatchRewriteLineRange>)
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public set_RequestId(System.Guid)
+member VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest :: method public set_ShorterPhrases(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback>)
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator :: field internal MaxEditBytes
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator :: field internal MaxTextBytes
 member VoxClip.Core.Domain.VoiceLab.PatchRewriteValidator :: field private SentenceEnd
@@ -7922,6 +7924,37 @@ member VoxClip.Core.Domain.VoiceLab.VoiceLabReview :: method public set_Provider
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReview :: method public set_Region(System.Nullable`1<VoxClip.Core.Services.Speech.ElevenLabsRegion>)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReview :: method public set_RequestId(System.Guid)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabReview :: method public set_VoiceId(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public MaximumVideoSpeed
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public MinimumVideoSpeed
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public MinorPauseSeconds
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public ProviderSpeechRateMultiplier
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public SentencePauseSeconds
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public TooLongCopy
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: field public TooShortCopy
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public AllowsVideo(VoxClip.Core.Domain.VoiceLab.VoiceLabFitResult,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public Estimate(string,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public Hypothetical(VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public Measure(string,double,VoxClip.Core.Domain.VoiceLab.VoiceLabWindow,System.Nullable`1<double>,System.Nullable`1<double>,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit :: method public SpeakingRate(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public .ctor(double,double,bool)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public Deconstruct(double&,double&,bool&)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public get_Copy()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public get_EstimateSeconds()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public get_Fits()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public get_SlotSeconds()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public get_TooLong()
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult,VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult,VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public set_EstimateSeconds(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public set_Fits(bool)
+member VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult :: method public set_SlotSeconds(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone :: method private get_EqualityContract()
@@ -8996,6 +9029,7 @@ member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_Max
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_MinChars()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_RequestId()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_Scope()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_ShorterPhrases()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_SourceWords()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public get_TargetSeconds()
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest,VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest)
@@ -9006,11 +9040,31 @@ member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_Max
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_MinChars(int)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_RequestId(System.Guid)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_Scope(VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_ShorterPhrases(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback>)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_SourceWords(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Shared.TimedWord>)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest :: method public set_TargetSeconds(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope :: field public FullTake
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope :: field public Passage
 member VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope :: field public value__
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method private PrintMembers(System.Text.StringBuilder)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method private get_EqualityContract()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public .ctor(string,string,double,double)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public Deconstruct(string&,string&,double&,double&)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public Equals(VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public Equals(object)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public GetHashCode()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public ToString()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public get_EstimateSeconds()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public get_Original()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public get_Proposed()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public get_SlotSeconds()
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public op_Equality(VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback,VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public op_Inequality(VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback,VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public set_EstimateSeconds(double)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public set_Original(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public set_Proposed(string)
+member VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback :: method public set_SlotSeconds(double)
 member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method private .ctor(VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch)
 member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch :: method private get_EqualityContract()
@@ -11370,7 +11424,7 @@ member VoxClip.Core.Services.VoiceLab.ONNXSpeakerEmbedder :: method public get_M
 member VoxClip.Core.Services.VoiceLab.PatchRewriteService :: field private LanguageCode
 member VoxClip.Core.Services.VoiceLab.PatchRewriteService :: field private actions
 member VoxClip.Core.Services.VoiceLab.PatchRewriteService :: field private catalog
-member VoxClip.Core.Services.VoiceLab.PatchRewriteService :: method internal RequestText(VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest,string,System.Text.Json.Nodes.JsonObject)
+member VoxClip.Core.Services.VoiceLab.PatchRewriteService :: method internal RequestText(VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest,string,System.Text.Json.Nodes.JsonObject,System.Text.Json.Nodes.JsonObject)
 member VoxClip.Core.Services.VoiceLab.PatchRewriteService :: method private .cctor()
 member VoxClip.Core.Services.VoiceLab.PatchRewriteService :: method private BuildRequest(VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest,System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.Clips.NumberedLine>,VoxClip.Core.Services.VoiceLab.PatchRewriteService+Prompt,VoxClip.Core.Services.LLM.ConnectorId,string)
 member VoxClip.Core.Services.VoiceLab.PatchRewriteService :: method private Fingerprint(VoxClip.Core.Domain.VoiceLab.PatchRewriteRequest,VoxClip.Core.Services.LLM.ConnectorId,string,VoxClip.Core.Services.LLM.LlmRequest,string)
@@ -11747,6 +11801,7 @@ member VoxClip.Core.Services.VoiceLab.VoiceOperationState :: field public Tombst
 member VoxClip.Core.Services.VoiceLab.VoiceOperationState :: field public Withdrawing
 member VoxClip.Core.Services.VoiceLab.VoiceOperationState :: field public Withdrawn
 member VoxClip.Core.Services.VoiceLab.VoiceOperationState :: field public value__
+member VoxClip.Core.Services.VoiceLab.VoiceRewriteFeedback :: method internal Render(System.Collections.Generic.IReadOnlyList`1<VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback>,System.Text.Json.Nodes.JsonObject)
 member VoxClip.Core.Services.VoiceLab.VoiceRewriteService :: field private LanguageCode
 member VoxClip.Core.Services.VoiceLab.VoiceRewriteService :: field private PromptFile
 member VoxClip.Core.Services.VoiceLab.VoiceRewriteService :: field private Url
@@ -12272,6 +12327,8 @@ type VoxClip.Core.Domain.VoiceLab.VoiceLabRetentionJson
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRetentionLedger
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRetentionObservation
 type VoxClip.Core.Domain.VoiceLab.VoiceLabReview
+type VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFit
+type VoxClip.Core.Domain.VoiceLab.VoiceLabRewriteFitResult
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRoomTone
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRoomToneSelection
 type VoxClip.Core.Domain.VoiceLab.VoiceLabRunDispatch
@@ -12343,6 +12400,7 @@ type VoxClip.Core.Domain.VoiceLab.VoiceProjectConsent
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteProposal
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteRequest
 type VoxClip.Core.Domain.VoiceLab.VoiceRewriteScope
+type VoxClip.Core.Domain.VoiceLab.VoiceRewriteTimingFeedback
 type VoxClip.Core.Domain.VoiceLab.VoiceStatementMatch
 type VoxClip.Core.Domain.VoiceLab.VoiceTrainingInputs
 type VoxClip.Core.Domain.VoiceLab.VoiceTrainingItem
@@ -12547,6 +12605,7 @@ type VoxClip.Core.Services.VoiceLab.VoiceOperation
 type VoxClip.Core.Services.VoiceLab.VoiceOperationKind
 type VoxClip.Core.Services.VoiceLab.VoiceOperationReconciler
 type VoxClip.Core.Services.VoiceLab.VoiceOperationState
+type VoxClip.Core.Services.VoiceLab.VoiceRewriteFeedback
 type VoxClip.Core.Services.VoiceLab.VoiceRewriteService
 type VoxClip.Core.Services.VoiceLab.VoiceRootState
 type VoxClip.Core.Services.VoiceLab.VoiceSpeakerCheck

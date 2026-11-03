@@ -13,6 +13,49 @@ internal sealed partial class RewriteSession
     private ScopeRewritePlan? scopePlan;
     private IReadOnlyList<ScopeRewriteDiff.Hunk>? scopeHunks;
     private readonly Dictionary<int, TranscriptChangeState> changeStates = [];
+    private readonly HashSet<int> priceOverrides = [];
+    internal IReadOnlyList<RewriteHunkReview> PricedVoiceHunks => Review?.VoiceHunks.Where(CanPriceHunk).ToArray() ?? [];
+    internal IReadOnlyList<RewriteHunkReview> BlockedVoiceHunks => Review?.VoiceHunks.Where(hunk => hunk.Fit is { Fits: false } && !CanPriceHunk(hunk)).ToArray() ?? [];
+    internal string FitFooter => BlockedVoiceHunks.Count is var count && count > 0
+        ? BlockedVoiceHunks.Any(hunk => hunk.Fit is { TooLong: false })
+            ? count == 1 ? "1 phrase needs wording that fits." : $"{count} phrases need wording that fits."
+            : count == 1 ? "1 phrase needs a shorter wording." : $"{count} phrases need a shorter wording."
+        : "Nothing paid yet.";
+    internal string GetPriceTitle => $"Get Price · {PricedVoiceHunks.Count} " + (PricedVoiceHunks.Count == 1 ? "phrase" : "phrases");
+    internal bool CanPriceHunk(RewriteHunkReview hunk) => hunk.Fit is { } fit &&
+        (fit.Fits || hunk.Ordinals.All(priceOverrides.Contains));
+    internal bool PriceItAnyway(int ordinal)
+    {
+        if (!ReviewIsCurrent || Review is null || ordinal < 1 || ordinal > Review.Diff.Hunks.Count ||
+            Review.VoiceHunks.FirstOrDefault(hunk => hunk.Ordinals.Contains(ordinal) && hunk.Fit is { Fits: false }) is not { } phrase) return false;
+        InvalidateProposal();
+        priceOverrides.UnionWith(phrase.Ordinals);
+        RefreshReview();
+        InvalidateGenerationInputs();
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+    internal async Task<bool> PrepareShorterAsync(int? ordinal = null, bool askAgain = false)
+    {
+        if (!ReviewIsCurrent || Review is null) return false;
+        var hunks = BlockedVoiceHunks.Where(hunk => hunk.Fit is { TooLong: true }).Concat(ordinal is { } number
+            ? Review.VoiceHunks.Where(hunk => hunk.Ordinals.Contains(number)) : []).Distinct().ToArray();
+        if (askAgain || ordinal is { } requested && hunks.Any(hunk => hunk.Ordinals.Contains(requested) && hunk.Fit is { Fits: false, TooLong: false }))
+        {
+            await StopCandidatesAsync();
+            if (!ReviewIsCurrent) return false;
+            await SetInstructionAsync(Instruction);
+            return Prepared is not null;
+        }
+        var feedback = hunks.Where(hunk => hunk.Fit is not null).Select(hunk => new VoiceRewriteTimingFeedback(
+            string.Join(" ", hunk.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text)),
+            hunk.PatchText!, hunk.Fit!.EstimateSeconds, hunk.Fit.SlotSeconds)).ToArray();
+        if (feedback.Length == 0) return false;
+        await StopCandidatesAsync();
+        if (!ReviewIsCurrent) return false;
+        await SetInstructionAsync(Instruction, shorterPhrases: feedback);
+        return Prepared is not null;
+    }
     internal int FocusedChange { get; private set; }
     internal Action<int>? RevealChange { get; set; }
     internal Action<int>? EditReviewChange { get; set; }
@@ -31,13 +74,14 @@ internal sealed partial class RewriteSession
     internal string ReviewIdentity => System.Text.Json.JsonSerializer.Serialize(new
     {
         Project.Id, Scope, Instruction, NewWords, Diff = Review?.Diff, Metadata = scopeHunks,
-        States = changeStates.OrderBy(pair => pair.Key).ToArray(), Local = LocalOperations()
+        States = changeStates.OrderBy(pair => pair.Key).ToArray(), Overrides = priceOverrides.Order().ToArray(), Local = LocalOperations()
     });
 
     internal bool SetChangeIncluded(int ordinal, bool included)
     {
         if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
         InvalidateProposal();
+        priceOverrides.Clear();
         changeStates[ordinal] = included ? TranscriptChangeState.Pending : TranscriptChangeState.Excluded;
         RefreshReview();
         InvalidateGenerationInputs();
@@ -62,6 +106,7 @@ internal sealed partial class RewriteSession
             }).ToArray();
             var dispositions = changeStates.ToArray();
             InvalidateProposal();
+            priceOverrides.Clear();
             scopeHunks = proposals.Take(ordinal - 1).Concat(replacements).Concat(proposals.Skip(ordinal)).ToArray();
             changeStates.Clear();
             foreach (var pair in dispositions.Where(pair => pair.Key != ordinal))

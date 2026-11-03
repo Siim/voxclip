@@ -13,7 +13,7 @@ internal sealed partial class RewriteSession
     internal int ActiveWindow { get; private set; }
     internal bool IsGeneratingBatch { get; private set; }
     internal bool CanAcceptAll => GenerationIsCurrent && !IsGeneratingBatch && !applyingBatch && generationWindows.Count > 0 &&
-        generationWindows.Count == Review?.VoiceHunks.Count && generationWindows.All(window => window.ReadyToAccept);
+        generationWindows.Count == PricedVoiceHunks.Count && generationWindows.All(window => window.ReadyToAccept);
     internal Task GenerationCleanup => Task.WhenAll(retiredGenerations);
     internal string RewriteActionName => requestedScope is null
         ? $"Rewrite {Source.Count(word => word.Kind == Core.Domain.Shared.WordKind.Word)} words"
@@ -32,7 +32,7 @@ internal sealed partial class RewriteSession
         if (generationFactory is null || ReferenceEquals(generatedReview, Review)) return;
         RetireGenerationWindows();
         generatedReview = Review;
-        var count = Math.Max(1, Math.Min(VoiceLabTakeBatch.MaximumWindows, Review?.VoiceHunks.Count ?? 0));
+        var count = Math.Max(1, Math.Min(VoiceLabTakeBatch.MaximumWindows, PricedVoiceHunks.Count));
         for (var index = 0; index < count; index++)
         {
             var window = generationFactory(index);
@@ -108,7 +108,7 @@ internal sealed partial class RewriteSession
     {
         get
         {
-            if (Review is null || generationWindows.Count != Review.VoiceHunks.Count || generationWindows.Count == 0) return null;
+            if (Review is null || generationWindows.Count != PricedVoiceHunks.Count || generationWindows.Count == 0) return null;
             var windows = generationWindows.Select(window => window.PreparedWindow).ToArray();
             if (windows.Any(window => window is null)) return null;
             try { return new(windows.Select(window => window!).ToArray()); }
