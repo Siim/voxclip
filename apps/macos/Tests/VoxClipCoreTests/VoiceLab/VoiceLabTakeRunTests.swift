@@ -204,7 +204,7 @@ struct VoiceLabTakeRunTests {
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
                          background: (left: Double, right: Double, run: Double)? = nil,
-                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false, pace: Double? = nil, hardJoinSmoothing: Bool = false) async throws -> Fixture {
+                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false, pace: Double? = nil, hardJoinSmoothing: Bool = false, audioTags: [VoiceLabAudioTag] = []) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
         let store = VoiceConsentStore(locations: locations)
@@ -276,7 +276,7 @@ struct VoiceLabTakeRunTests {
                 let size = bytes.withUnsafeBytes { Int(UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: start + 4, as: UInt32.self))) }
                 let wave = bytes.subdata(in: start..<(start + size + 8))
                 http.value.withLock { $0.qaWAVs.append(wave) }
-                for (field, value) in [("model_id", "scribe_v2"), ("language_code", "en"), ("diarize", "false"), ("tag_audio_events", "false"), ("timestamps_granularity", "word")] {
+                for (field, value) in [("model_id", "scribe_v2"), ("language_code", "en"), ("diarize", "false"), ("tag_audio_events", audioTags.isEmpty ? "false" : "true"), ("timestamps_granularity", "word")] {
                     #expect(body.contains("name=\"\(field)\"\r\n\r\n\(value)\r\n"))
                 }
                 let state = http.value.withLock { $0.qa += 1; return $0 }
@@ -285,10 +285,11 @@ struct VoiceLabTakeRunTests {
                     : state.recognized[(state.qa - 1) % state.recognized.count]
                 let tokens = text.split(separator: " ").map(String.init)
                 let step = (state.duration - 0.2) / Double(tokens.count)
-                let words = tokens.enumerated().map { index, token -> [String: Any] in
+                var words = tokens.enumerated().map { index, token -> [String: Any] in
                     ["type": "word", "text": token, "start": 0.6 + Double(index) * step,
                      "end": 0.6 + Double(index + 1) * step]
                 }
+                if !audioTags.isEmpty { words.append(["type": "audio_event", "text": "(laughs)", "start": 0.7, "end": 0.8]) }
                 return (200, [:], try JSONSerialization.data(withJSONObject: ["language_code": "eng", "words": words]))
             default: Issue.record("Unexpected take-run request"); return (500, [:], Data())
             }
@@ -346,7 +347,7 @@ struct VoiceLabTakeRunTests {
             rightSeam: .init(kind: .hard, time: 6, sample: 144_000, fadeSamples: 288))
         let input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: record.id, language: "en", seed: UInt32.max,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: window,
-            incomingSilence: nil, outgoingSilence: nil, providerConsent: true, pace: pace, hardJoinSmoothing: hardJoinSmoothing)
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true, pace: pace, hardJoinSmoothing: hardJoinSmoothing, audioTags: audioTags)
         let lastWindow = VoiceLabWindow(firstWordId: "last", lastWordId: "last", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 7, end: 7.5,
             startSample: 168_000, endSample: 180_000, leftSeam: .init(kind: .hard, time: 7, sample: 168_000, fadeSamples: 288),
             rightSeam: .init(kind: .hard, time: 7.5, sample: 180_000, fadeSamples: 288))
@@ -368,6 +369,15 @@ struct VoiceLabTakeRunTests {
         #expect(audio.measuredSeamSteps?.count == 2)
         #expect(row.qa?.hardFailures.isEmpty == true)
         #expect(row.fits)
+    }
+
+    @Test(arguments: ["eleven_v3", "eleven_v4"]) func taggedQASendsAudioEventsAndKeepsOnlyWords(modelID: String) async throws {
+        let fixture = try await fixture(modelID: modelID, audioTags: [.init(beforeToken: 1, tag: "laughs")])
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input, candidates: 1)
+        let result = try await fixture.run.execute(quote, approved: true)
+        #expect(fixture.http.value.withLock { $0.qa } == 1)
+        #expect(result.rows.first?.qa?.values.transcriptMatch == 1)
     }
 
     @Test func slowTakeCarriesPaceThroughOptionsQuotesReceiptsAndRecipe() async throws {
