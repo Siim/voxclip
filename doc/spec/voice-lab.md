@@ -1195,6 +1195,44 @@ Then:
 
 ### 8.9 Duration fit
 
+#### Pre-pay phrase fit (3 November 2026)
+
+Rewrite checks every included voice change before **Get Price**. The local-length sentence in
+`shared/prompts/voice-rewrite.json` applies to selection and scope rewrites. A passage-wide
+character budget does not permit any single changed phrase to grow unchecked.
+
+The estimator counts Unicode letters and digits in the complete synthesized patch (including
+bridge words). Use the clip's corrected transcript speaking rate, excluding long pauses,
+without the optimistic 20 characters/second provider floor. Add 0.12 s for each comma,
+semicolon, colon or dash pause and 0.22 s for each sentence-ending punctuation group.
+Trimmed provider lead/tail allowance is `TTS_TRIM_LEAD + TTS_TRIM_TAIL`.
+Punctuation runs count once. Estimates are advisory, never speech-check evidence.
+`ClipTakePlan.validateSpeechAvailability` retains its conservative generated-speech rule;
+the fit estimate must not enable a short-phrase speaker check.
+
+The slot is the longest usable take: evaluate the same silence-only fit planner and video
+duration gate as a paid take, with lendable source silence and the existing 0.80×–1.25×
+source-video speed range. Borrowed silence expands the fit window before testing retiming;
+do not invent an independent speed or pause gate in the UI. A fully voiced hypothetical
+take is conservative: no unmeasured generated internal silence is assumed shrinkable.
+Before pricing, “fits” means that at least one post-take video option permits a hypothetical
+take of exactly the estimated length. Slot and estimate are displayed in seconds to one decimal.
+
+Rows read `≈ {estimate} s · slot {slot} s · fits` when usable, otherwise omit `· fits` and
+show **Too long for its slot. A take won't fit the video.**, **Ask for shorter**,
+**Keep original words**, and the quiet **Price it anyway** override. Only included phrases
+that fit or have that explicit override enter the quote. The footer reads
+`{n} phrase(s) need(s) a shorter wording.` and **Get Price · {k} phrase(s)**;
+omit the priced button when k is zero. With no blocked phrases, read **Nothing paid yet.**
+
+**Ask for shorter** uses the same scope and normal text-only Rewrite send, with fresh
+consent/approval checks, never a previous send authorization. Append the shared
+`shorterFeedbackBlock`, rendering `shorterPhraseLine` for each blocked phrase with its
+original/proposed words and estimate/slot seconds. The new proposal replaces the old one
+and resets timing overrides. **Keep original words** uses the existing per-change exclusion.
+Paid takes with neither video option available also offer both recovery actions; further
+audio generation always goes through the usual fresh price and approval.
+
 Voiced speech is never time-stretched (ADR-R30). A take reaches the length of its window in this order: length-budgeted wording before any paid call (§8.9.1); one initial take followed by separately approved one-take retries (§8.6); silence-only fit (steps 1 and 2 below); and otherwise a changed duration with the ADR-R28 video choice, after as much silence fit as the limits allow (step 3).
 
 Let `D = duration(trimmed TTS)` (§8.7 step 1). At a take edge (seam kind `none`, §8.4) the planner keeps the source edge silence with an edge pad `e` (§8.9.2); elsewhere `e = 0`. Let `w = duration(W) − e`, the part of the window the take must fill, and `ρ = D − w`. A positive `ρ` means the take is too long.
