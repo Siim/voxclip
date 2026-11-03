@@ -68,7 +68,7 @@ internal sealed partial class RewritePanel
         var keep = Ui.Button("Keep original words", () =>
         {
             if (session.PricedVoiceHunks.ElementAtOrDefault(session.ActiveWindow) is { } hunk && session.Review is { } current)
-                foreach (var ordinal in hunk.Ordinals) session.SetChangeIncluded(ordinal, false);
+                session.SetChangesIncluded(hunk.Ordinals, false);
         });
         takeRecovery.Children.Add(shorter); takeRecovery.Children.Add(keep);
         lengthBody.Children.Add(takeRecovery);

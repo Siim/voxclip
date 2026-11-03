@@ -16,6 +16,29 @@ internal sealed partial class RewritePanel
     private bool renderedEditable;
     private readonly HashSet<DependencyObject> reviewElements = [];
     private readonly StackPanel sentenceReview = Ui.Stack(8);
+    private readonly StackPanel paidReviewChange = Ui.Stack(8);
+
+    private void RenderPaidReviewChange()
+    {
+        paidReviewChange.Children.Clear();
+        paidReviewChange.Visibility = session.PendingPaidReviewChange is null ? Visibility.Collapsed : Visibility.Visible;
+        SetName(paidReviewChange, "Discard paid takes confirmation");
+        if (session.PendingPaidReviewChange is not { } pending) return;
+        paidReviewChange.Children.Add(Ui.Text("Discard paid takes to change this review?"));
+        paidReviewChange.Children.Add(Ui.Text("Your paid takes are kept until you confirm. Changing the reviewed words or included phrases discards these takes and needs a new price."));
+        var cancel = Ui.Button("Cancel", session.CancelPaidReviewChange);
+        var confirm = new Button { Content = "Discard takes and continue", IsEnabled = session.ReviewIsCurrent &&
+            !session.GenerationWindows.Any(window => window.IsRunning || window.IsPreparing) };
+        AutomationProperties.SetAutomationId(cancel, "Rewrite.CancelPaidReviewChange");
+        AutomationProperties.SetAutomationId(confirm, "Rewrite.ConfirmPaidReviewChange");
+        confirm.Click += async (_, _) =>
+        {
+            if (!await session.ConfirmPaidReviewChangeAsync(pending) || !pending.Shorter || session.Prepared is not { } action) return;
+            session.MarkEstimateShown(action);
+            await SendProposalAsync();
+        };
+        paidReviewChange.Children.Add(cancel); paidReviewChange.Children.Add(confirm);
+    }
 
     private async Task SendProposalAsync()
     {
@@ -70,8 +93,8 @@ internal sealed partial class RewritePanel
             var title = new CheckBox { Content = $"Change {ordinal}" + (session.FocusedChange == ordinal ? " · focused" : ""),
                 IsChecked = included, IsEnabled = session.ReviewIsCurrent };
             SetName(title, $"Include change {ordinal} of {current.Diff.Hunks.Count}");
-            title.Checked += (_, _) => { if (ReferenceEquals(current, session.Review)) session.SetChangeIncluded(ordinal, true); };
-            title.Unchecked += (_, _) => { if (ReferenceEquals(current, session.Review)) session.SetChangeIncluded(ordinal, false); };
+            title.Checked += (_, _) => { if (ReferenceEquals(current, session.Review)) { renderedReview = null; session.SetChangeIncluded(ordinal, true); } };
+            title.Unchecked += (_, _) => { if (ReferenceEquals(current, session.Review)) { renderedReview = null; session.SetChangeIncluded(ordinal, false); } };
             row.Children.Add(title);
             row.Children.Add(Ui.Text(hunk.Kind == VoiceLabDiffHunkKind.Cut ? "Remove these source words" : string.Join(" ", hunk.NewTokens)));
             if (session.ScopeHunks is { } metadata && index < metadata.Count)
@@ -91,6 +114,7 @@ internal sealed partial class RewritePanel
             edit.IsEnabled = session.ReviewIsCurrent;
             actions.Children.Add(reveal); actions.Children.Add(edit); row.Children.Add(actions);
             var voiceHunk = current.VoiceHunks.FirstOrDefault(voice => voice.Ordinals.Contains(ordinal));
+            SetName(row, $"Change {ordinal} of {current.Diff.Hunks.Count}. {voiceHunk?.SpokenTiming}");
             if (included && voiceHunk?.Fit is { } fit)
             {
                 var timing = Small(fit.Copy);

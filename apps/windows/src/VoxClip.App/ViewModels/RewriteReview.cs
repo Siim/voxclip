@@ -7,7 +7,10 @@ namespace VoxClip.App.ViewModels;
 internal enum RewriteDiffKind { Equal, Removed, Inserted, Bridge }
 internal sealed record RewriteDiffRun(string Text, RewriteDiffKind Kind, string? SourceId = null);
 internal sealed record RewriteHunkReview(VoiceLabDiffHunk Hunk, VoiceLabWindow? Window, string? PatchText,
-    VoiceLabFitMeterResult? Meter, string? Refusal, IReadOnlyList<int> Ordinals, VoiceLabRewriteFitResult? Fit = null);
+    VoiceLabFitMeterResult? Meter, string? Refusal, IReadOnlyList<int> Ordinals, VoiceLabRewriteFitResult? Fit = null)
+{
+    internal string SpokenTiming => Fit?.Copy ?? Refusal ?? "";
+}
 
 internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchBudgetResult Budget,
     IReadOnlyList<RewriteDiffRun> Runs, string AccessibleDescription, IReadOnlyList<RewriteHunkReview> VoiceHunks,
@@ -41,17 +44,7 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
                 var patch = string.Join(" ", window.LeftBridgeWordIds.Select(Text).Append(newWords).Concat(window.RightBridgeWordIds.Select(Text)));
                 var rate = VoiceLabLengthBudget.Rate(session.Transcript).CharactersPerSecond;
                 var meter = VoiceLabFitMeter.Measure(patch, window, silence.Incoming, silence.Outgoing, rate, newWords, voice.Length > 1);
-                var spoken = session.Transcript;
-                if (session.Scope.ClipId is { } clipId && session.Project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } clip)
-                {
-                    var first = session.Transcript.ToList().FindIndex(word => word.Id == clip.StartWordId);
-                    var last = session.Transcript.ToList().FindIndex(word => word.Id == clip.EndWordId);
-                    if (first >= 0 && last >= first) spoken = session.Transcript.Skip(first).Take(last - first + 1).ToArray();
-                }
-                var fitRate = VoiceLabRewriteFit.SpeakingRate(spoken.Where(word =>
-                    session.Editor.State?.CutWordIds.Contains(word.Id) != true).ToArray());
-                var fit = VoiceLabPaceMatching.Measure(patch, fitRate, window, silence.Incoming, silence.Outgoing,
-                    session.Project.Media.Source.Audio?.SampleRate ?? 48_000, supportsPace: model != "eleven_v4");
+                var fit = MeasureTiming(session, session.Project, patch, window, model);
                 reviews.Add(new(hunk, window, patch, meter, null, ordinals, fit));
             }
             catch (Exception exception) when (exception is VoiceLabGeometryException or VoiceLabLengthBudgetException or VoiceLabProjectException)
@@ -71,6 +64,23 @@ internal sealed record RewriteReview(VoiceLabWordDiffResult Diff, VoiceLabPatchB
         var changeSummary = $"{inserted} new, {removed} removed" +
             (summary is null ? "" : " · about " + EditingFormat.ToFixed1(summary.EstimateSeconds) + " s");
         return new(diff, budget, runs, Description(diff, runs), reviews, summary, changeSummary);
+    }
+
+    internal static VoiceLabRewriteFitResult MeasureTiming(RewriteSession session, Project project,
+        string patch, VoiceLabWindow window, string? model)
+    {
+        var spoken = session.Transcript;
+        if (session.Scope.ClipId is { } clipId && project.Edits.Clips.FirstOrDefault(clip => clip.Id == clipId) is { } clip)
+        {
+            var first = session.Transcript.ToList().FindIndex(word => word.Id == clip.StartWordId);
+            var last = session.Transcript.ToList().FindIndex(word => word.Id == clip.EndWordId);
+            if (first >= 0 && last >= first) spoken = session.Transcript.Skip(first).Take(last - first + 1).ToArray();
+        }
+        var rate = VoiceLabRewriteFit.SpeakingRate(spoken.Where(word => !project.Edits.CutWordIds.Contains(word.Id))
+            .Select(word => word with { Text = project.Edits.Corrections.GetValueOrDefault(word.Id) ?? word.Text }).ToArray());
+        var silence = VoiceLabWindowPlanner.LendableSilence(project, session.Scope, window);
+        return VoiceLabPaceMatching.Measure(patch, rate, window, silence.Incoming, silence.Outgoing,
+            project.Media.Source.Audio?.SampleRate ?? 48_000, supportsPace: model != "eleven_v4");
     }
 
     private static IReadOnlyList<RewriteDiffRun> DiffRuns(VoiceLabWordDiffResult diff, IReadOnlyList<TimedWord> source,

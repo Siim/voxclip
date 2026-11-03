@@ -43,7 +43,8 @@ internal sealed partial class RewriteGeneration : IDisposable
     internal string? VoiceId { get; private set; }
     internal string? ModelId { get; private set; }
     internal string? PreferredModelId { get; set; }
-    internal double? NextPace => pendingInput?.Pace;
+    internal double? NextPace => Quote?.Takes[0].Synthesis.Review.Pace;
+    internal bool HasPaidTakes => IsRunning || core.Rows.Any(row => row.AcceptedRequestIds.Count > 0);
     internal string Problem { get; private set; } = "";
     internal string Announcement { get; private set; } = "";
     internal bool IsRunning => executing is not null;

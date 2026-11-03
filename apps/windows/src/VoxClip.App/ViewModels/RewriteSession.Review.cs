@@ -6,8 +6,38 @@ using VoxClip.Core.Services.VoiceLab;
 
 namespace VoxClip.App.ViewModels;
 
+internal sealed record RewritePaidReviewChange(string Identity, Func<Task<bool>> Apply, bool Shorter);
+
 internal sealed partial class RewriteSession
 {
+    internal bool HasPaidTakes => generationWindows.Any(window => window.HasPaidTakes);
+    internal RewritePaidReviewChange? PendingPaidReviewChange { get; private set; }
+    private bool DeferPaidReviewChange(Func<Task<bool>> apply, bool shorter = false)
+    {
+        if (!HasPaidTakes) return false;
+        PendingPaidReviewChange = new(ReviewIdentity, apply, shorter);
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+    internal void CancelPaidReviewChange()
+    {
+        PendingPaidReviewChange = null;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+    internal async Task<bool> ConfirmPaidReviewChangeAsync(RewritePaidReviewChange expected)
+    {
+        if (!ReferenceEquals(expected, PendingPaidReviewChange) || expected.Identity != ReviewIdentity || !ReviewIsCurrent ||
+            generationWindows.Any(window => window.IsRunning || window.IsPreparing)) return false;
+        PendingPaidReviewChange = null;
+        await StopCandidatesAsync();
+        if (!ReviewIsCurrent || expected.Identity != ReviewIdentity) return false;
+        RetireGenerationWindows();
+        generatedReview = null;
+        var applied = await expected.Apply();
+        ReconcileGenerationWindows();
+        Changed?.Invoke(this, EventArgs.Empty);
+        return applied;
+    }
     private readonly PatchRewriteService patchService = new(new LlmCatalog());
     private readonly RewriteScope? requestedScope;
     private ScopeRewritePlan? scopePlan;
@@ -23,11 +53,15 @@ internal sealed partial class RewriteSession
         : "Nothing paid yet.";
     internal string GetPriceTitle => $"Get Price · {PricedVoiceHunks.Count} " + (PricedVoiceHunks.Count == 1 ? "phrase" : "phrases");
     internal bool CanPriceHunk(RewriteHunkReview hunk) => hunk.Fit is { } fit &&
-        (fit.Fits || hunk.Ordinals.All(priceOverrides.Contains));
+        (HasPaidTakes && generatedVoiceHunks.Length > 0
+            ? generatedVoiceHunks.Any(previous => previous.Ordinals.SequenceEqual(hunk.Ordinals))
+            : fit.Fits || hunk.Ordinals.All(priceOverrides.Contains));
     internal bool PriceItAnyway(int ordinal)
     {
         if (!ReviewIsCurrent || Review is null || ordinal < 1 || ordinal > Review.Diff.Hunks.Count ||
             Review.VoiceHunks.FirstOrDefault(hunk => hunk.Ordinals.Contains(ordinal) && hunk.Fit is { Fits: false }) is not { } phrase) return false;
+        if (DeferPaidReviewChange(() => Task.FromResult(PriceItAnyway(ordinal)))) return false;
+        SentenceReview = null;
         InvalidateProposal();
         priceOverrides.UnionWith(phrase.Ordinals);
         RefreshReview(preserveGenerations: true);
@@ -38,13 +72,32 @@ internal sealed partial class RewriteSession
     internal async Task<bool> PrepareShorterAsync(int? ordinal = null)
     {
         if (!ReviewIsCurrent || Review is null) return false;
+        var feedback = ShorterFeedback(ordinal);
+        if (feedback.Count == 0) return false;
+        if (DeferPaidReviewChange(() => PrepareShorterFeedbackAsync(feedback), shorter: true)) return false;
+        return await PrepareShorterFeedbackAsync(feedback);
+    }
+    internal IReadOnlyList<VoiceRewriteTimingFeedback> ShorterFeedback(int? ordinal = null)
+    {
+        if (Review is null) return [];
         var hunks = BlockedVoiceHunks.Where(hunk => hunk.Fit is { TooLong: true }).Concat(ordinal is { } number
             ? Review.VoiceHunks.Where(hunk => hunk.Ordinals.Contains(number)) : []).Distinct().ToArray();
-        if (ordinal is { } requested && hunks.Any(hunk => hunk.Ordinals.Contains(requested) && hunk.Fit is { Fits: false, TooLong: false })) return false;
-        var feedback = hunks.Where(hunk => hunk.Fit is not null).Select(hunk => new VoiceRewriteTimingFeedback(
+        VoiceLabTakeRow? Measured(RewriteHunkReview hunk)
+        {
+            var index = Array.FindIndex(generatedVoiceHunks, previous => SameVoicePhrase(previous, hunk));
+            var generation = generationWindows.ElementAtOrDefault(index);
+            return generation?.Selected is { Audio: not null } selected ? selected : generation?.Rows
+                .Where(row => row.Audio is not null).OrderByDescending(row => row.Score).FirstOrDefault();
+        }
+        return hunks.Where(hunk => hunk.Fit is not null && (Measured(hunk) is { Audio: { } audio }
+            ? audio.Fit is VoiceLabFitResult.ChangedDuration { ResidualSeconds: > 0 }
+            : hunk.Fit is not { Fits: false, TooLong: false })).Select(hunk => new VoiceRewriteTimingFeedback(
             string.Join(" ", hunk.Hunk.SourceWordIds.Select(id => Transcript.First(word => word.Id == id).Text)),
-            hunk.PatchText!, hunk.Fit!.EstimateSeconds, hunk.Fit.SlotSeconds)).ToArray();
-        if (feedback.Length == 0) return false;
+            hunk.PatchText!, Measured(hunk) is { Audio: { } audio } ? audio.Fit.Plan.OutputFrames / (double)audio.SampleRate : hunk.Fit!.EstimateSeconds,
+            hunk.Fit!.SlotSeconds)).ToArray();
+    }
+    private async Task<bool> PrepareShorterFeedbackAsync(IReadOnlyList<VoiceRewriteTimingFeedback> feedback)
+    {
         await StopCandidatesAsync();
         if (!ReviewIsCurrent) return false;
         await SetInstructionAsync(Instruction, shorterPhrases: feedback);
@@ -75,6 +128,7 @@ internal sealed partial class RewriteSession
     internal bool SetChangeIncluded(int ordinal, bool included)
     {
         if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
+        if (DeferPaidReviewChange(() => Task.FromResult(SetChangeIncluded(ordinal, included)))) return false;
         InvalidateProposal();
         priceOverrides.Clear();
         changeStates[ordinal] = included ? TranscriptChangeState.Pending : TranscriptChangeState.Excluded;
@@ -84,9 +138,19 @@ internal sealed partial class RewriteSession
         return true;
     }
 
+    internal bool SetChangesIncluded(IReadOnlyList<int> ordinals, bool included)
+    {
+        if (!ReviewIsCurrent || Review is null || ordinals.Count == 0 || ordinals.Any(ordinal => ordinal <= 0 || ordinal > Review.Diff.Hunks.Count)) return false;
+        var captured = ordinals.ToArray();
+        if (DeferPaidReviewChange(() => Task.FromResult(SetChangesIncluded(captured, included)))) return false;
+        foreach (var ordinal in captured) SetChangeIncluded(ordinal, included);
+        return true;
+    }
+
     internal bool EditChange(int ordinal, string text)
     {
         if (!ReviewIsCurrent || Review is null || ordinal <= 0 || ordinal > Review.Diff.Hunks.Count) return false;
+        if (DeferPaidReviewChange(() => Task.FromResult(EditChange(ordinal, text)))) return false;
         var hunk = Review.Diff.Hunks[ordinal - 1];
         try
         {

@@ -111,7 +111,15 @@ internal sealed partial class RewriteSession : IDisposable
         generation.Changed += GenerationChanged;
         Changed?.Invoke(this, EventArgs.Empty);
     }
-    private void GenerationChanged(object? sender, EventArgs args) => Changed?.Invoke(this, EventArgs.Empty);
+    private void GenerationChanged(object? sender, EventArgs args)
+    {
+        if (ReferenceEquals(sender, Generation) && Generation?.ModelId is { } model && synthesisModel != model)
+        {
+            synthesisModel = model;
+            RefreshReview(preserveGenerations: true);
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
     private void GenerationSelectionChanged(object? sender, EventArgs args)
     {
         foreach (var generation in generationWindows.ToArray())
@@ -143,7 +151,7 @@ internal sealed partial class RewriteSession : IDisposable
         return new(text, modelId, recordId, Project.Transcript?.Language ?? "en", seed, Project.Media.Source.ContentKey,
             read.Excerpt, read.Envelope, rate, Transcript, Editor.State?.CutWordIds ?? new HashSet<string>(), window,
             silence.Incoming, silence.Outgoing, false, providerConsent,
-            modelId == "eleven_v4" ? 1 : hunk.Fit?.Pace ?? 1);
+            RewriteReview.MeasureTiming(this, combined, text, window, modelId).Pace);
     }
 
     internal RewriteSession(EditorViewModel editor, int first, int last, AudioEnvelope? envelope, RewriteConnector? connector,
@@ -351,7 +359,7 @@ internal sealed partial class RewriteSession : IDisposable
     {
         if (!preserveGenerations) { sentenceReplacements.Clear(); SentenceReview = null; SentenceProblem = ""; }
         reviewProblem = "";
-        try { Review = RewriteReview.Build(this, prices, synthesisModel); }
+        try { Review = RewriteReview.Build(this, prices, synthesisModel ?? Generation?.ModelId); }
         catch (VoiceLabWordDiffException exception)
         {
             Review = null;

@@ -13,6 +13,213 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class RewritePaceMatchingTests
 {
     [Fact]
+    public async Task PaidShorterFeedbackUsesMeasuredOutputAndWaitsForDiscardConfirmation()
+    {
+        using var session = SentenceSession(5, 7);
+        Configure(session);
+        await session.DiscoverWindowsAsync();
+        var generation = session.Generation!;
+        generation.MarkEstimateShown(generation.Quote!);
+        await generation.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
+        var paid = generation.Selected!;
+        var feedback = Assert.Single(session.ShorterFeedback(1));
+        Assert.Equal(paid.Audio!.Fit.Plan.OutputFrames / (double)paid.Audio.SampleRate, feedback.EstimateSeconds);
+        Assert.NotEqual(session.Review!.VoiceHunks[0].Fit!.EstimateSeconds, feedback.EstimateSeconds);
+        Assert.Equal(session.Review.VoiceHunks[0].PatchText, feedback.Proposed);
+        Assert.Contains("sample005", feedback.Original);
+        Assert.Contains("sample007", feedback.Original);
+        Assert.Equal("x sample006 x", feedback.Proposed);
+        Assert.False(await session.PrepareShorterAsync(1));
+        Assert.True(session.PendingPaidReviewChange!.Shorter);
+        session.CancelPaidReviewChange();
+        Assert.Same(paid, generation.Selected);
+        Assert.True(generation.ReviewedInputsCurrent);
+    }
+
+    [Fact]
+    public async Task PaidKeepOriginalDiscardsAllRequestedOrdinalsOnlyAfterConfirmation()
+    {
+        using var session = SentenceSession(5, 37);
+        Configure(session);
+        await session.DiscoverWindowsAsync();
+        var generation = session.Generation!;
+        generation.MarkEstimateShown(generation.Quote!);
+        await generation.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
+        var ordinals = session.Review!.Diff.Hunks.Select((_, index) => index + 1).ToArray();
+        Assert.Equal(2, ordinals.Length);
+        Assert.False(session.SetChangesIncluded(ordinals, false));
+        Assert.Empty(session.ChangeStates);
+        Assert.True(await session.ConfirmPaidReviewChangeAsync(session.PendingPaidReviewChange!));
+        Assert.All(ordinals, ordinal => Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[ordinal]));
+        Assert.False(session.HasPaidTakes);
+    }
+
+    [Fact]
+    public async Task SentenceRequoteRecomputesPaceForTheCurrentInputModel()
+    {
+        using var session = SentenceSession(5);
+        Configure(session);
+        await session.DiscoverWindowsAsync();
+        Assert.True(session.ReviewSurroundingSentence(1));
+        Assert.True(session.AcceptSurroundingSentence(session.SentenceReview!));
+        await session.DiscoverWindowsAsync();
+        await session.ChooseModelForWindowsAsync("eleven_v4");
+        async Task<VoiceLabTakeInput> InputFor(string model) => (await session.GenerationInputAsync("record", model, 1, true,
+            (request, _) => Task.FromResult((new VoiceLabSourceExcerpt(request.Frames, []), session.Envelope!)), CancellationToken.None))!;
+        var dialogue = await InputFor("eleven_v4");
+        var paced = await InputFor("eleven_multilingual_v2");
+        Assert.Equal(1, dialogue.Pace);
+        Assert.NotEqual(1, paced.Pace);
+        Assert.Equal(VoiceLabPaceMatching.Measure(paced.Text, VoiceLabRewriteFit.SpeakingRate(session.Transcript), paced.Window,
+            paced.IncomingSilence, paced.OutgoingSilence, paced.SourceSampleRate).Pace, paced.Pace);
+    }
+
+    [Fact]
+    public async Task QuotedNextPaceIsExactlyThePaceShownInTheSendDisclosure()
+    {
+        var runner = new Runner();
+        using var generation = Generation(runner);
+        await generation.DiscoverAsync();
+        Assert.Equal(generation.Quote!.Takes[0].Synthesis.Review.Pace, generation.NextPace);
+        generation.MarkEstimateShown(generation.Quote);
+        await generation.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
+        Assert.Equal(generation.Quote!.Takes[0].Synthesis.Review.Pace, generation.NextPace);
+        Assert.Equal(runner.Input!.Pace, generation.NextPace);
+    }
+
+    [Fact]
+    public async Task NextPaceIsHiddenUntilTheNewQuoteIsHeld()
+    {
+        var runner = new Runner();
+        using var generation = Generation(runner);
+        await generation.DiscoverAsync();
+        runner.HoldPreparation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        runner.PreparationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var preparing = generation.InputsChangedAsync(preserveReview: true);
+        await runner.PreparationStarted.Task;
+        Assert.Null(generation.Quote);
+        Assert.Null(generation.NextPace);
+        runner.HoldPreparation.SetResult();
+        await preparing;
+        Assert.Equal(generation.Quote!.Takes[0].Synthesis.Review.Pace, generation.NextPace);
+    }
+
+    [Fact]
+    public void FittingRowsSpeakTheirTimingAndInlineEditsUseTheSelectedModelsFit()
+    {
+        using var session = SentenceSession(5);
+        var hunk = Assert.Single(session.Review!.VoiceHunks);
+        var fitting = hunk with { Fit = new(4, 6, true, .85) };
+        Assert.Equal(fitting.Fit.Copy, fitting.SpokenTiming);
+        Assert.Contains("fits", fitting.SpokenTiming);
+        Assert.Contains("at ≈ 0.85× pace", fitting.SpokenTiming);
+        var root = Path.Combine(Path.GetDirectoryName(SharedResources.ResolveRoot())!, "apps/windows/src/VoxClip.App");
+        var rows = File.ReadAllText(Path.Combine(root, "Controls/RewritePanel.Review.cs"));
+        Assert.Contains("voiceHunk?.SpokenTiming", rows);
+        Assert.Contains("SetName(row,", rows);
+        Assert.Contains("Discard takes and continue", rows);
+        Assert.DoesNotContain("new ContentDialog", rows);
+        var editor = File.ReadAllText(Path.Combine(root, "Controls/TranscriptView.InlineEditing.cs"));
+        Assert.Contains("review.Ordinals.Contains(hunk.Ordinal))?.Fit", editor);
+        Assert.Contains("timing.Copy", editor);
+    }
+
+    [Theory]
+    [InlineData("exclude")]
+    [InlineData("include")]
+    [InlineData("price")]
+    [InlineData("edit")]
+    [InlineData("outside")]
+    public async Task PaidReviewChangesWaitForDiscardApproval(string action)
+    {
+        using var session = SentenceSession(5, 37);
+        if (action == "outside") Assert.True(session.SetChangeIncluded(1, false));
+        Configure(session);
+        await session.DiscoverWindowsAsync();
+        var generation = session.GenerationWindows[^1];
+        generation.MarkEstimateShown(generation.Quote!);
+        await generation.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
+        var paid = Assert.Single(generation.Rows);
+        var identity = session.ReviewIdentity;
+        var review = session.Review;
+        var changed = action switch
+        {
+            "exclude" => session.SetChangeIncluded(1, false),
+            "include" => session.SetChangeIncluded(1, true),
+            "outside" => session.SetChangeIncluded(1, true),
+            "price" => session.PriceItAnyway(1),
+            _ => session.EditChange(1, "different")
+        };
+        Assert.False(changed);
+        Assert.Same(review, session.Review);
+        Assert.Equal(identity, session.ReviewIdentity);
+        Assert.Same(paid, Assert.Single(generation.Rows));
+        Assert.Contains(generation, session.GenerationWindows);
+        Assert.NotNull(session.PendingPaidReviewChange);
+        session.CancelPaidReviewChange();
+        Assert.Null(session.PendingPaidReviewChange);
+        Assert.Same(review, session.Review);
+        Assert.Equal(identity, session.ReviewIdentity);
+        Assert.Same(paid, Assert.Single(generation.Rows));
+        Assert.False(session.SetChangeIncluded(1, false));
+        var pending = session.PendingPaidReviewChange!;
+        Assert.True(await session.ConfirmPaidReviewChangeAsync(pending));
+        Assert.False(await session.ConfirmPaidReviewChangeAsync(pending));
+        Assert.Equal(TranscriptChangeState.Excluded, session.ChangeStates[1]);
+        Assert.False(session.HasPaidTakes);
+    }
+
+    [Fact]
+    public async Task PaidReviewTimingTracksThePlansCurrentModel()
+    {
+        using var session = SentenceSession(5);
+        Configure(session);
+        await session.DiscoverWindowsAsync();
+        var generation = session.Generation!;
+        generation.MarkEstimateShown(generation.Quote!);
+        await generation.GenerateAsync((_, _) => Task.FromResult(true), autoplay: false);
+        var paid = Assert.Single(generation.Rows);
+        await generation.ChooseModelAsync("eleven_v4");
+        Assert.Equal(1, Assert.Single(session.Review!.VoiceHunks).Fit!.Pace);
+        Assert.Same(paid, Assert.Single(session.Generation!.Rows));
+        await generation.ChooseModelAsync("eleven_multilingual_v2");
+        Assert.NotEqual(1, Assert.Single(session.Review.VoiceHunks).Fit!.Pace);
+        Assert.Same(paid, Assert.Single(session.Generation.Rows));
+    }
+
+    [Fact]
+    public async Task FailedOrCancelledSentenceRecoveryDoesNotRedirectPricing()
+    {
+        using var session = SentenceSession(2, 12);
+        Configure(session);
+        await session.DiscoverWindowsAsync();
+        Assert.False(session.ReviewSurroundingSentence(1));
+        Assert.Null(session.SentenceReview);
+        Assert.NotEmpty(session.SentenceProblem);
+        await session.Generation!.InputsChangedAsync();
+        Assert.NotNull(session.Generation.Quote);
+        session.CancelSurroundingSentence();
+        await session.Generation.InputsChangedAsync();
+        Assert.NotNull(session.Generation.Quote);
+    }
+
+    [Fact]
+    public async Task PriceOverrideAbandonsSentenceReviewWithoutRedirectingTheNextQuote()
+    {
+        using var session = SentenceSession(5);
+        Configure(session);
+        await session.DiscoverWindowsAsync();
+        Assert.True(session.ReviewSurroundingSentence(1));
+        var captured = session.SentenceReview!;
+        Assert.True(session.PriceItAnyway(1));
+        Assert.Null(session.SentenceReview);
+        Assert.False(session.AcceptSurroundingSentence(captured));
+        await session.Generation!.InputsChangedAsync();
+        Assert.NotNull(session.Generation.Quote);
+        Assert.Equal("x", Assert.Single(session.PricedVoiceHunks).PatchText);
+    }
+
+    [Fact]
     public void SentenceReplacementKeepsSelectedTextOnlyCorrectionsWithoutDuplicatingReviewHunks()
     {
         using var session = SentenceSession(5);
@@ -133,7 +340,8 @@ public sealed class RewritePaceMatchingTests
         await session.DiscoverWindowsAsync();
         var included = session.PricedVoiceHunks.ToArray();
         await session.ChooseModelForWindowsAsync("eleven_v4");
-        Assert.Equal(included, session.PricedVoiceHunks);
+        Assert.Equal(included.SelectMany(hunk => hunk.Ordinals), session.PricedVoiceHunks.SelectMany(hunk => hunk.Ordinals));
+        Assert.All(session.Review!.VoiceHunks, hunk => Assert.Equal(1, hunk.Fit!.Pace));
         Assert.Same(paid, other.Selected);
         Assert.Equal(1, other.NextPace);
         Assert.NotEqual(1, paid.Receipt!.Pace);
@@ -264,8 +472,10 @@ public sealed class RewritePaceMatchingTests
     {
         internal VoiceLabTakeInput? Input;
         internal int Sends;
+        internal TaskCompletionSource? HoldPreparation;
+        internal TaskCompletionSource? PreparationStarted;
         private VoiceLabTakeRunQuote? pending;
-        public Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default)
+        public async Task<VoiceLabTakeRunQuote> PrepareAsync(VoiceLabTakeInput input, CancellationToken ct = default)
         {
             Input = input;
             VoiceLabPreparedAction Action(VoiceLabOperation operation) => (VoiceLabPreparedAction)typeof(VoiceLabPreparedAction)
@@ -276,7 +486,12 @@ public sealed class RewritePaceMatchingTests
                         "voice", null, null, input.RecordId, Pace: input.Pace)]);
             pending = new(Guid.NewGuid(), Enumerable.Range(0, 3).Select(index => new VoiceLabTakeQuote(index, (uint)index,
                 Action(VoiceLabOperation.TextToSpeech), Action(VoiceLabOperation.SpeechToText))).ToArray());
-            return Task.FromResult(pending);
+            if (HoldPreparation is { } gate)
+            {
+                PreparationStarted?.TrySetResult();
+                await gate.Task.WaitAsync(ct);
+            }
+            return pending;
         }
         public Task<VoiceLabTakeRunResult> ExecuteAsync(VoiceLabTakeRunQuote quote, bool approved,
             Func<IReadOnlyList<VoiceLabTakeRow>, Task>? progress = null, CancellationToken ct = default) => throw new InvalidOperationException();
