@@ -283,6 +283,7 @@ import VoxClipCore
     let suggested: Bool
     var focused = false
     var selectedFocused = false
+    @State var hovering = false
     @FocusState private var editing: Bool
     @Environment(\.controlActiveState) private var activeState
 
@@ -303,10 +304,36 @@ import VoxClipCore
                     .onAppear { editing = true }.onSubmit { shell.endRename() }.onExitCommand { shell.endRename(keep: false) }
             } else {
                 Text(title).font(.system(size: 13)).lineLimit(1).truncationMode(.tail)
+                    .columnLayoutEvidence("explorer.clipTitle", text: title)
             }
             Spacer(minLength: 0)
             if editor.containsAISpeech(clipID: clip.id) { ExplorerVoiceGlyph() }
-            Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
+            if showsActions {
+                HStack(spacing: 2) {
+                    if shell.canRewriteExplorerClip(clip.id) {
+                        Button { shell.rewriteExplorerClip(clip.id) } label: {
+                            Text("✦").font(.system(size: 12)).frame(width: 22, height: 20).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless).focusable(false)
+                        .help("Rewrite Clip \(number) (⇧⌘R)")
+                        .accessibilityLabel("Rewrite Clip \(number)")
+                        .columnLayoutEvidence("explorer.clipRewrite", text: "Rewrite Clip \(number)")
+                    }
+                    Menu {
+                        ExplorerClipMenu(shell: shell, editor: editor, clip: clip, suggested: suggested)
+                    } label: {
+                        Image(systemName: "ellipsis").font(.system(size: 12)).frame(width: 22, height: 20).contentShape(Rectangle())
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().frame(width: 22, height: 20)
+                    .focusable(false).help("More").accessibilityLabel("More")
+                    .columnLayoutEvidence("explorer.clipMore", text: "More")
+                }
+                .fixedSize().foregroundStyle(SidebarStyle.meta(emphasized))
+                .columnLayoutEvidence("explorer.clipActions")
+            } else {
+                Text(durationLabel(duration)).font(DesignValues.mono(11)).foregroundStyle(SidebarStyle.meta(emphasized)).fixedSize()
+                    .columnLayoutEvidence("explorer.clipDuration", text: durationLabel(duration))
+            }
         }
         .frame(height: ExplorerMetrics.rowHeight).contentShape(Rectangle())
         .overlay(alignment: .leading) {
@@ -320,6 +347,7 @@ import VoxClipCore
             if focused { RoundedRectangle(cornerRadius: 3).strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 2).padding(-2) }
         }
         .onChange(of: editing) { _, editing in if !editing, shell.renaming == clip.id { shell.endRename() } }
+        .onHover { hovering = $0 }
         .help(suggested ? reason : exportStatus.label)
         .contextMenu { ExplorerClipMenu(shell: shell, editor: editor, clip: clip, suggested: suggested) }
         .accessibilityElement(children: shell.renaming == clip.id ? .contain : .combine)
@@ -330,6 +358,10 @@ import VoxClipCore
                 Button("Keep") { editor.keep(clip.id) }.disabled(!editor.capabilities.edit)
                 Button("Dismiss") { editor.dismiss(clip.id) }.disabled(!editor.capabilities.edit)
             } else {
+                if shell.canRewriteExplorerClip(clip.id) {
+                    Button("Rewrite Clip \(number)") { shell.rewriteExplorerClip(clip.id) }
+                }
+                Button("Export Clip") { editor.presentExport(clipIDs: [clip.id]) }.disabled(!editor.canExport || !editor.mediaExportable)
                 Button("Rename") { shell.beginRename(clip.id) }.disabled(!editor.capabilities.edit)
                 Button("Remove") { editor.removeClip(clip.id) }.disabled(!editor.capabilities.edit)
                 if exportStatus == .failed {
@@ -338,6 +370,8 @@ import VoxClipCore
             }
         }
     }
+
+    var showsActions: Bool { !suggested && (shell.selection == .clip(clip.id) || hovering || focused || selectedFocused) }
 
     /// A suggestion's reason and score, "8/10 · Strong hook, one idea".
     private var reason: String {

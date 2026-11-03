@@ -30,6 +30,71 @@ import Testing
         #expect(checks.allSatisfy { $0.passed })
     }
 
+    @Test(arguments: ["selected", "focused", "hovered", "idle", "suggested"], [176.0, 196.0, 200.0, 224.0])
+    func clipRowActionsReplaceDurationOnlyForActiveKeptRows(_ state: String, width: Double) async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        let suggested = state == "suggested"
+        var clip = try #require(suggested ? editor.suggestedClips.first : editor.keptClips.first)
+        clip.title = "A long clip title that must truncate before the trailing row actions"
+        if state == "selected" || suggested { shell.choose(.clip(clip.id)) }
+        let row = NSHostingView(rootView: ClipRow(shell: shell, editor: editor, clip: clip, suggested: suggested,
+                                                selectedFocused: state == "focused", hovering: state == "hovered").frame(width: width))
+        row.frame = NSRect(x: 0, y: 0, width: width, height: 28)
+        row.layoutSubtreeIfNeeded()
+        let markers = DebugRightColumn.markers(in: row)
+        let showsActions = state == "selected" || state == "focused" || state == "hovered"
+        #expect((markers["explorer.clipActions"] != nil) == showsActions)
+        #expect((markers["explorer.clipDuration"] != nil) == !showsActions)
+        #expect(row.fittingSize.height == 28)
+        if let actions = markers["explorer.clipActions"] {
+            #expect(actions.minX >= 0 && actions.maxX <= width)
+            let title = try #require(markers["explorer.clipTitle"])
+            #expect(title.width > 0 && title.maxX <= actions.minX)
+            #expect(markers["explorer.clipRewrite"]?.size == CGSize(width: 22, height: 20))
+            #expect(markers["explorer.clipMore"]?.size == CGSize(width: 22, height: 20))
+        }
+    }
+
+    @Test func suggestedRowsNeverGainActionsEvenWhileHoveredAndFocused() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        let clip = try #require(editor.suggestedClips.first)
+        shell.choose(.clip(clip.id))
+        let row = ClipRow(shell: shell, editor: editor, clip: clip, suggested: true, focused: true, selectedFocused: true, hovering: true)
+        #expect(!row.showsActions)
+    }
+
+    @Test func unavailableRewriteLeavesMoreVisibleWithoutAddingAnAction() async throws {
+        let (shell, editor) = try await open()
+        defer { editor.close() }
+        let clip = try #require(editor.keptClips.first)
+        shell.choose(.clip(clip.id))
+        editor.isLeaving = true
+        let host = NSHostingView(rootView: ClipRow(shell: shell, editor: editor, clip: clip, suggested: false).frame(width: 196))
+        host.frame = NSRect(x: 0, y: 0, width: 196, height: 28)
+        host.layoutSubtreeIfNeeded()
+        let markers = DebugRightColumn.markers(in: host)
+        #expect(markers["explorer.clipRewrite"] == nil && markers["explorer.clipDuration"] == nil)
+        #expect(markers["explorer.clipMore"]?.size == CGSize(width: 22, height: 20))
+    }
+
+    @Test func clipRowActionsShareRewriteMenuAndAccessibilityWithoutKeyboardStops() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("Sources/VoxClip/ExplorerView.swift"), encoding: .utf8)
+        let row = try #require(source.components(separatedBy: "@MainActor struct ClipRow: View").last?.components(separatedBy: "@MainActor private struct ExplorerClipMenu").first)
+        #expect(row.contains(".onHover"))
+        #expect(row.contains("shell.canRewriteExplorerClip(clip.id)"))
+        #expect(row.contains("shell.rewriteExplorerClip(clip.id)"))
+        #expect(row.contains("Rewrite Clip \\(number) (⇧⌘R)"))
+        #expect(row.components(separatedBy: "ExplorerClipMenu(shell:").count == 3)
+        #expect(row.contains(".focusable(false)"))
+        let actions = try #require(row.components(separatedBy: ".accessibilityActions {").last)
+        #expect(actions.contains("Button(\"Rewrite Clip \\(number)\")"))
+        #expect(actions.contains("Button(\"Export Clip\")"))
+        #expect(row.contains(".accessibilityElement(children: shell.renaming == clip.id ? .contain : .combine)"))
+    }
+
     @Test func outlineUsesTakeParagraphsAndFiltersWithoutReflowing() async throws {
         let (shell, editor) = try await open()
         defer { editor.close() }
