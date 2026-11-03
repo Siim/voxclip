@@ -68,9 +68,11 @@ public struct VoiceLabSeam: Codable, Sendable, Equatable {
     public var fadeSamples: Int64
     public var sourceHandleSamples: Int64
     public var assetHandleFrames: Int64
-    public init(kind: VoiceLabSeamKind, fadeSamples: Int64, sourceHandleSamples: Int64, assetHandleFrames: Int64) {
+    public var microPause: VoiceLabMicroPause?
+    public init(kind: VoiceLabSeamKind, fadeSamples: Int64, sourceHandleSamples: Int64, assetHandleFrames: Int64, microPause: VoiceLabMicroPause? = nil) {
         self.kind = kind; self.fadeSamples = fadeSamples
         self.sourceHandleSamples = sourceHandleSamples; self.assetHandleFrames = assetHandleFrames
+        self.microPause = microPause
     }
 }
 public struct VoiceLabSeams: Codable, Sendable, Equatable {
@@ -224,6 +226,7 @@ public struct VoiceLabRenderRecipe: Codable, Sendable, Equatable {
     public var voiceSource: VoiceLabVoiceSource
     public var voiceRefId: String?
     public var consentVerifiedAt: Date?
+    public var edgeGain: VoiceLabEdgeGain?
     public init(audio: VoiceLabAudio, words: [VoiceLabWord]?, outDuration: Double, seed: UInt32,
                 chunks: [VoiceLabChunk], roomTone: VoiceLabRoomTone?, seams: VoiceLabSeams, video: VoiceLabVideoRecipe,
                 qa: VoiceLabRenderQA, provenance: VoiceLabProvenance, cost: VoiceLabCost,
@@ -233,7 +236,7 @@ public struct VoiceLabRenderRecipe: Codable, Sendable, Equatable {
         self.qa = qa; self.provenance = provenance; self.cost = cost; self.voiceSource = voiceSource
         self.voiceRefId = voiceRefId; self.consentVerifiedAt = consentVerifiedAt
     }
-    private enum CodingKeys: String, CodingKey { case audio, words, outDuration, seed, chunks, roomTone, seams, video, qa, provenance, cost, voiceSource, voiceRefId, consentVerifiedAt }
+    private enum CodingKeys: String, CodingKey { case audio, words, outDuration, seed, chunks, roomTone, seams, video, qa, provenance, cost, voiceSource, voiceRefId, consentVerifiedAt, edgeGain }
     public func encode(to encoder: any Encoder) throws {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(audio, forKey: .audio); try values.encode(words, forKey: .words); try values.encode(outDuration, forKey: .outDuration)
@@ -243,5 +246,6 @@ public struct VoiceLabRenderRecipe: Codable, Sendable, Equatable {
         try values.encode(provenance, forKey: .provenance); try values.encode(cost, forKey: .cost)
         try values.encode(voiceSource, forKey: .voiceSource); try values.encode(voiceRefId, forKey: .voiceRefId)
         try values.encode(consentVerifiedAt, forKey: .consentVerifiedAt)
+        try values.encodeIfPresent(edgeGain, forKey: .edgeGain)
     }
 }

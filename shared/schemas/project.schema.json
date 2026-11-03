@@ -1426,8 +1426,27 @@
         "assetHandleFrames": {
           "type": "integer",
           "minimum": 0
+        },
+        "microPause": {
+          "$ref": "#/$defs/voiceLabMicroPause"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "microPause"
+            ]
+          },
+          "then": {
+            "properties": {
+              "kind": {
+                "const": "hard"
+              }
+            }
+          }
+        }
+      ]
     },
     "voiceLabSeams": {
       "type": "object",
@@ -2122,6 +2141,9 @@
               "$ref": "#/$defs/timestamp"
             }
           ]
+        },
+        "edgeGain": {
+          "$ref": "#/$defs/voiceLabEdgeGain"
         }
       }
     },
@@ -2724,6 +2746,57 @@
           "$ref": "#/$defs/timestamp"
         }
       }
+    },
+    "voiceLabMicroPause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wordStartSeconds",
+        "wordEndSeconds"
+      ],
+      "properties": {
+        "wordStartSeconds": {
+          "type": "number",
+          "minimum": -290,
+          "maximum": 290
+        },
+        "wordEndSeconds": {
+          "type": "number",
+          "minimum": -290,
+          "maximum": 290
+        }
+      }
+    },
+    "voiceLabEdgeGainWord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gainDb",
+        "wordSeconds"
+      ],
+      "properties": {
+        "gainDb": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 6
+        },
+        "wordSeconds": {
+          "$ref": "#/$defs/voiceLabMicroPause"
+        }
+      }
+    },
+    "voiceLabEdgeGain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "in": {
+          "$ref": "#/$defs/voiceLabEdgeGainWord"
+        },
+        "out": {
+          "$ref": "#/$defs/voiceLabEdgeGainWord"
+        }
+      },
+      "minProperties": 1
     }
   }
 }

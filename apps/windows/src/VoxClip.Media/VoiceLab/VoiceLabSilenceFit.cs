@@ -72,7 +72,9 @@ public static class VoiceLabSilenceFit
         var incoming = Handle(window.LeftSeam, true);
         var outgoing = Handle(window.RightSeam, false);
         if ((incoming + plan.OutputFrames + outgoing) * original.Stride > 256 * 1024 * 1024) throw Invalid();
-        var derived = plan.Edits.Count > 0 || plan.Incoming.PadFrames > 0 || plan.Outgoing.PadFrames > 0;
+        var missingBefore = plan.HardJoinSmoothing && plan.Incoming.PadFrames == 0 ? Math.Max(0, incoming - plan.TrimStartFrame) : 0;
+        var missingAfter = plan.HardJoinSmoothing && plan.Outgoing.PadFrames == 0 ? Math.Max(0, plan.TrimEndFrame + outgoing - original.Frames) : 0;
+        var derived = plan.Edits.Count > 0 || plan.Incoming.PadFrames > 0 || plan.Outgoing.PadFrames > 0 || missingBefore > 0 || missingAfter > 0;
         if (!derived)
         {
             if (plan.TrimStartFrame < incoming || plan.TrimEndFrame + outgoing > original.Frames || plan.TrimEndFrame - plan.TrimStartFrame != plan.OutputFrames) throw Invalid();
@@ -90,7 +92,7 @@ public static class VoiceLabSilenceFit
             pcm.Write(new byte[checked((int)(frames * original.Stride))]);
         }
         if (plan.Incoming.PadFrames > 0) Silence(incoming);
-        else Copy(plan.TrimStartFrame - incoming, plan.TrimStartFrame);
+        else { Silence(missingBefore); Copy(plan.TrimStartFrame - incoming + missingBefore, plan.TrimStartFrame); }
         Silence(plan.Incoming.PadFrames);
         var cursor = plan.TrimStartFrame;
         var joins = new List<(long Output, long Left, long Right)>();
@@ -114,7 +116,7 @@ public static class VoiceLabSilenceFit
         Silence(plan.Outgoing.PadFrames);
         if (pcm.Length / original.Stride != incoming + plan.OutputFrames) throw Invalid();
         if (plan.Outgoing.PadFrames > 0) Silence(outgoing);
-        else Copy(plan.TrimEndFrame, plan.TrimEndFrame + outgoing);
+        else { Copy(plan.TrimEndFrame, plan.TrimEndFrame + outgoing - missingAfter); Silence(missingAfter); }
         var wave = new VoiceLabWavePcm(original.Rate, original.Channels, original.Bits, original.Floating, pcm.ToArray());
         foreach (var join in joins)
             for (var offset = 0; offset < fade; offset++)

@@ -122,14 +122,25 @@ enum ProjectValidation {
     }
 
     static func validateRenderRecipe(_ value: JSONValue) throws {
-        let recipe = try object(value, required: "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt")
+        let recipe = try object(value, required: "audio words outDuration seed chunks roomTone seams video qa provenance cost voiceSource voiceRefId consentVerifiedAt", optional: "edgeGain")
         _ = try object(recipe["audio"], required: "assetId trimStart trimEnd stretch gainDb")
         if recipe["words"] != .null { for word in try array(recipe["words"]) { _ = try object(word, required: "text start end synthetic") } }
         for value in try array(recipe["chunks"]) { _ = try object(value, required: "sourceStartSample sourceEndSample requestId seed assetId assetSha256 assembledStartFrame assembledEndFrame") }
         if recipe["roomTone"] != .null { _ = try object(recipe["roomTone"], required: "sourceStartSample sourceEndSample gainDb", optional: "endGainDb") }
         let seams = try object(recipe["seams"], required: "in out")
-        _ = try object(seams["in"], required: "kind fadeSamples sourceHandleSamples assetHandleFrames")
-        _ = try object(seams["out"], required: "kind fadeSamples sourceHandleSamples assetHandleFrames")
+        for side in ["in", "out"] {
+            let seam = try object(seams[side], required: "kind fadeSamples sourceHandleSamples assetHandleFrames", optional: "microPause")
+            if let pause = seam["microPause"] { _ = try object(pause, required: "wordStartSeconds wordEndSeconds") }
+        }
+        if let value = recipe["edgeGain"] {
+            let gains = try object(value, required: "", optional: "in out")
+            for side in ["in", "out"] {
+                if let value = gains[side] {
+                    let gain = try object(value, required: "gainDb wordSeconds")
+                    _ = try object(gain["wordSeconds"], required: "wordStartSeconds wordEndSeconds")
+                }
+            }
+        }
         _ = try object(recipe["video"], required: "mode sourceStartSample sourceEndSample outputSamples retimeFactor zoom faceX faceY assetId provider model requestId windowStartSample windowEndSample syncMode")
         let qa = try object(recipe["qa"], required: "transcriptTokens transcriptExact transcriptMatch lufsJumpLu peakDbfs speakerScore speakerThreshold speakerModel speakerPassed", optional: "shortSpeech joinAdvisory")
         if let value = qa["joinAdvisory"] {

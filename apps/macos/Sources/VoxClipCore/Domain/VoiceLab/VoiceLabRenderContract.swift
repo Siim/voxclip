@@ -154,14 +154,14 @@ public enum VoiceLabRenderContract {
                       next.in.kind == .synthToSynth,
                       next.in.fadeSamples == outgoing.fadeSamples else { throw VoiceLabProjectError.invalidFadeHandles }
             } else if outgoing.kind == .none || outgoing.kind == .synthToSynth { throw VoiceLabProjectError.invalidFadeHandles }
-            func add(_ seam: VoiceLabSeam, at center: Int64) throws {
+            func add(_ seam: VoiceLabSeam, at center: Int64, incoming: Bool) throws {
                 guard seam.kind != .none else { return }
-                let left = seam.fadeSamples / 2, right = seam.fadeSamples - left
+                let (left, right) = VoiceLabHardJoin.fadeExtent(seam, incoming: incoming, sampleRate: plan.sampleRate)
                 guard center >= left, right <= plan.outputSamples - center else { throw VoiceLabProjectError.invalidFadeHandles }
                 windows.append((center - left, center + right))
             }
-            try add(incoming, at: piece.outputStartSample)
-            if after?.kind != .synth { try add(outgoing, at: piece.outputEndSample) }
+            try add(incoming, at: piece.outputStartSample, incoming: true)
+            if after?.kind != .synth { try add(outgoing, at: piece.outputEndSample, incoming: false) }
         }
         windows.sort { $0.0 < $1.0 }
         if windows.count > 1 {
@@ -174,12 +174,12 @@ public enum VoiceLabRenderContract {
             let after = index+1 < plan.pieces.count ? plan.pieces[index+1] : nil
             let incoming = item.seams.in, outgoing = item.seams.out
             if incoming.kind != .none {
-                let left = incoming.fadeSamples/2, right = incoming.fadeSamples-left
+                let (left, right) = VoiceLabHardJoin.fadeExtent(incoming, incoming: true, sampleRate: plan.sampleRate)
                 guard before!.outputEndSample-before!.outputStartSample >= left,
                       piece.outputEndSample-piece.outputStartSample >= right else { throw VoiceLabProjectError.invalidFadeHandles }
             }
             if outgoing.kind != .none {
-                let left = outgoing.fadeSamples/2, right = outgoing.fadeSamples-left
+                let (left, right) = VoiceLabHardJoin.fadeExtent(outgoing, incoming: false, sampleRate: plan.sampleRate)
                 guard piece.outputEndSample-piece.outputStartSample >= left,
                       after!.outputEndSample-after!.outputStartSample >= right else { throw VoiceLabProjectError.invalidFadeHandles }
             }

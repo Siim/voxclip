@@ -4,16 +4,16 @@ namespace VoxClip.Core.Domain.VoiceLab;
 public static class VoiceLabPaceMatching
 {
     public static VoiceLabRewriteFitResult Measure(string text, double rate, VoiceLabWindow window,
-        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool supportsPace = true) =>
+        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, bool supportsPace = true, bool hardJoinSmoothing = true) =>
         Match(VoiceLabRewriteFit.Estimate(text, rate), window, incomingSilence, outgoingSilence, sourceSampleRate,
-            supportsPace: supportsPace);
+            supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing);
 
     public static VoiceLabRewriteFitResult Match(double seconds, VoiceLabWindow window,
-        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, double oldPace = 1, bool supportsPace = true)
+        double? incomingSilence, double? outgoingSilence, int sourceSampleRate, double oldPace = 1, bool supportsPace = true, bool hardJoinSmoothing = true)
     {
         if (!double.IsFinite(seconds) || seconds <= 0 || !VoiceLabPace.IsValid(oldPace))
             throw new VoiceLabLengthBudgetException(VoiceLabLengthBudgetErrorCode.InvalidInput);
-        VoiceLabFitResult Fit(double duration) => VoiceLabRewriteFit.Hypothetical(window, incomingSilence, outgoingSilence, duration, sourceSampleRate);
+        VoiceLabFitResult Fit(double duration) => VoiceLabRewriteFit.Hypothetical(window, incomingSilence, outgoingSilence, duration, sourceSampleRate, hardJoinSmoothing);
         var probeSeconds = 2 * (window.End - window.Start + (incomingSilence ?? 0) + (outgoingSilence ?? 0) + 1);
         var high = Fit(probeSeconds).Plan;
         var low = Fit(1.0 / sourceSampleRate).Plan;

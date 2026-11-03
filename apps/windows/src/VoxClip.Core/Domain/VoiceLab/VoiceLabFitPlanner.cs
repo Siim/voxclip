@@ -32,7 +32,10 @@ public sealed record VoiceLabFitSeam(long PadFrames, long BorrowedSamples);
 /// and moves by the incoming pad and the edits before it.</summary>
 public sealed record VoiceLabFitPlan(IReadOnlyList<VoiceLabFitEdit> Edits, VoiceLabFitSeam Incoming, VoiceLabFitSeam Outgoing,
     long TrimStartFrame, long TrimEndFrame, double WindowStart, double WindowEnd, long WindowStartSample, long WindowEndSample,
-    long OutputFrames, IReadOnlyList<VoiceLabWord> Words);
+    long OutputFrames, IReadOnlyList<VoiceLabWord> Words)
+{
+    public bool HardJoinSmoothing { get; init; }
+}
 
 /// <summary>Exact fills the window. ChangedDuration keeps every edit at its limit and lasts duration(W) + ResidualSeconds, with
 /// the sign of ρ (§8.9 step 3); NaturalOut is e + D, the take's length before any edit.</summary>
@@ -63,7 +66,7 @@ public static class VoiceLabFitPlanner
     /// (None) the silence to the window's nearest word, and null for a hard seam. tokens are the patch tokens, one per
     /// word.</summary>
     public static VoiceLabFitResult Plan(VoiceLabWindow window, double? incomingSilence, double? outgoingSilence,
-        VoiceLabFitTake take, IReadOnlyList<string> tokens, double sourceSampleRate)
+        VoiceLabFitTake take, IReadOnlyList<string> tokens, double sourceSampleRate, bool hardJoinSmoothing = false)
     {
         var rate = sourceSampleRate;
         VoiceLabSeamKind[] kinds = [window.LeftSeam.Kind, window.RightSeam.Kind];
@@ -86,6 +89,9 @@ public static class VoiceLabFitPlanner
             ? Math.Max(0, VoiceLabGeometry.Samples(silences[0] ?? 0, assetRate) - leadIn) : 0;
         var edgeOut = kinds[1] == VoiceLabSeamKind.None
             ? Math.Max(0, VoiceLabGeometry.Samples(silences[1] ?? 0, assetRate) - tailOut) : 0;
+        var reserve = VoiceLabGeometry.Samples(VoiceLabHardJoin.PauseSeconds, assetRate);
+        if (hardJoinSmoothing && kinds[0] == VoiceLabSeamKind.Hard) edgeIn = Math.Max(0, reserve - leadIn);
+        if (hardJoinSmoothing && kinds[1] == VoiceLabSeamKind.Hard) edgeOut = Math.Max(0, reserve - tailOut);
         var n = window.EndSample - window.StartSample;
         var target = FramesOf(n, assetRate, rate);
         var natural = edgeIn + edgeOut + t1 - t0;
@@ -125,7 +131,7 @@ public static class VoiceLabFitPlanner
         else if (remaining > 0)
         {
             var gapPad = VoiceLabGeometry.Samples(VoiceLabPatchConstants.SEAM_PAD_MAX, assetRate);
-            var hardPad = VoiceLabGeometry.Samples(VoiceLabPatchConstants.HARD_SEAM_PAD_MAX, assetRate);
+            var hardPad = hardJoinSmoothing ? 0 : VoiceLabGeometry.Samples(VoiceLabPatchConstants.HARD_SEAM_PAD_MAX, assetRate);
             long[] caps = [kinds[0] == VoiceLabSeamKind.Hard ? hardPad : gapPad, kinds[1] == VoiceLabSeamKind.Hard ? hardPad : gapPad];
             var extra = Split(remaining, caps);
             pad = [pad[0] + extra[0], pad[1] + extra[1]];
@@ -184,7 +190,7 @@ public static class VoiceLabFitPlanner
         }).ToArray();
         Validate(words, duration, rate);
         var plan = new VoiceLabFitPlan(edits, new VoiceLabFitSeam(pad[0], borrow[0]), new VoiceLabFitSeam(pad[1], borrow[1]), t0, t1,
-            windowStart, windowEnd, startSample, endSample, output, words);
+            windowStart, windowEnd, startSample, endSample, output, words) { HardJoinSmoothing = hardJoinSmoothing };
         CheckVoice(plan, spans, unvoiced, size, fade);
         if (exact) return new VoiceLabFitResult.Exact(plan);
         return new VoiceLabFitResult.ChangedDuration(plan, natural / assetRate, residualSeconds);

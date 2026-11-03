@@ -1,0 +1,292 @@
+{
+  "schema": "voxclip-hard-join/1",
+  "caseCount": 42,
+  "rates": [
+    24000,
+    48000
+  ],
+  "durationSeconds": 2,
+  "incoming": {
+    "wordStartSeconds": 0.14,
+    "wordEndSeconds": 0.44
+  },
+  "outgoing": {
+    "wordStartSeconds": -0.44,
+    "wordEndSeconds": -0.14
+  },
+  "fades": [
+    {
+      "id": "generated-in-silent",
+      "curve": "generated",
+      "seconds": 0.1,
+      "expected": 0
+    },
+    {
+      "id": "generated-in-start",
+      "curve": "generated",
+      "seconds": 0.115,
+      "expected": 0
+    },
+    {
+      "id": "generated-in-mid",
+      "curve": "generated",
+      "seconds": 0.1275,
+      "expected": 0.7071067811865476
+    },
+    {
+      "id": "generated-onset-untouched",
+      "curve": "generated",
+      "seconds": 0.14,
+      "expected": 1
+    },
+    {
+      "id": "generated-out-start",
+      "curve": "generated",
+      "seconds": 1.835,
+      "expected": 1
+    },
+    {
+      "id": "generated-out-mid",
+      "curve": "generated",
+      "seconds": 1.8475,
+      "expected": 0.7071067811865476
+    },
+    {
+      "id": "generated-acoustic-end",
+      "curve": "generated",
+      "seconds": 1.86,
+      "expected": 0
+    },
+    {
+      "id": "generated-pause",
+      "curve": "generated",
+      "seconds": 1.9,
+      "expected": 0
+    },
+    {
+      "id": "source-in-start",
+      "curve": "source-in",
+      "seconds": -0.02,
+      "expected": 1
+    },
+    {
+      "id": "source-in-mid",
+      "curve": "source-in",
+      "seconds": -0.01,
+      "expected": 0.7071067811865476
+    },
+    {
+      "id": "source-in-end",
+      "curve": "source-in",
+      "seconds": 0,
+      "expected": 0
+    },
+    {
+      "id": "source-out-start",
+      "curve": "source-out",
+      "seconds": 0,
+      "expected": 0
+    },
+    {
+      "id": "source-out-mid",
+      "curve": "source-out",
+      "seconds": 0.01,
+      "expected": 0.7071067811865476
+    },
+    {
+      "id": "source-out-end",
+      "curve": "source-out",
+      "seconds": 0.02,
+      "expected": 1
+    }
+  ],
+  "gains": [
+    {
+      "seconds": 0.13,
+      "expectedDb": 0
+    },
+    {
+      "seconds": 0.14,
+      "expectedDb": 6
+    },
+    {
+      "seconds": 0.42,
+      "expectedDb": 6
+    },
+    {
+      "seconds": 0.43,
+      "expectedDb": 3
+    },
+    {
+      "seconds": 0.44,
+      "expectedDb": 0
+    },
+    {
+      "seconds": 1.55,
+      "expectedDb": 0
+    },
+    {
+      "seconds": 1.56,
+      "expectedDb": 0
+    },
+    {
+      "seconds": 1.57,
+      "expectedDb": 3
+    },
+    {
+      "seconds": 1.58,
+      "expectedDb": 6
+    },
+    {
+      "seconds": 1.86,
+      "expectedDb": 6
+    },
+    {
+      "seconds": 1.87,
+      "expectedDb": 0
+    }
+  ],
+  "validation": [
+    {
+      "id": "legacy",
+      "kind": "hard",
+      "microPause": null,
+      "gainDb": null,
+      "valid": true
+    },
+    {
+      "id": "hard-pause",
+      "kind": "hard",
+      "microPause": {
+        "wordStartSeconds": -0.44,
+        "wordEndSeconds": -0.14
+      },
+      "gainDb": null,
+      "valid": true
+    },
+    {
+      "id": "hard-gain",
+      "kind": "hard",
+      "microPause": {
+        "wordStartSeconds": -0.44,
+        "wordEndSeconds": -0.14
+      },
+      "gainDb": 6,
+      "valid": true
+    },
+    {
+      "id": "gap-refuses-pause",
+      "kind": "gap",
+      "microPause": {
+        "wordStartSeconds": -0.44,
+        "wordEndSeconds": -0.14
+      },
+      "gainDb": null,
+      "valid": false
+    },
+    {
+      "id": "short-pause",
+      "kind": "hard",
+      "microPause": {
+        "wordStartSeconds": -0.44,
+        "wordEndSeconds": -0.1
+      },
+      "gainDb": null,
+      "valid": false
+    },
+    {
+      "id": "reversed-word",
+      "kind": "hard",
+      "microPause": {
+        "wordStartSeconds": -0.14,
+        "wordEndSeconds": -0.44
+      },
+      "gainDb": null,
+      "valid": false
+    },
+    {
+      "id": "outside-patch",
+      "kind": "hard",
+      "microPause": {
+        "wordStartSeconds": -3,
+        "wordEndSeconds": -0.14
+      },
+      "gainDb": null,
+      "valid": false
+    },
+    {
+      "id": "gain-above-cap",
+      "kind": "hard",
+      "microPause": {
+        "wordStartSeconds": -0.44,
+        "wordEndSeconds": -0.14
+      },
+      "gainDb": 6.01,
+      "valid": false
+    },
+    {
+      "id": "negative-gain",
+      "kind": "hard",
+      "microPause": {
+        "wordStartSeconds": -0.44,
+        "wordEndSeconds": -0.14
+      },
+      "gainDb": -0.01,
+      "valid": false
+    },
+    {
+      "id": "gain-without-pause",
+      "kind": "hard",
+      "microPause": null,
+      "gainDb": 1,
+      "valid": false
+    }
+  ],
+  "reserve": {
+    "windowSeconds": 1,
+    "speechSeconds": 0.9,
+    "legacyOutputSeconds": 1,
+    "outputSeconds": 1.18,
+    "padSeconds": 0.14,
+    "pace": 1.2,
+    "fits": true
+  },
+  "roomTone": {
+    "runAmplitude": 5e-06,
+    "pauseAmplitude": 0.0005,
+    "gainDb": 40,
+    "toleranceLu": 2
+  },
+  "joinCheck": {
+    "pauseSeconds": [
+      0.14,
+      0.24
+    ],
+    "speechStepDb": 0,
+    "excessLu": 0
+  },
+  "acoustic": {
+    "alignedStart": 0.2,
+    "alignedEnd": 0.7,
+    "audioStart": 0.15,
+    "audioEnd": 0.8,
+    "searchLimitSeconds": 0.12
+  },
+  "gating": [
+    {
+      "amplitude": 0.1,
+      "gain": false,
+      "advisory": false
+    },
+    {
+      "amplitude": 0.07,
+      "gain": true,
+      "advisory": false
+    },
+    {
+      "amplitude": 0.01,
+      "gain": true,
+      "advisory": true
+    }
+  ]
+}

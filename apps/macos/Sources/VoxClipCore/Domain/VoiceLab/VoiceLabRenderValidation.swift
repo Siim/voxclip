@@ -69,6 +69,15 @@ public enum VoiceLabRenderValidation {
     /// The project.schema.json shape of every stored recipe, rejected or not, whatever its kind or voice source.
     /// Render policy runs first for unrejected candidates, so this only reports what policy leaves unchecked.
     private static func validateShape(_ recipe: VoiceLabRenderRecipe) throws {
+        try VoiceLabHardJoin.validate(seams: recipe.seams, edgeGain: recipe.edgeGain, duration: recipe.outDuration)
+        for incoming in [true, false] {
+            if let pause = incoming ? recipe.seams.in.microPause : recipe.seams.out.microPause {
+                guard let words = recipe.words, let expected = VoiceLabHardJoin.pause(words: words, duration: recipe.outDuration, incoming: incoming),
+                      abs(expected.wordStartSeconds - pause.wordStartSeconds) <= 1e-6,
+                      abs(expected.wordEndSeconds - pause.wordEndSeconds) <= 1e-6,
+                      abs(recipe.audio.stretch - 1) <= 1e-12 else { throw VoiceLabProjectError.invalidFadeHandles }
+            }
+        }
         func unit(_ value: Double?) -> Bool { value.map { $0.isFinite && (0...1).contains($0) } ?? true }
         let audio = recipe.audio, video = recipe.video, qa = recipe.qa, provenance = recipe.provenance
         guard validID(audio.assetId), audio.trimStart.isFinite, audio.trimStart >= 0, audio.trimEnd.isFinite, audio.trimEnd >= 0,

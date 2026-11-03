@@ -71,15 +71,28 @@ public static class VoiceLabTakeRenderer
         }
         var gain = (float)Math.Pow(10, analysis.GainDb / 20);
         var toneGain = (float)Math.Pow(10, (analysis.RoomTone?.GainDb ?? 0) / 20);
+        var duration = fitted.OutDuration;
+        var incomingPause = plan.HardJoinSmoothing && input.Window.LeftSeam.Kind == VoiceLabSeamKind.Hard ? VoiceLabHardJoin.Pause(plan.Words, duration, true) : null;
+        var outgoingPause = plan.HardJoinSmoothing && input.Window.RightSeam.Kind == VoiceLabSeamKind.Hard ? VoiceLabHardJoin.Pause(plan.Words, duration, false) : null;
+        var smoothing = incomingPause is not null || outgoingPause is not null;
+        VoiceLabEdgeGain? edgeGain = null;
+        float Background(int relative)
+        {
+            var bed = analysis.RoomTone is { EndGainDb: not null } ramp ? (float)Math.Pow(10, ramp.GainDbAt(relative, smoothing ? duration * rate : length) / 20) : toneGain;
+            return tone.Length == 0 ? 0 : VoiceLabAudioMixer.RoomToneSample(tone, relative, 0, loop) * bed;
+        }
         float Signal(int relative)
         {
             var frame = fitted.TrimStartFrame + relative;
             if (frame < 0 || frame >= fitted.Wave.Frames) throw Invalid();
             float sample = 0;
             for (var channel = 0; channel < fitted.Wave.Channels; channel++) sample += (float)fitted.Wave.Sample(frame, channel) / fitted.Wave.Channels;
-            var bed = analysis.RoomTone is { EndGainDb: not null } ramp ? (float)Math.Pow(10, ramp.GainDbAt(relative, length) / 20) : toneGain;
-            var background = tone.Length == 0 ? 0 : VoiceLabAudioMixer.RoomToneSample(tone, relative, 0, loop) * bed;
-            return sample * gain + background;
+            if (!smoothing) return sample * gain + Background(relative);
+            var seconds = relative / (double)rate;
+            var voice = VoiceLabHardJoin.GeneratedWeight(seconds, duration, incomingPause, outgoingPause);
+            var boost = Math.Pow(10, VoiceLabHardJoin.EdgeGainDb(seconds, duration, edgeGain) / 20);
+            var bedWeight = VoiceLabHardJoin.BedWeight(seconds, duration, plan.Words, incomingPause, outgoingPause);
+            return sample * gain * (float)(voice * boost) + Background(relative) * (float)bedWeight;
         }
         if (source.Samples(start - lead, start) is not { } leading || source.Samples(end, end + tail) is not { } trailing) throw Invalid();
         var mixed = new float[lead + length + tail];
@@ -95,6 +108,22 @@ public static class VoiceLabTakeRenderer
         {
             var placement = incoming ? input.Window.LeftSeam : input.Window.RightSeam;
             if (placement.Kind == VoiceLabSeamKind.None) continue;
+            if ((incoming ? incomingPause : outgoingPause) is not null)
+            {
+                var fadeCount = (int)Frames(VoiceLabHardJoin.SourceFadeSeconds);
+                if (fadeCount < 2 || (incoming ? fadeCount > lead : fadeCount > tail)) throw Invalid();
+                var join = lead + (incoming ? 0 : length);
+                var sourceJoin = incoming ? start : end;
+                for (var offset = 0; offset < fadeCount; offset++)
+                {
+                    var local = incoming ? offset - fadeCount : offset;
+                    if (source.Samples(sourceJoin + local, sourceJoin + local + 1) is not { } original) throw Invalid();
+                    var weight = VoiceLabHardJoin.SourceWeight(local / (double)rate, incoming);
+                    mixed[join + local] = original.Span[0] * (float)weight + Background((incoming ? 0 : length) + local) * (float)Math.Sqrt(Math.Max(0, 1 - weight * weight));
+                }
+                seams.Add(join);
+                continue;
+            }
             var count = checked((int)Frames(placement.FadeSamples / (double)input.SourceSampleRate));
             var before = count / 2;
             var seam = lead + (incoming ? 0 : length);
@@ -114,6 +143,47 @@ public static class VoiceLabTakeRenderer
             seams.Add(seam);
         }
         if (mixed.Any(sample => !float.IsFinite(sample))) throw Invalid();
+        double[]? excesses = null;
+        if (smoothing)
+        {
+            excesses = seams.Select(seam => VoiceLabLoudness.LufsJumpLu(mixed, rate, [seam])).ToArray();
+            if (source.Samples(start - lead, end + tail) is not { } original) throw Invalid();
+            for (var index = 0; index < seams.Count; index++)
+            {
+                var incoming = seams[index] == lead;
+                if ((incoming ? incomingPause : outgoingPause) is not { } pause) continue;
+                var sourceJoin = checked(lead + (incoming ? 0 : (int)(end - start)));
+                var reference = VoiceLabHardJoin.SourceStep(original.ToArray(), rate, sourceJoin);
+                var step = VoiceLabHardJoin.SpeechStep(mixed, rate, seams[index], pause, incoming);
+                if (VoiceLabHardJoin.Excess(step, reference) > VoiceLabHardJoin.ToleranceLu)
+                {
+                    var first = checked(seams[index] + (int)Frames(pause.WordStartSeconds));
+                    var last = checked(seams[index] + (int)Frames(pause.WordEndSeconds));
+                    var sourceLower = incoming ? Math.Max(0, start - Frames(0.4)) : end;
+                    var sourceUpper = incoming ? start : Math.Min(total, end + Frames(0.4));
+                    if (source.Samples(sourceLower, sourceUpper) is not { } meeting) throw Invalid();
+                    var unboosted = Enumerable.Range(first, last - first).Select(position => mixed[position] /
+                        (float)Math.Pow(10, VoiceLabHardJoin.EdgeGainDb((position - lead) / (double)rate, duration, edgeGain) / 20)).ToArray();
+                    var boost = VoiceLabHardJoin.MatchingGain(unboosted, meeting.ToArray(), rate, incoming);
+                    if (boost > 0)
+                    {
+                        var adjustment = new VoiceLabEdgeGainWord(boost, pause);
+                        edgeGain ??= new();
+                        edgeGain = incoming ? edgeGain with { In = adjustment } : edgeGain with { Out = adjustment };
+                        for (var position = first; position < last; position++) mixed[position] = Signal(position - lead);
+                    }
+                }
+                excesses[index] = VoiceLabHardJoin.Excess(VoiceLabHardJoin.SpeechStep(mixed, rate, seams[index], pause, incoming), reference);
+            }
+            for (var index = 0; index < seams.Count; index++)
+            {
+                var incoming = seams[index] == lead;
+                if ((incoming ? incomingPause : outgoingPause) is not { } pause) continue;
+                var sourceJoin = checked(lead + (incoming ? 0 : (int)(end - start)));
+                var reference = VoiceLabHardJoin.SourceStep(original.ToArray(), rate, sourceJoin);
+                excesses[index] = VoiceLabHardJoin.Excess(VoiceLabHardJoin.SpeechStep(mixed, rate, seams[index], pause, incoming), reference);
+            }
+        }
         Directory.CreateDirectory(scratchRoot);
         VoiceLabCapacity.Require([new(scratchRoot, (long)mixed.Length * 4 + fitted.Wave.Pcm.Length + 88)]);
         var directory = Path.Combine(scratchRoot, "voxclip-take-" + Guid.NewGuid().ToString("N"));
@@ -130,7 +200,8 @@ public static class VoiceLabTakeRenderer
             var measured = Enumerable.Range(0, readback.Frames).Select(frame => (float)readback.Sample(frame, 0)).ToArray();
             if (!mixed.AsSpan().SequenceEqual(measured)) throw Invalid();
             ct.ThrowIfCancellationRequested();
-            return new(directory, fitted, new(rate, analysis.Trimmed, measured, lead, lead + length, seams.AsReadOnly(), analysis.GainDb, analysis.RoomTone, fitted.Fit));
+            return new(directory, fitted, new(rate, analysis.Trimmed, measured, lead, lead + length, seams.AsReadOnly(), analysis.GainDb, analysis.RoomTone, fitted.Fit)
+            { MicroPauseIn = incomingPause, MicroPauseOut = outgoingPause, EdgeGain = edgeGain, SeamExcesses = excesses });
         }
         catch { Directory.Delete(directory, true); throw; }
     }

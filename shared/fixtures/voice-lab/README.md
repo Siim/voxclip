@@ -1,5 +1,11 @@
 # Voice Lab Core contract fixtures
 
+`hard-join-cases.json` is the independent `voxclip-hard-join/1` contract for new
+hard-seam micro-pauses, fades, gated edge gain, room tone, validation and
+reserve-aware pace matching. Both Cores and Media suites replay its synthetic
+cases; see [hard-join-README.md](hard-join-README.md). Existing fixtures and
+pinned counts remain unchanged.
+
 `pace-matching-cases.json` is the independent `voxclip-pace-matching/1` contract for the three sample-exact paid-duration observations supplied on 3 November 2026: window/take 19.400/16.115, 5.120/3.390 and 1.145/1.830 seconds. The offline replay uses 48 kHz, gap seams with 0.05 s available outside each seam (none borrowable after the kept margin), and fully voiced hypothetical takes (no invented internal pause growth). The existing total seam padding limit remains 0.6 s. Expected hundredth-step provider paces are 0.84, 0.70 and 1.20: the first two can keep the source duration; the third still needs shorter words. These are supplied timing observations, not bundled private media or new provider evidence. With hard seams the first two may instead require Match video; the Core tests cover that fallback and measured retries. Regenerate with `python3 tools/fixtures/voice-lab/generate_pace_matching.py`; `--check` checks exact bytes. Windows must port pace selection, exact-before-retimed preference, receipt-based retry calibration, short-wording sentence recovery, row copy and price binding. Existing fixture schemas/categories/counts are unchanged.
 
 `pace-cases.json` is the separate per-take speech-pace contract; both platforms replay all 15 request/refusal rows. See [pace-README.md](pace-README.md) for exact bytes, default compatibility, approval binding and provenance rules.

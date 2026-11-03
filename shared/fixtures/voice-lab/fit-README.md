@@ -1,5 +1,10 @@
 # Voice Lab fit planner vectors
 
+These legacy cases keep `hardJoinSmoothing` off. New production hard joins
+reserve 140 ms before pause allocation and pace selection; their independent
+vectors and compatibility rules live in [hard-join-README.md](hard-join-README.md).
+Neither this generator nor its pinned outputs/counts change for that behavior.
+
 `tools/fixtures/voice-lab/generate_fit.py` is an independent standard-library Python reference for the silence-only fit planner in `doc/spec/voice-lab.md` §8.9.2. `tools/fixtures/voice-lab/generate.py` runs it after the project fixtures, and it writes `fit-cases.json`; running it twice gives byte-identical output. Both Core suites (`VoiceLabFitPlannerTests`) replay every case and check `caseCount`. The schema id is `voxclip-voice-lab-fit-cases/1`. The file holds synthetic takes: word times, patch tokens and 10 ms RMS envelopes as `[level, frames]` runs of exact binary32 values. It contains no provider output, paid asset or media. It is never edited by hand.
 
 Each case's `input` is what the planner receives: `window` (its samples, and its seam kinds `leftKind` and `rightKind`), `incomingSilence` and `outgoingSilence` (a gap seam's lendable silence, a take edge's silence to the window's nearest word, and null at a hard seam), `sourceSampleRate`, `take` (the paid asset's rate and frames, the TTS trims, the aligned `words` and the `envelope`) and `tokens`. Its `expected` is the plan, `exact` or `changedDuration` with the edits, the pad and borrowed samples at each seam, the trims, the window and its times, the output frames and the word times, plus `naturalOut` and `residualSeconds` for `changedDuration`, or a typed `error`. The rules the vectors pin are the §8.9.2 pinned readings; each named case's `note` says what it tests.

@@ -69,9 +69,9 @@ import VoxClipCore
     @Test func rewriteSourceHoldsOnlyTheWindowAndRoomToneRegionsOfALongTrack() async throws {
         let root = try directory(); defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("long.mov"), rate = 8_000, frames = 60 * rate
-        // Speech-like content everywhere except a silent stretch at 50.0–50.6 s, which only a gap in the words exposes.
+        // Speech-like content everywhere except a quiet nonzero stretch at 50.0–50.6 s, exposed by a gap in the words.
         try await movie(url, rate: rate, channels: 1, frames: frames, float: false, bufferFrames: 8_000) { frame, _ in
-            (400_000..<404_800).contains(frame) ? 0 : Double(Self.mono(frame))
+            (400_000..<404_800).contains(frame) ? 1 : Double(Self.mono(frame))
         }
         let items = [TimedWord(id: "a", text: "a", kind: .word, start: 0, end: 49.9), TimedWord(id: "b", text: "b", kind: .word, start: 50.7, end: 60)]
         let result = try await VoiceLabSourceAudio.rewriteSource(source: url, frames: Int64(frames), sampleRate: rate,

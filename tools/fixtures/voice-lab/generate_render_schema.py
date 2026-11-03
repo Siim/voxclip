@@ -91,4 +91,14 @@ d['voiceLabSegmentV3'] = segment
 d['voiceLabV3'] = obj({'assets': d['voiceLabV2']['properties']['assets'], 'segments': {'type': 'array', 'items': {'$ref': '#/$defs/voiceLabSegmentV3'}},
                            'cleanAudio': {'$ref': '#/$defs/voiceLabCleanAudio'}, 'voices': {'type': 'array', 'items': {'$ref': '#/$defs/voiceLabVoiceReference'}},
                            'videoAssets': {'type': 'array', 'items': {'$ref': '#/$defs/voiceLabVideoAsset'}}})
+d['voiceLabMicroPause'] = obj({'wordStartSeconds': {'type': 'number', 'minimum': -290, 'maximum': 290},
+                              'wordEndSeconds': {'type': 'number', 'minimum': -290, 'maximum': 290}})
+d['voiceLabEdgeGainWord'] = obj({'gainDb': {'type': 'number', 'minimum': 0, 'maximum': 6},
+                               'wordSeconds': {'$ref': '#/$defs/voiceLabMicroPause'}})
+d['voiceLabEdgeGain'] = obj({'in': {'$ref': '#/$defs/voiceLabEdgeGainWord'}, 'out': {'$ref': '#/$defs/voiceLabEdgeGainWord'}}, required=[])
+del d['voiceLabEdgeGain']['required']
+d['voiceLabEdgeGain']['minProperties'] = 1
+d['voiceLabSeam']['properties']['microPause'] = {'$ref': '#/$defs/voiceLabMicroPause'}
+d['voiceLabSeam']['allOf'] = [{'if': {'required': ['microPause']}, 'then': {'properties': {'kind': {'const': 'hard'}}}}]
+d['voiceLabRenderRecipe']['properties']['edgeGain'] = {'$ref': '#/$defs/voiceLabEdgeGain'}
 path.write_text(json.dumps(s, indent=2, ensure_ascii=False) + '\n')

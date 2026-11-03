@@ -25,7 +25,8 @@ public sealed record VoiceLabRoomTone(long SourceStartSample, long SourceEndSamp
 public sealed record VoiceLabVideoAsset(string Id, string File, string Sha256, double DurationSeconds, double FrameRate, int Width, int Height);
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceLabSeamKind>))]
 public enum VoiceLabSeamKind { [JsonStringEnumMemberName("none")] None, [JsonStringEnumMemberName("gap")] Gap, [JsonStringEnumMemberName("hard")] Hard, [JsonStringEnumMemberName("synthToSynth")] SynthToSynth }
-public sealed record VoiceLabSeam(VoiceLabSeamKind Kind, long FadeSamples, long SourceHandleSamples, long AssetHandleFrames);
+public sealed record VoiceLabSeam(VoiceLabSeamKind Kind, long FadeSamples, long SourceHandleSamples, long AssetHandleFrames,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceLabMicroPause? MicroPause = null);
 public sealed record VoiceLabSeams(VoiceLabSeam In, VoiceLabSeam Out);
 public sealed record VoiceLabChunk(long SourceStartSample, long SourceEndSample, string RequestId, uint Seed, string AssetId, string AssetSha256, long AssembledStartFrame, long AssembledEndFrame);
 [JsonConverter(typeof(JsonStringEnumConverter<VoiceLabVideoMode>))]
@@ -49,4 +50,5 @@ public sealed record VoiceLabRenderQa(int? TranscriptTokens, bool? TranscriptExa
 public sealed record VoiceLabCost(string QuoteId, double? Usd);
 public sealed record VoiceLabRenderRecipe(VoiceLabAudio Audio, IReadOnlyList<VoiceLabWord>? Words, double OutDuration, uint Seed, IReadOnlyList<VoiceLabChunk> Chunks,
     VoiceLabRoomTone? RoomTone, VoiceLabSeams Seams, VoiceLabVideoRecipe Video, VoiceLabRenderQa Qa,
-    VoiceLabProvenance Provenance, VoiceLabCost Cost, VoiceLabVoiceSource VoiceSource, string? VoiceRefId, DateTimeOffset? ConsentVerifiedAt);
+    VoiceLabProvenance Provenance, VoiceLabCost Cost, VoiceLabVoiceSource VoiceSource, string? VoiceRefId, DateTimeOffset? ConsentVerifiedAt,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] VoiceLabEdgeGain? EdgeGain = null);

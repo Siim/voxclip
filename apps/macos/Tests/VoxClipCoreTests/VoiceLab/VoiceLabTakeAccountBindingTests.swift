@@ -139,7 +139,7 @@ struct VoiceLabTakeAccountBindingTests {
             rightSeam: .init(kind: .hard, time: 6, sample: 144_000, fadeSamples: 288))
         let input = VoiceLabTakeInput(text: "Hello", modelID: "eleven_v3", recordID: record.id, language: "en", seed: 7,
             contentKey: "synthetic-account-source", source: source, sourceSampleRate: 24_000, items: items, window: window,
-            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true, hardJoinSmoothing: false)
         return Fixture(root: root, keys: keys, requests: requests, client: client, run: run, input: input, record: record)
     }
 

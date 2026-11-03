@@ -1503,6 +1503,7 @@ member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method internal get_Remainin
 member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method private AddRoomTone(string,long,System.Span`1<float>,System.Threading.CancellationToken)
 member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method private ApplyOrdinaryCutGain(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece,int,long,System.Span`1<float>)
 member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method private ApplySeams(long,System.Span`1<float>,System.Threading.CancellationToken)
+member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method private ApplySynthGain(VoxClip.Core.Domain.VoiceLab.VoiceLabOutputPiece,long,System.Span`1<float>,double)
 member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method private BuildSeams()
 member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method private Invalid()
 member VoxClip.Media.VoiceLab.VoiceLabAudioMixer :: method private PieceIndex(long)

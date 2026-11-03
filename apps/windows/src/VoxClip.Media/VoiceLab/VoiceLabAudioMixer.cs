@@ -233,9 +233,23 @@ internal sealed class VoiceLabAudioMixer : IDisposable
             var first = asset.TrimStartFrame + relative * (double)asset.SampleRate / plan.SampleRate;
             Wave(piece.SegmentId!).Read(first, asset.SampleRate / plan.SampleRate, target, ct);
         }
-        var gain = (float)Math.Pow(10, asset.GainDb / 20);
-        for (var i = 0; i < target.Length; i++) target[i] *= gain;
+        ApplySynthGain(piece, relative, target, asset.GainDb);
         AddRoomTone(piece.SegmentId!, relative, target, ct);
+    }
+
+    private void ApplySynthGain(VoiceLabOutputPiece piece, long relative, Span<float> target, double gainDb)
+    {
+        var recipe = assets[piece.SegmentId!].recipe.Recipe;
+        var smoothing = recipe.Seams.In.MicroPause is not null || recipe.Seams.Out.MicroPause is not null;
+        var gain = (float)Math.Pow(10, gainDb / 20);
+        for (var frame = 0; frame < target.Length / 2; frame++)
+        {
+            var seconds = (relative + frame) / plan.SampleRate;
+            var voice = smoothing ? VoiceLabHardJoin.GeneratedWeight(seconds, recipe.OutDuration, recipe.Seams.In.MicroPause, recipe.Seams.Out.MicroPause) : 1;
+            var boost = Math.Pow(10, VoiceLabHardJoin.EdgeGainDb(seconds, recipe.OutDuration, recipe.EdgeGain) / 20);
+            target[frame * 2] *= gain * (float)(voice * boost);
+            target[frame * 2 + 1] *= gain * (float)(voice * boost);
+        }
     }
 
     private void AddRoomTone(string segmentId, long relative, Span<float> target, CancellationToken ct)
@@ -262,6 +276,9 @@ internal sealed class VoiceLabAudioMixer : IDisposable
                 {
                     // A bed whose two sides differ ramps across the window, linearly in dB (voice-lab §8.7 item 3).
                     var gain = run.EndGainDb is null ? toneGain : (float)Math.Pow(10, run.GainDbAt(relative + i, recipe.OutDuration * plan.SampleRate) / 20);
+                    if (recipe.Seams.In.MicroPause is not null || recipe.Seams.Out.MicroPause is not null)
+                        gain *= (float)VoiceLabHardJoin.BedWeight((relative + i) / plan.SampleRate, recipe.OutDuration,
+                            recipe.Words ?? [], recipe.Seams.In.MicroPause, recipe.Seams.Out.MicroPause);
                     target[2 * i + channel] += gain * RoomToneSample(tone, relative + i, channel, fade);
                 }
             }
@@ -288,6 +305,15 @@ internal sealed class VoiceLabAudioMixer : IDisposable
             var seam = left.Kind == VoiceLabOutputPieceKind.Synth
                 ? assets[left.SegmentId!].recipe.Recipe.Seams.Out : assets[right.SegmentId!].recipe.Recipe.Seams.In;
             if (seam.Kind == VoiceLabSeamKind.None) throw Invalid();
+            if (seam.MicroPause is not null)
+            {
+                var incoming = right.Kind == VoiceLabOutputPieceKind.Synth;
+                if (incoming ? left.Kind != VoiceLabOutputPieceKind.Source : right.Kind != VoiceLabOutputPieceKind.Source) throw Invalid();
+                var count = (int)Math.Floor(VoiceLabHardJoin.SourceFadeSeconds * plan.SampleRate + 0.5);
+                var start = right.OutputStartSample - (incoming ? count : 0);
+                seams.Add((start, count, left, right));
+                continue;
+            }
             var n = checked((int)seam.FadeSamples);
             if (n < 2 || n > 8192) throw Invalid();
             var before = n / 2; var after = n - before;
@@ -316,8 +342,7 @@ internal sealed class VoiceLabAudioMixer : IDisposable
             var first = asset.TrimStartFrame + relative * step;
             Wave(piece.SegmentId!).Read(first, step, target, ct);
         }
-        var gain = (float)Math.Pow(10, asset.GainDb / 20);
-        for (var j = 0; j < target.Length; j++) target[j] *= gain;
+        ApplySynthGain(piece, relative, target, asset.GainDb);
         AddRoomTone(piece.SegmentId!, relative, target, ct);
     }
 
@@ -326,6 +351,25 @@ internal sealed class VoiceLabAudioMixer : IDisposable
         if (cachedSeamIndex == index && cachedSeam is { } prior) return prior;
         var (first, n, left, right) = seams[index];
         var lhs = new float[n * 2]; var rhs = new float[n * 2];
+        var incoming = right.Kind == VoiceLabOutputPieceKind.Synth;
+        var generated = incoming ? right : left;
+        var seam = incoming ? assets[generated.SegmentId!].recipe.Recipe.Seams.In : assets[generated.SegmentId!].recipe.Recipe.Seams.Out;
+        if (seam.MicroPause is not null)
+        {
+            var original = incoming ? left : right;
+            RenderExtended(original, first - original.OutputStartSample, lhs, ct);
+            AddRoomTone(generated.SegmentId!, first - generated.OutputStartSample, rhs, ct);
+            for (var frame = 0; frame < n; frame++)
+            {
+                var local = incoming ? frame - n : frame;
+                var weight = VoiceLabHardJoin.SourceWeight(local / plan.SampleRate, incoming);
+                var bed = (float)Math.Sqrt(Math.Max(0, 1 - weight * weight));
+                lhs[2 * frame] = lhs[2 * frame] * (float)weight + rhs[2 * frame] * bed;
+                lhs[2 * frame + 1] = lhs[2 * frame + 1] * (float)weight + rhs[2 * frame + 1] * bed;
+            }
+            cachedSeamIndex = index; cachedSeam = lhs;
+            return lhs;
+        }
         RenderExtended(left, first - left.OutputStartSample, lhs, ct);
         RenderExtended(right, first - right.OutputStartSample, rhs, ct);
         for (var j = 0; j < n; j++)

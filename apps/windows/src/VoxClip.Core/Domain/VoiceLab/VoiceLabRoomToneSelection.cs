@@ -11,7 +11,7 @@ public static class VoiceLabRoomToneSelection
 
     /// <summary>The run of 50 whole frames with the lowest mean power (summed in frame order, in binary64) inside a gap of at least
     /// 0.5 s between transcript items of any kind; leading and trailing silence are gaps. Ties go to the earliest run.</summary>
-    public static VoiceLabRoomTone Select(IReadOnlyList<TimedWord> items, AudioEnvelope envelope, double sourceSampleRate, long totalSamples)
+    public static VoiceLabRoomTone Select(IReadOnlyList<TimedWord> items, AudioEnvelope envelope, double sourceSampleRate, long totalSamples, bool excludeDigitalSilence = false)
     {
         var rate = sourceSampleRate;
         var total = totalSamples;
@@ -36,12 +36,14 @@ public static class VoiceLabRoomToneSelection
                 var begin = index * size;
                 if (Math.Max(begin + RunFrames * size, begin + length) > gap.End) break;
                 var power = 0.0;
+                var containsDigitalSilence = false;
                 for (var frame = (int)index; frame < index + RunFrames; frame++)
                 {
                     var value = (double)levels[frame];
                     power += value * value;
+                    if (value == 0) containsDigitalSilence = true;
                 }
-                if (best is not { } current || power < current.Power) best = (power, begin);
+                if ((!excludeDigitalSilence || !containsDigitalSilence) && (best is not { } current || power < current.Power)) best = (power, begin);
             }
         }
         // No fallback run: v3 needs room tone for passage TTS with Clean audio off, so the UI offers Clean audio instead.

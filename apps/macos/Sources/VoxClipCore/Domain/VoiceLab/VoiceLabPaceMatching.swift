@@ -3,29 +3,29 @@ import Foundation
 public enum VoiceLabPaceMatching {
     public static func measure(text: String, rate: Double, window: VoiceLabWindow,
                                incomingSilence: Double?, outgoingSilence: Double?, sourceSampleRate: Int,
-                               supportsPace: Bool = true) throws -> VoiceLabPhraseTiming {
+                               supportsPace: Bool = true, hardJoinSmoothing: Bool = true) throws -> VoiceLabPhraseTiming {
         try match(seconds: VoiceLabPhraseTiming.estimate(text: text, rate: rate), window: window,
             incomingSilence: incomingSilence, outgoingSilence: outgoingSilence,
-            sourceSampleRate: sourceSampleRate, supportsPace: supportsPace)
+            sourceSampleRate: sourceSampleRate, supportsPace: supportsPace, hardJoinSmoothing: hardJoinSmoothing)
     }
 
     public static func match(seconds: Double, oldPace: Double = 1, window: VoiceLabWindow,
                              incomingSilence: Double?, outgoingSilence: Double?, sourceSampleRate: Int,
-                             supportsPace: Bool = true) throws -> VoiceLabPhraseTiming {
+                             supportsPace: Bool = true, hardJoinSmoothing: Bool = true) throws -> VoiceLabPhraseTiming {
         guard seconds.isFinite, seconds > 0, VoiceLabPace.isValid(oldPace) else {
             throw VoiceLabLengthBudgetError.invalidInput
         }
         let rate = Double(sourceSampleRate)
         func options(_ duration: Double) throws -> VoiceLabVideoDurationOptions {
             let fit = try VoiceLabPhraseTiming.preview(seconds: duration, window: window,
-                incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, sourceSampleRate: sourceSampleRate)
+                incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, sourceSampleRate: sourceSampleRate, hardJoinSmoothing: hardJoinSmoothing)
             return VoiceLabVideoDurationOptions(fit: fit, sourceSampleRate: sourceSampleRate, assetSampleRate: sourceSampleRate)
         }
         let probeSeconds = 2 * (window.end - window.start + (incomingSilence ?? 0) + (outgoingSilence ?? 0) + 1)
         let high = try VoiceLabPhraseTiming.preview(seconds: probeSeconds, window: window,
-            incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, sourceSampleRate: sourceSampleRate).plan
+            incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, sourceSampleRate: sourceSampleRate, hardJoinSmoothing: hardJoinSmoothing).plan
         let low = try VoiceLabPhraseTiming.preview(seconds: 1 / rate, window: window,
-            incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, sourceSampleRate: sourceSampleRate).plan
+            incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, sourceSampleRate: sourceSampleRate, hardJoinSmoothing: hardJoinSmoothing).plan
         let source = Double(window.endSample - window.startSample) / rate
         let expanded = Double(high.windowEndSample - high.windowStartSample) / rate
         let edge = Double(high.incoming.padFrames + high.outgoing.padFrames) / rate

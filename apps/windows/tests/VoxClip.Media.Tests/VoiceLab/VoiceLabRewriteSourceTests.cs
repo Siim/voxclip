@@ -35,8 +35,8 @@ public sealed class VoiceLabRewriteSourceTests
         // 30,000,001 frames at 8 kHz (62.5 minutes): one more than the old whole-track read accepted before reading anything.
         const int rate = 8_000;
         const long frames = 30_000_001;
-        // Speech-like content everywhere except a silent stretch at 50.0–50.6 s, which only a gap in the words exposes.
-        static short Pcm(long frame) => frame is >= 400_000 and < 404_800 ? (short)0 : Speech(frame);
+        // Speech-like content everywhere except a quiet nonzero stretch at 50.0–50.6 s, exposed by a gap in the words.
+        static short Pcm(long frame) => frame is >= 400_000 and < 404_800 ? (short)1 : Speech(frame);
         TimedWord[] items = [Word("a", 0, 49.9), Word("b", 50.7, 3_750)];
         var spans = new List<(long Start, long End)>();
         var result = await VoiceLabSourceAudio.RewriteSourceAsync("long-source", frames, rate, Window(30, 31, rate), null, null, items,
@@ -115,7 +115,7 @@ public sealed class VoiceLabRewriteSourceTests
     {
         const int rate = 8_000;
         const long frames = 5_000_000;
-        static short Pcm(long frame) => frame is >= 400_000 and < 404_800 ? (short)0 : Speech(frame);
+        static short Pcm(long frame) => frame is >= 400_000 and < 404_800 ? (short)1 : Speech(frame);
         TimedWord[] items = [Word("a", 0, 49.9), Word("b", 50.7, 625)];
         var window = Window(30, 31, rate);
         // Left alone, the read makes three envelope conversions and then decodes two regions.
@@ -315,7 +315,7 @@ public sealed class VoiceLabRewriteSourceTests
         using var storage = new VoiceLabTestStorage();
         await NativeTest.RequireAsync(windows: true);
         const int rate = 8_000, frames = 600 * rate;
-        static short Pcm(long frame) => frame is >= 400_000 and < 404_800 ? (short)0 : Speech(frame);
+        static short Pcm(long frame) => frame is >= 400_000 and < 404_800 ? (short)1 : Speech(frame);
         var path = Path.Combine(storage.Root, "long.wav");
         using (var writer = new BinaryWriter(File.Create(path)))
         {

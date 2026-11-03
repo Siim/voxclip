@@ -41,7 +41,8 @@ public enum VoiceLabTakeProcessing {
         guard Array(tokens.prefix(leading.count)) == leading, Array(tokens.suffix(trailing.count)) == trailing else { throw VoiceLabError.invalidInput }
         let level = try VoiceLabLoudness.neighbourhoodVoicedRmsDb(input.source, sampleRate: rate, window: range)
         var tone = input.cleanAudioOn ? nil : try VoiceLabRoomToneSelection.select(items: input.items, envelope: input.sourceEnvelope,
-            sourceSampleRate: Double(rate), totalSamples: Int64(total))
+            sourceSampleRate: Double(rate), totalSamples: Int64(total),
+            excludeDigitalSilence: input.hardJoinSmoothing && (input.window.leftSeam.kind == .hard || input.window.rightSeam.kind == .hard))
         // The quietest run of the whole take can sit well under the noise beside the window (a car vlog), and the patch's
         // pads and pauses would dip; the loop plays at the background level measured at the seams.
         if let selected = tone {
@@ -57,6 +58,9 @@ public enum VoiceLabTakeProcessing {
                 tone?.gainDb = start
                 tone?.endGainDb = end == start ? nil : end
             }
+        }
+        if input.hardJoinSmoothing, input.window.leftSeam.kind == .hard || input.window.rightSeam.kind == .hard, let selected = tone {
+            tone = try VoiceLabHardJoin.matchedRoomTone(selected, input: input, speechLevel: level)
         }
         return VoiceLabTakePreflight(sourceLevel: level, roomTone: tone)
     }
@@ -83,8 +87,12 @@ public enum VoiceLabTakeProcessing {
         // The provider may time the last character to the end of its PCM or a little past it (the client accepts 50 ms);
         // Eleven v3 ends its audio on the last word. No frame lies past the asset, so times are clamped to its last frame.
         let last = lastAlignedTime(frames: samples.count, rate: rate)
-        let words: [VoiceLabWord] = try VoiceLabAlignment.words(characters: alignment.map(\.character), starts: alignment.map { min($0.start, last) },
+        var words: [VoiceLabWord] = try VoiceLabAlignment.words(characters: alignment.map(\.character), starts: alignment.map { min($0.start, last) },
             ends: alignment.map { min($0.end, last) }, expectedText: input.text)
+        if input.hardJoinSmoothing {
+            words = VoiceLabHardJoin.refine(words: words, samples: samples, sampleRate: rate,
+                incoming: input.window.leftSeam.kind == .hard, outgoing: input.window.rightSeam.kind == .hard)
+        }
         let trim = try VoiceLabAlignment.trim(words: words, assetDuration: duration)
         let trimStart = frames(trim.start, rate), trimEnd = frames(trim.end, rate)
         guard trimEnd <= samples.count, trimStart < trimEnd else { throw VoiceLabError.invalidAlignment }
@@ -95,7 +103,7 @@ public enum VoiceLabTakeProcessing {
         let take = VoiceLabFitTake(assetFrames: Int64(samples.count), assetSampleRate: rate, trimStart: trim.start, trimEnd: trim.end,
                                   words: words, envelope: envelope(samples, sampleRate: rate))
         let fit = try VoiceLabFitPlanner.plan(window: input.window, incomingSilence: input.incomingSilence,
-            outgoingSilence: input.outgoingSilence, take: take, tokens: words.map(\.text), sourceSampleRate: Double(input.sourceSampleRate))
+            outgoingSilence: input.outgoingSilence, take: take, tokens: words.map(\.text), sourceSampleRate: Double(input.sourceSampleRate), hardJoinSmoothing: input.hardJoinSmoothing)
         return VoiceLabTakeAnalysis(sampleRate: rate, trimmed: trimmed, gainDb: gain, roomTone: preflight.roomTone, fit: fit)
     }
     private static func frames(_ seconds: Double, _ rate: Int) -> Int { Int(EditingPrimitives.jsRound(seconds * Double(rate))) }

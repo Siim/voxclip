@@ -204,7 +204,7 @@ struct VoiceLabTakeRunTests {
     private func fixture(_ configure: @Sendable (inout TakeRunHTTP.State) -> Void = { _ in }, drift: Bool = false,
                          sourceAudible: Bool = true, roomToneAvailable: Bool = true,
                          background: (left: Double, right: Double, run: Double)? = nil,
-                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false, pace: Double? = nil) async throws -> Fixture {
+                         boundary: VoiceLabTakeDispatchBoundary? = nil, text: String = "Hello", modelID: String = "eleven_v3", voicedFraction: Double = 1, rejectGeneratedVAD: Bool = false, pace: Double? = nil, hardJoinSmoothing: Bool = false) async throws -> Fixture {
         let root = try SpeechTestFiles.directory()
         let locations = SpeechTestFiles.locations(root)
         let store = VoiceConsentStore(locations: locations)
@@ -346,16 +346,30 @@ struct VoiceLabTakeRunTests {
             rightSeam: .init(kind: .hard, time: 6, sample: 144_000, fadeSamples: 288))
         let input = VoiceLabTakeInput(text: text, modelID: modelID, recordID: record.id, language: "en", seed: UInt32.max,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: window,
-            incomingSilence: nil, outgoingSilence: nil, providerConsent: true, pace: pace)
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true, pace: pace, hardJoinSmoothing: hardJoinSmoothing)
         let lastWindow = VoiceLabWindow(firstWordId: "last", lastWordId: "last", leftBridgeWordIds: [], rightBridgeWordIds: [], start: 7, end: 7.5,
             startSample: 168_000, endSample: 180_000, leftSeam: .init(kind: .hard, time: 7, sample: 168_000, fadeSamples: 288),
             rightSeam: .init(kind: .hard, time: 7.5, sample: 180_000, fadeSamples: 288))
         let laterInput = VoiceLabTakeInput(text: text, modelID: modelID, recordID: record.id, language: "en", seed: 7,
             contentKey: "synthetic-source", source: source, sourceSampleRate: rate, items: items, window: lastWindow,
-            incomingSilence: nil, outgoingSilence: nil, providerConsent: true)
+            incomingSilence: nil, outgoingSilence: nil, providerConsent: true, hardJoinSmoothing: hardJoinSmoothing)
         return Fixture(root: root, http: http, clock: clock, store: store, client: client, ledger: ledger, run: run, input: input,
                        later: later, laterInput: laterInput)
     }
+    @Test func newTakeRunCarriesHardJoinMetadataThroughQA() async throws {
+        let fixture = try await fixture({ $0.duration = 3.72 }, hardJoinSmoothing: true)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let quote = try await fixture.run.prepare(fixture.input)
+        let result = try await fixture.run.execute(quote, approved: true)
+        let row = try #require(result.rows.first)
+        let audio = try #require(row.audio)
+        #expect(audio.fit.plan.hardJoinSmoothing)
+        #expect(audio.microPauseIn != nil && audio.microPauseOut != nil)
+        #expect(audio.measuredSeamSteps?.count == 2)
+        #expect(row.qa?.hardFailures.isEmpty == true)
+        #expect(row.fits)
+    }
+
     @Test func slowTakeCarriesPaceThroughOptionsQuotesReceiptsAndRecipe() async throws {
         let fixture = try await fixture(pace: 0.8)
         defer { try? FileManager.default.removeItem(at: fixture.root) }

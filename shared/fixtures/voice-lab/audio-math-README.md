@@ -1,5 +1,11 @@
 # Voice Lab audio math vectors
 
+The new micro-pause speech-to-speech check, edge gain curves and room-tone
+level target are separate [hard-join vectors](hard-join-README.md). Existing
+momentary/pause-aware join measurements and all expectations here remain the
+legacy contract; new metadata selects the new rule rather than changing these
+vectors globally.
+
 `audio-math-cases.json` holds the shared vectors for the pure audio measurements in both Cores: `VoiceLabLoudness` (voiced level and gain, sample and true peak, momentary loudness, seam jump and flatness) and `VoiceLabConform` (the duration-conform decision). They follow voice-lab.md §4.4, §7.3, §8.6, §8.7 item 2 and §8.11 items 2 and 3, as pinned below. The Mac suite `apps/macos/Tests/VoxClipCoreTests/VoiceLab/VoiceLabAudioMathTests.swift` and the Windows suite `apps/windows/tests/VoxClip.Core.Tests/Tracks/voice-lab/VoiceLabAudioMathTests.cs` read every case and fail on an unknown kind.
 
 Regenerate only with `python3 tools/fixtures/voice-lab/generate_audio_math.py`, using a Python that has NumPy, and review the diff as a behaviour change. The generator is an independent NumPy reference of the same rules; the tests never run it. Two runs give byte-identical output. Expected values are never edited by hand.

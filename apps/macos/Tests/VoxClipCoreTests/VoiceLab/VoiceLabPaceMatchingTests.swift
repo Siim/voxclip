@@ -36,7 +36,7 @@ import Testing
         for row in fixture.cases {
             let source = window(row.windowSeconds, kind: fixture.seamKind)
             let timing = try VoiceLabPaceMatching.match(seconds: row.measuredSeconds, window: source,
-                incomingSilence: fixture.incomingSilence, outgoingSilence: fixture.outgoingSilence, sourceSampleRate: fixture.sourceSampleRate)
+                incomingSilence: fixture.incomingSilence, outgoingSilence: fixture.outgoingSilence, sourceSampleRate: fixture.sourceSampleRate, hardJoinSmoothing: false)
             #expect(timing.pace == row.pace, "\(row.id)")
             #expect(timing.fits == row.fits, "\(row.id)")
             let fit = try VoiceLabPhraseTiming.preview(seconds: timing.estimateSeconds, window: source,
@@ -49,7 +49,7 @@ import Testing
         }
     }
 
-    @Test func pacePreferenceMatchesExhaustiveProviderGrid() throws {
+    @Test(arguments: [false, true]) func pacePreferenceMatchesExhaustiveProviderGrid(hardJoinSmoothing: Bool) throws {
         for kind in [VoiceLabSeamKind.hard, .gap, .none] {
             for duration in [0.3, 1.145, 5.12, 19.4] {
                 for fraction in [0.3, 0.7, 1.0, 1.4, 2.0] {
@@ -58,11 +58,11 @@ import Testing
                     let natural = duration * fraction
                     func gate(_ pace: Double) throws -> VoiceLabVideoDurationOptions {
                         let fit = try VoiceLabPhraseTiming.preview(seconds: natural / pace, window: source,
-                            incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000)
+                            incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000, hardJoinSmoothing: hardJoinSmoothing)
                         return VoiceLabVideoDurationOptions(fit: fit, sourceSampleRate: 48_000, assetSampleRate: 48_000)
                     }
                     let timing = try VoiceLabPaceMatching.match(seconds: natural, window: source,
-                        incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000)
+                        incomingSilence: silence, outgoingSilence: silence, sourceSampleRate: 48_000, hardJoinSmoothing: hardJoinSmoothing)
                     let grid = try (70...120).map { try gate(Double($0) / 100) }
                     let chosen = try gate(timing.pace)
                     #expect(timing.fits == grid.contains { $0.allows(.source) || $0.allows(.retimed) })
@@ -77,14 +77,14 @@ import Testing
     @Test func hardSeamsFallBackToMatchVideoAndRetriesUseMeasuredPace() throws {
         let source = window(5.120, kind: .hard)
         let timing = try VoiceLabPaceMatching.match(seconds: 3.390, window: source,
-            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000)
+            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, hardJoinSmoothing: false)
         #expect(timing.pace == 0.7 && timing.fits)
         let fit = try VoiceLabPhraseTiming.preview(seconds: timing.estimateSeconds, window: source,
             incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000)
         let gate = VoiceLabVideoDurationOptions(fit: fit, sourceSampleRate: 48_000, assetSampleRate: 48_000)
         #expect(!gate.allows(.source) && gate.allows(.retimed))
         let retry = try VoiceLabPaceMatching.match(seconds: 5.8, oldPace: 0.7, window: source,
-            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000)
+            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, hardJoinSmoothing: false)
         #expect(retry.pace == 0.8 && retry.fits)
         #expect(abs(retry.estimateSeconds - 5.075) < 0.00001)
     }
@@ -92,10 +92,10 @@ import Testing
     @Test func tooShortAndDialogueKeepTruthfulRecovery() throws {
         let source = window(5.120, kind: .hard)
         let short = try VoiceLabPaceMatching.match(seconds: 1, window: source,
-            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000)
+            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, hardJoinSmoothing: false)
         #expect(short.pace == 0.7 && !short.fits && !short.tooLong)
         let dialogue = try VoiceLabPaceMatching.match(seconds: 3.390, window: source,
-            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, supportsPace: false)
+            incomingSilence: nil, outgoingSilence: nil, sourceSampleRate: 48_000, supportsPace: false, hardJoinSmoothing: false)
         #expect(dialogue.pace == 1 && !dialogue.fits)
         #expect(!dialogue.copy.contains("pace"))
     }

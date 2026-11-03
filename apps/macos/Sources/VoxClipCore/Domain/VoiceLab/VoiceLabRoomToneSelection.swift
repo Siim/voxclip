@@ -7,7 +7,7 @@ public enum VoiceLabRoomToneSelection {
 
     /// The run of 50 whole frames with the lowest mean power (summed in frame order, in binary64) inside a gap of at least
     /// 0.5 s between transcript items of any kind; leading and trailing silence are gaps. Ties go to the earliest run.
-    public static func select(items: [TimedWord], envelope: AudioEnvelope, sourceSampleRate: Double, totalSamples: Int64) throws -> VoiceLabRoomTone {
+    public static func select(items: [TimedWord], envelope: AudioEnvelope, sourceSampleRate: Double, totalSamples: Int64, excludeDigitalSilence: Bool = false) throws -> VoiceLabRoomTone {
         let rate = sourceSampleRate, total = totalSamples
         try VoiceLabGeometry.check(rate: rate, totalSamples: total, envelope: envelope, items: items)
         let size = VoiceLabGeometry.frameSize(rate), length = VoiceLabGeometry.samples(VoiceLabPatchConstants.ROOM_TONE_MIN_RUN, rate)
@@ -30,11 +30,13 @@ public enum VoiceLabRoomToneSelection {
                 let begin = index * size
                 if max(begin + frames * size, begin + length) > gap.end { break }
                 var power = 0.0
+                var containsDigitalSilence = false
                 for frame in Int(index)..<Int(index + frames) {
                     let value = Double(levels[frame])
                     power += value * value
+                    if value == 0 { containsDigitalSilence = true }
                 }
-                if best.map({ power < $0.power }) ?? true { best = (power, begin) }
+                if (!excludeDigitalSilence || !containsDigitalSilence), best.map({ power < $0.power }) ?? true { best = (power, begin) }
                 index += 1
             }
         }

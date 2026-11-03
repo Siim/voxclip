@@ -7,6 +7,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public let language: String
     public let seed: UInt32
     public let pace: Double?
+    public let hardJoinSmoothing: Bool
     public let contentKey: String
     /// The source frames the run reads, at `sourceSampleRate`.
     public let source: VoiceLabSourceExcerpt
@@ -24,29 +25,30 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
     public init(text: String, modelID: String, recordID: String, language: String, seed: UInt32, contentKey: String,
                 source: [Float], sourceSampleRate: Int, items: [TimedWord], cutWordIDs: Set<String> = [],
                 window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?,
-                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil) {
+                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil, hardJoinSmoothing: Bool = true) {
         self.init(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
                   source: VoiceLabSourceExcerpt(whole: source), sourceEnvelope: VoiceLabTakeProcessing.envelope(source, sampleRate: sourceSampleRate),
                   sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs, window: window, incomingSilence: incomingSilence,
-                  outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn, providerConsent: providerConsent, pace: pace)
+                  outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn, providerConsent: providerConsent, pace: pace, hardJoinSmoothing: hardJoinSmoothing)
     }
     /// A source of any length, of which only `source`'s regions are held.
     public init(text: String, modelID: String, recordID: String, language: String, seed: UInt32, contentKey: String,
                 source: VoiceLabSourceExcerpt, sourceEnvelope: AudioEnvelope, sourceSampleRate: Int, items: [TimedWord],
                 cutWordIDs: Set<String> = [], window: VoiceLabWindow, incomingSilence: Double?, outgoingSilence: Double?,
-                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil) {
+                cleanAudioOn: Bool = false, providerConsent: Bool, pace: Double? = nil, hardJoinSmoothing: Bool = true) {
         self.text = text; self.modelID = modelID; self.recordID = recordID; self.language = language; self.seed = seed
         self.contentKey = contentKey; self.source = source; self.sourceEnvelope = sourceEnvelope; self.sourceSampleRate = sourceSampleRate; self.items = items
         self.cutWordIDs = cutWordIDs; self.window = window; self.incomingSilence = incomingSilence; self.outgoingSilence = outgoingSilence
         self.cleanAudioOn = cleanAudioOn; self.providerConsent = providerConsent
         self.pace = pace
+        self.hardJoinSmoothing = hardJoinSmoothing
     }
     /// The same input on another speech model: a phrase's later takes can use a model the user picked after its first run.
     public func replacingModel(_ id: String) -> VoiceLabTakeInput {
         VoiceLabTakeInput(text: text, modelID: id, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
             source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
-            providerConsent: providerConsent, pace: pace)
+            providerConsent: providerConsent, pace: pace, hardJoinSmoothing: hardJoinSmoothing)
     }
     public func options(take: Int) -> VoiceLabSpeechOptions {
         let kept = items.filter { $0.kind == .word && !cutWordIDs.contains($0.id) }
@@ -58,7 +60,7 @@ public struct VoiceLabTakeInput: Sendable, Equatable {
         VoiceLabTakeInput(text: text, modelID: modelID, recordID: recordID, language: language, seed: seed, contentKey: contentKey,
             source: source, sourceEnvelope: sourceEnvelope, sourceSampleRate: sourceSampleRate, items: items, cutWordIDs: cutWordIDs,
             window: window, incomingSilence: incomingSilence, outgoingSilence: outgoingSilence, cleanAudioOn: cleanAudioOn,
-            providerConsent: providerConsent, pace: value)
+            providerConsent: providerConsent, pace: value, hardJoinSmoothing: hardJoinSmoothing)
     }
 }
 
@@ -138,7 +140,7 @@ public enum VoiceLabTakeQuality {
     /// says which side of each seam is generated, after it at the incoming seam. nil keeps the plain largest jump.
     public static func evaluate(expected: String, recognized: [String], mixed: [Float], sampleRate: Int,
                                 seams: [Int], sourceSeamSteps: [Double]? = nil, sourceSeamPauses: [VoiceLabSourcePause?]? = nil,
-                                generatedAfter: [Bool]? = nil, speakerScore: Double?,
+                                generatedAfter: [Bool]? = nil, measuredSeamSteps: [Double]? = nil, speakerScore: Double?,
                                 threshold: Double) throws -> VoiceLabTakeQAResult {
         guard speakerScore.map({ $0.isFinite && (-1...1).contains($0) }) ?? true, threshold.isFinite, (0...1).contains(threshold) else { throw VoiceLabError.invalidInput }
         let expectedTokens = tokens(expected)
@@ -147,7 +149,8 @@ public enum VoiceLabTakeQuality {
         let peak = try VoiceLabLoudness.samplePeakDbfs(mixed)
         guard peak.isFinite else { throw VoiceLabError.invalidAudio }
         if let generatedAfter, generatedAfter.count != seams.count { throw VoiceLabAudioMathError.invalidInput }
-        let steps = try VoiceLabLoudness.seamStepsLu(mixed, sampleRate: sampleRate, seamSamples: seams)
+        let steps = try measuredSeamSteps ?? VoiceLabLoudness.seamStepsLu(mixed, sampleRate: sampleRate, seamSamples: seams)
+        guard steps.count == seams.count, steps.allSatisfy(\.isFinite) else { throw VoiceLabAudioMathError.invalidInput }
         let excesses: [Double]
         if let sourceSeamSteps {
             let ranges = sourceSeamPauses.flatMap { $0.isEmpty ? nil : $0 }
@@ -188,6 +191,10 @@ public enum VoiceLabTakeQuality {
 }
 
 public struct VoiceLabTakeAudio: Sendable, Equatable {
+    public var microPauseIn: VoiceLabMicroPause?
+    public var microPauseOut: VoiceLabMicroPause?
+    public var edgeGain: VoiceLabEdgeGain?
+    public var measuredSeamSteps: [Double]?
     public let sampleRate: Int
     public let trimmed: [Float]
     public let mixed: [Float]

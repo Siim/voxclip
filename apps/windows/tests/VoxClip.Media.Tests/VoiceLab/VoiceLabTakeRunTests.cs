@@ -19,6 +19,23 @@ namespace VoxClip.Media.Tests.VoiceLab;
 public sealed partial class VoiceLabTakeRunTests
 {
     [Fact]
+    public async Task NewTakeRunCarriesHardJoinMetadataThroughQa()
+    {
+        await using var fixture = new Fixture(input => input with { HardJoinSmoothing = true });
+        fixture.Remote.Duration = 3.72;
+        var quote = await fixture.Prepare();
+        var result = await fixture.Run.ExecuteAsync(quote, true, ct: Token);
+        var row = Assert.Single(result.Rows);
+        var audio = Assert.IsType<VoiceLabTakeAudio>(row.Audio);
+        Assert.True(audio.Fit.Plan.HardJoinSmoothing);
+        Assert.NotNull(audio.MicroPauseIn);
+        Assert.NotNull(audio.MicroPauseOut);
+        Assert.Equal(2, audio.SeamExcesses!.Count);
+        Assert.DoesNotContain(row.Qa!.Failures, failure => failure != VoiceLabTakeQaFailure.Loudness);
+        Assert.True(row.Fits);
+    }
+
+    [Fact]
     public async Task JoinOnlyAdvisoriesDoNotStopTheRunEarly()
     {
         await using var fixture = new Fixture(input =>
@@ -777,7 +794,7 @@ public sealed partial class VoiceLabTakeRunTests
             TimedWord Word(string id, double start, double end) => new(id, id, WordKind.Word, start, end, null, null, 1, "one", TimingSource.Native);
             var window = new VoiceLabWindow("old", "old", [], [], 2, 6, 48000, 144000, new(VoiceLabSeamKind.Hard, 2, 48000, 288), new(VoiceLabSeamKind.Hard, 6, 144000, 288));
             Input = new("Hello", "eleven_v3", Record.RecordId, "en", uint.MaxValue, "synthetic-source", source, 24000,
-                [Word("before", 0, 1.9), Word("old", 2.1, 5.9), Word("after", 6.1, 6.5), Word("last", 7.1, 7.9)], new HashSet<string>(), window, null, null, false, true);
+                [Word("before", 0, 1.9), Word("old", 2.1, 5.9), Word("after", 6.1, 6.5), Word("last", 7.1, 7.9)], new HashSet<string>(), window, null, null, false, true, HardJoinSmoothing: false);
             if (input is not null) Input = input(Input);
         }
         private readonly List<VoiceLabTakeRun> batchRuns = [];
@@ -797,7 +814,7 @@ public sealed partial class VoiceLabTakeRunTests
                     LeftSeam = old.LeftSeam with { Time = old.LeftSeam.Time + index * 8, Sample = old.LeftSeam.Sample + offset },
                     RightSeam = old.RightSeam with { Time = old.RightSeam.Time + index * 8, Sample = old.RightSeam.Sample + offset } };
                 return new VoiceLabTakeInput("Hello", Input.ModelId, Input.RecordId, "en", 7, Input.ContentKey,
-                    samples, 24000, items, new HashSet<string>(), window, null, null, false, true);
+                    samples, 24000, items, new HashSet<string>(), window, null, null, false, true, HardJoinSmoothing: Input.HardJoinSmoothing);
             }).ToArray();
             batchRuns.AddRange(runs);
             return (new(runs), inputs);
