@@ -75,6 +75,7 @@ public actor ElevenLabsVoiceLab {
     private var fixedBoundary: String?
     private var afterLastByte: (@Sendable () -> Void)?
     #if DEBUG
+    private var validationDiagnosticDirectory = DataLocations().logs.appendingPathComponent("Diagnostics/VoiceLab", isDirectory: true)
     private var enforceCapabilities = true
     private var dispatchHook: (@Sendable () async -> Void)?
     package func useDispatchHook(_ hook: @escaping @Sendable () async -> Void) { dispatchHook = hook }
@@ -101,8 +102,9 @@ public actor ElevenLabsVoiceLab {
     }
     #if DEBUG
     package init(keys: any KeyProvider, session: URLSession, region: ElevenLabsRegion = .default, logger: any Redacting = RedactingLogger(homeDirectory: FileManager.default.homeDirectoryForCurrentUser.path),
-         prices: VoiceLabPriceCatalog? = nil, spend: VoiceLabSpendLedger? = nil, enforceCapabilities: Bool = false) {
+         prices: VoiceLabPriceCatalog? = nil, spend: VoiceLabSpendLedger? = nil, enforceCapabilities: Bool = false, validationDiagnosticDirectory: URL? = nil) {
         self.keys = keys; self.session = session; self.region = region; self.logger = logger; self.prices = prices; self.spend = spend
+        if let validationDiagnosticDirectory { self.validationDiagnosticDirectory = validationDiagnosticDirectory }
         self.enforceCapabilities = enforceCapabilities
     }
     #endif
@@ -632,19 +634,27 @@ public actor ElevenLabsVoiceLab {
         let provenance = receipt(path, model: modelID, voice: voice.id, authorization: authorization, reply: reply)
         acceptance?.preserve(VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: nil, receipt: provenance))
         let duration = Double(pcm.count) / 48_000
-        let timing = try Self.parseAlignment(row["alignment"], text: text, duration: duration)
-        if route == .textToDialogue {
-            // §8.5: the provider has not specified which character array segments index.
-            // Until the live probe settles that, a valid normalized alignment can widen the bound.
-            var characterCount = timing.count
-            if let normalized = row["normalized_alignment"] as? [String: Any],
-               let characters = normalized["characters"] as? [String],
-               let normalizedTiming = try? Self.parseAlignment(normalized, text: characters.joined(), duration: duration) {
-                characterCount = max(characterCount, normalizedTiming.count)
+        do {
+            let timing = try Self.parseAlignment(row["alignment"], text: text, duration: duration)
+            if route == .textToDialogue {
+                // §8.5: the provider has not specified which character array segments index.
+                // Until the live probe settles that, a valid normalized alignment can widen the bound.
+                var characterCount = timing.count
+                if let normalized = row["normalized_alignment"] as? [String: Any],
+                   let characters = normalized["characters"] as? [String],
+                   let normalizedTiming = try? Self.parseAlignment(normalized, text: characters.joined(), duration: duration) {
+                    characterCount = max(characterCount, normalizedTiming.count)
+                }
+                try Self.validateDialogueSegments(row["voice_segments"], voiceID: voice.id, characterCount: characterCount, duration: duration)
             }
-            try Self.validateDialogueSegments(row["voice_segments"], voiceID: voice.id, characterCount: characterCount, duration: duration)
+            return VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: timing, receipt: provenance)
+        } catch let failure as SpeechMetadataFailure {
+            #if DEBUG
+            await recordValidationDiagnostic(row: row, route: route, model: modelID, text: text,
+                duration: duration, requestID: requestID, failure: failure)
+            #endif
+            throw failure.error
         }
-        return VoiceLabAudioResult(pcm: pcm, sampleRate: 24_000, alignment: timing, receipt: provenance)
     }
 
     /// A reviewed rewrite is generated only by this separate, explicitly approved call.
@@ -959,40 +969,126 @@ public actor ElevenLabsVoiceLab {
         let rate = rates[rateIndex] / (version == 3 ? 1 : version == 2 ? 2 : 4)
         return (version == 3 ? 144_000 : 72_000) * kilobits / rate + Int((bytes[offset + 2] >> 1) & 1)
     }
+    /// Internal detail is mapped back to the existing public errors at the speech boundary.
+    private struct SpeechMetadataFailure: Error {
+        let error: VoiceLabError
+        let check: String
+        var index: Int? = nil
+    }
     private static func validateDialogueSegments(_ raw: Any?, voiceID: String, characterCount: Int, duration: Double) throws {
-        guard let segments = raw as? [[String: Any]], !segments.isEmpty else { throw VoiceLabError.malformedResponse }
+        func fail(_ check: String, _ index: Int? = nil) -> SpeechMetadataFailure {
+            SpeechMetadataFailure(error: .malformedResponse, check: check, index: index)
+        }
+        guard let segments = raw as? [[String: Any]], !segments.isEmpty else { throw fail("segments_missing_or_empty") }
         func number(_ raw: Any?) -> Double? {
             guard let value = raw as? NSNumber, CFGetTypeID(value) != CFBooleanGetTypeID(), value.doubleValue.isFinite
             else { return nil }
             return value.doubleValue
         }
         let count = Double(characterCount)
-        for segment in segments {
-            guard segment["voice_id"] as? String == voiceID,
-                  number(segment["dialogue_input_index"]) == 0,
-                  let start = number(segment["character_start_index"]), let end = number(segment["character_end_index"]),
+        for (index, segment) in segments.enumerated() {
+            guard segment["voice_id"] as? String == voiceID else { throw fail("segment_voice", index) }
+            guard number(segment["dialogue_input_index"]) == 0 else { throw fail("segment_input_index", index) }
+            guard let start = number(segment["character_start_index"]), let end = number(segment["character_end_index"]),
                   start.rounded(.towardZero) == start, end.rounded(.towardZero) == end,
-                  start >= 0, end >= start, end <= count,
-                  let startTime = number(segment["start_time_seconds"]), let endTime = number(segment["end_time_seconds"]),
-                  startTime >= 0, endTime >= startTime, endTime <= duration + 0.05
-            else { throw VoiceLabError.malformedResponse }
+                  start >= 0, end >= start, end <= count else { throw fail("segment_character_range", index) }
+            guard let startTime = number(segment["start_time_seconds"]), let endTime = number(segment["end_time_seconds"]),
+                  startTime >= 0, endTime >= startTime else { throw fail("segment_time_order", index) }
+            guard endTime <= duration + 0.05 else { throw fail("segment_end_beyond_duration", index) }
         }
     }
     private static func parseAlignment(_ raw: Any?, text: String, duration: Double) throws -> [VoiceLabCharacterTiming] {
+        func fail(_ check: String, _ index: Int? = nil) -> SpeechMetadataFailure {
+            SpeechMetadataFailure(error: .invalidAlignment, check: check, index: index)
+        }
+        guard let raw, !(raw is NSNull) else { throw fail("null_alignment") }
         guard let row = raw as? [String: Any], let characters = row["characters"] as? [String],
               let starts = row["character_start_times_seconds"] as? [Double],
-              let ends = row["character_end_times_seconds"] as? [Double],
-              !characters.isEmpty, characters.count == starts.count, starts.count == ends.count,
-              characters.joined() == text else { throw VoiceLabError.invalidAlignment }
+              let ends = row["character_end_times_seconds"] as? [Double] else { throw fail("alignment_fields") }
+        guard !characters.isEmpty, characters.count == starts.count, starts.count == ends.count
+        else { throw fail("alignment_count_mismatch") }
+        guard characters.joined() == text else { throw fail("alignment_text_mismatch") }
         var previous = 0.0
         return try characters.indices.map { index in
             let start = starts[index], end = ends[index]
-            guard !characters[index].isEmpty, start.isFinite, end.isFinite, start >= previous, end >= start,
-                  end <= duration + 0.05 else { throw VoiceLabError.invalidAlignment }
+            guard !characters[index].isEmpty else { throw fail("alignment_empty_character", index) }
+            guard start.isFinite, end.isFinite, start >= previous, end >= start else { throw fail("alignment_time_order", index) }
+            guard end <= duration + 0.05 else { throw fail("alignment_end_beyond_duration", index) }
             previous = end
             return VoiceLabCharacterTiming(character: characters[index], start: start, end: end)
         }
     }
+
+    #if DEBUG
+    /// Profile-only evidence. The allowlist excludes the response envelope, audio and transport data.
+    private func recordValidationDiagnostic(row: [String: Any], route: VoiceLabSpeechRoute, model: String, text: String,
+                                            duration: Double, requestID: UUID, failure: SpeechMetadataFailure) async {
+        let alignment = row["alignment"] as? [String: Any]
+        let normalized = row["normalized_alignment"] as? [String: Any]
+        let joined = (alignment?["characters"] as? [String])?.joined()
+        func edges(_ value: Any?) -> [String: Any] {
+            let values = value as? [Any] ?? []
+            return ["count": values.count, "first": Array(values.prefix(5)), "last": Array(values.suffix(5))]
+        }
+        var evidence: [String: Any] = [
+            "route": route.rawValue, "model": model, "request_id": requestID.uuidString,
+            "typed_text": text, "alignment_text": joined as Any? ?? NSNull(),
+            "normalized_alignment_text": (normalized?["characters"] as? [String])?.joined() as Any? ?? NSNull(),
+            "alignment_character_count": (alignment?["characters"] as? [String])?.count as Any? ?? NSNull(),
+            "normalized_alignment_character_count": (normalized?["characters"] as? [String])?.count as Any? ?? NSNull(),
+            "alignment_starts": edges(alignment?["character_start_times_seconds"]),
+            "alignment_ends": edges(alignment?["character_end_times_seconds"]),
+            "pcm_duration_seconds": duration, "voice_segments": row["voice_segments"] ?? NSNull(),
+            "check": failure.check, "index": failure.index as Any? ?? NSNull()
+        ]
+        if failure.check == "alignment_text_mismatch", let joined {
+            let expected = Array(text.unicodeScalars), actual = Array(joined.unicodeScalars)
+            let index = (0..<max(expected.count, actual.count)).first { index in
+                index >= expected.count || index >= actual.count || expected[index] != actual[index]
+            } ?? 0
+            func scalar(_ values: [Unicode.Scalar]) -> String {
+                index < values.count ? String(format: "U+%04X", values[index].value) : "<end>"
+            }
+            evidence["index"] = index
+            evidence["typed_scalar"] = scalar(expected)
+            evidence["alignment_scalar"] = scalar(actual)
+        }
+        // Redact each leaf before JSON encoding, including unexpected segment fields.
+        let safe = await redactedDiagnosticValue(evidence)
+        let directory = validationDiagnosticDirectory
+        do {
+            let data = try JSONSerialization.data(withJSONObject: safe, options: [.prettyPrinted, .sortedKeys])
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            let file = directory.appendingPathComponent("speech-validation-\(requestID.uuidString).json")
+            try data.write(to: file, options: [.atomic])
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        } catch {
+            // Diagnostic I/O must never replace the validation error or lose the paid PCM.
+        }
+        await logger.write(LogEntry(level: .info, category: "voice-lab",
+            message: "voicelab dialogue validation failed check=\(failure.check)"))
+    }
+    private func redactedDiagnosticValue(_ value: Any) async -> Any {
+        if let text = value as? String { return await logger.redact(text) }
+        if let object = value as? [String: Any] {
+            var safe: [String: Any] = [:]
+            for (key, value) in object {
+                let lower = key.lowercased()
+                guard !["audio_base64", "headers", "key", "keys", "api_key", "xi-api-key", "authorization", "token"].contains(lower) else { continue }
+                safe[await logger.redact(key)] = await redactedDiagnosticValue(value)
+            }
+            return safe
+        }
+        if let array = value as? [Any] {
+            var safe: [Any] = []
+            for item in array { safe.append(await redactedDiagnosticValue(item)) }
+            return safe
+        }
+        return value
+    }
+    #endif
+
 }
 
 private final class VoiceLabNoRedirect: NSObject, URLSessionTaskDelegate, Sendable {
