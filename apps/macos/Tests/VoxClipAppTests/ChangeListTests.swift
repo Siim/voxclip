@@ -44,8 +44,14 @@ import Testing
     }
     private func changes(_ session: RewriteSession) -> ChangeSet? { if case .proposal(let set) = session.task.state { set } else { nil } }
     private func step(_ undo: UndoManager, _ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
-    /// Lets the change list follow a review made in the transcript, which reaches it on the main actor's next turns.
-    private func settle(_ done: () -> Bool) async { for _ in 0..<500 where !done() { await Task.yield() } }
+    /// Lets the change list follow a review made in the transcript, which reaches it on the main actor's next turns. Work
+    /// off the main actor (a plan preparing its price) can take longer than a fixed number of turns on a loaded host, so
+    /// after 500 turns it keeps waiting, a millisecond at a time, for up to 10 s.
+    private func settle(_ done: () -> Bool) async {
+        for _ in 0..<500 where !done() { await Task.yield() }
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !done(), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(1)) }
+    }
 
     /// Each footer case of design.md R2, in v2's grammar: its note, its secondary link (Keep All where changes wait for
     /// takes) and its one primary in the tint. Every R2 offers Ask again on the harness line.
