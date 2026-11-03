@@ -10,6 +10,7 @@ public struct ProcessRequest: Sendable, Equatable {
     public var stdin: Data
     public var timeout: Duration
     public var maxOutputBytes: Int
+    var cliCapturesTimeoutOutput = false
     var cliCompletionResponseID: Int?
     var cliInitializationResponseID: Int?
     public init(executable: URL, arguments: [String], workingDirectory: URL, environment: [String: String], stdin: Data = Data(), timeout: Duration, maxOutputBytes: Int = 16 * 1024 * 1024) {
@@ -33,6 +34,12 @@ public struct ProcessResult: Sendable, Equatable {
         self.stdout = stdout
         self.stderr = stderr
     }
+}
+
+/// A timed-out process keeps its bounded output for the connector to classify, never to log.
+struct CLIProcessTimeout: Error, Sendable {
+    let stdout: Data
+    let stderr: Data
 }
 
 /// Own process group, concurrent bounded pipes, cancellation and cleanup; AI §6.10.
@@ -273,6 +280,7 @@ private enum CLIProcessExecution {
             if !reaped { reap() }
         }
         if cancellation.isCancelled { throw LLMError.cancelled }
+        if failure == .timeout && request.cliCapturesTimeoutOutput { throw CLIProcessTimeout(stdout: stdout, stderr: stderr) }
         if let failure { throw failure }
         let signal = processStatus & 0x7f
         let exitCode = signal == 0 ? (processStatus >> 8) & 0xff : 128 + signal

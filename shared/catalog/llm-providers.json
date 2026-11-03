@@ -418,6 +418,7 @@
         },
         "authErrorMarkers": ["Not logged in", "/login", "Invalid API key", "OAuth token", "authentication_error"],
         "limitMarkers": ["usage limit", "rate limit", "limit reached"],
+        "networkErrorMarkers": ["ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH", "Connection refused", "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed"],
         "overloadMarkers": ["overloaded", "529"],
         "signInHint": "Open Terminal, run claude, and sign in.",
         "installHint": "Install Claude Code from code.claude.com, then run claude once to sign in."
@@ -510,6 +511,7 @@
         },
         "authErrorMarkers": ["401", "Unauthorized", "Not logged in"],
         "limitMarkers": ["usage limit", "rate limit", "429"],
+        "networkErrorMarkers": ["ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH", "Connection refused", "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed"],
         "overloadMarkers": ["overloaded"],
         "modelErrorMarkers": ["model_not_found", "does not exist", "not supported"],
         "signInHint": "Open Terminal and run codex login.",

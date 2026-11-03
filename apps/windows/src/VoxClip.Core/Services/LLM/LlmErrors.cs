@@ -8,7 +8,7 @@ internal static class LlmErrors
     internal static LlmException Create(LlmErrorKind kind, string label, string model = "", LlmFeature feature = LlmFeature.Test,
         int? status = null, string? detail = null, TimeSpan? retryAfter = null, IRedactor? redactor = null)
     {
-        if (kind is LlmErrorKind.PlanLimit or LlmErrorKind.CliMissing or LlmErrorKind.CliTooOld or LlmErrorKind.CliSignedOut or LlmErrorKind.CliFailed)
+        if (kind is LlmErrorKind.PlanLimit or LlmErrorKind.CliMissing or LlmErrorKind.CliTooOld or LlmErrorKind.CliSignedOut or LlmErrorKind.CliFailed or LlmErrorKind.CliNetworkUnreachable)
             label = label.StartsWith("Claude Code", StringComparison.Ordinal) ? "Claude Code" : label.StartsWith("Codex", StringComparison.Ordinal) ? "Codex" : label;
         var safe = new Redactor().Redact((redactor ?? new Redactor()).Redact(detail ?? ""));
         safe = safe[..Math.Min(200, safe.Length)];
@@ -17,7 +17,7 @@ internal static class LlmErrors
             LlmErrorKind.NoConnector or LlmErrorKind.MissingKey => VoxClipErrorCode.KeyMissing,
             LlmErrorKind.Unauthorized => VoxClipErrorCode.KeyRejected,
             LlmErrorKind.RateLimited or LlmErrorKind.PlanLimit or LlmErrorKind.Overloaded => VoxClipErrorCode.RateLimited,
-            LlmErrorKind.Network => VoxClipErrorCode.Offline,
+            LlmErrorKind.Network or LlmErrorKind.CliNetworkUnreachable => VoxClipErrorCode.Offline,
             LlmErrorKind.NoModels => VoxClipErrorCode.ModelMissing,
             LlmErrorKind.CliMissing or LlmErrorKind.CliTooOld => VoxClipErrorCode.CliNotInstalled,
             LlmErrorKind.CliSignedOut => VoxClipErrorCode.CliNotSignedIn,
@@ -49,6 +49,7 @@ internal static class LlmErrors
             LlmErrorKind.CliMissing => $"{label} isn't installed. {safe}",
             LlmErrorKind.CliTooOld => string.IsNullOrWhiteSpace(safe) || safe == "unknown" ? $"Your {label} is too old for VoxClip. Update it, then try again." : $"Your {label} {safe} is too old for VoxClip. Update it, then try again.",
             LlmErrorKind.CliSignedOut => label == "Claude Code" ? "Claude Code isn't signed in. Open Terminal, run claude, and sign in." : "Codex isn't signed in. Open Terminal and run codex login.",
+            LlmErrorKind.CliNetworkUnreachable => $"{label} couldn't reach its server from VoxClip. Check your network or proxy, then try again.",
             LlmErrorKind.CliFailed => $"{label} stopped with an error: {safe}",
             LlmErrorKind.Cancelled => "",
             _ => safe

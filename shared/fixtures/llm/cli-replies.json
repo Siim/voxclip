@@ -4,7 +4,7 @@
   "origin": "voxclip",
   "sources": {
     "shared/prompts/voice-rewrite.json": "f981955d21d7bbd739c90c5da3597997a315fb8bc503b9f1f83f486d85d4f4c0",
-    "shared/catalog/llm-providers.json": "7158efb5c13c4ca5cad2eb48da3835f26f1fbe0b9d537a5387ab6dc53fb755d8"
+    "shared/catalog/llm-providers.json": "8dc8ec1ba055f01612dd7fbf71dea74dfb8ed47f10086ee5e0ae2c65dbb3aeae"
   },
   "cases": [
     {

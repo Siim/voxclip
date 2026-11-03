@@ -147,17 +147,27 @@ public actor CLIConnector: LLMConnector {
             let started = ContinuousClock.now
             var exitCode: Int32 = -1
             do {
-                let result = try await execute(ProcessRequest(
+                var processRequest = ProcessRequest(
                 executable: detected.fingerprint.url, arguments: arguments, workingDirectory: directories.cwd,
                 environment: try await resolvedEnvironment(),
                 stdin: Data(((request.cachedBlock.map { $0 + "\n\n" } ?? "") + request.instruction).utf8),
-                timeout: request.timeout))
+                timeout: request.timeout)
+                processRequest.cliCapturesTimeoutOutput = true
+                let result = try await execute(processRequest)
                 exitCode = result.exitCode
                 let raw: RawCompletion
                 if id == .claudeCode { raw = try await parseClaude(result, requestedModel: model, configuration: configuration) }
                 else { raw = try await parseCodex(result, file: directories.io.appendingPathComponent("last.json"), requestedModel: model, configuration: configuration) }
                 await recordAttempt(request, model: raw.model, status: exitCode, started: started, usage: raw.usage)
                 return raw
+            } catch let timeout as CLIProcessTimeout {
+                await recordAttempt(request, model: model, status: exitCode, started: started)
+                if Task.isCancelled { throw LLMError.cancelled }
+                let output = String(decoding: timeout.stderr + Data("\n".utf8) + timeout.stdout, as: UTF8.self)
+                if networkFailure(output, configuration: configuration) {
+                    throw await classify(output, status: nil, model: model, configuration: configuration)
+                }
+                throw LLMError.timeout
             } catch {
                 await recordAttempt(request, model: model, status: exitCode, started: started)
                 throw error
@@ -346,6 +356,7 @@ public actor CLIConnector: LLMConnector {
             }
             return result
         } catch is CancellationError { throw LLMError.cancelled }
+        catch let timeout as CLIProcessTimeout { throw timeout }
         catch LLMError.cliFailed(let message) { throw LLMError.cliFailed(await safeMessage(message)) }
         catch let error as LLMError { throw error }
         catch { throw LLMError.cliFailed("Unable to run CLI process.") }
@@ -392,6 +403,10 @@ public actor CLIConnector: LLMConnector {
                              configuration: [String: JSONValue]) async throws -> RawCompletion {
         guard let object = CanonicalResponseParser.envelope(result.stdout)?.cliObject,
               object["type"]?.cliString == "result", let isError = object["is_error"]?.cliBool else {
+            let message = String(decoding: result.stderr, as: UTF8.self)
+            if networkFailure(message, configuration: configuration) {
+                throw await classify(message, status: nil, model: requestedModel, configuration: configuration)
+            }
             throw LLMError.cliFailed(await safeMessage(cliFirstLine(result.stderr)))
         }
         if isError || result.exitCode != 0 {
@@ -476,7 +491,20 @@ public actor CLIConnector: LLMConnector {
             let lower = message.lowercased()
             if lower.contains("context") && (lower.contains("length") || lower.contains("window")) { return .contextTooLong }
         }
+        if networkFailure(message, configuration: configuration) {
+            return .cliNetworkUnreachable(detail: await safeMessage(cliFirstLine(Data(message.utf8))))
+        }
         return .cliFailed(redacted)
+    }
+
+    static let defaultNetworkErrorMarkers = [
+        "ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH", "Connection refused",
+        "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed",
+    ]
+
+    private func networkFailure(_ message: String, configuration: [String: JSONValue]) -> Bool {
+        let markers = configuration["cli"]?.cliObject?["networkErrorMarkers"]?.cliStrings ?? Self.defaultNetworkErrorMarkers
+        return markers.contains { message.localizedCaseInsensitiveContains($0) }
     }
 
     private func safeMessage(_ message: String) async -> String {

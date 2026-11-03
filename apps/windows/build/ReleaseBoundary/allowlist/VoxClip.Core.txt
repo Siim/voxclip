@@ -9154,6 +9154,7 @@ member VoxClip.Core.Services.LLM.CliDetectionInfo :: method public set_AuthMetho
 member VoxClip.Core.Services.LLM.CliDetectionInfo :: method public set_Path(string)
 member VoxClip.Core.Services.LLM.CliDetectionInfo :: method public set_UsesApiKey(bool)
 member VoxClip.Core.Services.LLM.CliDetectionInfo :: method public set_Version(string)
+member VoxClip.Core.Services.LLM.CliLlmAdapter :: field internal DefaultNetworkErrorMarkers
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private ClaudeGate
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private CodexGate
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: field private PathGate
@@ -9185,6 +9186,7 @@ member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private Expand(string)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private Failure(VoxClip.Core.Services.LLM.LlmErrorKind,string,VoxClip.Core.Services.LLM.LlmFeature,string)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private FirstLine(string)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private LocateAsync(System.Threading.CancellationToken)
+member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private NetworkFailure(string)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private ParseClaude(VoxClip.Core.Services.Process.ProcessResult,VoxClip.Core.Services.LLM.LlmRequest,string)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private ParseCodexAsync(VoxClip.Core.Services.Process.ProcessResult,string,VoxClip.Core.Services.LLM.LlmRequest,string,System.Threading.CancellationToken)
 member VoxClip.Core.Services.LLM.CliLlmAdapter :: method private ProbeFailure()
@@ -9785,6 +9787,7 @@ member VoxClip.Core.Services.LLM.LlmErrorKind :: field public BadRequest
 member VoxClip.Core.Services.LLM.LlmErrorKind :: field public Cancelled
 member VoxClip.Core.Services.LLM.LlmErrorKind :: field public CliFailed
 member VoxClip.Core.Services.LLM.LlmErrorKind :: field public CliMissing
+member VoxClip.Core.Services.LLM.LlmErrorKind :: field public CliNetworkUnreachable
 member VoxClip.Core.Services.LLM.LlmErrorKind :: field public CliSignedOut
 member VoxClip.Core.Services.LLM.LlmErrorKind :: field public CliTooOld
 member VoxClip.Core.Services.LLM.LlmErrorKind :: field public ContextTooLong
@@ -10304,6 +10307,9 @@ member VoxClip.Core.Services.Models.TranscriptionModel :: method public set_Requ
 member VoxClip.Core.Services.Models.TranscriptionModel :: method public set_Timing(VoxClip.Core.Domain.Transcript.TimingSource)
 member VoxClip.Core.Services.Models.TranscriptionModel :: method public set_TotalBytes(long)
 member VoxClip.Core.Services.Models.TranscriptionModel :: method public set_Verbatim(bool)
+member VoxClip.Core.Services.Process.CliProcessTimeoutException :: method internal get_StandardError()
+member VoxClip.Core.Services.Process.CliProcessTimeoutException :: method internal get_StandardOutput()
+member VoxClip.Core.Services.Process.CliProcessTimeoutException :: method public .ctor(string,string)
 member VoxClip.Core.Services.Process.IAppServerRunner :: method public RunAppServerAsync(VoxClip.Core.Services.Process.ProcessRequest,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Process.IProcessRunner :: method public RunAsync(VoxClip.Core.Services.Process.ProcessRequest,System.IProgress`1<VoxClip.Core.Services.Process.ProcessProgress>,System.Threading.CancellationToken)
 member VoxClip.Core.Services.Process.ProcessProgress :: method private .ctor(VoxClip.Core.Services.Process.ProcessProgress)
@@ -10323,6 +10329,8 @@ member VoxClip.Core.Services.Process.ProcessProgress :: method public op_Inequal
 member VoxClip.Core.Services.Process.ProcessProgress :: method public set_Stage(string)
 member VoxClip.Core.Services.Process.ProcessProgress :: method public set_StandardErrorBytes(long)
 member VoxClip.Core.Services.Process.ProcessProgress :: method public set_StandardOutputBytes(long)
+member VoxClip.Core.Services.Process.ProcessRequest :: method internal get_CaptureTimeoutOutput()
+member VoxClip.Core.Services.Process.ProcessRequest :: method internal set_CaptureTimeoutOutput(bool)
 member VoxClip.Core.Services.Process.ProcessRequest :: method private .ctor(VoxClip.Core.Services.Process.ProcessRequest)
 member VoxClip.Core.Services.Process.ProcessRequest :: method private PrintMembers(System.Text.StringBuilder)
 member VoxClip.Core.Services.Process.ProcessRequest :: method private get_EqualityContract()
@@ -12394,6 +12402,7 @@ type VoxClip.Core.Services.Models.ModelPaths
 type VoxClip.Core.Services.Models.ModelStore
 type VoxClip.Core.Services.Models.ModelsJsonContext
 type VoxClip.Core.Services.Models.TranscriptionModel
+type VoxClip.Core.Services.Process.CliProcessTimeoutException
 type VoxClip.Core.Services.Process.IAppServerRunner
 type VoxClip.Core.Services.Process.IProcessRunner
 type VoxClip.Core.Services.Process.ProcessProgress

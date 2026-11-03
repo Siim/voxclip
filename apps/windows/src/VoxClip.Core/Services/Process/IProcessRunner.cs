@@ -2,7 +2,17 @@ namespace VoxClip.Core.Services.Process;
 
 /// <summary>Argument-array process invocation; AI §6.10. No shell string and no credential/config overrides.</summary>
 public sealed record ProcessRequest(string Executable, IReadOnlyList<string> Arguments, string WorkingDirectory,
-    string? StandardInput, TimeSpan Timeout, IReadOnlyDictionary<string, string?>? Environment = null, int OutputLimitBytes = 16 * 1024 * 1024);
+    string? StandardInput, TimeSpan Timeout, IReadOnlyDictionary<string, string?>? Environment = null, int OutputLimitBytes = 16 * 1024 * 1024)
+{
+    internal bool CaptureTimeoutOutput { get; init; }
+}
+
+// Only CLI generations opt in; other process consumers keep their existing timeout contract.
+internal sealed class CliProcessTimeoutException(string standardOutput, string standardError) : TimeoutException("The process exceeded its time limit.")
+{
+    internal string StandardOutput { get; } = standardOutput;
+    internal string StandardError { get; } = standardError;
+}
 /// <summary>Bounded stdout/stderr result. Never log these bodies; AI §6.10.</summary>
 public sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError, TimeSpan Elapsed, bool OutputTruncated);
 /// <summary>Process progress safe for UI; AI §6.10.</summary>

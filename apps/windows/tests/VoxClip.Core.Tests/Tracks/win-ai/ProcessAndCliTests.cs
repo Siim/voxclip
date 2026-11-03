@@ -10,6 +10,88 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 [Trait("Track", "win-ai")]
 public sealed class ProcessAndCliTests
 {
+    [Theory]
+    [InlineData(ConnectorId.ClaudeCode)]
+    [InlineData(ConnectorId.Codex)]
+    public async Task CliNetworkFailuresHaveActionableClassification(ConnectorId id)
+    {
+        foreach (var marker in new[] { "API Error: Connection refused (ECONNREFUSED)", "ENETUNREACH", "EHOSTUNREACH", "Connection refused", "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed" })
+        {
+            using var runner = new FixtureProcessRunner(id, Catalog(), new());
+            runner.Override = command => command.Arguments.Contains("-p") || command.Arguments.Contains("--output-schema")
+                ? new(1, "", marker.ToLowerInvariant(), TimeSpan.Zero, false) : null;
+            using var http = new HttpClient();
+            var connector = new LlmConnector(id, Catalog(), http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
+            var exception = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(Catalog().TestRequest(id), "default", CancellationToken.None));
+            Assert.Equal("CliNetworkUnreachable", exception.Error.Kind.ToString());
+        }
+    }
+
+    [Theory]
+    [InlineData(ConnectorId.ClaudeCode, false)]
+    [InlineData(ConnectorId.ClaudeCode, true)]
+    [InlineData(ConnectorId.Codex, false)]
+    [InlineData(ConnectorId.Codex, true)]
+    public async Task NetworkEnvelopesAndTimeoutsKeepPrecedenceAndRedactDetails(ConnectorId id, bool timeout)
+    {
+        foreach (var (message, expected) in new[] {
+            ("ECONNREFUSED private-network-secret " + new string('x', 240) + "\nsecond line", LlmErrorKind.CliNetworkUnreachable),
+            ("fetch failed private-network-secret\nsecond line", LlmErrorKind.CliNetworkUnreachable),
+            ("Not logged in ECONNREFUSED", LlmErrorKind.CliSignedOut),
+            ("usage limit ECONNREFUSED", LlmErrorKind.PlanLimit),
+            ("overloaded ECONNREFUSED", LlmErrorKind.Overloaded) })
+        {
+            using var runner = new FixtureProcessRunner(id, Catalog(), new());
+            runner.Override = command =>
+            {
+                if (!command.Arguments.Contains("-p") && !command.Arguments.Contains("--output-schema")) return null;
+                Assert.True(command.CaptureTimeoutOutput);
+                if (timeout) throw new CliProcessTimeoutException("", message);
+                JsonObject envelope = id == ConnectorId.ClaudeCode
+                    ? new() { ["type"] = "result", ["is_error"] = true, ["result"] = message }
+                    : new() { ["type"] = "turn.failed", ["error"] = new JsonObject { ["message"] = message } };
+                return new(1, envelope.ToJsonString(), "", TimeSpan.Zero, false);
+            };
+            using var http = new HttpClient();
+            var connector = new LlmConnector(id, Catalog(), http, new MemoryKeys(null), new Redactor(["private-network-secret"]), processes: runner, binaryOverride: runner.BinaryPath);
+            var exception = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(Catalog().TestRequest(id), "default", CancellationToken.None));
+            Assert.Equal(expected, exception.Error.Kind);
+            if (expected == LlmErrorKind.CliNetworkUnreachable)
+            {
+                var detail = Assert.IsType<string>(exception.Error.Reason);
+                Assert.True(detail.Length <= 200);
+                Assert.Contains("[REDACTED]", detail, StringComparison.Ordinal);
+                Assert.DoesNotContain("private-network-secret", detail, StringComparison.Ordinal);
+                Assert.DoesNotContain("\n", detail, StringComparison.Ordinal);
+                Assert.DoesNotContain("second line", detail, StringComparison.Ordinal);
+                var name = id == ConnectorId.ClaudeCode ? "Claude Code" : "Codex";
+                Assert.Equal($"{name} couldn't reach its server from VoxClip. Check your network or proxy, then try again. Your edits are saved.", exception.Error.UserMessage);
+                Assert.Equal(VoxClipErrorCode.Offline, exception.Error.Code);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(ConnectorId.ClaudeCode)]
+    [InlineData(ConnectorId.Codex)]
+    public async Task NetworkMarkerCatalogAndDefaultsMatchAndTimeoutNeedsEvidence(ConnectorId id)
+    {
+        var catalog = Catalog();
+        var cli = catalog.Provider(id)["cli"]!.AsObject();
+        Assert.Equal(CliLlmAdapter.DefaultNetworkErrorMarkers, cli["networkErrorMarkers"]!.AsArray().Select(marker => marker!.GetValue<string>()));
+        cli.Remove("networkErrorMarkers");
+        using var runner = new FixtureProcessRunner(id, catalog, new());
+        using var http = new HttpClient();
+        var connector = new LlmConnector(id, catalog, http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
+        foreach (var (output, expected) in new[] { ("fetch failed", LlmErrorKind.CliNetworkUnreachable), ("Working…", LlmErrorKind.Timeout) })
+        {
+            runner.Override = command => command.Arguments.Contains("-p") || command.Arguments.Contains("--output-schema")
+                ? throw new CliProcessTimeoutException(output, "") : null;
+            var exception = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(catalog.TestRequest(id), "default", CancellationToken.None));
+            Assert.Equal(expected, exception.Error.Kind);
+        }
+    }
+
     [Fact]
     public async Task CodexOfflineAndFailedRefreshNeverOfferRetiredCuratedModel()
     {

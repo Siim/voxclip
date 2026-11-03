@@ -32,7 +32,7 @@ Codex failure rows pin auth before limit, limit before overload, overload before
 
 Two Codex usage rows supply integral and out-of-range `cache_write_input_tokens` values. Both expect absent cache-write usage and preserve only input, cached input and output counts (§6.9 step 4). Claude's cache-creation usage is unchanged.
 
-Current `cli-replies.json` SHA-256: `3c2ff55f41d61c8c2057b7fda6b1d1b5d479f71771969e5331f34cf3061944c8`.
+Current `cli-replies.json` SHA-256: `3f8dc0e9b4e3005c43bf5a72ba614b299369f41e8896d4f9935685abde107686`.
 
 Each UTF-8 file has stable insertion-order keys, LF line endings and one trailing
 newline. Its envelope is:

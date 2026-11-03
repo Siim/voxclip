@@ -172,7 +172,9 @@ public enum LlmErrorKind
     /// <summary>Other process or parse failure.</summary>
     CliFailed,
     /// <summary>User cancelled.</summary>
-    Cancelled
+    Cancelled,
+    /// <summary>The installed CLI cannot reach its server.</summary>
+    CliNetworkUnreachable
 }
 /// <summary>Detailed AI failure mapped to an architecture §10.2 code; AI §5. Metadata must already be redacted.</summary>
 public sealed record LlmError(LlmErrorKind Kind, VoxClipErrorCode Code, string UserMessage, int? Status = null,

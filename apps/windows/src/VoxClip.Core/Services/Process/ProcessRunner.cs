@@ -54,7 +54,12 @@ public sealed partial class ProcessRunner
             await child.StopAsync().ConfigureAwait(false);
             try { await Task.WhenAll(output, error, input, exit).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false); } catch (Exception exception) when (exception is IOException or OperationCanceledException or TimeoutException) { }
             if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
-            if (deadline.IsCancellationRequested) throw new TimeoutException("The process exceeded its time limit.");
+            if (deadline.IsCancellationRequested)
+            {
+                if (request.CaptureTimeoutOutput)
+                    throw new CliProcessTimeoutException(output.IsCompletedSuccessfully ? output.Result.Text : "", error.IsCompletedSuccessfully ? error.Result.Text : "");
+                throw new TimeoutException("The process exceeded its time limit.");
+            }
             throw;
         }
     }
