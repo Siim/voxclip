@@ -374,6 +374,10 @@ struct RewriteChange: Equatable, Sendable {
     @discardableResult func run(instruction next: String? = nil) async -> Bool {
         guard isOpen else { return false }
         if let next { instruction = next }
+        guard connectorIsCurrent() else {
+            editor.restartRewrite(self)
+            return false
+        }
         guard connector != nil else { await showChooser(); return false }
         guard let work = begin() else { return false }
         return await work.value
@@ -459,7 +463,7 @@ struct RewriteChange: Equatable, Sendable {
             return false
         } catch {
             guard isOpen, revision == expected else { return false }
-            await fail(error is CancellationError ? LLMError.cancelled : error)
+            await fail(error is CancellationError ? LLMError.cancelled : error, expected: expected)
             return false
         }
     }

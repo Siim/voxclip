@@ -231,12 +231,12 @@ extension RewriteSession {
         }
     }
     /// Shows a failed send's error (R1x), announced.
-    func fail(_ error: any Error) async {
+    func fail(_ error: any Error, expected: Int) async {
         let shown = await panelError(error)
         #if DEBUG
         await beforeFailurePresentation()
         #endif
-        guard isOpen else { return }
+        guard isOpen, revision == expected else { return }
         sendFailure = error as? LLMError
         fail(shown)
     }
@@ -309,7 +309,10 @@ extension RewriteSession {
         }
         if let problem { cards.append(.text(problem)) }
         task.show(.error(error), headline: headline, cards: cards, footer: footer)
-        if editor.app.shell.editor === editor { editor.app.shell.choosePanelJob(.rewrite, for: editor) }
+        let shell = editor.app.shell
+        if shell.editor === editor, [.rewrite, .captions].contains(shell.panelJob(for: editor)) {
+            shell.choosePanelJob(.rewrite, for: editor)
+        }
         if case .noKey = error { task.requestFocus() }
         editor.announce(problem ?? headline.text + ".")
     }

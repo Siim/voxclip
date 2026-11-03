@@ -162,9 +162,10 @@ enum ClipBarMetrics {
         for control in [rewrite, tighten, hook, askButton] as [NSControl] where control.isEnabled == readOnly { control.isEnabled = !readOnly }
         if ask.isEnabled == readOnly { ask.isEnabled = !readOnly }
         rewrite.isHidden = !readOnly && (!canRewrite || running)
-        rewrite.isOn = model.rewrite != nil
+        let matchesRewriteScope = model.rewrite.map { $0.rewriteScope == model.rewriteScopeNow } == true
+        rewrite.isOn = matchesRewriteScope
         // The chosen AI asks before each send (C8): "Rewrite…", as Edit › Rewrite's title (design.md §3.1).
-        let failure = model.rewrite?.failureStatus
+        let failure = matchesRewriteScope ? model.rewrite?.failureStatus : nil
         rewrite.symbol = failure != nil ? "exclamationmark.triangle" : "sparkles"
         rewrite.label = failure != nil ? "Rewrite failed" : model.rewriteAsksFirst ? "Rewrite…" : "Rewrite"
         let names = rewriteNames

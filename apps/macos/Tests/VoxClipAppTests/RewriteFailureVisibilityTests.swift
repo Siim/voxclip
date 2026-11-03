@@ -240,6 +240,7 @@ private actor RewriteFailureRunner: ProcessRunner {
         defer { editor.close() }
         let session = try await open(editor, runner: runner)
         let demoBackend = ContextDemoRecordingProbe()
+        defer { demoBackend.releaseRecording() }
         demoBackend.holdRecording = true
         var voiceDiscards = 0
         switch job {

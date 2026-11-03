@@ -5,6 +5,7 @@ User-facing changes, newest first, one line each. The release scripts read the s
 ## 0.1.0 - Unreleased
 
 - Keep successful Rewrite replies when a project save finishes during the request, and explain stale replies inline.
+- Keep Rewrite failures from interrupting recordings or other panel jobs, and retry with the AI selected now.
 - A failed Rewrite now stays open and says why.
 - Keep Eleven v4 voice takes and CLI network recovery consistent across macOS and Windows.
 - Keep Eleven v4 segment bounds compatible with valid normalized alignment, bind own-voice approval to the quote’s voice, prefer TTS defaults, and retain receipts for failed paid takes on both platforms.
