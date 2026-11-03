@@ -93,8 +93,10 @@ public enum VoiceLabSilenceFit {
         // beside it. The bit-exact rule protects source frames; generated audio may be shaped, so that edge of the take
         // gets an equal-power fade of at most TAKE_EDGE_FADE before the seam fade (§8.9.3).
         func sounds(_ frame: Int64) -> Bool { (0..<original.channels).contains { original.sample(frame: frame, channel: $0) != 0 } }
-        let fadeIn = !plan.hardJoinSmoothing && plan.trimStartFrame == 0 && sounds(0)
-        let fadeOut = !plan.hardJoinSmoothing && plan.trimEndFrame == original.frames && sounds(original.frames - 1)
+        // Only a smoothed hard side hands its edge to the micro-pause's 25 ms fade (§8.9.4); a gap seam or a take edge
+        // without a micro-pause keeps this fade even when smoothing is on.
+        let fadeIn = !(plan.hardJoinSmoothing && window.leftSeam.kind == .hard) && plan.trimStartFrame == 0 && sounds(0)
+        let fadeOut = !(plan.hardJoinSmoothing && window.rightSeam.kind == .hard) && plan.trimEndFrame == original.frames && sounds(original.frames - 1)
         let derived = !plan.edits.isEmpty || plan.incoming.padFrames > 0 || plan.outgoing.padFrames > 0 || missingBefore > 0 || missingAfter > 0 ||
             fadeIn || fadeOut
         if !derived {
