@@ -51,13 +51,15 @@ public sealed class Redactor(IEnumerable<string>? secrets = null, string? homeDi
     private const string Segment = @"(?>[A-Za-z0-9_-]{1,8192})";
     private const string Jwt = @"(?<![A-Za-z0-9_-])eyJ" + Segment + @"\." + Segment + @"\." + Segment;
 
-    /// <summary>Architecture §11.2 rules 2 to 6, in their normative order: the output depends on it. Mac Core runs the same
+    /// <summary>Architecture §11.2 rule 1a and rules 2 to 6, in their normative order: the output depends on it. Mac Core runs the same
     /// pattern text, and shared/fixtures/redaction/cases.json lists it, so both platforms redact identically. Whitespace
     /// is spelled out as the Unicode White_Space class, so both engines use the identical set of characters.
     /// Field names, scheme words and query names match ASCII letters in either case and fold no other letter, except
     /// that Basic's s also matches the long s, as main Mac's ICU did.</summary>
     internal static readonly (Regex Pattern, string Template)[] Rules =
     [
+        // Remove URL userinfo before field/key rules can split a proxy authority.
+        (Rule(@"(?<![A-Za-z0-9+.-])([A-Za-z][A-Za-z0-9+.-]*://)[^/\t\n\x0B\f\r\x85\p{Z}@?#]+@"), "$1***@"),
         (Rule("(" + Authorization + ")" + Field), "$1$2$3[REDACTED]"),
         (Rule("(" + Names + ")" + Field), "$1$2$3[REDACTED]"),
         // The Bearer rule follows Bearer anywhere, and an authorization field's Bearer or Basic, across any

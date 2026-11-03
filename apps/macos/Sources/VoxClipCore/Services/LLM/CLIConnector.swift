@@ -147,17 +147,27 @@ public actor CLIConnector: LLMConnector {
             let started = ContinuousClock.now
             var exitCode: Int32 = -1
             do {
-                let result = try await execute(ProcessRequest(
+                var processRequest = ProcessRequest(
                 executable: detected.fingerprint.url, arguments: arguments, workingDirectory: directories.cwd,
                 environment: try await resolvedEnvironment(),
                 stdin: Data(((request.cachedBlock.map { $0 + "\n\n" } ?? "") + request.instruction).utf8),
-                timeout: request.timeout))
+                timeout: request.timeout)
+                processRequest.cliCapturesTimeoutOutput = true
+                let result = try await execute(processRequest)
                 exitCode = result.exitCode
                 let raw: RawCompletion
                 if id == .claudeCode { raw = try await parseClaude(result, requestedModel: model, configuration: configuration) }
                 else { raw = try await parseCodex(result, file: directories.io.appendingPathComponent("last.json"), requestedModel: model, configuration: configuration) }
                 await recordAttempt(request, model: raw.model, status: exitCode, started: started, usage: raw.usage)
                 return raw
+            } catch let timeout as CLIProcessTimeout {
+                await recordAttempt(request, model: model, status: exitCode, started: started)
+                if Task.isCancelled { throw LLMError.cancelled }
+                let output = timeoutClassificationText(timeout)
+                if networkFailure(output, configuration: configuration) {
+                    throw await classify(output, status: nil, model: model, configuration: configuration)
+                }
+                throw LLMError.timeout
             } catch {
                 await recordAttempt(request, model: model, status: exitCode, started: started)
                 throw error
@@ -346,6 +356,7 @@ public actor CLIConnector: LLMConnector {
             }
             return result
         } catch is CancellationError { throw LLMError.cancelled }
+        catch let timeout as CLIProcessTimeout { throw timeout }
         catch LLMError.cliFailed(let message) { throw LLMError.cliFailed(await safeMessage(message)) }
         catch let error as LLMError { throw error }
         catch { throw LLMError.cliFailed("Unable to run CLI process.") }
@@ -392,9 +403,12 @@ public actor CLIConnector: LLMConnector {
                              configuration: [String: JSONValue]) async throws -> RawCompletion {
         guard let object = CanonicalResponseParser.envelope(result.stdout)?.cliObject,
               object["type"]?.cliString == "result", let isError = object["is_error"]?.cliBool else {
-            throw LLMError.cliFailed(await safeMessage(cliFirstLine(result.stderr)))
+            throw await classifyStderr(result.stderr, model: requestedModel, configuration: configuration)
         }
-        if isError || result.exitCode != 0 {
+        if !isError && result.exitCode != 0 {
+            throw await classifyStderr(result.stderr, model: requestedModel, configuration: configuration)
+        }
+        if isError {
             throw await classify(object["result"]?.cliString ?? cliFirstLine(result.stderr),
                                  status: object["api_error_status"]?.cliInt, model: requestedModel, configuration: configuration)
         }
@@ -446,8 +460,10 @@ public actor CLIConnector: LLMConnector {
             }
         }
         guard result.exitCode == 0, let completed, !sawFailure else {
-            throw await classify(failure ?? lastError ?? cliFirstLine(result.stderr), status: nil,
-                                 model: requestedModel, configuration: configuration)
+            if let message = failure ?? lastError {
+                throw await classify(message, status: nil, model: requestedModel, configuration: configuration)
+            }
+            throw await classifyStderr(result.stderr, model: requestedModel, configuration: configuration)
         }
         let fileText = try cliReadOutput(file)
         let text = fileText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? fileText : agentMessage
@@ -456,6 +472,37 @@ public actor CLIConnector: LLMConnector {
             usage: usage.map { LLMUsage(input: $0["input_tokens"]?.cliInt, output: $0["output_tokens"]?.cliInt,
                                         cacheRead: $0["cached_input_tokens"]?.cliInt,
                                         cacheWrite: nil) })
+    }
+
+    // Partial JSONL includes model prose, IDs and usage. Only transport error messages are evidence.
+    private func timeoutClassificationText(_ timeout: CLIProcessTimeout) -> String {
+        var messages = [String(decoding: timeout.stderr, as: UTF8.self)]
+        if id == .codex {
+            for line in cliLines(timeout.stdout) {
+                guard let event = CanonicalResponseParser.envelope(line)?.cliObject else { continue }
+                switch event["type"]?.cliString {
+                case "error":
+                    // Includes Codex's "Reconnecting..." progress message and its reason.
+                    if let message = event["message"]?.cliString { messages.append(message) }
+                case "turn.failed":
+                    if let message = event["error"]?.cliObject?["message"]?.cliString { messages.append(message) }
+                default: break
+                }
+            }
+        }
+        return messages.joined(separator: "\n")
+    }
+
+    // Select before classifying, so later help text cannot change the first diagnostic's category.
+    private func classifyStderr(_ stderr: Data, model: String,
+                                configuration: [String: JSONValue]) async -> LLMError {
+        let first = cliFirstLine(stderr)
+        let error = await classify(first, status: nil, model: model, configuration: configuration)
+        if case .cliFailed = error,
+           let networkLine = cliLines(stderr).map(AIText.trim).first(where: { networkFailure($0, configuration: configuration) }) {
+            return await classify(networkLine, status: nil, model: model, configuration: configuration)
+        }
+        return error
     }
 
     private func classify(_ message: String, status: Int?, model: String,
@@ -476,7 +523,22 @@ public actor CLIConnector: LLMConnector {
             let lower = message.lowercased()
             if lower.contains("context") && (lower.contains("length") || lower.contains("window")) { return .contextTooLong }
         }
+        if networkFailure(message, configuration: configuration) {
+            return .cliNetworkUnreachable(detail: await safeMessage(cliFirstLine(Data(message.utf8))))
+        }
         return .cliFailed(redacted)
+    }
+
+    static let defaultNetworkErrorMarkers = [
+        "ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH", "Connection refused",
+        "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed",
+        "error sending request for url", "dns error", "failed to lookup address information",
+        "No route to host", "Network is unreachable", "os error 61", "os error 65", "tcp connect error",
+    ]
+
+    private func networkFailure(_ message: String, configuration: [String: JSONValue]) -> Bool {
+        let markers = configuration["cli"]?.cliObject?["networkErrorMarkers"]?.cliStrings ?? Self.defaultNetworkErrorMarkers
+        return markers.contains { message.localizedCaseInsensitiveContains($0) }
     }
 
     private func safeMessage(_ message: String) async -> String {

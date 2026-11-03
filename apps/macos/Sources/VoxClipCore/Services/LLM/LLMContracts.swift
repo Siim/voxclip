@@ -385,6 +385,7 @@ public enum LLMError: Error, Sendable, Equatable {
     case unsupportedLanguage(String)
     case notRunning(url: String)
     case cliTooOld(version: String, missing: [String])
+    case cliNetworkUnreachable(detail: String)
     case cliFailed(String)
     case unavailable(reason: String)
 }

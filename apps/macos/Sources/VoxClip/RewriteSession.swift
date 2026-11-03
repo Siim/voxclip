@@ -67,6 +67,8 @@ struct RewriteChange: Equatable, Sendable {
 /// and the passage diff. Both end in `changes` and the task's `ChangeSet`. The session belongs to the tab it opened on.
 @MainActor @Observable final class RewriteSession {
     var sendApproved = false
+    /// Injectable system URL boundary; clicking recovery never launches a CLI or changes permissions.
+    var openSettingsURL: (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
     var sendFailure: LLMError?
     func waitForSend() async { _ = await sending?.value }
     let editor: EditorModel

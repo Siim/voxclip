@@ -233,12 +233,20 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
             attempted = true;
             stopwatch.Restart();
             var result = await processes.RunAsync(new(detection.Executable, detection.Prefix.Concat(args).ToArray(), workspace.Cwd,
-                LlmConnector.UserContent(request), request.Timeout, await EnvironmentAsync(ct).ConfigureAwait(false)), null, ct).ConfigureAwait(false);
+                LlmConnector.UserContent(request), request.Timeout, await EnvironmentAsync(ct).ConfigureAwait(false)) { CaptureTimeoutOutput = true }, null, ct).ConfigureAwait(false);
             outcome = result.ExitCode.ToString(CultureInfo.InvariantCulture);
             if (result.OutputTruncated) throw Failure(LlmErrorKind.CliFailed, model, request.Feature, "CLI output exceeded the 16 MB limit.");
             if ((result.StandardOutput + result.StandardError).Contains("unknown option", StringComparison.OrdinalIgnoreCase)) detected = null;
             completion = id == ConnectorId.ClaudeCode ? ParseClaude(result, request, model) : await ParseCodexAsync(result, outputFile, request, model, ct).ConfigureAwait(false);
             return completion;
+        }
+        catch (CliProcessTimeoutException timeout)
+        {
+            outcome = "timeout";
+            if (ct.IsCancellationRequested) throw Failure(LlmErrorKind.Cancelled, model, request.Feature);
+            var output = TimeoutClassificationText(timeout);
+            if (NetworkFailure(output)) throw Classify(output, model, request.Feature);
+            throw Failure(LlmErrorKind.Timeout, model, request.Feature);
         }
         catch (TimeoutException) { outcome = "timeout"; throw Failure(LlmErrorKind.Timeout, model, request.Feature); }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { outcome = "cancelled"; throw Failure(LlmErrorKind.Cancelled, model, request.Feature); }
@@ -255,10 +263,12 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
         var root = LlmOutput.Envelope(result.StandardOutput) as JsonObject;
         if (root?["type"] is not JsonValue typeValue || !typeValue.TryGetValue<string>(out var type) || type != "result" ||
             root["is_error"] is not JsonValue errorValue || !errorValue.TryGetValue<bool>(out var isError))
-            throw Failure(LlmErrorKind.CliFailed, model, request.Feature, FirstLine(result.StandardError));
+        {
+            throw ClassifyStderr(result.StandardError, model, request.Feature);
+        }
         var message = root["result"] is JsonValue resultValue && resultValue.TryGetValue<string>(out var resultText) ? resultText : FirstLine(result.StandardError);
-        if (isError || result.ExitCode != 0)
-            throw Classify(message, model, request.Feature, Count(root, "api_error_status"));
+        if (!isError && result.ExitCode != 0) throw ClassifyStderr(result.StandardError, model, request.Feature);
+        if (isError) throw Classify(message, model, request.Feature, Count(root, "api_error_status"));
         var answering = (root["modelUsage"] as JsonObject)?.OrderByDescending(pair => Count(pair.Value, "outputTokens") ?? Count(pair.Value, "output_tokens") ?? 0)
             .ThenBy(pair => System.Text.Encoding.UTF8.GetBytes(pair.Key), Utf8KeyComparer.Instance).FirstOrDefault().Key ?? model;
         var usage = root["usage"];
@@ -295,7 +305,11 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
                     break;
             }
         }
-        if (result.ExitCode != 0 || completed is null || sawFailure) throw Classify(failed ?? message ?? FirstLine(result.StandardError), model, request.Feature);
+        if (result.ExitCode != 0 || completed is null || sawFailure)
+        {
+            if ((failed ?? message) is { } diagnostic) throw Classify(diagnostic, model, request.Feature);
+            throw ClassifyStderr(result.StandardError, model, request.Feature);
+        }
         if (File.Exists(outputFile) && new FileInfo(outputFile).Length > 16 * 1024 * 1024) throw Failure(LlmErrorKind.CliFailed, model, request.Feature, "CLI output exceeded the 16 MB limit.");
         var text = File.Exists(outputFile) ? await File.ReadAllTextAsync(outputFile, ct).ConfigureAwait(false) : null;
         if (string.IsNullOrWhiteSpace(text)) text = lastAgent;
@@ -374,6 +388,36 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
     private static string? Text(JsonNode? node) => node is JsonValue scalar && scalar.TryGetValue<string>(out var text) ? text : null;
     private static long? Count(JsonNode? node, string key) => node is JsonObject objectValue ? LlmOutput.CliInteger(objectValue[key]) : null;
     private static string FirstLine(string value) => value.Split('\n').Select(EditingAlgorithms.JsTrim).FirstOrDefault(line => line.Length != 0) ?? "The CLI exited without a result.";
+    // JSONL model prose, IDs and usage are never timeout-classification evidence.
+    private string TimeoutClassificationText(CliProcessTimeoutException timeout)
+    {
+        var messages = new List<string> { timeout.StandardError };
+        if (id == ConnectorId.Codex)
+        {
+            foreach (var line in timeout.StandardOutput.Split('\n'))
+            {
+                var entry = LlmOutput.Envelope(line);
+                var message = Text(entry?["type"]) switch
+                {
+                    "error" => Text(entry?["message"]), // Includes "Reconnecting..." and its reason.
+                    "turn.failed" => Text((entry?["error"] as JsonObject)?["message"]),
+                    _ => null
+                };
+                if (message is not null) messages.Add(message);
+            }
+        }
+        return string.Join("\n", messages);
+    }
+
+    private LlmException ClassifyStderr(string stderr, string model, LlmFeature feature)
+    {
+        var first = FirstLine(stderr);
+        var error = Classify(first, model, feature);
+        if (error.Error.Kind == LlmErrorKind.CliFailed && stderr.Split('\n').Select(EditingAlgorithms.JsTrim).FirstOrDefault(NetworkFailure) is { } networkLine)
+            return Classify(networkLine, model, feature);
+        return error;
+    }
+
     private LlmException Classify(string message, string model, LlmFeature feature, long? status = null)
     {
         bool Matches(string list) => (settings[list] as JsonArray ?? []).Any(marker => message.Contains(marker!.GetValue<string>(), StringComparison.OrdinalIgnoreCase));
@@ -384,14 +428,23 @@ internal sealed class CliLlmAdapter(ConnectorId id, LlmCatalog catalog, IProcess
         if (id == ConnectorId.ClaudeCode)
         {
             var claudeKind = Matches("overloadMarkers") || status == 529 ? LlmErrorKind.Overloaded :
-                message.Contains("prompt is too long", StringComparison.OrdinalIgnoreCase) ? LlmErrorKind.ContextTooLong : LlmErrorKind.CliFailed;
-            return Failure(claudeKind, model, feature, message);
+                message.Contains("prompt is too long", StringComparison.OrdinalIgnoreCase) ? LlmErrorKind.ContextTooLong :
+                NetworkFailure(message) ? LlmErrorKind.CliNetworkUnreachable : LlmErrorKind.CliFailed;
+            return Failure(claudeKind, model, feature, claudeKind == LlmErrorKind.CliNetworkUnreachable ? FirstLine(message) : message);
         }
         var kind = Matches("overloadMarkers") ? LlmErrorKind.Overloaded :
             Matches("modelErrorMarkers") ? LlmErrorKind.ModelNotFound :
-            message.Contains("context", StringComparison.OrdinalIgnoreCase) && (message.Contains("length", StringComparison.OrdinalIgnoreCase) || message.Contains("window", StringComparison.OrdinalIgnoreCase)) ? LlmErrorKind.ContextTooLong : LlmErrorKind.CliFailed;
-        return Failure(kind, model, feature, message);
+            message.Contains("context", StringComparison.OrdinalIgnoreCase) && (message.Contains("length", StringComparison.OrdinalIgnoreCase) || message.Contains("window", StringComparison.OrdinalIgnoreCase)) ? LlmErrorKind.ContextTooLong :
+            NetworkFailure(message) ? LlmErrorKind.CliNetworkUnreachable : LlmErrorKind.CliFailed;
+        return Failure(kind, model, feature, kind == LlmErrorKind.CliNetworkUnreachable ? FirstLine(message) : message);
     }
+    internal static readonly string[] DefaultNetworkErrorMarkers =
+        ["ECONNREFUSED", "ENETUNREACH", "EHOSTUNREACH", "Connection refused", "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed",
+         "error sending request for url", "dns error", "failed to lookup address information",
+         "No route to host", "Network is unreachable", "os error 61", "os error 65", "tcp connect error"];
+    private bool NetworkFailure(string message) =>
+        (settings["networkErrorMarkers"] is JsonArray configured ? Strings(configured) : DefaultNetworkErrorMarkers)
+            .Any(marker => message.Contains(marker, StringComparison.OrdinalIgnoreCase));
     private LlmException Failure(LlmErrorKind kind, string model, LlmFeature feature, string? detail = null) => LlmErrors.Create(kind, Label, model, feature, detail: detail, redactor: redactor);
 }
 

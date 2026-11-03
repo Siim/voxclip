@@ -1,6 +1,8 @@
 import Foundation
 
 extension LLMError {
+    public static let cliNetworkRecovery = "If it uses a server on your network, allow VoxClip in System Settings › Privacy & Security › Local Network, then try again."
+
     var caseName: String {
         switch self {
         case .noConnector: "noConnector"
@@ -26,6 +28,7 @@ extension LLMError {
         case .cliMissing: "cliMissing"
         case .cliTooOld: "cliTooOld"
         case .cliSignedOut: "cliSignedOut"
+        case .cliNetworkUnreachable: "cliNetworkUnreachable"
         case .cliFailed: "cliFailed"
         case .cancelled: "cancelled"
         }
@@ -36,7 +39,7 @@ extension LLMError {
         case .noConnector, .missingKey: .keyMissing
         case .unauthorized: .keyRejected
         case .rateLimited, .planLimit, .overloaded: .rateLimited
-        case .network: .offline
+        case .network, .cliNetworkUnreachable: .offline
         case .noModels: .modelMissing
         case .cliMissing, .cliTooOld: .cliNotInstalled
         case .cliSignedOut: .cliNotSignedIn
@@ -80,6 +83,8 @@ extension LLMError {
             let suffix = version.isEmpty || version == "unknown" ? "" : " \(version)"
             message = "Your \(cli)\(suffix) is too old for VoxClip. Update it, then try again."
         case .cliSignedOut: message = "\(cli) isn't signed in. \(signInHint.isEmpty ? "Open Terminal and sign in through the CLI itself." : signInHint)"
+        case .cliNetworkUnreachable:
+            message = "\(cli) couldn't reach its server from VoxClip. " + Self.cliNetworkRecovery
         case .cliFailed(let detail): message = "\(cli) stopped with an error: " + AIText.prefix(redactor.redact(detail), utf16: 200)
         case .cancelled: return nil
         }

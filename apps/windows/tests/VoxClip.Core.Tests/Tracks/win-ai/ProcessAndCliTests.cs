@@ -10,6 +10,156 @@ namespace VoxClip.Core.Tests.Tracks.WinAi;
 [Trait("Track", "win-ai")]
 public sealed class ProcessAndCliTests
 {
+    [Theory]
+    [InlineData(ConnectorId.ClaudeCode)]
+    [InlineData(ConnectorId.Codex)]
+    public async Task CliNetworkFailuresHaveActionableClassification(ConnectorId id)
+    {
+        foreach (var marker in new[] { "API Error: Connection refused (ECONNREFUSED)", "ENETUNREACH", "EHOSTUNREACH", "Connection refused", "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed", "error sending request for url", "dns error", "failed to lookup address information", "No route to host", "Network is unreachable", "os error 61", "os error 65", "tcp connect error" })
+        {
+            using var runner = new FixtureProcessRunner(id, Catalog(), new());
+            runner.Override = command => command.Arguments.Contains("-p") || command.Arguments.Contains("--output-schema")
+                ? new(1, "", (id == ConnectorId.Codex ? $"request to https://proxy.invalid failed: {marker}" : marker).ToLowerInvariant(), TimeSpan.Zero, false) : null;
+            using var http = new HttpClient();
+            var connector = new LlmConnector(id, Catalog(), http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
+            var exception = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(Catalog().TestRequest(id), "default", CancellationToken.None));
+            Assert.Equal("CliNetworkUnreachable", exception.Error.Kind.ToString());
+        }
+    }
+
+    [Theory]
+    [InlineData(ConnectorId.ClaudeCode, false)]
+    [InlineData(ConnectorId.ClaudeCode, true)]
+    [InlineData(ConnectorId.Codex, false)]
+    [InlineData(ConnectorId.Codex, true)]
+    public async Task NetworkEnvelopesAndTimeoutsKeepPrecedenceAndRedactDetails(ConnectorId id, bool timeout)
+    {
+        foreach (var (message, expected) in new[] {
+            ("ECONNREFUSED private-network-secret " + new string('x', 240) + "\nsecond line", LlmErrorKind.CliNetworkUnreachable),
+            ("fetch failed private-network-secret\nsecond line", LlmErrorKind.CliNetworkUnreachable),
+            ("Not logged in ECONNREFUSED", LlmErrorKind.CliSignedOut),
+            ("usage limit ECONNREFUSED", LlmErrorKind.PlanLimit),
+            ("overloaded ECONNREFUSED", LlmErrorKind.Overloaded) })
+        {
+            using var runner = new FixtureProcessRunner(id, Catalog(), new());
+            runner.Override = command =>
+            {
+                if (!command.Arguments.Contains("-p") && !command.Arguments.Contains("--output-schema")) return null;
+                Assert.True(command.CaptureTimeoutOutput);
+                if (timeout) throw new CliProcessTimeoutException("", message);
+                JsonObject envelope = id == ConnectorId.ClaudeCode
+                    ? new() { ["type"] = "result", ["is_error"] = true, ["result"] = message }
+                    : new() { ["type"] = "turn.failed", ["error"] = new JsonObject { ["message"] = message } };
+                return new(1, envelope.ToJsonString(), "", TimeSpan.Zero, false);
+            };
+            using var http = new HttpClient();
+            var connector = new LlmConnector(id, Catalog(), http, new MemoryKeys(null), new Redactor(["private-network-secret"]), processes: runner, binaryOverride: runner.BinaryPath);
+            var exception = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(Catalog().TestRequest(id), "default", CancellationToken.None));
+            Assert.Equal(expected, exception.Error.Kind);
+            if (expected == LlmErrorKind.CliNetworkUnreachable)
+            {
+                var detail = Assert.IsType<string>(exception.Error.Reason);
+                Assert.True(detail.Length <= 200);
+                Assert.Contains("[REDACTED]", detail, StringComparison.Ordinal);
+                Assert.DoesNotContain("private-network-secret", detail, StringComparison.Ordinal);
+                Assert.DoesNotContain("\n", detail, StringComparison.Ordinal);
+                Assert.DoesNotContain("second line", detail, StringComparison.Ordinal);
+                var name = id == ConnectorId.ClaudeCode ? "Claude Code" : "Codex";
+                Assert.Equal($"{name} couldn't reach its server from VoxClip. Check your network or proxy, then try again. Your edits are saved.", exception.Error.UserMessage);
+                Assert.Equal(VoxClipErrorCode.Offline, exception.Error.Code);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(ConnectorId.ClaudeCode)]
+    [InlineData(ConnectorId.Codex)]
+    public async Task NetworkMarkerCatalogAndDefaultsMatchAndTimeoutNeedsEvidence(ConnectorId id)
+    {
+        var catalog = Catalog();
+        var cli = catalog.Provider(id)["cli"]!.AsObject();
+        Assert.Equal(CliLlmAdapter.DefaultNetworkErrorMarkers, cli["networkErrorMarkers"]!.AsArray().Select(marker => marker!.GetValue<string>()));
+        cli.Remove("networkErrorMarkers");
+        using var runner = new FixtureProcessRunner(id, catalog, new());
+        using var http = new HttpClient();
+        var connector = new LlmConnector(id, catalog, http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
+        foreach (var (output, expected) in new[] { ("fetch failed", LlmErrorKind.Timeout), ("Working…", LlmErrorKind.Timeout), ("{\"type\":\"error\",\"message\":\"Reconnecting... (tcp connect error: Connection refused)\"}", id == ConnectorId.Codex ? LlmErrorKind.CliNetworkUnreachable : LlmErrorKind.Timeout) })
+        {
+            runner.Override = command => command.Arguments.Contains("-p") || command.Arguments.Contains("--output-schema")
+                ? throw new CliProcessTimeoutException(output, "") : null;
+            var exception = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(catalog.TestRequest(id), "default", CancellationToken.None));
+            Assert.Equal(expected, exception.Error.Kind);
+        }
+    }
+
+    [Theory]
+    [InlineData(ConnectorId.ClaudeCode)]
+    [InlineData(ConnectorId.Codex)]
+    public async Task PartialStdoutTimeoutUsesOnlyTransportMessages(ConnectorId id)
+    {
+        const string reconnect = "Reconnecting... 1/5 (error sending request for url (http://proxy.invalid): Connection refused)";
+        foreach (var (output, expected, detail) in new[] {
+            ("fetch failed", LlmErrorKind.Timeout, (string?)null),
+            ("""{"type":"thread.started","thread_id":"00000429-0401-0000-0000-000000000000"}""" + "\n" +
+             """{"type":"item.completed","item":{"id":"429","type":"agent_message","text":"fetch failed"}}""" + "\n" +
+             """{"type":"turn.completed","usage":{"input_tokens":4291,"output_tokens":401}}""", LlmErrorKind.Timeout, null),
+            (new JsonObject { ["type"] = "error", ["message"] = reconnect }.ToJsonString(),
+             id == ConnectorId.Codex ? LlmErrorKind.CliNetworkUnreachable : LlmErrorKind.Timeout, id == ConnectorId.Codex ? reconnect : null),
+            ("""{"type":"turn.failed","error":{"message":"tcp connect error: Connection refused"},"id":"429"}""",
+             id == ConnectorId.Codex ? LlmErrorKind.CliNetworkUnreachable : LlmErrorKind.Timeout, id == ConnectorId.Codex ? "tcp connect error: Connection refused" : null),
+            ("""{"type":"result","is_error":false,"result":"fetch failed 401 429"}""", LlmErrorKind.Timeout, null) })
+        {
+            using var runner = new FixtureProcessRunner(id, Catalog(), new());
+            runner.Override = command => command.Arguments.Contains("-p") || command.Arguments.Contains("--output-schema")
+                ? throw new CliProcessTimeoutException(output, "") : null;
+            using var http = new HttpClient();
+            var connector = new LlmConnector(id, Catalog(), http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
+            var exception = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(Catalog().TestRequest(id), "default", CancellationToken.None));
+            Assert.Equal(expected, exception.Error.Kind);
+            if (detail is not null) Assert.Equal(detail, exception.Error.Reason);
+        }
+    }
+
+    [Theory]
+    [InlineData(ConnectorId.ClaudeCode)]
+    [InlineData(ConnectorId.Codex)]
+    public async Task StderrClassificationUsesOnlySelectedLine(ConnectorId id)
+    {
+        foreach (var (stderr, expected, detail) in new[] {
+            ("CLI usage information\nHelp: use /login for 529 troubleshooting\nECONNREFUSED", LlmErrorKind.CliNetworkUnreachable, "ECONNREFUSED"),
+            ("Deprecation warning\nECONNREFUSED", LlmErrorKind.CliNetworkUnreachable, "ECONNREFUSED"),
+            ("Not logged in\nECONNREFUSED", LlmErrorKind.CliSignedOut, "Not logged in"),
+            ("overloaded\nECONNREFUSED", LlmErrorKind.Overloaded, "overloaded"),
+            ("A harmless warning\nNot logged in", LlmErrorKind.CliFailed, "A harmless warning"),
+            ("tcp connect error: http://proxy-user:proxy-pass@proxy.invalid:8080", LlmErrorKind.CliNetworkUnreachable, "tcp connect error: http://***@proxy.invalid:8080") })
+        {
+            using var runner = new FixtureProcessRunner(id, Catalog(), new());
+            runner.Override = command => command.Arguments.Contains("-p") || command.Arguments.Contains("--output-schema")
+                ? new(1, "malformed envelope", stderr, TimeSpan.Zero, false) : null;
+            using var http = new HttpClient();
+            var connector = new LlmConnector(id, Catalog(), http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
+            var exception = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(Catalog().TestRequest(id), "default", CancellationToken.None));
+            Assert.Equal(expected, exception.Error.Kind);
+            Assert.Equal(detail, exception.Error.Reason);
+        }
+    }
+
+    [Fact]
+    public async Task SuccessfulClaudeTextNeverClassifiesNonzeroExit()
+    {
+        foreach (var (stderr, expected) in new[] { ("ECONNREFUSED", LlmErrorKind.CliNetworkUnreachable), ("wrapper exited", LlmErrorKind.CliFailed), ("Not logged in", LlmErrorKind.CliSignedOut) })
+        {
+            using var runner = new FixtureProcessRunner(ConnectorId.ClaudeCode, Catalog(), new());
+            runner.Override = command => command.Arguments.Contains("-p")
+                ? new(1, """{"type":"result","is_error":false,"result":"Not logged in, 429, fetch failed","api_error_status":529}""", stderr, TimeSpan.Zero, false) : null;
+            using var http = new HttpClient();
+            var connector = new LlmConnector(ConnectorId.ClaudeCode, Catalog(), http, new MemoryKeys(null), new Redactor(), processes: runner, binaryOverride: runner.BinaryPath);
+            var exception = await Assert.ThrowsAsync<LlmException>(() => connector.SendAsync(Catalog().TestRequest(ConnectorId.ClaudeCode), "default", CancellationToken.None));
+            Assert.Equal(expected, exception.Error.Kind);
+            Assert.Equal(stderr, exception.Error.Reason);
+        }
+    }
+
     [Fact]
     public async Task CodexOfflineAndFailedRefreshNeverOfferRetiredCuratedModel()
     {

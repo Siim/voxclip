@@ -15,6 +15,15 @@ struct OracleSecret: Sendable {
 /// suite runs main Mac exactly. Windows Core runs the same corpus, oracles and allowlist in .NET (RedactionOracleTests.cs).
 @Suite("Redaction oracle corpus", .offlineFixtures)
 struct RedactionOracleTests {
+    @Test func proxyURLCredentialsAreRedacted() {
+        let redactor = Redactor()
+        #expect(redactor.redact("tcp connect error: https://proxy-user:proxy-pass@proxy.invalid:8443/path")
+            == "tcp connect error: https://***@proxy.invalid:8443/path")
+        #expect(redactor.redact("socks5://proxy-user@proxy.invalid:1080") == "socks5://***@proxy.invalid:1080")
+        #expect(redactor.redact("https://proxy.invalid/?email=user@example.invalid") == "https://proxy.invalid/?email=user@example.invalid")
+        #expect(redactor.redact("https://proxy.invalid#user@example.invalid") == "https://proxy.invalid#user@example.invalid")
+    }
+
     static let fields = ["authorization", "x-api-key", "xi-api-key", "x-goog-api-key", "api-key", "api_key", "apikey", "access-token",
                          "access_token", "refresh-token", "refresh_token", "client-secret", "client_secret", "password", "secret", "token"]
     static let schemes = ["", "Bearer ", "Basic ", "Key ", "Token ", "Bearer%20"]

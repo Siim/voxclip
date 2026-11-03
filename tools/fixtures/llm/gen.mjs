@@ -446,8 +446,8 @@ for (const [id, stdout] of [
   ['wrong-type-field', '{"type":false,"is_error":false}'],
   ['wrong-is-error-field', '{"type":"result","is_error":"false"}']
 ]) add('cli-replies', id, 'cli-reply', { connector: 'claude-code', model: 'sonnet', schema: voiceLabPrompts.voiceRewrite.schema,
-  stdout, stderr: 'Invalid API key' + String.fromCharCode(10) + 'ignored second line' }, { error: 'cliFailed', message: 'Invalid API key' },
-  'doc/spec/ai.md §4.5; §6.8', 'A malformed envelope is cliFailed, not a classified provider failure.')
+  stdout, stderr: 'Invalid API key' + String.fromCharCode(10) + 'ignored second line' }, { error: 'cliSignedOut' },
+  'doc/spec/ai.md §4.5; §6.8', 'A malformed envelope classifies only its selected stderr diagnostic.')
 const codexExec = JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: fineReply } })
 const codexComplete = JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 12, output_tokens: 9 } })
 const codexModels = JSON.stringify({ id: 2, result: { data: [{ id: 'listed', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }] }] } })
@@ -577,12 +577,12 @@ for (const [suffix, stderr, message, classified = 'cliFailed'] of [
   ['carriage-return', 'Request failed.\rDetails.', 'Request failed.\rDetails.']
 ]) {
   for (const [prefix, connector, stdout, error] of [
-    ['claude-malformed', 'claude-code', 'not an envelope', 'cliFailed'],
+    ['claude-malformed', 'claude-code', 'not an envelope', classified],
     ['claude-error', 'claude-code', '{"type":"result","is_error":true}', classified],
     ['codex-error', 'codex', '{"type":"turn.failed"}', classified]
   ]) add('cli-replies', prefix + '-stderr-' + suffix, 'cli-reply', { connector, model: connector === 'codex' ? 'default' : 'sonnet',
     schema: voiceLabPrompts.voiceRewrite.schema, stdout, stderr }, { error, ...(error === 'cliFailed' ? { message } : {}) },
-    'doc/spec/ai.md §6.8; §6.9; §6.10', 'LF-only splitting, jsTrim and the first non-empty line precede marker classification; malformed Claude envelopes never classify.')
+    'doc/spec/ai.md §6.8; §6.9; §6.10', 'LF-only splitting and jsTrim select the diagnostic before marker classification; malformed Claude envelopes use the same selected-line rule.')
 }
 
 const bestRequest = canonicalRequest({ feature: 'clipFinder', words: f1Words, lines: formattedF1.lines, choice: 'best' }, prompts)

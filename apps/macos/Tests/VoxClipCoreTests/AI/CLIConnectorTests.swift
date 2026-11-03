@@ -4,6 +4,144 @@ import Testing
 
 @Suite("CLI connector safety and recorded outputs", .offlineFixtures)
 struct CLIConnectorTests {
+    @Test(arguments: [ConnectorID.claudeCode, .codex], [
+        "API Error: Connection refused (ECONNREFUSED)", "ENETUNREACH", "EHOSTUNREACH",
+        "Connection refused", "connect ETIMEDOUT", "getaddrinfo ENOTFOUND", "fetch failed",
+        "error sending request for url", "dns error", "failed to lookup address information",
+        "No route to host", "Network is unreachable", "os error 61", "os error 65", "tcp connect error",
+    ])
+    func cliNetworkFailuresHaveActionableClassification(_ id: ConnectorID, _ marker: String) async throws {
+        let catalog = try cliTestCatalog()
+        let process = CLIFakeRunner(id: id, catalog: catalog) { _ in
+            // CLIs may exit with only stderr, before any structured result.
+            ProcessResult(exitCode: 1, stdout: Data(), stderr: Data((id == .codex ? "request to https://proxy.invalid failed: \(marker)" : marker).lowercased().utf8))
+        }
+        let connector = cliTestConnector(id, runner: process, catalog: catalog)
+        do {
+            _ = try await connector.send(cliTestRequest(), model: "default")
+            Issue.record("Expected a CLI network failure")
+        } catch let error as LLMError {
+            #expect(error.caseName == "cliNetworkUnreachable")
+            #expect(error.code == .offline)
+        }
+    }
+
+    @Test(arguments: [ConnectorID.claudeCode, .codex], [false, true])
+    func networkEnvelopesAndTimeoutsKeepPrecedenceAndRedactDetails(_ id: ConnectorID, _ timeout: Bool) async throws {
+        let catalog = try cliTestCatalog()
+        let rows: [(String, String)] = [
+            ("ECONNREFUSED private-network-secret " + String(repeating: "x", count: 240) + "\nsecond line", "cliNetworkUnreachable"),
+            ("fetch failed private-network-secret\nsecond line", "cliNetworkUnreachable"),
+            ("Not logged in ECONNREFUSED", "cliSignedOut"),
+            ("usage limit ECONNREFUSED", "planLimit"),
+            ("overloaded ECONNREFUSED", "overloaded"),
+        ]
+        for (message, expected) in rows {
+            let process = CLIFakeRunner(id: id, catalog: catalog) { request in
+                #expect(request.cliCapturesTimeoutOutput)
+                if timeout { throw CLIProcessTimeout(stdout: Data(), stderr: Data(message.utf8)) }
+                let value: JSONValue = id == .claudeCode
+                    ? .object(["type": .string("result"), "is_error": .bool(true), "result": .string(message)])
+                    : .object(["type": .string("turn.failed"), "error": .object(["message": .string(message)])])
+                return ProcessResult(exitCode: 1, stdout: try JSONEncoder().encode(value), stderr: Data())
+            }
+            let log = CLITestLog()
+            await log.register(secret: "private-network-secret")
+            let connector = CLIConnector(id: id, runner: process, catalog: catalog, log: log,
+                executable: URL(fileURLWithPath: "/bin/sh"), environment: [:], loginShellPATH: "/test")
+            do {
+                _ = try await connector.send(cliTestRequest(), model: "default")
+                Issue.record("Expected failure")
+            } catch let error as LLMError {
+                #expect(error.caseName == expected)
+                if case .cliNetworkUnreachable(let detail) = error {
+                    #expect(detail.count <= 200 && !detail.contains("\n"))
+                    #expect(detail.contains("[REDACTED]") && !detail.contains("private-network-secret"))
+                    #expect(!detail.contains("second line"))
+                }
+            }
+            #expect(await log.entries.allSatisfy { !$0.message.contains("private-network-secret") })
+        }
+    }
+
+    @Test(arguments: [ConnectorID.claudeCode, .codex])
+    func partialStdoutTimeoutUsesOnlyTransportMessages(_ id: ConnectorID) async throws {
+        let catalog = try cliTestCatalog()
+        let reconnect = "Reconnecting... 1/5 (error sending request for url (http://proxy.invalid): Connection refused)"
+        let cases: [(String, LLMError)] = [
+            ("fetch failed", .timeout),
+            (#"{"type":"thread.started","thread_id":"00000429-0401-0000-0000-000000000000"}"# + "\n" +
+             #"{"type":"item.completed","item":{"id":"429","type":"agent_message","text":"fetch failed"}}"# + "\n" +
+             #"{"type":"turn.completed","usage":{"input_tokens":4291,"output_tokens":401}}"#, .timeout),
+            (String(decoding: try JSONEncoder().encode(JSONValue.object(["type": .string("error"), "message": .string(reconnect)])), as: UTF8.self),
+             id == .codex ? .cliNetworkUnreachable(detail: reconnect) : .timeout),
+            (#"{"type":"turn.failed","error":{"message":"tcp connect error: Connection refused"},"id":"429"}"#,
+             id == .codex ? .cliNetworkUnreachable(detail: "tcp connect error: Connection refused") : .timeout),
+            (#"{"type":"result","is_error":false,"result":"fetch failed 401 429"}"#, .timeout),
+        ]
+        for (output, expected) in cases {
+            let process = CLIFakeRunner(id: id, catalog: catalog) { _ in
+                throw CLIProcessTimeout(stdout: Data(output.utf8), stderr: Data())
+            }
+            let connector = cliTestConnector(id, runner: process, catalog: catalog)
+            await #expect(throws: expected) { try await connector.send(cliTestRequest(), model: "default") }
+        }
+    }
+
+    @Test(arguments: [ConnectorID.claudeCode, .codex])
+    func stderrClassificationUsesOnlySelectedLine(_ id: ConnectorID) async throws {
+        let catalog = try cliTestCatalog()
+        let rows: [(String, LLMError)] = [
+            ("CLI usage information\nHelp: use /login for 529 troubleshooting\nECONNREFUSED", .cliNetworkUnreachable(detail: "ECONNREFUSED")),
+            ("Deprecation warning\nECONNREFUSED", .cliNetworkUnreachable(detail: "ECONNREFUSED")),
+            ("Not logged in\nECONNREFUSED", .cliSignedOut),
+            ("overloaded\nECONNREFUSED", .overloaded),
+            ("A harmless warning\nNot logged in", .cliFailed("A harmless warning")),
+            ("tcp connect error: http://proxy-user:proxy-pass@proxy.invalid:8080", .cliNetworkUnreachable(detail: "tcp connect error: http://***@proxy.invalid:8080")),
+        ]
+        for (stderr, expected) in rows {
+            let process = CLIFakeRunner(id: id, catalog: catalog) { _ in
+                ProcessResult(exitCode: 1, stdout: Data("malformed envelope".utf8), stderr: Data(stderr.utf8))
+            }
+            let connector = cliTestConnector(id, runner: process, catalog: catalog)
+            await #expect(throws: expected) { try await connector.send(cliTestRequest(), model: "default") }
+        }
+    }
+
+    @Test func successfulClaudeTextNeverClassifiesNonzeroExit() async throws {
+        let catalog = try cliTestCatalog()
+        for (stderr, expected) in [("ECONNREFUSED", LLMError.cliNetworkUnreachable(detail: "ECONNREFUSED")),
+                                   ("wrapper exited", .cliFailed("wrapper exited")), ("Not logged in", .cliSignedOut)] {
+            let process = CLIFakeRunner(id: .claudeCode, catalog: catalog) { _ in
+                ProcessResult(exitCode: 1, stdout: Data(#"{"type":"result","is_error":false,"result":"Not logged in, 429, fetch failed","api_error_status":529}"#.utf8), stderr: Data(stderr.utf8))
+            }
+            let connector = cliTestConnector(.claudeCode, runner: process, catalog: catalog)
+            await #expect(throws: expected) { try await connector.send(cliTestRequest(), model: "default") }
+        }
+    }
+
+    @Test func networkMarkerCatalogAndDefaultsMatchForBothCLIs() async throws {
+        var document = try #require(cliTestCatalog().document.aiObject)
+        var providers = try #require(document["connectors"]?.aiArray)
+        for index in providers.indices {
+            guard var fields = providers[index].aiObject, var cli = fields["cli"]?.aiObject,
+                  let id = ConnectorID(rawValue: fields["id"]?.aiString ?? ""), id == .claudeCode || id == .codex else { continue }
+            #expect(cli["networkErrorMarkers"]?.aiArray.compactMap(\.aiString) == CLIConnector.defaultNetworkErrorMarkers)
+            cli.removeValue(forKey: "networkErrorMarkers")
+            fields["cli"] = .object(cli)
+            providers[index] = .object(fields)
+            document["connectors"] = .array(providers)
+            let catalog = LLMCatalog(document: .object(document))
+            let process = CLIFakeRunner(id: id, catalog: catalog) { _ in
+                ProcessResult(exitCode: 1, stdout: Data(), stderr: Data("fetch failed".utf8))
+            }
+            let connector = cliTestConnector(id, runner: process, catalog: catalog)
+            await #expect(throws: LLMError.cliNetworkUnreachable(detail: "fetch failed")) {
+                try await connector.send(cliTestRequest(), model: "default")
+            }
+        }
+    }
+
     @Test(arguments: ["Logged in using an API key", "Logged in using ChatGPT", "Logged in with an unknown method"])
     func detectedCodexBillingMethodNeverDefaultsToPlan(_ text: String) async throws {
         let catalog = try cliTestCatalog()
@@ -551,12 +689,12 @@ struct CLIConnectorTests {
         }
     }
 
-    @Test func malformedClaudeStdoutUsesOnlyFirstStderrLine() async throws {
+    @Test func malformedClaudeStdoutClassifiesOnlySelectedStderrLine() async throws {
         let catalog = try cliTestCatalog()
         let runner = CLIFakeRunner(id: .claudeCode, catalog: catalog, generation: { _ in
             ProcessResult(exitCode: 1, stdout: Data("not-json".utf8), stderr: Data("Not logged in\nignored".utf8))
         })
-        await #expect(throws: LLMError.cliFailed("Not logged in")) {
+        await #expect(throws: LLMError.cliSignedOut) {
             try await cliTestConnector(.claudeCode, runner: runner, catalog: catalog).send(cliTestRequest(), model: "default")
         }
     }
@@ -888,6 +1026,8 @@ struct CLIConnectorTests {
         #expect(LLMError.network.userMessage(label: label, includeEditsSaved: false) == "Couldn't reach \(label). Check your internet connection.")
         #expect(LLMError.timeout.userMessage(label: label, includeEditsSaved: false) == "\(label) took too long to answer. Try again, or pick a faster model.")
         #expect(LLMError.overloaded.userMessage(label: label, includeEditsSaved: false) == "\(label) is overloaded right now. Try again shortly or pick another model.")
+        #expect(LLMError.cliNetworkUnreachable(detail: "ECONNREFUSED").userMessage(label: label, includeEditsSaved: false)
+            == "\(cli) couldn't reach its server from VoxClip. " + LLMError.cliNetworkRecovery)
         #expect(LLMError.cliFailed("fixture").userMessage(label: label, includeEditsSaved: false) == "\(cli) stopped with an error: fixture")
         #expect(LLMError.cliSignedOut.userMessage(label: label, signInHint: hint, includeEditsSaved: false) == "\(cli) isn't signed in. \(hint)")
         #expect(LLMError.cliTooOld(version: "1.2.3", missing: ["help"]).userMessage(label: label, includeEditsSaved: false)

@@ -138,6 +138,8 @@ enum UserMessages {
         case .cliMissing: return "\(cli) isn't installed. \(installHint ?? "Install it, sign in once in a terminal, then try again.")"
         case .cliTooOld(let version, _): return "Your \(cli) \(clean(version)) is too old for VoxClip. Update it, then try again."
         case .cliSignedOut: return "\(cli) isn't signed in. \(signInHint ?? "Sign in once in a terminal, then try again.")"
+        case .cliNetworkUnreachable:
+            return error.userMessage(label: cli, includeEditsSaved: false) ?? ""
         case .cliFailed(let message): return "\(cli) stopped with an error: \(clean(message))"
         case .cancelled: return ""
         }

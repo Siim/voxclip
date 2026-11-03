@@ -13,6 +13,29 @@ namespace VoxClip.Core.Tests.Tracks.WinUi;
 public sealed class RewritePanelTests
 {
     [Theory]
+    [InlineData("Claude Code")]
+    [InlineData("Codex")]
+    public async Task CliNetworkRecoveryKeepsWindowsCopyInline(string name)
+    {
+        var message = $"{name} couldn't reach its server from VoxClip. Check your network or proxy, then try again. Your edits are saved.";
+        var failure = new LlmException(new(LlmErrorKind.CliNetworkUnreachable, VoxClipErrorCode.Offline, message, Reason: "ECONNREFUSED"));
+        var fake = new RecordingConnector { Failure = failure };
+        using var session = new RewriteSession(Editor(), 10, 12, Envelope(), new(fake, "chosen", name, "local", ""));
+        await session.SetInstructionAsync("Plainly");
+        var action = session.Prepared!;
+        session.MarkEstimateShown(action);
+        Assert.False(await session.ProposeAsync(action, true));
+        Assert.Equal(message, session.Problem);
+        Assert.DoesNotContain("Local Network", session.Problem, StringComparison.Ordinal);
+        Assert.Equal(message, UiError.Message(failure, "Rewrite"));
+        fake.Failure = null;
+        var retry = session.Prepared!;
+        session.MarkEstimateShown(retry);
+        Assert.True(await session.ProposeAsync(retry, true));
+        Assert.Empty(session.Problem);
+    }
+
+    [Theory]
     [InlineData("edit")]
     [InlineData("readonly")]
     [InlineData("leaving")]

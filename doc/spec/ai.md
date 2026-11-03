@@ -386,6 +386,7 @@ Errors are logged by their `LLMError` case plus the redacted user message. Never
 | `cliMissing` | no executable found | no | no | {cli} isn't installed. {installHint} |
 | `cliTooOld(version, missing)` | required flags missing from `--help`; a non-zero or unparseable `--version`; a non-zero help exit; a failing `codex features list` | no | no | Your {cli} {version} is too old for VoxClip. Update it, then try again. When the version could not be read: Your {cli} is too old for VoxClip. Update it, then try again. |
 | `cliSignedOut` | auth preflight or auth markers | no | no | {cli} isn't signed in. {signInHint} |
+| `cliNetworkUnreachable(detail)` | CLI network marker in stderr or a parsed Codex transport error at VoxClip’s timeout | no | no | {cli} couldn't reach its server from VoxClip. Recovery copy below; redacted first line, at most 200 characters. |
 | `cliFailed(message)` | non-zero exit or unparseable output, no better match | no | no | {cli} stopped with an error: {message, at most 200 characters, redacted} |
 | `cancelled` | the user cancelled | no | no | (no message) |
 
@@ -402,7 +403,7 @@ The architecture (`doc/architecture.md` §10.2) defines the cross-app `VoxClipEr
 | `keyMissing` | `noConnector`, `missingKey` | 7 |
 | `keyRejected` | `unauthorized` | 1 |
 | `rateLimited` | `rateLimited`, `planLimit`, `overloaded` | 1 |
-| `offline` | `network` | 1 |
+| `offline` | `network`, `cliNetworkUnreachable` | 1 |
 | `modelMissing` | `noModels` | 7 |
 | `cliNotInstalled` | `cliMissing`, `cliTooOld` | 7 |
 | `cliNotSignedIn` | `cliSignedOut` | 7 |
@@ -814,21 +815,30 @@ What the flags do:
 `--system-prompt-file` also works but is not listed in `--help`, so VoxClip doesn't rely on it.
 
 **Parsing.**
-1. Timeout means `timeout`. stdout must be one transport envelope (§4.5): trimmed with jsTrim and parsed whole, at most 512 levels deep, with no code fence or balanced-object scan. Otherwise, or when it is empty, it is `cliFailed` with the first stderr line, redacted. No stderr-marker classification applies to malformed envelopes; the classification in step 4 applies only after a valid result envelope. Missing or wrongly typed `type` or `is_error` fields are malformed envelopes too.
+1. Timeout means `timeout`, except when the bounded stderr contains network evidence (see network recovery below); Claude stdout is excluded from timeout classification. stdout must be one transport envelope (§4.5): trimmed with jsTrim and parsed whole, at most 512 levels deep, with no code fence or balanced-object scan. Otherwise, or when it is empty, classify only the selected stderr line using the rule below. Missing or wrongly typed `type` or `is_error` fields are malformed envelopes too.
 2. The object must have `type == "result"`.
-3. `is_error == false`: first the stop. `stop_reason` `max_tokens` is `truncated`, and `refusal` is `refused` with no category; any other value, or none, is a complete reply. Then use `structured_output` (an object) as `RawCompletion.object`. If it is absent, extract JSON from the `result` string (§4.5). Either way the reply holds at most 64 levels.
+3. `is_error == false` with a nonzero exit: classify only the selected stderr line, falling back to `cliFailed`; the successful model `result` text and `api_error_status` are never error-classification evidence. With a zero exit, first the stop. `stop_reason` `max_tokens` is `truncated`, and `refusal` is `refused` with no category; any other value, or none, is a complete reply. Then use `structured_output` (an object) as `RawCompletion.object`. If it is absent, extract JSON from the `result` string (§4.5). Either way the reply holds at most 64 levels.
 4. `is_error == true`: `message = result`. Classify case-insensitively: the first matching category in list order wins. Each category matches its markers OR its numeric status, not all statuses before all markers:
    - `authErrorMarkers`, or `api_error_status` 401 or 403, means `cliSignedOut`.
    - `limitMarkers`, or `api_error_status` 429, means `planLimit(message)`.
    - `overloadMarkers`, or `api_error_status` 529, means `overloaded`.
    - "prompt is too long" means `contextTooLong`.
+   - `networkErrorMarkers` means `cliNetworkUnreachable(detail)`.
    - Anything else means `cliFailed(message)`.
 5. `model` is the `modelUsage` key with the most `outputTokens` (falling back to `output_tokens`, then zero), or the requested alias if there is no key. On a tie choose the smallest key in ordinal UTF-8 byte order, independent of JSON member order (§12.8).
 6. Usage comes from `usage`. `total_cost_usd` is ignored and never shown.
 
 Optional envelope fields of the wrong JSON type are absent, including error status, event messages, agent items and model metadata. Integer fields accept an integral binary64 number such as `529.0`, but not a fraction or a string. A Codex `turn.failed` event still fails the send when its optional error message is absent (§6.9).
 
-**First stderr line (both CLIs).** Split stderr at LF only, as stdout in §4.5. Apply jsTrim to each line, which drops a trailing CR, then take the first non-empty line. If no line remains, use "The CLI exited without a result." Redact that message before showing it. When a failure path classifies stderr markers, it classifies only the line selected by this rule, never later lines. Malformed Claude envelopes still skip marker classification (step 1).
+**Stderr selection (both CLIs).** Select the first nonempty LF-delimited stderr line, trimmed with jsTrim. If it matches any classifier marker (auth, limit, overload, model/context or network), keep it. Otherwise select the first stderr line containing a network marker, if any. Classify **only the selected line**, applying the normal precedence within that line, and use that same line as the redacted detail. Later help lines containing `/login`, `529` or other markers cannot relabel the selected diagnostic. A first line that is a real auth error stays signed out. Empty stderr falls back to the generic no-result message. This rule applies to malformed/missing envelopes, missing Codex error events, and Claude's nonzero exit with `is_error == false`.
+
+**CLI network recovery (both platforms).** The shared catalog’s `networkErrorMarkers` for Claude Code and Codex contain `ECONNREFUSED`, `ENETUNREACH`, `EHOSTUNREACH`, `Connection refused`, `connect ETIMEDOUT`, `getaddrinfo ENOTFOUND`, `fetch failed`, `error sending request for url`, `dns error`, `failed to lookup address information`, `No route to host`, `Network is unreachable`, `os error 61`, `os error 65` and `tcp connect error`. Matching is case-insensitive, with the same code defaults if the list is absent. Sign-out, usage-limit and overload checks keep precedence, including mixed network messages. Existing model/context errors keep precedence too. A network failure maps to `offline`, is not retried automatically, and retains only its first nonempty LF-delimited line, redacted before truncation to at most 200 characters.
+
+At VoxClip’s own generation timeout, the process runner preserves bounded partial output. Classification text is stderr plus only the `message` from parsed Codex `error` events (including `Reconnecting...` progress and its reason) and `error.message` from parsed `turn.failed` events. Never classify whole stdout, `item.*` reasoning or agent messages, thread/item IDs, usage counts, malformed JSONL, or any Claude stdout. If the allowed transport text contains a network marker, use the same classification and precedence; without network evidence the error stays `timeout`. Cancellation remains silent and wins over timeout. Detection and sign-in probes keep their existing timeout behavior. Raw output is never logged or persisted.
+
+On Mac, Rewrite shows two inline lines: “{cli} couldn't reach its server from VoxClip.” and “If it uses a server on your network, allow VoxClip in System Settings › Privacy & Security › Local Network, then try again.” The redacted detail uses secondary text. Other Mac features show the recovery sentences only; they never append raw detail to the recovery sentence. After an approved send fails this way, Rewrite's failed send step reads “Couldn't reach {cli}”, as for a network failure. **Open Local Network Settings** opens `x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork` through an injectable URL opener, beside the existing **Try Again** action (or **Try Again…** when a send requires approval). This is guidance for a possible LAN server, not a diagnosis of the user's permissions or proxy configuration. VoxClip never reads CLI configuration or guesses a base URL.
+
+On Windows, the inline error reads “{cli} couldn't reach its server from VoxClip. Check your network or proxy, then try again.” followed by the existing saved-edits reassurance and retry action. No Local Network settings action is shown. `{cli}` is “Claude Code” or “Codex”, without the catalog’s installed-CLI suffix.
 
 **Models.** The curated aliases are `sonnet` (default), `opus` and `haiku`, plus "CLI default", which omits `--model`. A custom id may be any full model id the CLI accepts. There is no list endpoint, so model refresh is not offered for this connector.
 
@@ -916,12 +926,13 @@ Then emit a closing `"`. The argument is `developer_instructions=` followed by t
 **Parsing.**
 1. Split stdout into lines at LF and read each line as a transport envelope (§4.5), skipping lines that are not one. `error` events whose message starts with `Reconnecting...` are progress, not failures.
 2. Success means exit 0, a `turn.completed` event was seen and no `turn.failed` event was seen (even one without a usable message). The text is `last.json` if it is non-empty, otherwise the `text` of the last `item.completed` whose `item.type` is `agent_message`. That text is a reply (§4.5).
-3. Failure: `message` is `turn.failed.error.message`, else the last non-progress `error` event message, else the first stderr line selected by §6.8, including its empty-stderr fallback. Classify case-insensitively; the first matching category in this list wins. Marker text comes only from the connector's catalog lists:
+3. Failure: `message` is `turn.failed.error.message`, else the last non-progress `error` event message, else the first stderr line selected by §6.8, including its empty-stderr fallback. Classify case-insensitively; the first matching category in this list wins. Marker text comes from the connector's catalog lists (with code defaults for `networkErrorMarkers`):
    - `authErrorMarkers` means `cliSignedOut`.
    - `limitMarkers` means `planLimit(message)`.
    - `overloadMarkers` means `overloaded`.
    - `modelErrorMarkers` means `modelNotFound`.
    - "context" together with "length" or "window" means `contextTooLong`.
+   - `networkErrorMarkers` means `cliNetworkUnreachable(detail)`.
    - Anything else means `cliFailed(message)`.
 4. Usage comes only from `turn.completed.usage`: `input_tokens`, `cached_input_tokens`, `output_tokens`. All other fields, including `cache_write_input_tokens`, are ignored; cache-write usage is absent.
 5. On `planLimit` or `overloaded`, the runner re-runs once with the fallback model (§4.3).
